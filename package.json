@@ -1,0 +1,31 @@
+{
+  "name": "consumer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "pm2 start"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "amqplib": "^0.5.3",
+    "async": "^2.6.1",
+    "async-redis": "^1.1.5",
+    "async-timed-cargo": "^0.0.3",
+    "elastic-apm-node": "latest",
+    "elasticsearch": "^15.4.1",
+    "elasticsearch-scroll-stream": "^1.1.4",
+    "eosjs": "^20.0.0-beta3",
+    "fastify": "^1.14.1",
+    "lodash": "latest",
+    "node-fetch": "^2.3.0",
+    "perf_hooks": "0.0.1",
+    "prettyjson": "^1.2.1",
+    "redis": "^2.8.0",
+    "text-encoding": "^0.7.0",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v15.1.0",
+    "ws": "^6.1.3"
+  }
+}
