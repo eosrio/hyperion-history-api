@@ -1,17 +1,17 @@
 # Hyperion History API
 Scalable Full History API Solution for EOSIO based blockchain
 
-Made with ♥️ by EOS Rio
+Made with ♥ by EOS Rio
 
 ## Dependencies
 
- - Elasticsearch 6.6.0
- - RabbitMQ
+ - [Elasticsearch 6.6.0](https://www.elastic.co/downloads/elasticsearch#ga-release)
+ - [RabbitMQ](https://www.rabbitmq.com/install-debian.html)
  - Redis
  - Node.js v11
  - Nodeos 1.6.1 w/ state_history_plugin
  - Nodeos 1.6.1 w/ chain_api_plugin
- - PM2
+ - [PM2](https://pm2.io/doc/en/runtime/quick-start)
  
 ## Setup Instructions
 
