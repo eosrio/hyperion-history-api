@@ -62,6 +62,8 @@ FLUSH_INDICES: 'false'                 // CAUTION: Delete all elastic indices
  
  
 ## API Reference
+
+[full documentation](https://eosrio.github.io/Hyperion-History-API/)
  
 #### `/v2/history/get_actions`
  
@@ -69,6 +71,6 @@ FLUSH_INDICES: 'false'                 // CAUTION: Delete all elastic indices
 
 #### `/v2/history/get_inline_actions`
  
-## Performance Benchmarks
+### Performance Benchmarks
 
-## Roadmap
+### Roadmap
