@@ -3,7 +3,7 @@ const _ = require('lodash');
 function buildTransactionBulk(payloads, messageMap) {
     return _(payloads).map(payload => {
         const body = JSON.parse(Buffer.from(payload.content).toString());
-        messageMap[body.id] = payload.message;
+        messageMap[body.id] = payload;
         return [{
             index: {_id: body.id}
         }, {
@@ -16,7 +16,7 @@ function buildTransactionBulk(payloads, messageMap) {
 function buildActionBulk(payloads, messageMap) {
     return _(payloads).map(payload => {
         const body = JSON.parse(Buffer.from(payload.content).toString());
-        messageMap[body.receipt['global_sequence']] = payload.message;
+        messageMap[body.receipt['global_sequence']] = payload;
         return [{
             index: {_id: body.receipt['global_sequence']}
         }, body];
@@ -26,7 +26,7 @@ function buildActionBulk(payloads, messageMap) {
 function buildBlockBulk(payloads, messageMap) {
     return _(payloads).map(payload => {
         const body = JSON.parse(Buffer.from(payload.content).toString());
-        messageMap[body['block_num']] = payload.message;
+        messageMap[body['block_num']] = payload;
         return [{
             index: {_id: body['block_num']}
         }, body];

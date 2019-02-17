@@ -5,17 +5,19 @@ const client = new elasticsearch.Client({
 });
 const queue_prefix = process.env.CHAIN;
 
+const prettyjson = require('prettyjson');
+
 function ackOrNack(resp, messageMap, channel) {
     resp.items.forEach(item => {
         const message = messageMap[item.index._id];
         delete messageMap[item.index._id];
         if (item.index.status !== 201 && item.index.status !== 200) {
             channel.nack(message);
-            console.log(item);
+            console.log(prettyjson.render(item.index));
             console.info(`nack ${item.index._id} ${item.index.status}`);
         } else {
             channel.ack(message);
-            console.log(`ack ${item.index._id}`);
+            // console.log(`ack ${item.index._id}`);
         }
     });
 }

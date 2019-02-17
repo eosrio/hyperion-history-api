@@ -9,9 +9,8 @@ const worker = require('./worker');
         });
     } else {
         let delay = 0;
-        if (process.env['worker_role'] === 'reader') delay = process.env.READERS * 100;
-        const role = process.env['worker_role'];
-        console.log(`New worker [PID: ${process.pid} - WID: ${process.env['worker_id']}] launched, role: ${role}`);
+        if (process.env['worker_role'] === 'reader') delay = process.env.READERS * 50;
+        // console.log(`New worker [PID: ${process.pid} - WID: ${process.env['worker_id']}] launched, role: ${process.env['worker_role']}`);
         setTimeout(() => {
             worker.main().catch((err) => {
                 console.log(err);

@@ -33,6 +33,7 @@ const index_queues = [
 
 const n_deserializers = process.env.DESERIALIZERS;
 const n_ingestors_per_queue = process.env.ES_INDEXERS_PER_QUEUE;
+const action_indexing_ratio = process.env.ES_ACT_QUEUES;
 
 // Stage 1 reader prefetch
 const maxMessagesInFlight = parseInt(process.env.READ_PREFETCH, 10);
@@ -151,11 +152,19 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
 
             // New account
             if (action['act']['name'] === 'newaccount' && action['act']['account'] === 'eosio') {
-                action['@data'] = {
-                    'newaccount': {
-                        'newact': action['act']['data']['newact']
-                    }
-                };
+                let name = null;
+                if (action['act']['data']['newact']) {
+                    name = action['act']['data']['newact'];
+                } else if (action['act']['data']['name']) {
+                    name = action['act']['data']['name'];
+                }
+                if (name) {
+                    action['@data'] = {
+                        'eosio-newaccount': {
+                            'newact': name
+                        }
+                    };
+                }
             }
 
         } catch (e) {
@@ -196,7 +205,7 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
         const q = index_queue_prefix + "_actions:" + (act_emit_idx);
         ch.sendToQueue(q, Buffer.from(JSON.stringify(action)));
         act_emit_idx++;
-        if (act_emit_idx > n_ingestors_per_queue) {
+        if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
             act_emit_idx = 1;
         }
         return true;
@@ -467,7 +476,7 @@ function requestBlocks(start) {
     send(['get_blocks_request_v0', request]);
 }
 
-const stageOneDistQueue = asyncTimedCargo(distribute, 20, 2000);
+const stageOneDistQueue = asyncTimedCargo(distribute, 200, 2000);
 const qStatusMap = {};
 
 async function distribute(data, cb) {

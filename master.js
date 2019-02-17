@@ -82,6 +82,7 @@ async function main() {
     const n_consumers = process.env.READERS;
     const n_deserializers = process.env.DESERIALIZERS;
     const n_ingestors_per_queue = process.env.ES_INDEXERS_PER_QUEUE;
+    const action_indexing_ratio = process.env.ES_ACT_QUEUES;
 
     const eos_endpoint = process.env.NODEOS_HTTP;
     const rpc = new JsonRpc(eos_endpoint, {fetch});
@@ -281,7 +282,11 @@ async function main() {
 
     // Setup ES Ingestion Workers
     index_queues.forEach((q) => {
-        for (let i = 0; i < n_ingestors_per_queue; i++) {
+        let n = n_ingestors_per_queue;
+        if(q.type === 'action') {
+            n = n_ingestors_per_queue * action_indexing_ratio;
+        }
+        for (let i = 0; i < n; i++) {
             worker_index++;
             workerMap.push({
                 worker_id: worker_index,
