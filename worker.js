@@ -43,13 +43,13 @@ const dSprefecthCount = parseInt(process.env.BLOCK_PREFETCH, 10);
 const indexingPrefecthCount = parseInt(process.env.INDEX_PREFETCH, 10);
 
 // Async Cargos
-const blockReadingQueue = asyncTimedCargo(processIncomingBlockArray, maxMessagesInFlight, 200);
+const blockReadingQueue = asyncTimedCargo(processIncomingBlockArray, maxMessagesInFlight, 500);
 
 const indexQueue = asyncTimedCargo((payload, callback) => {
     routes[process.env.type](payload, callback, ch);
 }, indexingPrefecthCount, 1000);
 
-const consumerQueue = asyncTimedCargo(processPayload, dSprefecthCount, 1000);
+const consumerQueue = asyncTimedCargo(processPayload, dSprefecthCount, 500);
 
 // Stage 2 - Deserialization handler
 function processPayload(payload, cb) {
@@ -63,18 +63,12 @@ function processPayload(payload, cb) {
 
 // Stage 2 - Deserialization function
 async function processMessages(messages) {
-    const status = [];
     for (const message of messages) {
         const ds_msg = deserialize('result', message.content);
         const res = ds_msg[1];
         let block, traces = [], deltas = [];
         if (res.block && res.block.length) {
             block = deserialize('signed_block', res.block);
-            // block.transactions.forEach((trx) => {
-            //     if (trx.status !== 0) {
-            //         console.log(trx.status, trx.trx[1].toLowerCase());
-            //     }
-            // });
         }
         if (res['traces'] && res['traces'].length) {
             traces = deserialize('transaction_trace[]', zlib.unzipSync(res['traces']));
@@ -82,21 +76,26 @@ async function processMessages(messages) {
         if (res['deltas'] && res['deltas'].length) {
             deltas = deserialize('table_delta[]', zlib.unzipSync(res['deltas']));
         }
-
-        const result = await processBlock(res, block, traces, deltas);
-        if (result) {
-            process.send({
-                event: 'consumed_block',
-                block_num: result['block_num']
-            });
-        } else {
-            console.log('Empty message. No block');
-            console.log(_.omit(res, ['block', 'traces', 'deltas']));
+        let result;
+        try {
+            // const t0 = Date.now();
+            result = await processBlock(res, block, traces, deltas);
+            // console.log(`processBlock elapsed ${Date.now() - t0}ms`);
+            if (result) {
+                process.send({
+                    event: 'consumed_block',
+                    block_num: result['block_num']
+                });
+            } else {
+                console.log('Empty message. No block');
+                console.log(_.omit(res, ['block', 'traces', 'deltas']));
+            }
+            ch.ack(message);
+        } catch (e) {
+            console.log(e);
+            ch.nack(message);
         }
-        ch.ack(message);
-        status.push(true);
     }
-    return status;
 }
 
 async function processTrx(ts, trx_trace, block_num) {
@@ -501,13 +500,18 @@ async function processBlock(res, block, traces, deltas) {
             schedule_version: block['schedule_version']
         };
         const q = index_queue_prefix + "_blocks:" + (block_emit_idx);
-        ch.sendToQueue(q, Buffer.from(JSON.stringify(light_block)));
+        const enqueueStatus = await ch.sendToQueue(q, Buffer.from(JSON.stringify(light_block)));
+        if(!enqueueStatus) {
+            console.log(enqueueStatus);
+        }
         block_emit_idx++;
         if (block_emit_idx > n_ingestors_per_queue) {
             block_emit_idx = 1;
         }
 
         local_block_count++;
+
+        // return {block_num: res['this_block']['block_num'],size: traces.length};
 
         if (deltas && process.env.FETCH_DELTAS === 'true') {
             await processDeltas(deltas, res['this_block']['block_num']);
@@ -638,7 +642,7 @@ function requestBlocks(start) {
     send(['get_blocks_request_v0', request]);
 }
 
-const stageOneDistQueue = asyncTimedCargo(distribute, 200, 2000);
+const stageOneDistQueue = asyncTimedCargo(distribute, 200, 500);
 const qStatusMap = {};
 
 async function distribute(data, cb) {
@@ -674,7 +678,7 @@ async function recusiveDistribute(data, cb) {
                     recusiveDistribute(data, cb).catch((err) => {
                         console.log(err);
                     })
-                }, 200)
+                }, 500)
             } else {
                 recusiveDistribute(data, cb).catch((err) => {
                     console.log(err);
@@ -728,7 +732,7 @@ async function main() {
     // Assert stage 1 and 2 queues
     if (process.env['worker_role'] === 'reader' || process.env['worker_role'] === 'deserializer') {
         for (let i = 0; i < n_deserializers; i++) {
-            ch.assertQueue(queue + ":" + (i + 1), {durable: false});
+            ch.assertQueue(queue + ":" + (i + 1), {durable: true});
             ch.on('drain', function () {
                 qStatusMap[queue + ":" + (i + 1)] = true;
             })
@@ -739,14 +743,14 @@ async function main() {
     if (process.env['worker_role'] === 'deserializer') {
         index_queues.forEach((q) => {
             for (let i = 0; i < n_ingestors_per_queue; i++) {
-                ch.assertQueue(q.name + ":" + (i + 1), {durable: false});
+                ch.assertQueue(q.name + ":" + (i + 1), {durable: true});
             }
         });
     }
 
     // Assert stage 4 queues
     if (process.env['worker_role'] === 'ingestor') {
-        ch.assertQueue(process.env['queue'], {durable: false});
+        ch.assertQueue(process.env['queue'], {durable: true});
     }
 
     // Connect to StateHistory via WebSocket

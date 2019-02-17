@@ -227,6 +227,8 @@ async function main() {
         }
     }
 
+    console.log(missingRanges);
+
     if (missingRanges.length > 0) {
         // Test missing ranges candidates
         for (const r of missingRanges) {
@@ -245,7 +247,10 @@ async function main() {
         }
     } else {
         // Setup Parallel reader workers
-        if (lastIndexedBlock === 0) {
+        if (lastIndexedBlock > starting_block) {
+            starting_block = lastIndexedBlock;
+        }
+        if (lastIndexedBlock === 0 || starting_block >= lastIndexedBlock) {
             for (let i = 0; i < n_consumers; i++) {
                 worker_index++;
                 workerMap.push({
