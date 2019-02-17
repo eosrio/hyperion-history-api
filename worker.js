@@ -137,7 +137,7 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
             ds_act = await api.deserializeActions(actions);
             action['act'] = ds_act[0];
 
-            // Process extra data indices
+            // Transfer actions
             if (action['act']['name'] === 'transfer') {
                 const qtd = action['act']['data']['quantity'].split(' ');
                 action['@data'] = {
@@ -150,21 +150,19 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
                 };
             }
 
+            // eosio.forum vote
+            if (action['act']['name'] === 'vote' && action['act']['account'] === 'eosio.forum') {
+                await handleForumVote(action['act']['data'], action, ts);
+            }
+
             // New account
             if (action['act']['name'] === 'newaccount' && action['act']['account'] === 'eosio') {
-                let name = null;
-                if (action['act']['data']['newact']) {
-                    name = action['act']['data']['newact'];
-                } else if (action['act']['data']['name']) {
-                    name = action['act']['data']['name'];
-                }
-                if (name) {
-                    action['@data'] = {
-                        'eosio-newaccount': {
-                            'newact': name
-                        }
-                    };
-                }
+                await handleNewAccount(action['act']['data'], action, ts);
+            }
+
+            // New account
+            if (action['act']['name'] === 'updateauth' && action['act']['account'] === 'eosio') {
+                await handleUpdateAuth(action['act']['data'], action, ts);
             }
 
         } catch (e) {
@@ -211,6 +209,182 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
         return true;
     } else {
         return false;
+    }
+}
+
+async function handleUpdateAuth(data, action, ts) {
+    const auth = data['auth'];
+    const permission = data['permission'];
+    let found;
+    try {
+        found = await client.get({
+            index: queue_prefix + '-account',
+            type: '_doc',
+            id: data['account']
+        });
+    } catch (e) {
+        if (e.status !== 404) {
+            console.log(e);
+        }
+    }
+    if (!found) {
+        const new_auth = {};
+        new_auth[permission] = auth;
+        client.index({
+            index: queue_prefix + '-account',
+            type: '_doc',
+            id: data['account'],
+            "body": {
+                "name": data['account'],
+                "auth": new_auth,
+                "votes": [],
+                "updated_on": ts,
+                "keys_updated_on": ts
+            }
+        }).catch((err) => {
+            console.log(err);
+        });
+    } else {
+        const currentDoc = found['_source'];
+        currentDoc['auth'][permission] = auth;
+        currentDoc['updated_on'] = ts;
+        currentDoc['keys_updated_on'] = ts;
+        client.index({
+            index: queue_prefix + '-account',
+            type: '_doc',
+            id: data['account'],
+            "body": currentDoc
+        }).catch((err) => {
+            console.log(err);
+        });
+    }
+}
+
+async function handleNewAccount(data, action, ts) {
+    let name = null;
+    if (data['newact']) {
+        name = data['newact'];
+    } else if (data['name']) {
+        name = data['name'];
+    }
+    if (name) {
+        action['@data'] = {
+            'eosio-newaccount': {
+                'newact': name
+            }
+        };
+    }
+    let found;
+    try {
+        found = await client.get({
+            index: queue_prefix + '-account',
+            type: '_doc',
+            id: name
+        });
+    } catch (e) {
+        if (e.status !== 404) {
+            console.log(e);
+        }
+    }
+
+    if (!found) {
+        client.index({
+            index: queue_prefix + '-account',
+            type: '_doc',
+            id: name,
+            "body": {
+                "name": name,
+                "auth": {
+                    "active": data['active'],
+                    "owner": data['owner'],
+                },
+                "votes": [],
+                "updated_on": ts,
+                "keys_updated_on": ts
+            }
+        }).catch((err) => {
+            console.log(err);
+        });
+    } else {
+        const currentDoc = found['_source'];
+        currentDoc['auth'] = {
+            "active": data['active'],
+            "owner": data['owner'],
+        };
+        currentDoc['updated_on'] = ts;
+        currentDoc['keys_updated_on'] = ts;
+        client.index({
+            index: queue_prefix + '-account',
+            type: '_doc',
+            id: data['voter'],
+            "body": currentDoc
+        }).catch((err) => {
+            console.log(err);
+        });
+    }
+}
+
+async function handleForumVote(data, action, ts) {
+    if (data['proposal_name']) {
+        action['@data'] = {
+            'forum-vote': {
+                'proposal': data['proposal_name'],
+                "vote": data['vote']
+            }
+        };
+        let found, voteJSON;
+        try {
+            found = await client.get({
+                index: queue_prefix + '-account',
+                type: '_doc',
+                id: data['voter']
+            });
+        } catch (e) {
+            if (e.status !== 404) {
+                console.log(e);
+            }
+        }
+        const voteObj = {
+            "proposal": data['proposal_name'],
+            "vote": data['vote']
+        };
+        if (data['vote_json']) {
+            voteJSON = JSON.parse(data['vote_json']);
+            voteObj['vote_json'] = voteJSON;
+        }
+        if (!found) {
+            client.index({
+                index: queue_prefix + '-account',
+                type: '_doc',
+                id: data['voter'],
+                "body": {
+                    "name": data['voter'],
+                    "votes": [voteObj],
+                    "updated_on": ts
+                }
+            }).catch((err) => {
+                console.log(err);
+            });
+        } else {
+            const currentDoc = found['_source'];
+            currentDoc['updated_on'] = ts;
+            const proposal_name = data['proposal_name'];
+            const voteIdx = currentDoc['votes'].findIndex(v => v.proposal === proposal_name);
+            if (voteIdx !== -1) {
+                currentDoc['votes'][voteIdx] = voteObj;
+            } else {
+                currentDoc['votes'].push(voteObj);
+            }
+            client.index({
+                index: queue_prefix + '-account',
+                type: '_doc',
+                id: data['voter'],
+                "body": currentDoc
+            }).catch((err) => {
+                console.log(err);
+            });
+        }
+
     }
 }
 
@@ -558,6 +732,11 @@ async function main() {
     ch = await connection.createChannel();
     cch = await connection.createConfirmChannel();
 
+    // Connect to elasticsearch
+    client = new elasticsearch.Client({
+        host: process.env.ES_HOST
+    });
+
     // Assert stage 1 and 2 queues
     if (process.env['worker_role'] === 'reader' || process.env['worker_role'] === 'deserializer') {
         for (let i = 0; i < n_deserializers; i++) {
@@ -587,10 +766,6 @@ async function main() {
         ws = new WebSocket(process.env.NODEOS_WS, null, {perMessageDeflate: false});
         ws.on('message', blockReadingQueue.push);
     } else {
-        // Connect to elasticsearch
-        client = new elasticsearch.Client({
-            host: process.env.ES_HOST
-        });
         try {
             ch.prefetch(indexingPrefecthCount);
             ch.consume(process.env['queue'], indexQueue.push);

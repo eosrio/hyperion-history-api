@@ -96,7 +96,7 @@ async function main() {
         {type: 'block', name: index_queue_prefix + "_blocks"}
     ];
 
-    const indicesList = ["action", "block", "transaction"];
+    const indicesList = ["action", "block", "transaction", "account"];
     const indexConfig = require('./mappings');
 
     if (process.env.FLUSH_INDICES === 'true') {
@@ -283,7 +283,7 @@ async function main() {
     // Setup ES Ingestion Workers
     index_queues.forEach((q) => {
         let n = n_ingestors_per_queue;
-        if(q.type === 'action') {
+        if (q.type === 'action') {
             n = n_ingestors_per_queue * action_indexing_ratio;
         }
         for (let i = 0; i < n; i++) {
@@ -297,11 +297,11 @@ async function main() {
         }
     });
 
-    // Print worker map
-    printWorkerMap(workerMap);
-
     // Quit App if on preview mode
-    if (preview) process.exit(1);
+    if (preview) {
+        printWorkerMap(workerMap);
+        process.exit(1);
+    }
 
     // Launch all workers
     workerMap.forEach((conf) => {

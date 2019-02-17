@@ -31,6 +31,16 @@ const action = {
                     },
                     "eosio-newaccount.newact": {
                         "type": "keyword"
+                    },
+                    "forum-vote": {
+                        "properties": {
+                            "proposal": {
+                                "type": "keyword"
+                            },
+                            "vote": {
+                                "type": "byte"
+                            }
+                        }
                     }
                 }
             },
@@ -133,6 +143,43 @@ const transaction = {
     }
 };
 
+const account = {
+    "settings": {
+        "index": {
+            "number_of_shards": 3,
+            "refresh_interval": "10s",
+            "number_of_replicas": 0
+        },
+        "index.codec": "best_compression"
+    },
+    "mappings": {
+        "properties": {
+            "name": {
+                "type": "keyword"
+            },
+            "updated_on": {
+                "type": "date"
+            },
+            "keys_updated_on": {
+                "type": "date"
+            },
+            "auth": {
+                "dynamic": false,
+                "properties": {
+                    "active": {
+                        "dynamic": true,
+                        "type": "object"
+                    },
+                    "owner": {
+                        "dynamic": true,
+                        "type": "object"
+                    }
+                }
+            }
+        }
+    }
+};
+
 const block = {
     "settings": {
         "index": {
@@ -171,4 +218,4 @@ const block = {
     }
 };
 
-module.exports = {action, block, transaction};
+module.exports = {action, block, transaction, account};
