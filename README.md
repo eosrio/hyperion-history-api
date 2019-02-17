@@ -46,7 +46,7 @@ READERS: 3,                            // parallel state history readers
 DESERIALIZERS: 4,                      // deserialization queues
 DS_MULT: 4,                            // deserialization threads per queue
 ES_INDEXERS_PER_QUEUE: 4,              // elastic indexers per queue
-ES_ACT_QUEUES: 2,                      // not used
+ES_ACT_QUEUES: 2,                      // multiplier for action indexing queues
 READ_PREFETCH: 50,                     // Stage 1 prefecth
 BLOCK_PREFETCH: 5,                     // Stage 2 prefecth
 INDEX_PREFETCH: 500,                   // Stage 3 prefetch
