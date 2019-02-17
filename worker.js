@@ -230,7 +230,7 @@ async function handleUpdateAuth(data, action, ts) {
     if (!found) {
         const new_auth = {};
         new_auth[permission] = auth;
-        client.index({
+        await client.index({
             index: queue_prefix + '-account',
             type: '_doc',
             id: data['account'],
@@ -241,21 +241,17 @@ async function handleUpdateAuth(data, action, ts) {
                 "updated_on": ts,
                 "keys_updated_on": ts
             }
-        }).catch((err) => {
-            console.log(err);
         });
     } else {
         const currentDoc = found['_source'];
         currentDoc['auth'][permission] = auth;
         currentDoc['updated_on'] = ts;
         currentDoc['keys_updated_on'] = ts;
-        client.index({
+        await client.index({
             index: queue_prefix + '-account',
             type: '_doc',
             id: data['account'],
             "body": currentDoc
-        }).catch((err) => {
-            console.log(err);
         });
     }
 }
@@ -288,7 +284,7 @@ async function handleNewAccount(data, action, ts) {
     }
 
     if (!found) {
-        client.index({
+        await client.index({
             index: queue_prefix + '-account',
             type: '_doc',
             id: name,
@@ -302,8 +298,6 @@ async function handleNewAccount(data, action, ts) {
                 "updated_on": ts,
                 "keys_updated_on": ts
             }
-        }).catch((err) => {
-            console.log(err);
         });
     } else {
         const currentDoc = found['_source'];
@@ -313,13 +307,11 @@ async function handleNewAccount(data, action, ts) {
         };
         currentDoc['updated_on'] = ts;
         currentDoc['keys_updated_on'] = ts;
-        client.index({
+        await client.index({
             index: queue_prefix + '-account',
             type: '_doc',
             id: data['voter'],
             "body": currentDoc
-        }).catch((err) => {
-            console.log(err);
         });
     }
 }
@@ -353,7 +345,7 @@ async function handleForumVote(data, action, ts) {
             voteObj['vote_json'] = voteJSON;
         }
         if (!found) {
-            client.index({
+            await client.index({
                 index: queue_prefix + '-account',
                 type: '_doc',
                 id: data['voter'],
@@ -362,8 +354,6 @@ async function handleForumVote(data, action, ts) {
                     "votes": [voteObj],
                     "updated_on": ts
                 }
-            }).catch((err) => {
-                console.log(err);
             });
         } else {
             const currentDoc = found['_source'];
@@ -375,13 +365,11 @@ async function handleForumVote(data, action, ts) {
             } else {
                 currentDoc['votes'].push(voteObj);
             }
-            client.index({
+            await client.index({
                 index: queue_prefix + '-account',
                 type: '_doc',
                 id: data['voter'],
                 "body": currentDoc
-            }).catch((err) => {
-                console.log(err);
             });
         }
 
@@ -740,7 +728,7 @@ async function main() {
     // Assert stage 1 and 2 queues
     if (process.env['worker_role'] === 'reader' || process.env['worker_role'] === 'deserializer') {
         for (let i = 0; i < n_deserializers; i++) {
-            ch.assertQueue(queue + ":" + (i + 1), {durable: true});
+            ch.assertQueue(queue + ":" + (i + 1), {durable: false});
             ch.on('drain', function () {
                 qStatusMap[queue + ":" + (i + 1)] = true;
             })
@@ -751,14 +739,14 @@ async function main() {
     if (process.env['worker_role'] === 'deserializer') {
         index_queues.forEach((q) => {
             for (let i = 0; i < n_ingestors_per_queue; i++) {
-                ch.assertQueue(q.name + ":" + (i + 1), {durable: true});
+                ch.assertQueue(q.name + ":" + (i + 1), {durable: false});
             }
         });
     }
 
     // Assert stage 4 queues
     if (process.env['worker_role'] === 'ingestor') {
-        ch.assertQueue(process.env['queue'], {durable: true});
+        ch.assertQueue(process.env['queue'], {durable: false});
     }
 
     // Connect to StateHistory via WebSocket
