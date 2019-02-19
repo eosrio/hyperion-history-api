@@ -8,7 +8,7 @@ function buildTransactionBulk(payloads, messageMap) {
             index: {_id: body.id}
         }, {
             block_num: body.block_num,
-            timestamp: body.timestamp
+            '@timestamp': body['@timestamp']
         }];
     }).flatten()['value']();
 }

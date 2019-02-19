@@ -7,7 +7,7 @@ Made with ♥ by [EOS Rio](https://eosrio.io/)
 
 This setup has only been tested with Ubuntu 18.04, but should work with other OS versions too
 
- - [Elasticsearch 6.6.0](https://www.elastic.co/downloads/elasticsearch#ga-release)
+ - [Elasticsearch 7.0.0-beta1](https://www.elastic.co/downloads/elasticsearch#preview-release)
  - [RabbitMQ](https://www.rabbitmq.com/install-debian.html)
  - [Redis](https://redis.io/topics/quickstart)
  - [Node.js v11](https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions)
@@ -36,11 +36,13 @@ AMQP_HOST: '127.0.0.1:5672'            // RabbitMQ host:port
 AMQP_USER: '',                         // RabbitMQ user
 AMQP_PASS: '',                         // RabbitMQ password
 ES_HOST: '127.0.0.1:9200',             // elasticsearch http endpoint
-NODEOS_HTTP: 'http://127.0.0.1:30001', // chain api endpoint
-NODEOS_WS: 'ws://127.0.0.1:38080',     // state history endpoint
+NODEOS_HTTP: 'http://127.0.0.1:8888',  // chain api endpoint
+NODEOS_WS: 'ws://127.0.0.1:8080',      // state history endpoint
 LIVE_READER: 'true',                   // enable continuous reading after reaching the head block
 FETCH_DELTAS: 'false',                 // read table deltas
-CHAIN: 'bos',                          // chain prefix for indexing
+CHAIN: 'eos',                          // chain prefix for indexing
+START_ON: 1,                           // start indexing on block (0=disable)
+STOP_ON: 10000000,                     // stop indexing on block  (0=disable)
 PREVIEW: 'false',                      // preview mode - prints worker map and exit
 READERS: 3,                            // parallel state history readers
 DESERIALIZERS: 4,                      // deserialization queues

@@ -105,7 +105,7 @@ async function processMessages(messages) {
 async function processTrx(ts, trx_trace, block_num) {
     const trx = {
         id: trx_trace['id'].toLowerCase(),
-        timestamp: ts,
+        '@timestamp': ts,
         block_num: block_num
     };
     // Distribute light transactions to indexer queues
@@ -204,15 +204,15 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
                         textDecoder: new TextDecoder()
                     });
                     buffer.pushArray(Serialize.hexToUint8Array(abi_hex));
-                    const abiJSON = _types.get('abi_def').deserialize(buffer);
+                    const abiJSON = JSON.stringify(_types.get('abi_def').deserialize(buffer));
                     await client['index']({
-                        index: process.env.chain + '-abi',
+                        index: process.env.CHAIN + '-abi',
                         type: '_doc',
                         body: {
                             block: block_num,
                             code: action['act']['data']['account'],
                             abi: abiJSON,
-                            timestamp: ts
+                            '@timestamp': ts
                         }
                     });
                 }
@@ -232,7 +232,7 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
             action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
         }
         process.send({event: 'ds_action'});
-        action['timestamp'] = ts;
+        action['@timestamp'] = ts;
         action['block_num'] = block_num;
         action['producer'] = prod;
         action['trx_id'] = trx_id;
@@ -558,7 +558,7 @@ async function processBlock(res, block, traces, deltas) {
             block_num: res['this_block']['block_num'],
             producer: block['producer'],
             new_producers: block['new_producers'],
-            timestamp: block['timestamp'],
+            '@timestamp': block['timestamp'],
             schedule_version: block['schedule_version']
         };
         const q = index_queue_prefix + "_blocks:" + (block_emit_idx);
@@ -707,7 +707,7 @@ function signalReaderCompletion() {
                     pending++;
                 }
             });
-            if (pending === lastPendingCount) {
+            if (pending === lastPendingCount && pending > 0) {
                 console.log(`[${process.env['worker_id']}] Pending blocks: ${pending}`);
             } else {
                 lastPendingCount = pending;
@@ -731,7 +731,7 @@ function send(req_data) {
 function requestBlocks(start) {
     const first_block = start > 0 ? start : process.env.first_block;
     const last_block = start > 0 ? 0xffffffff : process.env.last_block;
-    console.log(`REQUEST - ${process.env.first_block} >> ${process.env.last_block}`);
+    // console.log(`REQUEST - ${process.env.first_block} >> ${process.env.last_block}`);
     const request = {
         start_block_num: parseInt(first_block > 0 ? first_block : '1', 10),
         end_block_num: parseInt(last_block, 10),

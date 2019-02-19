@@ -106,7 +106,7 @@ async function main() {
         {type: 'abi', name: index_queue_prefix + "_abis"}
     ];
 
-    const indicesList = ["action", "block", "transaction", "account"];
+    const indicesList = ["action", "block", "transaction", "account", "abi"];
     const indexConfig = require('./mappings');
 
     if (process.env.FLUSH_INDICES === 'true') {
@@ -205,84 +205,6 @@ async function main() {
     }
 
     total_range = lib - starting_block;
-
-    // // starting_block = 950;
-    // // const batchSize = 2000;
-    // const missingRanges = [];
-    // if (search) {
-    //     let searchPoint = 0;
-    //     let window_size = 20000;
-    //     let newRangeStart = 0;
-    //     while (searchPoint < lib) {
-    //         if (newRangeStart !== 0) {
-    //             // Search for new ending point
-    //             // Move one window ahead
-    //             searchPoint += window_size;
-    //             const candidate = await getFirstIndexedBlockFromRange(client, searchPoint, searchPoint + window_size);
-    //             if (candidate > newRangeStart) {
-    //                 missingRanges.push({
-    //                     start: newRangeStart,
-    //                     end: candidate
-    //                 });
-    //                 newRangeStart = 0;
-    //                 searchPoint = candidate;
-    //             }
-    //         } else {
-    //             // Normal search mode
-    //             const partialLastBlock = await getLastIndexedBlockFromRange(client, searchPoint, searchPoint + window_size);
-    //             if (partialLastBlock < searchPoint + window_size - 1) {
-    //                 newRangeStart = partialLastBlock + 1;
-    //             } else {
-    //                 // Move search window
-    //                 searchPoint += window_size;
-    //             }
-    //         }
-    //     }
-    // }
-    //
-    // console.log(missingRanges);
-    //
-    //
-    //
-    // if (missingRanges.length > 0) {
-    //     // Test missing ranges candidates
-    //     for (const r of missingRanges) {
-    //         const test = await getLastIndexedBlockFromRange(r.start, r.end);
-    //         if (test === 0) {
-    //             worker_index++;
-    //             workerMap.push({
-    //                 worker_id: worker_index,
-    //                 worker_role: 'reader',
-    //                 first_block: r.start,
-    //                 last_block: r.end
-    //             });
-    //         } else {
-    //             console.log('range', r, 'search failed', test);
-    //         }
-    //     }
-    // } else {
-    //
-    //
-    //     // Setup Parallel reader workers
-    //     if (lastIndexedBlock > starting_block) {
-    //         starting_block = lastIndexedBlock;
-    //     }
-    //     if (lastIndexedBlock === 0 || starting_block >= lastIndexedBlock) {
-    //         for (let i = 0; i < n_consumers; i++) {
-    //             worker_index++;
-    //             let diff = 0;
-    //             if (i === n_consumers - 1) {
-    //                 diff = (starting_block + (i * batchSize) + batchSize) - lib;
-    //             }
-    //             workerMap.push({
-    //                 worker_id: worker_index,
-    //                 worker_role: 'reader',
-    //                 first_block: starting_block + (i * batchSize),
-    //                 last_block: starting_block + (i * batchSize) + batchSize - diff
-    //             });
-    //         }
-    //     }
-    // }
 
     // Create first batch of parallel readers
     const maxBatchSize = 1000;
