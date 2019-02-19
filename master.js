@@ -3,6 +3,8 @@ const {JsonRpc} = require('eosjs');
 const fetch = require('node-fetch');
 const prettyjson = require('prettyjson');
 const cluster = require('cluster');
+const fs = require('fs');
+let client;
 
 async function getLastIndexedBlock(es_client) {
     const results = await es_client.search({
@@ -71,18 +73,25 @@ async function getLastIndexedBlockFromRange(es_client, first, last) {
     }
 }
 
+async function elasticsearchConnect() {
+    client = new elasticsearch.Client({
+        host: process.env.ES_HOST
+    });
+}
+
 async function main() {
     // Preview mode - prints only the proposed worker map
     const preview = process.env.PREVIEW === 'true';
 
-    const client = new elasticsearch.Client({
-        host: process.env.ES_HOST
-    });
+    await elasticsearchConnect();
 
     const n_consumers = process.env.READERS;
     const n_deserializers = process.env.DESERIALIZERS;
     const n_ingestors_per_queue = process.env.ES_INDEXERS_PER_QUEUE;
     const action_indexing_ratio = process.env.ES_ACT_QUEUES;
+
+    const max_readers = process.env.READERS;
+    const activeReaders = [];
 
     const eos_endpoint = process.env.NODEOS_HTTP;
     const rpc = new JsonRpc(eos_endpoint, {fetch});
@@ -93,7 +102,8 @@ async function main() {
     const index_queues = [
         {type: 'action', name: index_queue_prefix + "_actions"},
         {type: 'transaction', name: index_queue_prefix + "_transactions"},
-        {type: 'block', name: index_queue_prefix + "_blocks"}
+        {type: 'block', name: index_queue_prefix + "_blocks"},
+        {type: 'abi', name: index_queue_prefix + "_abis"}
     ];
 
     const indicesList = ["action", "block", "transaction", "account"];
@@ -136,6 +146,7 @@ async function main() {
     let total_indexed_blocks = 0;
     let total_actions = 0;
     let log_interval = 5000;
+    let total_range = 0;
 
     // Monitoring
     setInterval(() => {
@@ -151,7 +162,7 @@ async function main() {
             `Consume: ${consumedBlocks / tScale} blocks/s`,
             `Deserialize: ${deserializedActions / tScale} actions/s`,
             `Index: ${indexedObjects / tScale} docs/s`,
-            `Blocks: ${((total_blocks / total_read) * 100).toFixed(3)}%`,
+            `${total_blocks}/${total_read}/${total_range}`,
             // `Actions: ${total_actions}`
         ];
         console.log(log_msg.join(' | '));
@@ -176,91 +187,123 @@ async function main() {
     // Fecth chain lib
     const chain_data = await rpc.get_info();
     let lib;
-    let search = false;
+    // let search = false;
     if (lastIndexedBlock > 0) {
         lib = lastIndexedBlock;
-        search = true;
+        // search = true;
     } else {
         lib = chain_data['last_irreversible_block_num'];
     }
 
-    if (process.env.START_ON) {
+    if (process.env.START_ON !== "0") {
         starting_block = parseInt(process.env.START_ON, 10);
+        console.log('START ON:' + starting_block);
     }
-    if (process.env.STOP_ON) {
+    if (process.env.STOP_ON !== "0") {
         lib = parseInt(process.env.STOP_ON, 10);
-    }
-    const batchSize = Math.ceil((lib - starting_block) / n_consumers);
-    console.log('Reader batch size:', batchSize, 'blocks');
-
-    // starting_block = 950;
-    // const batchSize = 2000;
-    const missingRanges = [];
-    if (search) {
-        let searchPoint = 0;
-        let window_size = 20000;
-        let newRangeStart = 0;
-        while (searchPoint < lib) {
-            if (newRangeStart !== 0) {
-                // Search for new ending point
-                // Move one window ahead
-                searchPoint += window_size;
-                const candidate = await getFirstIndexedBlockFromRange(client, searchPoint, searchPoint + window_size);
-                if (candidate > newRangeStart) {
-                    missingRanges.push({
-                        start: newRangeStart,
-                        end: candidate
-                    });
-                    newRangeStart = 0;
-                    searchPoint = candidate;
-                }
-            } else {
-                // Normal search mode
-                const partialLastBlock = await getLastIndexedBlockFromRange(client, searchPoint, searchPoint + window_size);
-                if (partialLastBlock < searchPoint + window_size - 1) {
-                    newRangeStart = partialLastBlock + 1;
-                } else {
-                    // Move search window
-                    searchPoint += window_size;
-                }
-            }
-        }
+        console.log('STOP ON:' + lib);
     }
 
-    console.log(missingRanges);
+    total_range = lib - starting_block;
 
-    if (missingRanges.length > 0) {
-        // Test missing ranges candidates
-        for (const r of missingRanges) {
-            const test = await getLastIndexedBlockFromRange(r.start, r.end);
-            if (test === 0) {
-                worker_index++;
-                workerMap.push({
-                    worker_id: worker_index,
-                    worker_role: 'reader',
-                    first_block: r.start,
-                    last_block: r.end
-                });
-            } else {
-                console.log('range', r, 'search failed', test);
-            }
+    // // starting_block = 950;
+    // // const batchSize = 2000;
+    // const missingRanges = [];
+    // if (search) {
+    //     let searchPoint = 0;
+    //     let window_size = 20000;
+    //     let newRangeStart = 0;
+    //     while (searchPoint < lib) {
+    //         if (newRangeStart !== 0) {
+    //             // Search for new ending point
+    //             // Move one window ahead
+    //             searchPoint += window_size;
+    //             const candidate = await getFirstIndexedBlockFromRange(client, searchPoint, searchPoint + window_size);
+    //             if (candidate > newRangeStart) {
+    //                 missingRanges.push({
+    //                     start: newRangeStart,
+    //                     end: candidate
+    //                 });
+    //                 newRangeStart = 0;
+    //                 searchPoint = candidate;
+    //             }
+    //         } else {
+    //             // Normal search mode
+    //             const partialLastBlock = await getLastIndexedBlockFromRange(client, searchPoint, searchPoint + window_size);
+    //             if (partialLastBlock < searchPoint + window_size - 1) {
+    //                 newRangeStart = partialLastBlock + 1;
+    //             } else {
+    //                 // Move search window
+    //                 searchPoint += window_size;
+    //             }
+    //         }
+    //     }
+    // }
+    //
+    // console.log(missingRanges);
+    //
+    //
+    //
+    // if (missingRanges.length > 0) {
+    //     // Test missing ranges candidates
+    //     for (const r of missingRanges) {
+    //         const test = await getLastIndexedBlockFromRange(r.start, r.end);
+    //         if (test === 0) {
+    //             worker_index++;
+    //             workerMap.push({
+    //                 worker_id: worker_index,
+    //                 worker_role: 'reader',
+    //                 first_block: r.start,
+    //                 last_block: r.end
+    //             });
+    //         } else {
+    //             console.log('range', r, 'search failed', test);
+    //         }
+    //     }
+    // } else {
+    //
+    //
+    //     // Setup Parallel reader workers
+    //     if (lastIndexedBlock > starting_block) {
+    //         starting_block = lastIndexedBlock;
+    //     }
+    //     if (lastIndexedBlock === 0 || starting_block >= lastIndexedBlock) {
+    //         for (let i = 0; i < n_consumers; i++) {
+    //             worker_index++;
+    //             let diff = 0;
+    //             if (i === n_consumers - 1) {
+    //                 diff = (starting_block + (i * batchSize) + batchSize) - lib;
+    //             }
+    //             workerMap.push({
+    //                 worker_id: worker_index,
+    //                 worker_role: 'reader',
+    //                 first_block: starting_block + (i * batchSize),
+    //                 last_block: starting_block + (i * batchSize) + batchSize - diff
+    //             });
+    //         }
+    //     }
+    // }
+
+    // Create first batch of parallel readers
+    const maxBatchSize = 1000;
+    let lastAssignedBlock = starting_block;
+    while (activeReaders.length < max_readers && lastAssignedBlock < lib) {
+        worker_index++;
+        const start = lastAssignedBlock;
+        let end = lastAssignedBlock + maxBatchSize;
+        if (end > lib) {
+            end = lib;
         }
-    } else {
-        // Setup Parallel reader workers
-        if (lastIndexedBlock > starting_block) {
-            starting_block = lastIndexedBlock;
-        }
-        if (lastIndexedBlock === 0 || starting_block >= lastIndexedBlock) {
-            for (let i = 0; i < n_consumers; i++) {
-                worker_index++;
-                workerMap.push({
-                    worker_id: worker_index,
-                    worker_role: 'reader',
-                    first_block: starting_block + (i * batchSize),
-                    last_block: starting_block + (i * batchSize) + batchSize
-                });
-            }
-        }
+        lastAssignedBlock += maxBatchSize;
+        const def = {
+            worker_id: worker_index,
+            worker_role: 'reader',
+            first_block: start,
+            last_block: end
+        };
+        activeReaders.push(def);
+        workerMap.push(def);
+        // console.log(`Launching new worker from ${start} to ${end}`);
     }
 
     // Setup Serial reader worker
@@ -313,15 +356,51 @@ async function main() {
         cluster.fork(conf);
     });
 
+    if (fs.existsSync("deserialization_errors.txt")) {
+        fs.unlinkSync("deserialization_errors.txt");
+    }
+    const ds_errors = fs.createWriteStream("deserialization_errors.txt", {flags: 'a'});
+
     // Worker event listener
     const workerHandler = (msg) => {
         switch (msg.event) {
+            case 'completed': {
+                const idx = activeReaders.findIndex(w => w.worker_id.toString() === msg.id);
+                activeReaders.splice(idx, 1);
+                if (activeReaders.length < max_readers && lastAssignedBlock < lib) {
+                    // Deploy next worker
+                    worker_index++;
+                    const start = lastAssignedBlock;
+                    let end = lastAssignedBlock + maxBatchSize;
+                    if (end > lib) {
+                        end = lib;
+                    }
+                    lastAssignedBlock += maxBatchSize;
+                    const def = {
+                        worker_id: worker_index,
+                        worker_role: 'reader',
+                        first_block: start,
+                        last_block: end
+                    };
+                    activeReaders.push(def);
+                    workerMap.push(def);
+                    setTimeout(() => {
+                        // console.log(`Launching new worker from ${start} to ${end}`);
+                        cluster.fork(def).on('message', workerHandler);
+                    }, 100);
+                }
+                break;
+            }
             case 'add_index': {
                 indexedObjects += msg.size;
                 break;
             }
             case 'ds_action': {
                 deserializedActions++;
+                break;
+            }
+            case 'ds_error': {
+                ds_errors.write(msg.gs + '\n');
                 break;
             }
             case 'read_block': {
@@ -347,7 +426,7 @@ async function main() {
 
     // Catch dead workers
     cluster.on('exit', (worker, code) => {
-        console.log(`Worker ${worker.id}, pid: ${worker.process.pid} finished with code ${code}`);
+        // console.log(`Worker ${worker.id}, pid: ${worker.process.pid} finished with code ${code}`);
     });
 }
 

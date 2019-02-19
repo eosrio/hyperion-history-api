@@ -12,6 +12,8 @@ module.exports = {
                 ES_HOST: '127.0.0.1:9200',
                 NODEOS_HTTP: 'http://127.0.0.1:8888',
                 NODEOS_WS: 'ws://127.0.0.1:8080',
+                START_ON: 0,
+                STOP_ON: 0,
                 LIVE_READER: 'true',
                 FETCH_DELTAS: 'false',
                 CHAIN: 'eos',

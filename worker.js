@@ -2,13 +2,15 @@ const amqp = require('amqplib');
 const WebSocket = require('ws');
 const fetch = require('node-fetch');
 const {Api, JsonRpc, Serialize} = require('eosjs');
-const asyncTimedCargo = require('async-timed-cargo');
 const {routes} = require("./elastic-routes");
 const zlib = require('zlib');
 const _ = require('lodash');
 const elasticsearch = require("elasticsearch");
 const {action_blacklist} = require('./blacklists');
 const prettyjson = require('prettyjson');
+const {AbiDefinitions} = require("./abi_def");
+
+const async = require('async');
 
 const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
@@ -43,13 +45,15 @@ const dSprefecthCount = parseInt(process.env.BLOCK_PREFETCH, 10);
 const indexingPrefecthCount = parseInt(process.env.INDEX_PREFETCH, 10);
 
 // Async Cargos
-const blockReadingQueue = asyncTimedCargo(processIncomingBlockArray, maxMessagesInFlight, 500);
+const blockReadingQueue = async.cargo(async.ensureAsync(processIncomingBlockArray), maxMessagesInFlight);
 
-const indexQueue = asyncTimedCargo((payload, callback) => {
-    routes[process.env.type](payload, callback, ch);
-}, indexingPrefecthCount, 1000);
+function router(payload, callback) {
+    routes[process.env.type](payload, ch, callback);
+}
 
-const consumerQueue = asyncTimedCargo(processPayload, dSprefecthCount, 500);
+const indexQueue = async.cargo(async.ensureAsync(router), indexingPrefecthCount);
+
+const consumerQueue = async.cargo(async.ensureAsync(processPayload), dSprefecthCount);
 
 // Stage 2 - Deserialization handler
 function processPayload(payload, cb) {
@@ -106,13 +110,61 @@ async function processTrx(ts, trx_trace, block_num) {
     };
     // Distribute light transactions to indexer queues
     const q = index_queue_prefix + "_transactions:" + (tx_emit_idx);
-    ch.sendToQueue(q, Buffer.from(JSON.stringify(trx)));
+    const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(trx)));
+    if (!status) {
+        // console.log('Transaction Indexing:', status);
+    }
     tx_emit_idx++;
     if (tx_emit_idx > n_ingestors_per_queue) {
         tx_emit_idx = 1;
     }
     return true;
 }
+
+function attachActionExtras(action) {
+
+    // Transfer actions
+    if (action['act']['name'] === 'transfer') {
+        const qtd = action['act']['data']['quantity'].split(' ');
+        action['@data'] = {
+            'transfer': {
+                'from': action['act']['data']['from'],
+                'to': action['act']['data']['to'],
+                'amount': parseFloat(qtd[0]),
+                'symbol': qtd[1]
+            }
+        };
+    } else if (action['act']['name'] === 'vote' && action['act']['account'] === 'eosio.forum') {
+        if (action['act']['data']['proposal_name']) {
+            action['@data'] = {
+                'forum-vote': {
+                    'proposal': action['act']['data']['proposal_name'],
+                    "vote": action['act']['data']['vote']
+                }
+            };
+        }
+        // await handleForumVote(action['act']['data'], action, ts);
+    } else if (action['act']['name'] === 'newaccount' && action['act']['account'] === 'eosio') {
+        let name = null;
+        if (action['act']['data']['newact']) {
+            name = action['act']['data']['newact'];
+        } else if (action['act']['data']['name']) {
+            name = action['act']['data']['name'];
+        }
+        if (name) {
+            action['@data'] = {
+                'eosio-newaccount': {
+                    'newact': name
+                }
+            };
+        }
+        // await handleNewAccount(action['act']['data'], action, ts);
+    } else if (action['act']['name'] === 'updateauth' && action['act']['account'] === 'eosio') {
+        // await handleUpdateAuth(action['act']['data'], action, ts);
+    }
+}
+
+const ds_blacklist = new Set();
 
 // Stage 2 - Action handler
 async function processAction(ts, action, trx_id, block_num, prod, parent, depth) {
@@ -132,45 +184,52 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
         const actions = [];
         actions.push(act);
         let ds_act;
+        const actionCode = original_act['account'] + ":" + original_act['name'];
         try {
-            ds_act = await api.deserializeActions(actions);
-            action['act'] = ds_act[0];
-
-            // Transfer actions
-            if (action['act']['name'] === 'transfer') {
-                const qtd = action['act']['data']['quantity'].split(' ');
-                action['@data'] = {
-                    'transfer': {
-                        'from': action['act']['data']['from'],
-                        'to': action['act']['data']['to'],
-                        'amount': parseFloat(qtd[0]),
-                        'symbol': qtd[1]
-                    }
-                };
+            if (ds_blacklist.has(actionCode)) {
+                process.send({
+                    event: 'ds_error',
+                    gs: action['receipt']['global_sequence']
+                });
+                action['act'] = original_act;
+                action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
+            } else {
+                ds_act = await api.deserializeActions(actions);
+                action['act'] = ds_act[0];
+                if (name === 'setabi' && code === 'eosio') {
+                    const abi_hex = action['act']['data']['abi'];
+                    const _types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), AbiDefinitions);
+                    const buffer = new Serialize.SerialBuffer({
+                        textEncoder: new TextEncoder(),
+                        textDecoder: new TextDecoder()
+                    });
+                    buffer.pushArray(Serialize.hexToUint8Array(abi_hex));
+                    const abiJSON = _types.get('abi_def').deserialize(buffer);
+                    await client['index']({
+                        index: process.env.chain + '-abi',
+                        type: '_doc',
+                        body: {
+                            block: block_num,
+                            code: action['act']['data']['account'],
+                            abi: abiJSON,
+                            timestamp: ts
+                        }
+                    });
+                }
+                attachActionExtras(action);
             }
-
-            // eosio.forum vote
-            if (action['act']['name'] === 'vote' && action['act']['account'] === 'eosio.forum') {
-                await handleForumVote(action['act']['data'], action, ts);
-            }
-
-            // New account
-            if (action['act']['name'] === 'newaccount' && action['act']['account'] === 'eosio') {
-                await handleNewAccount(action['act']['data'], action, ts);
-            }
-
-            // New account
-            if (action['act']['name'] === 'updateauth' && action['act']['account'] === 'eosio') {
-                await handleUpdateAuth(action['act']['data'], action, ts);
-            }
-
         } catch (e) {
-            // console.log('----------------------------');
-            // console.log('Deserialization Error:', e.message);
+            // console.log(e);
+            ds_blacklist.add(actionCode);
+            process.send({
+                t: 'ds_fail',
+                v: {
+                    gs: action['receipt']['global_sequence']
+                }
+            });
+            // Revert to defaults
             action['act'] = original_act;
             action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
-            // console.log(action['act']);
-            // console.log('----------------------------');
         }
         process.send({event: 'ds_action'});
         action['timestamp'] = ts;
@@ -200,7 +259,10 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
 
         // Distribute actions to indexer queues
         const q = index_queue_prefix + "_actions:" + (act_emit_idx);
-        ch.sendToQueue(q, Buffer.from(JSON.stringify(action)));
+        const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(action)));
+        if (!status) {
+            // console.log('Action Indexing:', status);
+        }
         act_emit_idx++;
         if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
             act_emit_idx = 1;
@@ -211,169 +273,169 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
     }
 }
 
-async function handleUpdateAuth(data, action, ts) {
-    const auth = data['auth'];
-    const permission = data['permission'];
-    let found;
-    try {
-        found = await client.get({
-            index: queue_prefix + '-account',
-            type: '_doc',
-            id: data['account']
-        });
-    } catch (e) {
-        if (e.status !== 404) {
-            console.log(e);
-        }
-    }
-    if (!found) {
-        const new_auth = {};
-        new_auth[permission] = auth;
-        await client.index({
-            index: queue_prefix + '-account',
-            type: '_doc',
-            id: data['account'],
-            "body": {
-                "name": data['account'],
-                "auth": new_auth,
-                "votes": [],
-                "updated_on": ts,
-                "keys_updated_on": ts
-            }
-        });
-    } else {
-        const currentDoc = found['_source'];
-        currentDoc['auth'][permission] = auth;
-        currentDoc['updated_on'] = ts;
-        currentDoc['keys_updated_on'] = ts;
-        await client.index({
-            index: queue_prefix + '-account',
-            type: '_doc',
-            id: data['account'],
-            "body": currentDoc
-        });
-    }
-}
-
-async function handleNewAccount(data, action, ts) {
-    let name = null;
-    if (data['newact']) {
-        name = data['newact'];
-    } else if (data['name']) {
-        name = data['name'];
-    }
-    if (name) {
-        action['@data'] = {
-            'eosio-newaccount': {
-                'newact': name
-            }
-        };
-    }
-    let found;
-    try {
-        found = await client.get({
-            index: queue_prefix + '-account',
-            type: '_doc',
-            id: name
-        });
-    } catch (e) {
-        if (e.status !== 404) {
-            console.log(e);
-        }
-    }
-
-    if (!found) {
-        await client.index({
-            index: queue_prefix + '-account',
-            type: '_doc',
-            id: name,
-            "body": {
-                "name": name,
-                "auth": {
-                    "active": data['active'],
-                    "owner": data['owner'],
-                },
-                "votes": [],
-                "updated_on": ts,
-                "keys_updated_on": ts
-            }
-        });
-    } else {
-        const currentDoc = found['_source'];
-        currentDoc['auth'] = {
-            "active": data['active'],
-            "owner": data['owner'],
-        };
-        currentDoc['updated_on'] = ts;
-        currentDoc['keys_updated_on'] = ts;
-        await client.index({
-            index: queue_prefix + '-account',
-            type: '_doc',
-            id: data['voter'],
-            "body": currentDoc
-        });
-    }
-}
-
-async function handleForumVote(data, action, ts) {
-    if (data['proposal_name']) {
-        action['@data'] = {
-            'forum-vote': {
-                'proposal': data['proposal_name'],
-                "vote": data['vote']
-            }
-        };
-        let found, voteJSON;
-        try {
-            found = await client.get({
-                index: queue_prefix + '-account',
-                type: '_doc',
-                id: data['voter']
-            });
-        } catch (e) {
-            if (e.status !== 404) {
-                console.log(e);
-            }
-        }
-        const voteObj = {
-            "proposal": data['proposal_name'],
-            "vote": data['vote']
-        };
-        if (data['vote_json']) {
-            voteJSON = JSON.parse(data['vote_json']);
-            voteObj['vote_json'] = voteJSON;
-        }
-        if (!found) {
-            await client.index({
-                index: queue_prefix + '-account',
-                type: '_doc',
-                id: data['voter'],
-                "body": {
-                    "name": data['voter'],
-                    "votes": [voteObj],
-                    "updated_on": ts
-                }
-            });
-        } else {
-            const currentDoc = found['_source'];
-            currentDoc['updated_on'] = ts;
-            const proposal_name = data['proposal_name'];
-            const voteIdx = currentDoc['votes'].findIndex(v => v.proposal === proposal_name);
-            if (voteIdx !== -1) {
-                currentDoc['votes'][voteIdx] = voteObj;
-            } else {
-                currentDoc['votes'].push(voteObj);
-            }
-            await client.index({
-                index: queue_prefix + '-account',
-                type: '_doc',
-                id: data['voter'],
-                "body": currentDoc
-            });
-        }
-
-    }
-}
+// async function handleUpdateAuth(data, action, ts) {
+//     const auth = data['auth'];
+//     const permission = data['permission'];
+//     let found;
+//     try {
+//         found = await client.get({
+//             index: queue_prefix + '-account',
+//             type: '_doc',
+//             id: data['account']
+//         });
+//     } catch (e) {
+//         if (e.status !== 404) {
+//             console.log(e);
+//         }
+//     }
+//     if (!found) {
+//         const new_auth = {};
+//         new_auth[permission] = auth;
+//         await client.index({
+//             index: queue_prefix + '-account',
+//             type: '_doc',
+//             id: data['account'],
+//             "body": {
+//                 "name": data['account'],
+//                 "auth": new_auth,
+//                 "votes": [],
+//                 "updated_on": ts,
+//                 "keys_updated_on": ts
+//             }
+//         });
+//     } else {
+//         const currentDoc = found['_source'];
+//         currentDoc['auth'][permission] = auth;
+//         currentDoc['updated_on'] = ts;
+//         currentDoc['keys_updated_on'] = ts;
+//         await client.index({
+//             index: queue_prefix + '-account',
+//             type: '_doc',
+//             id: data['account'],
+//             "body": currentDoc
+//         });
+//     }
+// }
+//
+// async function handleNewAccount(data, action, ts) {
+//     let name = null;
+//     if (data['newact']) {
+//         name = data['newact'];
+//     } else if (data['name']) {
+//         name = data['name'];
+//     }
+//     if (name) {
+//         action['@data'] = {
+//             'eosio-newaccount': {
+//                 'newact': name
+//             }
+//         };
+//     }
+//     let found;
+//     try {
+//         found = await client.get({
+//             index: queue_prefix + '-account',
+//             type: '_doc',
+//             id: name
+//         });
+//     } catch (e) {
+//         if (e.status !== 404) {
+//             console.log(e);
+//         }
+//     }
+//
+//     if (!found) {
+//         await client.index({
+//             index: queue_prefix + '-account',
+//             type: '_doc',
+//             id: name,
+//             "body": {
+//                 "name": name,
+//                 "auth": {
+//                     "active": data['active'],
+//                     "owner": data['owner'],
+//                 },
+//                 "votes": [],
+//                 "updated_on": ts,
+//                 "keys_updated_on": ts
+//             }
+//         });
+//     } else {
+//         const currentDoc = found['_source'];
+//         currentDoc['auth'] = {
+//             "active": data['active'],
+//             "owner": data['owner'],
+//         };
+//         currentDoc['updated_on'] = ts;
+//         currentDoc['keys_updated_on'] = ts;
+//         await client.index({
+//             index: queue_prefix + '-account',
+//             type: '_doc',
+//             id: data['voter'],
+//             "body": currentDoc
+//         });
+//     }
+// }
+//
+// async function handleForumVote(data, action, ts) {
+//     if (data['proposal_name']) {
+//         action['@data'] = {
+//             'forum-vote': {
+//                 'proposal': data['proposal_name'],
+//                 "vote": data['vote']
+//             }
+//         };
+//         let found, voteJSON;
+//         try {
+//             found = await client.get({
+//                 index: queue_prefix + '-account',
+//                 type: '_doc',
+//                 id: data['voter']
+//             });
+//         } catch (e) {
+//             if (e.status !== 404) {
+//                 console.log(e);
+//             }
+//         }
+//         const voteObj = {
+//             "proposal": data['proposal_name'],
+//             "vote": data['vote']
+//         };
+//         if (data['vote_json']) {
+//             voteJSON = JSON.parse(data['vote_json']);
+//             voteObj['vote_json'] = voteJSON;
+//         }
+//         if (!found) {
+//             await client.index({
+//                 index: queue_prefix + '-account',
+//                 type: '_doc',
+//                 id: data['voter'],
+//                 "body": {
+//                     "name": data['voter'],
+//                     "votes": [voteObj],
+//                     "updated_on": ts
+//                 }
+//             });
+//         } else {
+//             const currentDoc = found['_source'];
+//             currentDoc['updated_on'] = ts;
+//             const proposal_name = data['proposal_name'];
+//             const voteIdx = currentDoc['votes'].findIndex(v => v.proposal === proposal_name);
+//             if (voteIdx !== -1) {
+//                 currentDoc['votes'][voteIdx] = voteObj;
+//             } else {
+//                 currentDoc['votes'].push(voteObj);
+//             }
+//             await client.index({
+//                 index: queue_prefix + '-account',
+//                 type: '_doc',
+//                 id: data['voter'],
+//                 "body": currentDoc
+//             });
+//         }
+//
+//     }
+// }
 
 async function processDeferred(data, block_num) {
     if (data['packed_trx']) {
@@ -500,9 +562,9 @@ async function processBlock(res, block, traces, deltas) {
             schedule_version: block['schedule_version']
         };
         const q = index_queue_prefix + "_blocks:" + (block_emit_idx);
-        const enqueueStatus = await ch.sendToQueue(q, Buffer.from(JSON.stringify(light_block)));
-        if(!enqueueStatus) {
-            console.log(enqueueStatus);
+        const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(light_block)));
+        if (!status) {
+            // console.log('Block Indexing:', status);
         }
         block_emit_idx++;
         if (block_emit_idx > n_ingestors_per_queue) {
@@ -510,6 +572,7 @@ async function processBlock(res, block, traces, deltas) {
         }
 
         local_block_count++;
+
 
         // return {block_num: res['this_block']['block_num'],size: traces.length};
 
@@ -537,7 +600,6 @@ async function processBlock(res, block, traces, deltas) {
                 }
             }
         }
-
         return {
             block_num: res['this_block']['block_num'],
             size: traces.length
@@ -546,7 +608,7 @@ async function processBlock(res, block, traces, deltas) {
 }
 
 function processIncomingBlockArray(payload, cb) {
-    processIncomingBlocks(payload).then(() => {
+    processIncomingBlocks(payload).then((res) => {
         cb();
     }).catch((err) => {
         console.log('FATAL ERROR READING BLOCKS', err);
@@ -557,9 +619,15 @@ function processIncomingBlockArray(payload, cb) {
 async function processIncomingBlocks(block_array) {
     if (abi) {
         send(['get_blocks_ack_request_v0', {num_messages: block_array.length}]);
-    }
-    for (const block of block_array) {
-        await onMessage(block);
+        for (const block of block_array) {
+            try {
+                await onMessage(block);
+            } catch (e) {
+                console.log(e);
+            }
+        }
+    } else {
+        await onMessage(block_array[0]);
     }
     return true;
 }
@@ -568,28 +636,32 @@ async function processIncomingBlocks(block_array) {
 const range_size = parseInt(process.env.last_block) - parseInt(process.env.first_block);
 let local_distributed_count = 0;
 
-async function onMessage(data) {
-    if (!abi) {
-        abi = JSON.parse(data);
-        types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
-        abi.tables.map(table => tables.set(table.name, table.type));
-        switch (process.env['worker_role']) {
-            case 'reader':
-                requestBlocks(0);
-                break;
-            case 'deserializer':
-                ch.prefetch(dSprefecthCount);
-                ch.consume(process.env['worker_queue'], (data) => {
-                    consumerQueue.push(data);
-                });
-                break;
-            case 'continuous_reader':
-                requestBlocks(parseInt(process.env['worker_last_processed_block'], 10));
-                break;
+function processFirstABI(data) {
+    abi = JSON.parse(data);
+    types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
+    abi.tables.map(table => tables.set(table.name, table.type));
+    switch (process.env['worker_role']) {
+        case 'reader': {
+            requestBlocks(0);
+            break;
         }
-        send(['get_blocks_ack_request_v0', {num_messages: 1}]);
-        return 1;
-    } else {
+        case 'deserializer': {
+            console.log('setting up consumer on ' + process.env['worker_queue']);
+            ch.prefetch(dSprefecthCount);
+            ch.consume(process.env['worker_queue'], (data) => {
+                consumerQueue.push(data);
+            });
+            break;
+        }
+        case 'continuous_reader': {
+            requestBlocks(parseInt(process.env['worker_last_processed_block'], 10));
+            break;
+        }
+    }
+}
+
+async function onMessage(data) {
+    if (abi) {
         if (process.env['worker_role']) {
             const res = deserialize('result', data)[1];
             if (res['this_block']) {
@@ -599,8 +671,7 @@ async function onMessage(data) {
                 }
                 stageOneDistQueue.push(data);
                 if (local_distributed_count === range_size) {
-                    console.log('Range finished!');
-                    process.exit(1);
+                    signalReaderCompletion();
                 } else {
                     return 1;
                 }
@@ -608,8 +679,7 @@ async function onMessage(data) {
                 if (process.env['worker_role'] === 'reader') {
                     // console.log(process.env['worker_role'], process.env['worker_id'], 'Last read block', local_block_num);
                     if (local_distributed_count === range_size) {
-                        console.log('Range finished!');
-                        process.exit(1);
+                        signalReaderCompletion();
                     }
                 }
                 return 0;
@@ -618,7 +688,39 @@ async function onMessage(data) {
             console.log('something went wrong!');
             process.exit(1);
         }
+    } else {
+        processFirstABI(data);
+        return 1;
     }
+}
+
+let lastPendingCount = 0;
+
+function signalReaderCompletion() {
+    // Monitor pending messages
+    setInterval(() => {
+        // console.log(`[${process.env['worker_id']}] Pending messages: ${cch.unconfirmed.length}`);
+        let pending = 0;
+        if (cch.unconfirmed.length > 0) {
+            cch.unconfirmed.forEach((elem) => {
+                if (elem) {
+                    pending++;
+                }
+            });
+            if (pending === lastPendingCount) {
+                console.log(`[${process.env['worker_id']}] Pending blocks: ${pending}`);
+            } else {
+                lastPendingCount = pending;
+            }
+        }
+        if (pending === 0) {
+            process.send({
+                event: 'completed',
+                id: process.env['worker_id']
+            });
+            process.exit(1);
+        }
+    }, 1000);
 }
 
 function send(req_data) {
@@ -629,6 +731,7 @@ function send(req_data) {
 function requestBlocks(start) {
     const first_block = start > 0 ? start : process.env.first_block;
     const last_block = start > 0 ? 0xffffffff : process.env.last_block;
+    console.log(`REQUEST - ${process.env.first_block} >> ${process.env.last_block}`);
     const request = {
         start_block_num: parseInt(first_block > 0 ? first_block : '1', 10),
         end_block_num: parseInt(last_block, 10),
@@ -642,18 +745,17 @@ function requestBlocks(start) {
     send(['get_blocks_request_v0', request]);
 }
 
-const stageOneDistQueue = asyncTimedCargo(distribute, 200, 500);
+const stageOneDistQueue = async.cargo(async.ensureAsync(distribute), maxMessagesInFlight);
 const qStatusMap = {};
 
-async function distribute(data, cb) {
-    recusiveDistribute(data, cb).catch((err) => {
-        console.log(err);
-    });
+function distribute(data, cb) {
+    // console.log(`Processing ${data.length} blocks`);
+    recusiveDistribute(data, cch, cb);
 }
 
 let drainCount = 0;
 
-async function recusiveDistribute(data, cb) {
+function recusiveDistribute(data, channel, cb) {
     if (data.length > 0) {
         const q = queue + ":" + currentIdx;
         // Set unknown status as true
@@ -662,27 +764,37 @@ async function recusiveDistribute(data, cb) {
         }
         if (qStatusMap[q] === true) {
             const d = data.pop();
-            const result = await cch.sendToQueue(q, d);
+            const result = channel.sendToQueue(q, d, {
+                persistent: true,
+                mandatory: true,
+            }, function (err, ok) {
+                if (err !== null) {
+                    console.log('Message nacked!');
+                    console.log(err);
+                } else {
+                    process.send({event: 'read_block'});
+                }
+            });
+
             local_distributed_count++;
-            process.send({event: 'read_block'});
             currentIdx++;
             if (currentIdx > n_deserializers) {
                 currentIdx = 1;
             }
-            if (!result) {
+            if (result) {
+                if (data.length > 0) {
+                    recusiveDistribute(data, channel, cb);
+                } else {
+                    cb();
+                }
+            } else {
                 // Send failed
                 qStatusMap[q] = false;
                 drainCount++;
                 console.log(`[${process.env['worker_id']}]:[${drainCount}] Block with ${d.length} bytes waiting for queue [${q}] to drain!`);
                 setTimeout(() => {
-                    recusiveDistribute(data, cb).catch((err) => {
-                        console.log(err);
-                    })
-                }, 500)
-            } else {
-                recusiveDistribute(data, cb).catch((err) => {
-                    console.log(err);
-                })
+                    recusiveDistribute(data, channel, cb);
+                }, 500);
             }
         } else {
             console.log(`waiting for [${q}] to drain!`);
@@ -703,6 +815,39 @@ function deserialize(type, array) {
     return Serialize.getType(types, type).deserialize(buffer, new Serialize.SerializerState({bytesAsUint8Array: true}));
 }
 
+let connection = null;
+
+async function amqpConnect() {
+    const amqp_username = process.env.AMQP_USER;
+    const amqp_password = process.env.AMQP_PASS;
+    const amqp_host = process.env.AMQP_HOST;
+    const amqp_vhost = 'hyperion';
+    const amqp_url = `amqp://${amqp_username}:${amqp_password}@${amqp_host}/%2F${amqp_vhost}`;
+    let channel, confirmChannel;
+    try {
+        connection = await amqp.connect(amqp_url);
+        channel = await connection.createChannel();
+        confirmChannel = await connection.createConfirmChannel();
+    } catch (e) {
+        console.log(e);
+        process.exit(1);
+    }
+    connection.on('error', (err) => {
+        console.log(err);
+    });
+    connection.on('close', () => {
+        console.error("[AMQP] reconnecting");
+        setTimeout(amqpConnect, 5000);
+    });
+    return [channel, confirmChannel];
+}
+
+async function elasticsearchConnect() {
+    client = new elasticsearch.Client({
+        host: process.env.ES_HOST
+    });
+}
+
 async function main() {
     const chain_data = await rpc.get_info();
     chainID = chain_data.chain_id;
@@ -715,24 +860,17 @@ async function main() {
     });
 
     // Connect to RabbitMQ (amqplib)
-    const amqp_username = process.env.AMQP_USER;
-    const amqp_password = process.env.AMQP_PASS;
-    const amqp_host = process.env.AMQP_HOST;
-    const amqp_vhost = 'hyperion';
-    const amqp_url = `amqp://${amqp_username}:${amqp_password}@${amqp_host}/%2F${amqp_vhost}`;
-    const connection = await amqp.connect(amqp_url);
-    ch = await connection.createChannel();
-    cch = await connection.createConfirmChannel();
+    [ch, cch] = await amqpConnect();
 
     // Connect to elasticsearch
-    client = new elasticsearch.Client({
-        host: process.env.ES_HOST
-    });
+    await elasticsearchConnect();
 
     // Assert stage 1 and 2 queues
     if (process.env['worker_role'] === 'reader' || process.env['worker_role'] === 'deserializer') {
         for (let i = 0; i < n_deserializers; i++) {
-            ch.assertQueue(queue + ":" + (i + 1), {durable: true});
+            ch.assertQueue(queue + ":" + (i + 1), {
+                durable: true
+            });
             ch.on('drain', function () {
                 qStatusMap[queue + ":" + (i + 1)] = true;
             })

@@ -35,7 +35,7 @@ function onResponse(resp, messageMap, callback, payloads, channel) {
     }
 }
 
-function onError(err, callback, channel) {
+function onError(err, channel, callback) {
     try {
         channel.nackAll();
         console.log('nack all', err.stack);
@@ -45,40 +45,40 @@ function onError(err, callback, channel) {
 }
 
 const routes = {
-    'action': async (payloads, cb, ch) => {
+    'action': async (payloads, channel, cb) => {
         const messageMap = {};
         client['bulk']({
             index: queue_prefix + '-action',
             type: '_doc',
             body: buildActionBulk(payloads, messageMap)
         }).then(resp => {
-            onResponse(resp, messageMap, cb, payloads, ch);
+            onResponse(resp, messageMap, cb, payloads, channel);
         }).catch(err => {
-            onError(err, cb, ch);
+            onError(err, channel, cb);
         });
     },
-    'transaction': async (payloads, cb, ch) => {
+    'transaction': async (payloads, channel, cb) => {
         const messageMap = {};
         client['bulk']({
             index: queue_prefix + '-transaction',
             type: '_doc',
             body: buildTransactionBulk(payloads, messageMap)
         }).then(resp => {
-            onResponse(resp, messageMap, cb, payloads, ch);
+            onResponse(resp, messageMap, cb, payloads, channel);
         }).catch(err => {
-            onError(err, cb, ch);
+            onError(err, channel, cb);
         });
     },
-    'block': async (payloads, cb, ch) => {
+    'block': async (payloads, channel, cb) => {
         const messageMap = {};
         client['bulk']({
             index: queue_prefix + '-block',
             type: '_doc',
             body: buildBlockBulk(payloads, messageMap)
         }).then(resp => {
-            onResponse(resp, messageMap, cb, payloads, ch);
+            onResponse(resp, messageMap, cb, payloads, channel);
         }).catch(err => {
-            onError(err, cb, ch);
+            onError(err, channel, cb);
         });
     }
 };
