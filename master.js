@@ -122,13 +122,7 @@ async function main() {
 
     const queue_prefix = process.env.CHAIN;
     const queue = queue_prefix + ':blocks';
-    const index_queue_prefix = queue_prefix + ':index';
-    const index_queues = [
-        {type: 'action', name: index_queue_prefix + "_actions"},
-        {type: 'transaction', name: index_queue_prefix + "_transactions"},
-        {type: 'block', name: index_queue_prefix + "_blocks"},
-        {type: 'abi', name: index_queue_prefix + "_abis"}
-    ];
+    const index_queues = require('./definitions/index-queues').index_queues;
 
     const indicesList = ["action", "block", "transaction", "account", "abi"];
     const indexConfig = require('./definitions/mappings');
@@ -210,13 +204,10 @@ async function main() {
 
     // Fecth chain lib
     const chain_data = await rpc.get_info();
-    let lib;
-    // let search = false;
+    let lib = chain_data['last_irreversible_block_num'];
+
     if (lastIndexedBlock > 0) {
-        lib = lastIndexedBlock;
-        // search = true;
-    } else {
-        lib = chain_data['last_irreversible_block_num'];
+        starting_block = lastIndexedBlock;
     }
 
     if (process.env.START_ON !== "0") {
@@ -232,34 +223,39 @@ async function main() {
 
     // Create first batch of parallel readers
     const maxBatchSize = parseInt(process.env.BATCH_SIZE, 10);
-
     let lastAssignedBlock = starting_block;
-    while (activeReaders.length < max_readers && lastAssignedBlock < lib) {
-        worker_index++;
-        const start = lastAssignedBlock;
-        let end = lastAssignedBlock + maxBatchSize;
-        if (end > lib) {
-            end = lib;
+
+    if (process.env.LIVE_ONLY === 'false') {
+        while (activeReaders.length < max_readers && lastAssignedBlock < lib) {
+            worker_index++;
+            const start = lastAssignedBlock;
+            let end = lastAssignedBlock + maxBatchSize;
+            if (end > lib) {
+                end = lib;
+            }
+            lastAssignedBlock += maxBatchSize;
+            const def = {
+                worker_id: worker_index,
+                worker_role: 'reader',
+                first_block: start,
+                last_block: end
+            };
+            activeReaders.push(def);
+            workerMap.push(def);
+            // console.log(`Launching new worker from ${start} to ${end}`);
         }
-        lastAssignedBlock += maxBatchSize;
-        const def = {
-            worker_id: worker_index,
-            worker_role: 'reader',
-            first_block: start,
-            last_block: end
-        };
-        activeReaders.push(def);
-        workerMap.push(def);
-        // console.log(`Launching new worker from ${start} to ${end}`);
     }
 
     // Setup Serial reader worker
     if (process.env.LIVE_READER === 'true') {
+        const _lib = chain_data['last_irreversible_block_num'];
+        console.log(`Starting live reader at lib = ${_lib}`);
         worker_index++;
         workerMap.push({
             worker_id: worker_index,
             worker_role: 'continuous_reader',
-            worker_last_processed_block: lib
+            worker_last_processed_block: _lib,
+            ws_router: ''
         });
     }
 
@@ -298,6 +294,13 @@ async function main() {
         }
     });
 
+    // Setup ws router
+    worker_index++;
+    workerMap.push({
+        worker_id: worker_index,
+        worker_role: 'router'
+    });
+
     // Quit App if on preview mode
     if (preview) {
         printWorkerMap(workerMap);
@@ -319,6 +322,7 @@ async function main() {
     let abiCacheMap;
     if (cachedMap) {
         abiCacheMap = JSON.parse(cachedMap);
+        console.log(`Found ${Object.keys(abiCacheMap).length} entries in the local ABI cache`)
     } else {
         abiCacheMap = {};
     }
@@ -333,16 +337,17 @@ async function main() {
             case 'init_abi': {
                 if (!cachedInitABI) {
                     cachedInitABI = msg.data;
-                    for (const c in cluster.workers) {
-                        if (cluster.workers.hasOwnProperty(c)) {
-                            const _w = cluster.workers[c];
-                            _w.send({
-                                event: 'initialize_abi',
-                                data: msg.data
-                            });
-                        }
-                    }
+                    messageAllWorkers(cluster, {
+                        event: 'initialize_abi',
+                        data: msg.data
+                    });
                 }
+                break;
+            }
+            case 'router_ready': {
+                messageAllWorkers(cluster, {
+                    event: 'connect_ws'
+                });
                 break;
             }
             case 'save_abi': {
@@ -417,6 +422,15 @@ async function main() {
     cluster.on('exit', (worker, code) => {
         // console.log(`Worker ${worker.id}, pid: ${worker.process.pid} finished with code ${code}`);
     });
+}
+
+function messageAllWorkers(cl, payload) {
+    for (const c in cl.workers) {
+        if (cl.workers.hasOwnProperty(c)) {
+            const _w = cl.workers[c];
+            _w.send(payload);
+        }
+    }
 }
 
 function printWorkerMap(wmp) {

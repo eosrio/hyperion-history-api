@@ -19,6 +19,7 @@ let act_emit_idx = 1;
 let tx_emit_idx = 1;
 let block_emit_idx = 1;
 let local_block_count = 0;
+let allowStreaming = false;
 
 const ds_blacklist = new Set();
 const table_blacklist = ['global', 'global2', 'global3', 'producers'];
@@ -26,12 +27,7 @@ const table_blacklist = ['global', 'global2', 'global3', 'producers'];
 const queue_prefix = process.env.CHAIN;
 const queue = queue_prefix + ':blocks';
 const index_queue_prefix = queue_prefix + ':index';
-const index_queues = [
-    {type: 'action', name: index_queue_prefix + "_actions"},
-    {type: 'transaction', name: index_queue_prefix + "_transactions"},
-    {type: 'block', name: index_queue_prefix + "_blocks"}
-];
-
+const index_queues = require('../definitions/index-queues').index_queues;
 const n_deserializers = process.env.DESERIALIZERS;
 const n_ingestors_per_queue = process.env.ES_INDEXERS_PER_QUEUE;
 const action_indexing_ratio = process.env.ES_ACT_QUEUES;
@@ -259,10 +255,12 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
         }
         delete action['inline_traces'];
 
+        const payload = Buffer.from(JSON.stringify(action));
+
         if (process.env.ENABLE_INDEXING === 'true') {
             // Distribute actions to indexer queues
             const q = index_queue_prefix + "_actions:" + (act_emit_idx);
-            const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(action)));
+            const status = ch.sendToQueue(q, payload);
             if (!status) {
                 // console.log('Action Indexing:', status);
             }
@@ -271,6 +269,16 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
                 act_emit_idx = 1;
             }
         }
+
+        if (allowStreaming) {
+            ch.publish('', queue_prefix + ':stream', payload, {
+                headers: {
+                    account: action['act']['account'],
+                    name: action['act']['name']
+                }
+            });
+        }
+
         return true;
     } else {
         return false;
@@ -481,6 +489,9 @@ async function run() {
                 consumerQueue.push(data);
             });
 
+        }
+        if (msg.event === 'connect_ws') {
+            allowStreaming = true;
         }
     });
 }
