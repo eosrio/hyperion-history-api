@@ -1,11 +1,9 @@
-const elasticsearch = require('elasticsearch');
-const {buildActionBulk, buildTransactionBulk, buildBlockBulk} = require("./bulkBuilders");
-const client = new elasticsearch.Client({
-    host: process.env.ES_HOST
-});
+const {buildActionBulk, buildTransactionBulk, buildBlockBulk, buildAbiBulk} = require("./bulkBuilders");
 const queue_prefix = process.env.CHAIN;
-
 const prettyjson = require('prettyjson');
+const {elasticsearchConnect} = require("../connections/elasticsearch");
+
+const client = elasticsearchConnect();
 
 function ackOrNack(resp, messageMap, channel) {
     resp.items.forEach(item => {
@@ -75,6 +73,18 @@ const routes = {
             index: queue_prefix + '-block',
             type: '_doc',
             body: buildBlockBulk(payloads, messageMap)
+        }).then(resp => {
+            onResponse(resp, messageMap, cb, payloads, channel);
+        }).catch(err => {
+            onError(err, channel, cb);
+        });
+    },
+    'abi': async (payloads, channel, cb) => {
+        const messageMap = {};
+        client['bulk']({
+            index: queue_prefix + '-abi',
+            type: '_doc',
+            body: buildAbiBulk(payloads, messageMap)
         }).then(resp => {
             onResponse(resp, messageMap, cb, payloads, channel);
         }).catch(err => {

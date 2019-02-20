@@ -4,7 +4,10 @@ const fetch = require('node-fetch');
 const prettyjson = require('prettyjson');
 const cluster = require('cluster');
 const fs = require('fs');
+const redis = require('redis');
+const {promisify} = require('util');
 let client;
+let cachedInitABI = null;
 
 async function getLastIndexedBlock(es_client) {
     const results = await es_client.search({
@@ -79,10 +82,31 @@ async function elasticsearchConnect() {
     });
 }
 
+function onSaveAbi(data, abiCacheMap, rClient) {
+    const key = data['block'] + ":" + data['account'];
+    // console.log(key);
+    rClient.set(key, data['abi']);
+    let versionMap;
+    if (!abiCacheMap[data['account']]) {
+        versionMap = [];
+        versionMap.push(parseInt(data['block']));
+    } else {
+        versionMap = abiCacheMap[data['account']];
+        versionMap.push(parseInt(data['block']));
+        versionMap.sort(function (a, b) {
+            return a - b;
+        });
+        versionMap = Array.from(new Set(versionMap));
+    }
+    abiCacheMap[data['account']] = versionMap;
+}
+
 async function main() {
     // Preview mode - prints only the proposed worker map
     const preview = process.env.PREVIEW === 'true';
 
+    const rClient = redis.createClient();
+    const getAsync = promisify(rClient.get).bind(rClient);
     await elasticsearchConnect();
 
     const n_consumers = process.env.READERS;
@@ -107,7 +131,7 @@ async function main() {
     ];
 
     const indicesList = ["action", "block", "transaction", "account", "abi"];
-    const indexConfig = require('./mappings');
+    const indexConfig = require('./definitions/mappings');
 
     if (process.env.FLUSH_INDICES === 'true') {
         console.log('Deleting all indices!');
@@ -207,7 +231,8 @@ async function main() {
     total_range = lib - starting_block;
 
     // Create first batch of parallel readers
-    const maxBatchSize = 1000;
+    const maxBatchSize = parseInt(process.env.BATCH_SIZE, 10);
+
     let lastAssignedBlock = starting_block;
     while (activeReaders.length < max_readers && lastAssignedBlock < lib) {
         worker_index++;
@@ -253,9 +278,15 @@ async function main() {
     // Setup ES Ingestion Workers
     index_queues.forEach((q) => {
         let n = n_ingestors_per_queue;
+
+        if (q.type === 'abi') {
+            n = 1;
+        }
+
         if (q.type === 'action') {
             n = n_ingestors_per_queue * action_indexing_ratio;
         }
+
         for (let i = 0; i < n; i++) {
             worker_index++;
             workerMap.push({
@@ -278,14 +309,46 @@ async function main() {
         cluster.fork(conf);
     });
 
-    if (fs.existsSync("deserialization_errors.txt")) {
-        fs.unlinkSync("deserialization_errors.txt");
+    const dsErrorsLog = "deserialization_errors_" + starting_block + "_" + lib + ".txt";
+    if (fs.existsSync(dsErrorsLog)) {
+        fs.unlinkSync(dsErrorsLog);
     }
-    const ds_errors = fs.createWriteStream("deserialization_errors.txt", {flags: 'a'});
+    const ds_errors = fs.createWriteStream(dsErrorsLog, {flags: 'a'});
+
+    const cachedMap = await getAsync('abi_cache');
+    let abiCacheMap;
+    if (cachedMap) {
+        abiCacheMap = JSON.parse(cachedMap);
+    } else {
+        abiCacheMap = {};
+    }
+
+    setInterval(() => {
+        rClient.set('abi_cache', JSON.stringify(abiCacheMap));
+    }, 10000);
 
     // Worker event listener
     const workerHandler = (msg) => {
         switch (msg.event) {
+            case 'init_abi': {
+                if (!cachedInitABI) {
+                    cachedInitABI = msg.data;
+                    for (const c in cluster.workers) {
+                        if (cluster.workers.hasOwnProperty(c)) {
+                            const _w = cluster.workers[c];
+                            _w.send({
+                                event: 'initialize_abi',
+                                data: msg.data
+                            });
+                        }
+                    }
+                }
+                break;
+            }
+            case 'save_abi': {
+                onSaveAbi(msg.data, abiCacheMap, rClient);
+                break;
+            }
             case 'completed': {
                 const idx = activeReaders.findIndex(w => w.worker_id.toString() === msg.id);
                 activeReaders.splice(idx, 1);
@@ -302,7 +365,8 @@ async function main() {
                         worker_id: worker_index,
                         worker_role: 'reader',
                         first_block: start,
-                        last_block: end
+                        last_block: end,
+                        init_abi: cachedInitABI
                     };
                     activeReaders.push(def);
                     workerMap.push(def);
@@ -342,7 +406,10 @@ async function main() {
     // Attach handlers
     for (const c in cluster.workers) {
         if (cluster.workers.hasOwnProperty(c)) {
-            cluster.workers[c].on('message', workerHandler);
+            const self = cluster.workers[c];
+            self.on('message', (msg) => {
+                workerHandler(msg, self);
+            });
         }
     }
 

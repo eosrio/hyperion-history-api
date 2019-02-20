@@ -1,20 +1,40 @@
 const cluster = require('cluster');
 const master = require('./master');
-const worker = require('./worker');
+const Workers = require('./workers/index');
+const {onError} = require('./helpers/functions');
+
 
 (async () => {
     if (cluster.isMaster) {
-        master.main().catch((err) => {
-            console.log(err);
-        });
+        master.main().catch(onError);
     } else {
         let delay = 0;
-        if (process.env['worker_role'] === 'reader') delay = process.env.READERS * 50;
-        // console.log(`New worker [PID: ${process.pid} - WID: ${process.env['worker_id']}] launched, role: ${process.env['worker_role']}`);
+        if (process.env['worker_role'] === 'reader') {
+            delay = process.env.READERS * 50;
+        }
         setTimeout(() => {
-            worker.main().catch((err) => {
-                console.log(err);
-            });
+            switch (process.env['worker_role']) {
+                case 'reader': {
+                    Workers.stateReader.run().catch(onError);
+                    break;
+                }
+                case 'deserializer': {
+                    Workers.deserializer.run().catch(onError);
+                    break;
+                }
+                case 'continuous_reader': {
+                    Workers.stateReader.run().catch(onError);
+                    break;
+                }
+                case 'ingestor': {
+                    Workers.indexer.run().catch(onError);
+                    break;
+                }
+                case 'router': {
+                    Workers.wsRouter.run().catch(onError);
+                    break;
+                }
+            }
         }, delay);
     }
 })();

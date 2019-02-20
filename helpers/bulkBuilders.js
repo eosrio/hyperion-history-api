@@ -33,8 +33,21 @@ function buildBlockBulk(payloads, messageMap) {
     }).flatten()['value']();
 }
 
+function buildAbiBulk(payloads, messageMap) {
+    return _(payloads).map(payload => {
+        const body = JSON.parse(Buffer.from(payload.content).toString());
+        const id = body['block'] + body['account'];
+        messageMap[id] = payload;
+        return [
+            {index: {_id: id}},
+            body
+        ];
+    }).flatten()['value']();
+}
+
 module.exports = {
     buildActionBulk,
     buildBlockBulk,
-    buildTransactionBulk
+    buildTransactionBulk,
+    buildAbiBulk
 };

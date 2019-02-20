@@ -184,7 +184,7 @@ const abi = {
     "settings": {
         "index": {
             "number_of_shards": 3,
-            "refresh_interval": "5s",
+            "refresh_interval": "10s",
             "number_of_replicas": 0
         },
         "index.codec": "best_compression"
@@ -194,11 +194,8 @@ const abi = {
             "block": {
                 "type": "long"
             },
-            "code": {
+            "account": {
                 "type": "keyword"
-            },
-            "@timestamp": {
-                "type": "date"
             },
             "abi": {
                 "enabled": false
