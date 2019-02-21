@@ -140,7 +140,6 @@ async function onMessage(data) {
                 }
             } else {
                 if (process.env['worker_role'] === 'reader') {
-                    // console.log(process.env['worker_role'], process.env['worker_id'], 'Last read block', local_block_num);
                     if (local_distributed_count === range_size) {
                         signalReaderCompletion();
                     }

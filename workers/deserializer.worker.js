@@ -8,6 +8,12 @@ const {deserialize, unzipAsync} = require('../helpers/functions');
 const async = require('async');
 const {amqpConnect} = require("../connections/rabbitmq");
 const {connectRpc} = require("../connections/chain");
+const {elasticsearchConnect} = require("../connections/elasticsearch");
+
+const redis = require('redis');
+const {promisify} = require('util');
+const rClient = redis.createClient();
+const getAsync = promisify(rClient.get).bind(rClient);
 
 const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
@@ -20,6 +26,8 @@ let tx_emit_idx = 1;
 let block_emit_idx = 1;
 let local_block_count = 0;
 let allowStreaming = false;
+let cachedMap;
+let contracts = new Map();
 
 const ds_blacklist = new Set();
 const table_blacklist = ['global', 'global2', 'global3', 'producers'];
@@ -169,6 +177,30 @@ async function processTrx(ts, trx_trace, block_num) {
     return true;
 }
 
+async function getContractAtBlock(accountName, block_num) {
+    const key = block_num + ":" + accountName;
+    if (contracts.has(key)) {
+        return contracts.get(key);
+    }
+    const abi = await getAbiAtBlock(accountName, block_num);
+    const types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
+    const actions = new Map();
+    for (const {name, type} of abi.actions) {
+        actions.set(name, Serialize.getType(types, type));
+    }
+    const result = {types, actions};
+    contracts.set(key, result);
+    return result;
+}
+
+async function deserializeActionsAtBlock(actions, block_num) {
+    return await Promise.all(actions.map(async ({account, name, authorization, data}) => {
+        const contract = await getContractAtBlock(account, block_num);
+        return Serialize.deserializeAction(
+            contract, account, name, authorization, data, txEnc, txDec);
+    }));
+}
+
 async function processAction(ts, action, trx_id, block_num, prod, parent, depth, parent_act) {
     const code = action['act']['account'];
     const name = action['act']['name'];
@@ -202,7 +234,7 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth,
                 action['act'] = original_act;
                 action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
             } else {
-                ds_act = await api.deserializeActions(actions);
+                ds_act = await deserializeActionsAtBlock(actions, block_num);
                 action['act'] = ds_act[0];
                 if (name === 'setabi' && code === 'eosio') {
                     const abi_hex = action['act']['data']['abi'];
@@ -223,7 +255,7 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth,
                 attachActionExtras(action);
             }
         } catch (e) {
-            // console.log(e);
+            console.log(e);
             ds_blacklist.add(actionCode);
             process.send({
                 t: 'ds_fail',
@@ -313,16 +345,13 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth,
 }
 
 function attachActionExtras(action) {
-
     // Transfer actions
     if (action['act']['name'] === 'transfer') {
         const qtd = action['act']['data']['quantity'].split(' ');
-
         action['act']['data']['from'] = String(action['act']['data']['from']);
         action['act']['data']['to'] = String(action['act']['data']['to']);
         action['act']['data']['amount'] = parseFloat(qtd[0]);
         action['act']['data']['symbol'] = qtd[1];
-
     } else if (action['act']['name'] === 'newaccount' && action['act']['account'] === 'eosio') {
         let name = null;
         if (action['act']['data']['newact']) {
@@ -465,8 +494,27 @@ async function processDeferred(data, block_num) {
     }
 }
 
-async function run() {
+async function getAbiAtBlock(code, block_num) {
+    const refs = cachedMap[code];
+    let lastblock = 0;
+    for (const block of refs) {
+        if (block > block_num) {
+            break;
+        } else {
+            lastblock = block;
+        }
+    }
+    return Serialize.getTypesFromAbi(Serialize.createInitialTypes(), AbiDefinitions)
+        .get('abi_def')
+        .deserialize(createSerialBuffer(
+            Serialize.hexToUint8Array(
+                await getAsync(lastblock + ":" + code)
+            )
+        ));
+}
 
+async function run() {
+    cachedMap = JSON.parse(await getAsync('abi_cache'));
     rpc = connectRpc();
     const chain_data = await rpc.get_info();
     chainID = chain_data.chain_id;
@@ -477,6 +525,8 @@ async function run() {
         textDecoder: txDec,
         textEncoder: txEnc,
     });
+
+    client = elasticsearchConnect();
 
     // Connect to RabbitMQ (amqplib)
     [ch, cch] = await amqpConnect();

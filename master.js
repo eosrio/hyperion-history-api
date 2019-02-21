@@ -196,7 +196,13 @@ async function main() {
         ];
         console.log(log_msg.join(' | '));
 
-        allowShutdown = (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0);
+        if (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0) {
+            allowShutdown = true;
+            if (allowMoreReaders) {
+                console.log('All workers finished. Ready to quit.');
+                process.exit(1);
+            }
+        }
         // reset counters
         pushedBlocks = 0;
         consumedBlocks = 0;
