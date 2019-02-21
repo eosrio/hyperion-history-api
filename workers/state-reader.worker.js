@@ -66,7 +66,7 @@ function signalReaderCompletion() {
                 }
             });
             if (pending === lastPendingCount && pending > 0) {
-                console.log(`[${process.env['worker_id']}] Pending blocks: ${pending}`);
+                // console.log(`[${process.env['worker_id']}] Pending blocks: ${pending}`);
             } else {
                 lastPendingCount = pending;
             }

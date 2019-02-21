@@ -1,129 +1,116 @@
 const action = {
+    "order": 0,
+    "index_patterns": [
+        "eos-action-*"
+    ],
     "settings": {
-        "index": {
-            "number_of_shards": 3,
-            "refresh_interval": "20s",
-            "number_of_replicas": 0,
-            "sort.field": "receipt.global_sequence",
-            "sort.order": "desc"
+        "routing": {
+            "allocation": {
+                "require": {
+                    "box_type": "hot"
+                }
+            }
         },
-        "index.codec": "best_compression"
+        "index": {
+            "lifecycle": {
+                "name": "eos_action",
+                "rollover_alias": "eos-action"
+            },
+            "codec": "best_compression",
+            "refresh_interval": "1s",
+            "number_of_shards": "2",
+            "number_of_replicas": "0",
+            "sort": {
+                "field": "global_sequence",
+                "order": "desc"
+            }
+        }
     },
     "mappings": {
         "properties": {
-            "@data": {
-                "properties": {
-                    "transfer": {
-                        "properties": {
-                            "from": {
-                                "type": "keyword"
-                            },
-                            "to": {
-                                "type": "keyword"
-                            },
-                            "amount": {
-                                "type": "float"
-                            },
-                            "symbol": {
-                                "type": "keyword"
-                            },
-                        }
-                    },
-                    "eosio-newaccount.newact": {
-                        "type": "keyword"
-                    },
-                    "forum-vote": {
-                        "properties": {
-                            "proposal": {
-                                "type": "keyword"
-                            },
-                            "vote": {
-                                "type": "byte"
-                            }
-                        }
-                    }
-                }
-            },
             "@timestamp": {
                 "type": "date"
             },
-            "depth": {
-                "type": "byte"
+            "global_sequence": {
+                "type": "long"
             },
-            "trx_id": {
+            "parent.seq": {
+                "type": "long"
+            },
+            "act.data": {
+                "enabled": false,
+                "properties": {
+                    "symbol": {
+                        "type": "keyword"
+                    },
+                    "amount": {
+                        "type": "float"
+                    },
+                    "from": {
+                        "type": "keyword"
+                    },
+                    "to": {
+                        "type": "keyword"
+                    },
+                    "newact": {
+                        "type": "keyword"
+                    }
+                }
+            },
+            "account_ram_deltas.delta": {
+                "enabled": false
+            },
+            "act.account": {
                 "type": "keyword"
             },
-            "producer": {
+            "elapsed": {
+                "type": "long"
+            },
+            "block_num": {
+                "type": "long"
+            },
+            "act.authorization.permission": {
+                "enabled": false,
+                "properties": {
+                    "active":{
+                        "type":"object"
+                    },
+                    "owner":{
+                        "type":"object"
+                    }
+                }
+            },
+            "act.authorization.actor": {
                 "type": "keyword"
             },
             "parent.root": {
                 "type": "boolean"
             },
-            "parent.seq": {
-                "type": "long"
-            },
-            "context_free": {
+            "account_ram_deltas.account": {
                 "enabled": false
-            },
-            "receipt.receiver": {
-                "type": "keyword"
-            },
-            "receipt.global_sequence": {
-                "type": "long"
-            },
-            "receipt.abi_sequence": {
-                "enabled": false
-            },
-            "receipt.act_digest": {
-                "enabled": false
-            },
-            "receipt.recv_sequence": {
-                "enabled": false
-            },
-            "receipt.auth_sequence": {
-                "enabled": false
-            },
-            "receipt.code_sequence": {
-                "enabled": false
-            },
-            "block_num": {
-                "type": "long"
-            },
-            "act.account": {
-                "type": "keyword"
             },
             "act.name": {
                 "type": "keyword"
             },
-            "act.data": {
-                "enabled": false
-            },
-            "act.authorization.actor": {
+            "trx_id": {
                 "type": "keyword"
             },
-            "act.authorization.permission": {
-                "enabled": false
+            "depth": {
+                "type": "byte"
             },
-            "elapsed": {
-                "type": "long"
-            },
-            "except": {
-                "enabled": false
-            },
-            "account_ram_deltas.account": {
-                "enabled": false
-            },
-            "account_ram_deltas.delta": {
-                "enabled": false
+            "producer": {
+                "type": "keyword"
             }
         }
-    }
+    },
+    "aliases": {}
 };
 
 const transaction = {
+    "index_patterns": ["eos-transaction-*"],
     "settings": {
         "index": {
-            "number_of_shards": 3,
+            "number_of_shards": 2,
             "refresh_interval": "10s",
             "number_of_replicas": 0,
             "sort.field": "block_num",
@@ -144,9 +131,10 @@ const transaction = {
 };
 
 const account = {
+    "index_patterns": ["eos-account-*"],
     "settings": {
         "index": {
-            "number_of_shards": 3,
+            "number_of_shards": 1,
             "refresh_interval": "5s",
             "number_of_replicas": 0
         },
@@ -181,9 +169,10 @@ const account = {
 };
 
 const abi = {
+    "index_patterns": ["eos-abi-*"],
     "settings": {
         "index": {
-            "number_of_shards": 3,
+            "number_of_shards": 1,
             "refresh_interval": "10s",
             "number_of_replicas": 0
         },
@@ -205,9 +194,10 @@ const abi = {
 };
 
 const block = {
+    "index_patterns": ["eos-block-*"],
     "settings": {
         "index": {
-            "number_of_shards": 3,
+            "number_of_shards": 2,
             "refresh_interval": "5s",
             "number_of_replicas": 0,
             "sort.field": "block_num",

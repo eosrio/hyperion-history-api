@@ -169,16 +169,22 @@ async function processTrx(ts, trx_trace, block_num) {
     return true;
 }
 
-async function processAction(ts, action, trx_id, block_num, prod, parent, depth) {
+async function processAction(ts, action, trx_id, block_num, prod, parent, depth, parent_act) {
     const code = action['act']['account'];
     const name = action['act']['name'];
-    if (!action_blacklist.includes(`${code}:${name}`)) {
+    if (!action_blacklist.has(`${code}:${name}`)) {
         action['receipt'] = action['receipt'][1];
         let g_seq;
+        let notifiedAccounts = new Set();
+        notifiedAccounts.add(action['receipt']['receiver']);
         if (parent !== null) {
+            // Inline Mode
             g_seq = parent;
+            // console.log(`inline - (${g_seq})`);
         } else {
+            // Parent Mode
             g_seq = action['receipt']['global_sequence'];
+            // console.log(`parent - (${g_seq})`);
         }
         let act = action['act'];
         const original_act = Object.assign({}, act);
@@ -247,39 +253,60 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth)
         }
 
         delete action['console'];
+
+        const actDataString = JSON.stringify(action['act']['data']);
+
         if (action['inline_traces'].length > 0) {
             g_seq = action['receipt']['global_sequence'];
             for (const inline_trace of action['inline_traces']) {
-                await processAction(ts, inline_trace[1], trx_id, block_num, prod, g_seq, depth + 1);
-            }
-        }
-        delete action['inline_traces'];
-
-        const payload = Buffer.from(JSON.stringify(action));
-
-        if (process.env.ENABLE_INDEXING === 'true') {
-            // Distribute actions to indexer queues
-            const q = index_queue_prefix + "_actions:" + (act_emit_idx);
-            const status = ch.sendToQueue(q, payload);
-            if (!status) {
-                // console.log('Action Indexing:', status);
-            }
-            act_emit_idx++;
-            if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
-                act_emit_idx = 1;
-            }
-        }
-
-        if (allowStreaming) {
-            ch.publish('', queue_prefix + ':stream', payload, {
-                headers: {
-                    account: action['act']['account'],
-                    name: action['act']['name']
+                const notified = await processAction(ts, inline_trace[1], trx_id, block_num, prod, g_seq, depth + 1, actDataString);
+                // Merge notifications with the parent action
+                for (const acct of notified) {
+                    notifiedAccounts.add(acct);
                 }
-            });
+            }
         }
 
-        return true;
+        delete action['inline_traces'];
+        delete action['except'];
+        delete action['context_free'];
+
+        action['global_sequence'] = parseInt(action['receipt']['global_sequence'], 10);
+        delete action['receipt'];
+
+        action['elapsed'] = parseInt(action['elapsed'], 10);
+
+        if (parent_act !== actDataString) {
+            action['notified'] = Array.from(notifiedAccounts);
+            const payload = Buffer.from(JSON.stringify(action));
+            if (process.env.ENABLE_INDEXING === 'true') {
+                // Distribute actions to indexer queues
+                const q = index_queue_prefix + "_actions:" + (act_emit_idx);
+                const status = ch.sendToQueue(q, payload);
+                if (!status) {
+                    // console.log('Action Indexing:', status);
+                }
+                act_emit_idx++;
+                if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+                    act_emit_idx = 1;
+                }
+            }
+
+            if (allowStreaming) {
+                // ch.publish('', queue_prefix + ':stream', payload, {
+                //     headers: {
+                //         account: action['act']['account'],
+                //         name: action['act']['name']
+                //     }
+                // });
+            }
+        }
+
+        if (parent !== null) {
+            return notifiedAccounts;
+        } else {
+            return true;
+        }
     } else {
         return false;
     }
@@ -290,37 +317,26 @@ function attachActionExtras(action) {
     // Transfer actions
     if (action['act']['name'] === 'transfer') {
         const qtd = action['act']['data']['quantity'].split(' ');
-        action['@data'] = {
-            'transfer': {
-                'from': action['act']['data']['from'],
-                'to': action['act']['data']['to'],
-                'amount': parseFloat(qtd[0]),
-                'symbol': qtd[1]
-            }
-        };
-    } else if (action['act']['name'] === 'vote' && action['act']['account'] === 'eosio.forum') {
-        if (action['act']['data']['proposal_name']) {
-            action['@data'] = {
-                'forum-vote': {
-                    'proposal': action['act']['data']['proposal_name'],
-                    "vote": action['act']['data']['vote']
-                }
-            };
-        }
-        // await handleForumVote(action['act']['data'], action, ts);
+
+        action['act']['data']['from'] = String(action['act']['data']['from']);
+        action['act']['data']['to'] = String(action['act']['data']['to']);
+        action['act']['data']['amount'] = parseFloat(qtd[0]);
+        action['act']['data']['symbol'] = qtd[1];
+
     } else if (action['act']['name'] === 'newaccount' && action['act']['account'] === 'eosio') {
         let name = null;
         if (action['act']['data']['newact']) {
             name = action['act']['data']['newact'];
         } else if (action['act']['data']['name']) {
             name = action['act']['data']['name'];
+            delete action['act']['data']['name'];
         }
         if (name) {
-            action['@data'] = {
-                'eosio-newaccount': {
-                    'newact': name
-                }
-            };
+            action['act']['data']['newact'] = String(name);
+            action['@newaccount'] = {
+                active: action['act']['data']['active'],
+                owner: action['act']['data']['owner']
+            }
         }
         // await handleNewAccount(action['act']['data'], action, ts);
     } else if (action['act']['name'] === 'updateauth' && action['act']['account'] === 'eosio') {
@@ -337,28 +353,28 @@ async function processDeltas(deltas, block_num) {
         }
     }
 
-    if (deltaStruct['account']) {
-        const rows = deltaStruct['account'];
-        for (const account_raw of rows) {
-            const serialBuffer = createSerialBuffer(account_raw.data);
-            const data = types.get('account').deserialize(serialBuffer);
-            const account = data[1];
-            if (account['abi'] !== '') {
-                const new_abi_object = {
-                    account: account['name'],
-                    block: block_num,
-                    abi: account['abi']
-                };
-                // console.log(new_abi_object.block, new_abi_object.account);
-                const q = index_queue_prefix + "_abis:1";
-                ch.sendToQueue(q, Buffer.from(JSON.stringify(new_abi_object)));
-                process.send({
-                    event: 'save_abi',
-                    data: new_abi_object
-                });
-            }
-        }
-    }
+    // if (deltaStruct['account']) {
+    //     const rows = deltaStruct['account'];
+    //     for (const account_raw of rows) {
+    //         const serialBuffer = createSerialBuffer(account_raw.data);
+    //         const data = types.get('account').deserialize(serialBuffer);
+    //         const account = data[1];
+    //         if (account['abi'] !== '') {
+    //             const new_abi_object = {
+    //                 account: account['name'],
+    //                 block: block_num,
+    //                 abi: account['abi']
+    //             };
+    //             // console.log(new_abi_object.block, new_abi_object.account);
+    //             const q = index_queue_prefix + "_abis:1";
+    //             ch.sendToQueue(q, Buffer.from(JSON.stringify(new_abi_object)));
+    //             process.send({
+    //                 event: 'save_abi',
+    //                 data: new_abi_object
+    //             });
+    //         }
+    //     }
+    // }
 
     if (process.env.ABI_CACHE_MODE === 'false') {
         // Generated transactions
@@ -483,7 +499,7 @@ async function run() {
             abi = JSON.parse(msg.data);
             types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
             abi.tables.map(table => tables.set(table.name, table.type));
-            console.log('setting up deserializer on ' + process.env['worker_queue']);
+            // console.log('setting up deserializer on ' + process.env['worker_queue']);
             ch.prefetch(dSprefecthCount);
             ch.consume(process.env['worker_queue'], (data) => {
                 consumerQueue.push(data);

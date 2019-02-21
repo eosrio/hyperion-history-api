@@ -127,27 +127,35 @@ async function main() {
     const indicesList = ["action", "block", "transaction", "account", "abi"];
     const indexConfig = require('./definitions/mappings');
 
-    if (process.env.FLUSH_INDICES === 'true') {
-        console.log('Deleting all indices!');
-        await client['indices'].delete({
-            index: indicesList.map(i => `${queue_prefix}-${i}`)
-        });
-    }
+    // if (process.env.FLUSH_INDICES === 'true') {
+    //     console.log('Deleting all indices!');
+    //     await client['indices'].delete({
+    //         index: indicesList.map(i => `${queue_prefix}-${i}`)
+    //     });
+    // }
 
     // Check for indexes
     for (const index of indicesList) {
-        const status = await client['indices'].exists({
-            index: `${queue_prefix}-${index}`
+        const status = await client['indices'].existsAlias({
+            name: `${queue_prefix}-${index}`
         });
+        console.log(`${queue_prefix}-${index}: ${status}`);
         if (!status) {
-            const creation_status = await client['indices'].create({
-                index: `${queue_prefix}-${index}`,
-                body: indexConfig[index]
+            const template_status = await client['indices'].existsTemplate({
+                name: `${queue_prefix}-${index}`
             });
-            if (!creation_status['acknowledged'] || !creation_status['shards_acknowledged']) {
-                console.log('Failed to create index', `${queue_prefix}-${index}`);
-                console.log(creation_status);
-                process.exit(1);
+            if (!template_status) {
+                const creation_status = await client['indices'].putTemplate({
+                    name: `${queue_prefix}-${index}`,
+                    body: indexConfig[index]
+                });
+                if (!creation_status['acknowledged']) {
+                    console.log('Failed to create template', `${queue_prefix}-${index}`);
+                    console.log(creation_status);
+                    process.exit(1);
+                }
+            } else {
+                console.log(`${queue_prefix}-${index} template: ${template_status}`);
             }
         }
     }
@@ -163,8 +171,11 @@ async function main() {
     let total_blocks = 0;
     let total_indexed_blocks = 0;
     let total_actions = 0;
-    let log_interval = 5000;
+    let log_interval = 2000;
     let total_range = 0;
+    let allowShutdown = false;
+    let allowMoreReaders = true;
+    let maxBatchSize = parseInt(process.env.BATCH_SIZE, 10);
 
     // Monitoring
     setInterval(() => {
@@ -184,6 +195,8 @@ async function main() {
             // `Actions: ${total_actions}`
         ];
         console.log(log_msg.join(' | '));
+
+        allowShutdown = (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0);
         // reset counters
         pushedBlocks = 0;
         consumedBlocks = 0;
@@ -222,7 +235,6 @@ async function main() {
     total_range = lib - starting_block;
 
     // Create first batch of parallel readers
-    const maxBatchSize = parseInt(process.env.BATCH_SIZE, 10);
     let lastAssignedBlock = starting_block;
 
     if (process.env.LIVE_ONLY === 'false') {
@@ -274,23 +286,23 @@ async function main() {
     // Setup ES Ingestion Workers
     index_queues.forEach((q) => {
         let n = n_ingestors_per_queue;
-
         if (q.type === 'abi') {
             n = 1;
         }
-
-        if (q.type === 'action') {
-            n = n_ingestors_per_queue * action_indexing_ratio;
-        }
-
         for (let i = 0; i < n; i++) {
-            worker_index++;
-            workerMap.push({
-                worker_id: worker_index,
-                worker_role: 'ingestor',
-                type: q.type,
-                queue: q.name + ":" + (i + 1)
-            });
+            let m = 1;
+            if (q.type === 'action') {
+                m = n_ingestors_per_queue * action_indexing_ratio;
+            }
+            for (let j = 0; j < m; j++) {
+                worker_index++;
+                workerMap.push({
+                    worker_id: worker_index,
+                    worker_role: 'ingestor',
+                    type: q.type,
+                    queue: q.name + ":" + (i + 1)
+                });
+            }
         }
     });
 
@@ -357,7 +369,7 @@ async function main() {
             case 'completed': {
                 const idx = activeReaders.findIndex(w => w.worker_id.toString() === msg.id);
                 activeReaders.splice(idx, 1);
-                if (activeReaders.length < max_readers && lastAssignedBlock < lib) {
+                if (activeReaders.length < max_readers && lastAssignedBlock < lib && allowMoreReaders) {
                     // Deploy next worker
                     worker_index++;
                     const start = lastAssignedBlock;
@@ -421,6 +433,18 @@ async function main() {
     // Catch dead workers
     cluster.on('exit', (worker, code) => {
         // console.log(`Worker ${worker.id}, pid: ${worker.process.pid} finished with code ${code}`);
+    });
+
+    process.on('SIGINT', () => {
+        allowMoreReaders = false;
+        console.info('SIGINT signal received. Shutting down readers immediately!');
+        console.log('Waiting for queues...');
+        setInterval(() => {
+            if (allowShutdown) {
+                console.log('Shutting down master...');
+                process.exit(1);
+            }
+        }, 500);
     });
 }
 

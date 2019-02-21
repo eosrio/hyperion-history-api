@@ -16,9 +16,9 @@ function buildTransactionBulk(payloads, messageMap) {
 function buildActionBulk(payloads, messageMap) {
     return _(payloads).map(payload => {
         const body = JSON.parse(Buffer.from(payload.content).toString());
-        messageMap[body.receipt['global_sequence']] = payload;
+        messageMap[body['global_sequence']] = payload;
         return [{
-            index: {_id: body.receipt['global_sequence']}
+            index: {_id: body['global_sequence']}
         }, body];
     }).flatten()['value']();
 }
