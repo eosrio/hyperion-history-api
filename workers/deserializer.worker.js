@@ -496,21 +496,25 @@ async function processDeferred(data, block_num) {
 
 async function getAbiAtBlock(code, block_num) {
     const refs = cachedMap[code];
-    let lastblock = 0;
-    for (const block of refs) {
-        if (block > block_num) {
-            break;
-        } else {
-            lastblock = block;
+    if (refs.length > 0) {
+        let lastblock = 0;
+        for (const block of refs) {
+            if (block > block_num) {
+                break;
+            } else {
+                lastblock = block;
+            }
         }
+        return Serialize.getTypesFromAbi(Serialize.createInitialTypes(), AbiDefinitions)
+            .get('abi_def')
+            .deserialize(createSerialBuffer(
+                Serialize.hexToUint8Array(
+                    await getAsync(lastblock + ":" + code)
+                )
+            ));
+    } else {
+        return await api.getAbi(code);
     }
-    return Serialize.getTypesFromAbi(Serialize.createInitialTypes(), AbiDefinitions)
-        .get('abi_def')
-        .deserialize(createSerialBuffer(
-            Serialize.hexToUint8Array(
-                await getAsync(lastblock + ":" + code)
-            )
-        ));
 }
 
 async function run() {
