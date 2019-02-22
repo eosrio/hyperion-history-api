@@ -84,7 +84,6 @@ async function elasticsearchConnect() {
 
 function onSaveAbi(data, abiCacheMap, rClient) {
     const key = data['block'] + ":" + data['account'];
-    // console.log(key);
     rClient.set(key, data['abi']);
     let versionMap;
     if (!abiCacheMap[data['account']]) {
@@ -171,7 +170,7 @@ async function main() {
     let total_blocks = 0;
     let total_indexed_blocks = 0;
     let total_actions = 0;
-    let log_interval = 2000;
+    let log_interval = 5000;
     let total_range = 0;
     let allowShutdown = false;
     let allowMoreReaders = true;
@@ -295,10 +294,11 @@ async function main() {
         if (q.type === 'abi') {
             n = 1;
         }
+        let qIdx = 0;
         for (let i = 0; i < n; i++) {
             let m = 1;
             if (q.type === 'action') {
-                m = n_ingestors_per_queue * action_indexing_ratio;
+                m = action_indexing_ratio;
             }
             for (let j = 0; j < m; j++) {
                 worker_index++;
@@ -306,8 +306,9 @@ async function main() {
                     worker_id: worker_index,
                     worker_role: 'ingestor',
                     type: q.type,
-                    queue: q.name + ":" + (i + 1)
+                    queue: q.name + ":" + (qIdx + 1)
                 });
+                qIdx++;
             }
         }
     });
@@ -448,6 +449,7 @@ async function main() {
         setInterval(() => {
             if (allowShutdown) {
                 console.log('Shutting down master...');
+                rClient.set('abi_cache', JSON.stringify(abiCacheMap));
                 process.exit(1);
             }
         }, 500);

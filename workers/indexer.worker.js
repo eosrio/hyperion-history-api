@@ -16,6 +16,7 @@ async function run() {
     [ch,] = await amqpConnect();
     try {
         ch.prefetch(indexingPrefecthCount);
+        ch.assertQueue(process.env['queue'], {durable: true});
         // console.log('setting up indexer on ' + process.env['queue']);
         ch.consume(process.env['queue'], indexQueue.push);
     } catch (e) {

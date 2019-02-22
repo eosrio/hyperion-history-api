@@ -1,4 +1,5 @@
 const {Api, Serialize} = require('eosjs');
+
 const _ = require('lodash');
 const {action_blacklist} = require('../definitions/blacklists');
 const prettyjson = require('prettyjson');
@@ -141,9 +142,12 @@ async function processBlock(res, block, traces, deltas) {
                 for (const action_trace of action_traces) {
                     if (action_trace[0] === 'action_trace_v0') {
                         const action = action_trace[1];
-                        const status = await processAction(ts, action, trx_id, block_num, producer, null, 0);
-                        if (status) {
-                            action_count++;
+                        const key = `${queue_prefix}::${action['act']['account']}::${action['act']['name']}`;
+                        if (!action_blacklist.has(key)) {
+                            const status = await processAction(ts, action, trx_id, block_num, producer, null, 0);
+                            if (status) {
+                                action_count++;
+                            }
                         }
                     }
                 }
@@ -183,7 +187,8 @@ async function getContractAtBlock(accountName, block_num) {
         return contracts.get(key);
     }
     const abi = await getAbiAtBlock(accountName, block_num);
-    const types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
+    const initialTypes = Serialize.createInitialTypes();
+    const types = Serialize.getTypesFromAbi(initialTypes, abi);
     const actions = new Map();
     for (const {name, type} of abi.actions) {
         actions.set(name, Serialize.getType(types, type));
@@ -202,95 +207,78 @@ async function deserializeActionsAtBlock(actions, block_num) {
 }
 
 async function processAction(ts, action, trx_id, block_num, prod, parent, depth, parent_act) {
-    const code = action['act']['account'];
-    const name = action['act']['name'];
-    if (!action_blacklist.has(`${code}:${name}`)) {
-        action['receipt'] = action['receipt'][1];
-        let g_seq;
-        let notifiedAccounts = new Set();
-        notifiedAccounts.add(action['receipt']['receiver']);
-        if (parent !== null) {
-            // Inline Mode
-            g_seq = parent;
-            // console.log(`inline - (${g_seq})`);
-        } else {
-            // Parent Mode
-            g_seq = action['receipt']['global_sequence'];
-            // console.log(`parent - (${g_seq})`);
-        }
-        let act = action['act'];
-        const original_act = Object.assign({}, act);
-        act.data = new Uint8Array(Object.values(act.data));
-        const actions = [];
-        actions.push(act);
-        let ds_act;
-        const actionCode = original_act['account'] + ":" + original_act['name'];
-        try {
-            if (ds_blacklist.has(actionCode)) {
-                process.send({
-                    event: 'ds_error',
-                    gs: action['receipt']['global_sequence']
-                });
-                action['act'] = original_act;
-                action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
-            } else {
-                ds_act = await deserializeActionsAtBlock(actions, block_num);
-                action['act'] = ds_act[0];
-                if (name === 'setabi' && code === 'eosio') {
-                    const abi_hex = action['act']['data']['abi'];
-                    const _types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), AbiDefinitions);
-                    const buffer = createSerialBuffer(Serialize.hexToUint8Array(abi_hex));
-                    const abiJSON = JSON.stringify(_types.get('abi_def').deserialize(buffer));
-                    await client['index']({
-                        index: process.env.CHAIN + '-abi',
-                        type: '_doc',
-                        body: {
-                            block: block_num,
-                            code: action['act']['data']['account'],
-                            abi: abiJSON,
-                            '@timestamp': ts
-                        }
-                    });
-                }
-                attachActionExtras(action);
-            }
-        } catch (e) {
-            console.log(e);
-            ds_blacklist.add(actionCode);
+    action['receipt'] = action['receipt'][1];
+    let g_seq;
+    let notifiedAccounts = new Set();
+    notifiedAccounts.add(action['receipt']['receiver']);
+    if (parent !== null) {
+        // Inline Mode
+        g_seq = parent;
+        // console.log(`inline - (${g_seq})`);
+    } else {
+        // Parent Mode
+        g_seq = action['receipt']['global_sequence'];
+        // console.log(`parent - (${g_seq})`);
+    }
+    let act = action['act'];
+    const original_act = Object.assign({}, act);
+    act.data = new Uint8Array(Object.values(act.data));
+    const actions = [];
+    actions.push(act);
+    let ds_act;
+    const actionCode = original_act['account'] + ":" + original_act['name'];
+    try {
+        if (ds_blacklist.has(actionCode)) {
             process.send({
-                t: 'ds_fail',
-                v: {
-                    gs: action['receipt']['global_sequence']
-                }
+                event: 'ds_error',
+                gs: action['receipt']['global_sequence']
             });
-            // Revert to defaults
             action['act'] = original_act;
             action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
-        }
-        process.send({event: 'ds_action'});
-        action['@timestamp'] = ts;
-        action['block_num'] = block_num;
-        action['producer'] = prod;
-        action['trx_id'] = trx_id;
-        action['depth'] = depth;
-        if (parent !== null) {
-            action['parent'] = {
-                root: false,
-                seq: g_seq
-            };
         } else {
-            action['parent'] = {
-                root: true
-            };
+            ds_act = await deserializeActionsAtBlock(actions, block_num);
+            action['act'] = ds_act[0];
+            attachActionExtras(action);
         }
+    } catch (e) {
+        // console.log(e);
+        ds_blacklist.add(actionCode);
+        process.send({
+            t: 'ds_fail',
+            v: {
+                gs: action['receipt']['global_sequence']
+            }
+        });
+        // Revert to defaults
+        action['act'] = original_act;
+        action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
+    }
+    process.send({event: 'ds_action'});
+    action['@timestamp'] = ts;
+    action['block_num'] = block_num;
+    action['producer'] = prod;
+    action['trx_id'] = trx_id;
+    action['depth'] = depth;
+    if (parent !== null) {
+        action['parent'] = {
+            root: false,
+            seq: g_seq
+        };
+    } else {
+        action['parent'] = {
+            root: true
+        };
+    }
 
-        delete action['console'];
+    delete action['console'];
 
-        const actDataString = JSON.stringify(action['act']['data']);
+    const actDataString = JSON.stringify(action['act']['data']);
 
-        if (action['inline_traces'].length > 0) {
-            g_seq = action['receipt']['global_sequence'];
-            for (const inline_trace of action['inline_traces']) {
+    if (action['inline_traces'].length > 0) {
+        g_seq = action['receipt']['global_sequence'];
+        for (const inline_trace of action['inline_traces']) {
+            const key = `${queue_prefix}::${action['act']['account']}::${action['act']['name']}`;
+            if (!action_blacklist.has(key)) {
                 const notified = await processAction(ts, inline_trace[1], trx_id, block_num, prod, g_seq, depth + 1, actDataString);
                 // Merge notifications with the parent action
                 for (const acct of notified) {
@@ -298,61 +286,70 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth,
                 }
             }
         }
+    }
 
-        delete action['inline_traces'];
-        delete action['except'];
-        delete action['context_free'];
+    delete action['inline_traces'];
+    delete action['except'];
+    delete action['context_free'];
 
-        action['global_sequence'] = parseInt(action['receipt']['global_sequence'], 10);
-        delete action['receipt'];
+    action['global_sequence'] = parseInt(action['receipt']['global_sequence'], 10);
+    delete action['receipt'];
 
-        action['elapsed'] = parseInt(action['elapsed'], 10);
+    action['elapsed'] = parseInt(action['elapsed'], 10);
 
-        if (parent_act !== actDataString) {
-            action['notified'] = Array.from(notifiedAccounts);
-            const payload = Buffer.from(JSON.stringify(action));
-            if (process.env.ENABLE_INDEXING === 'true') {
-                // Distribute actions to indexer queues
-                const q = index_queue_prefix + "_actions:" + (act_emit_idx);
-                const status = ch.sendToQueue(q, payload);
-                if (!status) {
-                    // console.log('Action Indexing:', status);
-                }
-                act_emit_idx++;
-                if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
-                    act_emit_idx = 1;
-                }
+    if (parent_act !== actDataString) {
+        action['notified'] = Array.from(notifiedAccounts);
+        const payload = Buffer.from(JSON.stringify(action));
+        if (process.env.ENABLE_INDEXING === 'true') {
+            // Distribute actions to indexer queues
+            const q = index_queue_prefix + "_actions:" + (act_emit_idx);
+            const status = ch.sendToQueue(q, payload);
+            if (!status) {
+                // console.log('Action Indexing:', status);
             }
-
-            if (allowStreaming) {
-                // ch.publish('', queue_prefix + ':stream', payload, {
-                //     headers: {
-                //         account: action['act']['account'],
-                //         name: action['act']['name']
-                //     }
-                // });
+            act_emit_idx++;
+            if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+                act_emit_idx = 1;
             }
         }
 
-        if (parent !== null) {
-            return notifiedAccounts;
-        } else {
-            return true;
+        if (allowStreaming) {
+            // ch.publish('', queue_prefix + ':stream', payload, {
+            //     headers: {
+            //         account: action['act']['account'],
+            //         name: action['act']['name']
+            //     }
+            // });
         }
+    }
+
+    if (parent !== null) {
+        return notifiedAccounts;
     } else {
-        return false;
+        return true;
     }
 }
 
 function attachActionExtras(action) {
     // Transfer actions
     if (action['act']['name'] === 'transfer') {
-        const qtd = action['act']['data']['quantity'].split(' ');
+
+        let qtd = null;
+        if (action['act']['data']['quantity']) {
+            qtd = action['act']['data']['quantity'].split(' ');
+        } else if (action['act']['data']['value']) {
+            qtd = action['act']['data']['value'].split(' ');
+        }
+
         action['act']['data']['from'] = String(action['act']['data']['from']);
         action['act']['data']['to'] = String(action['act']['data']['to']);
-        action['act']['data']['amount'] = parseFloat(qtd[0]);
-        action['act']['data']['symbol'] = qtd[1];
+        if (qtd) {
+            action['act']['data']['amount'] = parseFloat(qtd[0]);
+            action['act']['data']['symbol'] = qtd[1];
+        }
+
     } else if (action['act']['name'] === 'newaccount' && action['act']['account'] === 'eosio') {
+
         let name = null;
         if (action['act']['data']['newact']) {
             name = action['act']['data']['newact'];
@@ -382,28 +379,36 @@ async function processDeltas(deltas, block_num) {
         }
     }
 
-    // if (deltaStruct['account']) {
-    //     const rows = deltaStruct['account'];
-    //     for (const account_raw of rows) {
-    //         const serialBuffer = createSerialBuffer(account_raw.data);
-    //         const data = types.get('account').deserialize(serialBuffer);
-    //         const account = data[1];
-    //         if (account['abi'] !== '') {
-    //             const new_abi_object = {
-    //                 account: account['name'],
-    //                 block: block_num,
-    //                 abi: account['abi']
-    //             };
-    //             // console.log(new_abi_object.block, new_abi_object.account);
-    //             const q = index_queue_prefix + "_abis:1";
-    //             ch.sendToQueue(q, Buffer.from(JSON.stringify(new_abi_object)));
-    //             process.send({
-    //                 event: 'save_abi',
-    //                 data: new_abi_object
-    //             });
-    //         }
-    //     }
-    // }
+    if (deltaStruct['account']) {
+        const rows = deltaStruct['account'];
+        for (const account_raw of rows) {
+            const serialBuffer = createSerialBuffer(account_raw.data);
+            const data = types.get('account').deserialize(serialBuffer);
+            const account = data[1];
+            if (account['abi'] !== '') {
+                try {
+                    const initialTypes = Serialize.createInitialTypes();
+                    const abiDefTypes = Serialize.getTypesFromAbi(initialTypes, AbiDefinitions).get('abi_def');
+                    const jsonABIString = JSON.stringify(abiDefTypes.deserialize(createSerialBuffer(Serialize.hexToUint8Array(account['abi']))));
+                    const new_abi_object = {
+                        account: account['name'],
+                        block: block_num,
+                        abi: jsonABIString
+                    };
+                    // console.log(new_abi_object.block, new_abi_object.account);
+                    const q = index_queue_prefix + "_abis:1";
+                    ch.sendToQueue(q, Buffer.from(JSON.stringify(new_abi_object)));
+                    process.send({
+                        event: 'save_abi',
+                        data: new_abi_object
+                    });
+                } catch (e) {
+                    console.log(e);
+                    console.log(account['abi'],block_num,account['name']);
+                }
+            }
+        }
+    }
 
     if (process.env.ABI_CACHE_MODE === 'false') {
         // Generated transactions
@@ -496,28 +501,35 @@ async function processDeferred(data, block_num) {
 
 async function getAbiAtBlock(code, block_num) {
     const refs = cachedMap[code];
-    if (refs.length > 0) {
-        let lastblock = 0;
-        for (const block of refs) {
-            if (block > block_num) {
-                break;
-            } else {
-                lastblock = block;
+    if (refs) {
+        if (refs.length > 0) {
+            let lastblock = 0;
+            for (const block of refs) {
+                if (block > block_num) {
+                    break;
+                } else {
+                    lastblock = block;
+                }
             }
-        }
-        return Serialize.getTypesFromAbi(Serialize.createInitialTypes(), AbiDefinitions)
-            .get('abi_def')
-            .deserialize(createSerialBuffer(
-                Serialize.hexToUint8Array(
-                    await getAsync(lastblock + ":" + code)
+            const initialTypes = Serialize.createInitialTypes();
+            const abiDefTypes = Serialize.getTypesFromAbi(initialTypes, AbiDefinitions).get('abi_def');
+            return abiDefTypes.deserialize(
+                createSerialBuffer(
+                    Serialize.hexToUint8Array(
+                        await getAsync(lastblock + ":" + code)
+                    )
                 )
-            ));
+            );
+        } else {
+            return await api.getAbi(code);
+        }
     } else {
         return await api.getAbi(code);
     }
 }
 
 async function run() {
+    // console.log('Launching up deserializer on ' + process.env['worker_queue']);
     cachedMap = JSON.parse(await getAsync('abi_cache'));
     rpc = connectRpc();
     const chain_data = await rpc.get_info();
@@ -543,15 +555,24 @@ async function run() {
     }
 
     index_queues.forEach((q) => {
-        for (let i = 0; i < n_ingestors_per_queue; i++) {
-            ch.assertQueue(q.name + ":" + (i + 1), {durable: true});
+        let n = n_ingestors_per_queue;
+        if (q.type === 'abi') n = 1;
+        let qIdx = 0;
+        for (let i = 0; i < n; i++) {
+            let m = 1;
+            if (q.type === 'action') m = action_indexing_ratio;
+            for (let j = 0; j < m; j++) {
+                ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: true});
+                qIdx++;
+            }
         }
     });
 
     process.on('message', (msg) => {
         if (msg.event === 'initialize_abi') {
             abi = JSON.parse(msg.data);
-            types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
+            const initialTypes = Serialize.createInitialTypes();
+            types = Serialize.getTypesFromAbi(initialTypes, abi);
             abi.tables.map(table => tables.set(table.name, table.type));
             // console.log('setting up deserializer on ' + process.env['worker_queue']);
             ch.prefetch(dSprefecthCount);

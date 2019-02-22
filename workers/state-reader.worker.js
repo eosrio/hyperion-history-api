@@ -194,7 +194,7 @@ function recusiveDistribute(data, channel, cb) {
                 // Send failed
                 qStatusMap[q] = false;
                 drainCount++;
-                console.log(`[${process.env['worker_id']}]:[${drainCount}] Block with ${d.length} bytes waiting for queue [${q}] to drain!`);
+                // console.log(`[${process.env['worker_id']}]:[${drainCount}] Block with ${d.length} bytes waiting for queue [${q}] to drain!`);
                 setTimeout(() => {
                     recusiveDistribute(data, channel, cb);
                 }, 500);

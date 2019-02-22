@@ -15,8 +15,10 @@ const {onError} = require('./helpers/functions');
         });
 
         let delay = 0;
+        // Make sure readers are launched later
+        // TODO: use IPC to trigger
         if (process.env['worker_role'] === 'reader') {
-            delay = process.env.READERS * 50;
+            delay = process.env.READERS * 200;
         }
         setTimeout(() => {
             switch (process.env['worker_role']) {
