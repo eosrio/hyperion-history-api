@@ -111,15 +111,20 @@ function processFirstABI(data) {
         event: 'init_abi',
         data: data
     });
-    switch (process.env['worker_role']) {
-        case 'reader': {
-            requestBlocks(0);
-            break;
+    if (process.env.DISABLE_READING !== 'true') {
+        switch (process.env['worker_role']) {
+            case 'reader': {
+                requestBlocks(0);
+                break;
+            }
+            case 'continuous_reader': {
+                requestBlocks(parseInt(process.env['worker_last_processed_block'], 10));
+                break;
+            }
         }
-        case 'continuous_reader': {
-            requestBlocks(parseInt(process.env['worker_last_processed_block'], 10));
-            break;
-        }
+    } else {
+        ws.close();
+        process.exit(1);
     }
 }
 

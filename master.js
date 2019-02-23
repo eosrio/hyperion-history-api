@@ -113,7 +113,11 @@ async function main() {
     const n_ingestors_per_queue = process.env.ES_INDEXERS_PER_QUEUE;
     const action_indexing_ratio = process.env.ES_ACT_QUEUES;
 
-    const max_readers = process.env.READERS;
+    let max_readers = process.env.READERS;
+    if (process.env.DISABLE_READING === 'true') {
+        // Create a single reader to read the abi struct and quit.
+        max_readers = 1;
+    }
     const activeReaders = [];
 
     const eos_endpoint = process.env.NODEOS_HTTP;
