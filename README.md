@@ -5,7 +5,7 @@ Made with ♥ by [EOS Rio](https://eosrio.io/)
 
 ### Introducing an storage-optimized action format for EOSIO
 
-The original *history_plugin* bundled with eosio that provided the v1 api stored inline action traces nested inside the root actions and this led to a excessive amount of data being stored and also transferred whenever a user requested the action history for a given account. Also inline actions are used as a "event" mechanism to notify parties on a transaction. Based on those Hyperion implements some changes
+The original *history_plugin* bundled with eosio, that provided the v1 api, stored inline action traces nested inside their root actions. This led to an excessive amount of data being stored and also transferred whenever a user requested the action history for a given account. Also inline actions are used as a "event" mechanism to notify parties on a transaction. Based on those Hyperion implements some changes
 
 1. actions are stored in a flattened format
 2. a parent field is added to the inline actions to point to the parent global sequence
