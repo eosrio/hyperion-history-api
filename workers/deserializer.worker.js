@@ -182,11 +182,14 @@ async function processTrx(ts, trx_trace, block_num) {
 }
 
 async function getContractAtBlock(accountName, block_num) {
-    const key = block_num + ":" + accountName;
-    if (contracts.has(key)) {
-        return contracts.get(key);
+    if (contracts.has(accountName)) {
+        let savedContract = contracts.get(accountName);
+        if (savedContract.valid_until !== null && savedContract.valid_until > block_num) {
+            return savedContract['contract'];
+        }
     }
-    const abi = await getAbiAtBlock(accountName, block_num);
+    const savedAbi = await getAbiAtBlock(accountName, block_num);
+    const abi = savedAbi.abi;
     const initialTypes = Serialize.createInitialTypes();
     const types = Serialize.getTypesFromAbi(initialTypes, abi);
     const actions = new Map();
@@ -194,7 +197,10 @@ async function getContractAtBlock(accountName, block_num) {
         actions.set(name, Serialize.getType(types, type));
     }
     const result = {types, actions};
-    contracts.set(key, result);
+    contracts.set(accountName, {
+        contract: result,
+        valid_until: savedAbi.valid_until
+    });
     return result;
 }
 
@@ -404,7 +410,7 @@ async function processDeltas(deltas, block_num) {
                     });
                 } catch (e) {
                     console.log(e);
-                    console.log(account['abi'],block_num,account['name']);
+                    console.log(account['abi'], block_num, account['name']);
                 }
             }
         }
@@ -504,8 +510,10 @@ async function getAbiAtBlock(code, block_num) {
     if (refs) {
         if (refs.length > 0) {
             let lastblock = 0;
+            let validity = 0;
             for (const block of refs) {
                 if (block > block_num) {
+                    validity = block;
                     break;
                 } else {
                     lastblock = block;
@@ -513,18 +521,28 @@ async function getAbiAtBlock(code, block_num) {
             }
             const initialTypes = Serialize.createInitialTypes();
             const abiDefTypes = Serialize.getTypesFromAbi(initialTypes, AbiDefinitions).get('abi_def');
-            return abiDefTypes.deserialize(
+            const abi = abiDefTypes.deserialize(
                 createSerialBuffer(
                     Serialize.hexToUint8Array(
                         await getAsync(lastblock + ":" + code)
                     )
                 )
             );
+            return {
+                abi: abi,
+                valid_until: validity
+            }
         } else {
-            return await api.getAbi(code);
+            return {
+                abi: await api.getAbi(code),
+                valid_until: null
+            };
         }
     } else {
-        return await api.getAbi(code);
+        return {
+            abi: await api.getAbi(code),
+            valid_until: null
+        };
     }
 }
 
