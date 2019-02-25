@@ -1,7 +1,7 @@
 const action = {
     "order": 0,
     "index_patterns": [
-        "eos-action-*"
+        process.env.CHAIN + "-action-*"
     ],
     "settings": {
         "routing": {
@@ -13,8 +13,8 @@ const action = {
         },
         "index": {
             "lifecycle": {
-                "name": "eos_action",
-                "rollover_alias": "eos-action"
+                "name": process.env.CHAIN + "_action",
+                "rollover_alias": process.env.CHAIN + "-action"
             },
             "codec": "best_compression",
             "refresh_interval": "10s",
@@ -102,7 +102,7 @@ const action = {
 };
 
 const transaction = {
-    "index_patterns": ["eos-transaction-*"],
+    "index_patterns": [process.env.CHAIN + "-transaction-*"],
     "settings": {
         "index": {
             "number_of_shards": 2,
@@ -132,7 +132,7 @@ const transaction = {
 };
 
 const account = {
-    "index_patterns": ["eos-account-*"],
+    "index_patterns": [process.env.CHAIN + "-account-*"],
     "settings": {
         "index": {
             "number_of_shards": 1,
@@ -170,7 +170,7 @@ const account = {
 };
 
 const abi = {
-    "index_patterns": ["eos-abi-*"],
+    "index_patterns": [process.env.CHAIN + "-abi-*"],
     "settings": {
         "index": {
             "number_of_shards": 1,
@@ -195,7 +195,7 @@ const abi = {
 };
 
 const block = {
-    "index_patterns": ["eos-block-*"],
+    "index_patterns": [process.env.CHAIN + "-block-*"],
     "settings": {
         "index": {
             "number_of_shards": 2,

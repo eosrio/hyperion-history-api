@@ -84,7 +84,7 @@ async function elasticsearchConnect() {
 
 function onSaveAbi(data, abiCacheMap, rClient) {
     const key = data['block'] + ":" + data['account'];
-    rClient.set(key, data['abi']);
+    rClient.set(process.env.CHAIN + ":" + key, data['abi']);
     let versionMap;
     if (!abiCacheMap[data['account']]) {
         versionMap = [];
@@ -127,15 +127,8 @@ async function main() {
     const queue = queue_prefix + ':blocks';
     const index_queues = require('./definitions/index-queues').index_queues;
 
-    const indicesList = ["action", "block", "transaction", "account", "abi"];
+    const indicesList = ["action", "block", "transaction", "abi"];
     const indexConfig = require('./definitions/mappings');
-
-    // if (process.env.FLUSH_INDICES === 'true') {
-    //     console.log('Deleting all indices!');
-    //     await client['indices'].delete({
-    //         index: indicesList.map(i => `${queue_prefix}-${i}`)
-    //     });
-    // }
 
     // Check for indexes
     for (const index of indicesList) {
@@ -352,7 +345,7 @@ async function main() {
     }
     const ds_errors = fs.createWriteStream(dsErrorsLog, {flags: 'a'});
 
-    const cachedMap = await getAsync('abi_cache');
+    const cachedMap = await getAsync(process.env.CHAIN + ":" + 'abi_cache');
     let abiCacheMap;
     if (cachedMap) {
         abiCacheMap = JSON.parse(cachedMap);
@@ -362,7 +355,7 @@ async function main() {
     }
 
     setInterval(() => {
-        rClient.set('abi_cache', JSON.stringify(abiCacheMap));
+        rClient.set(process.env.CHAIN + ":" + 'abi_cache', JSON.stringify(abiCacheMap));
     }, 10000);
 
     // Worker event listener

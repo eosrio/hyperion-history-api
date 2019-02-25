@@ -37,8 +37,8 @@ const queue = queue_prefix + ':blocks';
 const index_queue_prefix = queue_prefix + ':index';
 const index_queues = require('../definitions/index-queues').index_queues;
 const n_deserializers = process.env.DESERIALIZERS;
-const n_ingestors_per_queue = process.env.ES_INDEXERS_PER_QUEUE;
-const action_indexing_ratio = process.env.ES_ACT_QUEUES;
+const n_ingestors_per_queue = parseInt(process.env.ES_INDEXERS_PER_QUEUE, 10);
+const action_indexing_ratio = parseInt(process.env.ES_ACT_QUEUES, 10);
 
 // Stage 2 consumer prefecth
 const dSprefecthCount = parseInt(process.env.BLOCK_PREFETCH, 10);
@@ -519,7 +519,7 @@ async function getAbiAtBlock(code, block_num) {
                     lastblock = block;
                 }
             }
-            const cachedAbiAtBlock = await getAsync(lastblock + ":" + code);
+            const cachedAbiAtBlock = await getAsync(process.env.CHAIN + ":" + lastblock + ":" + code);
             const abi = JSON.parse(cachedAbiAtBlock);
             return {
                 abi: abi,
@@ -540,8 +540,7 @@ async function getAbiAtBlock(code, block_num) {
 }
 
 async function run() {
-    // console.log('Launching up deserializer on ' + process.env['worker_queue']);
-    cachedMap = JSON.parse(await getAsync('abi_cache'));
+    cachedMap = JSON.parse(await getAsync(process.env.CHAIN + ":" + 'abi_cache'));
     rpc = connectRpc();
     const chain_data = await rpc.get_info();
     chainID = chain_data.chain_id;
