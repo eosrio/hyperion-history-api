@@ -17,8 +17,8 @@ const action = {
                 "rollover_alias": "eos-action"
             },
             "codec": "best_compression",
-            "refresh_interval": "1s",
-            "number_of_shards": "2",
+            "refresh_interval": "10s",
+            "number_of_shards": "4",
             "number_of_replicas": "0",
             "sort": {
                 "field": "global_sequence",
@@ -38,24 +38,7 @@ const action = {
                 "type": "long"
             },
             "act.data": {
-                "enabled": false,
-                "properties": {
-                    "symbol": {
-                        "type": "keyword"
-                    },
-                    "amount": {
-                        "type": "float"
-                    },
-                    "from": {
-                        "type": "keyword"
-                    },
-                    "to": {
-                        "type": "keyword"
-                    },
-                    "newact": {
-                        "type": "keyword"
-                    }
-                }
+                "enabled": false
             },
             "account_ram_deltas.delta": {
                 "enabled": false
@@ -70,13 +53,31 @@ const action = {
                 "type": "long"
             },
             "act.authorization.permission": {
-                "enabled": false,
+                "enabled": false
+            },
+            "@newaccount": {
                 "properties": {
-                    "active":{
-                        "type":"object"
+                    "active": {
+                        "type": "object"
                     },
-                    "owner":{
-                        "type":"object"
+                    "owner": {
+                        "type": "object"
+                    }
+                }
+            },
+            "@transfer": {
+                "properties": {
+                    "from": {
+                        "type": "keyword"
+                    },
+                    "to": {
+                        "type": "keyword"
+                    },
+                    "amount": {
+                        "type": "float"
+                    },
+                    "symbol": {
+                        "type": "keyword"
                     }
                 }
             },

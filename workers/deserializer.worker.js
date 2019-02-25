@@ -30,7 +30,6 @@ let allowStreaming = false;
 let cachedMap;
 let contracts = new Map();
 
-const ds_blacklist = new Set();
 const table_blacklist = ['global', 'global2', 'global3', 'producers'];
 
 const queue_prefix = process.env.CHAIN;
@@ -235,30 +234,15 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, parent
     const actions = [];
     actions.push(act);
     let ds_act;
-    const actionCode = original_act['account'] + ":" + original_act['name'];
     try {
-        if (ds_blacklist.has(actionCode)) {
-            process.send({
-                event: 'ds_error',
-                gs: action['receipt']['global_sequence']
-            });
-            action['act'] = original_act;
-            action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
-        } else {
-            ds_act = await deserializeActionsAtBlock(actions, block_num);
-            action['act'] = ds_act[0];
-            attachActionExtras(action);
-        }
+        ds_act = await deserializeActionsAtBlock(actions, block_num);
+        action['act'] = ds_act[0];
+        attachActionExtras(action);
     } catch (e) {
-        console.log(e);
-        ds_blacklist.add(actionCode);
         process.send({
             t: 'ds_fail',
-            v: {
-                gs: action['receipt']['global_sequence']
-            }
+            v: {gs: action['receipt']['global_sequence']}
         });
-        // Revert to defaults
         action['act'] = original_act;
         action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
     }
@@ -344,15 +328,21 @@ function attachActionExtras(action) {
         let qtd = null;
         if (action['act']['data']['quantity']) {
             qtd = action['act']['data']['quantity'].split(' ');
+            delete action['act']['data']['quantity'];
         } else if (action['act']['data']['value']) {
             qtd = action['act']['data']['value'].split(' ');
+            delete action['act']['data']['value'];
         }
 
-        action['act']['data']['from'] = String(action['act']['data']['from']);
-        action['act']['data']['to'] = String(action['act']['data']['to']);
         if (qtd) {
-            action['act']['data']['amount'] = parseFloat(qtd[0]);
-            action['act']['data']['symbol'] = qtd[1];
+            action['@transfer'] = {
+                from: String(action['act']['data']['from']),
+                to: String(action['act']['data']['to']),
+                amount: parseFloat(qtd[0]),
+                symbol: qtd[1]
+            };
+            delete action['act']['data']['from'];
+            delete action['act']['data']['to'];
         }
 
     } else if (action['act']['name'] === 'newaccount' && action['act']['account'] === 'eosio') {
