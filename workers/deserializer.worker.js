@@ -162,9 +162,11 @@ async function processBlock(res, block, traces, deltas) {
 
 async function processTrx(ts, trx_trace, block_num) {
     const trx = {
-        id: trx_trace['id'].toLowerCase(),
         '@timestamp': ts,
-        block_num: block_num
+        id: trx_trace['id'].toLowerCase(),
+        block_num: block_num,
+        cpu: trx_trace['cpu_usage_us'],
+        net: trx_trace['net_usage_words']
     };
     if (process.env.ENABLE_INDEXING === 'true') {
         // Distribute light transactions to indexer queues
@@ -184,7 +186,8 @@ async function processTrx(ts, trx_trace, block_num) {
 async function getContractAtBlock(accountName, block_num) {
     if (contracts.has(accountName)) {
         let savedContract = contracts.get(accountName);
-        if (savedContract.valid_until !== null && savedContract.valid_until > block_num) {
+        const validUntil = savedContract['valid_until'];
+        if (validUntil > block_num || validUntil === -1) {
             return savedContract['contract'];
         }
     }
@@ -212,7 +215,7 @@ async function deserializeActionsAtBlock(actions, block_num) {
     }));
 }
 
-async function processAction(ts, action, trx_id, block_num, prod, parent, depth, parent_act) {
+async function processAction(ts, action, trx_id, block_num, prod, parent, parent_act) {
     action['receipt'] = action['receipt'][1];
     let g_seq;
     let notifiedAccounts = new Set();
@@ -247,7 +250,7 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth,
             attachActionExtras(action);
         }
     } catch (e) {
-        // console.log(e);
+        console.log(e);
         ds_blacklist.add(actionCode);
         process.send({
             t: 'ds_fail',
@@ -264,16 +267,14 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth,
     action['block_num'] = block_num;
     action['producer'] = prod;
     action['trx_id'] = trx_id;
-    action['depth'] = depth;
     if (parent !== null) {
-        action['parent'] = {
-            root: false,
-            seq: g_seq
-        };
+        action['parent'] = g_seq;
     } else {
-        action['parent'] = {
-            root: true
-        };
+        action['parent'] = 0;
+    }
+
+    if (action['account_ram_deltas'].length === 0) {
+        delete action['account_ram_deltas'];
     }
 
     delete action['console'];
@@ -285,7 +286,7 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, depth,
         for (const inline_trace of action['inline_traces']) {
             const key = `${queue_prefix}::${action['act']['account']}::${action['act']['name']}`;
             if (!action_blacklist.has(key)) {
-                const notified = await processAction(ts, inline_trace[1], trx_id, block_num, prod, g_seq, depth + 1, actDataString);
+                const notified = await processAction(ts, inline_trace[1], trx_id, block_num, prod, g_seq, actDataString);
                 // Merge notifications with the parent action
                 for (const acct of notified) {
                     notifiedAccounts.add(acct);
@@ -373,6 +374,15 @@ function attachActionExtras(action) {
         // await handleNewAccount(action['act']['data'], action, ts);
     } else if (action['act']['name'] === 'updateauth' && action['act']['account'] === 'eosio') {
         // await handleUpdateAuth(action['act']['data'], action, ts);
+        const _auth = action['act']['data']['auth'];
+        if (_auth['accounts'].length === 0) delete _auth['accounts'];
+        if (_auth['keys'].length === 0) delete _auth['keys'];
+        if (_auth['waits'].length === 0) delete _auth['waits'];
+        action['@updateauth'] = {
+            permission: action['act']['data']['permission'],
+            parent: action['act']['data']['parent'],
+            auth: _auth
+        };
     }
 }
 
@@ -510,7 +520,7 @@ async function getAbiAtBlock(code, block_num) {
     if (refs) {
         if (refs.length > 0) {
             let lastblock = 0;
-            let validity = 0;
+            let validity = -1;
             for (const block of refs) {
                 if (block > block_num) {
                     validity = block;
@@ -519,15 +529,8 @@ async function getAbiAtBlock(code, block_num) {
                     lastblock = block;
                 }
             }
-            const initialTypes = Serialize.createInitialTypes();
-            const abiDefTypes = Serialize.getTypesFromAbi(initialTypes, AbiDefinitions).get('abi_def');
-            const abi = abiDefTypes.deserialize(
-                createSerialBuffer(
-                    Serialize.hexToUint8Array(
-                        await getAsync(lastblock + ":" + code)
-                    )
-                )
-            );
+            const cachedAbiAtBlock = await getAsync(lastblock + ":" + code);
+            const abi = JSON.parse(cachedAbiAtBlock);
             return {
                 abi: abi,
                 valid_until: validity

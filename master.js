@@ -232,14 +232,25 @@ async function main() {
         starting_block = lastIndexedBlock;
     }
 
-    if (process.env.START_ON !== "0") {
-        starting_block = parseInt(process.env.START_ON, 10);
-        console.log('START ON:' + starting_block);
-    }
     if (process.env.STOP_ON !== "0") {
         lib = parseInt(process.env.STOP_ON, 10);
-        console.log('STOP ON:' + lib);
     }
+
+    if (process.env.START_ON !== "0") {
+        starting_block = parseInt(process.env.START_ON, 10);
+        // Check last indexed block again
+        if (process.env.REWRITE !== 'true') {
+            const lastIndexedBlockOnRange = await getLastIndexedBlockFromRange(client, starting_block, lib);
+            if (lastIndexedBlockOnRange > starting_block) {
+                console.log('WARNING! Data present on target range!');
+                console.log('Changing initial block num. Use REWRITE = true to bypass.');
+                starting_block = lastIndexedBlockOnRange;
+            }
+        }
+        console.log('FIRST BLOCK: ' + starting_block);
+        console.log('LAST  BLOCK: ' + lib);
+    }
+
 
     total_range = lib - starting_block;
 

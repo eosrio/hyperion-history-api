@@ -76,6 +76,7 @@ function signalReaderCompletion() {
                 event: 'completed',
                 id: process.env['worker_id']
             });
+            ch.close();
             process.exit(1);
         }
     }, 1000);

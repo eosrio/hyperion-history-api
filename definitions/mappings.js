@@ -34,7 +34,7 @@ const action = {
             "global_sequence": {
                 "type": "long"
             },
-            "parent.seq": {
+            "parent": {
                 "type": "long"
             },
             "act.data": {
@@ -83,9 +83,6 @@ const action = {
             "act.authorization.actor": {
                 "type": "keyword"
             },
-            "parent.root": {
-                "type": "boolean"
-            },
             "account_ram_deltas.account": {
                 "enabled": false
             },
@@ -94,9 +91,6 @@ const action = {
             },
             "trx_id": {
                 "type": "keyword"
-            },
-            "depth": {
-                "type": "byte"
             },
             "producer": {
                 "type": "keyword"
@@ -125,6 +119,12 @@ const transaction = {
             },
             "@timestamp": {
                 "type": "date"
+            },
+            "cpu": {
+                "type": "long"
+            },
+            "net": {
+                "type": "long"
             }
         }
     }
