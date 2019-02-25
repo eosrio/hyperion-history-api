@@ -10,22 +10,25 @@
   "license": "MIT",
   "dependencies": {
     "amqplib": "^0.5.3",
-    "async": "^2.6.1",
-    "async-redis": "^1.1.5",
+    "async": "^2.6.2",
+    "async-redis": "^1.1.7",
     "async-timed-cargo": "^0.0.3",
-    "elastic-apm-node": "latest",
     "elasticsearch": "^15.4.1",
     "elasticsearch-scroll-stream": "^1.1.4",
     "eosjs": "^20.0.0-beta3",
-    "fastify": "^1.14.1",
+    "eosjs-ecc": "latest",
+    "fastify": "^2.0.0",
+    "fastify-elasticsearch": "^0.4.0",
+    "fastify-oas": "^2.0.0-rc.4",
+    "fastify-plugin": "latest",
+    "fastify-rate-limit": "^1.0.0",
+    "fastify-redis": "^3.0.0",
     "lodash": "latest",
     "node-fetch": "^2.3.0",
     "perf_hooks": "0.0.1",
     "prettyjson": "^1.2.1",
     "redis": "^2.8.0",
     "text-encoding": "^0.7.0",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v15.1.0",
-    "ws": "^6.1.3",
-    "zeromq": "^5.1.0"
+    "ws": "^6.1.3"
   }
 }
