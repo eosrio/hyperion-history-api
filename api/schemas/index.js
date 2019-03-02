@@ -1,0 +1,8 @@
+module.exports = {
+    getTransfersSchema: require('./get_transfers'),
+    getAbiSnapshotSchema: require('./get_abi_snapshot'),
+    getKeyAccountsSchema: require('./get_key_accounts'),
+    getActionsSchema: require('./get_actions'),
+    getTransactedAccountsSchema: require('./get_transacted_accounts'),
+    getTransactionSchema: require('./get_transaction')
+};

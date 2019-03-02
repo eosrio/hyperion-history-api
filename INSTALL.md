@@ -1,3 +1,17 @@
+### NodeJS
+
+```bash
+curl -sL https://deb.nodesource.com/setup_11.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+### PM2
+
+```bash
+sudo npm install pm2@latest -g
+sudo pm2 startup
+```
+
 ### Elasticsearch Installation
 
 ```bash
@@ -99,8 +113,54 @@ Edit `/etc/redis/redis.conf` and change supervised to `systemd`
 sudo systemctl restart redis.service
 ```
 
+### Hyperion Indexer
+
+```bash
+git clone https://github.com/eosrio/Hyperion-History-API.git
+cd Hyperion-History-API
+npm install
+cp example-ecosystem.config.js ecosystem.config.js
 ```
-PUT mainnet-action-v1-000001
-PUT mainnet-abi-v1-000001
-PUT mainnet-block-v1-000001
+
+Edit `ecosystem.config.js`
+
+
+### Setup Indices and Aliases
+
+Load templates first by starting the Hyperion Indexer in preview mode, then create first indices using curl
+
+```bash
+curl -X PUT "localhost:9200/mainnet-action-v1-000001" -H 'Content-Type: application/json' -d '{}'
+curl -X PUT "localhost:9200/mainnet-abi-v1-000001" -H 'Content-Type: application/json' -d '{}'
+curl -X PUT "localhost:9200/mainnet-block-v1-000001" -H 'Content-Type: application/json' -d '{}'
 ```
+
+Create aliases
+
+On kibana console
+```
+POST _aliases
+{
+  "actions": [
+    {
+      "add": {
+        "index": "mainnet-abi-v1-000001",
+        "alias": "mainnet-abi"
+      }
+    },
+    {
+      "add": {
+        "index": "mainnet-action-v1-000001",
+        "alias": "mainnet-action"
+      }
+    },
+    {
+      "add": {
+        "index": "mainnet-block-v1-000001",
+        "alias": "mainnet-block"
+      }
+    }
+  ]
+}
+```
+

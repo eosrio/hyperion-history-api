@@ -4,6 +4,7 @@ const {Api, Serialize} = require('eosjs');
 const {deserialize, serialize} = require('../helpers/functions');
 const {connectStateHistorySocket} = require("../connections/state-history");
 const {amqpConnect} = require("../connections/rabbitmq");
+const pmx = require('pmx');
 
 const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
@@ -215,9 +216,10 @@ function recusiveDistribute(data, channel, cb) {
 
 async function run() {
 
-    process.on('SIGINT', () => {
+    pmx.action('stop', (reply) => {
         if (process.env['worker_role'] === 'continuous_reader') {
-            console.info('[READER] SIGINT received. Closing Websocket');
+            console.info('[READER] Closing Websocket');
+            reply({ack: true});
             ws.close();
         }
     });

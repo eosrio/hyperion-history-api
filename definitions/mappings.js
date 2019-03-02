@@ -4,13 +4,6 @@ const action = {
         process.env.CHAIN + "-action-*"
     ],
     "settings": {
-        "routing": {
-            "allocation": {
-                "require": {
-                    "box_type": "hot"
-                }
-            }
-        },
         "index": {
             "codec": "best_compression",
             "refresh_interval": "10s",

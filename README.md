@@ -29,7 +29,6 @@ With those changes the API format focus on delivering faster search times, lower
         - `actor` - signing actor
         - `permission` - signing permission
     - `data` - action data input object
- - `elapsed` - action execution time
  - `account_ram_deltas` - array of ram deltas and payers
     - `account`
     - `delta`
