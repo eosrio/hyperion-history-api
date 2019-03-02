@@ -109,14 +109,24 @@ ABI_CACHE_MODE: 'false'                // cache historical ABIs to redis, fetch 
  
 ## API Reference
 
-[full documentation](https://eosrio.github.io/Hyperion-History-API/)
- 
-#### `/v2/history/get_actions`
- 
-#### `/v2/history/get_transaction`
+[OpenAPI Docs](https://br.eosrio.io/v2/history/docs)
+  
+ - `/v2/history/get_abi_snapshot`
+   - fetch contract abi at specific block
+- `/v2/history/get_actions`
+   - get actions based on notified account
+ - `/v2/history/get_key_accounts`
+   - get accounts by public key
+ - `/v2/history/get_transacted_accounts`
+   - get all account that interacted with the source account provided
+ - `/v2/history/get_transaction`
+   - get all actions belonging to the same transaction
+ - `/v2/history/get_transfers`
+   - get token transfers utilizing the eosio.token standard
 
-#### `/v2/history/get_inline_actions`
- 
-### Performance Benchmarks
 
 ### Roadmap
+
+- Table deltas storage & queries
+- Real-time streaming support
+- Control GUI
