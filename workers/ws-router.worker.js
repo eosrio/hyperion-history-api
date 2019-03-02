@@ -1,15 +1,35 @@
 const WebSocket = require('ws');
 const {amqpConnect} = require("../connections/rabbitmq");
+const crypto = require('crypto');
 
 let wss;
 let channel;
 const port = 7001;
 const addr = '127.0.0.1';
 
+const activeRequests = new Map();
+const expirationTimes = [];
+
+activeRequests.set('*', {
+    sockets: []
+});
+
 function onConsume(msg) {
     const act = msg.properties.headers;
-    if (`${act['account']}:${act['name']}` === 'eosbetdice11:betreceipt') {
-        console.log(JSON.parse(Buffer.from(msg.content).toString()).act.data);
+    const code = act.account;
+    const name = act.name;
+    // console.log(code, '->', name);
+    if (activeRequests.has(code)) {
+        const codeReq = activeRequests.get(code);
+        if (codeReq.has(name)) {
+            const sockets = codeReq.get(name).sockets;
+            if (sockets.length > 0) {
+                console.log('Request for', code, name);
+                for (const socket of sockets) {
+                    socket.send(msg.content);
+                }
+            }
+        }
     }
     channel.ack(msg);
 }
@@ -19,9 +39,7 @@ async function run() {
     const queue_prefix = process.env.CHAIN;
     const q = queue_prefix + ':stream';
     channel.assertQueue(q);
-    // channel.prefetch(20);
     channel.consume(q, onConsume);
-
     wss = new WebSocket.Server({
         host: addr,
         port: port
@@ -36,6 +54,31 @@ async function run() {
         console.log('new connection!');
         socket.on('message', (data) => {
             const message = JSON.parse(data);
+            if (message.event === 'stream_request') {
+                const name = message.data.name;
+                const code = message.data.code;
+                if (activeRequests.has(code)) {
+                    if (activeRequests.get(code).has(name)) {
+                        activeRequests.get(code).get(name).sockets.push(socket);
+                    } else {
+                        activeRequests.get(code).set(name, {
+                            sockets: [socket]
+                        })
+                    }
+                } else {
+                    const methodMap = new Map();
+                    methodMap.set(name, {
+                        sockets: [socket]
+                    });
+                    activeRequests.set(code, methodMap);
+                }
+
+                expirationTimes.push({
+                    code: code,
+                    name: name,
+                    ts: Date.now()
+                });
+            }
         });
     });
 }

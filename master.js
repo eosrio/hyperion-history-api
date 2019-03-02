@@ -1,104 +1,23 @@
-const elasticsearch = require('elasticsearch');
 const {JsonRpc} = require('eosjs');
 const fetch = require('node-fetch');
-const prettyjson = require('prettyjson');
 const cluster = require('cluster');
 const fs = require('fs');
 const redis = require('redis');
+const pmx = require('pmx');
+
+const {elasticsearchConnect} = require("./connections/elasticsearch");
+
+const {
+    getLastIndexedBlock,
+    messageAllWorkers,
+    printWorkerMap,
+    getLastIndexedBlockFromRange,
+    onSaveAbi
+} = require("./helpers/functions");
+
 const {promisify} = require('util');
 let client;
 let cachedInitABI = null;
-
-async function getLastIndexedBlock(es_client) {
-    const results = await es_client.search({
-        index: process.env.CHAIN + '-block',
-        size: 1,
-        body: {
-            query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "desc"}}],
-            size: 1
-        }
-    });
-    if (results['hits']['hits'].length > 0) {
-        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
-    } else {
-        return 0;
-    }
-}
-
-async function getFirstIndexedBlockFromRange(es_client, first, last) {
-    const results = await es_client.search({
-        index: process.env.CHAIN + '-block',
-        size: 1,
-        body: {
-            query: {
-                range: {
-                    block_num: {
-                        "gte": first,
-                        "lt": last,
-                        "boost": 2
-                    }
-                }
-            },
-            sort: [{block_num: {order: "asc"}}],
-            size: 1
-        }
-    });
-    if (results['hits']['hits'].length > 0) {
-        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
-    } else {
-        return 0;
-    }
-}
-
-async function getLastIndexedBlockFromRange(es_client, first, last) {
-    const results = await es_client.search({
-        index: process.env.CHAIN + '-block',
-        size: 1,
-        body: {
-            query: {
-                range: {
-                    block_num: {
-                        "gte": first,
-                        "lt": last,
-                        "boost": 2
-                    }
-                }
-            },
-            sort: [{block_num: {order: "desc"}}],
-            size: 1
-        }
-    });
-    if (results['hits']['hits'].length > 0) {
-        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
-    } else {
-        return 0;
-    }
-}
-
-async function elasticsearchConnect() {
-    client = new elasticsearch.Client({
-        host: process.env.ES_HOST
-    });
-}
-
-function onSaveAbi(data, abiCacheMap, rClient) {
-    const key = data['block'] + ":" + data['account'];
-    rClient.set(process.env.CHAIN + ":" + key, data['abi']);
-    let versionMap;
-    if (!abiCacheMap[data['account']]) {
-        versionMap = [];
-        versionMap.push(parseInt(data['block']));
-    } else {
-        versionMap = abiCacheMap[data['account']];
-        versionMap.push(parseInt(data['block']));
-        versionMap.sort(function (a, b) {
-            return a - b;
-        });
-        versionMap = Array.from(new Set(versionMap));
-    }
-    abiCacheMap[data['account']] = versionMap;
-}
 
 async function main() {
     // Preview mode - prints only the proposed worker map
@@ -106,14 +25,13 @@ async function main() {
 
     const rClient = redis.createClient();
     const getAsync = promisify(rClient.get).bind(rClient);
-    await elasticsearchConnect();
+    client = await elasticsearchConnect();
 
-    const n_consumers = process.env.READERS;
-    const n_deserializers = process.env.DESERIALIZERS;
-    const n_ingestors_per_queue = process.env.ES_INDEXERS_PER_QUEUE;
-    const action_indexing_ratio = process.env.ES_ACT_QUEUES;
+    const n_deserializers = parseInt(process.env.DESERIALIZERS, 10);
+    const n_ingestors_per_queue = parseInt(process.env.ES_INDEXERS_PER_QUEUE, 10);
+    const action_indexing_ratio = parseInt(process.env.ES_ACT_QUEUES, 10);
 
-    let max_readers = process.env.READERS;
+    let max_readers = parseInt(process.env.READERS, 10);
     if (process.env.DISABLE_READING === 'true') {
         // Create a single reader to read the abi struct and quit.
         max_readers = 1;
@@ -125,34 +43,34 @@ async function main() {
 
     const queue_prefix = process.env.CHAIN;
     const queue = queue_prefix + ':blocks';
-    const index_queues = require('./definitions/index-queues').index_queues;
+    const {index_queues} = require('./definitions/index-queues');
 
-    const indicesList = ["action", "block", "transaction", "abi"];
+    const indicesList = ["action", "block", "abi"];
     const indexConfig = require('./definitions/mappings');
+
+    // Update index templates
+    for (const index of indicesList) {
+        const creation_status = await client['indices'].putTemplate({
+            name: `${queue_prefix}-${index}`,
+            body: indexConfig[index]
+        });
+        if (!creation_status['acknowledged']) {
+            console.log('Failed to create template', `${queue_prefix}-${index}`);
+            console.log(creation_status);
+            process.exit(1);
+        }
+    }
+
+    console.log('Index templates updated');
 
     // Check for indexes
     for (const index of indicesList) {
         const status = await client['indices'].existsAlias({
             name: `${queue_prefix}-${index}`
         });
-        console.log(`${queue_prefix}-${index}: ${status}`);
         if (!status) {
-            const template_status = await client['indices'].existsTemplate({
-                name: `${queue_prefix}-${index}`
-            });
-            if (!template_status) {
-                const creation_status = await client['indices'].putTemplate({
-                    name: `${queue_prefix}-${index}`,
-                    body: indexConfig[index]
-                });
-                if (!creation_status['acknowledged']) {
-                    console.log('Failed to create template', `${queue_prefix}-${index}`);
-                    console.log(creation_status);
-                    process.exit(1);
-                }
-            } else {
-                console.log(`${queue_prefix}-${index} template: ${template_status}`);
-            }
+            console.log('Alias ' + `${queue_prefix}-${index}` + ' not found! Aborting!');
+            process.exit(1);
         }
     }
 
@@ -187,18 +105,21 @@ async function main() {
             `Consume: ${consumedBlocks / tScale} blocks/s`,
             `Deserialize: ${deserializedActions / tScale} actions/s`,
             `Index: ${indexedObjects / tScale} docs/s`,
-            `${total_blocks}/${total_read}/${total_range}`,
-            // `Actions: ${total_actions}`
+            `${total_blocks}/${total_read}/${total_range}`
         ];
+
         console.log(log_msg.join(' | '));
 
         if (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0) {
             allowShutdown = true;
             if (allowMoreReaders) {
-                console.log('All workers finished. Ready to quit.');
-                process.exit(1);
+                if (process.env.LIVE_READER !== 'true') {
+                    console.log('All workers finished. Ready to quit.');
+                    process.exit(1);
+                }
             }
         }
+
         // reset counters
         pushedBlocks = 0;
         consumedBlocks = 0;
@@ -322,11 +243,13 @@ async function main() {
     });
 
     // Setup ws router
-    worker_index++;
-    workerMap.push({
-        worker_id: worker_index,
-        worker_role: 'router'
-    });
+    if (process.env.ENABLE_STREAMING) {
+        worker_index++;
+        workerMap.push({
+            worker_id: worker_index,
+            worker_role: 'router'
+        });
+    }
 
     // Quit App if on preview mode
     if (preview) {
@@ -339,7 +262,7 @@ async function main() {
         cluster.fork(conf);
     });
 
-    const dsErrorsLog = "deserialization_errors_" + starting_block + "_" + lib + ".txt";
+    const dsErrorsLog = process.env.CHAIN + "_ds_err_" + starting_block + "_" + lib + ".txt";
     if (fs.existsSync(dsErrorsLog)) {
         fs.unlinkSync(dsErrorsLog);
     }
@@ -450,10 +373,13 @@ async function main() {
         // console.log(`Worker ${worker.id}, pid: ${worker.process.pid} finished with code ${code}`);
     });
 
-    process.on('SIGINT', () => {
+    pmx.action('stop', (reply) => {
         allowMoreReaders = false;
-        console.info('SIGINT signal received. Shutting down readers immediately!');
+        console.info('Stop signal received. Shutting down readers immediately!');
         console.log('Waiting for queues...');
+        reply({
+            ack: true
+        });
         setInterval(() => {
             if (allowShutdown) {
                 console.log('Shutting down master...');
@@ -462,25 +388,7 @@ async function main() {
             }
         }, 500);
     });
-}
 
-function messageAllWorkers(cl, payload) {
-    for (const c in cl.workers) {
-        if (cl.workers.hasOwnProperty(c)) {
-            const _w = cl.workers[c];
-            _w.send(payload);
-        }
-    }
-}
-
-function printWorkerMap(wmp) {
-    console.log('--------------------------------------------------');
-    console.log(prettyjson.render({
-        'workers': wmp
-    }, {
-        numberColor: 'grey'
-    }));
-    console.log('--------------------------------------------------');
 }
 
 module.exports = {main};

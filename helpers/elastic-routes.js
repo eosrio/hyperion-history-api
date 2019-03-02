@@ -1,4 +1,4 @@
-const {buildActionBulk, buildTransactionBulk, buildBlockBulk, buildAbiBulk} = require("./bulkBuilders");
+const {buildActionBulk, buildBlockBulk, buildAbiBulk} = require("./bulkBuilders");
 const queue_prefix = process.env.CHAIN;
 const prettyjson = require('prettyjson');
 const {elasticsearchConnect} = require("../connections/elasticsearch");
@@ -49,18 +49,6 @@ const routes = {
             index: queue_prefix + '-action',
             type: '_doc',
             body: buildActionBulk(payloads, messageMap)
-        }).then(resp => {
-            onResponse(resp, messageMap, cb, payloads, channel);
-        }).catch(err => {
-            onError(err, channel, cb);
-        });
-    },
-    'transaction': async (payloads, channel, cb) => {
-        const messageMap = {};
-        client['bulk']({
-            index: queue_prefix + '-transaction',
-            type: '_doc',
-            body: buildTransactionBulk(payloads, messageMap)
         }).then(resp => {
             onResponse(resp, messageMap, cb, payloads, channel);
         }).catch(err => {

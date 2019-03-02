@@ -12,10 +12,6 @@ const action = {
             }
         },
         "index": {
-            "lifecycle": {
-                "name": process.env.CHAIN + "_action",
-                "rollover_alias": process.env.CHAIN + "-action"
-            },
             "codec": "best_compression",
             "refresh_interval": "10s",
             "number_of_shards": "4",
@@ -45,9 +41,6 @@ const action = {
             },
             "act.account": {
                 "type": "keyword"
-            },
-            "elapsed": {
-                "type": "long"
             },
             "block_num": {
                 "type": "long"
@@ -95,75 +88,6 @@ const action = {
             },
             "producer": {
                 "type": "keyword"
-            }
-        }
-    },
-    "aliases": {}
-};
-
-const transaction = {
-    "index_patterns": [process.env.CHAIN + "-transaction-*"],
-    "settings": {
-        "index": {
-            "number_of_shards": 2,
-            "refresh_interval": "10s",
-            "number_of_replicas": 0,
-            "sort.field": "block_num",
-            "sort.order": "desc"
-        },
-        "index.codec": "best_compression"
-    },
-    "mappings": {
-        "properties": {
-            "block_num": {
-                "type": "long"
-            },
-            "@timestamp": {
-                "type": "date"
-            },
-            "cpu": {
-                "type": "long"
-            },
-            "net": {
-                "type": "long"
-            }
-        }
-    }
-};
-
-const account = {
-    "index_patterns": [process.env.CHAIN + "-account-*"],
-    "settings": {
-        "index": {
-            "number_of_shards": 1,
-            "refresh_interval": "5s",
-            "number_of_replicas": 0
-        },
-        "index.codec": "best_compression"
-    },
-    "mappings": {
-        "properties": {
-            "name": {
-                "type": "keyword"
-            },
-            "updated_on": {
-                "type": "date"
-            },
-            "keys_updated_on": {
-                "type": "date"
-            },
-            "auth": {
-                "dynamic": false,
-                "properties": {
-                    "active": {
-                        "dynamic": true,
-                        "type": "object"
-                    },
-                    "owner": {
-                        "dynamic": true,
-                        "type": "object"
-                    }
-                }
             }
         }
     }
@@ -233,4 +157,4 @@ const block = {
     }
 };
 
-module.exports = {action, block, transaction, account, abi};
+module.exports = {action, block, abi};

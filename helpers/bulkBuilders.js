@@ -1,15 +1,5 @@
 const _ = require('lodash');
 
-function buildTransactionBulk(payloads, messageMap) {
-    return _(payloads).map(payload => {
-        const body = JSON.parse(Buffer.from(payload.content).toString());
-        messageMap[body.id] = payload;
-        return [{
-            index: {_id: body.id}
-        }, body];
-    }).flatten()['value']();
-}
-
 function buildActionBulk(payloads, messageMap) {
     return _(payloads).map(payload => {
         const body = JSON.parse(Buffer.from(payload.content).toString());
@@ -45,6 +35,5 @@ function buildAbiBulk(payloads, messageMap) {
 module.exports = {
     buildActionBulk,
     buildBlockBulk,
-    buildTransactionBulk,
     buildAbiBulk
 };

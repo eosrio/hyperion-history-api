@@ -215,6 +215,13 @@ function recusiveDistribute(data, channel, cb) {
 
 async function run() {
 
+    process.on('SIGINT', () => {
+        if (process.env['worker_role'] === 'continuous_reader') {
+            console.info('[READER] SIGINT received. Closing Websocket');
+            ws.close();
+        }
+    });
+
     rpc = connectRpc();
     const chain_data = await rpc.get_info();
     chainID = chain_data.chain_id;
