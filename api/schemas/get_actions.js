@@ -1,5 +1,6 @@
 exports.GET = {
-    description: 'get actions based on notified account',
+    description: 'get actions based on notified account. this endpoint also accepts generic filters based on indexed fields' +
+        ' (e.g. act.authorization.actor=eosio or act.name=delegatebw), if included they will be combined with a AND operator',
     summary: 'get root actions',
     querystring: {
         type: 'object',
@@ -40,7 +41,6 @@ exports.GET = {
                 type: 'string',
                 format: 'date-time'
             }
-        },
-        required: ["account"]
+        }
     }
 };

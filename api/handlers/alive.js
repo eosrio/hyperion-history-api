@@ -10,11 +10,16 @@ module.exports = function (fastify, opts, next) {
             requestTimeout: 1000
         }, function (error) {
             if (error) {
-                reply.send('elasticsearch cluster is down!');
+                reply.send({
+                    status: 'ERROR',
+                    msg: 'elasticsearch cluster is not available'
+                });
             } else {
-                reply.send('All is well');
+                reply.send({
+                    status: 'OK'
+                });
             }
         });
     });
-    next()
+    next();
 };

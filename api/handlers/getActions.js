@@ -7,6 +7,7 @@ const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
 
 const terms = ["notified", "act.authorization.actor"];
+const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
 async function getActions(fastify, request) {
     const t0 = Date.now();
@@ -16,6 +17,8 @@ async function getActions(fastify, request) {
     if (cachedResponse) {
         return cachedResponse;
     }
+    console.log('-------- NEW REQUEST (get_actions) ----------');
+    console.log(prettyjson.render(request.query));
     const should_array = [];
     for (const entry of terms) {
         const tObj = {term: {}};
@@ -27,20 +30,19 @@ async function getActions(fastify, request) {
     let filterObj = [];
     if (request.query.filter) {
         const filters = request.query.filter.split(',');
-        console.log(filters);
         for (const filter of filters) {
-            const newbool = {bool: {must: []}};
+            const obj = {bool: {must: []}};
             const parts = filter.split(':');
             if (parts.length === 2) {
                 [code, method] = parts;
                 if (code && code !== "*") {
-                    newbool.bool.must.push({'term': {'act.account': code}});
+                    obj.bool.must.push({'term': {'act.account': code}});
                 }
                 if (method && method !== "*") {
-                    newbool.bool.must.push({'term': {'act.name': method}});
+                    obj.bool.must.push({'term': {'act.name': method}});
                 }
             }
-            filterObj.push(newbool);
+            filterObj.push(obj);
         }
     }
     skip = parseInt(request.query.skip, 10);
@@ -58,6 +60,35 @@ async function getActions(fastify, request) {
             sort_direction = 'desc'
         } else {
             return 'invalid sort direction';
+        }
+    }
+
+    const queryStruct = {
+        "bool": {
+            must: [],
+            boost: 1.0
+        }
+    };
+
+    if (request.query.account) {
+        queryStruct.bool.must.push({"bool": {should: should_array}});
+    }
+
+    for (const prop in request.query) {
+        if (Object.prototype.hasOwnProperty.call(request.query, prop)) {
+            const actionName = prop.split(".")[0];
+            if (prop.split(".").length > 1) {
+                if (extendedActions.has(actionName)) {
+                    console.log(prop + " = " + request.query[prop]);
+                    const _termQuery = {};
+                    _termQuery["@" + prop] = request.query[prop];
+                    queryStruct.bool.must.push({term: _termQuery});
+                } else {
+                    const _termQuery = {};
+                    _termQuery[prop] = request.query[prop];
+                    queryStruct.bool.must.push({term: _termQuery});
+                }
+            }
         }
     }
 
@@ -79,6 +110,12 @@ async function getActions(fastify, request) {
                 }
             }
         });
+        queryStruct.bool['filter'] = filter_array;
+    }
+
+    if (request.query.filter) {
+        queryStruct.bool['should'] = filterObj;
+        queryStruct.bool['minimum_should_match'] = 1;
     }
 
     const pResults = await Promise.all([rpc.get_info(), elasticsearch['search']({
@@ -86,15 +123,7 @@ async function getActions(fastify, request) {
         "from": skip || 0,
         "size": (limit > maxActions ? maxActions : limit) || 10,
         "body": {
-            "query": {
-                "bool": {
-                    must: [{"bool": {should: should_array}}],
-                    should: filterObj,
-                    filter: filter_array,
-                    minimum_should_match: 1,
-                    boost: 1.0
-                }
-            },
+            "query": queryStruct,
             "sort": {
                 "global_sequence": sort_direction
             }

@@ -4,5 +4,6 @@ module.exports = {
     getKeyAccountsSchema: require('./get_key_accounts'),
     getActionsSchema: require('./get_actions'),
     getTransactedAccountsSchema: require('./get_transacted_accounts'),
-    getTransactionSchema: require('./get_transaction')
+    getTransactionSchema: require('./get_transaction'),
+    getCreatorSchema: require('./get_creator')
 };
