@@ -4,6 +4,7 @@ module.exports = function (fastify, opts, next) {
         schema: {
             description: 'simple server healthcheck',
             summary: 'server healthcheck',
+            tags: ['v2']
         }
     }, async (request, reply) => {
         elasticsearch.ping({

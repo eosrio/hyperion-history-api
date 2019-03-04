@@ -1,5 +1,6 @@
 const {getTransfersSchema} = require("../schemas");
 const _ = require('lodash');
+const prettyjson = require("prettyjson");
 const {getCacheByHash} = require("../helpers/functions");
 
 function processActions(results) {
@@ -27,6 +28,8 @@ async function getTransfers(fastify, request) {
     if (cachedResponse) {
         return cachedResponse;
     }
+    console.log('-------- NEW REQUEST (get_transfers) ----------');
+    console.log(prettyjson.render(request.query));
     const must_array = [];
     must_array.push({"term": {"act.name": {"value": "transfer"}}});
     if (request.query['from']) {

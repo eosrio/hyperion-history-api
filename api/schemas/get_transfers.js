@@ -1,6 +1,7 @@
 exports.GET = {
     description: 'get token transfers utilizing the eosio.token standard',
     summary: 'get token transfers',
+    tags: ['v2'],
     querystring: {
         type: 'object',
         properties: {
@@ -45,5 +46,41 @@ exports.GET = {
             {required: ["symbol"]},
             {required: ["contract"]}
         ]
+    },
+    response: {
+        200: {
+            type: 'object',
+            properties: {
+                "action_count": {
+                    type: "number"
+                },
+                "total_amount": {
+                    type: "number"
+                },
+                "actions": {
+                    type: "array",
+                    items: {
+                        type: 'object',
+                        properties: {
+                            "act": {
+                                type: 'object',
+                                properties: {
+                                    "account": {type: "string"},
+                                    "name": {type: "string"}
+                                },
+                                additionalProperties: true
+                            },
+                            "@timestamp": {type: "string"},
+                            "block_num": {type: "number"},
+                            "producer": {type: "string"},
+                            "trx_id": {type: "string"},
+                            "parent": {type: "number"},
+                            "global_sequence": {type: "number"},
+                            "notified": {type: "array", items: {type: "string"}}
+                        }
+                    }
+                }
+            }
+        }
     }
 };

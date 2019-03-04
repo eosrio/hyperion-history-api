@@ -7,7 +7,10 @@ async function getKeyAccounts(fastify, request) {
     const {redis, elasticsearch} = fastify;
     let public_Key = request.query.public_key;
     if (!ecc.isValidPublic(public_Key)) {
-        return 'invalid public key'
+        const err = new Error();
+        err.statusCode = 400;
+        err.message = 'invalid public key';
+        throw err;
     } else {
         public_Key = numeric.convertLegacyPublicKey(public_Key);
     }
@@ -48,15 +51,22 @@ async function getKeyAccounts(fastify, request) {
             }
         }));
     }
-    redis.set(hash, JSON.stringify(response), 'EX', 30);
-    return response;
+    if (response.account_names.length > 0) {
+        redis.set(hash, JSON.stringify(response), 'EX', 30);
+        return response;
+    } else {
+        const err = new Error();
+        err.statusCode = 404;
+        err.message = 'no accounts associated with ' + public_Key;
+        throw err;
+    }
 }
 
 module.exports = function (fastify, opts, next) {
     fastify.get('/get_key_accounts', {
         schema: getKeyAccountsSchema.GET
-    }, async (request, reply) => {
-        reply.send(await getKeyAccounts(fastify, request));
+    }, async (request) => {
+        return getKeyAccounts(fastify, request);
     });
     next()
 };

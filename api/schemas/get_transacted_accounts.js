@@ -1,6 +1,7 @@
 exports.GET = {
     description: 'get all account that interacted with the source account provided',
     summary: 'get interactions based on transfers',
+    tags: ['v2'],
     querystring: {
         type: 'object',
         properties: {

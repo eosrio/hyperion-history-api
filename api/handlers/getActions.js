@@ -2,6 +2,7 @@ const {getActionsSchema} = require("../schemas");
 const {getCacheByHash} = require("../helpers/functions");
 const _ = require('lodash');
 const fetch = require('node-fetch');
+const prettyjson = require("prettyjson");
 const {JsonRpc} = require('eosjs');
 const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
@@ -14,9 +15,9 @@ async function getActions(fastify, request) {
     const maxActions = 100;
     const {redis, elasticsearch} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
-    if (cachedResponse) {
-        return cachedResponse;
-    }
+    // if (cachedResponse) {
+    //     return cachedResponse;
+    // }
     console.log('-------- NEW REQUEST (get_actions) ----------');
     console.log(prettyjson.render(request.query));
     const should_array = [];
@@ -155,8 +156,8 @@ async function getActions(fastify, request) {
 module.exports = function (fastify, opts, next) {
     fastify.get('/get_actions', {
         schema: getActionsSchema.GET
-    }, async (request, reply) => {
-        reply.send(await getActions(fastify, request));
+    }, async (request) => {
+        return await getActions(fastify, request);
     });
     next()
 };

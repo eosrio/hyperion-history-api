@@ -1,6 +1,7 @@
 exports.GET = {
     description: 'get account by public key',
     summary: 'get account by public key',
+    tags: ['v2'],
     querystring: {
         type: 'object',
         properties: {
@@ -10,5 +11,18 @@ exports.GET = {
             },
         },
         required: ["public_key"]
+    },
+    response: {
+        200: {
+            type: 'object',
+            properties: {
+                "account_names": {
+                    type: "array",
+                    items: {
+                        type: "string"
+                    }
+                }
+            }
+        }
     }
 };

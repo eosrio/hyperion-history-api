@@ -41,8 +41,10 @@ async function getCreator(fastify, request) {
         console.log(e);
     }
     if (!account_data) {
-        response['error'] = 'account not found';
-        return response;
+        const err = new Error();
+        err.statusCode = 404;
+        err.message = 'account not found';
+        throw err;
     }
     response.timestamp = account_data['created'];
     const queryBody = {
@@ -68,8 +70,7 @@ async function getCreator(fastify, request) {
             response['trx_id'] = action._source['trx_id'];
             if (action._source.parent !== 0) {
                 // Find indirect creator by global seq
-                const parent_result = await getActionByGS(elasticsearch, action._source.parent);
-                const creationAction = parent_result;
+                const creationAction = await getActionByGS(elasticsearch, action._source.parent);
                 if (creationAction.act.name === 'transfer') {
                     response['indirect_creator'] = creationAction['@transfer']['from'];
                     response['trx_id'] = creationAction['trx_id'];
@@ -86,8 +87,8 @@ async function getCreator(fastify, request) {
 module.exports = function (fastify, opts, next) {
     fastify.get('/get_creator', {
         schema: getCreatorSchema.GET
-    }, async (request, reply) => {
-        reply.send(await getCreator(fastify, request));
+    }, async (request) => {
+        return await getCreator(fastify, request);
     });
     next()
 };
