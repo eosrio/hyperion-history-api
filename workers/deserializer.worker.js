@@ -329,10 +329,10 @@ function attachActionExtras(action) {
             delete action['act']['data']['name'];
         }
         if (name) {
-            action['act']['data']['newact'] = String(name);
             action['@newaccount'] = {
                 active: action['act']['data']['active'],
-                owner: action['act']['data']['owner']
+                owner: action['act']['data']['owner'],
+                newact: name
             }
         }
         // await handleNewAccount(action['act']['data'], action, ts);
