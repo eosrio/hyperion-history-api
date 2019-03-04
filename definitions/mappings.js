@@ -5,6 +5,10 @@ const action = {
     ],
     "settings": {
         "index": {
+            "lifecycle": {
+                "name": "50G30D",
+                "rollover_alias": process.env.CHAIN + "-action"
+            },
             "codec": "best_compression",
             "refresh_interval": "10s",
             "number_of_shards": "4",
@@ -48,6 +52,9 @@ const action = {
                     },
                     "owner": {
                         "type": "object"
+                    },
+                    "newact": {
+                        "type": "keyword"
                     }
                 }
             },
