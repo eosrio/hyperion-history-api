@@ -7,6 +7,8 @@ const {JsonRpc} = require('eosjs');
 const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
 
+const route = '/get_actions';const t0 = Date.now();
+
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
@@ -14,10 +16,10 @@ async function getActions(fastify, request) {
     const t0 = Date.now();
     const maxActions = 100;
     const {redis, elasticsearch} = fastify;
-    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
-    // if (cachedResponse) {
-    //     return cachedResponse;
-    // }
+    const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
+    if (cachedResponse) {
+        return cachedResponse;
+    }
     console.log('-------- NEW REQUEST (get_actions) ----------');
     console.log(prettyjson.render(request.query));
     const should_array = [];
@@ -124,6 +126,7 @@ async function getActions(fastify, request) {
         "from": skip || 0,
         "size": (limit > maxActions ? maxActions : limit) || 10,
         "body": {
+            "track_total_hits": 1000,
             "query": queryStruct,
             "sort": {
                 "global_sequence": sort_direction
@@ -134,6 +137,7 @@ async function getActions(fastify, request) {
     const response = {
         query_time: null,
         lib: pResults[0].last_irreversible_block_num,
+        total: results['hits']['total'],
         actions: []
     };
     if (results['hits']['hits'].length > 0) {

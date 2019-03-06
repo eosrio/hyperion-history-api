@@ -7,12 +7,11 @@ const {onError} = require('./helpers/functions');
     if (cluster.isMaster) {
         master.main().catch(onError);
     } else {
-
         let delay = 0;
         // Make sure readers are launched later
         // TODO: use IPC to trigger
         if (process.env['worker_role'] === 'reader') {
-            delay = process.env.READERS * 200;
+            delay = process.env.DESERIALIZERS * 100;
         }
         setTimeout(() => {
             switch (process.env['worker_role']) {

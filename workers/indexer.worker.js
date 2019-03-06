@@ -1,4 +1,5 @@
 const async = require('async');
+const pmx = require("pmx");
 const {amqpConnect} = require("../connections/rabbitmq");
 const {routes} = require("../helpers/elastic-routes");
 
@@ -17,12 +18,18 @@ async function run() {
     try {
         ch.prefetch(indexingPrefecthCount);
         ch.assertQueue(process.env['queue'], {durable: true});
-        // console.log('setting up indexer on ' + process.env['queue']);
         ch.consume(process.env['queue'], indexQueue.push);
     } catch (e) {
         console.error('elasticsearch cluster is down!');
         process.exit(1);
     }
+
+    pmx.action('stop', (reply) => {
+        ch.close();
+        reply({
+            event: 'index_channel_closed'
+        });
+    });
 }
 
 module.exports = {run};

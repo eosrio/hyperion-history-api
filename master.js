@@ -112,12 +112,12 @@ async function main() {
 
         if (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0) {
             allowShutdown = true;
-            if (allowMoreReaders) {
-                if (process.env.LIVE_READER !== 'true') {
-                    console.log('All workers finished. Ready to quit.');
-                    process.exit(1);
-                }
-            }
+            // if (allowMoreReaders) {
+            //     if (process.env.LIVE_READER !== 'true') {
+            //         console.log('All workers finished. Ready to quit.');
+            //         process.exit(1);
+            //     }
+            // }
         }
 
         // reset counters
@@ -262,7 +262,7 @@ async function main() {
         cluster.fork(conf);
     });
 
-    const dsErrorsLog = process.env.CHAIN + "_ds_err_" + starting_block + "_" + lib + ".txt";
+    const dsErrorsLog = 'logs/' + process.env.CHAIN + "_ds_err_" + starting_block + "_" + lib + ".txt";
     if (fs.existsSync(dsErrorsLog)) {
         fs.unlinkSync(dsErrorsLog);
     }

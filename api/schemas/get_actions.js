@@ -54,6 +54,13 @@ exports.GET = {
                 "lib": {
                     type: "number"
                 },
+                "total": {
+                    type: "object",
+                    properties: {
+                        "value": {type: "number"},
+                        "relation": {type: "string"}
+                    }
+                },
                 "actions": {
                     type: "array",
                     items: {

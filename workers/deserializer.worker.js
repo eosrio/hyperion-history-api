@@ -566,7 +566,7 @@ async function run() {
             const initialTypes = Serialize.createInitialTypes();
             types = Serialize.getTypesFromAbi(initialTypes, abi);
             abi.tables.map(table => tables.set(table.name, table.type));
-            // console.log('setting up deserializer on ' + process.env['worker_queue']);
+            console.log('setting up deserializer on ' + process.env['worker_queue']);
             ch.prefetch(dSprefecthCount);
             ch.consume(process.env['worker_queue'], (data) => {
                 consumerQueue.push(data);

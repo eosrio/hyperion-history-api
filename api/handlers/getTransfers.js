@@ -2,6 +2,7 @@ const {getTransfersSchema} = require("../schemas");
 const _ = require('lodash');
 const prettyjson = require("prettyjson");
 const {getCacheByHash} = require("../helpers/functions");
+const route = '/get_transfers';
 
 function processActions(results) {
     const action_traces = results['hits']['hits'];
@@ -24,7 +25,7 @@ function processActions(results) {
 
 async function getTransfers(fastify, request) {
     const {redis, elasticsearch} = fastify;
-    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
+    const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
     if (cachedResponse) {
         return cachedResponse;
     }
@@ -78,7 +79,7 @@ async function getTransfers(fastify, request) {
 }
 
 module.exports = function (fastify, opts, next) {
-    fastify.get('/get_transfers', {
+    fastify.get(route, {
         schema: getTransfersSchema.GET
     }, async (request, reply) => {
         reply.send(await getTransfers(fastify, request));
