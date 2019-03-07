@@ -167,9 +167,10 @@ POST _aliases
 Before indexing actions into elasticsearch its required to do a ABI scan pass (its very fast - 45 million blocks in 2 hours)
 
 Start with
+```
 ABI_CACHE_MODE: true,
 FETCH_BLOCK: 'false',
 FETCH_TRACES: 'false',
-FETCH_DELTAS: 'true',
-
+FETCH_DELTAS: 'true'
+```
 
