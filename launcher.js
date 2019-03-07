@@ -11,7 +11,7 @@ const {onError} = require('./helpers/functions');
         // Make sure readers are launched later
         // TODO: use IPC to trigger
         if (process.env['worker_role'] === 'reader') {
-            delay = process.env.DESERIALIZERS * 100;
+            delay = process.env.DESERIALIZERS * 200;
         }
         setTimeout(() => {
             switch (process.env['worker_role']) {

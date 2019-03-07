@@ -287,10 +287,12 @@ async function main() {
             case 'init_abi': {
                 if (!cachedInitABI) {
                     cachedInitABI = msg.data;
-                    messageAllWorkers(cluster, {
-                        event: 'initialize_abi',
-                        data: msg.data
-                    });
+                    setTimeout(() => {
+                        messageAllWorkers(cluster, {
+                            event: 'initialize_abi',
+                            data: msg.data
+                        });
+                    }, 1000);
                 }
                 break;
             }

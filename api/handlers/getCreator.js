@@ -5,6 +5,8 @@ const {JsonRpc} = require('eosjs');
 const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
 
+const route = '/get_creator';
+
 async function getActionByGS(client, gs) {
     const results = await client['search']({
         index: process.env.CHAIN + '-action-*',
@@ -23,8 +25,9 @@ async function getActionByGS(client, gs) {
 
 async function getCreator(fastify, request) {
     const {redis, elasticsearch} = fastify;
-    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
+    const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query) + 'v2');
     if (cachedResponse) {
+        console.log(request.query.account);
         return cachedResponse;
     }
     const newact = request.query.account;
@@ -65,27 +68,38 @@ async function getCreator(fastify, request) {
     });
     for (const action of results['hits']['hits']) {
         const actData = action._source.act.data;
+        let valid = false;
         if (actData.newact === newact) {
             response.creator = actData.creator;
             response['trx_id'] = action._source['trx_id'];
-            if (action._source.parent !== 0) {
-                // Find indirect creator by global seq
-                const creationAction = await getActionByGS(elasticsearch, action._source.parent);
-                if (creationAction.act.name === 'transfer') {
-                    response['indirect_creator'] = creationAction['@transfer']['from'];
-                    response['trx_id'] = creationAction['trx_id'];
-                } else {
-                    console.log(creationAction);
+            valid = true;
+        } else {
+            if (action._source['@newaccount']) {
+                if (action._source['@newaccount']['newact'] === newact) {
+                    response.creator = actData.creator;
+                    response['trx_id'] = action._source['trx_id'];
+                    valid = true;
                 }
             }
         }
+        if (action._source.parent !== 0 && valid) {
+            // Find indirect creator by global seq
+            const creationAction = await getActionByGS(elasticsearch, action._source.parent);
+            if (creationAction.act.name === 'transfer') {
+                response['indirect_creator'] = creationAction['@transfer']['from'];
+                response['trx_id'] = creationAction['trx_id'];
+            } else {
+                console.log(creationAction);
+            }
+        }
     }
-    redis.set(hash, JSON.stringify(response), 'EX', 3600);
+    console.log(newact, response.creator, response.indirect_creator);
+    redis.set(hash, JSON.stringify(response));
     return response;
 }
 
 module.exports = function (fastify, opts, next) {
-    fastify.get('/get_creator', {
+    fastify.get(route, {
         schema: getCreatorSchema.GET
     }, async (request) => {
         return await getCreator(fastify, request);
