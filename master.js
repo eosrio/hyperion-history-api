@@ -21,7 +21,7 @@ let cachedInitABI = null;
 
 async function main() {
     // Preview mode - prints only the proposed worker map
-    const preview = process.env.PREVIEW === 'true';
+    let preview = process.env.PREVIEW === 'true';
 
     const rClient = redis.createClient();
     const getAsync = promisify(rClient.get).bind(rClient);
@@ -62,6 +62,35 @@ async function main() {
     }
 
     console.log('Index templates updated');
+
+    if (process.env.CREATE_INDICES !== 'false') {
+        // Create indices
+        let version = '';
+        if (process.env.CREATE_INDICES === 'true') {
+            version = 'v1';
+        } else {
+            version = process.env.CREATE_INDICES;
+        }
+        for (const index of indicesList) {
+            const new_index = `${queue_prefix}-${index}-${version}-000001`;
+            const exists = await client['indices'].exists({
+                index: new_index
+            });
+            if (!exists) {
+                console.log(`Creating index ${new_index}...`);
+                await client['indices'].create({
+                    index: new_index
+                });
+                console.log(`Creating alias ${queue_prefix}-${index} >> ${new_index}`);
+                await client['indices'].putAlias({
+                    index: new_index,
+                    name: `${queue_prefix}-${index}`
+                });
+            } else {
+                console.log(`WARNING! Index ${new_index} already created!`);
+            }
+        }
+    }
 
     // Check for indexes
     for (const index of indicesList) {
