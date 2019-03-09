@@ -24,6 +24,7 @@ module.exports = {
                 FETCH_DELTAS: 'false',
                 CHAIN: 'mainnet',
                 PREVIEW: 'true',
+                CREATE_INDICES: 'v1',
                 DISABLE_READING: 'false',
                 READERS: 1,
                 DESERIALIZERS: 1,
