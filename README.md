@@ -117,6 +117,13 @@ ABI_CACHE_MODE: 'false'                // cache historical ABIs to redis, fetch 
  pm2 stop Indexer
  ```
  
+ #### 5. Starting the API node
+ 
+ ```
+ pm2 start --only API --update-env
+ pm2 logs API
+ ```
+ 
 ## API Reference
 
 [OpenAPI Docs](https://br.eosrio.io/v2/history/docs)
