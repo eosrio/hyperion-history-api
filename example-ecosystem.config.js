@@ -50,6 +50,7 @@ module.exports = {
             env: {
                 SERVER_PORT: '7000',
                 SERVER_NAME: 'example.com',
+                SERVER_ADDR: '127.0.0.1',
                 NODEOS_HTTP: 'http://127.0.0.1:8888',
                 ES_HOST: '127.0.0.1:9200',
                 CHAIN: 'mainnet'
