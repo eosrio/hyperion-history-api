@@ -101,6 +101,8 @@ sudo rabbitmqctl set_user_tags my_user administrator
 
 Check access to the WebUI `http://localhost:15672`
 
+Remember to allow your user RW access to the `/hyperion` vhost
+
 ### Redis Installation
 
 ```bash
