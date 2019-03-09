@@ -52,6 +52,8 @@ This setup has only been tested with Ubuntu 18.04, but should work with other OS
 
 Install, configure and test all dependencies above before continuing
 
+Read the step-by-step instructions here - [INSTALL.md](https://github.com/eosrio/Hyperion-History-API/blob/master/INSTALL.md)
+
 #### 1. Clone & Install packages
 ```bash
 git clone https://github.com/eosrio/Hyperion-History-API.git
