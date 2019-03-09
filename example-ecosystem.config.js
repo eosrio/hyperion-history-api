@@ -37,6 +37,22 @@ module.exports = {
                 ENABLE_INDEXING: 'true',
                 ABI_CACHE_MODE: 'false'
             }
+        },
+        {
+            name: 'API',
+            script: "./api/api-loader.js",
+            exec_mode: 'cluster',
+            merge_logs: true,
+            instances: 4,
+            autorestart: true,
+            exp_backoff_restart_delay: 100,
+            watch: ["api"],
+            env: {
+                SERVER_PORT: '7000',
+                NODEOS_HTTP: 'http://127.0.0.1:8888',
+                ES_HOST: '127.0.0.1:9200',
+                CHAIN: 'mainnet'
+            }
         }
     ]
 };
