@@ -99,13 +99,21 @@ ABI_CACHE_MODE: 'false'                // cache historical ABIs to redis, fetch 
  #### 3. Starting
  
  ```
- pm2 start
+ pm2 start --only Indexer --update-env
  pm2 logs Indexer
  ```
  
  #### 4. Stopping
  
- When stopping the indexer with `pm2 stop Indexer` it will wait for the current readers to stop and the queues to empty. After the `kill_timeout` period is passed a kill signal will be emitted. 
+ Stop reading and wait for queues to flush
+ ```
+ pm2 trigger Indexer stop
+ ```
+ 
+ Force stop
+ ```
+ pm2 stop Indexer
+ ```
  
 ## API Reference
 
@@ -123,7 +131,8 @@ ABI_CACHE_MODE: 'false'                // cache historical ABIs to redis, fetch 
    - get all actions belonging to the same transaction
  - `/v2/history/get_transfers`
    - get token transfers utilizing the eosio.token standard
-
+ - `/v2/history/get_tokens`
+   - get tokens and balances for a given account
 
 ### Roadmap
 
