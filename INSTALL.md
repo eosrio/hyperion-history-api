@@ -127,7 +127,7 @@ Edit `ecosystem.config.js`
 
 ### Setup Indices and Aliases
 
-Load templates first by starting the Hyperion Indexer in preview mode, then create first indices using curl
+Load templates first by starting the Hyperion Indexer in preview mode `PREVIEW: 'true'`, then create first indices using curl
 
 ```bash
 curl -X PUT "localhost:9200/mainnet-action-v1-000001" -H 'Content-Type: application/json' -d '{}'
