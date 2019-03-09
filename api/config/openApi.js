@@ -11,7 +11,7 @@ exports.options = {
             url: 'http://docs.hyperion.eosrio.io/',
             description: 'Detailed reference'
         },
-        host: 'br.eosrio.io',
+        host: process.env.HOST_NAME,
         schemes: ['https'],
         consumes: ['application/json'],
         produces: ['application/json']
