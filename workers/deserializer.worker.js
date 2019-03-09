@@ -194,13 +194,9 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, parent
     let notifiedAccounts = new Set();
     notifiedAccounts.add(action['receipt']['receiver']);
     if (parent !== null) {
-        // Inline Mode
         g_seq = parent;
-        // console.log(`inline - (${g_seq})`);
     } else {
-        // Parent Mode
         g_seq = action['receipt']['global_sequence'];
-        // console.log(`parent - (${g_seq})`);
     }
     let act = action['act'];
     const original_act = Object.assign({}, act);

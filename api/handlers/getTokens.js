@@ -14,6 +14,7 @@ async function getTokens(fastify, request) {
     if (cachedResponse) {
         return cachedResponse;
     }
+
     const response = {
         query_time: null,
         'account': request.query.account,

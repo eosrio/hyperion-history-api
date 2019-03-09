@@ -19,6 +19,7 @@
     "eosjs-ecc": "latest",
     "fastify": "^2.0.0",
     "fastify-autoload": "^0.6.0",
+    "fastify-cors": "^2.1.2",
     "fastify-elasticsearch": "^0.4.0",
     "fastify-oas": "^2.0.0-rc.4",
     "fastify-plugin": "latest",

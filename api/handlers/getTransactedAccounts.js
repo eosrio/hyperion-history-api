@@ -73,6 +73,34 @@ async function getTransactedAccounts(fastify, request) {
         }
     };
 
+    let filter_array = [];
+    if (request.query['after'] || request.query['before']) {
+        let _lte = "now";
+        let _gte = 0;
+        if (request.query['before']) {
+            _lte = request.query['before'];
+        }
+        if (request.query['after']) {
+            _gte = request.query['after'];
+        }
+        filter_array.push({
+            range: {
+                "@timestamp": {
+                    "gte": _gte,
+                    "lte": _lte
+                }
+            }
+        });
+    } else {
+        filter_array.push({
+            range: {
+                "block_num": {
+                    "gte": 0
+                }
+            }
+        });
+    }
+
     if (direction === 'out' || direction === 'both') {
         const outResults = await elasticsearch.search({
             index: process.env.CHAIN + '-action-*',
@@ -93,6 +121,7 @@ async function getTransactedAccounts(fastify, request) {
                 query: {
                     bool: {
                         must: must_array,
+                        filter: filter_array,
                         must_not: [
                             {term: {"@transfer.to": account}}
                         ]
@@ -134,6 +163,7 @@ async function getTransactedAccounts(fastify, request) {
                 query: {
                     bool: {
                         must: must_array,
+                        filter: filter_array,
                         must_not: [
                             {term: {"@transfer.from": account}}
                         ]

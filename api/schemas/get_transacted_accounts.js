@@ -37,6 +37,14 @@ exports.GET = {
             "limit": {
                 description: 'query limit',
                 type: 'number'
+            },
+            "after": {
+                description: 'filter after specified date (ISO8601) or block number',
+                type: 'string'
+            },
+            "before": {
+                description: 'filter before specified date (ISO8601) or block number',
+                type: 'string'
             }
         },
         required: ["account", "direction"]

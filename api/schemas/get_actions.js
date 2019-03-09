@@ -13,7 +13,7 @@ exports.GET = {
                 maxLength: 12
             },
             "filter": {
-                description: 'code::name filter',
+                description: 'code:name filter',
                 type: 'string',
                 minLength: 3
             },
