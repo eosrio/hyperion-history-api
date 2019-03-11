@@ -8,11 +8,6 @@ const fastify = require('fastify')({
     trustProxy: true
 });
 
-fastify.register(require('fastify-cors'), {
-    origin: "*",
-    methods: ['GET', 'POST']
-});
-
 fastify.register(require('fastify-elasticsearch'), {
     host: process.env.ES_HOST
 });
@@ -29,18 +24,20 @@ fastify.register(require('fastify-rate-limit'), {
 fastify.register(require('fastify-oas'), openApi.options);
 
 fastify.register(AutoLoad, {
-    dir: path.join(__dirname, 'handlers','history'),
+    dir: path.join(__dirname, 'handlers', 'history'),
     options: {
         prefix: '/v2/history'
     }
 });
 
 fastify.register(AutoLoad, {
-    dir: path.join(__dirname, 'handlers','state'),
+    dir: path.join(__dirname, 'handlers', 'state'),
     options: {
         prefix: '/v2/state'
     }
 });
+
+fastify.register(require('fastify-cors'));
 
 fastify.ready().then(async () => {
     console.log(process.env.CHAIN + ' api successfully booted!');
