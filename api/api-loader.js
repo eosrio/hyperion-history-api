@@ -8,6 +8,11 @@ const fastify = require('fastify')({
     trustProxy: true
 });
 
+fastify.register(require('fastify-cors'), {
+    origin: "*",
+    methods: ['GET', 'POST']
+});
+
 fastify.register(require('fastify-elasticsearch'), {
     host: process.env.ES_HOST
 });
@@ -15,7 +20,8 @@ fastify.register(require('fastify-elasticsearch'), {
 fastify.register(require('fastify-redis'), {host: '127.0.0.1'});
 
 fastify.register(require('fastify-rate-limit'), {
-    max: 100,
+    max: 1000,
+    whitelist: ["35.230.63.54"],
     timeWindow: '1 minute',
     redis: new Redis()
 });
