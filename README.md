@@ -126,7 +126,7 @@ ABI_CACHE_MODE: 'false'                // cache historical ABIs to redis, fetch 
  
 ## API Reference
 
-[OpenAPI Docs](https://br.eosrio.io/v2/history/docs)
+[OpenAPI Docs](https://eos.hyperion.eosrio.io/v2/docs)
   
  - `/v2/history/get_abi_snapshot`
    - fetch contract abi at specific block
