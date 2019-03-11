@@ -1,7 +1,7 @@
 exports.GET = {
     description: 'get tokens from account',
     summary: 'get tokens from account',
-    tags: ['v2'],
+    tags: ['state'],
     querystring: {
         type: 'object',
         properties: {

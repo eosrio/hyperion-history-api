@@ -1,5 +1,5 @@
-const {getTokensSchema} = require("../schemas");
-const {getCacheByHash} = require("../helpers/functions");
+const {getTokensSchema} = require("../../schemas");
+const {getCacheByHash} = require("../../helpers/functions");
 const route = '/get_tokens';
 
 const fetch = require('node-fetch');

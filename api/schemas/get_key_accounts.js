@@ -1,7 +1,7 @@
 exports.GET = {
     description: 'get accounts by public key',
     summary: 'get accounts by public key',
-    tags: ['v2'],
+    tags: ['state'],
     querystring: {
         type: 'object',
         properties: {

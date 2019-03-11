@@ -23,9 +23,16 @@ fastify.register(require('fastify-rate-limit'), {
 fastify.register(require('fastify-oas'), openApi.options);
 
 fastify.register(AutoLoad, {
-    dir: path.join(__dirname, 'handlers'),
+    dir: path.join(__dirname, 'handlers','history'),
     options: {
         prefix: '/v2/history'
+    }
+});
+
+fastify.register(AutoLoad, {
+    dir: path.join(__dirname, 'handlers','state'),
+    options: {
+        prefix: '/v2/state'
     }
 });
 

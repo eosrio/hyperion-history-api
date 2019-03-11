@@ -1,5 +1,5 @@
-const {getCacheByHash} = require("../helpers/functions");
-const {getAbiSnapshotSchema} = require("../schemas");
+const {getCacheByHash} = require("../../helpers/functions");
+const {getAbiSnapshotSchema} = require("../../schemas");
 
 async function getAbiSnapshot(fastify, request) {
     const {redis, elasticsearch} = fastify;

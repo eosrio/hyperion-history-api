@@ -1,6 +1,6 @@
-const {getCacheByHash} = require("../helpers/functions");
+const {getCacheByHash} = require("../../helpers/functions");
 
-const {getTransactedAccountsSchema} = require("../schemas");
+const {getTransactedAccountsSchema} = require("../../schemas");
 
 async function getTransactedAccounts(fastify, request) {
     const t0 = Date.now();
