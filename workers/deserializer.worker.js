@@ -23,7 +23,7 @@ let ch, api, types, client, cch, rpc, abi;
 let tables = new Map();
 let chainID = null;
 let act_emit_idx = 1;
-let tx_emit_idx = 1;
+let delta_emit_idx = 1;
 let block_emit_idx = 1;
 let local_block_count = 0;
 let allowStreaming = false;
@@ -129,7 +129,7 @@ async function processBlock(res, block, traces, deltas) {
         }
 
         if (deltas && process.env.FETCH_DELTAS === 'true') {
-            await processDeltas(deltas, res['this_block']['block_num']);
+            await processDeltas(deltas, block_num);
         }
 
         if (traces.length > 0 && process.env.FETCH_TRACES === 'true') {
@@ -161,7 +161,7 @@ async function getContractAtBlock(accountName, block_num) {
         let savedContract = contracts.get(accountName);
         const validUntil = savedContract['valid_until'];
         if (validUntil > block_num || validUntil === -1) {
-            return savedContract['contract'];
+            return [savedContract['contract'], null];
         }
     }
     const savedAbi = await getAbiAtBlock(accountName, block_num);
@@ -177,12 +177,12 @@ async function getContractAtBlock(accountName, block_num) {
         contract: result,
         valid_until: savedAbi.valid_until
     });
-    return result;
+    return [result, abi];
 }
 
 async function deserializeActionsAtBlock(actions, block_num) {
     return await Promise.all(actions.map(async ({account, name, authorization, data}) => {
-        const contract = await getContractAtBlock(account, block_num);
+        const contract = (await getContractAtBlock(account, block_num))[0];
         return Serialize.deserializeAction(
             contract, account, name, authorization, data, txEnc, txDec);
     }));
@@ -346,8 +346,9 @@ function attachActionExtras(action) {
     }
 }
 
-async function processDeltas(deltas, block_num) {
+const ignoredDeltas = new Set(['contract_table', 'contract_row', 'generated_transaction', 'resource_usage', 'resource_limits_state', 'resource_limits_config', 'contract_index64', 'contract_index128', 'contract_index256']);
 
+async function processDeltas(deltas, block_num) {
     const deltaStruct = {};
     for (const table_delta of deltas) {
         if (table_delta[0] === "table_delta_v0") {
@@ -355,6 +356,22 @@ async function processDeltas(deltas, block_num) {
         }
     }
 
+    // for (const key of Object.keys(deltaStruct)) {
+    //     if (!ignoredDeltas.has(key)) {
+    //         console.log(`----------- ${key} --------------`);
+    //         if (deltaStruct[key]) {
+    //             const rows = deltaStruct[key];
+    //             for (const table_raw of rows) {
+    //                 const serialBuffer = createSerialBuffer(table_raw.data);
+    //                 const data = types.get(key).deserialize(serialBuffer);
+    //                 const table = data[1];
+    //                 console.log(table);
+    //             }
+    //         }
+    //     }
+    // }
+
+    // Check account deltas for ABI changes
     if (deltaStruct['account']) {
         const rows = deltaStruct['account'];
         for (const account_raw of rows) {
@@ -371,7 +388,6 @@ async function processDeltas(deltas, block_num) {
                         block: block_num,
                         abi: jsonABIString
                     };
-                    // console.log(new_abi_object.block, new_abi_object.account);
                     const q = index_queue_prefix + "_abis:1";
                     ch.sendToQueue(q, Buffer.from(JSON.stringify(new_abi_object)));
                     process.send({
@@ -386,17 +402,19 @@ async function processDeltas(deltas, block_num) {
         }
     }
 
-    if (process.env.ABI_CACHE_MODE === 'false') {
-        // Generated transactions
+    if (process.env.ABI_CACHE_MODE === 'false' && process.env.INDEX_DELTAS === 'true') {
 
-        // if (deltaStruct['generated_transaction']) {
-        //     const rows = deltaStruct['generated_transaction'];
-        //     for (const gen_trx of rows) {
-        //         const serialBuffer = createSerialBuffer(gen_trx.data);
-        //         const data = types.get('generated_transaction').deserialize(serialBuffer);
-        //         await processDeferred(data[1], block_num);
-        //     }
-        // }
+        // Generated transactions
+        if (process.env.PROCESS_GEN_TX === 'true') {
+            if (deltaStruct['generated_transaction']) {
+                const rows = deltaStruct['generated_transaction'];
+                for (const gen_trx of rows) {
+                    const serialBuffer = createSerialBuffer(gen_trx.data);
+                    const data = types.get('generated_transaction').deserialize(serialBuffer);
+                    await processDeferred(data[1], block_num);
+                }
+            }
+        }
 
         // Contract Rows
         if (deltaStruct['contract_row']) {
@@ -413,17 +431,16 @@ async function processDeltas(deltas, block_num) {
                         payer: sb.getName(),
                         data_raw: sb.getBytes()
                     }, block_num);
-                    if (jsonRow['code'] === 'eosio') {
-                        if (!table_blacklist.includes(jsonRow['table'])) {
-                            if (allowStreaming) {
-                                const payload = Buffer.from(JSON.stringify(jsonRow));
-                                ch.publish('', queue_prefix + ':stream', payload, {
-                                    headers: {
-                                        event: 'delta'
-                                    }
-                                });
+                    if (jsonRow['data']) {
+                        await processTableDelta(jsonRow, block_num);
+                    }
+                    if (allowStreaming) {
+                        const payload = Buffer.from(JSON.stringify(jsonRow));
+                        ch.publish('', queue_prefix + ':stream', payload, {
+                            headers: {
+                                event: 'delta'
                             }
-                        }
+                        });
                     }
                 } catch (e) {
                     console.log(e);
@@ -433,18 +450,27 @@ async function processDeltas(deltas, block_num) {
     }
 }
 
-async function processContractRow(row) {
+async function processContractRow(row, block) {
     const row_sb = createSerialBuffer(row['data_raw']);
-    row['data'] = (await getTableType(
-        row['code'],
-        row['table']
-    )).deserialize(row_sb);
+    const tableType = await getTableType(row['code'], row['table'], block);
+    if (tableType) {
+        let rowData = null;
+        try {
+            rowData = (tableType).deserialize(row_sb);
+        } catch (e) {
+            // console.log(e);
+        }
+        row['data'] = rowData;
+    }
     return _.omit(row, ['data_raw']);
 }
 
-async function getTableType(code, table) {
-    const contract = await api.getContract(code);
-    const abi = await api.getAbi(code);
+async function getTableType(code, table, block) {
+    let abi, contract;
+    [contract, abi] = await getContractAtBlock(code, block);
+    if (!abi) {
+        abi = (await getAbiAtBlock(code, block)).abi;
+    }
     let this_table, type;
     for (let t of abi.tables) {
         if (t.name === table) {
@@ -455,10 +481,124 @@ async function getTableType(code, table) {
     if (this_table) {
         type = this_table.type
     } else {
-        console.error(`Could not find table "${table}" in the abi`);
+        // console.error(`Could not find table "${table}" in the abi for ${code} at block ${block}`);
         return;
     }
-    return contract.types.get(type);
+    let cType = contract.types.get(type);
+    if (!cType) {
+        console.log(code, table, block);
+    }
+    return cType;
+}
+
+async function processTableDelta(data, block_num) {
+    if (data['table']) {
+        data['block_num'] = block_num;
+        let allowIndex = true;
+        switch (data['table']) {
+            case 'accounts': {
+                await accountsTableHandler(data);
+                break;
+            }
+            case 'voters': {
+                if (data['code'] === 'eosio') {
+                    await votersTableHandler(data);
+                }
+                break;
+            }
+            case 'global': {
+                if (data['code'] === 'eosio') {
+                    await globalTableHandler(data);
+                }
+                break;
+            }
+            case 'producers': {
+                if (data['code'] === 'eosio') {
+                    await producersTableHandler(data);
+                }
+                break;
+            }
+            default: {
+                allowIndex = process.env.INDEX_ALL_DELTAS === 'true';
+                break;
+            }
+        }
+
+        if (process.env.ENABLE_INDEXING === 'true' && allowIndex) {
+            const q = index_queue_prefix + "_deltas:" + (delta_emit_idx);
+            const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(data)));
+            if (!status) {
+                console.log('Delta Indexing:', status);
+            }
+            delta_emit_idx++;
+            if (delta_emit_idx > n_ingestors_per_queue) {
+                delta_emit_idx = 1;
+            }
+        }
+    }
+}
+
+async function producersTableHandler(delta) {
+    const data = delta['data'];
+    delta['@producers'] = {
+        total_votes: parseFloat(data['total_votes']),
+        is_active: data['is_active'],
+        unpaid_blocks: data['unpaid_blocks']
+    };
+    delete delta['data'];
+}
+
+async function globalTableHandler(delta) {
+    const data = delta['data'];
+    delta['@global.data'] = {
+        last_name_close: data['last_name_close'],
+        last_pervote_bucket_fill: data['last_pervote_bucket_fill'],
+        last_producer_schedule_update: data['last_producer_schedule_update'],
+        perblock_bucket: parseFloat(data['perblock_bucket']) / 10000,
+        pervote_bucket: parseFloat(data['perblock_bucket']) / 10000,
+        total_activated_stake: parseFloat(data['total_activated_stake']) / 10000,
+        total_producer_vote_weight: parseFloat(data['total_producer_vote_weight']),
+        total_ram_kb_reserved: parseFloat(data['total_ram_bytes_reserved']) / 1024,
+        total_ram_stake: parseFloat(data['total_ram_stake']) / 10000,
+        total_unpaid_blocks: data['total_unpaid_blocks']
+    };
+    delete delta['data'];
+}
+
+async function votersTableHandler(delta) {
+    delta['@voters'] = {};
+    delta['@voters']['is_proxy'] = delta.data['is_proxy'];
+    delete delta.data['is_proxy'];
+
+    delete delta.data['owner'];
+
+    if (delta.data['proxy'] !== "") {
+        delta['@voters']['proxy'] = delta.data['proxy'];
+    }
+    delete delta.data['proxy'];
+    if (delta.data['producers'].length > 0) {
+        delta['@voters']['producers'] = delta.data['producers'];
+    }
+    delete delta.data['producers'];
+
+    delta['@voters']['last_vote_weight'] = parseFloat(delta.data['last_vote_weight']);
+    delete delta.data['last_vote_weight'];
+
+    delta['@voters']['proxied_vote_weight'] = parseFloat(delta.data['proxied_vote_weight']);
+    delete delta.data['proxied_vote_weight'];
+
+    delta['@voters']['staked'] = parseInt(delta.data['staked'], 10) / 10000
+    delete delta.data['staked'];
+}
+
+async function accountsTableHandler(delta) {
+    if (delta['data']['balance']) {
+        const [amount, symbol] = delta['data']['balance'].split(" ");
+        delta['@accounts'] = {
+            amount: parseFloat(amount),
+            symbol: symbol
+        };
+    }
 }
 
 function createSerialBuffer(inputArray) {
@@ -476,10 +616,10 @@ async function processDeferred(data, block_num) {
         data = _.omit(_.merge(data, data_trx), ['packed_trx']);
         data['actions'] = await api.deserializeActions(data['actions']);
         data['trx_id'] = data['trx_id'].toLowerCase();
-        // if (data['delay_sec'] > 0) {
-        //     console.log(`-------------- ${block_num} -----------------`);
-        //     console.log(prettyjson.render(data));
-        // }
+        if (data['delay_sec'] > 0) {
+            console.log(`-------------- DELAYED ${block_num} -----------------`);
+            console.log(prettyjson.render(data));
+        }
     }
 }
 
@@ -498,7 +638,12 @@ async function getAbiAtBlock(code, block_num) {
                 }
             }
             const cachedAbiAtBlock = await getAsync(process.env.CHAIN + ":" + lastblock + ":" + code);
-            const abi = JSON.parse(cachedAbiAtBlock);
+            let abi;
+            if (!cachedAbiAtBlock) {
+                abi = await api.getAbi(code);
+            } else {
+                abi = JSON.parse(cachedAbiAtBlock);
+            }
             return {
                 abi: abi,
                 valid_until: validity

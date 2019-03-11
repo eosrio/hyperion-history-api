@@ -12,6 +12,9 @@ const {
     messageAllWorkers,
     printWorkerMap,
     getLastIndexedBlockFromRange,
+    getLastIndexedBlockByDeltaFromRange,
+    getLastIndexedBlockByDelta,
+    getLastIndexedABI,
     onSaveAbi
 } = require("./helpers/functions");
 
@@ -21,7 +24,7 @@ let cachedInitABI = null;
 
 async function main() {
     // Preview mode - prints only the proposed worker map
-    const preview = process.env.PREVIEW === 'true';
+    let preview = process.env.PREVIEW === 'true';
 
     const rClient = redis.createClient();
     const getAsync = promisify(rClient.get).bind(rClient);
@@ -45,7 +48,7 @@ async function main() {
     const queue = queue_prefix + ':blocks';
     const {index_queues} = require('./definitions/index-queues');
 
-    const indicesList = ["action", "block", "abi"];
+    const indicesList = ["action", "block", "abi", "delta"];
     const indexConfig = require('./definitions/mappings');
 
     // Update index templates
@@ -62,6 +65,35 @@ async function main() {
     }
 
     console.log('Index templates updated');
+
+    if (process.env.CREATE_INDICES !== 'false' && process.env.CREATE_INDICES) {
+        // Create indices
+        let version = '';
+        if (process.env.CREATE_INDICES === 'true') {
+            version = 'v1';
+        } else {
+            version = process.env.CREATE_INDICES;
+        }
+        for (const index of indicesList) {
+            const new_index = `${queue_prefix}-${index}-${version}-000001`;
+            const exists = await client['indices'].exists({
+                index: new_index
+            });
+            if (!exists) {
+                console.log(`Creating index ${new_index}...`);
+                await client['indices'].create({
+                    index: new_index
+                });
+                console.log(`Creating alias ${queue_prefix}-${index} >> ${new_index}`);
+                await client['indices'].putAlias({
+                    index: new_index,
+                    name: `${queue_prefix}-${index}`
+                });
+            } else {
+                console.log(`WARNING! Index ${new_index} already created!`);
+            }
+        }
+    }
 
     // Check for indexes
     for (const index of indicesList) {
@@ -112,12 +144,6 @@ async function main() {
 
         if (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0) {
             allowShutdown = true;
-            // if (allowMoreReaders) {
-            //     if (process.env.LIVE_READER !== 'true') {
-            //         console.log('All workers finished. Ready to quit.');
-            //         process.exit(1);
-            //     }
-            // }
         }
 
         // reset counters
@@ -133,28 +159,42 @@ async function main() {
 
     }, log_interval);
 
-    const lastIndexedBlock = await getLastIndexedBlock(client);
+    let lastIndexedBlock;
+    if (process.env.INDEX_DELTAS === 'true') {
+        lastIndexedBlock = await getLastIndexedBlockByDelta(client);
+    } else {
+        lastIndexedBlock = await getLastIndexedBlock(client);
+    }
+
     // Start from the last indexed block
     let starting_block = 1;
     console.log('Last indexed block:', lastIndexedBlock);
 
     // Fecth chain lib
     const chain_data = await rpc.get_info();
-    let lib = chain_data['last_irreversible_block_num'];
+    let head = chain_data['head_block_num'];
 
     if (lastIndexedBlock > 0) {
         starting_block = lastIndexedBlock;
     }
 
     if (process.env.STOP_ON !== "0") {
-        lib = parseInt(process.env.STOP_ON, 10);
+        head = parseInt(process.env.STOP_ON, 10);
     }
+
+    let lastIndexedABI = await getLastIndexedABI(client);
+    console.log(`Last indexed ABI: ${lastIndexedABI}`);
 
     if (process.env.START_ON !== "0") {
         starting_block = parseInt(process.env.START_ON, 10);
         // Check last indexed block again
         if (process.env.REWRITE !== 'true') {
-            const lastIndexedBlockOnRange = await getLastIndexedBlockFromRange(client, starting_block, lib);
+            let lastIndexedBlockOnRange;
+            if (process.env.INDEX_DELTAS === 'true') {
+                lastIndexedBlockOnRange = await getLastIndexedBlockByDeltaFromRange(client, starting_block, head);
+            } else {
+                lastIndexedBlockOnRange = await getLastIndexedBlockFromRange(client, starting_block, head);
+            }
             if (lastIndexedBlockOnRange > starting_block) {
                 console.log('WARNING! Data present on target range!');
                 console.log('Changing initial block num. Use REWRITE = true to bypass.');
@@ -162,22 +202,22 @@ async function main() {
             }
         }
         console.log('FIRST BLOCK: ' + starting_block);
-        console.log('LAST  BLOCK: ' + lib);
+        console.log('LAST  BLOCK: ' + head);
     }
 
 
-    total_range = lib - starting_block;
+    total_range = head - starting_block;
 
     // Create first batch of parallel readers
     let lastAssignedBlock = starting_block;
 
     if (process.env.LIVE_ONLY === 'false') {
-        while (activeReaders.length < max_readers && lastAssignedBlock < lib) {
+        while (activeReaders.length < max_readers && lastAssignedBlock < head) {
             worker_index++;
             const start = lastAssignedBlock;
             let end = lastAssignedBlock + maxBatchSize;
-            if (end > lib) {
-                end = lib;
+            if (end > head) {
+                end = head;
             }
             lastAssignedBlock += maxBatchSize;
             const def = {
@@ -194,13 +234,13 @@ async function main() {
 
     // Setup Serial reader worker
     if (process.env.LIVE_READER === 'true') {
-        const _lib = chain_data['last_irreversible_block_num'];
-        console.log(`Starting live reader at lib = ${_lib}`);
+        const _head = chain_data['head_block_num'];
+        console.log(`Starting live reader at head = ${_head}`);
         worker_index++;
         workerMap.push({
             worker_id: worker_index,
             worker_role: 'continuous_reader',
-            worker_last_processed_block: _lib,
+            worker_last_processed_block: _head,
             ws_router: ''
         });
     }
@@ -262,7 +302,11 @@ async function main() {
         cluster.fork(conf);
     });
 
-    const dsErrorsLog = 'logs/' + process.env.CHAIN + "_ds_err_" + starting_block + "_" + lib + ".txt";
+    if (!fs.existsSync('./logs')) {
+        fs.mkdirSync('./logs');
+    }
+
+    const dsErrorsLog = './logs/' + process.env.CHAIN + "_ds_err_" + starting_block + "_" + head + ".txt";
     if (fs.existsSync(dsErrorsLog)) {
         fs.unlinkSync(dsErrorsLog);
     }
@@ -309,13 +353,13 @@ async function main() {
             case 'completed': {
                 const idx = activeReaders.findIndex(w => w.worker_id.toString() === msg.id);
                 activeReaders.splice(idx, 1);
-                if (activeReaders.length < max_readers && lastAssignedBlock < lib && allowMoreReaders) {
+                if (activeReaders.length < max_readers && lastAssignedBlock < head && allowMoreReaders) {
                     // Deploy next worker
                     worker_index++;
                     const start = lastAssignedBlock;
                     let end = lastAssignedBlock + maxBatchSize;
-                    if (end > lib) {
-                        end = lib;
+                    if (end > head) {
+                        end = head;
                     }
                     lastAssignedBlock += maxBatchSize;
                     const def = {
@@ -369,11 +413,6 @@ async function main() {
             });
         }
     }
-
-    // Catch dead workers
-    cluster.on('exit', (worker, code) => {
-        // console.log(`Worker ${worker.id}, pid: ${worker.process.pid} finished with code ${code}`);
-    });
 
     pmx.action('stop', (reply) => {
         allowMoreReaders = false;

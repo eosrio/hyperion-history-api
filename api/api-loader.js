@@ -29,9 +29,16 @@ fastify.register(require('fastify-rate-limit'), {
 fastify.register(require('fastify-oas'), openApi.options);
 
 fastify.register(AutoLoad, {
-    dir: path.join(__dirname, 'handlers'),
+    dir: path.join(__dirname, 'handlers','history'),
     options: {
         prefix: '/v2/history'
+    }
+});
+
+fastify.register(AutoLoad, {
+    dir: path.join(__dirname, 'handlers','state'),
+    options: {
+        prefix: '/v2/state'
     }
 });
 
@@ -80,7 +87,7 @@ fastify.ready().then(async () => {
 
 (async () => {
     try {
-        await fastify.listen(process.env.SERVER_PORT);
+        await fastify.listen(process.env.SERVER_PORT, process.env.SERVER_ADDR);
         fastify.log.info(`server listening on ${fastify.server.address().port}`)
     } catch (err) {
         fastify.log.error(err);

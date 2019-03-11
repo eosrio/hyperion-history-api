@@ -1,7 +1,7 @@
 exports.GET = {
     description: 'get token transfers utilizing the eosio.token standard',
     summary: 'get token transfers',
-    tags: ['v2'],
+    tags: ['history'],
     querystring: {
         type: 'object',
         properties: {

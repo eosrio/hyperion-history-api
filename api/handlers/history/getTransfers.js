@@ -1,7 +1,7 @@
-const {getTransfersSchema} = require("../schemas");
+const {getTransfersSchema} = require("../../schemas");
 const _ = require('lodash');
 const prettyjson = require("prettyjson");
-const {getCacheByHash} = require("../helpers/functions");
+const {getCacheByHash} = require("../../helpers/functions");
 const route = '/get_transfers';
 
 function processActions(results) {

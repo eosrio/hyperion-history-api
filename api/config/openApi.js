@@ -1,5 +1,5 @@
 exports.options = {
-    routePrefix: '/v2/history/docs',
+    routePrefix: '/v2/docs',
     exposeRoute: true,
     swagger: {
         info: {
@@ -11,7 +11,7 @@ exports.options = {
             url: 'http://docs.hyperion.eosrio.io/',
             description: 'Detailed reference'
         },
-        host: 'br.eosrio.io',
+        host: process.env.SERVER_NAME,
         schemes: ['https'],
         consumes: ['application/json'],
         produces: ['application/json']

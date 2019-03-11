@@ -21,74 +21,34 @@ const action = {
     },
     "mappings": {
         "properties": {
-            "@timestamp": {
-                "type": "date"
-            },
-            "global_sequence": {
-                "type": "long"
-            },
-            "parent": {
-                "type": "long"
-            },
-            "act.data": {
-                "enabled": false
-            },
-            "account_ram_deltas.delta": {
-                "enabled": false
-            },
-            "act.account": {
-                "type": "keyword"
-            },
-            "block_num": {
-                "type": "long"
-            },
-            "act.authorization.permission": {
-                "enabled": false
-            },
+            "@timestamp": {"type": "date"},
+            "global_sequence": {"type": "long"},
+            "parent": {"type": "long"},
+            "act.data": {"enabled": false},
+            "account_ram_deltas.delta": {"enabled": false},
+            "act.account": {"type": "keyword"},
+            "block_num": {"type": "long"},
+            "act.authorization.permission": {"enabled": false},
             "@newaccount": {
                 "properties": {
-                    "active": {
-                        "type": "object"
-                    },
-                    "owner": {
-                        "type": "object"
-                    },
-                    "newact": {
-                        "type": "keyword"
-                    }
+                    "active": {"type": "object"},
+                    "owner": {"type": "object"},
+                    "newact": {"type": "keyword"}
                 }
             },
             "@transfer": {
                 "properties": {
-                    "from": {
-                        "type": "keyword"
-                    },
-                    "to": {
-                        "type": "keyword"
-                    },
-                    "amount": {
-                        "type": "float"
-                    },
-                    "symbol": {
-                        "type": "keyword"
-                    }
+                    "from": {"type": "keyword"},
+                    "to": {"type": "keyword"},
+                    "amount": {"type": "float"},
+                    "symbol": {"type": "keyword"}
                 }
             },
-            "act.authorization.actor": {
-                "type": "keyword"
-            },
-            "account_ram_deltas.account": {
-                "enabled": false
-            },
-            "act.name": {
-                "type": "keyword"
-            },
-            "trx_id": {
-                "type": "keyword"
-            },
-            "producer": {
-                "type": "keyword"
-            }
+            "act.authorization.actor": {"type": "keyword"},
+            "account_ram_deltas.account": {"enabled": false},
+            "act.name": {"type": "keyword"},
+            "trx_id": {"type": "keyword"},
+            "producer": {"type": "keyword"}
         }
     }
 };
@@ -105,15 +65,9 @@ const abi = {
     },
     "mappings": {
         "properties": {
-            "block": {
-                "type": "long"
-            },
-            "account": {
-                "type": "keyword"
-            },
-            "abi": {
-                "enabled": false
-            }
+            "block": {"type": "long"},
+            "account": {"type": "keyword"},
+            "abi": {"enabled": false}
         }
     }
 };
@@ -132,29 +86,70 @@ const block = {
     },
     "mappings": {
         "properties": {
-            "block_num": {
-                "type": "long"
+            "block_num": {"type": "long"},
+            "producer": {"type": "keyword"},
+            "new_producers.producers.block_signing_key": {"enabled": false},
+            "new_producers.producers.producer_name": {"type": "keyword"},
+            "new_producers.version": {"type": "long"},
+            "@timestamp": {"type": "date"},
+            "schedule_version": {"type": "double"}
+        }
+    }
+};
+
+const delta = {
+    "index_patterns": [process.env.CHAIN + "-delta-*"],
+    "settings": {
+        "index": {
+            "lifecycle": {
+                "name": "50G30D",
+                "rollover_alias": process.env.CHAIN + "-delta"
             },
-            "producer": {
-                "type": "keyword"
-            },
-            "new_producers.producers.block_signing_key": {
-                "enabled": false
-            },
-            "new_producers.producers.producer_name": {
-                "type": "keyword"
-            },
-            "new_producers.version": {
-                "type": "long"
-            },
-            "@timestamp": {
-                "type": "date"
-            },
-            "schedule_version": {
-                "type": "double"
+            "number_of_shards": 2,
+            "refresh_interval": "5s",
+            "number_of_replicas": 0,
+            "sort.field": "block_num",
+            "sort.order": "desc"
+        },
+        "index.codec": "best_compression"
+    },
+    "mappings": {
+        "properties": {
+            "block_num": {"type": "long"},
+            "present": {"type": "byte"},
+            "code": {"type": "keyword"},
+            "scope": {"type": "keyword"},
+            "table": {"type": "keyword"},
+            "payer": {"type": "keyword"},
+            "data": {"enabled": false},
+            "primary_key": {"type": "keyword"},
+            "@accounts.amount": {"type": "float"},
+            "@accounts.symbol": {"type": "keyword"},
+            "@voters.is_proxy": {"type": "boolean"},
+            "@voters.producers": {"type": "keyword"},
+            "@voters.last_vote_weight": {"type": "float"},
+            "@voters.proxied_vote_weight": {"type": "float"},
+            "@voters.staked": {"type": "float"},
+            "@voters.proxy": {"type": "keyword"},
+            "@producers.total_votes": {"type": "float"},
+            "@producers.is_active": {"type": "boolean"},
+            "@producers.unpaid_blocks": {"type": "long"},
+            "@global.data": {
+                "properties": {
+                    "last_name_close": {"type": "date"},
+                    "last_pervote_bucket_fill": {"type": "date"},
+                    "last_producer_schedule_update": {"type": "date"},
+                    "perblock_bucket": {"type": "float"},
+                    "pervote_bucket": {"type": "float"},
+                    "total_activated_stake": {"type": "float"},
+                    "total_producer_vote_weight": {"type": "float"},
+                    "total_ram_kb_reserved": {"type": "float"},
+                    "total_ram_stake": {"type": "float"},
+                    "total_unpaid_blocks": {"type": "long"},
+                }
             }
         }
     }
 };
 
-module.exports = {action, block, abi};
+module.exports = {action, block, abi, delta};

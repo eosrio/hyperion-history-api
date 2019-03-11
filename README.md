@@ -117,23 +117,30 @@ ABI_CACHE_MODE: 'false'                // cache historical ABIs to redis, fetch 
  pm2 stop Indexer
  ```
  
+ #### 5. Starting the API node
+ 
+ ```
+ pm2 start --only API --update-env
+ pm2 logs API
+ ```
+ 
 ## API Reference
 
 [OpenAPI Docs](https://br.eosrio.io/v2/history/docs)
   
  - `/v2/history/get_abi_snapshot`
    - fetch contract abi at specific block
-- `/v2/history/get_actions`
+ - `/v2/history/get_actions`
    - get actions based on notified account
- - `/v2/history/get_key_accounts`
-   - get accounts by public key
  - `/v2/history/get_transacted_accounts`
    - get all account that interacted with the source account provided
  - `/v2/history/get_transaction`
    - get all actions belonging to the same transaction
  - `/v2/history/get_transfers`
    - get token transfers utilizing the eosio.token standard
- - `/v2/history/get_tokens`
+ - `/v2/state/get_key_accounts`
+   - get accounts by public key
+ - `/v2/state/get_tokens`
    - get tokens and balances for a given account
 
 ### Roadmap
