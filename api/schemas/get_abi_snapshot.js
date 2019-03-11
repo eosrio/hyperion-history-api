@@ -1,7 +1,7 @@
 exports.GET = {
     description: 'fetch contract abi at specific block',
     summary: 'fetch abi at specific block',
-    tags: ['v2'],
+    tags: ['history'],
     querystring: {
         type: 'object',
         properties: {

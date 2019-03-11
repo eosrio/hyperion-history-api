@@ -1,14 +1,12 @@
-const {getActionsSchema} = require("../schemas");
-const {getCacheByHash} = require("../helpers/functions");
+const {getActionsSchema} = require("../../schemas");
+const {getCacheByHash} = require("../../helpers/functions");
 const _ = require('lodash');
 const fetch = require('node-fetch');
-const prettyjson = require("prettyjson");
 const {JsonRpc} = require('eosjs');
 const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
 
-const route = '/get_actions';const t0 = Date.now();
-
+const route = '/get_actions';
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
@@ -20,8 +18,6 @@ async function getActions(fastify, request) {
     if (cachedResponse) {
         return cachedResponse;
     }
-    console.log('-------- NEW REQUEST (get_actions) ----------');
-    console.log(prettyjson.render(request.query));
     const should_array = [];
     for (const entry of terms) {
         const tObj = {term: {}};

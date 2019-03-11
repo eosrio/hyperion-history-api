@@ -39,7 +39,24 @@ function unzipAsync(data) {
 
 async function getLastIndexedBlock(es_client) {
     const results = await es_client.search({
-        index: process.env.CHAIN + '-block',
+        index: process.env.CHAIN + '-block-*',
+        size: 1,
+        body: {
+            query: {bool: {filter: {match_all: {}}}},
+            sort: [{block_num: {order: "desc"}}],
+            size: 1
+        }
+    });
+    if (results['hits']['hits'].length > 0) {
+        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
+    } else {
+        return 0;
+    }
+}
+
+async function getLastIndexedBlockByDelta(es_client) {
+    const results = await es_client.search({
+        index: process.env.CHAIN + '-delta-*',
         size: 1,
         body: {
             query: {bool: {filter: {match_all: {}}}},
@@ -56,7 +73,7 @@ async function getLastIndexedBlock(es_client) {
 
 async function getFirstIndexedBlockFromRange(es_client, first, last) {
     const results = await es_client.search({
-        index: process.env.CHAIN + '-block',
+        index: process.env.CHAIN + '-block-*',
         size: 1,
         body: {
             query: {
@@ -81,7 +98,51 @@ async function getFirstIndexedBlockFromRange(es_client, first, last) {
 
 async function getLastIndexedBlockFromRange(es_client, first, last) {
     const results = await es_client.search({
-        index: process.env.CHAIN + '-block',
+        index: process.env.CHAIN + '-block-*',
+        size: 1,
+        body: {
+            query: {
+                range: {
+                    block_num: {
+                        "gte": first,
+                        "lt": last,
+                        "boost": 2
+                    }
+                }
+            },
+            sort: [{block_num: {order: "desc"}}],
+            size: 1
+        }
+    });
+    if (results['hits']['hits'].length > 0) {
+        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
+    } else {
+        return 0;
+    }
+}
+
+async function getLastIndexedABI(es_client, first, last) {
+    const results = await es_client.search({
+        index: process.env.CHAIN + '-abi-*',
+        size: 1,
+        body: {
+            query: {
+                match_all: {}
+            },
+            sort: [{block: {order: "desc"}}],
+            size: 1
+        }
+    });
+    if (results['hits']['hits'].length > 0) {
+        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
+    } else {
+        return 0;
+    }
+}
+
+async function getLastIndexedBlockByDeltaFromRange(es_client, first, last) {
+    const results = await es_client.search({
+        index: process.env.CHAIN + '-delta-*',
         size: 1,
         body: {
             query: {
@@ -151,5 +212,8 @@ module.exports = {
     printWorkerMap,
     getLastIndexedBlockFromRange,
     getFirstIndexedBlockFromRange,
+    getLastIndexedBlockByDeltaFromRange,
+    getLastIndexedBlockByDelta,
+    getLastIndexedABI,
     onSaveAbi
 };

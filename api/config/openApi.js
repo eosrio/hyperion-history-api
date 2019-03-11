@@ -1,5 +1,5 @@
 exports.options = {
-    routePrefix: '/v2/history/docs',
+    routePrefix: '/v2/docs',
     exposeRoute: true,
     swagger: {
         info: {

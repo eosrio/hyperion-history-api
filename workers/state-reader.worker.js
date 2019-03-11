@@ -100,7 +100,7 @@ function requestBlocks(start) {
         irreversible_only: false,
         fetch_block: process.env.FETCH_BLOCK === 'true',
         fetch_traces: process.env.FETCH_TRACES === 'true',
-        fetch_deltas: process.env.FETCH_DELTAS === 'true'
+        fetch_deltas: true
     };
     send(['get_blocks_request_v0', request]);
 }
