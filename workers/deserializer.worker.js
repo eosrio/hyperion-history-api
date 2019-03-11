@@ -481,7 +481,7 @@ async function getTableType(code, table, block) {
     if (this_table) {
         type = this_table.type
     } else {
-        console.error(`Could not find table "${table}" in the abi for ${code} at block ${block}`);
+        // console.error(`Could not find table "${table}" in the abi for ${code} at block ${block}`);
         return;
     }
     let cType = contract.types.get(type);
