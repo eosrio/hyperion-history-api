@@ -11,6 +11,7 @@ async function getTokens(fastify, request) {
     const t0 = Date.now();
     const {redis, elasticsearch} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
+
     if (cachedResponse) {
         return cachedResponse;
     }
@@ -20,13 +21,14 @@ async function getTokens(fastify, request) {
         'account': request.query.account,
         'tokens': []
     };
+
     const results = await elasticsearch.search({
         "index": process.env.CHAIN + '-action-*',
         "body": {
             size: 0,
             query: {
                 bool: {
-                    must_not: {term: {"act.account": "eosio.token"}},
+                    // must_not: {term: {"act.account": "eosio.token"}},
                     filter: [
                         {term: {"notified": request.query.account}},
                         {terms: {"act.name": ["transfer", "issue"]}}
