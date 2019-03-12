@@ -131,7 +131,8 @@ Edit `ecosystem.config.js`
 
 Load templates first by starting the Hyperion Indexer in preview mode `PREVIEW: 'true'`
 
-Then on kibana dev console create the initial indices and aliases
+Indices and aliases are created automatically using the `CREATE_INDICES` option (set it to your version suffix e.g, v1, v2, v3)
+If you want to create them manually, use the commands bellow on the kibana dev console
 ```
 PUT mainnet-action-v1-000001
 PUT mainnet-abi-v1-000001
@@ -162,13 +163,27 @@ POST _aliases
 }
 ```
 
-Before indexing actions into elasticsearch its required to do a ABI scan pass (its very fast - 45 million blocks in 2 hours)
+Before indexing actions into elasticsearch its required to do a ABI scan pass
 
 Start with
 ```
 ABI_CACHE_MODE: true,
 FETCH_BLOCK: 'false',
 FETCH_TRACES: 'false',
-FETCH_DELTAS: 'true'
+INDEX_DELTAS: 'false',
+INDEX_ALL_DELTAS: 'false',
+```
+
+Tune your configs to your specific hardware using the following settings:
+```
+BATCH_SIZE
+READERS
+DESERIALIZERS
+DS_MULT
+ES_INDEXERS_PER_QUEUE
+ES_ACT_QUEUES
+READ_PREFETCH
+BLOCK_PREFETCH
+INDEX_PREFETCH
 ```
 

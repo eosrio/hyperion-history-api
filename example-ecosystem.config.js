@@ -35,7 +35,7 @@ module.exports = {
                 INDEX_PREFETCH: 500,
                 ENABLE_INDEXING: 'true',
                 INDEX_DELTAS: 'true',
-                INDEX_ALL_DELTAS: 'true',
+                INDEX_ALL_DELTAS: 'false',
                 ABI_CACHE_MODE: 'false'
             }
         },

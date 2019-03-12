@@ -75,14 +75,14 @@ NODEOS_WS: 'ws://127.0.0.1:8080',      // state history endpoint
 LIVE_READER: 'true',                   // enable continuous reading after reaching the head block
 FETCH_DELTAS: 'false',                 // read table deltas
 CHAIN: 'eos',                          // chain prefix for indexing
+CREATE_INDICES: 'v1',                  // index suffix to be created, set to false to use existing aliases
 START_ON: 0,                           // start indexing on block (0=disable)
-STOP_ON: 0,                     // stop indexing on block  (0=disable)
+STOP_ON: 0,                            // stop indexing on block  (0=disable)
 REWRITE: 'false',                      // force rewrite the target replay range
 BATCH_SIZE: 2000,                      // parallel reader batch size in blocks
 LIVE_ONLY: 'false',                    // only reads realtime data serially
 FETCH_BLOCK: 'true',
 FETCH_TRACES: 'true',
-FETCH_DELTAS: 'false',
 PREVIEW: 'false',                      // preview mode - prints worker map and exit
 DISABLE_READING: 'false',              // completely disable block reading, for lagged queue processing
 READERS: 3,                            // parallel state history readers
@@ -95,7 +95,9 @@ BLOCK_PREFETCH: 5,                     // Stage 2 prefecth
 INDEX_PREFETCH: 500,                   // Stage 3 prefetch
 FLUSH_INDICES: 'false',                // CAUTION: Delete all elastic indices
 ENABLE_INDEXING: 'true',               // enable elasticsearch indexing
-ABI_CACHE_MODE: 'false'                // cache historical ABIs to redis, fetch deltas must be enabled
+INDEX_DELTAS: 'true',                  // index common table deltas (see delta on definitions/mappings)
+INDEX_ALL_DELTAS: 'false',             // index all table deltas (WARNING)
+ABI_CACHE_MODE: 'false'                // cache historical ABIs to redis
 ```
  
  #### 3. Starting
@@ -145,6 +147,6 @@ ABI_CACHE_MODE: 'false'                // cache historical ABIs to redis, fetch 
 
 ### Roadmap
 
-- Table deltas storage & queries
+- Table deltas storage & queries (in progress)
 - Real-time streaming support
 - Control GUI
