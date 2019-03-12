@@ -34,6 +34,8 @@ bootstrap.memory_lock: true
 Edit `/etc/elasticsearch/jvm.options`
 ```
 # Set your heap size, avoid allocating more than 31GB, even if you have enought RAM.
+# Test on your specific machine by changing -Xmx32g in the following command:
+# java -Xmx32g -XX:+UseCompressedOops -XX:+PrintFlagsFinal Oops | grep Oops
 -Xms16g
 -Xmx16g
 ```
