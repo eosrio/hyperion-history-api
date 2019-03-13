@@ -34,6 +34,7 @@ module.exports = {
                 BLOCK_PREFETCH: 100,
                 INDEX_PREFETCH: 500,
                 ENABLE_INDEXING: 'true',
+                FETCH_DELTAS: 'true',
                 INDEX_DELTAS: 'true',
                 INDEX_ALL_DELTAS: 'false',
                 ABI_CACHE_MODE: 'false'
