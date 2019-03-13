@@ -40,10 +40,6 @@ async function getCreator(fastify, request) {
     try {
         account_data = await rpc.get_account(newact);
     } catch (e) {
-        console.log('[get_creator] get_account error', request.query.account);
-        console.log(e);
-    }
-    if (!account_data) {
         const err = new Error();
         err.statusCode = 404;
         err.message = 'account not found';

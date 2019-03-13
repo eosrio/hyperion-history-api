@@ -6,13 +6,13 @@ const {JsonRpc} = require('eosjs');
 const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
 
+const maxActions = 100;
 const route = '/get_actions';
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
 async function getActions(fastify, request) {
     const t0 = Date.now();
-    const maxActions = 100;
     const {redis, elasticsearch} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
     if (cachedResponse) {
@@ -78,7 +78,7 @@ async function getActions(fastify, request) {
             const actionName = prop.split(".")[0];
             if (prop.split(".").length > 1) {
                 if (extendedActions.has(actionName)) {
-                    console.log(prop + " = " + request.query[prop]);
+                    // console.log(prop + " = " + request.query[prop]);
                     const _termQuery = {};
                     _termQuery["@" + prop] = request.query[prop];
                     queryStruct.bool.must.push({term: _termQuery});

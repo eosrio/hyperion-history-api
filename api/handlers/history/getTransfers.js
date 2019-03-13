@@ -1,8 +1,9 @@
 const {getTransfersSchema} = require("../../schemas");
 const _ = require('lodash');
-const prettyjson = require("prettyjson");
 const {getCacheByHash} = require("../../helpers/functions");
 const route = '/get_transfers';
+
+const maxActions = 100;
 
 function processActions(results) {
     const action_traces = results['hits']['hits'];
@@ -29,8 +30,6 @@ async function getTransfers(fastify, request) {
     if (cachedResponse) {
         return cachedResponse;
     }
-    console.log('-------- NEW REQUEST (get_transfers) ----------');
-    console.log(prettyjson.render(request.query));
     const must_array = [];
     must_array.push({"term": {"act.name": {"value": "transfer"}}});
     if (request.query['from']) {
@@ -63,9 +62,20 @@ async function getTransfers(fastify, request) {
             }
         });
     }
+    let limit, skip;
+    limit = parseInt(request.query.limit, 10);
+    if (limit < 1) {
+        return 'invalid limit parameter';
+    }
+    skip = parseInt(request.query.skip, 10);
+    if (skip < 0) {
+        return 'invalid skip parameter';
+    }
     const body = {"query": {"bool": {"must": must_array}}};
     const results = await elasticsearch.search({
         "index": process.env.CHAIN + '-action-*',
+        "from": skip || 0,
+        "size": (limit > maxActions ? maxActions : limit) || 10,
         "body": body
     });
     const [sum, _actions] = processActions(results);

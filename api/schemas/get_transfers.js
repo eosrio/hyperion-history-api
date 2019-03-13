@@ -29,6 +29,16 @@ exports.GET = {
                 minLength: 1,
                 maxLength: 12
             },
+            "skip": {
+                description: 'skip [n] actions (pagination)',
+                type: 'integer',
+                minimum: 0
+            },
+            "limit": {
+                description: 'limit of [n] actions per page',
+                type: 'integer',
+                minimum: 1
+            },
             "after": {
                 description: 'filter after specified date (ISO8601)',
                 type: 'string',
