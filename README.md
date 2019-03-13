@@ -93,7 +93,6 @@ ES_ACT_QUEUES: 2,                      // multiplier for action indexing queues
 READ_PREFETCH: 50,                     // Stage 1 prefecth
 BLOCK_PREFETCH: 5,                     // Stage 2 prefecth
 INDEX_PREFETCH: 500,                   // Stage 3 prefetch
-FLUSH_INDICES: 'false',                // CAUTION: Delete all elastic indices
 ENABLE_INDEXING: 'true',               // enable elasticsearch indexing
 INDEX_DELTAS: 'true',                  // index common table deltas (see delta on definitions/mappings)
 INDEX_ALL_DELTAS: 'false',             // index all table deltas (WARNING)
