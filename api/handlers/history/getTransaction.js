@@ -18,7 +18,7 @@ async function getTransaction(fastify, request) {
             "query": {
                 "bool": {
                     must: [
-                        {term: {"trx_id": request.query.id}}
+                        {term: {"trx_id": request.query.id.toLowerCase()}}
                     ]
                 }
             },
