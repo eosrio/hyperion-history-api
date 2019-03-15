@@ -1,4 +1,11 @@
-const {buildActionBulk, buildBlockBulk, buildAbiBulk, buildDeltaBulk} = require("./bulkBuilders");
+const {
+    buildActionBulk,
+    buildBlockBulk,
+    buildAbiBulk,
+    buildDeltaBulk,
+    buildTableAccountsBulk,
+    buildTableVotersBulk
+} = require("./bulkBuilders");
 const queue_prefix = process.env.CHAIN;
 const prettyjson = require('prettyjson');
 const {elasticsearchConnect} = require("../connections/elasticsearch");
@@ -73,6 +80,30 @@ const routes = {
             index: queue_prefix + '-delta',
             type: '_doc',
             body: buildDeltaBulk(payloads, messageMap)
+        }).then(resp => {
+            onResponse(resp, messageMap, cb, payloads, channel);
+        }).catch(err => {
+            onError(err, channel, cb);
+        });
+    },
+    'table-accounts': async (payloads, channel, cb) => {
+        const messageMap = {};
+        client['bulk']({
+            index: queue_prefix + '-table-accounts',
+            type: '_doc',
+            body: buildTableAccountsBulk(payloads, messageMap)
+        }).then(resp => {
+            onResponse(resp, messageMap, cb, payloads, channel);
+        }).catch(err => {
+            onError(err, channel, cb);
+        });
+    },
+    'table-voters': async (payloads, channel, cb) => {
+        const messageMap = {};
+        client['bulk']({
+            index: queue_prefix + '-table-voters',
+            type: '_doc',
+            body: buildTableVotersBulk(payloads, messageMap)
         }).then(resp => {
             onResponse(resp, messageMap, cb, payloads, channel);
         }).catch(err => {

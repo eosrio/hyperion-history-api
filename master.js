@@ -49,6 +49,60 @@ async function main() {
     const {index_queues} = require('./definitions/index-queues');
 
     const indicesList = ["action", "block", "abi", "delta"];
+
+    // Optional state tables
+    if (process.env.ACCOUNT_STATE === 'true') {
+        indicesList.push("table-accounts");
+        const script_status = await client.putScript({
+            id: "update_accounts",
+            body: {
+                script: {
+                    lang: "painless",
+                    source: `
+                    if(params.block_num >= ctx._source.block_num) {
+                        ctx._source.block_num = params.block_num;
+                        ctx._source.amount = params.amount;
+                    } else {
+                        ctx.op = 'noop';
+                    }`
+                }
+            }
+        });
+        if (!script_status['acknowledged']) {
+            console.log('Failed to load script update_accounts');
+            process.exit(1);
+        }
+    }
+    if (process.env.VOTERS_STATE === 'true') {
+        indicesList.push("table-voters");
+        const script_status = await client.putScript({
+            id: "update_voters",
+            body: {
+                script: {
+                    lang: "painless",
+                    source: `
+                    if(params.block_num >= ctx._source.block_num) {
+                        ctx._source.block_num = params.block_num;
+                        ctx._source.producers = params.producers;
+                        ctx._source.last_vote_weight = params.last_vote_weight;
+                        ctx._source.is_proxy = params.is_proxy;
+                        ctx._source.proxied_vote_weight = params.proxied_vote_weight;
+                        ctx._source.staked = params.staked;
+                        ctx._source.proxy = params.proxy;
+                    } else {
+                        ctx.op = 'noop';
+                    }`
+                }
+            }
+        });
+        if (!script_status['acknowledged']) {
+            console.log('Failed to load script update_voters');
+            process.exit(1);
+        }
+    }
+    if (process.env.DELBAND_STATE === 'true') indicesList.push("table-delband");
+    if (process.env.USERRES_STATE === 'true') indicesList.push("table-userres");
+
     const indexConfig = require('./definitions/mappings');
 
     // Update index templates
@@ -259,25 +313,35 @@ async function main() {
 
     // Setup ES Ingestion Workers
     index_queues.forEach((q) => {
-        let n = n_ingestors_per_queue;
-        if (q.type === 'abi') {
-            n = 1;
-        }
-        let qIdx = 0;
-        for (let i = 0; i < n; i++) {
-            let m = 1;
-            if (q.type === 'action') {
-                m = action_indexing_ratio;
+        if (q.type.startsWith("table-")) {
+            worker_index++;
+            workerMap.push({
+                worker_id: worker_index,
+                worker_role: 'ingestor',
+                type: q.type,
+                queue: q.name
+            });
+        } else {
+            let n = n_ingestors_per_queue;
+            if (q.type === 'abi') {
+                n = 1;
             }
-            for (let j = 0; j < m; j++) {
-                worker_index++;
-                workerMap.push({
-                    worker_id: worker_index,
-                    worker_role: 'ingestor',
-                    type: q.type,
-                    queue: q.name + ":" + (qIdx + 1)
-                });
-                qIdx++;
+            let qIdx = 0;
+            for (let i = 0; i < n; i++) {
+                let m = 1;
+                if (q.type === 'action') {
+                    m = action_indexing_ratio;
+                }
+                for (let j = 0; j < m; j++) {
+                    worker_index++;
+                    workerMap.push({
+                        worker_id: worker_index,
+                        worker_role: 'ingestor',
+                        type: q.type,
+                        queue: q.name + ":" + (qIdx + 1)
+                    });
+                    qIdx++;
+                }
             }
         }
     });

@@ -18,6 +18,7 @@ async function run() {
     try {
         ch.prefetch(indexingPrefecthCount);
         ch.assertQueue(process.env['queue'], {durable: true});
+        console.log(`setting up indexer on queue ${process.env['queue']}`);
         ch.consume(process.env['queue'], indexQueue.push);
     } catch (e) {
         console.error('elasticsearch cluster is down!');

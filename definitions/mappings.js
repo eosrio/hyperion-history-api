@@ -97,6 +97,103 @@ const block = {
     }
 };
 
+const tableAccounts = {
+    "index_patterns": [process.env.CHAIN + "-table-accounts-*"],
+    "settings": {
+        "index": {
+            "number_of_shards": 3,
+            "refresh_interval": "5s",
+            "number_of_replicas": 0,
+            "sort.field": "amount",
+            "sort.order": "desc"
+        }
+    },
+    "mappings": {
+        "properties": {
+            "code": {"type": "keyword"},
+            "scope": {"type": "keyword"},
+            "amount": {"type": "float"},
+            "symbol": {"type": "keyword"},
+            "primary_key": {"type": "keyword"},
+            "block_num": {"type": "long"}
+        }
+    }
+};
+
+const tableUserRes = {
+    "index_patterns": [process.env.CHAIN + "-table-userres-*"],
+    "settings": {
+        "index": {
+            "number_of_shards": 3,
+            "refresh_interval": "5s",
+            "number_of_replicas": 0,
+            "sort.field": "total_weight",
+            "sort.order": "desc"
+        }
+    },
+    "mappings": {
+        "properties": {
+            "owner": {"type": "keyword"},
+            "total_weight": {"type": "float"},
+            "net_weight": {"type": "float"},
+            "cpu_weight": {"type": "float"},
+            "ram_bytes": {"type": "long"},
+            "primary_key": {"type": "keyword"},
+            "block_num": {"type": "long"}
+        }
+    }
+};
+
+const tableDelBand = {
+    "index_patterns": [process.env.CHAIN + "-table-delband-*"],
+    "settings": {
+        "index": {
+            "number_of_shards": 3,
+            "refresh_interval": "5s",
+            "number_of_replicas": 0,
+            "sort.field": "total_weight",
+            "sort.order": "desc"
+        }
+    },
+    "mappings": {
+        "properties": {
+            "from": {"type": "keyword"},
+            "to": {"type": "keyword"},
+            "total_weight": {"type": "float"},
+            "net_weight": {"type": "float"},
+            "cpu_weight": {"type": "float"},
+            "primary_key": {"type": "keyword"},
+            "block_num": {"type": "long"}
+        }
+    }
+};
+
+const tableVoters = {
+    "index_patterns": [process.env.CHAIN + "-table-voters-*"],
+    "settings": {
+        "index": {
+            "number_of_shards": 3,
+            "refresh_interval": "5s",
+            "number_of_replicas": 0,
+            "sort.field": "last_vote_weight",
+            "sort.order": "desc"
+        }
+    },
+    "mappings": {
+        "properties": {
+            "voter": {"type": "keyword"},
+            "producers": {"type": "keyword"},
+            "last_vote_weight": {"type": "float"},
+            "is_proxy": {"type": "boolean"},
+            "proxied_vote_weight": {"type": "float"},
+            "staked": {"type": "float"},
+            "proxy": {"type": "keyword"},
+            "primary_key": {"type": "keyword"},
+            "block_num": {"type": "long"}
+        }
+    }
+};
+
 const delta = {
     "index_patterns": [process.env.CHAIN + "-delta-*"],
     "settings": {
@@ -152,4 +249,9 @@ const delta = {
     }
 };
 
-module.exports = {action, block, abi, delta};
+module.exports = {action, block, abi, delta,
+    "table-accounts": tableAccounts,
+    "table-delband": tableDelBand,
+    "table-userres": tableUserRes,
+    "table-voters": tableVoters
+};

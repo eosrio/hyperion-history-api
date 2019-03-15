@@ -30,8 +30,6 @@ let allowStreaming = false;
 let cachedMap;
 let contracts = new Map();
 
-const table_blacklist = ['global', 'global2', 'global3', 'producers'];
-
 const queue_prefix = process.env.CHAIN;
 const queue = queue_prefix + ':blocks';
 const index_queue_prefix = queue_prefix + ':index';
@@ -356,6 +354,16 @@ async function processDeltas(deltas, block_num) {
         }
     }
 
+    // if (deltaStruct[key]) {
+    //     const rows = deltaStruct[key];
+    //     for (const table_raw of rows) {
+    //         const serialBuffer = createSerialBuffer(table_raw.data);
+    //         const data = types.get(key).deserialize(serialBuffer);
+    //         const table = data[1];
+    //         console.log(table);
+    //     }
+    // }
+
     // for (const key of Object.keys(deltaStruct)) {
     //     if (!ignoredDeltas.has(key)) {
     //         console.log(`----------- ${key} --------------`);
@@ -402,7 +410,7 @@ async function processDeltas(deltas, block_num) {
         }
     }
 
-    if (process.env.ABI_CACHE_MODE === 'false' && process.env.INDEX_DELTAS === 'true') {
+    if (process.env.ABI_CACHE_MODE === 'false' && process.env.PROC_DELTAS === 'true') {
 
         // Generated transactions
         if (process.env.PROCESS_GEN_TX === 'true') {
@@ -491,40 +499,184 @@ async function getTableType(code, table, block) {
     return cType;
 }
 
+const tableHandlers = {
+    'eosio:voters': async (delta) => {
+        delta['@voters'] = {};
+        delta['@voters']['is_proxy'] = delta.data['is_proxy'];
+        delete delta.data['is_proxy'];
+        delete delta.data['owner'];
+        if (delta.data['proxy'] !== "") {
+            delta['@voters']['proxy'] = delta.data['proxy'];
+        }
+        delete delta.data['proxy'];
+        if (delta.data['producers'].length > 0) {
+            delta['@voters']['producers'] = delta.data['producers'];
+        }
+        delete delta.data['producers'];
+        delta['@voters']['last_vote_weight'] = parseFloat(delta.data['last_vote_weight']);
+        delete delta.data['last_vote_weight'];
+        delta['@voters']['proxied_vote_weight'] = parseFloat(delta.data['proxied_vote_weight']);
+        delete delta.data['proxied_vote_weight'];
+        delta['@voters']['staked'] = parseInt(delta.data['staked'], 10) / 10000;
+        delete delta.data['staked'];
+        if (process.env.VOTERS_STATE === 'true') {
+            await storeVoter(delta);
+        }
+    },
+    'eosio:global': async (delta) => {
+        const data = delta['data'];
+        delta['@global.data'] = {
+            last_name_close: data['last_name_close'],
+            last_pervote_bucket_fill: data['last_pervote_bucket_fill'],
+            last_producer_schedule_update: data['last_producer_schedule_update'],
+            perblock_bucket: parseFloat(data['perblock_bucket']) / 10000,
+            pervote_bucket: parseFloat(data['perblock_bucket']) / 10000,
+            total_activated_stake: parseFloat(data['total_activated_stake']) / 10000,
+            total_producer_vote_weight: parseFloat(data['total_producer_vote_weight']),
+            total_ram_kb_reserved: parseFloat(data['total_ram_bytes_reserved']) / 1024,
+            total_ram_stake: parseFloat(data['total_ram_stake']) / 10000,
+            total_unpaid_blocks: data['total_unpaid_blocks']
+        };
+        delete delta['data'];
+    },
+    'eosio:producers': async (delta) => {
+        const data = delta['data'];
+        delta['@producers'] = {
+            total_votes: parseFloat(data['total_votes']),
+            is_active: data['is_active'],
+            unpaid_blocks: data['unpaid_blocks']
+        };
+        delete delta['data'];
+    },
+    'eosio:userres': async (delta) => {
+        const data = delta['data'];
+        const net = parseFloat(data['net_weight'].split(" ")[0]);
+        const cpu = parseFloat(data['cpu_weight'].split(" ")[0]);
+        delta['@userres'] = {
+            owner: data['owner'],
+            net_weight: net,
+            cpu_weight: cpu,
+            total_weight: parseFloat((net + cpu).toFixed(4)),
+            ram_bytes: parseInt(data['ram_bytes'])
+        };
+        delete delta['data'];
+        // console.log(delta);
+    },
+    'eosio:delband': async (delta) => {
+        const data = delta['data'];
+        const net = parseFloat(data['net_weight'].split(" ")[0]);
+        const cpu = parseFloat(data['cpu_weight'].split(" ")[0]);
+        delta['@delband'] = {
+            from: data['from'],
+            to: data['to'],
+            net_weight: net,
+            cpu_weight: cpu,
+            total_weight: parseFloat((net + cpu).toFixed(4))
+        };
+        delete delta['data'];
+        // console.log(delta);
+    },
+    // 'eosio:rammarket': async (delta) => {
+    //     console.log(delta);
+    // },
+    '*:accounts': async (delta) => {
+        if (delta['data']['balance']) {
+            try {
+                const [amount, symbol] = delta['data']['balance'].split(" ");
+                delta['@accounts'] = {
+                    amount: parseFloat(amount),
+                    symbol: symbol
+                };
+            } catch (e) {
+                console.log(delta);
+                console.log(e);
+            }
+        }
+        if (process.env.ACCOUNT_STATE === 'true') {
+            await storeAccount(delta);
+        }
+    }
+};
+
+async function storeVoter(data) {
+    const voterDoc = {
+        "voter": data['payer'],
+        "last_vote_weight": data['@voters']['last_vote_weight'],
+        "is_proxy": data['@voters']['is_proxy'],
+        "proxied_vote_weight": data['@voters']['proxied_vote_weight'],
+        "staked": data['@voters']['staked'],
+        "primary_key": data['primary_key'],
+        "block_num": data['block_num']
+    };
+    if (data['@voters']['proxy']) {
+        voterDoc.proxy = data['@voters']['proxy'];
+    }
+    if (data['@voters']['producers']) {
+        voterDoc.producers = data['@voters']['producers'];
+    }
+
+    // console.log('-------------- VOTER --------------');
+    // console.log(prettyjson.render(data));
+
+    if (process.env.ENABLE_INDEXING === 'true') {
+        const q = index_queue_prefix + "_table_voters";
+        const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(voterDoc)));
+        if (!status) {
+            console.log('Voter Indexing:', status);
+        }
+    }
+}
+
+async function storeAccount(data) {
+    const accountDoc = {
+        "code": data['code'],
+        "scope": data['scope'],
+        "primary_key": data['primary_key'],
+        "block_num": data['block_num']
+    };
+    if (data['@accounts']) {
+        accountDoc['amount'] = data['@accounts']['amount'];
+        accountDoc['symbol'] = data['@accounts']['symbol'];
+    }
+    // console.log('-------------- ACCOUNT --------------');
+    // console.log(prettyjson.render(accountDoc));
+
+    if (process.env.ENABLE_INDEXING === 'true') {
+        const q = index_queue_prefix + "_table_accounts";
+        const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(accountDoc)));
+        if (!status) {
+            console.log('Account Indexing:', status);
+        }
+    }
+}
+
 async function processTableDelta(data, block_num) {
     if (data['table']) {
         data['block_num'] = block_num;
         let allowIndex = true;
-        switch (data['table']) {
-            case 'accounts': {
-                await accountsTableHandler(data);
-                break;
-            }
-            case 'voters': {
-                if (data['code'] === 'eosio') {
-                    await votersTableHandler(data);
-                }
-                break;
-            }
-            case 'global': {
-                if (data['code'] === 'eosio') {
-                    await globalTableHandler(data);
-                }
-                break;
-            }
-            case 'producers': {
-                if (data['code'] === 'eosio') {
-                    await producersTableHandler(data);
-                }
-                break;
-            }
-            default: {
-                allowIndex = process.env.INDEX_ALL_DELTAS === 'true';
-                break;
-            }
+        let handled = false;
+        const key = `${data.code}:${data.table}`;
+
+        if (tableHandlers[key]) {
+            await tableHandlers[key](data);
+            handled = true;
         }
 
-        if (process.env.ENABLE_INDEXING === 'true' && allowIndex) {
+        if (tableHandlers[`${data.code}:*`]) {
+            await tableHandlers[`${data.code}:*`](data);
+            handled = true;
+        }
+
+        if (tableHandlers[`*:${data.table}`]) {
+            await tableHandlers[`*:${data.table}`](data);
+            handled = true;
+        }
+
+        if (!handled && process.env.INDEX_ALL_DELTAS === 'true') {
+            allowIndex = true;
+        }
+
+        if (process.env.ENABLE_INDEXING === 'true' && allowIndex && process.env.INDEX_DELTAS === 'true') {
             const q = index_queue_prefix + "_deltas:" + (delta_emit_idx);
             const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(data)));
             if (!status) {
@@ -535,69 +687,6 @@ async function processTableDelta(data, block_num) {
                 delta_emit_idx = 1;
             }
         }
-    }
-}
-
-async function producersTableHandler(delta) {
-    const data = delta['data'];
-    delta['@producers'] = {
-        total_votes: parseFloat(data['total_votes']),
-        is_active: data['is_active'],
-        unpaid_blocks: data['unpaid_blocks']
-    };
-    delete delta['data'];
-}
-
-async function globalTableHandler(delta) {
-    const data = delta['data'];
-    delta['@global.data'] = {
-        last_name_close: data['last_name_close'],
-        last_pervote_bucket_fill: data['last_pervote_bucket_fill'],
-        last_producer_schedule_update: data['last_producer_schedule_update'],
-        perblock_bucket: parseFloat(data['perblock_bucket']) / 10000,
-        pervote_bucket: parseFloat(data['perblock_bucket']) / 10000,
-        total_activated_stake: parseFloat(data['total_activated_stake']) / 10000,
-        total_producer_vote_weight: parseFloat(data['total_producer_vote_weight']),
-        total_ram_kb_reserved: parseFloat(data['total_ram_bytes_reserved']) / 1024,
-        total_ram_stake: parseFloat(data['total_ram_stake']) / 10000,
-        total_unpaid_blocks: data['total_unpaid_blocks']
-    };
-    delete delta['data'];
-}
-
-async function votersTableHandler(delta) {
-    delta['@voters'] = {};
-    delta['@voters']['is_proxy'] = delta.data['is_proxy'];
-    delete delta.data['is_proxy'];
-
-    delete delta.data['owner'];
-
-    if (delta.data['proxy'] !== "") {
-        delta['@voters']['proxy'] = delta.data['proxy'];
-    }
-    delete delta.data['proxy'];
-    if (delta.data['producers'].length > 0) {
-        delta['@voters']['producers'] = delta.data['producers'];
-    }
-    delete delta.data['producers'];
-
-    delta['@voters']['last_vote_weight'] = parseFloat(delta.data['last_vote_weight']);
-    delete delta.data['last_vote_weight'];
-
-    delta['@voters']['proxied_vote_weight'] = parseFloat(delta.data['proxied_vote_weight']);
-    delete delta.data['proxied_vote_weight'];
-
-    delta['@voters']['staked'] = parseInt(delta.data['staked'], 10) / 10000
-    delete delta.data['staked'];
-}
-
-async function accountsTableHandler(delta) {
-    if (delta['data']['balance']) {
-        const [amount, symbol] = delta['data']['balance'].split(" ");
-        delta['@accounts'] = {
-            amount: parseFloat(amount),
-            symbol: symbol
-        };
     }
 }
 
@@ -688,15 +777,19 @@ async function run() {
     }
 
     index_queues.forEach((q) => {
-        let n = n_ingestors_per_queue;
-        if (q.type === 'abi') n = 1;
-        let qIdx = 0;
-        for (let i = 0; i < n; i++) {
-            let m = 1;
-            if (q.type === 'action') m = action_indexing_ratio;
-            for (let j = 0; j < m; j++) {
-                ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: true});
-                qIdx++;
+        if (q.type.startsWith("table-")) {
+            ch.assertQueue(q.name, {durable: true});
+        } else {
+            let n = n_ingestors_per_queue;
+            if (q.type === 'abi') n = 1;
+            let qIdx = 0;
+            for (let i = 0; i < n; i++) {
+                let m = 1;
+                if (q.type === 'action') m = action_indexing_ratio;
+                for (let j = 0; j < m; j++) {
+                    ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: true});
+                    qIdx++;
+                }
             }
         }
     });
