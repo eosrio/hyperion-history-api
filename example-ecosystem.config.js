@@ -14,7 +14,7 @@ module.exports = {
                 NODEOS_HTTP: 'http://127.0.0.1:8888',
                 NODEOS_WS: 'ws://127.0.0.1:8080',
                 START_ON: 0,
-                STOP_ON:  0,
+                STOP_ON: 0,
                 REWRITE: 'false',
                 BATCH_SIZE: 5000,
                 LIVE_READER: 'false',
@@ -34,6 +34,7 @@ module.exports = {
                 BLOCK_PREFETCH: 100,
                 INDEX_PREFETCH: 500,
                 ENABLE_INDEXING: 'true',
+                PROC_DELTAS: 'true',
                 INDEX_DELTAS: 'true',
                 INDEX_ALL_DELTAS: 'false',
                 ABI_CACHE_MODE: 'false'
@@ -54,7 +55,7 @@ module.exports = {
                 SERVER_ADDR: '127.0.0.1',
                 NODEOS_HTTP: 'http://127.0.0.1:8888',
                 ES_HOST: '127.0.0.1:9200',
-                CHAIN: 'mainnet'
+                CHAIN: 'eos'
             }
         }
     ]

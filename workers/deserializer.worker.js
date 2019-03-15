@@ -25,6 +25,8 @@ let chainID = null;
 let act_emit_idx = 1;
 let delta_emit_idx = 1;
 let block_emit_idx = 1;
+let tbl_acc_emit_idx = 1;
+let tbl_vote_emit_idx = 1;
 let local_block_count = 0;
 let allowStreaming = false;
 let cachedMap;
@@ -126,7 +128,7 @@ async function processBlock(res, block, traces, deltas) {
             local_block_count++;
         }
 
-        if (deltas && process.env.FETCH_DELTAS === 'true') {
+        if (deltas && process.env.PROC_DELTAS === 'true') {
             await processDeltas(deltas, block_num);
         }
 
@@ -494,7 +496,14 @@ async function getTableType(code, table, block) {
     }
     let cType = contract.types.get(type);
     if (!cType) {
-        console.log(code, table, block);
+
+        if (type === 'self_delegated_bandwidth') {
+            cType = contract.types.get('delegated_bandwidth')
+        }
+
+        if (!cType) {
+            console.log(`code:${code} | table:${table} | block:${block} | type:${type}`);
+        }
     }
     return cType;
 }
@@ -580,7 +589,7 @@ const tableHandlers = {
     //     console.log(delta);
     // },
     '*:accounts': async (delta) => {
-        if (delta['data']['balance']) {
+        if (typeof delta['data']['balance'] === 'string') {
             try {
                 const [amount, symbol] = delta['data']['balance'].split(" ");
                 delta['@accounts'] = {
@@ -619,10 +628,14 @@ async function storeVoter(data) {
     // console.log(prettyjson.render(data));
 
     if (process.env.ENABLE_INDEXING === 'true') {
-        const q = index_queue_prefix + "_table_voters";
+        const q = index_queue_prefix + "_table_voters:" + (tbl_vote_emit_idx);
         const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(voterDoc)));
         if (!status) {
             console.log('Voter Indexing:', status);
+        }
+        tbl_vote_emit_idx++;
+        if (tbl_vote_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+            tbl_vote_emit_idx = 1;
         }
     }
 }
@@ -638,14 +651,19 @@ async function storeAccount(data) {
         accountDoc['amount'] = data['@accounts']['amount'];
         accountDoc['symbol'] = data['@accounts']['symbol'];
     }
+
     // console.log('-------------- ACCOUNT --------------');
     // console.log(prettyjson.render(accountDoc));
 
     if (process.env.ENABLE_INDEXING === 'true') {
-        const q = index_queue_prefix + "_table_accounts";
+        const q = index_queue_prefix + "_table_accounts:" + (tbl_acc_emit_idx);
         const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(accountDoc)));
         if (!status) {
             console.log('Account Indexing:', status);
+        }
+        tbl_acc_emit_idx++;
+        if (tbl_acc_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+            tbl_acc_emit_idx = 1;
         }
     }
 }
@@ -673,6 +691,8 @@ async function processTableDelta(data, block_num) {
         }
 
         if (!handled && process.env.INDEX_ALL_DELTAS === 'true') {
+            allowIndex = true;
+        } else if (handled) {
             allowIndex = true;
         }
 
@@ -777,19 +797,15 @@ async function run() {
     }
 
     index_queues.forEach((q) => {
-        if (q.type.startsWith("table-")) {
-            ch.assertQueue(q.name, {durable: true});
-        } else {
-            let n = n_ingestors_per_queue;
-            if (q.type === 'abi') n = 1;
-            let qIdx = 0;
-            for (let i = 0; i < n; i++) {
-                let m = 1;
-                if (q.type === 'action') m = action_indexing_ratio;
-                for (let j = 0; j < m; j++) {
-                    ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: true});
-                    qIdx++;
-                }
+        let n = n_ingestors_per_queue;
+        if (q.type === 'abi') n = 1;
+        let qIdx = 0;
+        for (let i = 0; i < n; i++) {
+            let m = 1;
+            if (q.type === 'action') m = action_indexing_ratio;
+            for (let j = 0; j < m; j++) {
+                ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: true});
+                qIdx++;
             }
         }
     });
@@ -800,12 +816,11 @@ async function run() {
             const initialTypes = Serialize.createInitialTypes();
             types = Serialize.getTypesFromAbi(initialTypes, abi);
             abi.tables.map(table => tables.set(table.name, table.type));
-            console.log('setting up deserializer on ' + process.env['worker_queue']);
+            // console.log('setting up deserializer on ' + process.env['worker_queue']);
             ch.prefetch(dSprefecthCount);
             ch.consume(process.env['worker_queue'], (data) => {
                 consumerQueue.push(data);
             });
-
         }
         if (msg.event === 'connect_ws') {
             allowStreaming = true;
