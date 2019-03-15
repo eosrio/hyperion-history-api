@@ -1,3 +1,11 @@
+### nodeos config.ini
+```
+state-history-dir = "state-history"
+trace-history = true
+chain-state-history = true
+state-history-endpoint = 127.0.0.1:8080
+```
+
 ### NodeJS
 
 ```bash
