@@ -56,6 +56,8 @@ async function processIncomingBlocks(block_array) {
     return true;
 }
 
+let completionSignaled = false;
+
 function signalReaderCompletion() {
     // Monitor pending messages
     setInterval(() => {
@@ -72,13 +74,12 @@ function signalReaderCompletion() {
                 lastPendingCount = pending;
             }
         }
-        if (pending === 0) {
+        if (pending === 0 && completionSignaled === false) {
+            completionSignaled = true;
             process.send({
                 event: 'completed',
                 id: process.env['worker_id']
             });
-            ch.close();
-            process.exit(1);
         }
     }, 1000);
 }
@@ -87,21 +88,30 @@ function send(req_data) {
     ws.send(serialize('request', req_data, txEnc, txDec, types));
 }
 
+const baseRequest = {
+    max_messages_in_flight: maxMessagesInFlight,
+    have_positions: [],
+    irreversible_only: false,
+    fetch_block: process.env.FETCH_BLOCK === 'true',
+    fetch_traces: process.env.FETCH_TRACES === 'true',
+    fetch_deltas: true
+};
+
 // State history request builder
 function requestBlocks(start) {
     const first_block = start > 0 ? start : process.env.first_block;
     const last_block = start > 0 ? 0xffffffff : process.env.last_block;
     // console.log(`REQUEST - ${process.env.first_block} >> ${process.env.last_block}`);
-    const request = {
-        start_block_num: parseInt(first_block > 0 ? first_block : '1', 10),
-        end_block_num: parseInt(last_block, 10),
-        max_messages_in_flight: maxMessagesInFlight,
-        have_positions: [],
-        irreversible_only: false,
-        fetch_block: process.env.FETCH_BLOCK === 'true',
-        fetch_traces: process.env.FETCH_TRACES === 'true',
-        fetch_deltas: true
-    };
+    const request = baseRequest;
+    request.start_block_num = parseInt(first_block > 0 ? first_block : '1', 10);
+    request.end_block_num = parseInt(last_block, 10);
+    send(['get_blocks_request_v0', request]);
+}
+
+function requestBlockRange(start, finish) {
+    const request = baseRequest;
+    request.start_block_num = parseInt(start, 10);
+    request.end_block_num = parseInt(finish, 10);
     send(['get_blocks_request_v0', request]);
 }
 
@@ -155,6 +165,7 @@ async function onMessage(data) {
             }
         } else {
             console.log('something went wrong!');
+            ws.close();
             process.exit(1);
         }
     } else {
@@ -218,9 +229,13 @@ async function run() {
 
     pmx.action('stop', (reply) => {
         if (process.env['worker_role'] === 'continuous_reader') {
-            console.info('[READER] Closing Websocket');
+            console.info('[LIVE READER] Closing Websocket');
             reply({ack: true});
             ws.close();
+            setTimeout(() => {
+                console.info('[LIVE READER] Process killed');
+                process.exit(1);
+            }, 5000);
         }
     });
 
@@ -250,6 +265,17 @@ async function run() {
 
     // Connect to StateHistory via WebSocket
     ws = connectStateHistorySocket(blockReadingQueue.push);
+
+    process.on('message', (msg) => {
+        if (msg.event === 'new_range') {
+            if (msg.target === process.env.worker_id) {
+                // console.log('New range received!');
+                // console.log(msg.data);
+                requestBlockRange(msg.data.first_block, msg.data.last_block);
+                completionSignaled = false;
+            }
+        }
+    });
 }
 
 module.exports = {run};

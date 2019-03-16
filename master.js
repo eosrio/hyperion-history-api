@@ -278,8 +278,9 @@ async function main() {
     // Create first batch of parallel readers
     let lastAssignedBlock = starting_block;
 
+    let activeReadersCount = 0;
     if (process.env.LIVE_ONLY === 'false') {
-        while (activeReaders.length < max_readers && lastAssignedBlock < head) {
+        while (activeReadersCount < max_readers && lastAssignedBlock < head) {
             worker_index++;
             const start = lastAssignedBlock;
             let end = lastAssignedBlock + maxBatchSize;
@@ -293,7 +294,8 @@ async function main() {
                 first_block: start,
                 last_block: end
             };
-            activeReaders.push(def);
+            // activeReaders.push(def);
+            activeReadersCount++;
             workerMap.push(def);
             // console.log(`Launching new worker from ${start} to ${end}`);
         }
@@ -418,11 +420,9 @@ async function main() {
                 break;
             }
             case 'completed': {
-                const idx = activeReaders.findIndex(w => w.worker_id.toString() === msg.id);
-                activeReaders.splice(idx, 1);
-                if (activeReaders.length < max_readers && lastAssignedBlock < head && allowMoreReaders) {
-                    // Deploy next worker
-                    worker_index++;
+                activeReadersCount--;
+                if (activeReadersCount < max_readers && lastAssignedBlock < head && allowMoreReaders) {
+                    // Assign next range
                     const start = lastAssignedBlock;
                     let end = lastAssignedBlock + maxBatchSize;
                     if (end > head) {
@@ -430,18 +430,15 @@ async function main() {
                     }
                     lastAssignedBlock += maxBatchSize;
                     const def = {
-                        worker_id: worker_index,
-                        worker_role: 'reader',
                         first_block: start,
-                        last_block: end,
-                        init_abi: cachedInitABI
+                        last_block: end
                     };
-                    activeReaders.push(def);
-                    workerMap.push(def);
-                    setTimeout(() => {
-                        // console.log(`Launching new worker from ${start} to ${end}`);
-                        cluster.fork(def).on('message', workerHandler);
-                    }, 100);
+                    activeReadersCount++;
+                    messageAllWorkers(cluster, {
+                        event: 'new_range',
+                        target: msg.id,
+                        data: def
+                    });
                 }
                 break;
             }
