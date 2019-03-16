@@ -4,7 +4,7 @@ const crypto = require('crypto');
 function buildActionBulk(payloads, messageMap) {
     return _(payloads).map(payload => {
         const body = JSON.parse(Buffer.from(payload.content).toString());
-        messageMap[body['global_sequence']] = payload;
+        messageMap.set(body['global_sequence'], payload);
         return [{
             index: {_id: body['global_sequence']}
         }, body];
@@ -14,7 +14,7 @@ function buildActionBulk(payloads, messageMap) {
 function buildBlockBulk(payloads, messageMap) {
     return _(payloads).map(payload => {
         const body = JSON.parse(Buffer.from(payload.content).toString());
-        messageMap[body['block_num']] = payload;
+        messageMap.set(body['block_num'], payload);
         return [{
             index: {_id: body['block_num']}
         }, body];
@@ -25,7 +25,7 @@ function buildAbiBulk(payloads, messageMap) {
     return _(payloads).map(payload => {
         const body = JSON.parse(Buffer.from(payload.content).toString());
         const id = body['block'] + body['account'];
-        messageMap[id] = payload;
+        messageMap.set(id, payload);
         return [
             {index: {_id: id}},
             body
@@ -39,7 +39,7 @@ function buildDeltaBulk(payloads, messageMap) {
         const id_string = `${body.block_num}-${body.code}-${body.scope}-${body.table}-${body.payer}`;
         const hash = crypto.createHash('sha256');
         const id = hash.update(id_string).digest('hex');
-        messageMap[id] = payload;
+        messageMap.set(id, payload);
         return [
             {index: {_id: id}},
             body
@@ -53,9 +53,9 @@ function buildTableAccountsBulk(payloads, messageMap) {
         const id_string = `${body.code}-${body.scope}-${body.primary_key}`;
         const hash = crypto.createHash('sha256');
         const id = hash.update(id_string).digest('hex');
-        messageMap[id] = payload;
+        messageMap.set(id, payload);
         return [
-            {update: {_id: id}},
+            {update: {_id: id, retry_on_conflict: 3}},
             {
                 "script": {
                     "id": "update_accounts",
@@ -73,10 +73,12 @@ function buildTableAccountsBulk(payloads, messageMap) {
 function buildTableVotersBulk(payloads, messageMap) {
     return _(payloads)['map'](payload => {
         const body = JSON.parse(Buffer.from(payload.content).toString());
-        const id = body.primary_key;
-        messageMap[id] = payload;
+        const id_string = `${body.primary_key}`;
+        const hash = crypto.createHash('sha256');
+        const id = hash.update(id_string).digest('hex');
+        messageMap.set(id, payload);
         return [
-            {update: {_id: id}},
+            {update: {_id: id, retry_on_conflict: 3}},
             {
                 "script": {
                     "id": "update_accounts",

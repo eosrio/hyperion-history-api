@@ -13,15 +13,13 @@ async function amqpConnect() {
         confirmChannel = await connection.createConfirmChannel();
     } catch (e) {
         console.log(e);
-        process.exit(1);
     }
+
     connection.on('error', (err) => {
+        console.log("[AMQP] error");
         console.log(err);
     });
-    connection.on('close', () => {
-        console.error("[AMQP] reconnecting");
-        setTimeout(amqpConnect, 5000);
-    });
+
     return [channel, confirmChannel];
 }
 

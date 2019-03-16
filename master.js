@@ -50,9 +50,12 @@ async function main() {
 
     const indicesList = ["action", "block", "abi", "delta"];
 
+    const index_queue_prefix = queue_prefix + ':index';
+
     // Optional state tables
     if (process.env.ACCOUNT_STATE === 'true') {
         indicesList.push("table-accounts");
+        index_queues.push({type: 'table-accounts', name: index_queue_prefix + "_table_accounts"});
         const script_status = await client.putScript({
             id: "update_accounts",
             body: {
@@ -73,8 +76,11 @@ async function main() {
             process.exit(1);
         }
     }
+
+
     if (process.env.VOTERS_STATE === 'true') {
         indicesList.push("table-voters");
+        index_queues.push({type: 'table-voters', name: index_queue_prefix + "_table_voters"});
         const script_status = await client.putScript({
             id: "update_voters",
             body: {
@@ -100,8 +106,14 @@ async function main() {
             process.exit(1);
         }
     }
-    if (process.env.DELBAND_STATE === 'true') indicesList.push("table-delband");
-    if (process.env.USERRES_STATE === 'true') indicesList.push("table-userres");
+    if (process.env.DELBAND_STATE === 'true') {
+        indicesList.push("table-delband");
+        index_queues.push({type: 'table-delband', name: index_queue_prefix + "_table_delband"});
+    }
+    if (process.env.USERRES_STATE === 'true') {
+        indicesList.push("table-userres");
+        index_queues.push({type: 'table-userres', name: index_queue_prefix + "_table_userres"});
+    }
 
     const indexConfig = require('./definitions/mappings');
 
@@ -216,13 +228,14 @@ async function main() {
     let lastIndexedBlock;
     if (process.env.INDEX_DELTAS === 'true') {
         lastIndexedBlock = await getLastIndexedBlockByDelta(client);
+        console.log('Last indexed block (deltas):', lastIndexedBlock);
     } else {
         lastIndexedBlock = await getLastIndexedBlock(client);
+        console.log('Last indexed block (blocks):', lastIndexedBlock);
     }
 
     // Start from the last indexed block
     let starting_block = 1;
-    console.log('Last indexed block:', lastIndexedBlock);
 
     // Fecth chain lib
     const chain_data = await rpc.get_info();
@@ -313,35 +326,25 @@ async function main() {
 
     // Setup ES Ingestion Workers
     index_queues.forEach((q) => {
-        if (q.type.startsWith("table-")) {
-            worker_index++;
-            workerMap.push({
-                worker_id: worker_index,
-                worker_role: 'ingestor',
-                type: q.type,
-                queue: q.name
-            });
-        } else {
-            let n = n_ingestors_per_queue;
-            if (q.type === 'abi') {
-                n = 1;
+        let n = n_ingestors_per_queue;
+        if (q.type === 'abi') {
+            n = 1;
+        }
+        let qIdx = 0;
+        for (let i = 0; i < n; i++) {
+            let m = 1;
+            if (q.type === 'action') {
+                m = action_indexing_ratio;
             }
-            let qIdx = 0;
-            for (let i = 0; i < n; i++) {
-                let m = 1;
-                if (q.type === 'action') {
-                    m = action_indexing_ratio;
-                }
-                for (let j = 0; j < m; j++) {
-                    worker_index++;
-                    workerMap.push({
-                        worker_id: worker_index,
-                        worker_role: 'ingestor',
-                        type: q.type,
-                        queue: q.name + ":" + (qIdx + 1)
-                    });
-                    qIdx++;
-                }
+            for (let j = 0; j < m; j++) {
+                worker_index++;
+                workerMap.push({
+                    worker_id: worker_index,
+                    worker_role: 'ingestor',
+                    type: q.type,
+                    queue: q.name + ":" + (qIdx + 1)
+                });
+                qIdx++;
             }
         }
     });

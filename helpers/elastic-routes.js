@@ -13,31 +13,46 @@ const {elasticsearchConnect} = require("../connections/elasticsearch");
 const client = elasticsearchConnect();
 
 function ackOrNack(resp, messageMap, channel) {
-    resp.items.forEach(item => {
-        const message = messageMap[item.index._id];
-        delete messageMap[item.index._id];
-        if (item.index.status !== 201 && item.index.status !== 200) {
-            channel.nack(message);
-            console.log(prettyjson.render(item.index));
-            console.info(`nack ${item.index._id} ${item.index.status}`);
+    for (const item of resp.items) {
+        let id, itemBody;
+        if (item['index']) {
+            id = item.index._id;
+            itemBody = item.index;
+        } else if (item['update']) {
+            id = item.update._id;
+            itemBody = item.update;
         } else {
-            channel.ack(message);
-            // console.log(`ack ${item.index._id}`);
+            console.log(item);
+            throw new Error('FATAL ERROR - CANNOT EXTRACT ID');
         }
-    });
+        const message = messageMap.get(id);
+        const status = itemBody.status;
+        if (message) {
+            if (status === 409) {
+                console.log(item);
+                channel.nack(message);
+            } else if (status !== 201 && status !== 200) {
+                channel.nack(message);
+                console.log(item);
+                console.info(`nack id: ${id} - status: ${status}`);
+            } else {
+                channel.ack(message);
+            }
+        } else {
+            console.log(item);
+            throw new Error('Message not found');
+        }
+    }
 }
 
 function onResponse(resp, messageMap, callback, payloads, channel) {
-    try {
-        if (resp.errors) {
-            ackOrNack(resp, messageMap, channel);
-            return;
-        }
-        process.send({event: 'add_index', size: payloads.length});
+    process.send({event: 'add_index', size: payloads.length});
+    if (resp.errors) {
+        ackOrNack(resp, messageMap, channel);
+    } else {
         channel.ackAll();
-    } finally {
-        callback();
     }
+    callback();
 }
 
 function onError(err, channel, callback) {
@@ -51,7 +66,7 @@ function onError(err, channel, callback) {
 
 const routes = {
     'action': async (payloads, channel, cb) => {
-        const messageMap = {};
+        const messageMap = new Map();
         client['bulk']({
             index: queue_prefix + '-action',
             type: '_doc',
@@ -63,7 +78,7 @@ const routes = {
         });
     },
     'block': async (payloads, channel, cb) => {
-        const messageMap = {};
+        const messageMap = new Map();
         client['bulk']({
             index: queue_prefix + '-block',
             type: '_doc',
@@ -75,7 +90,7 @@ const routes = {
         });
     },
     'delta': async (payloads, channel, cb) => {
-        const messageMap = {};
+        const messageMap = new Map();
         client['bulk']({
             index: queue_prefix + '-delta',
             type: '_doc',
@@ -87,7 +102,7 @@ const routes = {
         });
     },
     'table-accounts': async (payloads, channel, cb) => {
-        const messageMap = {};
+        const messageMap = new Map();
         client['bulk']({
             index: queue_prefix + '-table-accounts',
             type: '_doc',
@@ -99,7 +114,7 @@ const routes = {
         });
     },
     'table-voters': async (payloads, channel, cb) => {
-        const messageMap = {};
+        const messageMap = new Map();
         client['bulk']({
             index: queue_prefix + '-table-voters',
             type: '_doc',
@@ -111,7 +126,7 @@ const routes = {
         });
     },
     'abi': async (payloads, channel, cb) => {
-        const messageMap = {};
+        const messageMap = new Map();
         client['bulk']({
             index: queue_prefix + '-abi',
             type: '_doc',

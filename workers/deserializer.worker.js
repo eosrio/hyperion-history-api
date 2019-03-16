@@ -167,7 +167,13 @@ async function getContractAtBlock(accountName, block_num) {
     const savedAbi = await getAbiAtBlock(accountName, block_num);
     const abi = savedAbi.abi;
     const initialTypes = Serialize.createInitialTypes();
-    const types = Serialize.getTypesFromAbi(initialTypes, abi);
+    let types;
+    try {
+        types = Serialize.getTypesFromAbi(initialTypes, abi);
+    } catch (e) {
+        console.log(accountName, block_num);
+        console.log(e);
+    }
     const actions = new Map();
     for (const {name, type} of abi.actions) {
         actions.set(name, Serialize.getType(types, type));
@@ -497,8 +503,12 @@ async function getTableType(code, table, block) {
     let cType = contract.types.get(type);
     if (!cType) {
 
-        if (type === 'self_delegated_bandwidth') {
-            cType = contract.types.get('delegated_bandwidth')
+        if(types.has(type)) {
+            cType = types.get(type);
+        } else {
+            if (type === 'self_delegated_bandwidth') {
+                cType = contract.types.get('delegated_bandwidth')
+            }
         }
 
         if (!cType) {
@@ -631,7 +641,7 @@ async function storeVoter(data) {
         const q = index_queue_prefix + "_table_voters:" + (tbl_vote_emit_idx);
         const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(voterDoc)));
         if (!status) {
-            console.log('Voter Indexing:', status);
+            // console.log('Voter Indexing:', status);
         }
         tbl_vote_emit_idx++;
         if (tbl_vote_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
@@ -659,7 +669,7 @@ async function storeAccount(data) {
         const q = index_queue_prefix + "_table_accounts:" + (tbl_acc_emit_idx);
         const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(accountDoc)));
         if (!status) {
-            console.log('Account Indexing:', status);
+            // console.log('Account Indexing:', status);
         }
         tbl_acc_emit_idx++;
         if (tbl_acc_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
@@ -700,7 +710,7 @@ async function processTableDelta(data, block_num) {
             const q = index_queue_prefix + "_deltas:" + (delta_emit_idx);
             const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(data)));
             if (!status) {
-                console.log('Delta Indexing:', status);
+                // console.log('Delta Indexing:', status);
             }
             delta_emit_idx++;
             if (delta_emit_idx > n_ingestors_per_queue) {
