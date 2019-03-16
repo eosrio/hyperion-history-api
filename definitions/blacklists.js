@@ -1,5 +1,9 @@
 const chain_prefix = process.env.CHAIN;
 
+const delta_blacklist = new Set([
+
+]);
+
 const action_blacklist = new Set([
     chain_prefix + '::eosio::onblock',
     'eos::lelego.x::msg',
@@ -60,5 +64,6 @@ const action_blacklist = new Set([
 ]);
 
 module.exports = {
-    action_blacklist
+    action_blacklist,
+    delta_blacklist
 };

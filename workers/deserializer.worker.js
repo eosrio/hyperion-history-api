@@ -438,7 +438,8 @@ async function processDeltas(deltas, block_num) {
             for (const row of rows) {
                 const sb = createSerialBuffer(new Uint8Array(Object.values(row.data)));
                 try {
-                    const jsonRow = await processContractRow({
+                    let allowProcessing = false;
+                    const payload = {
                         present: sb.get(),
                         code: sb.getName(),
                         scope: sb.getName(),
@@ -446,17 +447,27 @@ async function processDeltas(deltas, block_num) {
                         primary_key: sb.getUint64AsNumber(),
                         payer: sb.getName(),
                         data_raw: sb.getBytes()
-                    }, block_num);
-                    if (jsonRow['data']) {
-                        await processTableDelta(jsonRow, block_num);
+                    };
+
+                    if(process.env.INDEX_ALL_DELTAS === 'true') {
+                        allowProcessing = true;
+                    } else if (payload.code === 'eosio' || payload.table === 'accounts') {
+                        allowProcessing = true;
                     }
-                    if (allowStreaming) {
-                        const payload = Buffer.from(JSON.stringify(jsonRow));
-                        ch.publish('', queue_prefix + ':stream', payload, {
-                            headers: {
-                                event: 'delta'
-                            }
-                        });
+
+                    if(allowProcessing) {
+                        const jsonRow = await processContractRow(payload, block_num);
+                        if (jsonRow['data']) {
+                            await processTableDelta(jsonRow, block_num);
+                        }
+                        if (allowStreaming) {
+                            const payload = Buffer.from(JSON.stringify(jsonRow));
+                            ch.publish('', queue_prefix + ':stream', payload, {
+                                headers: {
+                                    event: 'delta'
+                                }
+                            });
+                        }
                     }
                 } catch (e) {
                     console.log(e);
@@ -503,7 +514,7 @@ async function getTableType(code, table, block) {
     let cType = contract.types.get(type);
     if (!cType) {
 
-        if(types.has(type)) {
+        if (types.has(type)) {
             cType = types.get(type);
         } else {
             if (type === 'self_delegated_bandwidth') {
