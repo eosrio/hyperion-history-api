@@ -449,13 +449,13 @@ async function processDeltas(deltas, block_num) {
                         data_raw: sb.getBytes()
                     };
 
-                    if(process.env.INDEX_ALL_DELTAS === 'true') {
+                    if (process.env.INDEX_ALL_DELTAS === 'true') {
                         allowProcessing = true;
                     } else if (payload.code === 'eosio' || payload.table === 'accounts') {
                         allowProcessing = true;
                     }
 
-                    if(allowProcessing) {
+                    if (allowProcessing) {
                         const jsonRow = await processContractRow(payload, block_num);
                         if (jsonRow['data']) {
                             await processTableDelta(jsonRow, block_num);
@@ -691,7 +691,10 @@ async function storeAccount(data) {
 
 async function processTableDelta(data, block_num) {
     if (data['table']) {
+
         data['block_num'] = block_num;
+        data['primary_key'] = String(data['primary_key']);
+
         let allowIndex = true;
         let handled = false;
         const key = `${data.code}:${data.table}`;

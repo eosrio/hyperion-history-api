@@ -52,60 +52,56 @@ async function main() {
 
     const index_queue_prefix = queue_prefix + ':index';
 
+    const script_status = await client.putScript({
+        id: "updateByBlock",
+        body: {
+            script: {
+                lang: "painless",
+                source: `
+                
+                    boolean valid = false;
+                    
+                    if(ctx._source.block_num != null) {
+                      if(params.block_num < ctx._source.block_num) {
+                        ctx['op'] = 'none';
+                        valid = false;
+                      } else {
+                        valid = true;
+                      } 
+                    } else {
+                      valid = true;
+                    }
+                    
+                    if(valid == true) {
+                      for (entry in params.entrySet()) {
+                        if(entry.getValue() != null) {
+                          ctx._source[entry.getKey()] = entry.getValue();
+                        } else {
+                          ctx._source.remove(entry.getKey());
+                        }
+                      }
+                    }
+                `
+            }
+        }
+    });
+
+    if (!script_status['acknowledged']) {
+        console.log('Failed to load script updateByBlock. Aborting!');
+        process.exit(1);
+    }
+
     // Optional state tables
     if (process.env.ACCOUNT_STATE === 'true') {
         indicesList.push("table-accounts");
         index_queues.push({type: 'table-accounts', name: index_queue_prefix + "_table_accounts"});
-        const script_status = await client.putScript({
-            id: "update_accounts",
-            body: {
-                script: {
-                    lang: "painless",
-                    source: `
-                    if(params.block_num >= ctx._source.block_num) {
-                        ctx._source.block_num = params.block_num;
-                        ctx._source.amount = params.amount;
-                    } else {
-                        ctx.op = 'noop';
-                    }`
-                }
-            }
-        });
-        if (!script_status['acknowledged']) {
-            console.log('Failed to load script update_accounts');
-            process.exit(1);
-        }
     }
-
 
     if (process.env.VOTERS_STATE === 'true') {
         indicesList.push("table-voters");
         index_queues.push({type: 'table-voters', name: index_queue_prefix + "_table_voters"});
-        const script_status = await client.putScript({
-            id: "update_voters",
-            body: {
-                script: {
-                    lang: "painless",
-                    source: `
-                    if(params.block_num >= ctx._source.block_num) {
-                        ctx._source.block_num = params.block_num;
-                        ctx._source.producers = params.producers;
-                        ctx._source.last_vote_weight = params.last_vote_weight;
-                        ctx._source.is_proxy = params.is_proxy;
-                        ctx._source.proxied_vote_weight = params.proxied_vote_weight;
-                        ctx._source.staked = params.staked;
-                        ctx._source.proxy = params.proxy;
-                    } else {
-                        ctx.op = 'noop';
-                    }`
-                }
-            }
-        });
-        if (!script_status['acknowledged']) {
-            console.log('Failed to load script update_voters');
-            process.exit(1);
-        }
     }
+
     if (process.env.DELBAND_STATE === 'true') {
         indicesList.push("table-delband");
         index_queues.push({type: 'table-delband', name: index_queue_prefix + "_table_delband"});

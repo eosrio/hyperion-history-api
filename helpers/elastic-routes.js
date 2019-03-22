@@ -33,7 +33,7 @@ function ackOrNack(resp, messageMap, channel) {
                 channel.nack(message);
             } else if (status !== 201 && status !== 200) {
                 channel.nack(message);
-                console.log(item);
+                console.log(prettyjson.render(item));
                 console.info(`nack id: ${id} - status: ${status}`);
             } else {
                 channel.ack(message);

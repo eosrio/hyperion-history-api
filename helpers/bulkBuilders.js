@@ -57,14 +57,12 @@ function buildTableAccountsBulk(payloads, messageMap) {
         return [
             {update: {_id: id, retry_on_conflict: 3}},
             {
-                "script": {
-                    "id": "update_accounts",
-                    "params": {
-                        "block_num": body['block_num'],
-                        "amount": body['amount']
-                    }
+                script: {
+                    id: "updateByBlock",
+                    params: body
                 },
-                "upsert": body
+                scripted_upsert: true,
+                upsert: {}
             }
         ];
     }).flatten()['value']();
@@ -77,22 +75,16 @@ function buildTableVotersBulk(payloads, messageMap) {
         const hash = crypto.createHash('sha256');
         const id = hash.update(id_string).digest('hex');
         messageMap.set(id, payload);
+        console.log(body);
         return [
             {update: {_id: id, retry_on_conflict: 3}},
             {
-                "script": {
-                    "id": "update_accounts",
-                    "params": {
-                        "block_num": body['block_num'],
-                        "is_proxy": body['is_proxy'],
-                        "proxy": body['proxy'],
-                        "producers": body['producers'],
-                        "last_vote_weight": body['last_vote_weight'],
-                        "proxied_vote_weight": body['proxied_vote_weight'],
-                        "staked": body['staked']
-                    }
+                script: {
+                    id: "updateByBlock",
+                    params: body
                 },
-                "upsert": body
+                scripted_upsert: true,
+                upsert: {}
             }
         ];
     }).flatten()['value']();
