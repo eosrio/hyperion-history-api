@@ -41,6 +41,11 @@ exports.GET = {
                 description: 'filter before specified date (ISO8601)',
                 type: 'string',
                 format: 'date-time'
+            },
+            "parent": {
+                description: 'filter by parent global sequence',
+                type: 'integer',
+                minimum: 0
             }
         }
     },

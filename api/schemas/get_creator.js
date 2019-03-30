@@ -26,6 +26,9 @@ exports.GET = {
                 "timestamp": {
                     type: "string"
                 },
+                "block_num": {
+                    type: "integer"
+                },
                 "trx_id": {
                     type: "string"
                 },

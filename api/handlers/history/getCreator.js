@@ -25,7 +25,7 @@ async function getActionByGS(client, gs) {
 
 async function getCreator(fastify, request) {
     const {redis, elasticsearch} = fastify;
-    const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query) + 'v2');
+    const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query) + 'v3');
     if (cachedResponse) {
         return cachedResponse;
     }
@@ -34,6 +34,7 @@ async function getCreator(fastify, request) {
         account: newact,
         creator: '',
         timestamp: '',
+        block_num: 0,
         trx_id: '',
     };
     let account_data = null;
@@ -65,6 +66,7 @@ async function getCreator(fastify, request) {
     for (const action of results['hits']['hits']) {
         const actData = action._source.act.data;
         let valid = false;
+        response.block_num = action._source.block_num;
         if (actData.newact === newact) {
             response.creator = actData.creator;
             response['trx_id'] = action._source['trx_id'];
@@ -89,7 +91,7 @@ async function getCreator(fastify, request) {
             }
         }
     }
-    redis.set(hash, JSON.stringify(response));
+    redis.set(hash, JSON.stringify(response), 'EX', 600);
     return response;
 }
 

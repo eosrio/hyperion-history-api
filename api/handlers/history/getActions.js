@@ -15,16 +15,16 @@ async function getActions(fastify, request) {
     const t0 = Date.now();
     const {redis, elasticsearch} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
-    if (cachedResponse) {
-        return cachedResponse;
-    }
+    // if (cachedResponse) {
+    //     return cachedResponse;
+    // }
     const should_array = [];
     for (const entry of terms) {
         const tObj = {term: {}};
         tObj.term[entry] = request.query.account;
         should_array.push(tObj);
     }
-    let code, method, skip, limit;
+    let code, method, skip, limit, parent;
     let sort_direction = 'desc';
     let filterObj = [];
     if (request.query.filter) {
@@ -52,6 +52,7 @@ async function getActions(fastify, request) {
     if (limit < 1) {
         return 'invalid limit parameter';
     }
+
     if (request.query.sort) {
         if (request.query.sort === 'asc' || request.query.sort === '1') {
             sort_direction = 'asc';
@@ -68,6 +69,15 @@ async function getActions(fastify, request) {
             boost: 1.0
         }
     };
+
+    if(request.query.parent !== undefined) {
+        queryStruct.bool['filter'] = [];
+        queryStruct.bool['filter'].push({
+            "term": {
+                "parent": parseInt(request.query.parent, 10)
+            }
+        });
+    }
 
     if (request.query.account) {
         queryStruct.bool.must.push({"bool": {should: should_array}});
@@ -91,7 +101,6 @@ async function getActions(fastify, request) {
         }
     }
 
-    let filter_array = [];
     if (request.query['after'] || request.query['before']) {
         let _lte = "now";
         let _gte = 0;
@@ -101,7 +110,10 @@ async function getActions(fastify, request) {
         if (request.query['after']) {
             _gte = request.query['after'];
         }
-        filter_array.push({
+        if (!queryStruct.bool['filter']) {
+            queryStruct.bool['filter'] = [];
+        }
+        queryStruct.bool['filter'].push({
             range: {
                 "@timestamp": {
                     "gte": _gte,
@@ -109,7 +121,6 @@ async function getActions(fastify, request) {
                 }
             }
         });
-        queryStruct.bool['filter'] = filter_array;
     }
 
     if (request.query.filter) {
@@ -117,6 +128,7 @@ async function getActions(fastify, request) {
         queryStruct.bool['minimum_should_match'] = 1;
     }
 
+    console.log(queryStruct.bool);
     const pResults = await Promise.all([rpc.get_info(), elasticsearch['search']({
         "index": process.env.CHAIN + '-action-*',
         "from": skip || 0,
