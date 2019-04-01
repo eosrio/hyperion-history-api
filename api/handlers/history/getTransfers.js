@@ -3,7 +3,7 @@ const _ = require('lodash');
 const {getCacheByHash} = require("../../helpers/functions");
 const route = '/get_transfers';
 
-const maxActions = 100;
+const maxActions = 1000;
 
 function processActions(results) {
     const action_traces = results['hits']['hits'];

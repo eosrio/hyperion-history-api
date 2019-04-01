@@ -6,7 +6,7 @@ const {JsonRpc} = require('eosjs');
 const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
 
-const maxActions = 100;
+const maxActions = 1000;
 const route = '/get_actions';
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
@@ -15,9 +15,9 @@ async function getActions(fastify, request) {
     const t0 = Date.now();
     const {redis, elasticsearch} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
-    // if (cachedResponse) {
-    //     return cachedResponse;
-    // }
+    if (cachedResponse) {
+        return cachedResponse;
+    }
     const should_array = [];
     for (const entry of terms) {
         const tObj = {term: {}};
@@ -128,13 +128,12 @@ async function getActions(fastify, request) {
         queryStruct.bool['minimum_should_match'] = 1;
     }
 
-    console.log(queryStruct.bool);
     const pResults = await Promise.all([rpc.get_info(), elasticsearch['search']({
         "index": process.env.CHAIN + '-action-*',
         "from": skip || 0,
         "size": (limit > maxActions ? maxActions : limit) || 10,
         "body": {
-            "track_total_hits": 1000,
+            "track_total_hits": 10000,
             "query": queryStruct,
             "sort": {
                 "global_sequence": sort_direction
