@@ -41,7 +41,8 @@ const action = {
                     "from": {"type": "keyword"},
                     "to": {"type": "keyword"},
                     "amount": {"type": "float"},
-                    "symbol": {"type": "keyword"}
+                    "symbol": {"type": "keyword"},
+                    "memo": {"type": "text"}
                 }
             },
             "act.authorization.actor": {"type": "keyword"},
@@ -249,7 +250,8 @@ const delta = {
     }
 };
 
-module.exports = {action, block, abi, delta,
+module.exports = {
+    action, block, abi, delta,
     "table-accounts": tableAccounts,
     "table-delband": tableDelBand,
     "table-userres": tableUserRes,

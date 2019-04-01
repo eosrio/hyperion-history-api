@@ -319,6 +319,11 @@ function attachActionExtras(action) {
             };
             delete action['act']['data']['from'];
             delete action['act']['data']['to'];
+
+            if (process.env.INDEX_TRANSFER_MEMO === 'true') {
+                action['@transfer']['memo'] = action['act']['data']['memo'];
+                delete action['act']['data']['memo'];
+            }
         }
 
     } else if (action['act']['name'] === 'newaccount' && action['act']['account'] === 'eosio') {
