@@ -23,7 +23,7 @@ const queue_prefix = process.env.CHAIN;
 const queue = queue_prefix + ':blocks';
 const n_deserializers = process.env.DESERIALIZERS;
 const maxMessagesInFlight = parseInt(process.env.READ_PREFETCH, 10);
-const range_size = parseInt(process.env.last_block) - parseInt(process.env.first_block);
+let range_size = parseInt(process.env.last_block) - parseInt(process.env.first_block);
 
 const blockReadingQueue = async.cargo(async.ensureAsync(processIncomingBlockArray), maxMessagesInFlight);
 const stageOneDistQueue = async.cargo(async.ensureAsync(distribute), maxMessagesInFlight);
@@ -57,31 +57,38 @@ async function processIncomingBlocks(block_array) {
 }
 
 let completionSignaled = false;
+let completionMonitoring = null;
 
 function signalReaderCompletion() {
     // Monitor pending messages
-    setInterval(() => {
-        let pending = 0;
-        if (cch.unconfirmed.length > 0) {
-            cch.unconfirmed.forEach((elem) => {
-                if (elem) {
-                    pending++;
+    if (!completionSignaled) {
+        completionSignaled = true;
+        // console.log('reader ' + process.env['worker_id'] + ' signaled completion', range_size, local_distributed_count);
+        local_distributed_count = 0;
+        completionMonitoring = setInterval(() => {
+            let pending = 0;
+            if (cch.unconfirmed.length > 0) {
+                cch.unconfirmed.forEach((elem) => {
+                    if (elem) {
+                        pending++;
+                    }
+                });
+                if (pending === lastPendingCount && pending > 0) {
+                    // console.log(`[${process.env['worker_id']}] Pending blocks: ${pending}`);
+                } else {
+                    lastPendingCount = pending;
                 }
-            });
-            if (pending === lastPendingCount && pending > 0) {
-                // console.log(`[${process.env['worker_id']}] Pending blocks: ${pending}`);
-            } else {
-                lastPendingCount = pending;
             }
-        }
-        if (pending === 0 && completionSignaled === false) {
-            completionSignaled = true;
-            process.send({
-                event: 'completed',
-                id: process.env['worker_id']
-            });
-        }
-    }, 1000);
+            if (pending === 0) {
+                // console.log('reader ' + process.env['worker_id'] + ' completed', range_size, local_distributed_count);
+                clearInterval(completionMonitoring);
+                process.send({
+                    event: 'completed',
+                    id: process.env['worker_id']
+                });
+            }
+        }, 200);
+    }
 }
 
 function send(req_data) {
@@ -101,7 +108,6 @@ const baseRequest = {
 function requestBlocks(start) {
     const first_block = start > 0 ? start : process.env.first_block;
     const last_block = start > 0 ? 0xffffffff : process.env.last_block;
-    // console.log(`REQUEST - ${process.env.first_block} >> ${process.env.last_block}`);
     const request = baseRequest;
     request.start_block_num = parseInt(first_block > 0 ? first_block : '1', 10);
     request.end_block_num = parseInt(last_block, 10);
@@ -179,6 +185,7 @@ function distribute(data, cb) {
 }
 
 function recusiveDistribute(data, channel, cb) {
+    // console.log(data.length);
     if (data.length > 0) {
         const q = queue + ":" + currentIdx;
         if (!qStatusMap[q]) {
@@ -269,8 +276,13 @@ async function run() {
     process.on('message', (msg) => {
         if (msg.event === 'new_range') {
             if (msg.target === process.env.worker_id) {
-                requestBlockRange(msg.data.first_block, msg.data.last_block);
+                // console.log(`new_range [${msg.data.first_block},${msg.data.last_block}]`);
+                local_distributed_count = 0;
+                clearInterval(completionMonitoring);
+                completionMonitoring = null;
                 completionSignaled = false;
+                range_size = parseInt(msg.data.last_block) - parseInt(msg.data.first_block);
+                requestBlockRange(msg.data.first_block, msg.data.last_block);
             }
         }
     });

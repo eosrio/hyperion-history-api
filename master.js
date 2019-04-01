@@ -420,7 +420,7 @@ async function main() {
             }
             case 'completed': {
                 if (msg.id === doctorId.toString()) {
-                    console.log('worker completed', msg);
+                    console.log('repair worker completed', msg);
                     console.log('queue size [before]:', missingRanges.length);
                     if (missingRanges.length > 0) {
                         const range_data = missingRanges.shift();
