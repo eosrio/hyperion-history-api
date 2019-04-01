@@ -6,6 +6,7 @@ let last_block = 0;
 let activeScrollID;
 const starting_block = 1;
 const stop_on_block = 0;
+let monitoringLoop;
 
 async function countMissingBlocks() {
     const results = await client.search({
@@ -77,9 +78,9 @@ async function runScroller(scroll_id, missingArray) {
 }
 
 function startMonitoringLoop() {
-    setInterval(() => {
-        console.log('Scanner at block: ' + last_block);
-    }, 5000);
+    monitoringLoop = setInterval(() => {
+        console.log('Repair scanner at block: ' + last_block);
+    }, 10000);
 }
 
 const main = async (missingArray) => {
@@ -89,9 +90,10 @@ const main = async (missingArray) => {
     console.log('Hyperion Doctor initialized.');
     total_missing = await countMissingBlocks();
     activeScrollID = await createScroller(missingArray);
-    // startMonitoringLoop();
+    startMonitoringLoop();
     await runScroller(activeScrollID, missingArray);
     console.log(`${stop_on_block - starting_block} blocks scanned in ${(Date.now() - start_time) / 1000} seconds!`);
+    clearInterval(monitoringLoop);
     return true;
 };
 

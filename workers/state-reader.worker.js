@@ -269,8 +269,6 @@ async function run() {
     process.on('message', (msg) => {
         if (msg.event === 'new_range') {
             if (msg.target === process.env.worker_id) {
-                // console.log('New range received!');
-                // console.log(msg.data);
                 requestBlockRange(msg.data.first_block, msg.data.last_block);
                 completionSignaled = false;
             }
