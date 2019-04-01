@@ -1,11 +1,11 @@
 const {elasticsearchConnect} = require("./connections/elasticsearch");
+
 let client;
 let total_missing = 0;
 let last_block = 0;
 let activeScrollID;
 const starting_block = 1;
-const stop_on_block = 1000000;
-
+const stop_on_block = 0;
 
 async function countMissingBlocks() {
     const results = await client.search({
@@ -25,7 +25,7 @@ async function countMissingBlocks() {
     return latest_block - block_count;
 }
 
-async function createScroller() {
+async function createScroller(missingArray) {
     const range_filter = {
         "block_num": {
             "gte": starting_block
@@ -45,30 +45,34 @@ async function createScroller() {
         }
     });
     const scrollId = response['_scroll_id'];
-    await checkBlocks(response);
+    await checkBlocks(response, missingArray);
     return scrollId;
 }
 
-async function checkBlocks(response) {
+async function checkBlocks(response, missingArray) {
     for (const block of response.hits.hits) {
         if (block._source.block_num !== last_block + 1) {
             const range_start = last_block + 1;
             const range_end = block._source.block_num - 1;
             const range_count = range_end - range_start + 1;
             console.log(`Missing ${range_count} blocks on range [${last_block + 1},${block._source.block_num - 1}]`);
+            missingArray.push({
+                start: range_start,
+                end: range_end + 1
+            });
         }
         last_block = block._source.block_num;
     }
 }
 
-async function runScroller(scroll_id) {
+async function runScroller(scroll_id, missingArray) {
     const next_resp = await client.scroll({
         scrollId: scroll_id,
         scroll: '30s'
     });
     if (next_resp['hits']['hits'].length > 0) {
-        await checkBlocks(next_resp);
-        await runScroller(scroll_id);
+        await checkBlocks(next_resp, missingArray);
+        await runScroller(scroll_id, missingArray);
     }
 }
 
@@ -78,14 +82,19 @@ function startMonitoringLoop() {
     }, 5000);
 }
 
-(async () => {
+const main = async (missingArray) => {
     const start_time = Date.now();
     last_block = starting_block - 1;
     client = elasticsearchConnect();
     console.log('Hyperion Doctor initialized.');
     total_missing = await countMissingBlocks();
-    activeScrollID = await createScroller();
-    startMonitoringLoop();
-    await runScroller(activeScrollID);
+    activeScrollID = await createScroller(missingArray);
+    // startMonitoringLoop();
+    await runScroller(activeScrollID, missingArray);
     console.log(`${stop_on_block - starting_block} blocks scanned in ${(Date.now() - start_time) / 1000} seconds!`);
-})();
+    return true;
+};
+
+module.exports = {
+    run: main
+};

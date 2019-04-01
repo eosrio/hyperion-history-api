@@ -4,6 +4,7 @@ const cluster = require('cluster');
 const fs = require('fs');
 const redis = require('redis');
 const pmx = require('pmx');
+const doctor = require('./doctor');
 
 const {elasticsearchConnect} = require("./connections/elasticsearch");
 
@@ -21,6 +22,8 @@ const {
 const {promisify} = require('util');
 let client;
 let cachedInitABI = null;
+
+const missingRanges = [];
 
 async function main() {
     // Preview mode - prints only the proposed worker map
@@ -268,46 +271,46 @@ async function main() {
         console.log('LAST  BLOCK: ' + head);
     }
 
-
     total_range = head - starting_block;
-
     // Create first batch of parallel readers
     let lastAssignedBlock = starting_block;
-
     let activeReadersCount = 0;
-    if (process.env.LIVE_ONLY === 'false') {
-        while (activeReadersCount < max_readers && lastAssignedBlock < head) {
-            worker_index++;
-            const start = lastAssignedBlock;
-            let end = lastAssignedBlock + maxBatchSize;
-            if (end > head) {
-                end = head;
-            }
-            lastAssignedBlock += maxBatchSize;
-            const def = {
-                worker_id: worker_index,
-                worker_role: 'reader',
-                first_block: start,
-                last_block: end
-            };
-            // activeReaders.push(def);
-            activeReadersCount++;
-            workerMap.push(def);
-            // console.log(`Launching new worker from ${start} to ${end}`);
-        }
-    }
 
-    // Setup Serial reader worker
-    if (process.env.LIVE_READER === 'true') {
-        const _head = chain_data['head_block_num'];
-        console.log(`Starting live reader at head = ${_head}`);
-        worker_index++;
-        workerMap.push({
-            worker_id: worker_index,
-            worker_role: 'continuous_reader',
-            worker_last_processed_block: _head,
-            ws_router: ''
-        });
+    if (process.env.REPAIR_MODE === 'false') {
+        if (process.env.LIVE_ONLY === 'false') {
+            while (activeReadersCount < max_readers && lastAssignedBlock < head) {
+                worker_index++;
+                const start = lastAssignedBlock;
+                let end = lastAssignedBlock + maxBatchSize;
+                if (end > head) {
+                    end = head;
+                }
+                lastAssignedBlock += maxBatchSize;
+                const def = {
+                    worker_id: worker_index,
+                    worker_role: 'reader',
+                    first_block: start,
+                    last_block: end
+                };
+                // activeReaders.push(def);
+                activeReadersCount++;
+                workerMap.push(def);
+                // console.log(`Launching new worker from ${start} to ${end}`);
+            }
+        }
+
+        // Setup Serial reader worker
+        if (process.env.LIVE_READER === 'true') {
+            const _head = chain_data['head_block_num'];
+            console.log(`Starting live reader at head = ${_head}`);
+            worker_index++;
+            workerMap.push({
+                worker_id: worker_index,
+                worker_role: 'continuous_reader',
+                worker_last_processed_block: _head,
+                ws_router: ''
+            });
+        }
     }
 
     // Setup Deserialization Workers
@@ -416,25 +419,46 @@ async function main() {
                 break;
             }
             case 'completed': {
-                activeReadersCount--;
-                if (activeReadersCount < max_readers && lastAssignedBlock < head && allowMoreReaders) {
-                    // Assign next range
-                    const start = lastAssignedBlock;
-                    let end = lastAssignedBlock + maxBatchSize;
-                    if (end > head) {
-                        end = head;
+                if (msg.id === doctorId.toString()) {
+                    console.log('worker completed', msg);
+                    console.log('queue size [before]:', missingRanges.length);
+                    if (missingRanges.length > 0) {
+                        const range_data = missingRanges.shift();
+                        console.log('New repair range', range_data);
+                        console.log('queue size [after]:', missingRanges.length);
+                        doctorIdle = false;
+                        messageAllWorkers(cluster, {
+                            event: 'new_range',
+                            target: msg.id,
+                            data: {
+                                first_block: range_data.start,
+                                last_block: range_data.end
+                            }
+                        });
+                    } else {
+                        doctorIdle = true;
                     }
-                    lastAssignedBlock += maxBatchSize;
-                    const def = {
-                        first_block: start,
-                        last_block: end
-                    };
-                    activeReadersCount++;
-                    messageAllWorkers(cluster, {
-                        event: 'new_range',
-                        target: msg.id,
-                        data: def
-                    });
+                } else {
+                    activeReadersCount--;
+                    if (activeReadersCount < max_readers && lastAssignedBlock < head && allowMoreReaders) {
+                        // Assign next range
+                        const start = lastAssignedBlock;
+                        let end = lastAssignedBlock + maxBatchSize;
+                        if (end > head) {
+                            end = head;
+                        }
+                        lastAssignedBlock += maxBatchSize;
+                        const def = {
+                            first_block: start,
+                            last_block: end
+                        };
+                        activeReadersCount++;
+                        messageAllWorkers(cluster, {
+                            event: 'new_range',
+                            target: msg.id,
+                            data: def
+                        });
+                    }
                 }
                 break;
             }
@@ -472,6 +496,47 @@ async function main() {
                 workerHandler(msg, self);
             });
         }
+    }
+
+    let doctorStarted = false;
+    let doctorIdle = true;
+    let doctorId = 0;
+    if (process.env.REPAIR_MODE === 'true') {
+        doctor.run(missingRanges).then(() => {
+            console.log('repair completed!');
+        });
+        setInterval(() => {
+            if (missingRanges.length > 0 && !doctorStarted) {
+                doctorStarted = true;
+                console.log('repair worker launched');
+                const range_data = missingRanges.shift();
+                worker_index++;
+                const def = {
+                    worker_id: worker_index,
+                    worker_role: 'reader',
+                    first_block: range_data.start,
+                    last_block: range_data.end
+                };
+                const self = cluster.fork(def);
+                doctorId = def.worker_id;
+                console.log('repair id =', doctorId);
+                self.on('message', (msg) => {
+                    workerHandler(msg, self);
+                });
+            } else {
+                if (missingRanges.length > 0 && doctorIdle) {
+                    const range_data = missingRanges.shift();
+                    messageAllWorkers(cluster, {
+                        event: 'new_range',
+                        target: doctorId.toString(),
+                        data: {
+                            first_block: range_data.start,
+                            last_block: range_data.end
+                        }
+                    });
+                }
+            }
+        }, 1000);
     }
 
     pmx.action('stop', (reply) => {
