@@ -73,9 +73,12 @@ async function processMessages(messages) {
         }
         let result;
         try {
-            // const t0 = Date.now();
+            const t0 = Date.now();
             result = await processBlock(res, block, traces, deltas);
-            // console.log(`processBlock elapsed ${Date.now() - t0}ms`);
+            const elapsedTime = Date.now() - t0;
+            if (elapsedTime > 10) {
+                console.warn(`[WARNING] Deserialization time for block ${result['block_num']} was too high, time elapsed ${elapsedTime}ms`);
+            }
             if (result) {
                 process.send({
                     event: 'consumed_block',
@@ -129,15 +132,22 @@ async function processBlock(res, block, traces, deltas) {
         }
 
         if (deltas && process.env.PROC_DELTAS === 'true') {
+            const t1 = Date.now();
             await processDeltas(deltas, block_num);
+            const elapsed_time = Date.now() - t1;
+            if (elapsed_time > 10) {
+                console.warn(`[WARNING] Delta processing took ${elapsed_time}ms on block ${block_num}`);
+            }
         }
 
         if (traces.length > 0 && process.env.FETCH_TRACES === 'true') {
+            const t2 = Date.now();
             for (const trace of traces) {
                 const transaction_trace = trace[1];
                 let action_count = 0;
                 const trx_id = transaction_trace['id'].toLowerCase();
                 const action_traces = transaction_trace['action_traces'];
+                const t3 = Date.now();
                 for (const action_trace of action_traces) {
                     if (action_trace[0] === 'action_trace_v0') {
                         const action = action_trace[1];
@@ -150,6 +160,15 @@ async function processBlock(res, block, traces, deltas) {
                         }
                     }
                 }
+                const act_elapsed_time = Date.now() - t3;
+                if (act_elapsed_time > 100) {
+                    console.warn(`[WARNING] Actions processing took ${act_elapsed_time}ms on trx ${trx_id}`);
+                    // console.log(action_traces);
+                }
+            }
+            const traces_elapsed_time = Date.now() - t2;
+            if (traces_elapsed_time > 10) {
+                console.warn(`[WARNING] Traces processing took ${traces_elapsed_time}ms on block ${block_num}`);
             }
         }
         return {block_num: res['this_block']['block_num'], size: traces.length};
