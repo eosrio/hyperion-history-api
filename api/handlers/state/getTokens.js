@@ -51,7 +51,7 @@ async function getTokens(fastify, request) {
         try {
             token_data = await rpc.get_currency_balance(bucket['key'], request.query.account);
         } catch (e) {
-            console.log('get_currency_balance error', bucket['key']);
+            console.log(`get_currency_balance error - contract:${bucket['key']} - account:${request.query.account}`);
             continue;
         }
         for (const entry of token_data) {

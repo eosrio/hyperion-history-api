@@ -14,14 +14,13 @@ async function getKeyAccounts(fastify, request) {
     } else {
         public_Key = numeric.convertLegacyPublicKey(public_Key);
     }
-    console.log(public_Key);
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
-    // if (cachedResponse) {
-    //     return cachedResponse;
-    // }
+    if (cachedResponse) {
+        return cachedResponse;
+    }
     const results = await elasticsearch.search({
         index: process.env.CHAIN + '-action-*',
-        size: 1,
+        size: 100,
         body: {
             query: {
                 bool: {
@@ -44,7 +43,13 @@ async function getKeyAccounts(fastify, request) {
     if (results['hits']['hits'].length > 0) {
         response.account_names = results['hits']['hits'].map((v) => {
             if (v._source.act.name === 'newaccount') {
-                return v._source['@newaccount'].newact;
+                if (v._source['@newaccount'].newact) {
+                    return v._source['@newaccount'].newact;
+                } else if (v._source.act.data.newact) {
+                    return v._source.act.data.newact;
+                } else {
+                    return null;
+                }
             } else if (v._source.act.name === 'updateauth') {
                 return v._source.act.data.account;
             } else {
@@ -53,6 +58,7 @@ async function getKeyAccounts(fastify, request) {
         });
     }
     if (response.account_names.length > 0) {
+        response.account_names = Array.from(new Set(response.account_names));
         redis.set(hash, JSON.stringify(response), 'EX', 30);
         return response;
     } else {

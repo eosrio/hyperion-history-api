@@ -87,7 +87,8 @@ async function getCreator(fastify, request) {
                 response['indirect_creator'] = creationAction['@transfer']['from'];
                 response['trx_id'] = creationAction['trx_id'];
             } else {
-                console.log(creationAction);
+                response['indirect_creator'] = creationAction.act.authorization[0].actor;
+                response['trx_id'] = creationAction['trx_id'];
             }
         }
     }
