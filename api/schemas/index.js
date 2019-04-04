@@ -8,5 +8,6 @@ module.exports = {
     getCreatorSchema: require('./get_creator'),
     getTokensSchema: require('./get_tokens'),
     getDeltasSchema: require('./get_deltas'),
-    getCreatedAccountsSchema: require('./get_created_accounts')
+    getCreatedAccountsSchema: require('./get_created_accounts'),
+    getVotersSchema: require('./get_voters')
 };

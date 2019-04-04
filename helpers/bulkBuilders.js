@@ -75,7 +75,6 @@ function buildTableVotersBulk(payloads, messageMap) {
         const hash = crypto.createHash('sha256');
         const id = hash.update(id_string).digest('hex');
         messageMap.set(id, payload);
-        console.log(body);
         return [
             {update: {_id: id, retry_on_conflict: 3}},
             {

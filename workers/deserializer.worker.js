@@ -54,6 +54,12 @@ function processPayload(payload, cb) {
     })
 }
 
+function debugLog(msg) {
+    if (process.env.DEBUG === 'true') {
+        console.log(msg);
+    }
+}
+
 // Stage 2 - Deserialization function
 async function processMessages(messages) {
     for (const message of messages) {
@@ -77,7 +83,7 @@ async function processMessages(messages) {
             result = await processBlock(res, block, traces, deltas);
             const elapsedTime = Date.now() - t0;
             if (elapsedTime > 10) {
-                console.warn(`[WARNING] Deserialization time for block ${result['block_num']} was too high, time elapsed ${elapsedTime}ms`);
+                debugLog(`[WARNING] Deserialization time for block ${result['block_num']} was too high, time elapsed ${elapsedTime}ms`);
             }
             if (result) {
                 process.send({
@@ -136,7 +142,7 @@ async function processBlock(res, block, traces, deltas) {
             await processDeltas(deltas, block_num);
             const elapsed_time = Date.now() - t1;
             if (elapsed_time > 10) {
-                console.warn(`[WARNING] Delta processing took ${elapsed_time}ms on block ${block_num}`);
+                debugLog(`[WARNING] Delta processing took ${elapsed_time}ms on block ${block_num}`);
             }
         }
 
@@ -162,13 +168,13 @@ async function processBlock(res, block, traces, deltas) {
                 }
                 const act_elapsed_time = Date.now() - t3;
                 if (act_elapsed_time > 100) {
-                    console.warn(`[WARNING] Actions processing took ${act_elapsed_time}ms on trx ${trx_id}`);
+                    debugLog(`[WARNING] Actions processing took ${act_elapsed_time}ms on trx ${trx_id}`);
                     // console.log(action_traces);
                 }
             }
             const traces_elapsed_time = Date.now() - t2;
             if (traces_elapsed_time > 10) {
-                console.warn(`[WARNING] Traces processing took ${traces_elapsed_time}ms on block ${block_num}`);
+                debugLog(`[WARNING] Traces processing took ${traces_elapsed_time}ms on block ${block_num}`);
             }
         }
         return {block_num: res['this_block']['block_num'], size: traces.length};
