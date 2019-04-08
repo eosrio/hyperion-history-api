@@ -157,8 +157,13 @@ async function processBlock(res, block, traces, deltas) {
                 for (const action_trace of action_traces) {
                     if (action_trace[0] === 'action_trace_v0') {
                         const action = action_trace[1];
-                        const key = `${queue_prefix}::${action['act']['account']}::${action['act']['name']}`;
-                        if (!action_blacklist.has(key)) {
+                        if (action_blacklist.has(`${queue_prefix}::${action['act']['account']}::*`)) {
+                            // blacklisted
+                            // console.log(`${action['act']['account']} account blacklisted (action: ${action['act']['name']})`);
+                        } else if (action_blacklist.has(`${queue_prefix}::${action['act']['account']}::${action['act']['name']}`)) {
+                            // blacklisted
+                            // console.log(`${queue_prefix}::${action['act']['account']}::${action['act']['name']} action blacklisted`);
+                        } else {
                             const status = await processAction(ts, action, trx_id, block_num, producer, null, 0);
                             if (status) {
                                 action_count++;
@@ -269,13 +274,10 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, parent
     if (action['inline_traces'].length > 0) {
         g_seq = action['receipt']['global_sequence'];
         for (const inline_trace of action['inline_traces']) {
-            const key = `${queue_prefix}::${action['act']['account']}::${action['act']['name']}`;
-            if (!action_blacklist.has(key)) {
-                const notified = await processAction(ts, inline_trace[1], trx_id, block_num, prod, g_seq, actDataString);
-                // Merge notifications with the parent action
-                for (const acct of notified) {
-                    notifiedAccounts.add(acct);
-                }
+            const notified = await processAction(ts, inline_trace[1], trx_id, block_num, prod, g_seq, actDataString);
+            // Merge notifications with the parent action
+            for (const acct of notified) {
+                notifiedAccounts.add(acct);
             }
         }
     }
@@ -553,7 +555,10 @@ async function getTableType(code, table, block) {
         }
 
         if (!cType) {
+            console.log(code, block);
             console.log(`code:${code} | table:${table} | block:${block} | type:${type}`);
+            console.log(Object.keys(contract));
+            console.log(Object.keys(abi));
         }
     }
     return cType;
@@ -803,6 +808,7 @@ async function getAbiAtBlock(code, block_num) {
             const cachedAbiAtBlock = await getAsync(process.env.CHAIN + ":" + lastblock + ":" + code);
             let abi;
             if (!cachedAbiAtBlock) {
+                console.log('remote abi fetch [1]', code, block_num);
                 abi = await api.getAbi(code);
             } else {
                 abi = JSON.parse(cachedAbiAtBlock);
@@ -812,14 +818,21 @@ async function getAbiAtBlock(code, block_num) {
                 valid_until: validity
             }
         } else {
+            console.log('remote abi fetch [2]', code, block_num);
             return {
                 abi: await api.getAbi(code),
                 valid_until: null
             };
         }
     } else {
+        const ref_time = Date.now();
+        const _abi = await api.getAbi(code);
+        const elapsed_time = (Date.now() - ref_time);
+        if (elapsed_time > 10) {
+            console.log('remote abi fetch [3]', code, block_num, elapsed_time);
+        }
         return {
-            abi: await api.getAbi(code),
+            abi: _abi,
             valid_until: null
         };
     }

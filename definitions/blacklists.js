@@ -6,6 +6,7 @@ const delta_blacklist = new Set([
 
 const action_blacklist = new Set([
     chain_prefix + '::eosio::onblock',
+    chain_prefix + '::eosio.null::*',
     'eos::lelego.x::msg',
     'eos::blocktwitter::tweet',
     'eos::gu2tembqgage::ddos',
