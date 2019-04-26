@@ -13,6 +13,7 @@ async function getDeltas(fastify, request) {
     console.log(request.query);
     const {redis, elasticsearch} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query) + 'v2');
+
     // if (cachedResponse) {
     //     return cachedResponse;
     // }
@@ -62,7 +63,7 @@ async function getDeltas(fastify, request) {
         }
     }
     const results = await elasticsearch.search({
-        "index": 'eos-delta-*',
+        "index": (process.env.CHAIN === 'mainnet' ? 'eos' : process.env.CHAIN) + '-delta-*',
         "from": skip || 0,
         "size": (limit > maxDeltas ? maxDeltas : limit) || 10,
         "body": {
@@ -81,7 +82,7 @@ async function getDeltas(fastify, request) {
         })
     };
     response['query_time'] = Date.now() - t0;
-    redis.set(hash, JSON.stringify(response));
+    // redis.set(hash, JSON.stringify(response));
     return response;
 }
 
