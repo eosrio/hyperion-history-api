@@ -5,6 +5,7 @@ const {deserialize, serialize} = require('../helpers/functions');
 const {connectStateHistorySocket} = require("../connections/state-history");
 const {amqpConnect} = require("../connections/rabbitmq");
 const pmx = require('pmx');
+const {TextEncoder, TextDecoder} = require('util');
 
 const txDec = new TextDecoder();
 const txEnc = new TextEncoder();

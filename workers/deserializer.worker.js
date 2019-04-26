@@ -11,6 +11,8 @@ const {amqpConnect} = require("../connections/rabbitmq");
 const {connectRpc} = require("../connections/chain");
 const {elasticsearchConnect} = require("../connections/elasticsearch");
 
+const {TextEncoder, TextDecoder} = require('util');
+
 const redis = require('redis');
 const {promisify} = require('util');
 const rClient = redis.createClient();
