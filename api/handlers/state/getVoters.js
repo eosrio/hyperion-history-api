@@ -57,9 +57,13 @@ async function getVoters(fastify, request) {
         };
     }
 
+    let prefix = process.env.CHAIN;
+    if(process.env.CHAIN === 'mainnet') {
+        prefix = 'eos';
+    }
+
     const results = await elasticsearch.search({
-        // "index": process.env.CHAIN + '-table-voters-*',
-        "index": 'eos-table-voters-*',
+        "index": prefix + '-table-voters-*',
         "from": skip || 0,
         "size": (limit > maxActions ? maxActions : limit) || 10,
         "body": {

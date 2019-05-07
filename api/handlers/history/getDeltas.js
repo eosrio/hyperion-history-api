@@ -62,8 +62,15 @@ async function getDeltas(fastify, request) {
             }
         }
     }
+
+
+    let prefix = process.env.CHAIN;
+    if (process.env.CHAIN === 'mainnet') {
+        prefix = 'eos';
+    }
+
     const results = await elasticsearch.search({
-        "index": (process.env.CHAIN === 'mainnet' ? 'eos' : process.env.CHAIN) + '-delta-*',
+        "index": prefix + '-delta-*',
         "from": skip || 0,
         "size": (limit > maxDeltas ? maxDeltas : limit) || 10,
         "body": {

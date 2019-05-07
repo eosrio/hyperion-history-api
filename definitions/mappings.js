@@ -45,6 +45,19 @@ const action = {
                     "memo": {"type": "text"}
                 }
             },
+            "@unstaketorex": {
+                "properties": {
+                    "owner": {"type": "keyword"},
+                    "receiver": {"type": "keyword"},
+                    "amount": {"type": "float"}
+                }
+            },
+            "@buyrex": {
+                "properties": {
+                    "from": {"type": "keyword"},
+                    "amount": {"type": "float"}
+                }
+            },
             "act.authorization.actor": {"type": "keyword"},
             "account_ram_deltas.account": {"enabled": false},
             "act.name": {"type": "keyword"},

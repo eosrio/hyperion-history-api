@@ -383,6 +383,27 @@ function attachActionExtras(action) {
             parent: action['act']['data']['parent'],
             auth: _auth
         };
+    } else if (action['act']['name'] === 'unstaketorex' && action['act']['account'] === 'eosio') {
+        let cpu_qtd = null;
+        let net_qtd = null;
+        if (action['act']['data']['from_net'] && action['act']['data']['from_cpu']) {
+            cpu_qtd = parseFloat(action['act']['data']['from_cpu'].split(' ')[0]);
+            net_qtd = parseFloat(action['act']['data']['from_net'].split(' ')[0]);
+        }
+        action['@unstaketorex'] = {
+            amount: cpu_qtd + net_qtd,
+            owner: action['act']['data']['owner'],
+            receiver: action['act']['data']['receiver']
+        };
+    } else if (action['act']['name'] === 'buyrex' && action['act']['account'] === 'eosio') {
+        let qtd = null;
+        if (action['act']['data']['amount']) {
+            qtd = parseFloat(action['act']['data']['amount'].split(' ')[0]);
+        }
+        action['@buyrex'] = {
+            amount: qtd,
+            from: action['act']['data']['from']
+        };
     }
 }
 
