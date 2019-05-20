@@ -37,7 +37,13 @@ module.exports = {
                 PROC_DELTAS: 'true',
                 INDEX_DELTAS: 'true',
                 INDEX_ALL_DELTAS: 'false',
-                ABI_CACHE_MODE: 'false'
+                ABI_CACHE_MODE: 'false',
+                ACCOUNT_STATE: 'false',
+                VOTERS_STATE: 'false',
+                USERRES_STATE: 'false',
+                DELBAND_STATE: 'false',
+                REPAIR_MODE: 'false',
+                DEBUG: 'false',
             }
         },
         {
