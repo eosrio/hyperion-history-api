@@ -43,7 +43,7 @@ module.exports = {
                 USERRES_STATE: 'false',
                 DELBAND_STATE: 'false',
                 REPAIR_MODE: 'false',
-                DEBUG: 'false',
+                DEBUG: 'false'
             }
         },
         {
