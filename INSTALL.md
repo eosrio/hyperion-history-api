@@ -10,7 +10,7 @@ plugin = eosio::state_history_plugin
 ### NodeJS
 
 ```bash
-curl -sL https://deb.nodesource.com/setup_11.x | sudo -E bash -
+curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
 sudo apt-get install -y nodejs
 ```
 
@@ -25,18 +25,16 @@ sudo pm2 startup
 
 ```bash
 sudo apt update
-sudo apt install openjdk-11-jre-headless
 mkdir hyperion
 cd hyperion
-wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.0.0-beta1-amd64.deb
-sudo apt install ./elasticsearch-7.0.0-beta1-amd64.deb
+wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.1.0-amd64.deb
+sudo apt install ./elasticsearch-7.1.0-amd64.deb
 ```
 
 Edit `/etc/elasticsearch/elasticsearch.yml`
 
 ```
 cluster.name: myCluster
-node.attr.box_type: hot
 bootstrap.memory_lock: true
 ```
 
@@ -72,18 +70,18 @@ Test the REST API `curl http://localhost:9200`
 
 ```
 {
-  "name" : "igorls-dev-server",
-  "cluster_name" : "myCluster",
-  "cluster_uuid" : "UgZisGJTTgKq1Q_kug70dg",
+  "name" : "ip-172-31-5-121",
+  "cluster_name" : "hyperion",
+  "cluster_uuid" : "....",
   "version" : {
-    "number" : "7.0.0-beta1",
+    "number" : "7.1.0",
     "build_flavor" : "default",
     "build_type" : "deb",
-    "build_hash" : "15bb494",
-    "build_date" : "2019-02-13T12:30:14.432234Z",
+    "build_hash" : "606a173",
+    "build_date" : "2019-05-16T00:43:15.323135Z",
     "build_snapshot" : false,
     "lucene_version" : "8.0.0",
-    "minimum_wire_compatibility_version" : "6.7.0",
+    "minimum_wire_compatibility_version" : "6.8.0",
     "minimum_index_compatibility_version" : "6.0.0-beta1"
   },
   "tagline" : "You Know, for Search"
@@ -93,12 +91,12 @@ Test the REST API `curl http://localhost:9200`
 ### Kibana Installation
 
 ```bash
-wget https://artifacts.elastic.co/downloads/kibana/kibana-7.0.0-beta1-amd64.deb
-sudo dpkg -i kibana-7.0.0-beta1-amd64.deb
+wget https://artifacts.elastic.co/downloads/kibana/kibana-7.1.0-amd64.deb
+sudo apt install ./kibana-7.1.0-amd64.deb
 sudo systemctl enable kibana
 ```
 
-Open Kibana on `http://localhost:5601`
+Open and test Kibana on `http://localhost:5601`
 
 ### RabbitMQ Installation
 
