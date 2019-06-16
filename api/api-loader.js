@@ -16,7 +16,7 @@ fastify.register(require('fastify-redis'), {host: '127.0.0.1'});
 
 fastify.register(require('fastify-rate-limit'), {
     max: 1000,
-    whitelist: ["35.230.63.54"],
+    whitelist: [],
     timeWindow: '1 minute',
     redis: new Redis()
 });
