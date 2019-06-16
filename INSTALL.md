@@ -23,13 +23,7 @@ sudo pm2 startup
 
 ### Elasticsearch Installation
 
-```bash
-sudo apt update
-mkdir hyperion
-cd hyperion
-wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.1.0-amd64.deb
-sudo apt install ./elasticsearch-7.1.0-amd64.deb
-```
+* Follow instructions on https://www.elastic.co/guide/en/elasticsearch/reference/current/deb.html (Ubuntu/Debian)
 
 Edit `/etc/elasticsearch/elasticsearch.yml`
 
