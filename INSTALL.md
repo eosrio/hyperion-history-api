@@ -170,12 +170,14 @@ Before indexing actions into elasticsearch its required to do a ABI scan pass
 
 Start with
 ```
-ABI_CACHE_MODE: true,
+ABI_CACHE_MODE: 'true',
 FETCH_BLOCK: 'false',
 FETCH_TRACES: 'false',
 INDEX_DELTAS: 'false',
 INDEX_ALL_DELTAS: 'false',
 ```
+
+When indexing is finished, change the settings back and restart the indexer. In case you do not have much contratc updates, you do not need to run a full pass.
 
 Tune your configs to your specific hardware using the following settings:
 ```
