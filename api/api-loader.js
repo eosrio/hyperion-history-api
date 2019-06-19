@@ -9,8 +9,11 @@ const fastify = require('fastify')({
     ignoreTrailingSlash: true,
     trustProxy: true
 });
+let ES_NODE = `http://${process.env.ES_HOST}`;
+if (process.env.ES_USER !== '') {
+    ES_NODE = `http://${process.env.ES_USER}:${process.env.ES_PASS}@${process.env.ES_HOST}`;
+}
 
-const ES_NODE = `http://${process.env.ES_USER}:${process.env.ES_PASS}@${process.env.ES_HOST}`;
 
 fastify.register(require('fastify-elasticsearch'), {
     client: new Client({node: ES_NODE})
