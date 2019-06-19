@@ -12,7 +12,7 @@ async function getTransaction(fastify, request) {
     if (cachedResponse) {
         return cachedResponse;
     }
-    const pResults = await Promise.all([rpc.get_info(), elasticsearch['search']({
+    const pResults = await Promise.all([rpc.get_info(), elastic['search']({
         "index": process.env.CHAIN + '-action-*',
         "body": {
             "query": {
