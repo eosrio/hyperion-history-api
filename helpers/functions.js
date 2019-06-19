@@ -48,7 +48,7 @@ async function getLastIndexedBlock(es_client) {
         }
     });
     if (results['body']['hits']['hits'].length > 0) {
-        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
+        return parseInt(results['body']['hits']['hits'][0]['sort'][0], 10);
     } else {
         return 0;
     }
@@ -65,7 +65,7 @@ async function getLastIndexedBlockByDelta(es_client) {
         }
     });
     if (results['body']['hits']['hits'].length > 0) {
-        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
+        return parseInt(results['body']['hits']['hits'][0]['sort'][0], 10);
     } else {
         return 0;
     }
@@ -90,7 +90,7 @@ async function getFirstIndexedBlockFromRange(es_client, first, last) {
         }
     });
     if (results['body']['hits']['hits'].length > 0) {
-        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
+        return parseInt(results['body']['hits']['hits'][0]['sort'][0], 10);
     } else {
         return 0;
     }
@@ -114,8 +114,8 @@ async function getLastIndexedBlockFromRange(es_client, first, last) {
             size: 1
         }
     });
-    if (results['hits']['hits'].length > 0) {
-        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
+    if (results['body']['hits']['hits'].length > 0) {
+        return parseInt(results['body']['hits']['hits'][0]['sort'][0], 10);
     } else {
         return 0;
     }
@@ -134,7 +134,7 @@ async function getLastIndexedABI(es_client, first, last) {
         }
     });
     if (results['body']['hits']['hits'].length > 0) {
-        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
+        return parseInt(results['body']['hits']['hits'][0]['sort'][0], 10);
     } else {
         return 0;
     }
@@ -159,7 +159,7 @@ async function getLastIndexedBlockByDeltaFromRange(es_client, first, last) {
         }
     });
     if (results['body']['hits']['hits'].length > 0) {
-        return parseInt(results['hits']['hits'][0]['sort'][0], 10);
+        return parseInt(results['body']['hits']['hits'][0]['sort'][0], 10);
     } else {
         return 0;
     }
