@@ -27,7 +27,7 @@ async function amqpConnect() {
 }
 
 async function checkQueueSize(q_name) {
-    const apiUrl = `http://${amqp_username}:${amqp_password}@${amqp_host}/api/queues/%2F${amqp_vhost}/${q_name}`;
+    const apiUrl = `http://${amqp_username}:${amqp_password}@${process.env.AMQP_API}/api/queues/%2F${amqp_vhost}/${q_name}`;
     const result = JSON.parse((await got(apiUrl)).body);
     return result.messages;
 }
