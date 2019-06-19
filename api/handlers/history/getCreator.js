@@ -59,7 +59,7 @@ async function getCreator(fastify, request) {
             }
         }
     };
-    const results = await elasticsearch['search']({
+    const results = await elastic['search']({
         "index": process.env.CHAIN + '-action-*',
         "body": queryBody
     });
@@ -82,7 +82,7 @@ async function getCreator(fastify, request) {
         }
         if (action._source.parent !== 0 && valid) {
             // Find indirect creator by global seq
-            const creationAction = await getActionByGS(elasticsearch, action._source.parent);
+            const creationAction = await getActionByGS(elastic, action._source.parent);
             if (creationAction.act.name === 'transfer') {
                 response['indirect_creator'] = creationAction['@transfer']['from'];
                 response['trx_id'] = creationAction['trx_id'];
