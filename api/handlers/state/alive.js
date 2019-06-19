@@ -1,5 +1,5 @@
 module.exports = function (fastify, opts, next) {
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     fastify.get('/alive', {
         schema: {
             description: 'simple server healthcheck',
@@ -7,7 +7,7 @@ module.exports = function (fastify, opts, next) {
             tags: ['state']
         }
     }, async (request, reply) => {
-        elasticsearch.ping({
+        elastic.ping({
             requestTimeout: 1000
         }, function (error) {
             if (error) {

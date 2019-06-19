@@ -11,7 +11,7 @@ const maxDeltas = 200;
 async function getDeltas(fastify, request) {
     const t0 = Date.now();
     console.log(request.query);
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query) + 'v2');
 
     // if (cachedResponse) {
@@ -69,7 +69,7 @@ async function getDeltas(fastify, request) {
         prefix = 'eos';
     }
 
-    const results = await elasticsearch.search({
+    const results = await elastic.search({
         "index": prefix + '-delta-*',
         "from": skip || 0,
         "size": (limit > maxDeltas ? maxDeltas : limit) || 10,
@@ -82,8 +82,8 @@ async function getDeltas(fastify, request) {
     });
     const response = {
         query_time: null,
-        total: results['hits']['total'],
-        deltas: results['hits']['hits'].map((d) => {
+        total: results['body']['hits']['total'],
+        deltas: results['body']['hits']['hits'].map((d) => {
             delete d._source.present;
             return d._source;
         })

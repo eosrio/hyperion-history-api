@@ -6,7 +6,7 @@ const route = '/get_transfers';
 const maxActions = 1000;
 
 function processActions(results) {
-    const action_traces = results['hits']['hits'];
+    const action_traces = results['body']['hits']['hits'];
     const actions = [];
     let sum = 0;
     for (const aTrace of action_traces) {
@@ -25,7 +25,7 @@ function processActions(results) {
 }
 
 async function getTransfers(fastify, request) {
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
     if (cachedResponse) {
         return cachedResponse;
@@ -72,7 +72,7 @@ async function getTransfers(fastify, request) {
         return 'invalid skip parameter';
     }
     const body = {"query": {"bool": {"must": must_array}}};
-    const results = await elasticsearch.search({
+    const results = await elastic.search({
         "index": process.env.CHAIN + '-action-*',
         "from": skip || 0,
         "size": (limit > maxActions ? maxActions : limit) || 10,
@@ -80,7 +80,7 @@ async function getTransfers(fastify, request) {
     });
     const [sum, _actions] = processActions(results);
     const response = {
-        "action_count": results['hits']['total']['value'],
+        "action_count": results['body']['hits']['total']['value'],
         "total_amount": sum,
         "actions": _actions
     };

@@ -3,14 +3,19 @@ const openApi = require('./config/openApi');
 const AutoLoad = require('fastify-autoload');
 const path = require('path');
 
+const {Client} = require('@elastic/elasticsearch');
+
 const fastify = require('fastify')({
     ignoreTrailingSlash: true,
     trustProxy: true
 });
 
+const ES_NODE = `http://${process.env.ES_USER}:${process.env.ES_PASS}@${process.env.ES_HOST}`;
+
 fastify.register(require('fastify-elasticsearch'), {
-    host: process.env.ES_HOST
+    client: new Client({node: ES_NODE})
 });
+
 
 fastify.register(require('fastify-redis'), {host: '127.0.0.1'});
 

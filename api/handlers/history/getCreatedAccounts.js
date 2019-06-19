@@ -10,7 +10,7 @@ const route = '/get_created_accounts';
 
 async function getCreatedAccounts(fastify, request) {
     const t0 = Date.now();
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
     if (cachedResponse) {
         return cachedResponse;
@@ -35,8 +35,8 @@ async function getCreatedAccounts(fastify, request) {
     const response = {
         "accounts": []
     };
-    if (results['hits']['hits'].length > 0) {
-        const actions = results['hits']['hits'];
+    if (results['body']['hits']['hits'].length > 0) {
+        const actions = results['body']['hits']['hits'];
         for (let action of actions) {
             action = action._source;
             const _tmp = {};

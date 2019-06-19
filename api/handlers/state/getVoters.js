@@ -13,7 +13,7 @@ const rpc = new JsonRpc(eos_endpoint, {fetch});
 async function getVoters(fastify, request) {
 
     const t0 = Date.now();
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
     if (cachedResponse) {
         return cachedResponse;
@@ -62,7 +62,7 @@ async function getVoters(fastify, request) {
         prefix = 'eos';
     }
 
-    const results = await elasticsearch.search({
+    const results = await elastic.search({
         "index": prefix + '-table-voters-*',
         "from": skip || 0,
         "size": (limit > maxActions ? maxActions : limit) || 10,
@@ -71,7 +71,7 @@ async function getVoters(fastify, request) {
             "sort": [{"last_vote_weight": "desc"}]
         }
     });
-    const hits = results['hits']['hits'];
+    const hits = results['body']['hits']['hits'];
     for (const hit of hits) {
         const voter = hit._source;
         response.voters.push({
@@ -80,7 +80,7 @@ async function getVoters(fastify, request) {
             last_vote: voter.block_num
         });
     }
-    response.voter_count = results['hits']['total']['value'];
+    response.voter_count = results['body']['hits']['total']['value'];
     response['query_time'] = Date.now() - t0;
     redis.set(hash, JSON.stringify(response), 'EX', 30);
     return response;

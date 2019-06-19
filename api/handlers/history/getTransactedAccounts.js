@@ -4,7 +4,7 @@ const {getTransactedAccountsSchema} = require("../../schemas");
 
 async function getTransactedAccounts(fastify, request) {
     const t0 = Date.now();
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
     if (cachedResponse) {
         return cachedResponse;
@@ -102,7 +102,7 @@ async function getTransactedAccounts(fastify, request) {
     }
 
     if (direction === 'out' || direction === 'both') {
-        const outResults = await elasticsearch.search({
+        const outResults = await elastic.search({
             index: process.env.CHAIN + '-action-*',
             body: {
                 size: 0,
@@ -144,7 +144,7 @@ async function getTransactedAccounts(fastify, request) {
     }
 
     if (direction === 'in' || direction === 'both') {
-        const inResults = await elasticsearch.search({
+        const inResults = await elastic.search({
             index: process.env.CHAIN + '-action-*',
             body: {
                 size: 0,

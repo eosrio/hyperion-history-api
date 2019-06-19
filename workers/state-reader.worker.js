@@ -7,6 +7,8 @@ const {amqpConnect} = require("../connections/rabbitmq");
 const pmx = require('pmx');
 const {TextEncoder, TextDecoder} = require('util');
 
+const {checkQueueSize} = require("../connections/rabbitmq");
+
 const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
 
@@ -18,6 +20,8 @@ let currentIdx = 1;
 let drainCount = 0;
 let local_distributed_count = 0;
 let lastPendingCount = 0;
+let allowRequests = true;
+let pendingRequest = null;
 
 const qStatusMap = {};
 const queue_prefix = process.env.CHAIN;
@@ -266,10 +270,30 @@ async function run() {
         ch.assertQueue(queue + ":" + (i + 1), {
             durable: true
         });
+
         ch.on('drain', function () {
             qStatusMap[queue + ":" + (i + 1)] = true;
         })
     }
+
+    setInterval(() => {
+        let checkArr = [];
+        for (let i = 0; i < n_deserializers; i++) {
+            // Queue size watch
+            const q = queue + ":" + (i + 1);
+            checkArr.push(checkQueueSize(q));
+        }
+        Promise.all(checkArr).then(data => {
+            if (data.some(el => el > process.env.QUEUE_THRESH)) {
+                allowRequests = false;
+            } else {
+                allowRequests = true;
+                if (pendingRequest) {
+                    processPending();
+                }
+            }
+        });
+    }, 5000);
 
     // Connect to StateHistory via WebSocket
     ws = connectStateHistorySocket(blockReadingQueue.push);
@@ -283,10 +307,20 @@ async function run() {
                 completionMonitoring = null;
                 completionSignaled = false;
                 range_size = parseInt(msg.data.last_block) - parseInt(msg.data.first_block);
-                requestBlockRange(msg.data.first_block, msg.data.last_block);
+                if (allowRequests) {
+                    requestBlockRange(msg.data.first_block, msg.data.last_block);
+                    pendingRequest = null;
+                } else {
+                    pendingRequest = [msg.data.first_block, msg.data.last_block];
+                }
             }
         }
     });
+}
+
+function processPending() {
+    requestBlockRange(pendingRequest[0], pendingRequest[1]);
+    pendingRequest = null;
 }
 
 module.exports = {run};

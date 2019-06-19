@@ -20,11 +20,11 @@ async function getActionByGS(client, gs) {
             }
         }
     });
-    return results['hits']['hits'][0]['_source'];
+    return results['body']['hits']['hits'][0]['_source'];
 }
 
 async function getCreator(fastify, request) {
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query) + 'v3');
     if (cachedResponse) {
         return cachedResponse;
@@ -63,7 +63,7 @@ async function getCreator(fastify, request) {
         "index": process.env.CHAIN + '-action-*',
         "body": queryBody
     });
-    for (const action of results['hits']['hits']) {
+    for (const action of results['body']['hits']['hits']) {
         const actData = action._source.act.data;
         let valid = false;
         response.block_num = action._source.block_num;

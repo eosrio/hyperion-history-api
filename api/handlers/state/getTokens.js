@@ -9,7 +9,7 @@ const rpc = new JsonRpc(eos_endpoint, {fetch});
 
 async function getTokens(fastify, request) {
     const t0 = Date.now();
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
 
     if (cachedResponse) {
@@ -22,7 +22,7 @@ async function getTokens(fastify, request) {
         'tokens': []
     };
 
-    const results = await elasticsearch.search({
+    const results = await elastic.search({
         "index": process.env.CHAIN + '-action-*',
         "body": {
             size: 0,
