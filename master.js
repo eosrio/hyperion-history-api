@@ -209,6 +209,12 @@ async function main() {
 
         if (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0) {
             allowShutdown = true;
+
+            if (pushedBlocks === 0) {
+                console.log("No more blocks being processed, stopping now...");
+                rClient.set('abi_cache', JSON.stringify(abiCacheMap));
+                process.exit(1);
+            }
         }
 
         // reset counters
