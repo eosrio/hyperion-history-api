@@ -8,15 +8,19 @@ module.exports = {
             kill_timeout: 3600,
             env: {
                 AMQP_HOST: '127.0.0.1:5672',
+                AMQP_API: '127.0.0.1:15672',
                 AMQP_USER: 'input',
                 AMQP_PASS: '',
                 ES_HOST: '127.0.0.1:9200',
+                ES_USER: '',
+                ES_PASS: '',
                 NODEOS_HTTP: 'http://127.0.0.1:8888',
                 NODEOS_WS: 'ws://127.0.0.1:8080',
                 START_ON: 0,
                 STOP_ON: 0,
                 REWRITE: 'false',
                 BATCH_SIZE: 5000,
+                QUEUE_THRESH: 10000,
                 LIVE_READER: 'false',
                 LIVE_ONLY: 'false',
                 FETCH_BLOCK: 'false',
@@ -61,6 +65,8 @@ module.exports = {
                 SERVER_ADDR: '127.0.0.1',
                 NODEOS_HTTP: 'http://127.0.0.1:8888',
                 ES_HOST: '127.0.0.1:9200',
+                ES_USER: '',
+                ES_PASS: '',
                 CHAIN: 'eos'
             }
         }

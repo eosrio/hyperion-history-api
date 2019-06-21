@@ -70,6 +70,9 @@ async function processMessages(messages) {
         let block, traces = [], deltas = [];
         if (res.block && res.block.length) {
             block = deserialize('signed_block', res.block, txEnc, txDec, types);
+            if (block === null) {
+                console.log(res);
+            }
         }
         if (res['traces'] && res['traces'].length) {
             const unpackedTraces = await unzipAsync(res['traces']);
@@ -114,6 +117,9 @@ async function processBlock(res, block, traces, deltas) {
         let ts = '';
         const block_num = res['this_block']['block_num'];
         if (process.env.FETCH_BLOCK === 'true') {
+            if(!block) {
+                console.log(res);
+            }
             producer = block['producer'];
             ts = block['timestamp'];
             const light_block = {
@@ -152,31 +158,105 @@ async function processBlock(res, block, traces, deltas) {
             const t2 = Date.now();
             for (const trace of traces) {
                 const transaction_trace = trace[1];
-                let action_count = 0;
-                const trx_id = transaction_trace['id'].toLowerCase();
-                const action_traces = transaction_trace['action_traces'];
-                const t3 = Date.now();
-                for (const action_trace of action_traces) {
-                    if (action_trace[0] === 'action_trace_v0') {
-                        const action = action_trace[1];
-                        if (action_blacklist.has(`${queue_prefix}::${action['act']['account']}::*`)) {
-                            // blacklisted
-                            // console.log(`${action['act']['account']} account blacklisted (action: ${action['act']['name']})`);
-                        } else if (action_blacklist.has(`${queue_prefix}::${action['act']['account']}::${action['act']['name']}`)) {
-                            // blacklisted
-                            // console.log(`${queue_prefix}::${action['act']['account']}::${action['act']['name']} action blacklisted`);
-                        } else {
-                            const status = await processAction(ts, action, trx_id, block_num, producer, null, 0);
-                            if (status) {
-                                action_count++;
+                if (transaction_trace.status === 0) {
+                    let action_count = 0;
+                    const trx_id = transaction_trace['id'].toLowerCase();
+                    const _actDataArray = [];
+                    const _processedTraces = [];
+                    const action_traces = transaction_trace['action_traces'];
+                    const t3 = Date.now();
+                    for (const action_trace of action_traces) {
+                        if (action_trace[0] === 'action_trace_v0') {
+                            const action = action_trace[1];
+                            if (action_blacklist.has(`${queue_prefix}::${action['act']['account']}::*`)) {
+                                // blacklisted
+                                // console.log(`${action['act']['account']} account blacklisted (action: ${action['act']['name']})`);
+                            } else if (action_blacklist.has(`${queue_prefix}::${action['act']['account']}::${action['act']['name']}`)) {
+                                // blacklisted
+                                // console.log(`${queue_prefix}::${action['act']['account']}::${action['act']['name']} action blacklisted`);
+                            } else {
+                                const status = await processAction(ts, action, trx_id, block_num, producer, _actDataArray, _processedTraces, transaction_trace);
+                                if (status) {
+                                    action_count++;
+                                }
                             }
                         }
                     }
-                }
-                const act_elapsed_time = Date.now() - t3;
-                if (act_elapsed_time > 100) {
-                    debugLog(`[WARNING] Actions processing took ${act_elapsed_time}ms on trx ${trx_id}`);
-                    // console.log(action_traces);
+                    const _finalTraces = [];
+
+                    if (_processedTraces.length > 0) {
+                        const digestMap = new Map();
+                        // console.log(`----------- TRX ${trx_id} ------------------`);
+                        for (let i = 0; i < _processedTraces.length; i++) {
+                            const receipt = _processedTraces[i].receipt;
+                            const act_digest = receipt['act_digest'];
+                            if (digestMap.has(act_digest)) {
+                                digestMap.get(act_digest).push(receipt);
+                            } else {
+                                const _arr = [];
+                                _arr.push(receipt);
+                                digestMap.set(act_digest, _arr);
+                            }
+                        }
+                        _processedTraces.forEach(data => {
+                            const digest = data['receipt']['act_digest'];
+                            if (digestMap.has(digest)) {
+                                // Apply notified accounts to first trace instance
+                                const tempTrace = data;
+                                tempTrace['receipts'] = [];
+                                tempTrace['notified'] = [];
+                                digestMap.get(digest).forEach(val => {
+
+                                    tempTrace['notified'].push(val.receiver);
+                                    tempTrace['code_sequence'] = val.code_sequence;
+                                    tempTrace['abi_sequence'] = val.abi_sequence;
+
+                                    delete val['code_sequence'];
+                                    delete val['abi_sequence'];
+                                    delete val['act_digest'];
+
+                                    tempTrace['receipts'].push(val);
+                                });
+                                delete tempTrace['receipt'];
+                                delete tempTrace['receiver'];
+                                _finalTraces.push(tempTrace);
+                                digestMap.delete(digest);
+                            }
+                        });
+                        // console.log(prettyjson.render(_finalTraces));
+                        // console.log(`---------------------------------------------`);
+                    }
+
+                    // Submit Actions after deduplication
+                    for (const uniqueAction of _finalTraces) {
+                        const payload = Buffer.from(JSON.stringify(uniqueAction));
+                        if (process.env.ENABLE_INDEXING === 'true') {
+                            // Distribute actions to indexer queues
+                            const q = index_queue_prefix + "_actions:" + (act_emit_idx);
+                            const status = ch.sendToQueue(q, payload);
+                            if (!status) {
+                                // console.log('Action Indexing:', status);
+                            }
+                            act_emit_idx++;
+                            if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+                                act_emit_idx = 1;
+                            }
+                        }
+                        if (allowStreaming) {
+                            ch.publish('', queue_prefix + ':stream', payload, {
+                                headers: {
+                                    account: uniqueAction['act']['account'],
+                                    name: uniqueAction['act']['name']
+                                }
+                            });
+                        }
+                    }
+
+                    const act_elapsed_time = Date.now() - t3;
+                    if (act_elapsed_time > 100) {
+                        debugLog(`[WARNING] Actions processing took ${act_elapsed_time}ms on trx ${trx_id}`);
+                        // console.log(action_traces);
+                    }
                 }
             }
             const traces_elapsed_time = Date.now() - t2;
@@ -226,16 +306,7 @@ async function deserializeActionsAtBlock(actions, block_num) {
     }));
 }
 
-async function processAction(ts, action, trx_id, block_num, prod, parent, parent_act) {
-    action['receipt'] = action['receipt'][1];
-    let g_seq;
-    let notifiedAccounts = new Set();
-    notifiedAccounts.add(action['receipt']['receiver']);
-    if (parent !== null) {
-        g_seq = parent;
-    } else {
-        g_seq = action['receipt']['global_sequence'];
-    }
+async function processAction(ts, action, trx_id, block_num, prod, _actDataArray, _processedTraces, full_trace) {
     let act = action['act'];
     const original_act = Object.assign({}, act);
     act.data = new Uint8Array(Object.values(act.data));
@@ -259,71 +330,24 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, parent
     action['block_num'] = block_num;
     action['producer'] = prod;
     action['trx_id'] = trx_id;
-    if (parent !== null) {
-        action['parent'] = g_seq;
-    } else {
-        action['parent'] = 0;
-    }
-
     if (action['account_ram_deltas'].length === 0) {
         delete action['account_ram_deltas'];
     }
-
-    delete action['console'];
-
-    const actDataString = JSON.stringify(action['act']['data']);
-
-    if (action['inline_traces'].length > 0) {
-        g_seq = action['receipt']['global_sequence'];
-        for (const inline_trace of action['inline_traces']) {
-            const notified = await processAction(ts, inline_trace[1], trx_id, block_num, prod, g_seq, actDataString);
-            // Merge notifications with the parent action
-            for (const acct of notified) {
-                notifiedAccounts.add(acct);
-            }
-        }
+    if (action['console'] === '') {
+        delete action['console'];
     }
-
-    delete action['inline_traces'];
-    delete action['except'];
-    delete action['context_free'];
-
-    action['global_sequence'] = parseInt(action['receipt']['global_sequence'], 10);
-    delete action['receipt'];
-
-    delete action['elapsed'];
-
-    if (parent_act !== actDataString) {
-        action['notified'] = Array.from(notifiedAccounts);
-        const payload = Buffer.from(JSON.stringify(action));
-        if (process.env.ENABLE_INDEXING === 'true') {
-            // Distribute actions to indexer queues
-            const q = index_queue_prefix + "_actions:" + (act_emit_idx);
-            const status = ch.sendToQueue(q, payload);
-            if (!status) {
-                // console.log('Action Indexing:', status);
-            }
-            act_emit_idx++;
-            if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
-                act_emit_idx = 1;
-            }
+    if (action['except'] === null) {
+        if (!action['receipt']) {
+            console.log(full_trace.status);
+            console.log(action);
         }
-
-        if (allowStreaming) {
-            ch.publish('', queue_prefix + ':stream', payload, {
-                headers: {
-                    account: action['act']['account'],
-                    name: action['act']['name']
-                }
-            });
-        }
-    }
-
-    if (parent !== null) {
-        return notifiedAccounts;
+        action['receipt'] = action['receipt'][1];
+        action['global_sequence'] = parseInt(action['receipt']['global_sequence'], 10);
+        _processedTraces.push(action);
     } else {
-        return true;
+        console.log(action);
     }
+    return true;
 }
 
 function attachActionExtras(action) {

@@ -7,12 +7,12 @@ const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
 
 async function getTransaction(fastify, request) {
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
     if (cachedResponse) {
         return cachedResponse;
     }
-    const pResults = await Promise.all([rpc.get_info(), elasticsearch['search']({
+    const pResults = await Promise.all([rpc.get_info(), elastic['search']({
         "index": process.env.CHAIN + '-action-*',
         "body": {
             "query": {
@@ -33,8 +33,8 @@ async function getTransaction(fastify, request) {
         "lib": pResults[0].last_irreversible_block_num,
         "actions": []
     };
-    if (results['hits']['hits'].length > 0) {
-        const actions = results['hits']['hits'];
+    if (results['body']['hits']['hits'].length > 0) {
+        const actions = results['body']['hits']['hits'];
         for (let action of actions) {
             action = action._source;
             const name = action.act.name;

@@ -2,14 +2,14 @@ const {getCacheByHash} = require("../../helpers/functions");
 const {getAbiSnapshotSchema} = require("../../schemas");
 
 async function getAbiSnapshot(fastify, request) {
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
     if (cachedResponse) {
         return JSON.parse(cachedResponse);
     }
     const code = request.query.contract;
     const block = request.query.block;
-    const results = await elasticsearch.search({
+    const results = await elastic.search({
         "index": process.env.CHAIN + '-abi',
         "size": 1,
         "body": {
@@ -28,8 +28,8 @@ async function getAbiSnapshot(fastify, request) {
         }
     });
     let abi = null;
-    if (results['hits']['hits'].length > 0) {
-        abi = results['hits']['hits'][0]['_source']['abi'];
+    if (results['body']['hits']['hits'].length > 0) {
+        abi = results['body']['hits']['hits'][0]['_source']['abi'];
     } else {
         abi = 'abi not found for ' + code + ' until block ' + block;
     }

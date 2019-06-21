@@ -20,11 +20,11 @@ async function getActionByGS(client, gs) {
             }
         }
     });
-    return results['hits']['hits'][0]['_source'];
+    return results['body']['hits']['hits'][0]['_source'];
 }
 
 async function getCreator(fastify, request) {
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query) + 'v3');
     if (cachedResponse) {
         return cachedResponse;
@@ -59,11 +59,11 @@ async function getCreator(fastify, request) {
             }
         }
     };
-    const results = await elasticsearch['search']({
+    const results = await elastic['search']({
         "index": process.env.CHAIN + '-action-*',
         "body": queryBody
     });
-    for (const action of results['hits']['hits']) {
+    for (const action of results['body']['hits']['hits']) {
         const actData = action._source.act.data;
         let valid = false;
         response.block_num = action._source.block_num;
@@ -82,7 +82,7 @@ async function getCreator(fastify, request) {
         }
         if (action._source.parent !== 0 && valid) {
             // Find indirect creator by global seq
-            const creationAction = await getActionByGS(elasticsearch, action._source.parent);
+            const creationAction = await getActionByGS(elastic, action._source.parent);
             if (creationAction.act.name === 'transfer') {
                 response['indirect_creator'] = creationAction['@transfer']['from'];
                 response['trx_id'] = creationAction['trx_id'];

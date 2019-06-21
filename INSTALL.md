@@ -23,13 +23,7 @@ sudo pm2 startup
 
 ### Elasticsearch Installation
 
-```bash
-sudo apt update
-mkdir hyperion
-cd hyperion
-wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.1.0-amd64.deb
-sudo apt install ./elasticsearch-7.1.0-amd64.deb
-```
+* Follow instructions on https://www.elastic.co/guide/en/elasticsearch/reference/current/deb.html (Ubuntu/Debian)
 
 Edit `/etc/elasticsearch/elasticsearch.yml`
 
@@ -176,12 +170,14 @@ Before indexing actions into elasticsearch its required to do a ABI scan pass
 
 Start with
 ```
-ABI_CACHE_MODE: true,
+ABI_CACHE_MODE: 'true',
 FETCH_BLOCK: 'false',
 FETCH_TRACES: 'false',
 INDEX_DELTAS: 'false',
 INDEX_ALL_DELTAS: 'false',
 ```
+
+When indexing is finished, change the settings back and restart the indexer. In case you do not have much contract updates, you do not need to run a full pass.
 
 Tune your configs to your specific hardware using the following settings:
 ```

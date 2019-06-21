@@ -7,6 +7,7 @@ const pmx = require('pmx');
 const doctor = require('./doctor');
 
 const {elasticsearchConnect} = require("./connections/elasticsearch");
+const {checkQueueSize} = require("./connections/rabbitmq");
 
 const {
     getLastIndexedBlock,
@@ -89,7 +90,7 @@ async function main() {
         }
     });
 
-    if (!script_status['acknowledged']) {
+    if (!script_status['body']['acknowledged']) {
         console.log('Failed to load script updateByBlock. Aborting!');
         process.exit(1);
     }
@@ -122,7 +123,7 @@ async function main() {
             name: `${queue_prefix}-${index}`,
             body: indexConfig[index]
         });
-        if (!creation_status['acknowledged']) {
+        if (!creation_status['body']['acknowledged']) {
             console.log('Failed to create template', `${queue_prefix}-${index}`);
             console.log(creation_status);
             process.exit(1);
@@ -144,7 +145,7 @@ async function main() {
             const exists = await client['indices'].exists({
                 index: new_index
             });
-            if (!exists) {
+            if (!exists.body) {
                 console.log(`Creating index ${new_index}...`);
                 await client['indices'].create({
                     index: new_index

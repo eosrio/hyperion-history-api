@@ -28,7 +28,24 @@ const action = {
             "account_ram_deltas.delta": {"enabled": false},
             "act.account": {"type": "keyword"},
             "block_num": {"type": "long"},
+            "action_ordinal": {"type": "long"},
+            "creator_action_ordinal": {"type": "long"},
+            "code_sequence": {"type": "long"},
+            "abi_sequence": {"type": "long"},
             "act.authorization.permission": {"enabled": false},
+            "receipts": {
+                "properties": {
+                    "global_sequence": {"type": "long"},
+                    "recv_sequence": {"type": "long"},
+                    "receiver": {"type": "keyword"},
+                    "auth_sequence": {
+                        "properties": {
+                            "account": {"type": "keyword"},
+                            "sequence": {"type": "long"}
+                        }
+                    }
+                }
+            },
             "@newaccount": {
                 "properties": {
                     "active": {"type": "object"},

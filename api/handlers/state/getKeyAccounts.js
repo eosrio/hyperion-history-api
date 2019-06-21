@@ -4,7 +4,7 @@ const numeric = require('eosjs/dist/eosjs-numeric');
 const ecc = require('eosjs-ecc');
 
 async function getKeyAccounts(fastify, request) {
-    const {redis, elasticsearch} = fastify;
+    const {redis, elastic} = fastify;
     let public_Key = request.query.public_key;
     if (!ecc.isValidPublic(public_Key)) {
         const err = new Error();
@@ -18,7 +18,7 @@ async function getKeyAccounts(fastify, request) {
     if (cachedResponse) {
         return cachedResponse;
     }
-    const results = await elasticsearch.search({
+    const results = await elastic.search({
         index: process.env.CHAIN + '-action-*',
         size: 100,
         body: {
@@ -40,8 +40,8 @@ async function getKeyAccounts(fastify, request) {
     const response = {
         account_names: []
     };
-    if (results['hits']['hits'].length > 0) {
-        response.account_names = results['hits']['hits'].map((v) => {
+    if (results['body']['hits']['hits'].length > 0) {
+        response.account_names = results['body']['hits']['hits'].map((v) => {
             if (v._source.act.name === 'newaccount') {
                 if (v._source['@newaccount'].newact) {
                     return v._source['@newaccount'].newact;
