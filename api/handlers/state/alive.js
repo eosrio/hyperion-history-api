@@ -7,19 +7,15 @@ module.exports = function (fastify, opts, next) {
             tags: ['state']
         }
     }, async (request, reply) => {
-        elastic.ping({
-            requestTimeout: 1000
-        }, function (error) {
-            if (error) {
-                reply.send({
-                    status: 'ERROR',
-                    msg: 'elasticsearch cluster is not available'
-                });
-            } else {
-                reply.send({
-                    status: 'OK'
-                });
-            }
+        elastic.ping().then(()=>{
+            reply.send({
+                status: 'OK'
+            });
+        }).catch(()=>{
+            reply.send({
+                status: 'ERROR',
+                msg: 'elasticsearch cluster is not available'
+            });
         });
     });
     next();

@@ -130,7 +130,7 @@ async function getTransactedAccounts(fastify, request) {
             }
         });
         response['total_out'] = 0;
-        response['outputs'] = outResults['aggregations']['receivers']['buckets'].map((bucket) => {
+        response['outputs'] = outResults['body']['aggregations']['receivers']['buckets'].map((bucket) => {
             const _sum = parseFloat(bucket.total_amount.value.toFixed(4));
             response['total_out'] += _sum;
             return {
@@ -172,7 +172,7 @@ async function getTransactedAccounts(fastify, request) {
             }
         });
         response['total_in'] = 0;
-        response['inputs'] = inResults['aggregations']['senders']['buckets'].map((bucket) => {
+        response['inputs'] = inResults['body']['aggregations']['senders']['buckets'].map((bucket) => {
             const _sum = parseFloat(bucket.total_amount.value.toFixed(4));
             response['total_in'] += _sum;
             return {
