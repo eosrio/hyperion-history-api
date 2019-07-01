@@ -75,12 +75,10 @@ async function processMessages(messages) {
             }
         }
         if (res['traces'] && res['traces'].length) {
-            const unpackedTraces = await unzipAsync(res['traces']);
-            traces = deserialize('transaction_trace[]', unpackedTraces, txEnc, txDec, types);
+            traces = deserialize('transaction_trace[]', res['traces'], txEnc, txDec, types);
         }
         if (res['deltas'] && res['deltas'].length) {
-            const unpackedDeltas = await unzipAsync(res['deltas']);
-            deltas = deserialize('table_delta[]', unpackedDeltas, txEnc, txDec, types);
+            deltas = deserialize('table_delta[]', res['deltas'], txEnc, txDec, types);
         }
         let result;
         try {
@@ -164,6 +162,7 @@ async function processBlock(res, block, traces, deltas) {
                     const _actDataArray = [];
                     const _processedTraces = [];
                     const action_traces = transaction_trace['action_traces'];
+                    // console.log(transaction_trace['partial']);
                     const t3 = Date.now();
                     for (const action_trace of action_traces) {
                         if (action_trace[0] === 'action_trace_v0') {
@@ -299,7 +298,7 @@ async function getContractAtBlock(accountName, block_num) {
 }
 
 async function deserializeActionsAtBlock(actions, block_num) {
-    return await Promise.all(actions.map(async ({account, name, authorization, data}) => {
+    return Promise.all(actions.map(async ({account, name, authorization, data}) => {
         const contract = (await getContractAtBlock(account, block_num))[0];
         return Serialize.deserializeAction(
             contract, account, name, authorization, data, txEnc, txDec);
