@@ -115,7 +115,7 @@ async function processBlock(res, block, traces, deltas) {
         let ts = '';
         const block_num = res['this_block']['block_num'];
         if (process.env.FETCH_BLOCK === 'true') {
-            if(!block) {
+            if (!block) {
                 console.log(res);
             }
             producer = block['producer'];
