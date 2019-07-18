@@ -3,9 +3,8 @@ const {getCacheByHash} = require("../../helpers/functions");
 const numeric = require('eosjs/dist/eosjs-numeric');
 const ecc = require('eosjs-ecc');
 
-async function getKeyAccounts(fastify, request) {
+async function getKeyAccounts(fastify, public_Key) {
     const {redis, elastic} = fastify;
-    let public_Key = request.query.public_key;
     if (!ecc.isValidPublic(public_Key)) {
         const err = new Error();
         err.statusCode = 400;
@@ -14,7 +13,7 @@ async function getKeyAccounts(fastify, request) {
     } else {
         public_Key = numeric.convertLegacyPublicKey(public_Key);
     }
-    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
+    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(public_Key));
     if (cachedResponse) {
         return cachedResponse;
     }
@@ -73,7 +72,12 @@ module.exports = function (fastify, opts, next) {
     fastify.get('/get_key_accounts', {
         schema: getKeyAccountsSchema.GET
     }, async (request) => {
-        return getKeyAccounts(fastify, request);
+        return getKeyAccounts(fastify, request.query.public_key);
     });
-    next()
+    fastify.post('/get_key_accounts', {
+        schema: getKeyAccountsSchema.POST
+    }, async (request) => {
+        return getKeyAccounts(fastify, request.body.public_key);
+    });
+    next();
 };

@@ -46,7 +46,7 @@ async function getTokens(fastify, request) {
         }
     });
 
-    for (const bucket of results['aggregations']['tokens']['buckets']) {
+    for (const bucket of results['body']['aggregations']['tokens']['buckets']) {
         let token_data;
         try {
             token_data = await rpc.get_currency_balance(bucket['key'], request.query.account);

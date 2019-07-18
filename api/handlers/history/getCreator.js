@@ -8,6 +8,7 @@ const rpc = new JsonRpc(eos_endpoint, {fetch});
 const route = '/get_creator';
 
 async function getActionByGS(client, gs) {
+    console.log(gs);
     const results = await client['search']({
         index: process.env.CHAIN + '-action-*',
         body: {
@@ -80,18 +81,23 @@ async function getCreator(fastify, request) {
                 }
             }
         }
-        if (action._source.parent !== 0 && valid) {
-            // Find indirect creator by global seq
-            const creationAction = await getActionByGS(elastic, action._source.parent);
-            if (creationAction.act.name === 'transfer') {
-                response['indirect_creator'] = creationAction['@transfer']['from'];
-                response['trx_id'] = creationAction['trx_id'];
-            } else {
-                response['indirect_creator'] = creationAction.act.authorization[0].actor;
-                response['trx_id'] = creationAction['trx_id'];
-            }
-        }
+
+        // if (action._source.parent !== 0 && valid) {
+        //
+        //     // Find indirect creator by global seq
+        //     const creationAction = await getActionByGS(elastic, action._source.parent);
+        //
+        //     if (creationAction.act.name === 'transfer') {
+        //         response['indirect_creator'] = creationAction['@transfer']['from'];
+        //         response['trx_id'] = creationAction['trx_id'];
+        //     } else {
+        //         response['indirect_creator'] = creationAction.act.authorization[0].actor;
+        //         response['trx_id'] = creationAction['trx_id'];
+        //     }
+        // }
+
     }
+
     redis.set(hash, JSON.stringify(response), 'EX', 600);
     return response;
 }

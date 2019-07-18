@@ -15,7 +15,7 @@ async function getCreatedAccounts(fastify, request) {
     if (cachedResponse) {
         return cachedResponse;
     }
-    const results = await elasticsearch['search']({
+    const results = await elastic['search']({
         "index": process.env.CHAIN + '-action-*',
         "body": {
             "query": {
