@@ -3,26 +3,35 @@ const openApi = require('./config/openApi');
 const AutoLoad = require('fastify-autoload');
 const path = require('path');
 
+const {Client} = require('@elastic/elasticsearch');
+
 const fastify = require('fastify')({
     ignoreTrailingSlash: true,
     trustProxy: true
 });
+let ES_NODE = `http://${process.env.ES_HOST}`;
+if (process.env.ES_USER !== '') {
+    ES_NODE = `http://${process.env.ES_USER}:${process.env.ES_PASS}@${process.env.ES_HOST}`;
+}
 
-fastify.register(require('fastify-elasticsearch'), {
-    host: process.env.ES_HOST
+
+fastify.register(require('fastify-elasticsearch'), { // 连接elastic
+    client: new Client({node: ES_NODE})
 });
 
-fastify.register(require('fastify-redis'), {host: '127.0.0.1'});
+
+fastify.register(require('fastify-redis'), {host: '127.0.0.1'}); // 连接redis
 
 fastify.register(require('fastify-rate-limit'), {
     max: 1000,
-    whitelist: ["35.230.63.54"],
+    whitelist: [],
     timeWindow: '1 minute',
     redis: new Redis()
 });
 
 fastify.register(require('fastify-oas'), openApi.options);
 
+// 注册个API路由
 fastify.register(AutoLoad, {
     dir: path.join(__dirname, 'handlers', 'history'),
     options: {
@@ -36,6 +45,15 @@ fastify.register(AutoLoad, {
         prefix: '/v2/state'
     }
 });
+
+
+fastify.register(AutoLoad, {
+    dir: path.join(__dirname, 'handlers', 'v1-history'),
+    options: {
+        prefix: '/v1/history'
+    }
+});
+
 
 fastify.register(require('fastify-cors'));
 

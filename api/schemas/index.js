@@ -3,6 +3,7 @@ module.exports = {
     getAbiSnapshotSchema: require('./get_abi_snapshot'),
     getKeyAccountsSchema: require('./get_key_accounts'),
     getActionsSchema: require('./get_actions'),
+    getActionsV1Schema: require('./get_actions_v1'),
     getTransactedAccountsSchema: require('./get_transacted_accounts'),
     getTransactionSchema: require('./get_transaction'),
     getCreatorSchema: require('./get_creator'),
