@@ -65,6 +65,7 @@ async function getTransaction(fastify, request) {
             "context_free_data": []
         }
         let traces = {}
+        let seqNum = 0
         for (let action of actions) {
             action = action._source;
             const name = action.act.name;
@@ -78,7 +79,7 @@ async function getTransaction(fastify, request) {
             }
             response.block_num = action.block_num
             response.block_time = action['@timestamp']
-
+            seqNum+=10
             let trace = {
                 account_ram_deltas: action.account_ram_deltas || [],
                 act: action.act,
@@ -92,7 +93,11 @@ async function getTransaction(fastify, request) {
                 producer_block_id: "",
                 receipt: {
                     receiver: action.act.account,
-                    global_sequence: action.global_sequence
+                    global_sequence: action.global_sequence,
+                    auth_sequence: [
+                        action.act.authorization.actor,
+                        seqNum
+                    ]
                 },
                 trx_id: request.body.id,
                 notified: action.notified
@@ -121,6 +126,7 @@ async function getTransaction(fastify, request) {
             action = action._source
             response.traces.push(traces[action.global_sequence])
             traces[action.global_sequence].notified.forEach((note,index) => {
+                seqNum +=10
                 let trace = {
                     account_ram_deltas: action.account_ram_deltas || [],
                     act: action.act,
@@ -134,7 +140,11 @@ async function getTransaction(fastify, request) {
                     producer_block_id: "",
                     receipt: {
                         receiver: note,
-                        global_sequence: action.global_sequence + index + 1
+                        global_sequence: action.global_sequence + index + 1,
+                        auth_sequence: [
+                            action.act.authorization.actor,
+                            seqNum
+                        ]
                     },
                     trx_id: request.body.id,
                 }
