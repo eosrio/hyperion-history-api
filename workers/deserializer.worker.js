@@ -31,6 +31,7 @@ let tbl_acc_emit_idx = 1;
 let tbl_vote_emit_idx = 1;
 let tbl_transfers_emit_idx = 1;
 let tbl_alt_transfers_emit_idx = 1;
+let tbl_votes_emit_idx = 1;
 let local_block_count = 0;
 let allowStreaming = false;
 let cachedMap;
@@ -841,6 +842,18 @@ async function storeVoter(data) {
         tbl_vote_emit_idx++;
         if (tbl_vote_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
             tbl_vote_emit_idx = 1;
+        }
+
+        if (process.env.VOTES_HISTORY === 'true') {
+            const q = index_queue_prefix + "_table_votes:" + (tbl_votes_emit_idx);
+            const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(voterDoc)));
+            if (!status) {
+                // console.log('Voter Indexing:', status);
+            }
+            tbl_votes_emit_idx++;
+            if (tbl_votes_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+                tbl_votes_emit_idx = 1;
+            }
         }
     }
 }

@@ -309,6 +309,32 @@ const tableAltTransfers = {
     }
 };
 
+const tableVotes = {
+    "index_patterns": [process.env.CHAIN + "-table-votes-*"],
+    "settings": {
+        "index": {
+            "number_of_shards": 3,
+            "refresh_interval": "5s",
+            "number_of_replicas": 0,
+            "sort.field": "last_vote_weight",
+            "sort.order": "desc"
+        }
+    },
+    "mappings": {
+        "properties": {
+            "voter": {"type": "keyword"},
+            "producers": {"type": "keyword"},
+            "last_vote_weight": {"type": "double"},
+            "is_proxy": {"type": "boolean"},
+            "proxied_vote_weight": {"type": "double"},
+            "staked": {"type": "double"},
+            "proxy": {"type": "keyword"},
+            "primary_key": {"type": "keyword"},
+            "block_num": {"type": "long"}
+        }
+    }
+};
+
 const delta = {
     "index_patterns": [process.env.CHAIN + "-delta-*"],
     "settings": {
@@ -371,5 +397,6 @@ module.exports = {
     "table-userres": tableUserRes,
     "table-voters": tableVoters,
     "table-transfers": tableTransfers,
-    "table-alt-transfers": tableAltTransfers
+    "table-alt-transfers": tableAltTransfers,
+    "table-votes": tableVotes
 };

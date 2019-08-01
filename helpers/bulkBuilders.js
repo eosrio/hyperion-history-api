@@ -89,6 +89,20 @@ function buildTableVotersBulk(payloads, messageMap) {
     }).flatten()['value']();
 }
 
+function buildTableVotesBulk(payloads, messageMap) {
+    return _(payloads).map(payload => {
+        const body = JSON.parse(Buffer.from(payload.content).toString());
+        const id_string = `${body.primary_key}`;
+        const hash = crypto.createHash('sha256');
+        const id = hash.update(id_string).digest('hex');
+        messageMap.set(id, payload);
+        return [
+            {index: {_id: id}},
+            body
+        ];
+    }).flatten()['value']();
+}
+
 
 module.exports = {
     buildActionBulk,
@@ -96,5 +110,6 @@ module.exports = {
     buildDeltaBulk,
     buildAbiBulk,
     buildTableAccountsBulk,
-    buildTableVotersBulk
+    buildTableVotersBulk,
+    buildTableVotesBulk
 };

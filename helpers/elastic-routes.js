@@ -4,7 +4,8 @@ const {
     buildAbiBulk,
     buildDeltaBulk,
     buildTableAccountsBulk,
-    buildTableVotersBulk
+    buildTableVotersBulk,
+    buildTableVotesBulk
 } = require("./bulkBuilders");
 const queue_prefix = process.env.CHAIN;
 const prettyjson = require('prettyjson');
@@ -119,6 +120,18 @@ const routes = {
             index: queue_prefix + '-table-voters',
             type: '_doc',
             body: buildTableVotersBulk(payloads, messageMap)
+        }).then(resp => {
+            onResponse(resp, messageMap, cb, payloads, channel);
+        }).catch(err => {
+            onError(err, channel, cb);
+        });
+    },
+    'table-votes': async (payloads, channel, cb) => {
+        const messageMap = new Map();
+        client['bulk']({
+            index: queue_prefix + '-table-votes',
+            type: '_doc',
+            body: buildTableVotesBulk(payloads, messageMap)
         }).then(resp => {
             onResponse(resp, messageMap, cb, payloads, channel);
         }).catch(err => {

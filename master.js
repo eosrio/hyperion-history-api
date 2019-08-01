@@ -124,6 +124,10 @@ async function main() {
         indicesList.push("table-alt-transfers");
         index_queues.push({type: 'table-alt-transfers', name: index_queue_prefix + "_table_alt_transfers"});
     }
+    if (process.env.VOTES_HISTORY === 'true') {
+        indicesList.push("table-votes");
+        index_queues.push({type: 'table-votes', name: index_queue_prefix + "_table_votes"});
+    }
 
     const indexConfig = require('./definitions/mappings');
 
