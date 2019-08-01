@@ -242,6 +242,18 @@ async function processBlock(res, block, traces, deltas) {
                             if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
                                 act_emit_idx = 1;
                             }
+
+                            const key = `${uniqueAction['act']['account']}:${uniqueAction['act']['name']}`;
+
+                            if (actionHandlers[key]) {
+                                await actionHandlers[key](uniqueAction);
+                            }
+                            if (actionHandlers[`${uniqueAction['act']['account']}:*`]) {
+                                await actionHandlers[`${uniqueAction['act']['account']}:*`](uniqueAction);
+                            }
+                            if (actionHandlers[`*:${uniqueAction['act']['name']}`]) {
+                                await actionHandlers[`*:${uniqueAction['act']['name']}`](uniqueAction);
+                            }
                         }
                         if (allowStreaming) {
                             ch.publish('', queue_prefix + ':stream', payload, {
@@ -347,18 +359,6 @@ async function processAction(ts, action, trx_id, block_num, prod, _actDataArray,
         _processedTraces.push(action);
     } else {
         console.log(action);
-    }
-
-    const key = `${action['act']['account']}:${action['act']['name']}`;
-
-    if (actionHandlers[key]) {
-        await actionHandlers[key](action);
-    }
-    if (actionHandlers[`${action['act']['account']}:*`]) {
-        await actionHandlers[`${action['act']['account']}:*`](action);
-    }
-    if (actionHandlers[`*:${action['act']['name']}`]) {
-        await actionHandlers[`*:${action['act']['name']}`](action);
     }
 
     return true;
