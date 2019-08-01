@@ -631,7 +631,7 @@ const tableHandlers = {
         delete delta.data['proxied_vote_weight'];
         delta['@voters']['staked'] = parseInt(delta.data['staked'], 10) / 10000;
         delete delta.data['staked'];
-        if (process.env.VOTERS_STATE === 'true') {
+        if (process.env.VOTERS_STATE === 'true' || process.env.VOTES_HISTORY === 'true') {
             await storeVoter(delta);
         }
     },
@@ -731,16 +731,18 @@ async function storeVoter(data) {
     // console.log(prettyjson.render(data));
 
     if (process.env.ENABLE_INDEXING === 'true') {
-        const q = index_queue_prefix + "_table_voters:" + (tbl_vote_emit_idx);
-        const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(voterDoc)));
-        if (!status) {
-            // console.log('Voter Indexing:', status);
-        }
-        tbl_vote_emit_idx++;
-        if (tbl_vote_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
-            tbl_vote_emit_idx = 1;
-        }
 
+        if (process.env.VOTERS_STATE === 'true') {
+            const q = index_queue_prefix + "_table_voters:" + (tbl_vote_emit_idx);
+            const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(voterDoc)));
+            if (!status) {
+                // console.log('Voter Indexing:', status);
+            }
+            tbl_vote_emit_idx++;
+            if (tbl_vote_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+                tbl_vote_emit_idx = 1;
+            }
+        }
         if (process.env.VOTES_HISTORY === 'true') {
             const q = index_queue_prefix + "_table_votes:" + (tbl_votes_emit_idx);
             const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(voterDoc)));
