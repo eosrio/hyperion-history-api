@@ -87,7 +87,7 @@ async function getTransaction(fastify, request) {
             let trace = {
                 receipt: {
                     receiver: action.act.account,
-                    global_sequence: action.global_sequence,
+                    global_sequence: String(action.global_sequence),
                     auth_sequence: [
                         action.act.authorization[0].actor,
                         seqNum
@@ -140,7 +140,7 @@ async function getTransaction(fastify, request) {
                 let trace = {
                     receipt: {
                         receiver: note,
-                        global_sequence: action.global_sequence + index + 1,
+                        global_sequence: String(action.global_sequence + index + 1),
                         auth_sequence: [
                             action.act.authorization[0].actor,
                             seqNum
