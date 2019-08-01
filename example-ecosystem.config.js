@@ -46,6 +46,9 @@ module.exports = {
                 VOTERS_STATE: 'false',
                 USERRES_STATE: 'false',
                 DELBAND_STATE: 'false',
+                TRANSFERS_HISTORY: 'false',
+                ALT_TRANSFERS_HISTORY: 'false',
+                INDEX_TRANSFER_MEMO: 'false',
                 REPAIR_MODE: 'false',
                 DEBUG: 'false'
             }
