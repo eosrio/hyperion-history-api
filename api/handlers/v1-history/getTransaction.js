@@ -38,7 +38,12 @@ async function getTransaction(fastify, request) {
                 "status": "executed",
                 "cpu_usage_us": 0,
                 "net_usage_words": 0,
-                "trx": []
+                "trx": [1, {
+                    "signatures": "",
+                    "compression": "none",
+                    "packed_context_free_data": "",
+                    "packed_trx": ""
+                }]
             },
             "trx": {}
         },
@@ -86,7 +91,11 @@ async function getTransaction(fastify, request) {
                     auth_sequence: [
                         action.act.authorization[0].actor,
                         seqNum
-                    ]
+                    ],
+                    act_digest: '',
+                    recv_sequence: seqNum,
+                    code_sequence: 1,
+                    abi_sequence: 1
                 },
                 act: action.act,
                 account_ram_deltas: action.account_ram_deltas || [],
@@ -135,7 +144,11 @@ async function getTransaction(fastify, request) {
                         auth_sequence: [
                             action.act.authorization[0].actor,
                             seqNum
-                        ]
+                        ],
+                        act_digest: '',
+                        recv_sequence: seqNum,
+                        code_sequence: 1,
+                        abi_sequence: 1
                     },
                     account_ram_deltas: action.account_ram_deltas || [],
                     act: action.act,
@@ -156,8 +169,7 @@ async function getTransaction(fastify, request) {
         })
         redis.set(hash, JSON.stringify(response), 'EX', 30);
     }
-    return { "id":"3f08319c2f60393a5e91a05ec2ca1ab361982a0ce71d85819318138e79f18559","trx":{"receipt":{"status":"executed","cpu_usage_us":308,"net_usage_words":23,"trx":[1,{"signatures":["SIG_K1_KaKtEetfFpGFyrPtY2R5pUtvUyxscbXawV1hxtZzWU5PBfpvkgKrqFASusTAxRD9v4gsrNYWCpHHEb4cR3c2bHYn74TgWQ"],"compression":"none","packed_context_free_data":"","packed_trx":"ebaf425d304349fb37230000000001301d4519537a2852000000572d3ccdcd01a0d4cdaae549194d00000000a8ed32325ba0d4cdaae549194d1082a7c7e8c6a6eb010000000000000004454300000000003a7b2274696d65223a313536343635313430393136322c2274797065223a322c226d7367223a22222c226964223a323135392c226963223a22227d00"}]},"trx":{"expiration":"2019-08-01T09:24:59","ref_block_num":17200,"ref_block_prefix":590871369,"max_net_usage_words":0,"max_cpu_usage_ms":0,"delay_sec":0,"context_free_actions":[],"actions":[{"account":"ecoboostcoin","name":"transfer","authorization":[{"actor":"dogonthetree","permission":"active"}],"data":{"from":"dogonthetree","to":"xinghuaboy11","quantity":"0.0001 EC","memo":"{\"time\":1564651409162,\"type\":2,\"msg\":\"\",\"id\":2159,\"ic\":\"\"}"},"hex_data":"a0d4cdaae549194d1082a7c7e8c6a6eb010000000000000004454300000000003a7b2274696d65223a313536343635313430393136322c2274797065223a322c226d7367223a22222c226964223a323135392c226963223a22227d"}],"transaction_extensions":[],"signatures":["SIG_K1_KaKtEetfFpGFyrPtY2R5pUtvUyxscbXawV1hxtZzWU5PBfpvkgKrqFASusTAxRD9v4gsrNYWCpHHEb4cR3c2bHYn74TgWQ"],"context_free_data":[]}},"block_time":"2019-08-01T09:23:30.500","block_num":33834114,"last_irreversible_block":33833812,"traces":[{"receipt":{"receiver":"ecoboostcoin","act_digest":"1f64b101694d7497aeb47f6da71e21ee1d450162d54c55d84ef83749f58863d3","global_sequence":122016731,"recv_sequence":110,"auth_sequence":[["dogonthetree",295]],"code_sequence":1,"abi_sequence":1},"act":{"account":"ecoboostcoin","name":"transfer","authorization":[{"actor":"dogonthetree","permission":"active"}],"data":{"from":"dogonthetree","to":"xinghuaboy11","quantity":"0.0001 EC","memo":"{\"time\":1564651409162,\"type\":2,\"msg\":\"\",\"id\":2159,\"ic\":\"\"}"},"hex_data":"a0d4cdaae549194d1082a7c7e8c6a6eb010000000000000004454300000000003a7b2274696d65223a313536343635313430393136322c2274797065223a322c226d7367223a22222c226964223a323135392c226963223a22227d"},"context_free":false,"elapsed":129,"console":"","trx_id":"3f08319c2f60393a5e91a05ec2ca1ab361982a0ce71d85819318138e79f18559","block_num":33834114,"block_time":"2019-08-01T09:23:30.500","producer_block_id":"02044482022d4a4e54f59410ba045724ae9d76a8a311de37761c34e253bab387","account_ram_deltas":[],"except":null,"inline_traces":[{"receipt":{"receiver":"dogonthetree","act_digest":"1f64b101694d7497aeb47f6da71e21ee1d450162d54c55d84ef83749f58863d3","global_sequence":122016732,"recv_sequence":171,"auth_sequence":[["dogonthetree",296]],"code_sequence":1,"abi_sequence":1},"act":{"account":"ecoboostcoin","name":"transfer","authorization":[{"actor":"dogonthetree","permission":"active"}],"data":{"from":"dogonthetree","to":"xinghuaboy11","quantity":"0.0001 EC","memo":"{\"time\":1564651409162,\"type\":2,\"msg\":\"\",\"id\":2159,\"ic\":\"\"}"},"hex_data":"a0d4cdaae549194d1082a7c7e8c6a6eb010000000000000004454300000000003a7b2274696d65223a313536343635313430393136322c2274797065223a322c226d7367223a22222c226964223a323135392c226963223a22227d"},"context_free":false,"elapsed":6,"console":"","trx_id":"3f08319c2f60393a5e91a05ec2ca1ab361982a0ce71d85819318138e79f18559","block_num":33834114,"block_time":"2019-08-01T09:23:30.500","producer_block_id":"02044482022d4a4e54f59410ba045724ae9d76a8a311de37761c34e253bab387","account_ram_deltas":[],"except":null,"inline_traces":[]},{"receipt":{"receiver":"xinghuaboy11","act_digest":"1f64b101694d7497aeb47f6da71e21ee1d450162d54c55d84ef83749f58863d3","global_sequence":122016733,"recv_sequence":1850,"auth_sequence":[["dogonthetree",297]],"code_sequence":1,"abi_sequence":1},"act":{"account":"ecoboostcoin","name":"transfer","authorization":[{"actor":"dogonthetree","permission":"active"}],"data":{"from":"dogonthetree","to":"xinghuaboy11","quantity":"0.0001 EC","memo":"{\"time\":1564651409162,\"type\":2,\"msg\":\"\",\"id\":2159,\"ic\":\"\"}"},"hex_data":"a0d4cdaae549194d1082a7c7e8c6a6eb010000000000000004454300000000003a7b2274696d65223a313536343635313430393136322c2274797065223a322c226d7367223a22222c226964223a323135392c226963223a22227d"},"context_free":false,"elapsed":6,"console":"","trx_id":"3f08319c2f60393a5e91a05ec2ca1ab361982a0ce71d85819318138e79f18559","block_num":33834114,"block_time":"2019-08-01T09:23:30.500","producer_block_id":"02044482022d4a4e54f59410ba045724ae9d76a8a311de37761c34e253bab387","account_ram_deltas":[],"except":null,"inline_traces":[]}]},{"receipt":{"receiver":"dogonthetree","act_digest":"1f64b101694d7497aeb47f6da71e21ee1d450162d54c55d84ef83749f58863d3","global_sequence":122016732,"recv_sequence":171,"auth_sequence":[["dogonthetree",296]],"code_sequence":1,"abi_sequence":1},"act":{"account":"ecoboostcoin","name":"transfer","authorization":[{"actor":"dogonthetree","permission":"active"}],"data":{"from":"dogonthetree","to":"xinghuaboy11","quantity":"0.0001 EC","memo":"{\"time\":1564651409162,\"type\":2,\"msg\":\"\",\"id\":2159,\"ic\":\"\"}"},"hex_data":"a0d4cdaae549194d1082a7c7e8c6a6eb010000000000000004454300000000003a7b2274696d65223a313536343635313430393136322c2274797065223a322c226d7367223a22222c226964223a323135392c226963223a22227d"},"context_free":false,"elapsed":6,"console":"","trx_id":"3f08319c2f60393a5e91a05ec2ca1ab361982a0ce71d85819318138e79f18559","block_num":33834114,"block_time":"2019-08-01T09:23:30.500","producer_block_id":"02044482022d4a4e54f59410ba045724ae9d76a8a311de37761c34e253bab387","account_ram_deltas":[],"except":null,"inline_traces":[]},{"receipt":{"receiver":"xinghuaboy11","act_digest":"1f64b101694d7497aeb47f6da71e21ee1d450162d54c55d84ef83749f58863d3","global_sequence":122016733,"recv_sequence":1850,"auth_sequence":[["dogonthetree",297]],"code_sequence":1,"abi_sequence":1},"act":{"account":"ecoboostcoin","name":"transfer","authorization":[{"actor":"dogonthetree","permission":"active"}],"data":{"from":"dogonthetree","to":"xinghuaboy11","quantity":"0.0001 EC","memo":"{\"time\":1564651409162,\"type\":2,\"msg\":\"\",\"id\":2159,\"ic\":\"\"}"},"hex_data":"a0d4cdaae549194d1082a7c7e8c6a6eb010000000000000004454300000000003a7b2274696d65223a313536343635313430393136322c2274797065223a322c226d7367223a22222c226964223a323135392c226963223a22227d"},"context_free":false,"elapsed":6,"console":"","trx_id":"3f08319c2f60393a5e91a05ec2ca1ab361982a0ce71d85819318138e79f18559","block_num":33834114,"block_time":"2019-08-01T09:23:30.500","producer_block_id":"02044482022d4a4e54f59410ba045724ae9d76a8a311de37761c34e253bab387","account_ram_deltas":[],"except":null,"inline_traces":[]}]}
-    // return response;
+    return response;
 }
 
 module.exports = function (fastify, opts, next) {
