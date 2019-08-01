@@ -45,8 +45,8 @@ async function getTransaction(fastify, request) {
         "traces": []
     };
     
-    if (results['body']['hits']['hits'].length > 0) {
-        const actions = results['body']['hits']['hits'];
+    if (results['hits']['hits'].length > 0) {
+        const actions = results['hits']['hits'];
         response.trx.trx = {
             "expiration": "",
             "ref_block_num": 0,

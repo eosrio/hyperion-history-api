@@ -155,8 +155,8 @@ async function getActions(fastify, request) {
         last_irreversible_block: pResults[0].last_irreversible_block_num,
         actions: []
     };
-    if (results['body']['hits']['hits'].length > 0) {
-        let actions = results['body']['hits']['hits'];
+    if (results['hits']['hits'].length > 0) {
+        let actions = results['hits']['hits'];
         if (offset < 0) {
             let index
             if (pos === -1) {
