@@ -91,7 +91,8 @@ async function getTransaction(fastify, request) {
                 inline_traces: [],
                 producer_block_id: "",
                 receipt: {
-                    receiver: action.act.account
+                    receiver: action.act.account,
+                    global_sequence: action.global_sequence
                 },
                 trx_id: request.body.id,
                 notified: action.notified
@@ -119,7 +120,7 @@ async function getTransaction(fastify, request) {
         actions.forEach(action => {
             action = action._source
             response.traces.push(traces[action.global_sequence])
-            traces[action.global_sequence].notified.forEach(note => {
+            traces[action.global_sequence].notified.forEach((note,index) => {
                 let trace = {
                     account_ram_deltas: action.account_ram_deltas || [],
                     act: action.act,
@@ -132,13 +133,15 @@ async function getTransaction(fastify, request) {
                     inline_traces: [],
                     producer_block_id: "",
                     receipt: {
-                        receiver: note
+                        receiver: note,
+                        global_sequence: action.global_sequence + index + 1
                     },
                     trx_id: request.body.id,
                 }
                 traces[action.global_sequence].inline_traces.unshift(trace)
                 response.traces.push(trace)
             })
+            delete traces[action.global_sequence].notified
         })
         redis.set(hash, JSON.stringify(response), 'EX', 30);
     }
