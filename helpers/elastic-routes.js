@@ -125,6 +125,30 @@ const routes = {
             onError(err, channel, cb);
         });
     },
+    'table-transfers': async (payloads, channel, cb) => {
+        const messageMap = new Map();
+        client['bulk']({
+            index: queue_prefix + '-table-transfers',
+            type: '_doc',
+            body: buildActionBulk(payloads, messageMap)
+        }).then(resp => {
+            onResponse(resp, messageMap, cb, payloads, channel);
+        }).catch(err => {
+            onError(err, channel, cb);
+        });
+    },
+    'table-alt-transfers': async (payloads, channel, cb) => {
+        const messageMap = new Map();
+        client['bulk']({
+            index: queue_prefix + '-table-alt-transfers',
+            type: '_doc',
+            body: buildActionBulk(payloads, messageMap)
+        }).then(resp => {
+            onResponse(resp, messageMap, cb, payloads, channel);
+        }).catch(err => {
+            onError(err, channel, cb);
+        });
+    },
     'abi': async (payloads, channel, cb) => {
         const messageMap = new Map();
         client['bulk']({

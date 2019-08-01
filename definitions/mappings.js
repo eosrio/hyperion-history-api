@@ -225,6 +225,90 @@ const tableVoters = {
     }
 };
 
+const tableTransfers = {
+    "index_patterns": [process.env.CHAIN + "-table-transfers-*"],
+    "settings": {
+        "index": {
+            "number_of_shards": 8,
+            "refresh_interval": "5s",
+            "number_of_replicas": 0,
+            "sort.field": "global_sequence",
+            "sort.order": "desc"
+        }
+    },
+    "mappings": {
+        "properties": {
+            // "action_ordinal": {"type": "long"},
+            // "creator_action_ordinal": {"type": "long"},
+            "from": {"type": "keyword"},
+            "to": {"type": "keyword"},
+            "trx_id": {"type": "keyword"},
+            "amount": {"type": "float"},
+
+            "symbol": {"type": "keyword"},
+            "type": {"type": "keyword"},
+
+            "contract": {"type": "keyword"},
+            "memo": {"type": "text"},
+            "block_num": {"type": "long"},
+            "@timestamp": {"type": "date"},
+            "global_sequence": {"type": "long"},
+            // "parent": {"type": "long"},
+
+            // "act.authorization.actor": {"type": "keyword"},
+            //"act.authorization.permission": {"enabled": false},
+
+            //"code_sequence": {"type": "long"},
+            //"abi_sequence": {"type": "long"},
+            /*"receipts": {
+                "properties": {
+                    "global_sequence": {"type": "long"},
+                    "recv_sequence": {"type": "long"},
+                    "receiver": {"type": "keyword"},
+                    "auth_sequence": {
+                        "properties": {
+                            "account": {"type": "keyword"},
+                            "sequence": {"type": "long"}
+                        }
+                    }
+                }
+            },*/
+
+            //"account_ram_deltas.account": {"enabled": false},
+            // "act.name": {"type": "keyword"},
+            // "producer": {"type": "keyword"}
+        }
+    }
+};
+
+const tableAltTransfers = {
+    "index_patterns": [process.env.CHAIN + "-table-alt-transfers-*"],
+    "settings": {
+        "index": {
+            "number_of_shards": 8,
+            "refresh_interval": "5s",
+            "number_of_replicas": 0,
+            "sort.field": "global_sequence",
+            "sort.order": "desc"
+        }
+    },
+    "mappings": {
+        "properties": {
+            "from": {"type": "keyword"},
+            "to": {"type": "keyword"},
+            "trx_id": {"type": "keyword"},
+            "amount": {"type": "float"},
+            "symbol": {"type": "keyword"},
+            "type": {"type": "keyword"},
+            "contract": {"type": "keyword"},
+            "memo": {"type": "text"},
+            "block_num": {"type": "long"},
+            "@timestamp": {"type": "date"},
+            "global_sequence": {"type": "long"},
+        }
+    }
+};
+
 const delta = {
     "index_patterns": [process.env.CHAIN + "-delta-*"],
     "settings": {
@@ -285,5 +369,7 @@ module.exports = {
     "table-accounts": tableAccounts,
     "table-delband": tableDelBand,
     "table-userres": tableUserRes,
-    "table-voters": tableVoters
+    "table-voters": tableVoters,
+    "table-transfers": tableTransfers,
+    "table-alt-transfers": tableAltTransfers
 };
