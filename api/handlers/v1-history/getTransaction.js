@@ -120,6 +120,8 @@ async function getTransaction(fastify, request) {
                     }
                 }
                 traces[action.parent].inline_traces.push(traces[action.global_sequence])
+            } else {
+                response.traces.push(traces[action.global_sequence])
             }
         })
         actions.forEach(action => {
