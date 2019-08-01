@@ -1,3 +1,5 @@
+import {buildTableVotesBulk} from "./bulkBuilders";
+
 const {
     buildActionBulk,
     buildBlockBulk,
@@ -119,6 +121,18 @@ const routes = {
             index: queue_prefix + '-table-voters',
             type: '_doc',
             body: buildTableVotersBulk(payloads, messageMap)
+        }).then(resp => {
+            onResponse(resp, messageMap, cb, payloads, channel);
+        }).catch(err => {
+            onError(err, channel, cb);
+        });
+    },
+    'table-votes': async (payloads, channel, cb) => {
+        const messageMap = new Map();
+        client['bulk']({
+            index: queue_prefix + '-table-votes',
+            type: '_doc',
+            body: buildTableVotesBulk(payloads, messageMap)
         }).then(resp => {
             onResponse(resp, messageMap, cb, payloads, channel);
         }).catch(err => {

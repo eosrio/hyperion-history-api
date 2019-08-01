@@ -8,7 +8,7 @@ module.exports = {
             kill_timeout: 3600,
             env: {
                 AMQP_HOST: '127.0.0.1:5672',
-                AMQP_API:  '127.0.0.1:15672',
+                AMQP_API: '127.0.0.1:15672',
                 AMQP_USER: 'input',
                 AMQP_PASS: '',
                 ES_HOST: '127.0.0.1:9200',
@@ -46,6 +46,7 @@ module.exports = {
                 VOTERS_STATE: 'false',
                 USERRES_STATE: 'false',
                 DELBAND_STATE: 'false',
+                VOTES_HISTORY: 'false',
                 REPAIR_MODE: 'false',
                 DEBUG: 'false'
             }
