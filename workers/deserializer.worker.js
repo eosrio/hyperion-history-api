@@ -744,6 +744,7 @@ async function storeVoter(data) {
             }
         }
         if (process.env.VOTES_HISTORY === 'true') {
+            voterDoc['@timestamp'] = data['@timestamp'];
             const q = index_queue_prefix + "_table_votes:" + (tbl_votes_emit_idx);
             const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(voterDoc)));
             if (!status) {
