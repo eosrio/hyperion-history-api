@@ -44,8 +44,8 @@ async function getActions(fastify, request) {
             filterObj.push(obj);
         }
     }
-    pos = parseInt(request.body.pos, 10);
-    offset = parseInt(request.body.offset, 10);
+    pos = parseInt(request.body.pos || 0, 10);
+    offset = parseInt(request.body.offset || maxActions, 10);
     let from, size;
     from = size = 0;
     if (pos === -1) {

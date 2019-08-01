@@ -4,7 +4,7 @@ exports.POST = {
   summary: 'get root actions',
   tags: ['history'],
   body: {
-      type: 'object',
+      type: ['object','string'],
       properties: {
           "account": {
               description: 'notified account',

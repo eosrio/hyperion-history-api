@@ -3,7 +3,7 @@ exports.POST = {
     summary: 'get transaction by id',
     tags: ['history'],
     body: {
-        type: 'object',
+        type: ['object', 'string'],
         properties: {
             "id": {
                 description: 'transaction id',
