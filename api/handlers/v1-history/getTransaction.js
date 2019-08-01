@@ -124,37 +124,37 @@ async function getTransaction(fastify, request) {
                 response.traces.push(traces[action.global_sequence])
             }
         })
-        actions.forEach(action => {
-            action = action._source
-            response.traces.push(traces[action.global_sequence])
-            traces[action.global_sequence].notified.forEach((note,index) => {
-                seqNum +=10
-                let trace = {
-                    receipt: {
-                        receiver: note,
-                        global_sequence: action.global_sequence + index + 1,
-                        auth_sequence: [
-                            action.act.authorization[0].actor,
-                            seqNum
-                        ]
-                    },
-                    account_ram_deltas: action.account_ram_deltas || [],
-                    act: action.act,
-                    block_num: action.block_num,
-                    block_time: action['@timestamp'],
-                    console: "",
-                    context_free: false,
-                    elapsed: 0,
-                    except: null,
-                    inline_traces: [],
-                    producer_block_id: "",
-                    trx_id: request.body.id,
-                }
-                traces[action.global_sequence].inline_traces.unshift(trace)
-                response.traces.push(trace)
-            })
-            delete traces[action.global_sequence].notified
-        })
+        // actions.forEach(action => {
+        //     action = action._source
+        //     response.traces.push(traces[action.global_sequence])
+        //     traces[action.global_sequence].notified.forEach((note,index) => {
+        //         seqNum +=10
+        //         let trace = {
+        //             receipt: {
+        //                 receiver: note,
+        //                 global_sequence: action.global_sequence + index + 1,
+        //                 auth_sequence: [
+        //                     action.act.authorization[0].actor,
+        //                     seqNum
+        //                 ]
+        //             },
+        //             account_ram_deltas: action.account_ram_deltas || [],
+        //             act: action.act,
+        //             block_num: action.block_num,
+        //             block_time: action['@timestamp'],
+        //             console: "",
+        //             context_free: false,
+        //             elapsed: 0,
+        //             except: null,
+        //             inline_traces: [],
+        //             producer_block_id: "",
+        //             trx_id: request.body.id,
+        //         }
+        //         traces[action.global_sequence].inline_traces.unshift(trace)
+        //         response.traces.push(trace)
+        //     })
+        //     delete traces[action.global_sequence].notified
+        // })
         redis.set(hash, JSON.stringify(response), 'EX', 30);
     }
     
