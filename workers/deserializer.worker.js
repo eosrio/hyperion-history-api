@@ -686,7 +686,7 @@ const actionHandlers = {
         }
     },
     '*:transfer': async (action) => {
-        if (process.env.ALT_TRANSFERS_HISTORY === 'true' && action['act']['account'] !== 'eosio.token') {
+        if (process.env.ALT_TRANSFERS_HISTORY === 'true' && action['act']['account'] !== 'eosio.token' && action['@transfer']) {
 
             const transferDoc = {
                 "from": action['@transfer']['from'],
