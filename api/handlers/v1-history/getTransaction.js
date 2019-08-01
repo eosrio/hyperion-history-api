@@ -1,4 +1,4 @@
-const {getTransactionSchema} = require("../../schemas");
+const {getTransactionV1Schema} = require("../../schemas");
 const _ = require('lodash');
 const {getCacheByHash} = require("../../helpers/functions");
 const fetch = require('node-fetch');
@@ -18,7 +18,7 @@ async function getTransaction(fastify, request) {
             "query": {
                 "bool": {
                     must: [
-                        {term: {"trx_id": request.query.id.toLowerCase()}}
+                        {term: {"trx_id": request.body.id.toLowerCase()}}
                     ]
                 }
             },
@@ -44,7 +44,7 @@ async function getTransaction(fastify, request) {
         "last_irreversible_block": pResults[0].last_irreversible_block_num,
         "traces": []
     };
-    console.log(JSON.stringify(results))
+    
     if (results['body']['hits']['hits'].length > 0) {
         const actions = results['body']['hits']['hits'];
         response.trx.trx = {
@@ -89,7 +89,8 @@ async function getTransaction(fastify, request) {
                 receipt: {
                     receiver: action.act.account
                 },
-                trx_id: request.query.id
+                trx_id: request.query.id,
+                notified: action.notified
             }
             traces[action.global_sequence] = trace
         }
@@ -98,6 +99,11 @@ async function getTransaction(fastify, request) {
             if (action.parent === 0) {
                 response.traces.push(traces[action.global_sequence])
             } else {
+                for(let i = 0; i < traces[action.parent].notified.length; i++) {
+                    if (traces[action.parent].notified[i] === action.act.account) {
+                        traces[action.parent].notified.splice()
+                    }
+                }
                 traces[action.parent].inline_traces.push(traces[action.global_sequence])
             }
         })
@@ -108,8 +114,8 @@ async function getTransaction(fastify, request) {
 }
 
 module.exports = function (fastify, opts, next) {
-    fastify.get('/get_transaction', {
-        schema: getTransactionSchema.GET
+    fastify.post('/get_transaction', {
+        schema: getTransactionV1Schema.POST
     }, async (request, reply) => {
         reply.send(await getTransaction(fastify, request));
     });

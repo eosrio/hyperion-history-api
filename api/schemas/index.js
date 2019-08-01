@@ -6,6 +6,7 @@ module.exports = {
     getActionsV1Schema: require('./get_actions_v1'),
     getTransactedAccountsSchema: require('./get_transacted_accounts'),
     getTransactionSchema: require('./get_transaction'),
+    getTransactionV1Schema: require('./get_transaction_v1'),
     getCreatorSchema: require('./get_creator'),
     getTokensSchema: require('./get_tokens'),
     getDeltasSchema: require('./get_deltas'),

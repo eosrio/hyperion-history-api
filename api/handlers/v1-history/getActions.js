@@ -14,21 +14,21 @@ const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 async function getActions(fastify, request) {
     const t0 = Date.now();
     const {redis, elastic} = fastify;
-    const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
+    const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.body));
     if (cachedResponse) {
         return cachedResponse;
     }
     const should_array = [];
     for (const entry of terms) {
         const tObj = {term: {}};
-        tObj.term[entry] = request.query.account;
+        tObj.term[entry] = request.body.account;
         should_array.push(tObj);
     }
     let code, method, pos, offset, parent;
     let sort_direction = 'asc';
     let filterObj = [];
-    if (request.query.filter) {
-        const filters = request.query.filter.split(',');
+    if (request.body.filter) {
+        const filters = request.body.filter.split(',');
         for (const filter of filters) {
             const obj = {bool: {must: []}};
             const parts = filter.split(':');
@@ -44,8 +44,8 @@ async function getActions(fastify, request) {
             filterObj.push(obj);
         }
     }
-    pos = parseInt(request.query.pos, 10);
-    offset = parseInt(request.query.offset, 10);
+    pos = parseInt(request.body.pos, 10);
+    offset = parseInt(request.body.offset, 10);
     let from, size;
     from = size = 0;
     if (pos === -1) {
@@ -63,10 +63,10 @@ async function getActions(fastify, request) {
         }
     }
 
-    if (request.query.sort) {
-        if (request.query.sort === 'asc' || request.query.sort === '1') {
+    if (request.body.sort) {
+        if (request.body.sort === 'asc' || request.body.sort === '1') {
             sort_direction = 'asc';
-        } else if (request.query.sort === 'desc' || request.query.sort === '-1') {
+        } else if (request.body.sort === 'desc' || request.body.sort === '-1') {
             sort_direction = 'desc'
         } else {
             return 'invalid sort direction';
@@ -80,45 +80,45 @@ async function getActions(fastify, request) {
         }
     };
 
-    if(request.query.parent !== undefined) {
+    if(request.body.parent !== undefined) {
         queryStruct.bool['filter'] = [];
         queryStruct.bool['filter'].push({
             "term": {
-                "parent": parseInt(request.query.parent, 10)
+                "parent": parseInt(request.body.parent, 10)
             }
         });
     }
 
-    if (request.query.account) {
+    if (request.body.account) {
         queryStruct.bool.must.push({"bool": {should: should_array}});
     }
 
-    for (const prop in request.query) {
-        if (Object.prototype.hasOwnProperty.call(request.query, prop)) {
+    for (const prop in request.body) {
+        if (Object.prototype.hasOwnProperty.call(request.body, prop)) {
             const actionName = prop.split(".")[0];
             if (prop.split(".").length > 1) {
                 if (extendedActions.has(actionName)) {
-                    // console.log(prop + " = " + request.query[prop]);
+                    // console.log(prop + " = " + request.body[prop]);
                     const _termQuery = {};
-                    _termQuery["@" + prop] = request.query[prop];
+                    _termQuery["@" + prop] = request.body[prop];
                     queryStruct.bool.must.push({term: _termQuery});
                 } else {
                     const _termQuery = {};
-                    _termQuery[prop] = request.query[prop];
+                    _termQuery[prop] = request.body[prop];
                     queryStruct.bool.must.push({term: _termQuery});
                 }
             }
         }
     }
 
-    if (request.query['after'] || request.query['before']) {
+    if (request.body['after'] || request.body['before']) {
         let _lte = "now";
         let _gte = 0;
-        if (request.query['before']) {
-            _lte = request.query['before'];
+        if (request.body['before']) {
+            _lte = request.body['before'];
         }
-        if (request.query['after']) {
-            _gte = request.query['after'];
+        if (request.body['after']) {
+            _gte = request.body['after'];
         }
         if (!queryStruct.bool['filter']) {
             queryStruct.bool['filter'] = [];
@@ -133,7 +133,7 @@ async function getActions(fastify, request) {
         });
     }
 
-    if (request.query.filter) {
+    if (request.body.filter) {
         queryStruct.bool['should'] = filterObj;
         queryStruct.bool['minimum_should_match'] = 1;
     }
@@ -216,8 +216,8 @@ async function getActions(fastify, request) {
 }
 
 module.exports = function (fastify, opts, next) {
-    fastify.get('/get_actions', {
-        schema: getActionsV1Schema.GET
+    fastify.post('/get_actions', {
+        schema: getActionsV1Schema.POST
     }, async (request) => {
         return await getActions(fastify, request);
     });
