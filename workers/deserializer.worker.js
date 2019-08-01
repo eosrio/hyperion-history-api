@@ -29,6 +29,8 @@ let delta_emit_idx = 1;
 let block_emit_idx = 1;
 let tbl_acc_emit_idx = 1;
 let tbl_vote_emit_idx = 1;
+let tbl_transfers_emit_idx = 1;
+let tbl_alt_transfers_emit_idx = 1;
 let local_block_count = 0;
 let allowStreaming = false;
 let cachedMap;
@@ -346,6 +348,19 @@ async function processAction(ts, action, trx_id, block_num, prod, _actDataArray,
     } else {
         console.log(action);
     }
+
+    const key = `${action['act']['account']}:${action['act']['name']}`;
+
+    if (actionHandlers[key]) {
+        await actionHandlers[key](action);
+    }
+    if (actionHandlers[`${action['act']['account']}:*`]) {
+        await actionHandlers[`${action['act']['account']}:*`](action);
+    }
+    if (actionHandlers[`*:${action['act']['name']}`]) {
+        await actionHandlers[`*:${action['act']['name']}`](action);
+    }
+
     return true;
 }
 
@@ -609,6 +624,94 @@ async function getTableType(code, table, block) {
     }
     return cType;
 }
+
+const actionHandlers = {
+
+    'eosio.token:transfer': async (action) => {
+        if (process.env.TRANSFERS_HISTORY === 'true') {
+
+            const transferDoc = {
+                "from": action['@transfer']['from'],
+                "to": action['@transfer']['to'],
+                "trx_id": action['trx_id'],
+                "amount": action['@transfer']['amount'],
+                "symbol": action['@transfer']['symbol'],
+                "type": action['act']['name'],
+                "contract": action['act']['account'],
+                "memo": action['@transfer']['memo'],
+                "block_num": action['block_num'],
+                "@timestamp": action['@timestamp'],
+                "global_sequence": action['global_sequence'],
+            };
+
+            const q = index_queue_prefix + "_table_transfers:" + (tbl_transfers_emit_idx);
+            const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(transferDoc)));
+            if (!status) {
+            }
+            tbl_transfers_emit_idx++;
+            if (tbl_transfers_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+                tbl_transfers_emit_idx = 1;
+            }
+        }
+    },
+    'eosio:delegatebw': async (action) => {
+        if (process.env.TRANSFERS_HISTORY === 'true' && action['act']['data']['transfer']) {
+
+            const amount = parseFloat(action['act']['data']['stake_net_quantity'].split(" ")[0]) +
+                parseFloat(action['act']['data']['stake_cpu_quantity'].split(" ")[0]);
+            const symbol = action['act']['data']['stake_net_quantity'].split(" ")[1];
+
+            const transferDoc = {
+                "from": action['act']['data']['from'],
+                "to": action['act']['data']['receiver'],
+                "trx_id": action['trx_id'],
+                "amount": amount,
+                "symbol": symbol,
+                "type": action['act']['name'],
+                "contract": action['act']['account'],
+                "block_num": action['block_num'],
+                "@timestamp": action['@timestamp'],
+                "global_sequence": action['global_sequence'],
+            };
+
+            const q = index_queue_prefix + "_table_transfers:" + (tbl_transfers_emit_idx);
+            const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(transferDoc)));
+            if (!status) {
+            }
+            tbl_transfers_emit_idx++;
+            if (tbl_transfers_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+                tbl_transfers_emit_idx = 1;
+            }
+        }
+    },
+    '*:transfer': async (action) => {
+        if (process.env.ALT_TRANSFERS_HISTORY === 'true' && action['act']['account'] !== 'eosio.token') {
+
+            const transferDoc = {
+                "from": action['@transfer']['from'],
+                "to": action['@transfer']['to'],
+                "trx_id": action['trx_id'],
+                "amount": action['@transfer']['amount'],
+                "symbol": action['@transfer']['symbol'],
+                "type": action['act']['name'],
+                "contract": action['act']['account'],
+                "memo": action['@transfer']['memo'],
+                "block_num": action['block_num'],
+                "@timestamp": action['@timestamp'],
+                "global_sequence": action['global_sequence'],
+            };
+
+            const q = index_queue_prefix + "_table_alt_transfers:" + (tbl_alt_transfers_emit_idx);
+            const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(transferDoc)));
+            if (!status) {
+            }
+            tbl_alt_transfers_emit_idx++;
+            if (tbl_alt_transfers_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+                tbl_alt_transfers_emit_idx = 1;
+            }
+        }
+    }
+};
 
 const tableHandlers = {
     'eosio:voters': async (delta) => {
