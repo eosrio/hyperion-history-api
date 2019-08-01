@@ -24,7 +24,7 @@ async function getActions(fastify, request) {
         tObj.term[entry] = request.query.account;
         should_array.push(tObj);
     }
-    let code, method, skip, limit, parent;
+    let code, method, pos, offset, parent;
     let sort_direction = 'asc';
     let filterObj = [];
     if (request.query.filter) {
@@ -44,13 +44,23 @@ async function getActions(fastify, request) {
             filterObj.push(obj);
         }
     }
-    skip = parseInt(request.query.skip, 10);
-    if (skip < 0) {
-        return 'invalid skip parameter';
-    }
-    limit = parseInt(request.query.limit, 10);
-    if (limit < 1) {
-        return 'invalid limit parameter';
+    pos = parseInt(request.query.pos, 10);
+    offset = parseInt(request.query.offset, 10);
+    let from, size;
+    from = size = 0;
+    if (pos === -1) {
+        if (offset < 0) {
+            from = 0;
+            size = maxActions;
+        }
+    } else if (pos >= 0) {
+        if (offset < 0) {
+            from = 0
+            size = pos + 1
+        } else  {
+            from = pos;
+            size = offset+1;
+        }
     }
 
     if (request.query.sort) {
@@ -127,11 +137,11 @@ async function getActions(fastify, request) {
         queryStruct.bool['should'] = filterObj;
         queryStruct.bool['minimum_should_match'] = 1;
     }
-
+    console.log(from + ' ' + size)
     const pResults = await Promise.all([rpc.get_info(), elastic['search']({
         "index": process.env.CHAIN + '-action-*',
-        "from": skip || 0,
-        "size": (limit > maxActions ? maxActions : limit) || 10,
+        "from": from || 0,
+        "size": (size > maxActions ? maxActions : size),
         "body": {
             "track_total_hits": 10000,
             "query": queryStruct,
@@ -140,32 +150,34 @@ async function getActions(fastify, request) {
             }
         }
     })]);
-    console.log(JSON.stringify({
-        "index": process.env.CHAIN + '-action-*',
-        "from": skip || 0,
-        "size": (limit > maxActions ? maxActions : limit) || 10,
-        "body": {
-            "track_total_hits": 10000,
-            "query": queryStruct,
-            "sort": {
-                "global_sequence": sort_direction
-            }
-        }
-    }))
     const results = pResults[1];
     const response = {
-        query_time: null,
         last_irreversible_block: pResults[0].last_irreversible_block_num,
-        total: results['body']['hits']['total'],
-        time_limit_exceeded_error: true,
         actions: []
     };
     if (results['body']['hits']['hits'].length > 0) {
-        const actions = results['body']['hits']['hits'];
+        let actions = results['body']['hits']['hits'];
+        if (offset < 0) {
+            let index
+            if (pos === -1) {
+                index = actions.length + offset
+                if (index < 0) {
+                    index = 0
+                }
+            } else if (pos >= 0) {
+                index = actions.length + offset -1
+                if (index < 0) {
+                    index = 0
+                }
+            }
+            console.log(actions)
+            actions = actions.slice(index)
+            console.log(actions)
+        }
         actions.forEach((action, index) => {
             action = action._source;
             let act = {
-                "global_action_seq": action.global_action_seq,
+                "global_action_seq": action.global_sequence,
                 "account_action_seq": index,
                 "block_num": action.block_num,
                 "block_time": action['@timestamp'],
@@ -174,10 +186,11 @@ async function getActions(fastify, request) {
                     "act": {},
                     "elapsed": 0,
                     "console": "",
+                    "context_free": false,
                     "trx_id": action.trx_id,
                     "block_num": action.block_num,
                     "block_time": action['@timestamp'],
-                    "producer_block_id": "0179a85a84320e8a2ae26e7d9d3a899834a260c89266f8cbcaf94e2a5c221029",
+                    "producer_block_id": "",
                     "account_ram_deltas": [],
                     "except": null,
                     "inline_traces": []
@@ -191,10 +204,13 @@ async function getActions(fastify, request) {
             }
             act.action_trace.act = action.act
             act.action_trace.act.hex_data = ""
+            if (action.act.account_ram_deltas) {
+                act.action_trace.account_ram_deltas = action.account_ram_deltas
+            }
             response.actions.push(act);
         })
     }
-    response['query_time'] = Date.now() - t0;
+    // response['query_time'] = Date.now() - t0;
     redis.set(hash, JSON.stringify(response), 'EX', 30);
     return response;
 }

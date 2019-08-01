@@ -17,15 +17,13 @@ exports.GET = {
               type: 'string',
               minLength: 3
           },
-          "skip": {
-              description: 'skip [n] actions (pagination)',
-              type: 'integer',
-              minimum: 0
+          "pos": {
+              description: 'action position (pagination)',
+              type: 'integer'
           },
-          "limit": {
+          "offset": {
               description: 'limit of [n] actions per page',
-              type: 'integer',
-              minimum: 1
+              type: 'integer'
           },
           "sort": {
               description: 'sort direction',
