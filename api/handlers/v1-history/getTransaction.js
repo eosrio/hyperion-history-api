@@ -36,9 +36,9 @@ async function getTransaction(fastify, request) {
         "id": request.body.id,
         "trx": {
             "receipt": {
-                "status": "",
-                "cpu_usage_us": "",
-                "net_usage_words": "",
+                "status": "executed",
+                "cpu_usage_us": 0,
+                "net_usage_words": 0,
                 "trx": []
             },
             "trx": {}
@@ -80,7 +80,7 @@ async function getTransaction(fastify, request) {
             response.block_time = action['@timestamp']
 
             let trace = {
-                account_ram_deltas: [],
+                account_ram_deltas: action.account_ram_deltas || [],
                 act: action.act,
                 block_num: action.block_num,
                 block_time: action['@timestamp'],
@@ -100,15 +100,13 @@ async function getTransaction(fastify, request) {
         }
         actions.forEach(action => {
             action = action._source
-            if (action.parent === 0) {
-                for(let i = 0; i < traces[action.global_sequence].notified.length; i++) {
+            for(let i = 0; i < traces[action.global_sequence].notified.length; i++) {
                     if (traces[action.global_sequence].notified[i] === action.act.account) {
                         traces[action.global_sequence].notified.splice(i, 1)
                         break
                     }
                 }
-                response.traces.push(traces[action.global_sequence])
-            } else {
+            if (action.parent !== 0) {
                 for(let i = 0; i < traces[action.parent].notified.length; i++) {
                     if (traces[action.parent].notified[i] === action.act.account) {
                         traces[action.parent].notified.splice(i, 1)
@@ -117,6 +115,30 @@ async function getTransaction(fastify, request) {
                 }
                 traces[action.parent].inline_traces.push(traces[action.global_sequence])
             }
+        })
+        actions.forEach(action => {
+            action = action._source
+            response.traces.push(traces[action.global_sequence])
+            traces[action.global_sequence].notified.forEach(note => {
+                let trace = {
+                    account_ram_deltas: action.account_ram_deltas || [],
+                    act: action.act,
+                    block_num: action.block_num,
+                    block_time: action['@timestamp'],
+                    console: "",
+                    context_free: false,
+                    elapsed: 146,
+                    except: null,
+                    inline_traces: [],
+                    producer_block_id: "",
+                    receipt: {
+                        receiver: note
+                    },
+                    trx_id: request.body.id,
+                }
+                traces[action.global_sequence].inline_traces.unshift(trace)
+                response.traces.push(trace)
+            })
         })
         redis.set(hash, JSON.stringify(response), 'EX', 30);
     }
