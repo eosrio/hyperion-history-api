@@ -13,7 +13,7 @@ const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
 async function getActions(fastify, request) {
     const t0 = Date.now();
-    const {redis, elastic} = fastify;
+    const {redis, elasticsearch} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.body));
     if (cachedResponse) {
         return cachedResponse;
@@ -138,7 +138,7 @@ async function getActions(fastify, request) {
         queryStruct.bool['minimum_should_match'] = 1;
     }
     console.log(from + ' ' + size)
-    const pResults = await Promise.all([rpc.get_info(), elastic['search']({
+    const pResults = await Promise.all([rpc.get_info(), elasticsearch['search']({
         "index": process.env.CHAIN + '-action-*',
         "from": from || 0,
         "size": (size > maxActions ? maxActions : size),

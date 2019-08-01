@@ -7,12 +7,12 @@ const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
 
 async function getTransaction(fastify, request) {
-    const {redis, elastic} = fastify;
+    const {redis, elasticsearch} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
     if (cachedResponse) {
         return cachedResponse;
     }
-    const pResults = await Promise.all([rpc.get_info(), elastic['search']({
+    const pResults = await Promise.all([rpc.get_info(), elasticsearch['search']({
         "index": process.env.CHAIN + '-action-*',
         "body": {
             "query": {
@@ -97,11 +97,18 @@ async function getTransaction(fastify, request) {
         actions.forEach(action => {
             action = action._source
             if (action.parent === 0) {
+                for(let i = 0; i < traces[action.global_sequence].notified.length; i++) {
+                    if (traces[action.global_sequence].notified[i] === action.act.account) {
+                        traces[action.global_sequence].notified.splice(i, 1)
+                        break
+                    }
+                }
                 response.traces.push(traces[action.global_sequence])
             } else {
                 for(let i = 0; i < traces[action.parent].notified.length; i++) {
                     if (traces[action.parent].notified[i] === action.act.account) {
-                        traces[action.parent].notified.splice(i, i+1)
+                        traces[action.parent].notified.splice(i, 1)
+                        break
                     }
                 }
                 traces[action.parent].inline_traces.push(traces[action.global_sequence])
