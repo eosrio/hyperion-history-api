@@ -44,8 +44,9 @@ async function getTransaction(fastify, request) {
             }
             response.actions.push(action);
         }
+        redis.set(hash, JSON.stringify(response), 'EX', 30);
     }
-    redis.set(hash, JSON.stringify(response), 'EX', 30);
+    
     return response;
 }
 

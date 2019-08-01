@@ -101,15 +101,15 @@ async function getTransaction(fastify, request) {
             } else {
                 for(let i = 0; i < traces[action.parent].notified.length; i++) {
                     if (traces[action.parent].notified[i] === action.act.account) {
-                        traces[action.parent].notified.splice()
+                        traces[action.parent].notified.splice(i, i+1)
                     }
                 }
                 traces[action.parent].inline_traces.push(traces[action.global_sequence])
             }
         })
-
+        redis.set(hash, JSON.stringify(response), 'EX', 30);
     }
-    redis.set(hash, JSON.stringify(response), 'EX', 30);
+    
     return response;
 }
 
