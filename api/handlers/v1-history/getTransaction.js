@@ -7,11 +7,15 @@ const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
 
 async function getTransaction(fastify, request) {
+    if (typeof request.body === 'string') {
+        request.body = JSON.parse(request.body)
+    }
     const {redis, elasticsearch} = fastify;
-    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
+    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.body));
     if (cachedResponse) {
         return cachedResponse;
     }
+    console.log(request)
     const pResults = await Promise.all([rpc.get_info(), elasticsearch['search']({
         "index": process.env.CHAIN + '-action-*',
         "body": {
@@ -29,7 +33,7 @@ async function getTransaction(fastify, request) {
     })]);
     const results = pResults[1];
     const response = {
-        "id": request.query.id,
+        "id": request.body.id,
         "trx": {
             "receipt": {
                 "status": "",
@@ -89,7 +93,7 @@ async function getTransaction(fastify, request) {
                 receipt: {
                     receiver: action.act.account
                 },
-                trx_id: request.query.id,
+                trx_id: request.body.id,
                 notified: action.notified
             }
             traces[action.global_sequence] = trace

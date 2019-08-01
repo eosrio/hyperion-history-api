@@ -12,6 +12,9 @@ const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
 async function getActions(fastify, request) {
+    if (typeof request.body === 'string') {
+        request.body = JSON.parse(request.body)
+    }
     const t0 = Date.now();
     const {redis, elasticsearch} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.body));
