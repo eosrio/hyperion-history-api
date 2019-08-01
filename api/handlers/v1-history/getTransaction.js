@@ -85,7 +85,7 @@ async function getTransaction(fastify, request) {
                     receiver: action.act.account,
                     global_sequence: action.global_sequence,
                     auth_sequence: [
-                        action.act.authorization.actor,
+                        action.act.authorization[0].actor,
                         seqNum
                     ]
                 },
