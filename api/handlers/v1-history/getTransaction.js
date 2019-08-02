@@ -5,6 +5,7 @@ const fetch = require('node-fetch');
 const {JsonRpc} = require('eosjs');
 const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
+const crypto = require('crypto')
 
 async function getTransaction(fastify, request) {
     if (typeof request.body === 'string') {
@@ -77,7 +78,7 @@ async function getTransaction(fastify, request) {
                 action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
                 delete action['@' + name];
             }
-            action.act['hex_data'] = ''
+            action.act['hex_data'] = new Buffer(JSON.stringify(action.act.data)).toString('hex')
             if (action.parent === 0) {
                 response.trx.trx.actions.push(action.act);
             }
@@ -110,6 +111,9 @@ async function getTransaction(fastify, request) {
                 trx_id: request.body.id,
                 notified: action.notified
             }
+            let hash = crypto.createHash('sha256')
+            hash.update(JSON.stringify(action.act))
+            trace.receipt.act_digest = hash.digest('hex')
             traces[action.global_sequence] = trace
         }
         actions.forEach(action => {
@@ -145,7 +149,7 @@ async function getTransaction(fastify, request) {
                             action.act.authorization[0].actor,
                             seqNum
                         ],
-                        act_digest: '',
+                        act_digest: traces[action.global_sequence].receipt.act_digest,
                         recv_sequence: seqNum,
                         code_sequence: 1,
                         abi_sequence: 1

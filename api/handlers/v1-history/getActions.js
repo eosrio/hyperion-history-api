@@ -24,7 +24,7 @@ async function getActions(fastify, request) {
     const should_array = [];
     for (const entry of terms) {
         const tObj = {term: {}};
-        tObj.term[entry] = request.body.account;
+        tObj.term[entry] = request.body.account_name;
         should_array.push(tObj);
     }
     let code, method, pos, offset, parent;
@@ -92,7 +92,7 @@ async function getActions(fastify, request) {
         });
     }
 
-    if (request.body.account) {
+    if (request.body.account_name) {
         queryStruct.bool.must.push({"bool": {should: should_array}});
     }
 
@@ -206,7 +206,7 @@ async function getActions(fastify, request) {
                 delete action['@' + name];
             }
             act.action_trace.act = action.act
-            act.action_trace.act.hex_data = ""
+            act.action_trace.act.hex_data = new Buffer(JSON.stringify(action.act.data)).toString('hex')
             if (action.act.account_ram_deltas) {
                 act.action_trace.account_ram_deltas = action.account_ram_deltas
             }

@@ -6,7 +6,7 @@ exports.POST = {
   body: {
       type: ['object','string'],
       properties: {
-          "account": {
+          "account_name": {
               description: 'notified account',
               type: 'string',
               minLength: 1,
