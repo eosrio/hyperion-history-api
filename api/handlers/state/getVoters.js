@@ -71,6 +71,7 @@ async function getVoters(fastify, request) {
             "sort": [{"last_vote_weight": "desc"}]
         }
     });
+    console.log(JSON.stringify(results))
     const hits = results['hits']['hits'];
     for (const hit of hits) {
         const voter = hit._source;
