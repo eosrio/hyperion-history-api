@@ -1,8 +1,8 @@
-exports.GET = {
+exports.POST = {
     description: 'get controlled accounts by controlling accounts',
     summary: 'get controlled accounts by controlling accounts',
     tags: ['state'],
-    querystring: {
+    body: {
         type: 'object',
         properties: {
             "controlling_account": {

@@ -1,11 +1,14 @@
-const {getControlledAccountsSchema} = require("../../schemas");
+const {getControlledAccountsV1Schema} = require("../../schemas");
 const {getCacheByHash} = require("../../helpers/functions");
 const numeric = require('eosjs/dist/eosjs-numeric');
 const ecc = require('eosjs-ecc');
 
 async function getKeyAccounts(fastify, request) {
     const {redis, elasticsearch} = fastify;
-    let controlling_account = request.query.controlling_account;
+    if (typeof request.body === 'string') {
+        request.body = JSON.parse(request.body)
+    }
+    let controlling_account = request.body.controlling_account;
     // if (!ecc.isValidPublic(controlling_account)) {
     //     const err = new Error();
     //     err.statusCode = 400;
@@ -14,7 +17,7 @@ async function getKeyAccounts(fastify, request) {
     // } else {
     //     controlling_account = numeric.convertLegacyPublicKey(controlling_account);
     // }
-    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
+    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.body));
     if (cachedResponse) {
         return cachedResponse;
     }
@@ -25,7 +28,7 @@ async function getKeyAccounts(fastify, request) {
             query: {
                 bool: {
                     should: [
-                        {term: {"@updateauth.auth.keys.key.keyword": controlling_account}},
+                        {term: {"@updateauth.auth.accounts.permission.actor": controlling_account}},
                         {term: {"@newaccount.active.keys.key.keyword": controlling_account}},
                         {term: {"@newaccount.owner.keys.key.keyword": controlling_account}}
                     ],
@@ -65,8 +68,8 @@ async function getKeyAccounts(fastify, request) {
 }
 
 module.exports = function (fastify, opts, next) {
-    fastify.get('/get_controlled_accounts', {
-        schema: getControlledAccountsSchema.GET
+    fastify.post('/get_controlled_accounts', {
+        schema: getControlledAccountsV1Schema.POST
     }, async (request) => {
         return getKeyAccounts(fastify, request);
     });

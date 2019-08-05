@@ -1,11 +1,14 @@
-const {getKeyAccountsSchema} = require("../../schemas");
+const {getKeyAccountsV1Schema} = require("../../schemas");
 const {getCacheByHash} = require("../../helpers/functions");
 const numeric = require('eosjs/dist/eosjs-numeric');
 const ecc = require('eosjs-ecc');
 
 async function getKeyAccounts(fastify, request) {
     const {redis, elasticsearch} = fastify;
-    let public_Key = request.query.public_key;
+    if (typeof request.body === 'string') {
+        request.body = JSON.parse(request.body)
+    }
+    let public_Key = request.body.public_key;
     if (!ecc.isValidPublic(public_Key)) {
         const err = new Error();
         err.statusCode = 400;
@@ -14,7 +17,7 @@ async function getKeyAccounts(fastify, request) {
     } else {
         public_Key = numeric.convertLegacyPublicKey(public_Key);
     }
-    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
+    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.body));
     if (cachedResponse) {
         return cachedResponse;
     }
@@ -40,6 +43,7 @@ async function getKeyAccounts(fastify, request) {
     const response = {
         account_names: []
     };
+    
     if (results['hits']['hits'].length > 0) {
         response.account_names = results['hits']['hits'].map((v) => {
             if (v._source.act.name === 'newaccount') {
@@ -70,8 +74,8 @@ async function getKeyAccounts(fastify, request) {
 }
 
 module.exports = function (fastify, opts, next) {
-    fastify.get('/get_key_accounts', {
-        schema: getKeyAccountsSchema.GET
+    fastify.post('/get_key_accounts', {
+        schema: getKeyAccountsV1Schema.POST
     }, async (request) => {
         return getKeyAccounts(fastify, request);
     });
