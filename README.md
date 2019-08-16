@@ -1,7 +1,10 @@
 # Hyperion History API
-Scalable Full History API Solution for EOSIO based blockchains
+Scalable Full History API Solution for EOSIO based blockchains.
 
-Made with ♥ by [EOS Rio](https://eosrio.io/)
+We build this history tool based on [EOS Rio's](https://eosrio.io/) solution and add EOSIO's `history_plugin` features,
+which means that it is compatible with the `v1` API provided by `history_plugin`.
+
+With this tool, developers don't have to run a full history node with `history_plugin`, which would cost much expenses.
 
 ### Introducing an storage-optimized action format for EOSIO
 
