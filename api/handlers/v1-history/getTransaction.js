@@ -74,6 +74,9 @@ async function getTransaction(fastify, request) {
         for (let action of actions) {
             action = action._source;
             const name = action.act.name;
+            if (action.act.account === 'eosio.token' && action.act.name === 'transfer') {
+                action.act.data.quantity = String(action.act.data.amount) + ' ' + action.act.data.symbol
+            }
             if (action['@' + name]) {
                 action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
                 delete action['@' + name];
@@ -172,6 +175,24 @@ async function getTransaction(fastify, request) {
             delete traces[action.global_sequence].notified
         })
         redis.set(hash, JSON.stringify(response), 'EX', 30);
+    } else {
+        return {
+            code: 500,
+            message: "Internal Service Error",
+            error: {
+                code: 3040011,
+                name: "tx_not_found",
+                what: "The transaction can not be found",
+                details: [
+                    {
+                        "message": "Transaction 5b8aabadaf4afd7b070eeb568ba0891620211c0bd497e76cd42f18a326dd83d0 not found in history and no block hint was given",
+                        "file": "",
+                        "line_number": 1,
+                        "method": "get_transaction"
+                    }
+                ] 
+            }
+        }
     }
     return response;
 }
