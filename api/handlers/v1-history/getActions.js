@@ -199,12 +199,14 @@ async function getActions(fastify, request) {
                     "inline_traces": []
                 }
             }
-            if (action.act.account === 'eosio.token' && action.act.name === 'transfer') {
-                action.act.data.quantity = String(action.act.data.amount) + ' ' + action.act.data.symbol
-            }
             const name = action.act.name;
             if (action['@' + name]) {
                 action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
+                if (name === 'transfer') {
+                    action.act.data.quantity = String(action.act.data.amount) + ' ' + action.act.data.symbol
+                    delete action.act.data.amount
+                    delete action.act.data.symbol
+                }
                 delete action['@' + name];
             }
             act.action_trace.act = action.act

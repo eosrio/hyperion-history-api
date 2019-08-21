@@ -74,11 +74,13 @@ async function getTransaction(fastify, request) {
         for (let action of actions) {
             action = action._source;
             const name = action.act.name;
-            if (action.act.account === 'eosio.token' && action.act.name === 'transfer') {
-                action.act.data.quantity = String(action.act.data.amount) + ' ' + action.act.data.symbol
-            }
             if (action['@' + name]) {
                 action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
+                if (name === 'transfer') {
+                    action.act.data.quantity = String(action.act.data.amount) + ' ' + action.act.data.symbol
+                    delete action.act.data.amount
+                    delete action.act.data.symbol
+                }
                 delete action['@' + name];
             }
             action.act['hex_data'] = new Buffer(JSON.stringify(action.act.data)).toString('hex')

@@ -862,6 +862,7 @@ async function getAbiAtBlock(code, block_num) {
 }
 
 async function run() {
+    console.log('deserialize')
     cachedMap = JSON.parse(await getAsync(process.env.CHAIN + ":" + 'abi_cache'));
     rpc = connectRpc();
     const chain_data = await rpc.get_info();

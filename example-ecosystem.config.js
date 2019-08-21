@@ -56,6 +56,9 @@ module.exports = {
             exp_backoff_restart_delay: 100,
             watch: ["api"],
             env: {
+                AMQP_HOST: "localhost:5672",
+                AMQP_USER: "myUser",
+                AMQP_PASS: "myPass",
                 SERVER_PORT: '7000',
                 SERVER_NAME: 'example.com',
                 SERVER_ADDR: '127.0.0.1',
