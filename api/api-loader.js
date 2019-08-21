@@ -44,6 +44,8 @@ fastify.register(AutoLoad, {
     }
 });
 
+fastify.register(require('./handlers/health'))
+
 fastify.register(require('fastify-cors'));
 
 fastify.ready().then(async () => {

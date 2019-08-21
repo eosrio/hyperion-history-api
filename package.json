@@ -9,11 +9,11 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@elastic/elasticsearch": "^7.0.0-rc.1",
     "amqplib": "^0.5.3",
     "async": "^2.6.2",
     "async-redis": "^1.1.7",
     "async-timed-cargo": "^0.0.3",
-    "@elastic/elasticsearch": "^7.0.0-rc.1",
     "elasticsearch-scroll-stream": "^1.1.4",
     "eosjs": "20.0.0",
     "eosjs-ecc": "^4.0.4",
@@ -25,6 +25,7 @@
     "fastify-plugin": "latest",
     "fastify-rate-limit": "^2.1.0",
     "fastify-redis": "^3.0.0",
+    "health-check-rabbitmq": "0.0.2",
     "ioredis": "^4.9.0",
     "lodash": "^4.17.11",
     "node-fetch": "^2.3.0",
@@ -33,6 +34,7 @@
     "pmx": "^1.6.7",
     "prettyjson": "^1.2.1",
     "redis": "^2.8.0",
+    "redis-status": "^1.0.3",
     "text-encoding": "^0.7.0",
     "ws": "^6.2.1"
   }
