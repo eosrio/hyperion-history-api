@@ -94,17 +94,18 @@ Open and test Kibana on `http://localhost:5601`
 
 ### RabbitMQ Installation
 
+`https://www.rabbitmq.com/install-debian.html#installation-methods`
+
 ```bash
 sudo apt install rabbitmq-server
 sudo rabbitmq-plugins enable rabbitmq_management
 sudo rabbitmqctl add_vhost /hyperion
 sudo rabbitmqctl add_user my_user my_password
 sudo rabbitmqctl set_user_tags my_user administrator
+sudo rabbitmqctl set_permissions -p /hyperion my_user ".*" ".*" ".*"
 ```
 
 Check access to the WebUI `http://localhost:15672`
-
-Remember to allow your user RW access to the `/hyperion` vhost
 
 ### Redis Installation
 
