@@ -45,7 +45,7 @@ async function run() {
         port: port
     });
     wss.on('listening', () => {
-        console.log(`WebSocket server listening on ws://${addr}:${port}`);
+        console.log(`WebSocket server listening on ws://${addr}:${port} , ws-router.worker`);
         process.send({
             event: 'router_ready'
         });

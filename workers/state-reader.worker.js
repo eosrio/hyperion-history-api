@@ -234,7 +234,7 @@ function recusiveDistribute(data, channel, cb) {
 }
 
 async function run() {
-
+   // close ws
     pmx.action('stop', (reply) => {
         if (process.env['worker_role'] === 'continuous_reader') {
             console.info('[LIVE READER] Closing Websocket');
@@ -258,11 +258,12 @@ async function run() {
         textEncoder: txEnc,
     });
 
-    // Connect to RabbitMQ (amqplib)
+    // Connect to RabbitMQ (amqplib) ch = Channel; cch = ConfirmChannel
     [ch, cch] = await amqpConnect();
 
     // Assert stage 1
     for (let i = 0; i < n_deserializers; i++) {
+        // queue = 'bos-blocks'
         ch.assertQueue(queue + ":" + (i + 1), {
             durable: true
         });

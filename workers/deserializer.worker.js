@@ -63,6 +63,10 @@ function debugLog(msg) {
 }
 
 // Stage 2 - Deserialization function
+/**
+ * 
+ * 反序列化block的数据
+ */
 async function processMessages(messages) {
     for (const message of messages) {
         const ds_msg = deserialize('result', message.content, txEnc, txDec, types);
@@ -70,14 +74,17 @@ async function processMessages(messages) {
         let block, traces = [], deltas = [];
         if (res.block && res.block.length) {
             block = deserialize('signed_block', res.block, txEnc, txDec, types);
+            // console.log('解析后的block：', block)
         }
         if (res['traces'] && res['traces'].length) {
             const unpackedTraces = await unzipAsync(res['traces']);
             traces = deserialize('transaction_trace[]', unpackedTraces, txEnc, txDec, types);
+            // console.log('解析后的traces：', traces)
         }
         if (res['deltas'] && res['deltas'].length) {
             const unpackedDeltas = await unzipAsync(res['deltas']);
             deltas = deserialize('table_delta[]', unpackedDeltas, txEnc, txDec, types);
+            // console.log('解析后的deltas：', deltas)
         }
         let result;
         try {
@@ -104,7 +111,7 @@ async function processMessages(messages) {
     }
 }
 
-// Stage 2 - Block handler
+// Stage 2 - Block handler，处理block并将相应数据放入队列
 async function processBlock(res, block, traces, deltas) {
     if (!res['this_block']) {
         console.log(res);
@@ -155,6 +162,7 @@ async function processBlock(res, block, traces, deltas) {
                 let action_count = 0;
                 const trx_id = transaction_trace['id'].toLowerCase();
                 const action_traces = transaction_trace['action_traces'];
+                // console.log('交易中的actions', JSON.stringify(action_traces))
                 const t3 = Date.now();
                 for (const action_trace of action_traces) {
                     if (action_trace[0] === 'action_trace_v0') {
@@ -221,8 +229,10 @@ async function getContractAtBlock(accountName, block_num) {
 async function deserializeActionsAtBlock(actions, block_num) {
     return await Promise.all(actions.map(async ({account, name, authorization, data}) => {
         const contract = (await getContractAtBlock(account, block_num))[0];
-        return Serialize.deserializeAction(
+        let action = Serialize.deserializeAction(
             contract, account, name, authorization, data, txEnc, txDec);
+        // console.log(action)
+        return action
     }));
 }
 
@@ -241,8 +251,11 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, parent
     act.data = new Uint8Array(Object.values(act.data));
     const actions = [];
     actions.push(act);
+    // console.log(trx_id)
+    // console.log(JSON.stringify(actions))
     let ds_act;
     try {
+        a()
         ds_act = await deserializeActionsAtBlock(actions, block_num);
         action['act'] = ds_act[0];
         attachActionExtras(action);
@@ -251,6 +264,8 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, parent
             t: 'ds_fail',
             v: {gs: action['receipt']['global_sequence']}
         });
+        console.error('action解析失败: ', trx_id)
+        console.error(e)
         action['act'] = original_act;
         action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
     }
@@ -920,3 +935,13 @@ async function run() {
 }
 
 module.exports = {run};
+
+
+// (async () => {let {account, name, authorization, data} = {"account":"eosio.token","name":"transfer","authorization":[{"actor":"nodeostps112","permission":"active"}],"data":{"0":32,"1":66,"2":192,"3":53,"4":99,"5":170,"6":18,"7":157,"8":16,"9":66,"10":192,"11":53,"12":99,"13":170,"14":18,"15":157,"16":1,"17":0,"18":0,"19":0,"20":0,"21":0,"22":0,"23":0,"24":4,"25":66,"26":79,"27":83,"28":0,"29":0,"30":0,"31":0,"32":7,"33":97,"34":98,"35":99,"36":100,"37":101,"38":102,"39":103} } 
+// const contract = (await getContractAtBlock('eosio.token', 41831407))[0];
+
+// let action = Serialize.deserializeAction(
+//   contract, account, name, authorization, data, TextEncoder, TextDecoder);
+
+// console.log(action)
+// })()

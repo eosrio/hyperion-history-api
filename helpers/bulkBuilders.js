@@ -1,9 +1,43 @@
 const _ = require('lodash');
 const crypto = require('crypto');
-
+/**
+ * 
+ * @param payloads 
+ * [{
+        fields:{ 
+            consumerTag: 'amq.ctag-bkBS6virNv_yRHAKp8wuPw',
+            deliveryTag: 1,
+            redelivered: false,
+            exchange: '',
+            routingKey: 'bos:index_actions:1' 
+        },
+        properties: {
+            contentType: undefined,
+            contentEncoding: undefined,
+            headers: {},
+            deliveryMode: undefined,
+            priority: undefined,
+            correlationId: undefined,
+            replyTo: undefined,
+            expiration: undefined,
+            messageId: undefined,
+            timestamp: undefined,
+            type: undefined,
+            userId: undefined,
+            appId: undefined,
+            clusterId: undefined 
+        },
+        content:<Buffer ...>
+    }] 
+            
+ * @param {*} messageMap 
+ */
 function buildActionBulk(payloads, messageMap) {
     return _(payloads).map(payload => {
         const body = JSON.parse(Buffer.from(payload.content).toString());
+        // if (typeof body.act.data === 'string') {
+        //     console.log(body)
+        // }
         messageMap.set(body['global_sequence'], payload);
         return [{
             index: {_id: body['global_sequence']}
