@@ -67,6 +67,7 @@ async function health (fastify, request) {
     response.health.push(createHealth('Elasticsearch', stat))
   } catch (e) {
     console.log(e, 'Elasticsearch Error')
+    response.health.push(createHealth('Elasticsearch', 'Error'))
   }
 
   return response
