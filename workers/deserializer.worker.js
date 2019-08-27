@@ -255,7 +255,6 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, parent
     // console.log(JSON.stringify(actions))
     let ds_act;
     try {
-        a()
         ds_act = await deserializeActionsAtBlock(actions, block_num);
         action['act'] = ds_act[0];
         attachActionExtras(action);
