@@ -35,9 +35,6 @@ const crypto = require('crypto');
 function buildActionBulk(payloads, messageMap) {
     return _(payloads).map(payload => {
         const body = JSON.parse(Buffer.from(payload.content).toString());
-        // if (typeof body.act.data === 'string') {
-        //     console.log(body)
-        // }
         messageMap.set(body['global_sequence'], payload);
         return [{
             index: {_id: body['global_sequence']}

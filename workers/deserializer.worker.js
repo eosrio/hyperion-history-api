@@ -255,6 +255,7 @@ async function processAction(ts, action, trx_id, block_num, prod, parent, parent
     // console.log(JSON.stringify(actions))
     let ds_act;
     try {
+        // a()
         ds_act = await deserializeActionsAtBlock(actions, block_num);
         action['act'] = ds_act[0];
         attachActionExtras(action);
@@ -829,7 +830,11 @@ async function processDeferred(data, block_num) {
 }
 
 async function getAbiAtBlock(code, block_num) {
-    const refs = cachedMap[code];
+
+    let refs = null;
+    if (cachedMap) {
+        refs = cachedMap[code]
+    }
     if (refs) {
         if (refs.length > 0) {
             let lastblock = 0;
@@ -876,7 +881,6 @@ async function getAbiAtBlock(code, block_num) {
 }
 
 async function run() {
-    console.log('deserialize')
     cachedMap = JSON.parse(await getAsync(process.env.CHAIN + ":" + 'abi_cache'));
     rpc = connectRpc();
     const chain_data = await rpc.get_info();

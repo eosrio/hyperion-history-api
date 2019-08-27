@@ -1,4 +1,5 @@
 const {Api, Serialize} = require('eosjs');
+const fetch = require('node-fetch')
 
 const _ = require('lodash');
 const {action_blacklist} = require('../definitions/blacklists');
@@ -204,10 +205,11 @@ async function getAbiAtBlock(code, block_num) {
 }
 
 
-async function scrollData (block_num) {
+async function getData (block_num) {
     let results
     results = await client.search({
         index: process.env.CHAIN + '-action-*',
+        size: 1000,
         body: {
             "query": {
                 "match" : {
@@ -219,51 +221,75 @@ async function scrollData (block_num) {
     return results.hits.hits
 }
 
-async function deserializeErrorAction (actionList, fix_num) {
-    if (Array.isArray(actionList)) {
-        actionList.forEach(async action => {
-            let {account, name, authorization, data} =  action._source.act
-            let original_act = Object.assign({}, action._source)
-            if (typeof data === "string" && data !== "") {
-                dataBuffer  = new Buffer.from(data, 'hex')
-                data = new Uint8Array(dataBuffer)
-                try {
-                    const contract = (await getContractAtBlock(account, action._id))[0];
-                    // console.log('contract: ', contract)
-                    let ds_action = Serialize.deserializeAction(
-                    contract, account, name, authorization, data, txEnc, txDec);
-                    original_act.act = ds_action
-                    attachActionExtras(original_act)
-                    // console.log("重新解析的",ds_action)
-                    let resp = await client.index({
-                        index: queue_prefix + '-action',
-                        id: action._id,
-                        type: '_doc',
-                        body: {
-                            ...original_act
-                        }
-                    })
-                } catch (e) {
-                    console.log('fix_num:', fix_num)
-                    console.log('fix error: ', e)
-                    let fix_error = await getAsync('fix_error')
-                    if (fix_error === 'false') {
-                        rClient.set('fix_num', fix_num)
-                        rClient.set('fix_error', 'true')
+let retry = 0
+
+async function deserializeErrorAction (action, fix_num) {
+    // console.log(action)
+    let {account, name, authorization, data} =  action._source.act
+    let original_act = Object.assign({}, action._source)
+    if (typeof data === "string" && data !== "") {
+        dataBuffer  = new Buffer.from(data, 'hex')
+        data = new Uint8Array(dataBuffer)
+        try {
+            const contract = (await getContractAtBlock(account, action._id))[0];
+            // console.log('contract: ', contract)
+            let ds_action = Serialize.deserializeAction(
+            contract, account, name, authorization, data, txEnc, txDec);
+            original_act.act = ds_action
+            attachActionExtras(original_act)
+            // console.log("重新解析的",ds_action)
+            let resp = await client.index({
+                index: queue_prefix + '-action',
+                id: action._id,
+                type: '_doc',
+                body: {
+                    ...original_act
+                }
+            })
+
+            retry = 0 // clear retry flag
+        } catch (e) {
+            console.error('fix_num:', fix_num)
+            console.error('fix error: ', e)
+            if (retry < 5) {
+                retry++ 
+                console.log(`retry ${action._source.trx_id} ${retry} times`)
+                await deserializeErrorAction (action, fix_num)
+            } else {
+                retry = 0
+                let fix_error = await getAsync('fix_error')
+                if (fix_error === 'false') {
+                    let alert_time = await getAsync('alert_num')
+                    if (alert_time <= 5) {
+                        rClient.set('alert_num', alert_time+1)
+                        fetch('http://monitor.enjoyshare.net/alarm_upload', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                "type": 4,  
+                                "code": "86fcad64-5e8d-4b08-84af-c33f61faa428",  
+                                "node": "", 
+                                "extra": `deserialize action ${action._id} data failed`
+                            })
+                        })
                     }
+                    rClient.set('fix_num', fix_num)
+                    rClient.set('fix_error', 'true')
+                    
                 }
             }
-        })
+        }
     }
-    
 }
 
-// module.exports = {run};
 
 
 (async () => {
-    rClient.set('fix_num', 41830955)
+    rClient.set('fix_num', 0)
     rClient.set('fix_error', 'false')
+    rClient.set('alert_num', 0)
     cachedMap = JSON.parse(await getAsync(process.env.CHAIN + ":" + 'abi_cache'));
     rpc = connectRpc();
     let chain_data = await rpc.get_info();
@@ -283,18 +309,24 @@ async function deserializeErrorAction (actionList, fix_num) {
 
     // fix data
     while (1) {
-        console.log('start to fix data')
+        console.log('start to fix data at ', Date.now())
         chain_data = await rpc.get_info();
         head_block_num = chain_data.head_block_num
         let data = []
         rClient.set('fix_error', 'false') // 重置标记
         let fix_num = await getAsync('fix_num')
-        do {
-            data = await scrollData(fix_num)
+        while(fix_num < head_block_num) {
+            data = await getData(fix_num)
+            // console.log(data.length)
+            
+            if (Array.isArray(data)) {
+                data.forEach(async action => {
+                    await deserializeErrorAction(action, fix_num)
+                })
+            }
             fix_num++
-            await deserializeErrorAction(data, fix_num)
             // console.log(fix_num)
-        } while(fix_num < head_block_num)
+        } 
         let fix_error = await getAsync('fix_error')
         if (fix_error === 'false') {
             rClient.set('fix_num', fix_num)
@@ -303,7 +335,7 @@ async function deserializeErrorAction (actionList, fix_num) {
         await new Promise((resolve,reject) => {
             setTimeout(() => {
                 resolve()
-            }, 1000)
+            }, 10000)
         })
     }
 })()
