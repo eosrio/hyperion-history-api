@@ -29,7 +29,10 @@ async function main() {
     // Preview mode - prints only the proposed worker map
     let preview = process.env.PREVIEW === 'true';
 
-    const rClient = redis.createClient();
+    const rClient = redis.createClient({
+        host: process.env.REDIS_HOST,
+        port: process.env.REDIS_PORT
+    });
     const getAsync = promisify(rClient.get).bind(rClient);
     client = await elasticsearchConnect();
 

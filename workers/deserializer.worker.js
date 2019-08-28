@@ -15,7 +15,10 @@ const {TextEncoder, TextDecoder} = require('util');
 
 const redis = require('redis');
 const {promisify} = require('util');
-const rClient = redis.createClient();
+const rClient = redis.createClient({
+    host: process.env.REDIS_HOST,
+    port: process.env.REDIS_PORT
+});
 const getAsync = promisify(rClient.get).bind(rClient);
 
 const txDec = new TextDecoder();

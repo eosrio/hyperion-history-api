@@ -10,6 +10,8 @@ module.exports = {
                 AMQP_HOST: '127.0.0.1:5672',
                 AMQP_USER: 'input',
                 AMQP_PASS: '',
+                REDIS_HOST: '127.0.0.1',
+                REDIS_PORT: '6379',
                 ES_HOST: '127.0.0.1:9200',
                 NODEOS_HTTP: 'http://127.0.0.1:8888',
                 NODEOS_WS: 'ws://127.0.0.1:8080',
