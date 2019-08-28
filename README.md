@@ -14,7 +14,7 @@ The original *history_plugin* bundled with eosio, that provided the v1 api, stor
 
 With those changes the API format focus on delivering faster search times, lower bandwidth overhead and easier usability for UI/UX developers. 
 
-#### Action Data Structure
+#### Action Data Structure (work in progress)
 
  - `@timestamp` - block time
  - `global_sequence` - unique action global_sequence, used as index id
@@ -38,13 +38,13 @@ With those changes the API format focus on delivering faster search times, lower
 
 This setup has only been tested with Ubuntu 18.04, but should work with other OS versions too
 
- - [Elasticsearch 7.1.0](https://www.elastic.co/downloads/elasticsearch)
+ - [Elasticsearch 7.3.1](https://www.elastic.co/downloads/elasticsearch)
  - [RabbitMQ](https://www.rabbitmq.com/install-debian.html)
  - [Redis](https://redis.io/topics/quickstart)
  - [Node.js v12](https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions)
  - [PM2](https://pm2.io/doc/en/runtime/quick-start)
- - Nodeos 1.8.0-rc2 w/ state_history_plugin
- - Nodeos 1.8.0-rc2 w/ chain_api_plugin
+ - Nodeos 1.8.1 w/ state_history_plugin
+ - Nodeos 1.8.1 w/ chain_api_plugin
   
   > The indexer requires redis, pm2 and node.js to be on the same machine. Other dependencies might be installed on other machines, preferably over a very high speed and low latency network. Indexing speed will vary greatly depending on this configuration.
   
@@ -66,10 +66,13 @@ npm install
 
 Reference
 ```
+DEBUG: 'false',                        // debug mode - display extra logs for debugging
 AMQP_HOST: '127.0.0.1:5672'            // RabbitMQ host:port
 AMQP_USER: '',                         // RabbitMQ user
 AMQP_PASS: '',                         // RabbitMQ password
 ES_HOST: '127.0.0.1:9200',             // elasticsearch http endpoint
+ES_USER: '',                           // optional elasticsearch user
+ES_PASS: '',                           // optional elasticsearch password
 NODEOS_HTTP: 'http://127.0.0.1:8888',  // chain api endpoint
 NODEOS_WS: 'ws://127.0.0.1:8080',      // state history endpoint
 LIVE_READER: 'true',                   // enable continuous reading after reaching the head block
@@ -80,9 +83,10 @@ START_ON: 0,                           // start indexing on block (0=disable)
 STOP_ON: 0,                            // stop indexing on block  (0=disable)
 REWRITE: 'false',                      // force rewrite the target replay range
 BATCH_SIZE: 2000,                      // parallel reader batch size in blocks
+QUEUE_THRESH: 8000,                    // queue size limit on rabbitmq
 LIVE_ONLY: 'false',                    // only reads realtime data serially
-FETCH_BLOCK: 'true',
-FETCH_TRACES: 'true',
+FETCH_BLOCK: 'true',                   // Request full blocks from the state history plugin
+FETCH_TRACES: 'true',                  // Request traces from the state history plugin
 PREVIEW: 'false',                      // preview mode - prints worker map and exit
 DISABLE_READING: 'false',              // completely disable block reading, for lagged queue processing
 READERS: 3,                            // parallel state history readers
@@ -134,5 +138,6 @@ Example: [OpenAPI Docs](https://eos.hyperion.eosrio.io/v2/docs)
 ### Roadmap
 
 - Table deltas storage & queries (in progress)
-- Real-time streaming support
+- Real-time streaming support (in progress)
+- Plugin system (in progress)
 - Control GUI

@@ -85,8 +85,8 @@ Test the REST API `curl http://localhost:9200`
 ### Kibana Installation
 
 ```bash
-wget https://artifacts.elastic.co/downloads/kibana/kibana-7.1.0-amd64.deb
-sudo apt install ./kibana-7.1.0-amd64.deb
+wget https://artifacts.elastic.co/downloads/kibana/kibana-7.3.1-amd64.deb
+sudo apt install ./kibana-7.3.1-amd64.deb
 sudo systemctl enable kibana
 ```
 

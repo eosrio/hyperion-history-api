@@ -5,6 +5,7 @@ const {deserialize, serialize} = require('../helpers/functions');
 const {connectStateHistorySocket} = require("../connections/state-history");
 const {amqpConnect} = require("../connections/rabbitmq");
 const pmx = require('pmx');
+const {debugLog} = require("../helpers/functions");
 const {TextEncoder, TextDecoder} = require('util');
 
 const {checkQueueSize} = require("../connections/rabbitmq");
@@ -20,8 +21,15 @@ let currentIdx = 1;
 let drainCount = 0;
 let local_distributed_count = 0;
 let lastPendingCount = 0;
+let reconnectCount = 0;
+let completionSignaled = false;
+let completionMonitoring = null;
+
 let allowRequests = true;
 let pendingRequest = null;
+
+let recovery = false;
+let local_last_block = 0;
 
 const qStatusMap = {};
 const queue_prefix = process.env.CHAIN;
@@ -32,6 +40,15 @@ let range_size = parseInt(process.env.last_block) - parseInt(process.env.first_b
 
 const blockReadingQueue = async.cargo(async.ensureAsync(processIncomingBlockArray), maxMessagesInFlight);
 const stageOneDistQueue = async.cargo(async.ensureAsync(distribute), maxMessagesInFlight);
+
+const baseRequest = {
+    max_messages_in_flight: maxMessagesInFlight,
+    have_positions: [],
+    irreversible_only: false,
+    fetch_block: process.env.FETCH_BLOCK === 'true',
+    fetch_traces: process.env.FETCH_TRACES === 'true',
+    fetch_deltas: true
+};
 
 function processIncomingBlockArray(payload, cb) {
     processIncomingBlocks(payload).then(() => {
@@ -61,14 +78,11 @@ async function processIncomingBlocks(block_array) {
     return true;
 }
 
-let completionSignaled = false;
-let completionMonitoring = null;
-
 function signalReaderCompletion() {
     // Monitor pending messages
     if (!completionSignaled) {
         completionSignaled = true;
-        // console.log('reader ' + process.env['worker_id'] + ' signaled completion', range_size, local_distributed_count);
+        debugLog('reader ' + process.env['worker_id'] + ' signaled completion', range_size, local_distributed_count);
         local_distributed_count = 0;
         completionMonitoring = setInterval(() => {
             let pending = 0;
@@ -85,7 +99,7 @@ function signalReaderCompletion() {
                 }
             }
             if (pending === 0) {
-                // console.log('reader ' + process.env['worker_id'] + ' completed', range_size, local_distributed_count);
+                debugLog('reader ' + process.env['worker_id'] + ' completed', range_size, local_distributed_count);
                 clearInterval(completionMonitoring);
                 process.send({
                     event: 'completed',
@@ -99,15 +113,6 @@ function signalReaderCompletion() {
 function send(req_data) {
     ws.send(serialize('request', req_data, txEnc, txDec, types));
 }
-
-const baseRequest = {
-    max_messages_in_flight: maxMessagesInFlight,
-    have_positions: [],
-    irreversible_only: false,
-    fetch_block: process.env.FETCH_BLOCK === 'true',
-    fetch_traces: process.env.FETCH_TRACES === 'true',
-    fetch_deltas: true
-};
 
 // State history request builder
 function requestBlocks(start) {
@@ -153,31 +158,50 @@ function processFirstABI(data) {
 
 async function onMessage(data) {
     if (abi) {
-        if (process.env['worker_role']) {
-            const res = deserialize('result', data, txEnc, txDec, types)[1];
-            if (res['this_block']) {
-                const blk_num = res['this_block']['block_num'];
-                if (blk_num > local_block_num) {
-                    local_block_num = blk_num;
-                }
-                stageOneDistQueue.push(data);
-                if (local_distributed_count === range_size) {
-                    signalReaderCompletion();
-                } else {
-                    return 1;
-                }
+        if (recovery) {
+            let first = local_block_num;
+            let last = local_last_block;
+            if (last === 0) {
+                last = process.env.last_block;
+            }
+            last = last - 1;
+            if (first === 0) {
+                first = process.env.first_block;
+            }
+            console.log(`Resuming stream from block ${first} to ${last}...`);
+            if (last - first > 0) {
+                requestBlockRange(first, last);
+                recovery = false;
             } else {
-                if (process.env['worker_role'] === 'reader') {
-                    if (local_distributed_count === range_size) {
-                        signalReaderCompletion();
-                    }
-                }
-                return 0;
+                console.log('Invalid range!');
             }
         } else {
-            console.log('something went wrong!');
-            ws.close();
-            process.exit(1);
+            if (process.env['worker_role']) {
+                const res = deserialize('result', data, txEnc, txDec, types)[1];
+                if (res['this_block']) {
+                    const blk_num = res['this_block']['block_num'];
+                    if (blk_num > local_block_num) {
+                        local_block_num = blk_num;
+                    }
+                    stageOneDistQueue.push(data);
+                    if (local_distributed_count === range_size) {
+                        signalReaderCompletion();
+                    } else {
+                        return 1;
+                    }
+                } else {
+                    if (process.env['worker_role'] === 'reader') {
+                        if (local_distributed_count === range_size) {
+                            signalReaderCompletion();
+                        }
+                    }
+                    return 0;
+                }
+            } else {
+                console.log('something went wrong!');
+                ws.close();
+                process.exit(1);
+            }
         }
     } else {
         processFirstABI(data);
@@ -190,7 +214,6 @@ function distribute(data, cb) {
 }
 
 function recusiveDistribute(data, channel, cb) {
-    // console.log(data.length);
     if (data.length > 0) {
         const q = queue + ":" + currentIdx;
         if (!qStatusMap[q]) {
@@ -237,49 +260,58 @@ function recusiveDistribute(data, channel, cb) {
     }
 }
 
-async function run() {
+function handleLostConnection() {
+    recovery = true;
+    ws.close();
+    console.log(`Retrying connection in 5 seconds... [attempt: ${reconnectCount + 1}]`);
+    debugLog('PENDING REQUESTS:', pendingRequest);
+    debugLog('LOCAL BLOCK:', local_block_num);
+    setTimeout(() => {
+        reconnectCount++;
+        startWS();
+    }, 5000);
+}
 
-    pmx.action('stop', (reply) => {
-        if (process.env['worker_role'] === 'continuous_reader') {
-            console.info('[LIVE READER] Closing Websocket');
-            reply({ack: true});
-            ws.close();
-            setTimeout(() => {
-                console.info('[LIVE READER] Process killed');
-                process.exit(1);
-            }, 5000);
-        }
-    });
+function startWS() {
+    ws = connectStateHistorySocket(blockReadingQueue.push, handleLostConnection);
+}
 
-    rpc = connectRpc();
-    const chain_data = await rpc.get_info();
-    chainID = chain_data.chain_id;
-    api = new Api({
-        "rpc": rpc,
-        signatureProvider: null,
-        chainId: chain_data.chain_id,
-        textDecoder: txDec,
-        textEncoder: txEnc,
-    });
-
-    // Connect to RabbitMQ (amqplib)
-    [ch, cch] = await amqpConnect();
-
-    // Assert stage 1
-    for (let i = 0; i < n_deserializers; i++) {
-        ch.assertQueue(queue + ":" + (i + 1), {
-            durable: true
-        });
-
-        ch.on('drain', function () {
-            qStatusMap[queue + ":" + (i + 1)] = true;
-        })
+function onPmxStop(reply) {
+    if (process.env['worker_role'] === 'continuous_reader') {
+        console.log('[LIVE READER] Closing Websocket');
+        reply({ack: true});
+        ws.close();
+        setTimeout(() => {
+            console.log('[LIVE READER] Process killed');
+            process.exit(1);
+        }, 5000);
     }
+}
 
+function onIpcMessage(msg) {
+    if (msg.event === 'new_range') {
+        if (msg.target === process.env.worker_id) {
+            debugLog(`new_range [${msg.data.first_block},${msg.data.last_block}]`);
+            local_distributed_count = 0;
+            clearInterval(completionMonitoring);
+            completionMonitoring = null;
+            completionSignaled = false;
+            local_last_block = msg.data.last_block;
+            range_size = parseInt(msg.data.last_block) - parseInt(msg.data.first_block);
+            if (allowRequests) {
+                requestBlockRange(msg.data.first_block, msg.data.last_block);
+                pendingRequest = null;
+            } else {
+                pendingRequest = [msg.data.first_block, msg.data.last_block];
+            }
+        }
+    }
+}
+
+function startQueueWatcher() {
     setInterval(() => {
         let checkArr = [];
         for (let i = 0; i < n_deserializers; i++) {
-            // Queue size watch
             const q = queue + ":" + (i + 1);
             checkArr.push(checkQueueSize(q));
         }
@@ -294,33 +326,57 @@ async function run() {
             }
         });
     }, 5000);
+}
 
-    // Connect to StateHistory via WebSocket
-    ws = connectStateHistorySocket(blockReadingQueue.push);
-
-    process.on('message', (msg) => {
-        if (msg.event === 'new_range') {
-            if (msg.target === process.env.worker_id) {
-                // console.log(`new_range [${msg.data.first_block},${msg.data.last_block}]`);
-                local_distributed_count = 0;
-                clearInterval(completionMonitoring);
-                completionMonitoring = null;
-                completionSignaled = false;
-                range_size = parseInt(msg.data.last_block) - parseInt(msg.data.first_block);
-                if (allowRequests) {
-                    requestBlockRange(msg.data.first_block, msg.data.last_block);
-                    pendingRequest = null;
-                } else {
-                    pendingRequest = [msg.data.first_block, msg.data.last_block];
-                }
-            }
-        }
-    });
+function assertQueues() {
+    for (let i = 0; i < n_deserializers; i++) {
+        ch.assertQueue(queue + ":" + (i + 1), {
+            durable: true
+        });
+        ch.on('drain', function () {
+            qStatusMap[queue + ":" + (i + 1)] = true;
+        })
+    }
 }
 
 function processPending() {
     requestBlockRange(pendingRequest[0], pendingRequest[1]);
     pendingRequest = null;
+}
+
+function createNulledApi(chainID) {
+    return new Api({
+        "rpc": rpc,
+        signatureProvider: null,
+        chainId: chainID,
+        textDecoder: txDec,
+        textEncoder: txEnc,
+    });
+}
+
+async function run() {
+
+    pmx['action']('stop', onPmxStop);
+
+    rpc = connectRpc();
+    const chain_data = await rpc.get_info();
+    chainID = chain_data.chain_id;
+    api = createNulledApi(chainID);
+
+    // Connect to RabbitMQ (amqplib)
+    [ch, cch] = await amqpConnect();
+
+    // Assert stage 1
+    assertQueues();
+
+    // Queue size watcher
+    startQueueWatcher();
+
+    // Connect to StateHistory via WebSocket
+    startWS();
+
+    // Handle IPC Messages
+    process.on('message', onIpcMessage);
 }
 
 module.exports = {run};

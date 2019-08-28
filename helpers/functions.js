@@ -202,7 +202,14 @@ function onSaveAbi(data, abiCacheMap, rClient) {
     abiCacheMap[data['account']] = versionMap;
 }
 
+function debugLog(text) {
+    if (process.env.DEBUG === 'true') {
+        console.log(text);
+    }
+}
+
 module.exports = {
+    debugLog,
     onError,
     deserialize,
     serialize,

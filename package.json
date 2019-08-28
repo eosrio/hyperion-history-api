@@ -4,36 +4,45 @@
   "description": "",
   "main": "launcher.js",
   "scripts": {
-    "start": "pm2 start"
+    "start:idx": "pm2 start --only Indexer --update-env",
+    "start:api": "pm2 start --only API --update-env",
+    "logs": "pm2 logs Indexer"
   },
-  "author": "",
+  "author": {
+    "name": "EOS Rio",
+    "url": "https://eosrio.io"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eosrio/Hyperion-History-API.git"
+  },
   "license": "MIT",
   "dependencies": {
-    "@elastic/elasticsearch": "7.1.0",
-    "amqplib": "^0.5.3",
-    "async": "^2.6.3",
+    "@elastic/elasticsearch": "^7.3.0",
+    "amqplib": "^0.5.5",
+    "async": "^3.1.0",
     "async-redis": "^1.1.7",
     "async-timed-cargo": "^0.0.3",
-    "elasticsearch-scroll-stream": "^1.1.4",
+    "elasticsearch-scroll-stream": "^1.2.0",
     "eosjs": "^20.0.0",
     "eosjs-ecc": "^4.0.4",
-    "fastify": "^2.6.0",
+    "fastify": "^2.7.1",
     "fastify-autoload": "^1.0.0",
     "fastify-cors": "^2.1.3",
     "fastify-elasticsearch": "^1.0.0",
     "fastify-oas": "^2.3.1",
     "fastify-plugin": "latest",
-    "fastify-rate-limit": "^2.1.1",
+    "fastify-rate-limit": "^2.2.0",
     "fastify-redis": "^3.1.1",
     "got": "^9.6.0",
-    "ioredis": "^4.10.0",
-    "lodash": "^4.17.14",
+    "ioredis": "^4.14.0",
+    "lodash": "^4.17.15",
     "node-fetch": "^2.6.0",
     "perf_hooks": "^0.0.1",
     "pmx": "^1.6.7",
     "prettyjson": "^1.2.1",
     "redis": "^2.8.0",
     "text-encoding": "^0.7.0",
-    "ws": "^7.0.1"
+    "ws": "^7.1.2"
   }
 }

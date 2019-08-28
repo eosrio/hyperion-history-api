@@ -5,8 +5,10 @@ const {onError} = require('./helpers/functions');
 
 (async () => {
     if (cluster.isMaster) {
+        process.title = `hyperion-master-${process.env.CHAIN}`;
         master.main().catch(onError);
     } else {
+        process.title = `hyperion-${process.env['worker_role']}-${process.env.CHAIN}`;
         let delay = 0;
         // Make sure readers are launched later
         // TODO: use IPC to trigger
