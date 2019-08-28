@@ -70,8 +70,7 @@ const routes = {
         client['bulk']({
             index: queue_prefix + '-action',
             type: '_doc',
-            body: buildActionBulk(payloads, messageMap),
-            refresh: true
+            body: buildActionBulk(payloads, messageMap)
         }).then(resp => {
             onResponse(resp, messageMap, cb, payloads, channel);
         }).catch(err => {
