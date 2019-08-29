@@ -12,7 +12,7 @@ fastify.register(require('fastify-elasticsearch'), {
     host: process.env.ES_HOST
 });
 
-fastify.register(require('fastify-redis'), {host: '127.0.0.1'});
+fastify.register(require('fastify-redis'), { host: process.env.REDIS_HOST, port: process.env.REDIS_PORT});
 
 fastify.register(require('fastify-rate-limit'), {
     max: 1000,
