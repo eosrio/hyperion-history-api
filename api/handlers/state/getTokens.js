@@ -70,7 +70,7 @@ async function getTokens(fastify, request) {
         }
     }
     response['query_time'] = Date.now() - t0;
-    redis.set(hash, JSON.stringify(response), 'EX', 300);
+    redis.set(hash, JSON.stringify(response), 'EX', 30);
     return response;
 }
 
