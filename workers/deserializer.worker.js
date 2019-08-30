@@ -4,7 +4,7 @@ const _ = require('lodash');
 const {action_blacklist} = require('../definitions/blacklists');
 const prettyjson = require('prettyjson');
 const {AbiDefinitions} = require("../definitions/abi_def");
-const {deserialize, unzipAsync} = require('../helpers/functions');
+const {deserialize} = require('../helpers/functions');
 
 const async = require('async');
 const {amqpConnect} = require("../connections/rabbitmq");
@@ -22,6 +22,7 @@ const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
 
 let ch, api, types, client, cch, rpc, abi;
+let ch_ready = false;
 let tables = new Map();
 let chainID = null;
 let act_emit_idx = 1;
@@ -43,16 +44,29 @@ const n_ingestors_per_queue = parseInt(process.env.ES_INDEXERS_PER_QUEUE, 10);
 const action_indexing_ratio = parseInt(process.env.ES_ACT_QUEUES, 10);
 
 // Stage 2 consumer prefecth
-const dSprefecthCount = parseInt(process.env.BLOCK_PREFETCH, 10);
-const consumerQueue = async.cargo(async.ensureAsync(processPayload), dSprefecthCount);
+const deserializerPrefecth = parseInt(process.env.BLOCK_PREFETCH, 10);
+const consumerQueue = async.cargo(async.ensureAsync(processPayload), deserializerPrefecth);
+
+const preIndexingQueue = async.queue(async.ensureAsync(sendToIndexQueue), 1);
+
+function sendToIndexQueue(data, cb) {
+    if (ch_ready) {
+        ch.sendToQueue(data.queue, data.content);
+        cb();
+    } else {
+        console.log('Channel is not ready!');
+    }
+}
 
 // Stage 2 - Deserialization handler
 function processPayload(payload, cb) {
     processMessages(payload).then(() => {
         cb();
     }).catch((err) => {
-        ch.nackAll();
         console.log('NACK ALL', err);
+        if (ch_ready) {
+            ch.nackAll();
+        }
     })
 }
 
@@ -97,10 +111,14 @@ async function processMessages(messages) {
                 console.log('Empty message. No block');
                 console.log(_.omit(res, ['block', 'traces', 'deltas']));
             }
-            ch.ack(message);
+            if (ch_ready) {
+                ch.ack(message);
+            }
         } catch (e) {
             console.log(e);
-            ch.nack(message);
+            if (ch_ready) {
+                ch.nack(message);
+            }
         }
     }
 }
@@ -129,17 +147,17 @@ async function processBlock(res, block, traces, deltas) {
             };
 
             if (process.env.ENABLE_INDEXING === 'true') {
+                const data = Buffer.from(JSON.stringify(light_block));
                 const q = index_queue_prefix + "_blocks:" + (block_emit_idx);
-                const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(light_block)));
-                if (!status) {
-                    // console.log('Block Indexing:', status);
-                }
+                preIndexingQueue.push({
+                    queue: q,
+                    content: data
+                });
                 block_emit_idx++;
                 if (block_emit_idx > n_ingestors_per_queue) {
                     block_emit_idx = 1;
                 }
             }
-
             local_block_count++;
         }
 
@@ -230,12 +248,11 @@ async function processBlock(res, block, traces, deltas) {
                     for (const uniqueAction of _finalTraces) {
                         const payload = Buffer.from(JSON.stringify(uniqueAction));
                         if (process.env.ENABLE_INDEXING === 'true') {
-                            // Distribute actions to indexer queues
                             const q = index_queue_prefix + "_actions:" + (act_emit_idx);
-                            const status = ch.sendToQueue(q, payload);
-                            if (!status) {
-                                // console.log('Action Indexing:', status);
-                            }
+                            preIndexingQueue.push({
+                                queue: q,
+                                content: payload
+                            });
                             act_emit_idx++;
                             if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
                                 act_emit_idx = 1;
@@ -483,7 +500,10 @@ async function processDeltas(deltas, block_num) {
                         abi: jsonABIString
                     };
                     const q = index_queue_prefix + "_abis:1";
-                    ch.sendToQueue(q, Buffer.from(JSON.stringify(new_abi_object)));
+                    preIndexingQueue.push({
+                        queue: q,
+                        content: Buffer.from(JSON.stringify(new_abi_object))
+                    });
                     process.send({
                         event: 'save_abi',
                         data: new_abi_object
@@ -731,10 +751,10 @@ async function storeVoter(data) {
 
     if (process.env.ENABLE_INDEXING === 'true') {
         const q = index_queue_prefix + "_table_voters:" + (tbl_vote_emit_idx);
-        const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(voterDoc)));
-        if (!status) {
-            // console.log('Voter Indexing:', status);
-        }
+        preIndexingQueue.push({
+            queue: q,
+            content: Buffer.from(JSON.stringify(voterDoc))
+        });
         tbl_vote_emit_idx++;
         if (tbl_vote_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
             tbl_vote_emit_idx = 1;
@@ -759,10 +779,10 @@ async function storeAccount(data) {
 
     if (process.env.ENABLE_INDEXING === 'true') {
         const q = index_queue_prefix + "_table_accounts:" + (tbl_acc_emit_idx);
-        const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(accountDoc)));
-        if (!status) {
-            // console.log('Account Indexing:', status);
-        }
+        preIndexingQueue.push({
+            queue: q,
+            content: Buffer.from(JSON.stringify(accountDoc))
+        });
         tbl_acc_emit_idx++;
         if (tbl_acc_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
             tbl_acc_emit_idx = 1;
@@ -803,10 +823,10 @@ async function processTableDelta(data, block_num) {
 
         if (process.env.ENABLE_INDEXING === 'true' && allowIndex && process.env.INDEX_DELTAS === 'true') {
             const q = index_queue_prefix + "_deltas:" + (delta_emit_idx);
-            const status = ch.sendToQueue(q, Buffer.from(JSON.stringify(data)));
-            if (!status) {
-                // console.log('Delta Indexing:', status);
-            }
+            preIndexingQueue.push({
+                queue: q,
+                content: Buffer.from(JSON.stringify(data))
+            });
             delta_emit_idx++;
             if (delta_emit_idx > n_ingestors_per_queue) {
                 delta_emit_idx = 1;
@@ -884,6 +904,50 @@ async function getAbiAtBlock(code, block_num) {
     }
 }
 
+function assertQueues() {
+    if (ch) {
+        ch_ready = true;
+        if (preIndexingQueue.paused) {
+            preIndexingQueue.resume();
+        }
+        ch.on('close', () => {
+            ch_ready = false;
+            preIndexingQueue.pause();
+        });
+    }
+
+    // input
+    for (let i = 0; i < n_deserializers; i++) {
+        ch.assertQueue(queue + ":" + (i + 1), {
+            durable: true
+        });
+    }
+
+    // output
+    index_queues.forEach((q) => {
+        let n = n_ingestors_per_queue;
+        if (q.type === 'abi') n = 1;
+        let qIdx = 0;
+        for (let i = 0; i < n; i++) {
+            let m = 1;
+            if (q.type === 'action') m = action_indexing_ratio;
+            for (let j = 0; j < m; j++) {
+                ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: true});
+                qIdx++;
+            }
+        }
+    });
+}
+
+function initConsumer() {
+    if (ch_ready) {
+        ch.prefetch(deserializerPrefecth);
+        ch.consume(process.env['worker_queue'], (data) => {
+            consumerQueue.push(data);
+        });
+    }
+}
+
 async function run() {
     cachedMap = JSON.parse(await getAsync(process.env.CHAIN + ":" + 'abi_cache'));
     rpc = connectRpc();
@@ -900,28 +964,13 @@ async function run() {
     client = elasticsearchConnect();
 
     // Connect to RabbitMQ (amqplib)
-    [ch, cch] = await amqpConnect();
-
-    // Assert stage 1
-    for (let i = 0; i < n_deserializers; i++) {
-        ch.assertQueue(queue + ":" + (i + 1), {
-            durable: true
-        });
-    }
-
-    index_queues.forEach((q) => {
-        let n = n_ingestors_per_queue;
-        if (q.type === 'abi') n = 1;
-        let qIdx = 0;
-        for (let i = 0; i < n; i++) {
-            let m = 1;
-            if (q.type === 'action') m = action_indexing_ratio;
-            for (let j = 0; j < m; j++) {
-                ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: true});
-                qIdx++;
-            }
-        }
+    [ch, cch] = await amqpConnect((channels) => {
+        [ch, cch] = channels;
+        assertQueues();
+        initConsumer();
     });
+
+    assertQueues();
 
     process.on('message', (msg) => {
         if (msg.event === 'initialize_abi') {
@@ -930,10 +979,7 @@ async function run() {
             types = Serialize.getTypesFromAbi(initialTypes, abi);
             abi.tables.map(table => tables.set(table.name, table.type));
             // console.log('setting up deserializer on ' + process.env['worker_queue']);
-            ch.prefetch(dSprefecthCount);
-            ch.consume(process.env['worker_queue'], (data) => {
-                consumerQueue.push(data);
-            });
+            initConsumer();
         }
         if (msg.event === 'connect_ws') {
             allowStreaming = true;

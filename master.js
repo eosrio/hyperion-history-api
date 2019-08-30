@@ -229,8 +229,10 @@ async function main() {
                     console.log(`No blocks processed! Indexer will stop in ${auto_stop - (tScale*idle_count)} seconds!`);
                 }
             }
-
         } else {
+            if(idle_count > 1) {
+                console.log('Processing resumed!');
+            }
             idle_count = 0;
         }
 

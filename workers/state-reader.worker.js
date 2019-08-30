@@ -14,6 +14,7 @@ const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
 
 let ch, api, abi, ws, types, cch, rpc;
+let cch_ready = false;
 let tables = new Map();
 let chainID = null;
 let local_block_num = 0;
@@ -222,37 +223,41 @@ function recursiveDistribute(data, channel, cb) {
             qStatusMap[q] = true;
         }
         if (qStatusMap[q] === true) {
-            const d = data.pop();
-            const result = channel.sendToQueue(q, d, {
-                persistent: true,
-                mandatory: true,
-            }, function (err) {
-                if (err !== null) {
-                    console.log('Message nacked!');
-                    console.log(err);
-                } else {
-                    process.send({event: 'read_block'});
+            if(cch_ready) {
+                const d = data.pop();
+                const result = channel.sendToQueue(q, d, {
+                    persistent: true,
+                    mandatory: true,
+                }, function (err) {
+                    if (err !== null) {
+                        console.log('Message nacked!');
+                        console.log(err.message);
+                    } else {
+                        process.send({event: 'read_block'});
+                    }
+                });
+                local_distributed_count++;
+                currentIdx++;
+                if (currentIdx > n_deserializers) {
+                    currentIdx = 1;
                 }
-            });
-            local_distributed_count++;
-            currentIdx++;
-            if (currentIdx > n_deserializers) {
-                currentIdx = 1;
-            }
-            if (result) {
-                if (data.length > 0) {
-                    recursiveDistribute(data, channel, cb);
+                if (result) {
+                    if (data.length > 0) {
+                        recursiveDistribute(data, channel, cb);
+                    } else {
+                        cb();
+                    }
                 } else {
-                    cb();
+                    // Send failed
+                    qStatusMap[q] = false;
+                    drainCount++;
+                    // console.log(`[${process.env['worker_id']}]:[${drainCount}] Block with ${d.length} bytes waiting for queue [${q}] to drain!`);
+                    setTimeout(() => {
+                        recursiveDistribute(data, channel, cb);
+                    }, 500);
                 }
             } else {
-                // Send failed
-                qStatusMap[q] = false;
-                drainCount++;
-                // console.log(`[${process.env['worker_id']}]:[${drainCount}] Block with ${d.length} bytes waiting for queue [${q}] to drain!`);
-                setTimeout(() => {
-                    recursiveDistribute(data, channel, cb);
-                }, 500);
+                console.log('channel is not ready!');
             }
         } else {
             console.log(`waiting for [${q}] to drain!`);
@@ -337,8 +342,17 @@ function assertQueues() {
             durable: true
         });
         ch.on('drain', function () {
+            console.log('drain...');
             qStatusMap[queue + ":" + (i + 1)] = true;
         })
+    }
+    if (cch) {
+        cch_ready = true;
+        stageOneDistQueue.resume();
+        cch.on('close', () => {
+            cch_ready = false;
+            stageOneDistQueue.pause();
+        });
     }
 }
 
@@ -367,7 +381,10 @@ async function run() {
     api = createNulledApi(chainID);
 
     // Connect to RabbitMQ (amqplib)
-    [ch, cch] = await amqpConnect();
+    [ch, cch] = await amqpConnect((channels) => {
+        [ch, cch] = channels;
+        assertQueues();
+    });
 
     // Assert stage 1
     assertQueues();
