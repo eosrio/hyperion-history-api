@@ -18,6 +18,7 @@ module.exports = {
                 NODEOS_WS: 'ws://127.0.0.1:8080',
                 START_ON: 0,
                 STOP_ON: 0,
+                AUTO_STOP: 0,
                 REWRITE: 'false',
                 BATCH_SIZE: 5000,
                 QUEUE_THRESH: 8000,

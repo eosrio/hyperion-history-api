@@ -179,6 +179,7 @@ async function main() {
     let indexedObjects = 0;
     let deserializedActions = 0;
     let lastProcessedBlockNum = 0;
+    let noBlocksProccessedCnt = 0;
     let total_read = 0;
     let total_blocks = 0;
     let total_indexed_blocks = 0;
@@ -210,6 +211,21 @@ async function main() {
 
         if (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0) {
             allowShutdown = true;
+
+            if (pushedBlocks === 0) {
+                noBlocksProccessedCnt++;
+
+                if (process.env.AUTO_STOP
+                    && parseInt(process.env.AUTO_STOP, 10) > 0
+                    && parseInt(process.env.AUTO_STOP, 10) <= noBlocksProccessedCnt
+                ) {
+                    console.log("Reached limit for no blocks processed, stopping now...");
+                    rClient.set('abi_cache', JSON.stringify(abiCacheMap));
+                    process.exit(1);
+                }
+            }
+        } else {
+            noBlocksProccessedCnt = 0;
         }
 
         // reset counters
