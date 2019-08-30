@@ -133,6 +133,7 @@ function requestBlockRange(start, finish) {
 
 function processFirstABI(data) {
     abi = JSON.parse(data);
+    // console.log(abi.structs[3].fields);
     types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
     abi.tables.map(table => tables.set(table.name, table.type));
     process.send({
@@ -190,6 +191,7 @@ async function onMessage(data) {
                         return 1;
                     }
                 } else {
+                    // console.log('no block from ' + process.env['worker_role']);
                     if (process.env['worker_role'] === 'reader') {
                         if (local_distributed_count === range_size) {
                             signalReaderCompletion();
@@ -210,10 +212,10 @@ async function onMessage(data) {
 }
 
 function distribute(data, cb) {
-    recusiveDistribute(data, cch, cb);
+    recursiveDistribute(data, cch, cb);
 }
 
-function recusiveDistribute(data, channel, cb) {
+function recursiveDistribute(data, channel, cb) {
     if (data.length > 0) {
         const q = queue + ":" + currentIdx;
         if (!qStatusMap[q]) {
@@ -239,7 +241,7 @@ function recusiveDistribute(data, channel, cb) {
             }
             if (result) {
                 if (data.length > 0) {
-                    recusiveDistribute(data, channel, cb);
+                    recursiveDistribute(data, channel, cb);
                 } else {
                     cb();
                 }
@@ -249,13 +251,14 @@ function recusiveDistribute(data, channel, cb) {
                 drainCount++;
                 // console.log(`[${process.env['worker_id']}]:[${drainCount}] Block with ${d.length} bytes waiting for queue [${q}] to drain!`);
                 setTimeout(() => {
-                    recusiveDistribute(data, channel, cb);
+                    recursiveDistribute(data, channel, cb);
                 }, 500);
             }
         } else {
             console.log(`waiting for [${q}] to drain!`);
         }
     } else {
+        console.log('no data');
         cb();
     }
 }
