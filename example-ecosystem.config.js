@@ -67,7 +67,9 @@ module.exports = {
                 ES_HOST: '127.0.0.1:9200',
                 ES_USER: '',
                 ES_PASS: '',
-                CHAIN: 'eos'
+                CHAIN: 'eos',
+                ENABLE_CACHING: 'true',
+                CACHE_LIFE: 30
             }
         }
     ]

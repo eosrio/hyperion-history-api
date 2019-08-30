@@ -56,6 +56,7 @@ exports.GET = {
                 "query_time": {
                     type: "number"
                 },
+                "cached": {type: "boolean"},
                 "lib": {
                     type: "number"
                 },

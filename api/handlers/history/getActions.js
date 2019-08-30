@@ -11,13 +11,27 @@ const route = '/get_actions';
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
+const enable_caching = process.env.ENABLE_CACHING === 'true';
+let cache_life = 30;
+if(process.env.CACHE_LIFE) {
+    cache_life = parseInt(process.env.CACHE_LIFE);
+}
+
 async function getActions(fastify, request) {
     const t0 = Date.now();
     const {redis, elastic} = fastify;
-    const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
-    if (cachedResponse) {
-        return cachedResponse;
+
+    let cachedResponse, hash;
+    if(enable_caching) {
+        [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
+        if (cachedResponse) {
+            cachedResponse = JSON.parse(cachedResponse);
+            cachedResponse['query_time'] = Date.now() - t0;
+            cachedResponse['cached'] = true;
+            return cachedResponse;
+        }
     }
+
     const should_array = [];
     for (const entry of terms) {
         const tObj = {term: {}};
@@ -143,6 +157,7 @@ async function getActions(fastify, request) {
     const results = pResults[1];
     const response = {
         query_time: null,
+        cached: false,
         lib: pResults[0].last_irreversible_block_num,
         total: results['body']['hits']['total'],
         actions: []
@@ -160,7 +175,9 @@ async function getActions(fastify, request) {
         }
     }
     response['query_time'] = Date.now() - t0;
-    redis.set(hash, JSON.stringify(response), 'EX', 30);
+    if(enable_caching) {
+        redis.set(hash, JSON.stringify(response), 'EX', cache_life);
+    }
     return response;
 }
 

@@ -17,6 +17,7 @@ exports.GET = {
             type: 'object',
             properties: {
                 "query_time": {type: "number"},
+                "cached": {type: "boolean"},
                 "account": {type: "string"},
                 "tokens": {
                     type: "array",

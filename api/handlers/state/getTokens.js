@@ -7,17 +7,30 @@ const {JsonRpc} = require('eosjs');
 const eos_endpoint = process.env.NODEOS_HTTP;
 const rpc = new JsonRpc(eos_endpoint, {fetch});
 
+const enable_caching = process.env.ENABLE_CACHING === 'true';
+let cache_life = 30;
+if(process.env.CACHE_LIFE) {
+    cache_life = parseInt(process.env.CACHE_LIFE);
+}
+
 async function getTokens(fastify, request) {
     const t0 = Date.now();
     const {redis, elastic} = fastify;
-    const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
 
-    if (cachedResponse) {
-        return cachedResponse;
+    let cachedResponse, hash;
+    if(enable_caching) {
+        [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
+        if (cachedResponse) {
+            cachedResponse = JSON.parse(cachedResponse);
+            cachedResponse['query_time'] = Date.now() - t0;
+            cachedResponse['cached'] = true;
+            return cachedResponse;
+        }
     }
 
     const response = {
         query_time: null,
+        cached: false,
         'account': request.query.account,
         'tokens': []
     };
@@ -70,7 +83,9 @@ async function getTokens(fastify, request) {
         }
     }
     response['query_time'] = Date.now() - t0;
-    redis.set(hash, JSON.stringify(response), 'EX', 30);
+    if(enable_caching) {
+        redis.set(hash, JSON.stringify(response), 'EX', cache_life);
+    }
     return response;
 }
 
