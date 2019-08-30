@@ -156,7 +156,7 @@ async function main() {
                     name: `${queue_prefix}-${index}`
                 });
             } else {
-                console.log(`WARNING! Index ${new_index} already created!`);
+                console.log(`Index ${new_index} already created!`);
             }
         }
     }
@@ -179,18 +179,24 @@ async function main() {
     let indexedObjects = 0;
     let deserializedActions = 0;
     let lastProcessedBlockNum = 0;
-    let noBlocksProccessedCnt = 0;
     let total_read = 0;
     let total_blocks = 0;
     let total_indexed_blocks = 0;
     let total_actions = 0;
-    let log_interval = 5000;
     let total_range = 0;
     let allowShutdown = false;
     let allowMoreReaders = true;
     let maxBatchSize = parseInt(process.env.BATCH_SIZE, 10);
 
+    // Auto-stop
+    let auto_stop = 0;
+    let idle_count = 0;
+    if (process.env.AUTO_STOP) {
+        auto_stop = parseInt(process.env.AUTO_STOP, 10);
+    }
+
     // Monitoring
+    let log_interval = 5000;
     setInterval(() => {
         const _workers = Object.keys(cluster.workers).length;
         const tScale = (log_interval / 1000);
@@ -212,20 +218,20 @@ async function main() {
         if (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0) {
             allowShutdown = true;
 
+            // Auto-Stop
             if (pushedBlocks === 0) {
-                noBlocksProccessedCnt++;
-
-                if (process.env.AUTO_STOP
-                    && parseInt(process.env.AUTO_STOP, 10) > 0
-                    && parseInt(process.env.AUTO_STOP, 10) <= noBlocksProccessedCnt
-                ) {
+                idle_count++;
+                if (auto_stop > 0 && (tScale * idle_count) >= auto_stop) {
                     console.log("Reached limit for no blocks processed, stopping now...");
                     rClient.set('abi_cache', JSON.stringify(abiCacheMap));
                     process.exit(1);
+                } else {
+                    console.log(`No blocks processed! Indexer will stop in ${auto_stop - (tScale*idle_count)} seconds!`);
                 }
             }
+
         } else {
-            noBlocksProccessedCnt = 0;
+            idle_count = 0;
         }
 
         // reset counters
