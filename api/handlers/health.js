@@ -1,8 +1,8 @@
 const amqp = require('amqplib');
 const RedisStatus = require('redis-status')({
   name: 'Redis',
-  port: 6379,
-  host: 'localhost'
+  port: process.env.REDIS_PORT,
+  host: process.env.REDIS_HOST
 })
 
 function createHealth (name, status) {
