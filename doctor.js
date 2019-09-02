@@ -18,8 +18,8 @@ async function countMissingBlocks() {
             sort: [{block_num: {order: "desc"}}]
         }
     });
-    const block_count = results['hits'].total.value;
-    const latest_block = results['hits']['hits'][0]['_source']['block_num'];
+    const block_count = results['body']['hits'].total.value;
+    const latest_block = results['body']['hits']['hits'][0]['_source']['block_num'];
     console.log('Indexed block count = ' + block_count);
     console.log('Last Indexed block = ' + latest_block);
     console.log('Missing blocks = ' + (latest_block - block_count));
@@ -45,13 +45,13 @@ async function createScroller(missingArray) {
             sort: [{block_num: {order: "asc"}}]
         }
     });
-    const scrollId = response['_scroll_id'];
+    const scrollId = response['body']['_scroll_id'];
     await checkBlocks(response, missingArray);
     return scrollId;
 }
 
 async function checkBlocks(response, missingArray) {
-    for (const block of response.hits.hits) {
+    for (const block of response['body'].hits.hits) {
         if (block._source.block_num !== last_block + 1) {
             const range_start = last_block + 1;
             const range_end = block._source.block_num - 1;
@@ -71,7 +71,7 @@ async function runScroller(scroll_id, missingArray) {
         scrollId: scroll_id,
         scroll: '30s'
     });
-    if (next_resp['hits']['hits'].length > 0) {
+    if (next_resp['body']['hits']['hits'].length > 0) {
         await checkBlocks(next_resp, missingArray);
         await runScroller(scroll_id, missingArray);
     }
