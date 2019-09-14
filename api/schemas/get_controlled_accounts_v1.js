@@ -3,7 +3,7 @@ exports.POST = {
     summary: 'get controlled accounts by controlling accounts',
     tags: ['state'],
     body: {
-        type: 'object',
+        type: ['object','string'],
         properties: {
             "controlling_account": {
                 description: 'controlling account',

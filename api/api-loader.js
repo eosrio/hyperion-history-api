@@ -18,7 +18,7 @@ fastify.register(require('fastify-rate-limit'), {
     max: 1000,
     whitelist: ["35.230.63.54"],
     timeWindow: '1 minute',
-    redis: new Redis()
+    redis: new Redis(process.env.REDIS_PORT, process.env.REDIS_HOST )
 });
 
 fastify.register(require('fastify-oas'), openApi.options);

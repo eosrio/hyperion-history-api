@@ -3,7 +3,7 @@ exports.POST = {
     summary: 'get accounts by public key',
     tags: ['state'],
     body: {
-        type: 'object',
+        type: ['object','string'],
         properties: {
             "public_key": {
                 description: 'public key',
