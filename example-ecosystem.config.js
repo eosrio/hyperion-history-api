@@ -18,6 +18,7 @@ module.exports = {
                 REDIS_PORT: '6379',
                 NODEOS_HTTP: 'http://127.0.0.1:8888',
                 NODEOS_WS: 'ws://127.0.0.1:8080',
+                PARSER: '1.8',
                 START_ON: 0,
                 STOP_ON: 0,
                 AUTO_STOP: 0,

@@ -49,6 +49,11 @@ const consumerQueue = async.cargo(async.ensureAsync(processPayload), deserialize
 
 const preIndexingQueue = async.queue(async.ensureAsync(sendToIndexQueue), 1);
 
+// Load Modules
+const HyperionModuleLoader = require('../modules/index').HyperionModuleLoader;
+
+const mLoader = new HyperionModuleLoader(process.env.PARSER);
+
 function sendToIndexQueue(data, cb) {
     if (ch_ready) {
         ch.sendToQueue(data.queue, data.content);
@@ -368,6 +373,9 @@ async function processAction(ts, action, trx_id, block_num, prod, _actDataArray,
 }
 
 function attachActionExtras(action) {
+
+    mLoader.processActionData(action);
+
     // Transfer actions
     if (action['act']['name'] === 'transfer') {
 
@@ -396,23 +404,6 @@ function attachActionExtras(action) {
             }
         }
 
-    } else if (action['act']['name'] === 'newaccount' && action['act']['account'] === 'eosio') {
-
-        let name = null;
-        if (action['act']['data']['newact']) {
-            name = action['act']['data']['newact'];
-        } else if (action['act']['data']['name']) {
-            name = action['act']['data']['name'];
-            delete action['act']['data']['name'];
-        }
-        if (name) {
-            action['@newaccount'] = {
-                active: action['act']['data']['active'],
-                owner: action['act']['data']['owner'],
-                newact: name
-            }
-        }
-        // await handleNewAccount(action['act']['data'], action, ts);
     } else if (action['act']['name'] === 'updateauth' && action['act']['account'] === 'eosio') {
         // await handleUpdateAuth(action['act']['data'], action, ts);
         const _auth = action['act']['data']['auth'];
