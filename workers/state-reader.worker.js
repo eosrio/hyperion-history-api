@@ -122,6 +122,7 @@ function requestBlocks(start) {
     const request = baseRequest;
     request.start_block_num = parseInt(first_block > 0 ? first_block : '1', 10);
     request.end_block_num = parseInt(last_block, 10);
+    // console.log(request);
     send(['get_blocks_request_v0', request]);
 }
 
@@ -129,12 +130,12 @@ function requestBlockRange(start, finish) {
     const request = baseRequest;
     request.start_block_num = parseInt(start, 10);
     request.end_block_num = parseInt(finish, 10);
+    // console.log(request);
     send(['get_blocks_request_v0', request]);
 }
 
 function processFirstABI(data) {
     abi = JSON.parse(data);
-    // console.log(abi.structs[3].fields);
     types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
     abi.tables.map(table => tables.set(table.name, table.type));
     process.send({
@@ -185,14 +186,14 @@ async function onMessage(data) {
                     if (blk_num > local_block_num) {
                         local_block_num = blk_num;
                     }
-                    stageOneDistQueue.push(data);
-                    if (local_distributed_count === range_size) {
-                        signalReaderCompletion();
-                    } else {
+                    if (res['block'] || res['traces'] || res['deltas']) {
+                        stageOneDistQueue.push(data);
                         return 1;
+                    } else {
+                        return 0;
                     }
                 } else {
-                    // console.log('no block from ' + process.env['worker_role']);
+                    console.log('no block from ' + process.env['worker_role']);
                     if (process.env['worker_role'] === 'reader') {
                         if (local_distributed_count === range_size) {
                             signalReaderCompletion();
@@ -223,7 +224,7 @@ function recursiveDistribute(data, channel, cb) {
             qStatusMap[q] = true;
         }
         if (qStatusMap[q] === true) {
-            if(cch_ready) {
+            if (cch_ready) {
                 const d = data.pop();
                 const result = channel.sendToQueue(q, d, {
                     persistent: true,
@@ -237,6 +238,11 @@ function recursiveDistribute(data, channel, cb) {
                     }
                 });
                 local_distributed_count++;
+                // console.log(`${local_distributed_count}/${range_size}`);
+                if (local_distributed_count === range_size) {
+                    signalReaderCompletion();
+                }
+
                 currentIdx++;
                 if (currentIdx > n_deserializers) {
                     currentIdx = 1;

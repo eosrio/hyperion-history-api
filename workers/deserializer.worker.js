@@ -334,6 +334,7 @@ async function processAction(ts, action, trx_id, block_num, prod, _actDataArray,
         action['act'] = ds_act[0];
         attachActionExtras(action);
     } catch (e) {
+        console.log(e);
         process.send({
             t: 'ds_fail',
             v: {gs: action['receipt']['global_sequence']}
