@@ -20,13 +20,13 @@ fastify.register(require('fastify-elasticsearch'), {
 });
 
 
-fastify.register(require('fastify-redis'), {host: '127.0.0.1'});
+fastify.register(require('fastify-redis'), {host: process.env.REDIS_HOST, port: process.env.REDIS_PORT});
 
 fastify.register(require('fastify-rate-limit'), {
-    max: 1000,
+    max: 5000,
     whitelist: [],
     timeWindow: '1 minute',
-    redis: new Redis()
+    redis: new Redis(process.env.REDIS_PORT, process.env.REDIS_HOST)
 });
 
 fastify.register(require('fastify-oas'), openApi.options);

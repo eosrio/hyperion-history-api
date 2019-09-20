@@ -14,6 +14,8 @@ module.exports = {
                 ES_HOST: '127.0.0.1:9200',
                 ES_USER: '',
                 ES_PASS: '',
+                REDIS_HOST: '127.0.0.1',
+                REDIS_PORT: '6379',
                 NODEOS_HTTP: 'http://127.0.0.1:8888',
                 NODEOS_WS: 'ws://127.0.0.1:8080',
                 START_ON: 0,
