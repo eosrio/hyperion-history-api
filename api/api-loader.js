@@ -32,6 +32,13 @@ fastify.register(require('fastify-rate-limit'), {
 fastify.register(require('fastify-oas'), openApi.options);
 
 fastify.register(AutoLoad, {
+    dir: path.join(__dirname, 'handlers', 'v1-history'),
+    options: {
+        prefix: '/v1/history'
+    }
+});
+
+fastify.register(AutoLoad, {
     dir: path.join(__dirname, 'handlers', 'history'),
     options: {
         prefix: '/v2/history'
@@ -44,6 +51,8 @@ fastify.register(AutoLoad, {
         prefix: '/v2/state'
     }
 });
+
+fastify.register(require('./handlers/health'));
 
 fastify.register(require('fastify-cors'));
 

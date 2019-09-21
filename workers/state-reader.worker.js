@@ -386,7 +386,7 @@ async function run() {
     chainID = chain_data.chain_id;
     api = createNulledApi(chainID);
 
-    // Connect to RabbitMQ (amqplib)
+    // Connect to RabbitMQ (amqplib) ch = Channel; cch = ConfirmChannel
     [ch, cch] = await amqpConnect((channels) => {
         [ch, cch] = channels;
         assertQueues();

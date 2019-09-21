@@ -8,7 +8,7 @@ module.exports = {
             kill_timeout: 3600,
             env: {
                 AMQP_HOST: '127.0.0.1:5672',
-                AMQP_API:  '127.0.0.1:15672',
+                AMQP_API: '127.0.0.1:15672',
                 AMQP_USER: 'input',
                 AMQP_PASS: '',
                 ES_HOST: '127.0.0.1:9200',
@@ -64,6 +64,10 @@ module.exports = {
             exp_backoff_restart_delay: 100,
             watch: ["api"],
             env: {
+                AMQP_HOST: '127.0.0.1:5672',
+                AMQP_API: '127.0.0.1:15672',
+                AMQP_USER: 'input',
+                AMQP_PASS: '',
                 SERVER_PORT: '7000',
                 SERVER_NAME: 'example.com',
                 SERVER_ADDR: '127.0.0.1',
