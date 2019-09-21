@@ -4,9 +4,13 @@ const path = require('path');
 class HyperionModuleLoader {
 
     #handledActions = new Map();
+    actionParser;
 
     constructor() {
         this.loadActionHandlers();
+        const parsers = require(path.join(__dirname, 'parsers', process.env.PARSER + "-parser"));
+        this.actionParser = parsers.actionParser;
+        this.messageParser = parsers.messageParser;
     }
 
     processActionData(action) {
@@ -14,7 +18,6 @@ class HyperionModuleLoader {
             const _c = this.#handledActions.get(action.act.account);
             if (_c.has(action.act.name)) {
                 _c.get(action.act.name)(action);
-                console.log(action);
             }
         }
     }

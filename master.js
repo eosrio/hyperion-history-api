@@ -7,7 +7,6 @@ const pmx = require('pmx');
 const doctor = require('./doctor');
 
 const {elasticsearchConnect} = require("./connections/elasticsearch");
-const {checkQueueSize} = require("./connections/rabbitmq");
 
 const {
     getLastIndexedBlock,
@@ -134,7 +133,7 @@ async function main() {
 
     if (process.env.CREATE_INDICES !== 'false' && process.env.CREATE_INDICES) {
         // Create indices
-        let version = '';
+        let version;
         if (process.env.CREATE_INDICES === 'true') {
             version = 'v1';
         } else {
@@ -226,11 +225,11 @@ async function main() {
                     rClient.set('abi_cache', JSON.stringify(abiCacheMap));
                     process.exit(1);
                 } else {
-                    console.log(`No blocks processed! Indexer will stop in ${auto_stop - (tScale*idle_count)} seconds!`);
+                    console.log(`No blocks processed! Indexer will stop in ${auto_stop - (tScale * idle_count)} seconds!`);
                 }
             }
         } else {
-            if(idle_count > 1) {
+            if (idle_count > 1) {
                 console.log('Processing resumed!');
             }
             idle_count = 0;
@@ -564,7 +563,7 @@ async function main() {
         }, 1000);
     }
 
-    pmx.action('stop', (reply) => {
+    pmx['action']('stop', (reply) => {
         allowMoreReaders = false;
         console.info('Stop signal received. Shutting down readers immediately!');
         console.log('Waiting for queues...');

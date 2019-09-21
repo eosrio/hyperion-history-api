@@ -51,8 +51,9 @@ const preIndexingQueue = async.queue(async.ensureAsync(sendToIndexQueue), 1);
 
 // Load Modules
 const HyperionModuleLoader = require('../modules/index').HyperionModuleLoader;
-
 const mLoader = new HyperionModuleLoader(process.env.PARSER);
+
+const common = {deserializeActionsAtBlock, attachActionExtras, processBlock};
 
 function sendToIndexQueue(data, cb) {
     if (ch_ready) {
@@ -83,49 +84,7 @@ function debugLog(msg) {
 
 // Stage 2 - Deserialization function
 async function processMessages(messages) {
-    for (const message of messages) {
-        const ds_msg = deserialize('result', message.content, txEnc, txDec, types);
-        const res = ds_msg[1];
-        let block, traces = [], deltas = [];
-        if (res.block && res.block.length) {
-            block = deserialize('signed_block', res.block, txEnc, txDec, types);
-            if (block === null) {
-                console.log(res);
-            }
-        }
-        if (res['traces'] && res['traces'].length) {
-            traces = deserialize('transaction_trace[]', res['traces'], txEnc, txDec, types);
-        }
-        if (res['deltas'] && res['deltas'].length) {
-            deltas = deserialize('table_delta[]', res['deltas'], txEnc, txDec, types);
-        }
-        let result;
-        try {
-            const t0 = Date.now();
-            result = await processBlock(res, block, traces, deltas);
-            const elapsedTime = Date.now() - t0;
-            if (elapsedTime > 10) {
-                debugLog(`[WARNING] Deserialization time for block ${result['block_num']} was too high, time elapsed ${elapsedTime}ms`);
-            }
-            if (result) {
-                process.send({
-                    event: 'consumed_block',
-                    block_num: result['block_num']
-                });
-            } else {
-                console.log('Empty message. No block');
-                console.log(_.omit(res, ['block', 'traces', 'deltas']));
-            }
-            if (ch_ready) {
-                ch.ack(message);
-            }
-        } catch (e) {
-            console.log(e);
-            if (ch_ready) {
-                ch.nack(message);
-            }
-        }
-    }
+    await mLoader.messageParser(common, messages, types, ch, ch_ready);
 }
 
 // Stage 2 - Block handler
@@ -189,18 +148,11 @@ async function processBlock(res, block, traces, deltas) {
                     const t3 = Date.now();
                     for (const action_trace of action_traces) {
                         if (action_trace[0] === 'action_trace_v0') {
+
                             const action = action_trace[1];
-                            if (action_blacklist.has(`${queue_prefix}::${action['act']['account']}::*`)) {
-                                // blacklisted
-                                // console.log(`${action['act']['account']} account blacklisted (action: ${action['act']['name']})`);
-                            } else if (action_blacklist.has(`${queue_prefix}::${action['act']['account']}::${action['act']['name']}`)) {
-                                // blacklisted
-                                // console.log(`${queue_prefix}::${action['act']['account']}::${action['act']['name']} action blacklisted`);
-                            } else {
-                                const status = await processAction(ts, action, trx_id, block_num, producer, _actDataArray, _processedTraces, transaction_trace);
-                                if (status) {
-                                    action_count++;
-                                }
+                            const status = await mLoader.actionParser(common, ts, action, trx_id, block_num, producer, _actDataArray, _processedTraces, transaction_trace);
+                            if (status) {
+                                action_count++;
                             }
                         }
                     }
@@ -325,51 +277,6 @@ async function deserializeActionsAtBlock(actions, block_num) {
         return Serialize.deserializeAction(
             contract, account, name, authorization, data, txEnc, txDec);
     }));
-}
-
-async function processAction(ts, action, trx_id, block_num, prod, _actDataArray, _processedTraces, full_trace) {
-    let act = action['act'];
-    const original_act = Object.assign({}, act);
-    act.data = new Uint8Array(Object.values(act.data));
-    const actions = [];
-    actions.push(act);
-    let ds_act;
-    try {
-        ds_act = await deserializeActionsAtBlock(actions, block_num);
-        action['act'] = ds_act[0];
-        attachActionExtras(action);
-    } catch (e) {
-        console.log(e);
-        process.send({
-            t: 'ds_fail',
-            v: {gs: action['receipt']['global_sequence']}
-        });
-        action['act'] = original_act;
-        action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
-    }
-    process.send({event: 'ds_action'});
-    action['@timestamp'] = ts;
-    action['block_num'] = block_num;
-    action['producer'] = prod;
-    action['trx_id'] = trx_id;
-    if (action['account_ram_deltas'].length === 0) {
-        delete action['account_ram_deltas'];
-    }
-    if (action['console'] === '') {
-        delete action['console'];
-    }
-    if (action['except'] === null) {
-        if (!action['receipt']) {
-            console.log(full_trace.status);
-            console.log(action);
-        }
-        action['receipt'] = action['receipt'][1];
-        action['global_sequence'] = parseInt(action['receipt']['global_sequence'], 10);
-        _processedTraces.push(action);
-    } else {
-        console.log(action);
-    }
-    return true;
 }
 
 function attachActionExtras(action) {
