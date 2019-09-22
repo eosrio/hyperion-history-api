@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
-const {amqpConnect} = require("../connections/rabbitmq");
+const {ConnectionManager} = require('../connections/manager');
+const manager = new ConnectionManager();
 
 let wss;
 let channel;
@@ -34,7 +35,11 @@ function onConsume(msg) {
 }
 
 async function run() {
-    [channel,] = await amqpConnect();
+
+    [channel,] = await manager.createAMQPChannels((channels) => {
+        [channel,] = channels;
+    });
+
     const queue_prefix = process.env.CHAIN;
     const q = queue_prefix + ':stream';
     channel.assertQueue(q);

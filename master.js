@@ -1,12 +1,11 @@
-const {JsonRpc} = require('eosjs');
-const fetch = require('node-fetch');
 const cluster = require('cluster');
 const fs = require('fs');
-const redis = require('redis');
 const pmx = require('pmx');
-const doctor = require('./doctor');
+const {promisify} = require('util');
+const doctor = require('./modules/doctor');
 
-const {elasticsearchConnect} = require("./connections/elasticsearch");
+const {ConnectionManager} = require('./connections/manager');
+const manager = new ConnectionManager();
 
 const {
     getLastIndexedBlock,
@@ -19,8 +18,7 @@ const {
     onSaveAbi
 } = require("./helpers/functions");
 
-const {promisify} = require('util');
-let client;
+let client, rClient, rpc;
 let cachedInitABI = null;
 
 const missingRanges = [];
@@ -29,12 +27,11 @@ async function main() {
     // Preview mode - prints only the proposed worker map
     let preview = process.env.PREVIEW === 'true';
 
-    const rClient = redis.createClient({
-        host: process.env.REDIS_HOST,
-        port: process.env.REDIS_PORT
-    });
+    rpc = manager.nodeosJsonRPC;
+    rClient = manager.redisClient;
+    client = manager.elasticsearchClient;
+
     const getAsync = promisify(rClient.get).bind(rClient);
-    client = await elasticsearchConnect();
 
     const n_deserializers = parseInt(process.env.DESERIALIZERS, 10);
     const n_ingestors_per_queue = parseInt(process.env.ES_INDEXERS_PER_QUEUE, 10);
@@ -45,9 +42,6 @@ async function main() {
         // Create a single reader to read the abi struct and quit.
         max_readers = 1;
     }
-
-    const eos_endpoint = process.env.NODEOS_HTTP;
-    const rpc = new JsonRpc(eos_endpoint, {fetch});
 
     const queue_prefix = process.env.CHAIN;
     const {index_queues} = require('./definitions/index-queues');

@@ -1,13 +1,11 @@
+const pmx = require('pmx');
 const async = require('async');
-const {connectRpc} = require("../connections/chain");
 const {Api, Serialize} = require('eosjs');
 const {deserialize, serialize} = require('../helpers/functions');
-const {StateHistorySocket} = require("../connections/state-history");
-const {amqpConnect} = require("../connections/rabbitmq");
-const pmx = require('pmx');
 const {debugLog} = require("../helpers/functions");
 
-const {checkQueueSize} = require("../connections/rabbitmq");
+const {ConnectionManager} = require('../connections/manager');
+const manager = new ConnectionManager();
 
 const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
@@ -342,7 +340,7 @@ function startQueueWatcher() {
         let checkArr = [];
         for (let i = 0; i < n_deserializers; i++) {
             const q = queue + ":" + (i + 1);
-            checkArr.push(checkQueueSize(q));
+            checkArr.push(manager.checkQueueSize(q));
         }
         Promise.all(checkArr).then(data => {
             if (data.some(el => el > process.env.QUEUE_THRESH)) {
@@ -396,13 +394,13 @@ async function run() {
 
     pmx['action']('stop', onPmxStop);
 
-    rpc = connectRpc();
+    rpc = manager.nodeosJsonRPC;
     const chain_data = await rpc.get_info();
     chainID = chain_data.chain_id;
     api = createNulledApi(chainID);
 
     // Connect to RabbitMQ (amqplib) ch = Channel; cch = ConfirmChannel
-    [ch, cch] = await amqpConnect((channels) => {
+    [ch, cch] = await manager.createAMQPChannels((channels) => {
         [ch, cch] = channels;
         assertQueues();
     });
@@ -414,7 +412,7 @@ async function run() {
     startQueueWatcher();
 
     // Connect to StateHistory via WebSocket
-    ship = new StateHistorySocket();
+    ship = manager.shipClient;
     startWS();
 
     // Handle IPC Messages

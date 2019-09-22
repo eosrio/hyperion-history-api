@@ -8,9 +8,11 @@ const {
 } = require("./bulkBuilders");
 const queue_prefix = process.env.CHAIN;
 const prettyjson = require('prettyjson');
-const {elasticsearchConnect} = require("../connections/elasticsearch");
 
-const client = elasticsearchConnect();
+const {ConnectionManager} = require('../connections/manager');
+const manager = new ConnectionManager();
+
+const client = manager.elasticsearchClient;
 
 function ackOrNack(resp, messageMap, channel) {
     for (const item of resp.items) {

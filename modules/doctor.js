@@ -1,4 +1,4 @@
-const {elasticsearchConnect} = require("./connections/elasticsearch");
+const {elasticsearchConnect} = require("../connections/elasticsearch");
 
 let client;
 let total_missing = 0;

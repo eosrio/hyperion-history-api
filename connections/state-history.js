@@ -2,12 +2,14 @@ const WebSocket = require('ws');
 
 class StateHistorySocket {
     #ws;
+    #shipUrl;
 
-    constructor() {
+    constructor(ship_url) {
+        this.#shipUrl = ship_url;
     }
 
     connect(onMessage, onDisconnect, onError) {
-        this.#ws = new WebSocket(process.env.NODEOS_WS, null, {
+        this.#ws = new WebSocket(this.#shipUrl, null, {
             perMessageDeflate: false
         });
         this.#ws.on('open', () => {
@@ -23,7 +25,7 @@ class StateHistorySocket {
             onDisconnect();
         });
         this.#ws.on('error', (err) => {
-            console.log(`${process.env.NODEOS_WS} :: ${err.message}`);
+            console.log(`${this.#shipUrl} :: ${err.message}`);
         });
     }
 

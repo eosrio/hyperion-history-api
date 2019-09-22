@@ -1,10 +1,10 @@
 {
   "name": "hyperion-history",
-  "version": "1.1.8",
-  "description": "",
+  "version": "2.0.0",
+  "description": "Scalable Full History API Solution for EOSIO based blockchains",
   "main": "launcher.js",
   "scripts": {
-    "start:idx": "pm2 start --only Indexer --update-env",
+    "start:indexer": "pm2 start --only Indexer --update-env",
     "start:api": "pm2 start --only API --update-env",
     "logs": "pm2 logs Indexer"
   },

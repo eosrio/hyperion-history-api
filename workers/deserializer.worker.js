@@ -1,21 +1,16 @@
 const {Api, Serialize} = require('eosjs');
-
 const _ = require('lodash');
 const prettyjson = require('prettyjson');
 const {AbiDefinitions} = require("../definitions/abi_def");
-
 const async = require('async');
-const {amqpConnect} = require("../connections/rabbitmq");
-const {connectRpc} = require("../connections/chain");
-const {elasticsearchConnect} = require("../connections/elasticsearch");
 
-const redis = require('redis');
 const {debugLog} = require("../helpers/functions");
 const {promisify} = require('util');
-const rClient = redis.createClient({
-    host: process.env.REDIS_HOST,
-    port: process.env.REDIS_PORT
-});
+
+const {ConnectionManager} = require('../connections/manager');
+const manager = new ConnectionManager();
+
+const rClient = manager.redisClient;
 const getAsync = promisify(rClient.get).bind(rClient);
 
 const txDec = new TextDecoder();
@@ -746,21 +741,21 @@ function initConsumer() {
 
 async function run() {
     cachedMap = JSON.parse(await getAsync(process.env.CHAIN + ":" + 'abi_cache'));
-    rpc = connectRpc();
+    rpc = manager.nodeosJsonRPC;
     const chain_data = await rpc.get_info();
     chainID = chain_data.chain_id;
     api = new Api({
-        "rpc": rpc,
+        rpc,
         signatureProvider: null,
         chainId: chain_data.chain_id,
         textDecoder: txDec,
         textEncoder: txEnc,
     });
 
-    client = elasticsearchConnect();
+    client = manager.elasticsearchClient;
 
     // Connect to RabbitMQ (amqplib)
-    [ch, cch] = await amqpConnect((channels) => {
+    [ch, cch] = await manager.createAMQPChannels((channels) => {
         [ch, cch] = channels;
         assertQueues();
         initConsumer();

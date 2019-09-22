@@ -1,7 +1,9 @@
 const async = require('async');
 const pmx = require("pmx");
-const {amqpConnect} = require("../connections/rabbitmq");
 const {routes} = require("../helpers/elastic-routes");
+
+const {ConnectionManager} = require('../connections/manager');
+const manager = new ConnectionManager();
 
 let ch;
 let ch_ready = false;
@@ -42,7 +44,7 @@ function assertQueues() {
 
 async function run() {
 
-    [ch,] = await amqpConnect((channels) => {
+    [ch,] = await manager.createAMQPChannels((channels) => {
         [ch,] = channels;
         assertQueues();
     });
