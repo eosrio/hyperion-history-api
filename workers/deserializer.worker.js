@@ -12,7 +12,10 @@ const {elasticsearchConnect} = require("../connections/elasticsearch");
 const redis = require('redis');
 const {debugLog} = require("../helpers/functions");
 const {promisify} = require('util');
-const rClient = redis.createClient();
+const rClient = redis.createClient({
+    host: process.env.REDIS_HOST,
+    port: process.env.REDIS_PORT
+});
 const getAsync = promisify(rClient.get).bind(rClient);
 
 const txDec = new TextDecoder();
@@ -373,7 +376,9 @@ async function processContractRow(row, block) {
         try {
             rowData = (tableType).deserialize(row_sb);
         } catch (e) {
-            console.log(e);
+            // console.log(tableType);
+            // console.log(row['value']);
+            // console.log(e);
         }
         row['data'] = rowData;
     }

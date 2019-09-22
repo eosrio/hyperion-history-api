@@ -121,7 +121,7 @@ function requestBlocks(start) {
     const request = baseRequest;
     request.start_block_num = parseInt(first_block > 0 ? first_block : '1', 10);
     request.end_block_num = parseInt(last_block, 10);
-    // console.log(request);
+    console.log(request);
     send(['get_blocks_request_v0', request]);
 }
 
@@ -129,7 +129,7 @@ function requestBlockRange(start, finish) {
     const request = baseRequest;
     request.start_block_num = parseInt(start, 10);
     request.end_block_num = parseInt(finish, 10);
-    // console.log(request);
+    console.log(request);
     send(['get_blocks_request_v0', request]);
 }
 
@@ -202,9 +202,8 @@ async function onMessage(data) {
                             }
                         }
                     } else {
-                        // console.log(blk_num);
-                        // console.log(parseInt(process.env.first_block));
-                        console.log('missing block: ' + (local_block_num + 1));
+                        console.log('missing block: ' + (local_block_num + 1) + ' last block:' + blk_num);
+                        console.log(local_distributed_count);
                         ship.close();
                         process.exit(1);
                     }
@@ -285,7 +284,7 @@ function recursiveDistribute(data, channel, cb) {
             console.log(`waiting for [${q}] to drain!`);
         }
     } else {
-        console.log('no data');
+        // console.log('no data');
         cb();
     }
 }

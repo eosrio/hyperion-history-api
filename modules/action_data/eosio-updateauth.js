@@ -5,7 +5,6 @@ const hyperionModule = {
     parser_version: '1.8',
     handler: (action) => {
         // attach action extras here
-
         const data = action['act']['data'];
         const _auth = data['auth'];
         if (_auth['accounts'].length === 0) delete _auth['accounts'];
@@ -16,8 +15,6 @@ const hyperionModule = {
             parent: data['parent'],
             auth: _auth
         };
-
-        console.log(action);
     }
 };
 
