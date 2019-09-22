@@ -1,4 +1,6 @@
 const amqp = require('amqplib');
+const {ConnectionManager} = require('../../connections/manager');
+const manager = new ConnectionManager();
 
 function createHealth(name, status) {
     let time = Date.now();
@@ -9,25 +11,32 @@ function createHealth(name, status) {
     }
 }
 
-async function checkRedis() {
-    let result = await new Promise((resolve, reject) => {
-        // RedisStatus.checkStatus(err => {
-        //     if (err) {
-        //         resolve('Error')
-        //     }
-        //     resolve('OK')
-        // })
+async function checkRedis(redis) {
+    let result = await new Promise((resolve) => {
+        redis.get(process.env.CHAIN + ":" + 'abi_cache', (err, data) => {
+            if (err) {
+                resolve('Error');
+            } else {
+                try {
+                    const json = JSON.parse(data);
+                    if (json['eosio']) {
+                        resolve('OK');
+                    } else {
+                        resolve('Missing eosio on ABI cache.');
+                    }
+                } catch (e) {
+                    console.log(e);
+                    resolve('Error');
+                }
+            }
+        });
         resolve('OK');
     });
     return createHealth('Redis', result)
 }
 
 async function checkRabbit() {
-    const amqp_username = process.env.AMQP_USER;
-    const amqp_password = process.env.AMQP_PASS;
-    const amqp_host = process.env.AMQP_HOST;
-    const amqp_vhost = 'hyperion';
-    const amqp_url = `amqp://${amqp_username}:${amqp_password}@${amqp_host}/%2F${amqp_vhost}`;
+    const amqp_url = manager.ampqUrl;
     try {
         const connection = await amqp.connect(amqp_url);
         connection.close();
@@ -38,40 +47,36 @@ async function checkRabbit() {
     }
 }
 
-async function health(fastify, request) {
-    const {redis, elastic} = fastify;
-    let response = {
-        health: []
-    };
-
-    response.health.push(await checkRabbit());
-    response.health.push(await checkRedis(redis));
-
-    try {
-        let esStatus = (await elastic.cat.health({
-            format: 'json',
-            v: true
-        }))['body'];
-        let stat = 'OK';
-        esStatus.forEach(status => {
-            if (status.status === 'yellow' && stat !== 'Error') {
-                stat = 'Warning'
-            } else if (status.status === 'red') {
-                stat = 'Error'
-            }
-        });
-        response.health.push(createHealth('Elasticsearch', stat));
-    } catch (e) {
-        console.log(e, 'Elasticsearch Error');
-        response.health.push(createHealth('Elasticsearch', 'Error'));
-    }
-
-    return response
-}
-
 module.exports = function (fastify, opts, next) {
-    fastify.get('/health', {}, async (request) => {
-        return await health(fastify, request)
+    fastify.get('/health', {}, async (request, reply) => {
+        const t0 = Date.now();
+        const {redis, elastic} = fastify;
+        let response = {
+            health: []
+        };
+        response.health.push(await checkRabbit());
+        response.health.push(await checkRedis(redis));
+
+        try {
+            let esStatus = (await elastic.cat.health({
+                format: 'json',
+                v: true
+            }))['body'];
+            let stat = 'OK';
+            esStatus.forEach(status => {
+                if (status.status === 'yellow' && stat !== 'Error') {
+                    stat = 'Warning'
+                } else if (status.status === 'red') {
+                    stat = 'Error'
+                }
+            });
+            response.health.push(createHealth('Elasticsearch', stat));
+        } catch (e) {
+            console.log(e, 'Elasticsearch Error');
+            response.health.push(createHealth('Elasticsearch', 'Error'));
+        }
+        response['query_time'] = Date.now() - t0;
+        reply.send(response);
     });
     next();
 };
