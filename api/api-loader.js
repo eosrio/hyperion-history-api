@@ -3,30 +3,25 @@ const openApi = require('./config/openApi');
 const AutoLoad = require('fastify-autoload');
 const path = require('path');
 
-const {Client} = require('@elastic/elasticsearch');
+const {ConnectionManager} = require('../connections/manager');
+const manager = new ConnectionManager();
 
 const fastify = require('fastify')({
     ignoreTrailingSlash: true,
     trustProxy: true
 });
-let ES_NODE = `http://${process.env.ES_HOST}`;
-if (process.env.ES_USER !== '') {
-    ES_NODE = `http://${process.env.ES_USER}:${process.env.ES_PASS}@${process.env.ES_HOST}`;
-}
-
 
 fastify.register(require('fastify-elasticsearch'), {
-    client: new Client({node: ES_NODE})
+    client: manager.elasticsearchClient
 });
 
-
-fastify.register(require('fastify-redis'), {host: process.env.REDIS_HOST, port: process.env.REDIS_PORT});
+fastify.register(require('fastify-redis'), manager.redisOptions);
 
 fastify.register(require('fastify-rate-limit'), {
     max: 5000,
     whitelist: [],
     timeWindow: '1 minute',
-    redis: new Redis(process.env.REDIS_PORT, process.env.REDIS_HOST)
+    redis: new Redis(manager.redisOptions.port,manager.redisOptions.host)
 });
 
 fastify.register(require('fastify-oas'), openApi.options);
