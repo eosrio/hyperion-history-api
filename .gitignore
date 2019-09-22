@@ -64,3 +64,4 @@ typings/
 *.pem
 ecosystem.config.js
 package-lock.json
+connections.json
