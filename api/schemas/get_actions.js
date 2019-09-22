@@ -12,6 +12,10 @@ exports.GET = {
                 minLength: 1,
                 maxLength: 12
             },
+            "track": {
+              description: 'total results to track (count) [number or true]',
+              type: 'string'
+            },
             "filter": {
                 description: 'code:name filter',
                 type: 'string',

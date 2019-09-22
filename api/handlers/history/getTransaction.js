@@ -1,18 +1,14 @@
 const {getTransactionSchema} = require("../../schemas");
 const _ = require('lodash');
 const {getCacheByHash} = require("../../helpers/functions");
-const fetch = require('node-fetch');
-const {JsonRpc} = require('eosjs');
-const eos_endpoint = process.env.NODEOS_HTTP;
-const rpc = new JsonRpc(eos_endpoint, {fetch});
 
 async function getTransaction(fastify, request) {
-    const {redis, elastic} = fastify;
+    const {redis, elastic, eosjs} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.query));
     if (cachedResponse) {
         return cachedResponse;
     }
-    const pResults = await Promise.all([rpc.get_info(), elastic['search']({
+    const pResults = await Promise.all([eosjs.rpc.get_info(), elastic['search']({
         "index": process.env.CHAIN + '-action-*',
         "body": {
             "query": {
@@ -33,9 +29,9 @@ async function getTransaction(fastify, request) {
         "lib": pResults[0].last_irreversible_block_num,
         "actions": []
     };
-    if (results['body']['hits']['hits'].length > 0) {
-        const actions = results['body']['hits']['hits'];
-        for (let action of actions) {
+    const hits = results['body']['hits']['hits'];
+    if (hits.length > 0) {
+        for (let action of hits) {
             action = action._source;
             const name = action.act.name;
             if (action['@' + name]) {

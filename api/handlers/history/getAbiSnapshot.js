@@ -27,7 +27,7 @@ async function getAbiSnapshot(fastify, request) {
             ]
         }
     });
-    let abi = null;
+    let abi;
     if (results['body']['hits']['hits'].length > 0) {
         abi = results['body']['hits']['hits'][0]['_source']['abi'];
     } else {

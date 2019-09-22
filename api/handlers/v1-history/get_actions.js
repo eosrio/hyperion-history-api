@@ -1,8 +1,4 @@
 const _ = require('lodash');
-const fetch = require('node-fetch');
-const {JsonRpc} = require('eosjs');
-const eos_endpoint = process.env.NODEOS_HTTP;
-const rpc = new JsonRpc(eos_endpoint, {fetch});
 const {getCacheByHash} = require("../../helpers/functions");
 
 const maxActions = 1000;
@@ -112,7 +108,7 @@ async function get_actions(fastify, request) {
         request.body = JSON.parse(request.body)
     }
     const t0 = Date.now();
-    const {redis, elastic} = fastify;
+    const {redis, elastic, eosjs} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.body));
     if (cachedResponse) {
         return cachedResponse;
@@ -235,7 +231,7 @@ async function get_actions(fastify, request) {
         queryStruct.bool['should'] = filterObj;
         queryStruct.bool['minimum_should_match'] = 1;
     }
-    const pResults = await Promise.all([rpc.get_info(), elastic['search']({
+    const pResults = await Promise.all([eosjs.rpc.get_info(), elastic['search']({
         "index": process.env.CHAIN + '-action-*',
         "from": from || 0,
         "size": (size > maxActions ? maxActions : size),

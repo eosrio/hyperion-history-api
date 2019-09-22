@@ -1,9 +1,5 @@
 const {getCreatorSchema} = require("../../schemas");
 const {getCacheByHash} = require("../../helpers/functions");
-const fetch = require('node-fetch');
-const {JsonRpc} = require('eosjs');
-const eos_endpoint = process.env.NODEOS_HTTP;
-const rpc = new JsonRpc(eos_endpoint, {fetch});
 
 const route = '/get_creator';
 
@@ -25,7 +21,7 @@ async function getActionByGS(client, gs) {
 }
 
 async function getCreator(fastify, request) {
-    const {redis, elastic} = fastify;
+    const {redis, elastic, eosjs} = fastify;
     const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query) + 'v3');
     if (cachedResponse) {
         return cachedResponse;
@@ -40,7 +36,7 @@ async function getCreator(fastify, request) {
     };
     let account_data = null;
     try {
-        account_data = await rpc.get_account(newact);
+        account_data = await eosjs.rpc.get_account(newact);
     } catch (e) {
         const err = new Error();
         err.statusCode = 404;

@@ -2,11 +2,12 @@ const amqp = require('amqplib');
 const {ConnectionManager} = require('../../connections/manager');
 const manager = new ConnectionManager();
 
-function createHealth(name, status) {
+function createHealth(name, status, data) {
     let time = Date.now();
     return {
         service: name,
         status: status,
+        service_data: data,
         time: time
     }
 }
@@ -47,35 +48,61 @@ async function checkRabbit() {
     }
 }
 
+async function checkNodeos() {
+    const rpc = manager.nodeosJsonRPC;
+    try {
+        const results = await rpc.get_info();
+        if (results) {
+            return createHealth('NodeosRPC', 'OK', {
+                head_block_num: results.head_block_num,
+                last_irreversible_block: results.last_irreversible_block_num,
+                chain_id: results.chain_id
+            });
+        } else {
+            return createHealth('NodeosRPC', 'Error');
+        }
+    } catch (e) {
+        return createHealth('NodeosRPC', 'Error');
+    }
+}
+
+async function checkElastic(elastic) {
+    try {
+        let esStatus = await elastic.cat.health({format: 'json', v: true});
+        const data = {
+            active_shards: esStatus.body[0]['active_shards_percent']
+        };
+        let stat = 'OK';
+        esStatus.body.forEach(status => {
+            if (status.status === 'yellow' && stat !== 'Error') {
+                stat = 'Warning'
+            } else if (status.status === 'red') {
+                stat = 'Error'
+            }
+        });
+        return createHealth('Elasticsearch', stat, data);
+    } catch (e) {
+        console.log(e, 'Elasticsearch Error');
+        return createHealth('Elasticsearch', 'Error');
+    }
+}
+
 module.exports = function (fastify, opts, next) {
     fastify.get('/health', {}, async (request, reply) => {
         const t0 = Date.now();
         const {redis, elastic} = fastify;
+
         let response = {
             health: []
         };
-        response.health.push(await checkRabbit());
-        response.health.push(await checkRedis(redis));
 
-        try {
-            let esStatus = (await elastic.cat.health({
-                format: 'json',
-                v: true
-            }))['body'];
-            let stat = 'OK';
-            esStatus.forEach(status => {
-                if (status.status === 'yellow' && stat !== 'Error') {
-                    stat = 'Warning'
-                } else if (status.status === 'red') {
-                    stat = 'Error'
-                }
-            });
-            response.health.push(createHealth('Elasticsearch', stat));
-        } catch (e) {
-            console.log(e, 'Elasticsearch Error');
-            response.health.push(createHealth('Elasticsearch', 'Error'));
-        }
+        response.health.push(await checkRabbit());
+        response.health.push(await checkNodeos());
+        response.health.push(await checkRedis(redis));
+        response.health.push(await checkElastic(elastic));
+
         response['query_time'] = Date.now() - t0;
+
         reply.send(response);
     });
     next();

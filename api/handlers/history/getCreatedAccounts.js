@@ -1,10 +1,5 @@
 const {getCreatedAccountsSchema} = require("../../schemas");
-const _ = require('lodash');
 const {getCacheByHash} = require("../../helpers/functions");
-const fetch = require('node-fetch');
-const {JsonRpc} = require('eosjs');
-const eos_endpoint = process.env.NODEOS_HTTP;
-const rpc = new JsonRpc(eos_endpoint, {fetch});
 
 const route = '/get_created_accounts';
 

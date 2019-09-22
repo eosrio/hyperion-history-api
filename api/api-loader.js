@@ -17,6 +17,8 @@ fastify.register(require('fastify-elasticsearch'), {
 
 fastify.register(require('fastify-redis'), manager.redisOptions);
 
+fastify.register(require('./plugins/eosjs'));
+
 fastify.register(require('fastify-rate-limit'), {
     max: 5000,
     whitelist: [],

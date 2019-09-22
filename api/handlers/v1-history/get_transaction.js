@@ -1,10 +1,6 @@
 const {getTransactionV1Schema} = require("../../schemas");
 const _ = require('lodash');
 const {getCacheByHash} = require("../../helpers/functions");
-const fetch = require('node-fetch');
-const {JsonRpc} = require('eosjs');
-const eos_endpoint = process.env.NODEOS_HTTP;
-const rpc = new JsonRpc(eos_endpoint, {fetch});
 const crypto = require('crypto');
 
 
@@ -28,12 +24,14 @@ async function getTransaction(fastify, request) {
     if (typeof request.body === 'string') {
         request.body = JSON.parse(request.body)
     }
-    const {redis, elastic} = fastify;
+
+    const {redis, elastic, eosjs} = fastify;
+
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.body));
     if (cachedResponse) {
         return cachedResponse;
     }
-    const pResults = await Promise.all([rpc.get_info(), elastic['search']({
+    const pResults = await Promise.all([eosjs.rpc.get_info(), elastic['search']({
         "index": process.env.CHAIN + '-action-*',
         "body": {
             "query": {
