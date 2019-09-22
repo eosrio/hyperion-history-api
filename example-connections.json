@@ -1,0 +1,23 @@
+{
+  "amqp": {
+    "host": "127.0.0.1:5672",
+    "api": "127.0.0.1:15672",
+    "user": "username",
+    "pass": "password"
+  },
+  "elasticsearch": {
+    "host": "127.0.0.1:9200",
+    "user": "elastic",
+    "pass": "password"
+  },
+  "redis": {
+    "host": "127.0.0.1",
+    "port": "6379"
+  },
+  "chains": {
+    "eos": {
+      "http": "http://127.0.0.1:8888",
+      "ship": "ws://127.0.0.1:8080"
+    }
+  }
+}
