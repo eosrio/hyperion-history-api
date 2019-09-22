@@ -6,16 +6,17 @@ const hyperionModule = {
     handler: (action) => {
         // attach action extras here
         let name = null;
-        if (action['act']['data']['newact']) {
-            name = action['act']['data']['newact'];
-        } else if (action['act']['data']['name']) {
-            name = action['act']['data']['name'];
-            delete action['act']['data']['name'];
+        const data = action['act']['data'];
+        if (data['newact']) {
+            name = data['newact'];
+        } else if (data['name']) {
+            name = data['name'];
+            delete data['name'];
         }
         if (name) {
             action['@newaccount'] = {
-                active: action['act']['data']['active'],
-                owner: action['act']['data']['owner'],
+                active: data['active'],
+                owner: data['owner'],
                 newact: name
             }
         }

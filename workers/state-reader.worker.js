@@ -2,22 +2,21 @@ const async = require('async');
 const {connectRpc} = require("../connections/chain");
 const {Api, Serialize} = require('eosjs');
 const {deserialize, serialize} = require('../helpers/functions');
-const {connectStateHistorySocket} = require("../connections/state-history");
+const {StateHistorySocket} = require("../connections/state-history");
 const {amqpConnect} = require("../connections/rabbitmq");
 const pmx = require('pmx');
 const {debugLog} = require("../helpers/functions");
-const {TextEncoder, TextDecoder} = require('util');
 
 const {checkQueueSize} = require("../connections/rabbitmq");
 
 const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
 
-let ch, api, abi, ws, types, cch, rpc;
+let ch, api, abi, ship, types, cch, rpc;
 let cch_ready = false;
 let tables = new Map();
 let chainID = null;
-let local_block_num = 0;
+let local_block_num = parseInt(process.env.first_block) - 1;
 let currentIdx = 1;
 let drainCount = 0;
 let local_distributed_count = 0;
@@ -112,7 +111,7 @@ function signalReaderCompletion() {
 }
 
 function send(req_data) {
-    ws.send(serialize('request', req_data, txEnc, txDec, types));
+    ship.send(serialize('request', req_data, txEnc, txDec, types));
 }
 
 // State history request builder
@@ -154,7 +153,7 @@ function processFirstABI(data) {
             }
         }
     } else {
-        ws.close();
+        ship.close();
         process.exit(1);
     }
 }
@@ -183,27 +182,45 @@ async function onMessage(data) {
                 const res = deserialize('result', data, txEnc, txDec, types)[1];
                 if (res['this_block']) {
                     const blk_num = res['this_block']['block_num'];
-                    if (blk_num > local_block_num) {
+                    if (blk_num === local_block_num + 1) {
                         local_block_num = blk_num;
-                    }
-                    if (res['block'] || res['traces'] || res['deltas']) {
-                        stageOneDistQueue.push(data);
-                        return 1;
+                        if (res['block'] || res['traces'] || res['deltas']) {
+                            stageOneDistQueue.push({
+                                num: blk_num,
+                                content: data
+                            });
+                            return 1;
+                        } else {
+                            if (blk_num === 1) {
+                                stageOneDistQueue.push({
+                                    num: blk_num,
+                                    content: data
+                                });
+                                return 1;
+                            } else {
+                                return 0;
+                            }
+                        }
                     } else {
-                        return 0;
+                        // console.log(blk_num);
+                        // console.log(parseInt(process.env.first_block));
+                        console.log('missing block: ' + (local_block_num + 1));
+                        ship.close();
+                        process.exit(1);
                     }
                 } else {
-                    console.log('no block from ' + process.env['worker_role']);
-                    if (process.env['worker_role'] === 'reader') {
-                        if (local_distributed_count === range_size) {
-                            signalReaderCompletion();
-                        }
-                    }
+                    // console.log(res);
+                    // console.log('no block from ' + process.env['worker_role']);
+                    // if (process.env['worker_role'] === 'reader') {
+                    //     if (local_distributed_count === range_size) {
+                    //         signalReaderCompletion();
+                    //     }
+                    // }
                     return 0;
                 }
             } else {
                 console.log('something went wrong!');
-                ws.close();
+                ship.close();
                 process.exit(1);
             }
         }
@@ -226,7 +243,7 @@ function recursiveDistribute(data, channel, cb) {
         if (qStatusMap[q] === true) {
             if (cch_ready) {
                 const d = data.pop();
-                const result = channel.sendToQueue(q, d, {
+                const result = channel.sendToQueue(q, d.content, {
                     persistent: true,
                     mandatory: true,
                 }, function (err) {
@@ -238,11 +255,10 @@ function recursiveDistribute(data, channel, cb) {
                     }
                 });
                 local_distributed_count++;
-                // console.log(`${local_distributed_count}/${range_size}`);
+                debugLog(`Block Number: ${d.num} - Range progress: ${local_distributed_count}/${range_size}`);
                 if (local_distributed_count === range_size) {
                     signalReaderCompletion();
                 }
-
                 currentIdx++;
                 if (currentIdx > n_deserializers) {
                     currentIdx = 1;
@@ -276,7 +292,7 @@ function recursiveDistribute(data, channel, cb) {
 
 function handleLostConnection() {
     recovery = true;
-    ws.close();
+    ship.close();
     console.log(`Retrying connection in 5 seconds... [attempt: ${reconnectCount + 1}]`);
     debugLog('PENDING REQUESTS:', pendingRequest);
     debugLog('LOCAL BLOCK:', local_block_num);
@@ -287,14 +303,14 @@ function handleLostConnection() {
 }
 
 function startWS() {
-    ws = connectStateHistorySocket(blockReadingQueue.push, handleLostConnection);
+    ship.connect(blockReadingQueue.push, handleLostConnection);
 }
 
 function onPmxStop(reply) {
     if (process.env['worker_role'] === 'continuous_reader') {
         console.log('[LIVE READER] Closing Websocket');
         reply({ack: true});
-        ws.close();
+        ship.close();
         setTimeout(() => {
             console.log('[LIVE READER] Process killed');
             process.exit(1);
@@ -399,6 +415,7 @@ async function run() {
     startQueueWatcher();
 
     // Connect to StateHistory via WebSocket
+    ship = new StateHistorySocket();
     startWS();
 
     // Handle IPC Messages

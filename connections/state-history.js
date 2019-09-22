@@ -1,27 +1,41 @@
 const WebSocket = require('ws');
 
-function connectStateHistorySocket(onMessage, onDisconnect, onError) {
-    const ws = new WebSocket(process.env.NODEOS_WS, null, {
-        perMessageDeflate: false
-    });
-    ws.on('open', () => {
-        if (process.env.DEBUG === 'true') {
-            console.log('[SHiP] websocket connected!');
-        }
-    });
-    ws.on('message', onMessage);
-    ws.on('close', () => {
-        if (process.env.DEBUG === 'true') {
-            console.log('[SHiP] websocket disconnected!');
-        }
-        onDisconnect();
-    });
-    ws.on('error', (err) => {
-        console.log(`${process.env.NODEOS_WS} :: ${err.message}`);
-    });
-    return ws;
+class StateHistorySocket {
+    #ws;
+
+    constructor() {
+    }
+
+    connect(onMessage, onDisconnect, onError) {
+        this.#ws = new WebSocket(process.env.NODEOS_WS, null, {
+            perMessageDeflate: false
+        });
+        this.#ws.on('open', () => {
+            if (process.env.DEBUG === 'true') {
+                console.log('[SHiP] websocket connected!');
+            }
+        });
+        this.#ws.on('message', onMessage);
+        this.#ws.on('close', () => {
+            if (process.env.DEBUG === 'true') {
+                console.log('[SHiP] websocket disconnected!');
+            }
+            onDisconnect();
+        });
+        this.#ws.on('error', (err) => {
+            console.log(`${process.env.NODEOS_WS} :: ${err.message}`);
+        });
+    }
+
+    close() {
+        this.#ws.close();
+    }
+
+    send(payload) {
+        this.#ws.send(payload);
+    }
 }
 
 module.exports = {
-    connectStateHistorySocket
+    StateHistorySocket
 };

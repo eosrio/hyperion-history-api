@@ -53,6 +53,13 @@ const action = {
                     "newact": {"type": "keyword"}
                 }
             },
+            "@updateauth": {
+                "properties": {
+                    "permission": {"type": "keyword"},
+                    "parent": {"type": "keyword"},
+                    "auth": {"type": "object"}
+                }
+            },
             "@transfer": {
                 "properties": {
                     "from": {"type": "keyword"},

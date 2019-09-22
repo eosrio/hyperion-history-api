@@ -38,13 +38,13 @@ With those changes the API format focus on delivering faster search times, lower
 
 This setup has only been tested with Ubuntu 18.04, but should work with other OS versions too
 
- - [Elasticsearch 7.3.1](https://www.elastic.co/downloads/elasticsearch)
+ - [Elasticsearch 7.3.2](https://www.elastic.co/downloads/elasticsearch)
  - [RabbitMQ](https://www.rabbitmq.com/install-debian.html)
  - [Redis](https://redis.io/topics/quickstart)
  - [Node.js v12](https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions)
  - [PM2](https://pm2.io/doc/en/runtime/quick-start)
- - Nodeos 1.8.1 w/ state_history_plugin
- - Nodeos 1.8.1 w/ chain_api_plugin
+ - Nodeos 1.8.3 w/ state_history_plugin
+ - Nodeos 1.8.3 w/ chain_api_plugin
   
   > The indexer requires redis, pm2 and node.js to be on the same machine. Other dependencies might be installed on other machines, preferably over a very high speed and low latency network. Indexing speed will vary greatly depending on this configuration.
   

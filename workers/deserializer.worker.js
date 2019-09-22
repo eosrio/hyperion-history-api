@@ -1,19 +1,16 @@
 const {Api, Serialize} = require('eosjs');
 
 const _ = require('lodash');
-const {action_blacklist} = require('../definitions/blacklists');
 const prettyjson = require('prettyjson');
 const {AbiDefinitions} = require("../definitions/abi_def");
-const {deserialize} = require('../helpers/functions');
 
 const async = require('async');
 const {amqpConnect} = require("../connections/rabbitmq");
 const {connectRpc} = require("../connections/chain");
 const {elasticsearchConnect} = require("../connections/elasticsearch");
 
-const {TextEncoder, TextDecoder} = require('util');
-
 const redis = require('redis');
+const {debugLog} = require("../helpers/functions");
 const {promisify} = require('util');
 const rClient = redis.createClient();
 const getAsync = promisify(rClient.get).bind(rClient);
@@ -74,12 +71,6 @@ function processPayload(payload, cb) {
             ch.nackAll();
         }
     })
-}
-
-function debugLog(msg) {
-    if (process.env.DEBUG === 'true') {
-        console.log(msg);
-    }
 }
 
 // Stage 2 - Deserialization function
@@ -280,73 +271,8 @@ async function deserializeActionsAtBlock(actions, block_num) {
 }
 
 function attachActionExtras(action) {
-
     mLoader.processActionData(action);
-
-    // Transfer actions
-    if (action['act']['name'] === 'transfer') {
-
-        let qtd = null;
-        if (action['act']['data']['quantity']) {
-            qtd = action['act']['data']['quantity'].split(' ');
-            delete action['act']['data']['quantity'];
-        } else if (action['act']['data']['value']) {
-            qtd = action['act']['data']['value'].split(' ');
-            delete action['act']['data']['value'];
-        }
-
-        if (qtd) {
-            action['@transfer'] = {
-                from: String(action['act']['data']['from']),
-                to: String(action['act']['data']['to']),
-                amount: parseFloat(qtd[0]),
-                symbol: qtd[1]
-            };
-            delete action['act']['data']['from'];
-            delete action['act']['data']['to'];
-
-            if (process.env.INDEX_TRANSFER_MEMO === 'true') {
-                action['@transfer']['memo'] = action['act']['data']['memo'];
-                delete action['act']['data']['memo'];
-            }
-        }
-
-    } else if (action['act']['name'] === 'updateauth' && action['act']['account'] === 'eosio') {
-        // await handleUpdateAuth(action['act']['data'], action, ts);
-        const _auth = action['act']['data']['auth'];
-        if (_auth['accounts'].length === 0) delete _auth['accounts'];
-        if (_auth['keys'].length === 0) delete _auth['keys'];
-        if (_auth['waits'].length === 0) delete _auth['waits'];
-        action['@updateauth'] = {
-            permission: action['act']['data']['permission'],
-            parent: action['act']['data']['parent'],
-            auth: _auth
-        };
-    } else if (action['act']['name'] === 'unstaketorex' && action['act']['account'] === 'eosio') {
-        let cpu_qtd = null;
-        let net_qtd = null;
-        if (action['act']['data']['from_net'] && action['act']['data']['from_cpu']) {
-            cpu_qtd = parseFloat(action['act']['data']['from_cpu'].split(' ')[0]);
-            net_qtd = parseFloat(action['act']['data']['from_net'].split(' ')[0]);
-        }
-        action['@unstaketorex'] = {
-            amount: cpu_qtd + net_qtd,
-            owner: action['act']['data']['owner'],
-            receiver: action['act']['data']['receiver']
-        };
-    } else if (action['act']['name'] === 'buyrex' && action['act']['account'] === 'eosio') {
-        let qtd = null;
-        if (action['act']['data']['amount']) {
-            qtd = parseFloat(action['act']['data']['amount'].split(' ')[0]);
-        }
-        action['@buyrex'] = {
-            amount: qtd,
-            from: action['act']['data']['from']
-        };
-    }
 }
-
-const ignoredDeltas = new Set(['contract_table', 'contract_row', 'generated_transaction', 'resource_usage', 'resource_limits_state', 'resource_limits_config', 'contract_index64', 'contract_index128', 'contract_index256']);
 
 async function processDeltas(deltas, block_num) {
     const deltaStruct = {};
@@ -355,31 +281,6 @@ async function processDeltas(deltas, block_num) {
             deltaStruct[table_delta[1].name] = table_delta[1].rows;
         }
     }
-
-    // if (deltaStruct[key]) {
-    //     const rows = deltaStruct[key];
-    //     for (const table_raw of rows) {
-    //         const serialBuffer = createSerialBuffer(table_raw.data);
-    //         const data = types.get(key).deserialize(serialBuffer);
-    //         const table = data[1];
-    //         console.log(table);
-    //     }
-    // }
-
-    // for (const key of Object.keys(deltaStruct)) {
-    //     if (!ignoredDeltas.has(key)) {
-    //         console.log(`----------- ${key} --------------`);
-    //         if (deltaStruct[key]) {
-    //             const rows = deltaStruct[key];
-    //             for (const table_raw of rows) {
-    //                 const serialBuffer = createSerialBuffer(table_raw.data);
-    //                 const data = types.get(key).deserialize(serialBuffer);
-    //                 const table = data[1];
-    //                 console.log(table);
-    //             }
-    //         }
-    //     }
-    // }
 
     // Check account deltas for ABI changes
     if (deltaStruct['account']) {
@@ -433,25 +334,15 @@ async function processDeltas(deltas, block_num) {
         if (deltaStruct['contract_row']) {
             const rows = deltaStruct['contract_row'];
             for (const row of rows) {
-                const sb = createSerialBuffer(new Uint8Array(Object.values(row.data)));
+                const sb = createSerialBuffer(row.data);
                 try {
                     let allowProcessing = false;
-                    const payload = {
-                        present: sb.get(),
-                        code: sb.getName(),
-                        scope: sb.getName(),
-                        table: sb.getName(),
-                        primary_key: sb.getUint64AsNumber(),
-                        payer: sb.getName(),
-                        data_raw: sb.getBytes()
-                    };
-
+                    const payload = (types.get('contract_row').deserialize(sb))[1];
                     if (process.env.INDEX_ALL_DELTAS === 'true') {
                         allowProcessing = true;
                     } else if (payload.code === 'eosio' || payload.table === 'accounts') {
                         allowProcessing = true;
                     }
-
                     if (allowProcessing) {
                         const jsonRow = await processContractRow(payload, block_num);
                         if (jsonRow['data']) {
@@ -475,14 +366,14 @@ async function processDeltas(deltas, block_num) {
 }
 
 async function processContractRow(row, block) {
-    const row_sb = createSerialBuffer(row['data_raw']);
+    const row_sb = createSerialBuffer(row['value']);
     const tableType = await getTableType(row['code'], row['table'], block);
     if (tableType) {
         let rowData = null;
         try {
             rowData = (tableType).deserialize(row_sb);
         } catch (e) {
-            // console.log(e);
+            console.log(e);
         }
         row['data'] = rowData;
     }
@@ -823,10 +714,11 @@ function assertQueues() {
     }
 
     // output
+    let qIdx = 0;
     index_queues.forEach((q) => {
         let n = n_ingestors_per_queue;
         if (q.type === 'abi') n = 1;
-        let qIdx = 0;
+        qIdx = 0;
         for (let i = 0; i < n; i++) {
             let m = 1;
             if (q.type === 'action') m = action_indexing_ratio;

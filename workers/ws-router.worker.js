@@ -1,6 +1,5 @@
 const WebSocket = require('ws');
 const {amqpConnect} = require("../connections/rabbitmq");
-const crypto = require('crypto');
 
 let wss;
 let channel;
@@ -42,7 +41,10 @@ async function run() {
     channel.consume(q, onConsume);
     wss = new WebSocket.Server({
         host: addr,
-        port: port
+        port: port,
+        perMessageDeflate: false
+    }, (conn) => {
+        console.log(conn);
     });
     wss.on('listening', () => {
         console.log(`WebSocket server listening on ws://${addr}:${port}`);

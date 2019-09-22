@@ -101,7 +101,10 @@ fastify.ready().then(async () => {
 
 (async () => {
     try {
-        await fastify.listen(process.env.SERVER_PORT, process.env.SERVER_ADDR);
+        await fastify.listen({
+            port: process.env.SERVER_PORT,
+            host: process.env.SERVER_ADDR
+        });
         fastify.log.info(`server listening on ${fastify.server.address().port}`)
     } catch (err) {
         fastify.log.error(err);

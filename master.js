@@ -45,13 +45,11 @@ async function main() {
         // Create a single reader to read the abi struct and quit.
         max_readers = 1;
     }
-    const activeReaders = [];
 
     const eos_endpoint = process.env.NODEOS_HTTP;
     const rpc = new JsonRpc(eos_endpoint, {fetch});
 
     const queue_prefix = process.env.CHAIN;
-    const queue = queue_prefix + ':blocks';
     const {index_queues} = require('./definitions/index-queues');
 
     const indicesList = ["action", "block", "abi", "delta"];
@@ -95,6 +93,8 @@ async function main() {
     if (!script_status['body']['acknowledged']) {
         console.log('Failed to load script updateByBlock. Aborting!');
         process.exit(1);
+    } else {
+        console.log('Script loaded!');
     }
 
     // Optional state tables
@@ -121,13 +121,16 @@ async function main() {
 
     // Update index templates
     for (const index of indicesList) {
-        const creation_status = await client['indices'].putTemplate({
-            name: `${queue_prefix}-${index}`,
-            body: indexConfig[index]
-        });
-        if (!creation_status['body']['acknowledged']) {
-            console.log('Failed to create template', `${queue_prefix}-${index}`);
-            console.log(creation_status);
+        try {
+            const creation_status = await client['indices'].putTemplate({
+                name: `${queue_prefix}-${index}`,
+                body: indexConfig[index]
+            });
+            if (!creation_status['body']['acknowledged']) {
+                console.log(`Failed to create template: ${queue_prefix}-${index}`);
+            }
+        } catch (e) {
+            console.log(e);
             process.exit(1);
         }
     }
@@ -277,6 +280,9 @@ async function main() {
 
     let lastIndexedABI = await getLastIndexedABI(client);
     console.log(`Last indexed ABI: ${lastIndexedABI}`);
+    if (process.env.ABI_CACHE_MODE) {
+        starting_block = lastIndexedABI;
+    }
 
     if (process.env.START_ON !== "0") {
         starting_block = parseInt(process.env.START_ON, 10);
@@ -345,7 +351,7 @@ async function main() {
         for (let j = 0; j < process.env.DS_MULT; j++) {
             worker_index++;
             workerMap.push({
-                worker_queue: queue + ":" + (i + 1),
+                worker_queue: queue_prefix + ':blocks' + ":" + (i + 1),
                 worker_id: worker_index,
                 worker_role: 'deserializer'
             });
@@ -353,12 +359,13 @@ async function main() {
     }
 
     // Setup ES Ingestion Workers
+    let qIdx = 0;
     index_queues.forEach((q) => {
         let n = n_ingestors_per_queue;
         if (q.type === 'abi') {
             n = 1;
         }
-        let qIdx = 0;
+        qIdx = 0;
         for (let i = 0; i < n; i++) {
             let m = 1;
             if (q.type === 'action') {
