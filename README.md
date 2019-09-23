@@ -62,22 +62,51 @@ npm install
 ```
 
 #### 2. Edit configs
-`nano ecosystem.config.js`
-
-Reference
 ```
+cp example-ecosystem.config.js ecosystem.config.js
+nano ecosystem.config.js
+
+# Enter connection details here (chain name must match on the ecosystem file)
+cp example-connections.json connections.json
+nano connections.json
+```
+
+connections.json Reference
+```
+{
+  "amqp": {
+    "host": "127.0.0.1:5672", // RabbitMQ Server
+    "api": "127.0.0.1:15672", // RabbitMQ API Endpoint
+    "user": "username",
+    "pass": "password",
+    "vhost": "hyperion" // RabbitMQ vhost
+  },
+  "elasticsearch": {
+    "host": "127.0.0.1:9200", // Elasticsearch HTTP API Endpoint
+    "user": "elastic",
+    "pass": "password"
+  },
+  "redis": {
+    "host": "127.0.0.1",
+    "port": "6379"
+  },
+  "chains": {
+    "eos": { // Chain name (must match on the ecosystem file)
+      "http": "http://127.0.0.1:8888", // Nodeos Chain API Endpoint
+      "ship": "ws://127.0.0.1:8080" // Nodeos State History Endpoint
+    },
+    "other_chain": {...}
+  }
+}
+```
+
+ecosystem.config.js Reference
+```
+CHAIN: 'eos',                          // chain prefix for indexing
+ABI_CACHE_MODE: 'false',               // only cache historical ABIs to redis
 DEBUG: 'false',                        // debug mode - display extra logs for debugging
-AMQP_HOST: '127.0.0.1:5672'            // RabbitMQ host:port
-AMQP_USER: '',                         // RabbitMQ user
-AMQP_PASS: '',                         // RabbitMQ password
-ES_HOST: '127.0.0.1:9200',             // elasticsearch http endpoint
-ES_USER: '',                           // optional elasticsearch user
-ES_PASS: '',                           // optional elasticsearch password
-NODEOS_HTTP: 'http://127.0.0.1:8888',  // chain api endpoint
-NODEOS_WS: 'ws://127.0.0.1:8080',      // state history endpoint
 LIVE_READER: 'true',                   // enable continuous reading after reaching the head block
 FETCH_DELTAS: 'false',                 // read table deltas
-CHAIN: 'eos',                          // chain prefix for indexing
 CREATE_INDICES: 'v1',                  // index suffix to be created, set to false to use existing aliases
 START_ON: 0,                           // start indexing on block (0=disable)
 STOP_ON: 0,                            // stop indexing on block  (0=disable)
@@ -95,13 +124,12 @@ DESERIALIZERS: 4,                      // deserialization queues
 DS_MULT: 4,                            // deserialization threads per queue
 ES_INDEXERS_PER_QUEUE: 4,              // elastic indexers per queue
 ES_ACT_QUEUES: 2,                      // multiplier for action indexing queues
-READ_PREFETCH: 50,                     // Stage 1 prefecth
-BLOCK_PREFETCH: 5,                     // Stage 2 prefecth
-INDEX_PREFETCH: 500,                   // Stage 3 prefetch
+READ_PREFETCH: 50,                     // Stage 1 prefecth size
+BLOCK_PREFETCH: 5,                     // Stage 2 prefecth size
+INDEX_PREFETCH: 500,                   // Stage 3 prefetch size
 ENABLE_INDEXING: 'true',               // enable elasticsearch indexing
 INDEX_DELTAS: 'true',                  // index common table deltas (see delta on definitions/mappings)
-INDEX_ALL_DELTAS: 'false',             // index all table deltas (WARNING)
-ABI_CACHE_MODE: 'false'                // cache historical ABIs to redis
+INDEX_ALL_DELTAS: 'false'              // index all table deltas (WARNING)
 ```
  
  #### 3. Starting
