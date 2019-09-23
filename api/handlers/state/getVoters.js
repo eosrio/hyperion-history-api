@@ -2,13 +2,7 @@ const {getVotersSchema} = require("../../schemas");
 const {getCacheByHash} = require("../../helpers/functions");
 const route = '/get_voters';
 
-
 const maxActions = 1000;
-
-const fetch = require('node-fetch');
-const {JsonRpc} = require('eosjs');
-const eos_endpoint = process.env.NODEOS_HTTP;
-const rpc = new JsonRpc(eos_endpoint, {fetch});
 
 async function getVoters(fastify, request) {
 
@@ -58,7 +52,7 @@ async function getVoters(fastify, request) {
     }
 
     let prefix = process.env.CHAIN;
-    if(process.env.CHAIN === 'mainnet') {
+    if (process.env.CHAIN === 'mainnet') {
         prefix = 'eos';
     }
 

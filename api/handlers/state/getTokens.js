@@ -2,11 +2,6 @@ const {getTokensSchema} = require("../../schemas");
 const {getCacheByHash} = require("../../helpers/functions");
 const route = '/get_tokens';
 
-const fetch = require('node-fetch');
-const {JsonRpc} = require('eosjs');
-const eos_endpoint = process.env.NODEOS_HTTP;
-const rpc = new JsonRpc(eos_endpoint, {fetch});
-
 const enable_caching = process.env.ENABLE_CACHING === 'true';
 let cache_life = 30;
 if(process.env.CACHE_LIFE) {
@@ -15,7 +10,7 @@ if(process.env.CACHE_LIFE) {
 
 async function getTokens(fastify, request) {
     const t0 = Date.now();
-    const {redis, elastic} = fastify;
+    const {redis, elastic, eosjs} = fastify;
 
     let cachedResponse, hash;
     if(enable_caching) {
@@ -62,7 +57,7 @@ async function getTokens(fastify, request) {
     for (const bucket of results['body']['aggregations']['tokens']['buckets']) {
         let token_data;
         try {
-            token_data = await rpc.get_currency_balance(bucket['key'], request.query.account);
+            token_data = await eosjs.rpc.get_currency_balance(bucket['key'], request.query.account);
         } catch (e) {
             console.log(`get_currency_balance error - contract:${bucket['key']} - account:${request.query.account}`);
             continue;

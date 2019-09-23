@@ -1,7 +1,4 @@
-const {getControlledAccountsV1Schema} = require("../../schemas");
 const {getCacheByHash} = require("../../helpers/functions");
-const numeric = require('eosjs/dist/eosjs-numeric');
-const ecc = require('eosjs-ecc');
 
 const schema = {
     description: 'get controlled accounts by controlling accounts',

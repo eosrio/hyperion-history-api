@@ -5,15 +5,16 @@ const ecc = require('eosjs-ecc');
 
 async function getKeyAccounts(fastify, public_Key) {
     const {redis, elastic} = fastify;
+    let publicKey;
     if (!ecc.isValidPublic(public_Key)) {
         const err = new Error();
         err.statusCode = 400;
         err.message = 'invalid public key';
         throw err;
     } else {
-        public_Key = numeric.convertLegacyPublicKey(public_Key);
+        publicKey = numeric.convertLegacyPublicKey(public_Key);
     }
-    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(public_Key));
+    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(publicKey));
     if (cachedResponse) {
         return cachedResponse;
     }
