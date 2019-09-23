@@ -274,12 +274,22 @@ function attachActionExtras(action) {
     mLoader.processActionData(action);
 }
 
-async function processDeltas(deltas, block_num) {
+function extractDeltaStruct(deltas) {
     const deltaStruct = {};
     for (const table_delta of deltas) {
         if (table_delta[0] === "table_delta_v0") {
             deltaStruct[table_delta[1].name] = table_delta[1].rows;
         }
+    }
+    return deltaStruct;
+}
+
+async function processDeltas(deltas, block_num) {
+
+    const deltaStruct = extractDeltaStruct(deltas);
+
+    if (Object.keys(deltaStruct).length > 4) {
+        console.log(Object.keys(deltaStruct));
     }
 
     // Check account deltas for ABI changes
@@ -362,6 +372,76 @@ async function processDeltas(deltas, block_num) {
                 }
             }
         }
+
+        // if (deltaStruct['account_metadata']) {
+        //     if (deltaStruct['account_metadata'].length > 0) {
+        //         for (const account_metadata of deltaStruct['account_metadata']) {
+        //             const serialBuffer = createSerialBuffer(account_metadata.data);
+        //             const data = types.get('account_metadata').deserialize(serialBuffer);
+        //             console.log(prettyjson.render(data));
+        //         }
+        //     }
+        // }
+
+        // if (deltaStruct['permission']) {
+        //     if (deltaStruct['permission'].length > 0) {
+        //         for (const permission of deltaStruct['permission']) {
+        //             const serialBuffer = createSerialBuffer(permission.data);
+        //             const data = types.get('permission').deserialize(serialBuffer)[1];
+        //             console.log(prettyjson.render(data));
+        //         }
+        //     }
+        // }
+
+        // if (deltaStruct['permission_link']) {
+        //     if (deltaStruct['permission_link'].length > 0) {
+        //         for (const permission_link of deltaStruct['permission_link']) {
+        //             const serialBuffer = createSerialBuffer(permission_link.data);
+        //             const data = types.get('permission_link').deserialize(serialBuffer);
+        //             console.log(prettyjson.render(data));
+        //         }
+        //     }
+        // }
+
+        // if (deltaStruct['resource_limits']) {
+        //     if (deltaStruct['resource_limits'].length > 0) {
+        //         for (const resource_limits of deltaStruct['resource_limits']) {
+        //             const serialBuffer = createSerialBuffer(resource_limits.data);
+        //             const data = types.get('resource_limits').deserialize(serialBuffer);
+        //             console.log(prettyjson.render(data));
+        //         }
+        //     }
+        // }
+
+        // if (deltaStruct['resource_usage']) {
+        //     if (deltaStruct['resource_usage'].length > 0) {
+        //         for (const resource_usage of deltaStruct['resource_usage']) {
+        //             const serialBuffer = createSerialBuffer(resource_usage.data);
+        //             const data = types.get('resource_usage').deserialize(serialBuffer);
+        //             console.log(prettyjson.render(data));
+        //         }
+        //     }
+        // }
+
+        // if (deltaStruct['resource_limits_state']) {
+        //     if (deltaStruct['resource_limits_state'].length > 0) {
+        //         for (const resource_limits_state of deltaStruct['resource_limits_state']) {
+        //             const serialBuffer = createSerialBuffer(resource_limits_state.data);
+        //             const data = types.get('resource_limits_state').deserialize(serialBuffer);
+        //             console.log(prettyjson.render(data));
+        //         }
+        //     }
+        // }
+
+        // if (deltaStruct['contract_table']) {
+        //     if (deltaStruct['contract_table'].length > 0) {
+        //         for (const contract_table of deltaStruct['contract_table']) {
+        //             const serialBuffer = createSerialBuffer(contract_table.data);
+        //             const data = types.get('contract_table').deserialize(serialBuffer);
+        //             console.log(prettyjson.render(data));
+        //         }
+        //     }
+        // }
     }
 }
 
@@ -369,13 +449,14 @@ async function processContractRow(row, block) {
     const row_sb = createSerialBuffer(row['value']);
     const tableType = await getTableType(row['code'], row['table'], block);
     if (tableType) {
-        let rowData = null;
+        let rowData = {};
         try {
             rowData = (tableType).deserialize(row_sb);
         } catch (e) {
-            // console.log(tableType);
-            // console.log(row['value']);
-            // console.log(e);
+            console.log('-------------- CONTRACT DELTA DS ERROR ---------------');
+            console.log(e);
+            console.log(row);
+            console.log('-------------------------------------------------------');
         }
         row['data'] = rowData;
     }
@@ -629,8 +710,8 @@ async function processTableDelta(data, block_num) {
 
 function createSerialBuffer(inputArray) {
     return new Serialize.SerialBuffer({
-        textEncoder: txEnc,
-        textDecoder: txDec,
+        textEncoder: new TextEncoder(),
+        textDecoder: new TextDecoder(),
         array: inputArray
     });
 }
