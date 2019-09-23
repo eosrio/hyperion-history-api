@@ -1,7 +1,7 @@
 const {Api, Serialize} = require('eosjs');
 const _ = require('lodash');
 const prettyjson = require('prettyjson');
-const {AbiDefinitions} = require("../definitions/abi_def");
+const {AbiDefinitions, RexAbi} = require("../definitions/abi_def");
 const async = require('async');
 
 const {debugLog} = require("../helpers/functions");
@@ -682,15 +682,22 @@ async function getAbiAtBlock(code, block_num) {
         }
     } else {
         const ref_time = Date.now();
-        const _abi = await api.getAbi(code);
-        const elapsed_time = (Date.now() - ref_time);
-        if (elapsed_time > 10) {
-            console.log('remote abi fetch [3]', code, block_num, elapsed_time);
+        let _abi;
+        try {
+            _abi = await api.getAbi(code);
+            const elapsed_time = (Date.now() - ref_time);
+            if (elapsed_time > 10) {
+                console.log('remote abi fetch [3]', code, block_num, elapsed_time);
+            }
+        } catch (e) {
+            if (code === 'eosio.rex') {
+                _abi = RexAbi;
+            } else {
+                console.log(e);
+                return {abi: null, valid_until: null};
+            }
         }
-        return {
-            abi: _abi,
-            valid_until: null
-        };
+        return {abi: _abi, valid_until: null};
     }
 }
 

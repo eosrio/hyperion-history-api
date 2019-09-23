@@ -43,7 +43,10 @@ module.exports = {
             action['act'] = ds_act[0];
             common.attachActionExtras(action);
         } catch (e) {
+            console.log('----------------- DESERIALIZATION ERROR ----------------');
+            console.log(action);
             console.log(e);
+            console.log('---------------------------------------------------------');
             process.send({
                 t: 'ds_fail',
                 v: {gs: action['receipt']['global_sequence']}
