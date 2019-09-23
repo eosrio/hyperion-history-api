@@ -28,7 +28,7 @@ async function main() {
     let preview = process.env.PREVIEW === 'true';
     const queue_prefix = process.env.CHAIN;
 
-    if(process.env.PURGE_QUEUES === 'true') {
+    if (process.env.PURGE_QUEUES === 'true') {
         await manager.purgeQueues(queue_prefix);
     }
 
@@ -278,7 +278,7 @@ async function main() {
 
     let lastIndexedABI = await getLastIndexedABI(client);
     console.log(`Last indexed ABI: ${lastIndexedABI}`);
-    if (process.env.ABI_CACHE_MODE) {
+    if (process.env.ABI_CACHE_MODE === 'true') {
         starting_block = lastIndexedABI;
     }
 
@@ -326,7 +326,7 @@ async function main() {
                 // activeReaders.push(def);
                 activeReadersCount++;
                 workerMap.push(def);
-                // console.log(`Launching new worker from ${start} to ${end}`);
+                console.log(`Launching new reader from ${start} to ${end}`);
             }
         }
 
