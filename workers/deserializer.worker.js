@@ -669,11 +669,15 @@ async function getAbiAtBlock(code, block_num) {
                 console.log('remote abi fetch [1]', code, block_num);
                 abi = await api.getAbi(code);
             } else {
-                abi = JSON.parse(cachedAbiAtBlock);
-            }
-            return {
-                abi: abi,
-                valid_until: validity
+                try {
+                    abi = JSON.parse(cachedAbiAtBlock);
+                    return {abi: abi, valid_until: validity};
+                } catch (e) {
+                    console.log('failed to parse saved ABI', code, block_num);
+                    console.log(cachedAbiAtBlock);
+                    console.log('----------  END CACHED ABI ------------');
+                    return {abi: null, valid_until: null};
+                }
             }
         } else {
             console.log('remote abi fetch [2]', code, block_num);
