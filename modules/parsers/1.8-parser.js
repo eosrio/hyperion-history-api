@@ -44,8 +44,9 @@ module.exports = {
             common.attachActionExtras(action);
         } catch (e) {
             console.log('----------------- DESERIALIZATION ERROR ----------------');
-            console.log(action);
             console.log(e);
+            console.log('----->>> FOR ACTION:');
+            console.log(action);
             console.log('---------------------------------------------------------');
             process.send({
                 t: 'ds_fail',

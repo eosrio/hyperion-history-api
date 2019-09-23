@@ -14,7 +14,10 @@ let ch, api, abi, ship, types, cch, rpc;
 let cch_ready = false;
 let tables = new Map();
 let chainID = null;
-let local_block_num = parseInt(process.env.first_block) - 1;
+let local_block_num = parseInt(process.env.first_block, 10) - 1;
+if (process.env['worker_role'] === 'continuous_reader') {
+    local_block_num = parseInt(process.env.worker_last_processed_block, 10) - 1;
+}
 let currentIdx = 1;
 let drainCount = 0;
 let local_distributed_count = 0;
@@ -160,21 +163,32 @@ function processFirstABI(data) {
 async function onMessage(data) {
     if (abi) {
         if (recovery) {
-            let first = local_block_num;
-            let last = local_last_block;
-            if (last === 0) {
-                last = process.env.last_block;
-            }
-            last = last - 1;
-            if (first === 0) {
-                first = process.env.first_block;
-            }
-            console.log(`Resuming stream from block ${first} to ${last}...`);
-            if (last - first > 0) {
-                requestBlockRange(first, last);
+            if (process.env['worker_role'] === 'continuous_reader') {
+                console.log(`Resuming live stream from block ${local_block_num}...`);
+                requestBlocks(local_block_num + 1);
                 recovery = false;
             } else {
-                console.log('Invalid range!');
+                if (!completionSignaled) {
+                    let first = local_block_num;
+                    let last = local_last_block;
+                    if (last === 0) {
+                        last = process.env.last_block;
+                    }
+                    last = last - 1;
+                    if (first === 0) {
+                        first = process.env.first_block;
+                    }
+                    console.log(`Resuming stream from block ${first} to ${last}...`);
+                    if (last - first > 0) {
+                        requestBlockRange(first, last);
+                        recovery = false;
+                    } else {
+                        console.log('Invalid range!');
+                    }
+                } else {
+                    console.log('Reader already finished, no need to restart.');
+                    recovery = false;
+                }
             }
         } else {
             if (process.env['worker_role']) {
@@ -201,6 +215,8 @@ async function onMessage(data) {
                             }
                         }
                     } else {
+                        console.log(process.env['worker_role']);
+                        console.log(res);
                         console.log('[FATAL] missing block: ' + (local_block_num + 1) + ' last block:' + blk_num);
                         return 0;
                     }

@@ -23,8 +23,10 @@ let chainID = null;
 let act_emit_idx = 1;
 let delta_emit_idx = 1;
 let block_emit_idx = 1;
+
 let tbl_acc_emit_idx = 1;
 let tbl_vote_emit_idx = 1;
+
 let local_block_count = 0;
 let allowStreaming = false;
 let cachedMap;
@@ -546,7 +548,7 @@ async function storeVoter(data) {
             content: Buffer.from(JSON.stringify(voterDoc))
         });
         tbl_vote_emit_idx++;
-        if (tbl_vote_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+        if (tbl_vote_emit_idx > (n_ingestors_per_queue)) {
             tbl_vote_emit_idx = 1;
         }
     }
@@ -574,7 +576,7 @@ async function storeAccount(data) {
             content: Buffer.from(JSON.stringify(accountDoc))
         });
         tbl_acc_emit_idx++;
-        if (tbl_acc_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+        if (tbl_acc_emit_idx > (n_ingestors_per_queue)) {
             tbl_acc_emit_idx = 1;
         }
     }
