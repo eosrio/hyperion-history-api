@@ -16,7 +16,11 @@ exports.GET = {
                 type: 'integer',
                 minimum: 1
             },
+            "fetch": {
+                description: 'should fetch the ABI',
+                type: 'boolean'
+            }
         },
-        required: ["contract", "block"]
+        required: ["contract"]
     }
 };
