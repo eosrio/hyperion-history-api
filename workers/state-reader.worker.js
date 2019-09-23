@@ -119,15 +119,16 @@ function requestBlocks(start) {
     const request = baseRequest;
     request.start_block_num = parseInt(first_block > 0 ? first_block : '1', 10);
     request.end_block_num = parseInt(last_block, 10);
-    console.log(request);
+    debugLog(`Reader ${process.env.worker_id} requestBlocks from: ${request.start_block_num} to: ${request.end_block_num}`);
     send(['get_blocks_request_v0', request]);
 }
 
 function requestBlockRange(start, finish) {
     const request = baseRequest;
     request.start_block_num = parseInt(start, 10);
+    local_block_num = request.start_block_num - 1;
     request.end_block_num = parseInt(finish, 10);
-    console.log(request);
+    debugLog(`Reader ${process.env.worker_id} requestBlockRange from: ${request.start_block_num} to: ${request.end_block_num}`);
     send(['get_blocks_request_v0', request]);
 }
 
@@ -200,19 +201,10 @@ async function onMessage(data) {
                             }
                         }
                     } else {
-                        console.log('missing block: ' + (local_block_num + 1) + ' last block:' + blk_num);
-                        console.log(local_distributed_count);
-                        ship.close();
-                        process.exit(1);
+                        console.log('[FATAL] missing block: ' + (local_block_num + 1) + ' last block:' + blk_num);
+                        return 0;
                     }
                 } else {
-                    // console.log(res);
-                    // console.log('no block from ' + process.env['worker_role']);
-                    // if (process.env['worker_role'] === 'reader') {
-                    //     if (local_distributed_count === range_size) {
-                    //         signalReaderCompletion();
-                    //     }
-                    // }
                     return 0;
                 }
             } else {

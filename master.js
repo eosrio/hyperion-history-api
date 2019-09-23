@@ -26,6 +26,11 @@ const missingRanges = [];
 async function main() {
     // Preview mode - prints only the proposed worker map
     let preview = process.env.PREVIEW === 'true';
+    const queue_prefix = process.env.CHAIN;
+
+    if(process.env.PURGE_QUEUES === 'true') {
+        await manager.purgeQueues(queue_prefix);
+    }
 
     rpc = manager.nodeosJsonRPC;
     rClient = manager.redisClient;
@@ -43,7 +48,6 @@ async function main() {
         max_readers = 1;
     }
 
-    const queue_prefix = process.env.CHAIN;
     const {index_queues} = require('./definitions/index-queues');
 
     const indicesList = ["action", "block", "abi", "delta"];
@@ -582,7 +586,6 @@ async function main() {
             }
         }, 500);
     });
-
 }
 
 module.exports = {main};

@@ -5,6 +5,8 @@ const fetch = require('node-fetch');
 const {StateHistorySocket} = require("./state-history");
 const {amqpConnect, checkQueueSize} = require("./rabbitmq");
 const {JsonRpc} = require('eosjs');
+const got = require('got');
+const prettyjson = require('prettyjson');
 
 class ConnectionManager {
 
@@ -51,6 +53,27 @@ class ConnectionManager {
 
     get nodeosJsonRPC() {
         return new JsonRpc(conf.chains[process.env.CHAIN]['http'], {fetch});
+    }
+
+    async purgeQueues(queue_prefix) {
+        console.log(`Purging all ${queue_prefix} queues!`);
+        const apiUrl = `http://${conf.amqp.user}:${conf.amqp.pass}@${conf.amqp.api}`;
+        const getAllQueuesFromVHost = apiUrl + `/api/queues/%2F${conf.amqp.vhost}`;
+        const result = JSON.parse((await got(getAllQueuesFromVHost)).body);
+        for (const queue of result) {
+            if (queue.name.startsWith(queue_prefix + ":")) {
+                const msg_count = parseInt(queue.messages);
+                if (msg_count > 0) {
+                    try {
+                        await got.delete(apiUrl + `/api/queues/%2F${conf.amqp.vhost}/${queue.name}/contents`);
+                        console.log(`${queue.messages} messages deleted on queue ${queue.name}`);
+                    } catch (e) {
+                        console.log(e);
+                        process.exit(1);
+                    }
+                }
+            }
+        }
     }
 }
 

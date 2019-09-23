@@ -12,6 +12,7 @@ module.exports = {
                 STOP_ON: 0,
                 AUTO_STOP: 0,
                 REWRITE: 'false',
+                PURGE_QUEUES: 'false',
                 BATCH_SIZE: 5000,
                 QUEUE_THRESH: 8000,
                 LIVE_READER: 'true',

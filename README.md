@@ -112,6 +112,7 @@ START_ON: 0,                           // start indexing on block (0=disable)
 STOP_ON: 0,                            // stop indexing on block  (0=disable)
 AUTO_STOP: 0,                          // automatically stop Indexer after X seconds if no more blocks are being processed (0=disable)
 REWRITE: 'false',                      // force rewrite the target replay range
+PURGE_QUEUES: 'false',                 // clear rabbitmq queues before starting the indexer
 BATCH_SIZE: 2000,                      // parallel reader batch size in blocks
 QUEUE_THRESH: 8000,                    // queue size limit on rabbitmq
 LIVE_ONLY: 'false',                    // only reads realtime data serially
