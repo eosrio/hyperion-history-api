@@ -18,6 +18,7 @@ let local_block_num = parseInt(process.env.first_block, 10) - 1;
 if (process.env['worker_role'] === 'continuous_reader') {
     local_block_num = parseInt(process.env.worker_last_processed_block, 10) - 1;
 }
+
 let currentIdx = 1;
 let drainCount = 0;
 let local_distributed_count = 0;

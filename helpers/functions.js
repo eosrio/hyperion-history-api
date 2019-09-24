@@ -136,7 +136,7 @@ async function getLastIndexedABI(es_client, first, last) {
     if (results['body']['hits']['hits'].length > 0) {
         return parseInt(results['body']['hits']['hits'][0]['sort'][0], 10);
     } else {
-        return 0;
+        return 1;
     }
 }
 
