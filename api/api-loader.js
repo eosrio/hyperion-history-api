@@ -3,6 +3,8 @@ const openApi = require('./config/openApi');
 const AutoLoad = require('fastify-autoload');
 const path = require('path');
 
+process.title = `hyp-${process.env.CHAIN}-api`;
+
 const {ConnectionManager} = require('../connections/manager');
 const manager = new ConnectionManager();
 
@@ -23,7 +25,7 @@ fastify.register(require('fastify-rate-limit'), {
     max: 5000,
     whitelist: [],
     timeWindow: '1 minute',
-    redis: new Redis(manager.redisOptions.port,manager.redisOptions.host)
+    redis: new Redis(manager.redisOptions.port, manager.redisOptions.host)
 });
 
 fastify.register(require('fastify-oas'), openApi.options);
@@ -102,7 +104,7 @@ fastify.ready().then(async () => {
             port: process.env.SERVER_PORT,
             host: process.env.SERVER_ADDR
         });
-        fastify.log.info(`server listening on ${fastify.server.address().port}`)
+        fastify.log.info(`server listening on ${fastify.server.address().port}`);
     } catch (err) {
         fastify.log.error(err);
         process.exit(1)
