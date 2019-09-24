@@ -4,7 +4,7 @@ const _ = require('lodash');
 
 const maxActions = 1000;
 const route = '/get_actions';
-const terms = ["notified", "act.authorization.actor"];
+const terms = ["notified.keyword", "act.authorization.actor.keyword"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
 const enable_caching = process.env.ENABLE_CACHING === 'true';
@@ -16,7 +16,6 @@ if (process.env.CACHE_LIFE) {
 async function getActions(fastify, request) {
     const t0 = Date.now();
     const {redis, elastic, eosjs} = fastify;
-
     let cachedResponse, hash;
     if (enable_caching) {
         [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
@@ -98,7 +97,6 @@ async function getActions(fastify, request) {
             const actionName = prop.split(".")[0];
             if (prop.split(".").length > 1) {
                 if (extendedActions.has(actionName)) {
-                    // console.log(prop + " = " + request.query[prop]);
                     const _termQuery = {};
                     _termQuery["@" + prop] = request.query[prop];
                     queryStruct.bool.must.push({term: _termQuery});
