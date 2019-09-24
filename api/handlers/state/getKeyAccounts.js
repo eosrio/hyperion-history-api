@@ -4,6 +4,7 @@ const numeric = require('eosjs/dist/eosjs-numeric');
 const ecc = require('eosjs-ecc');
 
 async function getKeyAccounts(fastify, public_Key) {
+
     const {redis, elastic} = fastify;
     let publicKey;
     if (!ecc.isValidPublic(public_Key)) {
@@ -14,29 +15,30 @@ async function getKeyAccounts(fastify, public_Key) {
     } else {
         publicKey = numeric.convertLegacyPublicKey(public_Key);
     }
+
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(publicKey));
     if (cachedResponse) {
         return cachedResponse;
     }
+    const _body = {
+        query: {
+            bool: {
+                should: [
+                    {term: {"@updateauth.auth.keys.key.keyword": publicKey}},
+                    {term: {"@newaccount.active.keys.key.keyword": publicKey}},
+                    {term: {"@newaccount.owner.keys.key.keyword": publicKey}}
+                ],
+                minimum_should_match: 1
+            }
+        },
+        sort: [{"global_sequence": {"order": "desc"}}]
+    };
+
     const results = await elastic.search({
         index: process.env.CHAIN + '-action-*',
-        size: 100,
-        body: {
-            query: {
-                bool: {
-                    should: [
-                        {term: {"@updateauth.auth.keys.key.keyword": public_Key}},
-                        {term: {"@newaccount.active.keys.key.keyword": public_Key}},
-                        {term: {"@newaccount.owner.keys.key.keyword": public_Key}}
-                    ],
-                    minimum_should_match: 1
-                }
-            },
-            sort: [
-                {"global_sequence": {"order": "desc"}}
-            ]
-        }
+        body: _body
     });
+
     const response = {
         account_names: []
     };
