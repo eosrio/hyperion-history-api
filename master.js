@@ -29,7 +29,13 @@ async function main() {
     const queue_prefix = process.env.CHAIN;
 
     if (process.env.PURGE_QUEUES === 'true') {
-        await manager.purgeQueues(queue_prefix);
+
+        if (process.env.DISABLE_READING === 'true') {
+            console.log('Conflict between PURGE_QUEUES and DISABLE_READING');
+            process.exit(1);
+        } else {
+            await manager.purgeQueues(queue_prefix);
+        }
     }
 
     rpc = manager.nodeosJsonRPC;
@@ -200,6 +206,7 @@ async function main() {
 
     // Monitoring
     let log_interval = 5000;
+    let shutdownTimer;
     setInterval(() => {
         const _workers = Object.keys(cluster.workers).length;
         const tScale = (log_interval / 1000);
@@ -219,7 +226,10 @@ async function main() {
         console.log(log_msg.join(' | '));
 
         if (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0) {
-            allowShutdown = true;
+
+            shutdownTimer = setTimeout(() => {
+                allowShutdown = true;
+            }, 10000);
 
             // Auto-Stop
             if (pushedBlocks === 0) {
@@ -237,6 +247,10 @@ async function main() {
                 console.log('Processing resumed!');
             }
             idle_count = 0;
+            if (shutdownTimer) {
+                clearTimeout(shutdownTimer);
+                shutdownTimer = null;
+            }
         }
 
         // reset counters

@@ -234,10 +234,9 @@ async function processBlock(res, block, traces, deltas) {
 
 async function getContractAtBlock(accountName, block_num) {
     if (contracts.has(accountName)) {
-        let savedContract = contracts.get(accountName);
-        const validUntil = savedContract['valid_until'];
-        if (validUntil > block_num || validUntil === -1) {
-            return [savedContract['contract'], null];
+        let _sc = contracts.get(accountName);
+        if ((_sc['valid_until'] > block_num && block_num > _sc['valid_from']) || _sc['valid_until'] === -1) {
+            return [_sc['contract'], null];
         }
     }
     const savedAbi = await getAbiAtBlock(accountName, block_num);
@@ -257,7 +256,8 @@ async function getContractAtBlock(accountName, block_num) {
     const result = {types, actions};
     contracts.set(accountName, {
         contract: result,
-        valid_until: savedAbi.valid_until
+        valid_until: savedAbi.valid_until,
+        valid_from: savedAbi.valid_from
     });
     return [result, abi];
 }
@@ -265,8 +265,7 @@ async function getContractAtBlock(accountName, block_num) {
 async function deserializeActionsAtBlock(actions, block_num) {
     return Promise.all(actions.map(async ({account, name, authorization, data}) => {
         const contract = (await getContractAtBlock(account, block_num))[0];
-        return Serialize.deserializeAction(
-            contract, account, name, authorization, data, txEnc, txDec);
+        return Serialize.deserializeAction(contract, account, name, authorization, data, txEnc, txDec);
     }));
 }
 
@@ -288,9 +287,9 @@ async function processDeltas(deltas, block_num) {
 
     const deltaStruct = extractDeltaStruct(deltas);
 
-    if (Object.keys(deltaStruct).length > 4) {
-        console.log(Object.keys(deltaStruct));
-    }
+    // if (Object.keys(deltaStruct).length > 4) {
+    //     console.log(Object.keys(deltaStruct));
+    // }
 
     // Check account deltas for ABI changes
     if (deltaStruct['account']) {
@@ -309,6 +308,7 @@ async function processDeltas(deltas, block_num) {
                         block: block_num,
                         abi: jsonABIString
                     };
+                    debugLog(`[Worker ${process.env.worker_id}] read ${account['name']} ABI at block ${block_num}`);
                     const q = index_queue_prefix + "_abis:1";
                     preIndexingQueue.push({
                         queue: q,
@@ -347,7 +347,17 @@ async function processDeltas(deltas, block_num) {
                 const sb = createSerialBuffer(row.data);
                 try {
                     let allowProcessing = false;
-                    const payload = (types.get('contract_row').deserialize(sb))[1];
+
+                    const payload = {
+                        version: sb.get(),
+                        code: sb.getName(),
+                        scope: sb.getName(),
+                        table: sb.getName(),
+                        primary_key: sb.getUint64AsNumber(),
+                        payer: sb.getName(),
+                        value: sb.getBytes()
+                    };
+
                     if (process.env.INDEX_ALL_DELTAS === 'true') {
                         allowProcessing = true;
                     } else if (payload.code === 'eosio' || payload.table === 'accounts') {
@@ -451,10 +461,11 @@ async function processContractRow(row, block) {
     if (tableType) {
         let rowData = {};
         try {
-            rowData = (tableType).deserialize(row_sb);
+            rowData = tableType.deserialize(row_sb);
         } catch (e) {
-            console.log('-------------- CONTRACT DELTA DS ERROR ---------------');
+            console.log('-------------- CONTRACT DELTA DS ERROR [' + block + '] ---------------');
             console.log(e);
+            console.log(tableType);
             console.log(row);
             console.log('-------------------------------------------------------');
         }
@@ -730,6 +741,10 @@ async function processDeferred(data, block_num) {
     }
 }
 
+async function getAbiFromHeadBlock(code) {
+    return {abi: await api.getAbi(code), valid_until: null, valid_from: null};
+}
+
 async function getAbiAtBlock(code, block_num) {
     const refs = cachedMap[code];
     if (refs) {
@@ -748,24 +763,21 @@ async function getAbiAtBlock(code, block_num) {
             let abi;
             if (!cachedAbiAtBlock) {
                 console.log('remote abi fetch [1]', code, block_num);
-                abi = await api.getAbi(code);
+                return await getAbiFromHeadBlock(code);
             } else {
                 try {
                     abi = JSON.parse(cachedAbiAtBlock);
-                    return {abi: abi, valid_until: validity};
+                    return {abi: abi, valid_until: validity, valid_from: lastblock};
                 } catch (e) {
                     console.log('failed to parse saved ABI', code, block_num);
                     console.log(cachedAbiAtBlock);
                     console.log('----------  END CACHED ABI ------------');
-                    return {abi: null, valid_until: null};
+                    return {abi: null, valid_until: null, valid_from: null};
                 }
             }
         } else {
             console.log('remote abi fetch [2]', code, block_num);
-            return {
-                abi: await api.getAbi(code),
-                valid_until: null
-            };
+            return await getAbiFromHeadBlock(code);
         }
     } else {
         const ref_time = Date.now();
@@ -781,10 +793,10 @@ async function getAbiAtBlock(code, block_num) {
                 _abi = RexAbi;
             } else {
                 console.log(e);
-                return {abi: null, valid_until: null};
+                return {abi: null, valid_until: null, valid_from: null};
             }
         }
-        return {abi: _abi, valid_until: null};
+        return {abi: _abi, valid_until: null, valid_from: null};
     }
 }
 

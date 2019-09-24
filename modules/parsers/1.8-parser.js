@@ -43,9 +43,9 @@ module.exports = {
             action['act'] = ds_act[0];
             common.attachActionExtras(action);
         } catch (e) {
-            console.log('----------------- DESERIALIZATION ERROR ----------------');
+            console.log('----------------- DESERIALIZATION ERROR [' + block_num + '] ----------------');
             console.log(e);
-            console.log('----->>> FOR ACTION:');
+            console.log('----->>> FOR ACTION',`[Worker ${process.env.worker_id}]`);
             console.log(action);
             console.log('---------------------------------------------------------');
             process.send({
