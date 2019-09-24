@@ -1,12 +1,10 @@
 const cluster = require('cluster');
-const master = require('./master');
-const Workers = require('./workers/index');
 const {onError} = require('./helpers/functions');
 
 (async () => {
     if (cluster.isMaster) {
         process.title = `hyp-${process.env.CHAIN}-master`;
-        master.main().catch(onError);
+        require('./master').main().catch(onError);
     } else {
         process.title = `hyp-${process.env.CHAIN}-${process.env['worker_role']}:${process.env.worker_id}`;
         let delay = 0;
@@ -18,23 +16,23 @@ const {onError} = require('./helpers/functions');
         setTimeout(() => {
             switch (process.env['worker_role']) {
                 case 'reader': {
-                    Workers.stateReader.run().catch(onError);
+                    require('./workers/state-reader.worker').run().catch(onError);
                     break;
                 }
                 case 'deserializer': {
-                    Workers.deserializer.run().catch(onError);
+                    require('./workers/deserializer.worker').run().catch(onError);
                     break;
                 }
                 case 'continuous_reader': {
-                    Workers.stateReader.run().catch(onError);
+                    require('./workers/state-reader.worker').run().catch(onError);
                     break;
                 }
                 case 'ingestor': {
-                    Workers.indexer.run().catch(onError);
+                    require('./workers/indexer.worker').run().catch(onError);
                     break;
                 }
                 case 'router': {
-                    Workers.wsRouter.run().catch(onError);
+                    require('./workers/ws-router.worker').run().catch(onError);
                     break;
                 }
             }

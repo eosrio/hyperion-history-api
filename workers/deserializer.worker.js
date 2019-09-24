@@ -30,7 +30,9 @@ let tbl_vote_emit_idx = 1;
 let local_block_count = 0;
 let allowStreaming = false;
 let cachedMap;
+
 let contracts = new Map();
+let contractHitMap = new Map();
 
 const queue_prefix = process.env.CHAIN;
 const queue = queue_prefix + ':blocks';
@@ -232,9 +234,22 @@ async function processBlock(res, block, traces, deltas) {
     }
 }
 
+function hitContract(code, block_num) {
+    if (contractHitMap.has(code)) {
+        contractHitMap.get(code).hits += 1;
+        contractHitMap.get(code).last_usage = block_num;
+    } else {
+        contractHitMap.set(code, {
+            hits: 1,
+            last_usage: block_num
+        });
+    }
+}
+
 async function getContractAtBlock(accountName, block_num) {
     if (contracts.has(accountName)) {
         let _sc = contracts.get(accountName);
+        hitContract(accountName, block_num);
         if ((_sc['valid_until'] > block_num && block_num > _sc['valid_from']) || _sc['valid_until'] === -1) {
             return [_sc['contract'], null];
         }
@@ -720,11 +735,7 @@ async function processTableDelta(data, block_num) {
 }
 
 function createSerialBuffer(inputArray) {
-    return new Serialize.SerialBuffer({
-        textEncoder: new TextEncoder(),
-        textDecoder: new TextDecoder(),
-        array: inputArray
-    });
+    return new Serialize.SerialBuffer({textEncoder: txEnc, textDecoder: txDec, array: inputArray});
 }
 
 async function processDeferred(data, block_num) {
@@ -846,6 +857,17 @@ function initConsumer() {
 }
 
 async function run() {
+
+    setInterval(() => {
+        debugLog(` ${process.env.worker_id} - Contract Map Count: ${contracts.size}`);
+        contractHitMap.forEach((value, key) => {
+            debugLog(`Code: ${key} - Hits: ${value.hits}`);
+            if (value.hits < 100) {
+                contracts.delete(key);
+            }
+        });
+    }, 25000);
+
     cachedMap = JSON.parse(await getAsync(process.env.CHAIN + ":" + 'abi_cache'));
     rpc = manager.nodeosJsonRPC;
     const chain_data = await rpc.get_info();
