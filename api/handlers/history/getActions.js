@@ -4,7 +4,7 @@ const _ = require('lodash');
 
 const maxActions = 1000;
 const route = '/get_actions';
-const terms = ["notified.keyword", "act.authorization.actor.keyword"];
+const terms = ["notified.keyword", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
 const enable_caching = process.env.ENABLE_CACHING === 'true';
@@ -140,6 +140,8 @@ async function getActions(fastify, request) {
     if (request.query.track) {
         if (request.query.track === 'true') {
             trackTotalHits = true;
+        } else if (request.query.track === 'false') {
+            trackTotalHits = false;
         } else {
             trackTotalHits = parseInt(request.query.track, 10);
             if (trackTotalHits !== trackTotalHits) {
@@ -148,17 +150,19 @@ async function getActions(fastify, request) {
         }
     }
 
+    const query_body = {
+        "track_total_hits": trackTotalHits,
+        "query": queryStruct,
+        "sort": {
+            "global_sequence": sort_direction
+        }
+    };
+
     const pResults = await Promise.all([eosjs.rpc.get_info(), elastic['search']({
         "index": process.env.CHAIN + '-action-*',
         "from": skip || 0,
         "size": (limit > maxActions ? maxActions : limit) || 10,
-        "body": {
-            "track_total_hits": trackTotalHits,
-            "query": queryStruct,
-            "sort": {
-                "global_sequence": sort_direction
-            }
-        }
+        "body": query_body
     })]);
     const results = pResults[1];
     const response = {
