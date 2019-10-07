@@ -38,6 +38,13 @@ fastify.register(AutoLoad, {
 });
 
 fastify.register(AutoLoad, {
+    dir: path.join(__dirname, 'handlers', 'v1-chain'),
+    options: {
+        prefix: '/v1/chain'
+    }
+});
+
+fastify.register(AutoLoad, {
     dir: path.join(__dirname, 'handlers', 'history'),
     options: {
         prefix: '/v2/history'
@@ -51,7 +58,7 @@ fastify.register(AutoLoad, {
     }
 });
 
-fastify.register(require('./handlers/health'));
+fastify.register(require('./handlers/health'), {prefix: '/v2'});
 
 fastify.register(require('fastify-cors'));
 
