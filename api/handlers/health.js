@@ -1,4 +1,5 @@
 const amqp = require('amqplib');
+const {getLastIndexedBlock} = require("../../helpers/functions");
 const {ConnectionManager} = require('../../connections/manager');
 const manager = new ConnectionManager();
 
@@ -69,7 +70,9 @@ async function checkNodeos() {
 async function checkElastic(elastic) {
     try {
         let esStatus = await elastic.cat.health({format: 'json', v: true});
+        let lastIndexedBlock = await getLastIndexedBlock(elastic);
         const data = {
+            last_indexed_block: lastIndexedBlock,
             active_shards: esStatus.body[0]['active_shards_percent']
         };
         let stat = 'OK';
