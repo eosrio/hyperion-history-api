@@ -13,8 +13,8 @@ exports.GET = {
                 maxLength: 12
             },
             "track": {
-              description: 'total results to track (count) [number or true]',
-              type: 'string'
+                description: 'total results to track (count) [number or true]',
+                type: 'string'
             },
             "filter": {
                 description: 'code:name filter',
@@ -38,13 +38,11 @@ exports.GET = {
             },
             "after": {
                 description: 'filter after specified date (ISO8601)',
-                type: 'string',
-                format: 'date-time'
+                type: 'string'
             },
             "before": {
                 description: 'filter before specified date (ISO8601)',
-                type: 'string',
-                format: 'date-time'
+                type: 'string'
             },
             "parent": {
                 description: 'filter by parent global sequence',

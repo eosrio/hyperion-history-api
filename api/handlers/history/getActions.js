@@ -114,9 +114,15 @@ async function getActions(fastify, request) {
         let _gte = 0;
         if (request.query['before']) {
             _lte = request.query['before'];
+            if(!_lte.endsWith("Z")) {
+                _lte += "Z";
+            }
         }
         if (request.query['after']) {
             _gte = request.query['after'];
+            if(!_gte.endsWith("Z")) {
+                _gte += "Z";
+            }
         }
         if (!queryStruct.bool['filter']) {
             queryStruct.bool['filter'] = [];
