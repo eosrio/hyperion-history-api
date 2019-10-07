@@ -8,13 +8,16 @@ class StateHistorySocket {
         this.#shipUrl = ship_url;
     }
 
-    connect(onMessage, onDisconnect, onError) {
+    connect(onMessage, onDisconnect, onError, onConnected) {
         this.#ws = new WebSocket(this.#shipUrl, null, {
             perMessageDeflate: false
         });
         this.#ws.on('open', () => {
             if (process.env.DEBUG === 'true') {
                 console.log('[SHiP] websocket connected!');
+            }
+            if (onConnected) {
+                onConnected();
             }
         });
         this.#ws.on('message', onMessage);
