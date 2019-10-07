@@ -196,6 +196,11 @@ async function onMessage(data) {
                 const res = deserialize('result', data, txEnc, txDec, types)[1];
                 if (res['this_block']) {
                     const blk_num = res['this_block']['block_num'];
+
+                    if (process.env['worker_role'] === 'continuous_reader') {
+                        debugLog(`${process.env.CHAIN.toUpperCase()} reader at block ${blk_num}`);
+                    }
+
                     if (blk_num === local_block_num + 1) {
                         local_block_num = blk_num;
                         if (res['block'] || res['traces'] || res['deltas']) {
