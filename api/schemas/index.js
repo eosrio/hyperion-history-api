@@ -9,5 +9,6 @@ module.exports = {
     getTokensSchema: require('./get_tokens'),
     getDeltasSchema: require('./get_deltas'),
     getCreatedAccountsSchema: require('./get_created_accounts'),
-    getVotersSchema: require('./get_voters')
+    getVotersSchema: require('./get_voters'),
+    getBlocksSchema: require('./get_blocks')
 };
