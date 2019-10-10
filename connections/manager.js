@@ -1,4 +1,11 @@
-const conf = require('../connections.json');
+let conf;
+try {
+    conf = require('../connections.json');
+} catch (e) {
+    console.log(e);
+    console.log(`Failed to parse connections.json!`);
+    process.exit(1);
+}
 const redis = require("redis");
 const elasticsearch = require('@elastic/elasticsearch');
 const fetch = require('node-fetch');
