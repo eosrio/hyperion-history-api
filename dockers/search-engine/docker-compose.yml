@@ -1,0 +1,71 @@
+version: '3.3'
+services:
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.3.2
+    container_name: es01
+    environment:
+      - node.name=es01
+      - discovery.seed_hosts=es02
+      - cluster.initial_master_nodes=es01,es02
+      - cluster.name=docker-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms1536m -Xmx1536m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./esdata01:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    networks:
+      - esnet
+  es02:
+    depends_on:
+      - es01
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.3.2
+    container_name: es02
+    environment:
+      - node.name=es02
+      - discovery.seed_hosts=es01
+      - cluster.initial_master_nodes=es01,es02
+      - cluster.name=docker-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./esdata02:/usr/share/elasticsearch/data
+    networks:
+      - esnet
+
+  kibana-local:
+    depends_on:
+      - es01
+    image: docker.elastic.co/kibana/kibana:7.3.2
+    ports:
+      - 5601:5601
+    environment:
+      SERVER_NAME: kibana-local
+      ELASTICSEARCH_HOSTS: http://es01:9200
+
+  rabbitmq01:
+    image: rabbitmq:3.7-management
+    container_name: rabbitmq01
+    ports:
+      - 15672:15672
+      - 5672:5672
+    environment:
+      RABBITMQ_ERLANG_COOKIE: CANTESTNET
+      RABBITMQ_DEFAULT_USER: rabbitmq01
+      RABBITMQ_DEFAULT_PASS: CanTestNet
+      RABBITMQ_DEFAULT_VHOST: can-test-net
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq/mnesia
+    networks:
+      - rabbitmq
+networks:
+  esnet:
+  rabbitmq:
