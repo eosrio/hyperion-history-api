@@ -5,7 +5,7 @@ const {debugLog} = require("../helpers/functions");
 
 async function createConnection(config) {
     try {
-        const amqp_url = `amqp://${config.user}:${config.pass}@${config.host}/%2F${config.vhost}`;
+        const amqp_url = `amqp://${config.user}:${config.pass}@${config.host}/${config.vhost}`;
         const conn = await amqp.connect(amqp_url);
         debugLog("[AMQP] connection established");
         return conn;
@@ -63,7 +63,7 @@ async function amqpConnect(onReconnect, config) {
 
 async function checkQueueSize(q_name, config) {
     try {
-        const apiUrl = `http://${config.user}:${config.pass}@${config.api}/api/queues/%2F${config.vhost}/${q_name}`;
+        const apiUrl = `http://${config.user}:${config.pass}@${config.api}/api/queues/${config.vhost}/${q_name}`;
         const result = JSON.parse((await got(apiUrl)).body);
         return result.messages;
     } catch (e) {
