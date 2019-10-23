@@ -26,7 +26,7 @@ class ConnectionManager {
     }
 
     get ampqUrl() {
-        return `amqp://${conf.amqp.user}:${conf.amqp.pass}@${conf.amqp.host}/%2F${conf.amqp.vhost}`;
+        return `amqp://${conf.amqp.user}:${conf.amqp.pass}@${conf.amqp.host}/${conf.amqp.vhost}`;
     }
 
     async checkQueueSize(queue) {
