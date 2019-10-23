@@ -59,7 +59,9 @@ module.exports = {
                 SERVER_ADDR: '127.0.0.1',
                 CHAIN: 'eos',
                 ENABLE_CACHING: 'true',
-                CACHE_LIFE: 30
+                CACHE_LIFE: 30,
+                // HTTPS_KEY: '/https-key.pem' /* optional */,
+                // HTTPS_CERT: '/https-cert.pem' /* optional */,
             }
         }
     ]

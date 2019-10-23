@@ -8,10 +8,21 @@ process.title = `hyp-${process.env.CHAIN}-api`;
 const {ConnectionManager} = require('../connections/manager');
 const manager = new ConnectionManager();
 
-const fastify = require('fastify')({
+const fastifyOptions = {
     ignoreTrailingSlash: true,
-    trustProxy: true
-});
+    trustProxy: true,
+};
+
+if (process.env.HTTPS_KEY && process.env.HTTPS_CERT) {
+    const fs = require('fs');
+    fastifyOptions.https = {
+        allowHTTP1: true,
+        key: fs.readFileSync(process.env.HTTPS_KEY),
+        cert: fs.readFileSync(process.env.HTTPS_CERT)
+    };
+}
+
+const fastify = require('fastify')(fastifyOptions);
 
 fastify.register(require('fastify-elasticsearch'), {
     client: manager.elasticsearchClient
@@ -108,7 +119,7 @@ fastify.ready().then(async () => {
 (async () => {
     try {
         await fastify.listen({
-            port: process.env.SERVER_PORT,
+            port: process.env.SERVER_PORT || 7000,
             host: process.env.SERVER_ADDR
         });
         fastify.log.info(`server listening on ${fastify.server.address().port}`);
