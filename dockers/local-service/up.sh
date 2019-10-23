@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 
-mkdir -p esdata01
-mkdir -p esdata02
-mkdir -p rabbitmq
+mkdir -p redis
 
 docker-compose up -d
 
