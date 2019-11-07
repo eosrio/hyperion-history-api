@@ -43,14 +43,17 @@ module.exports = {
             action['act'] = ds_act[0];
             common.attachActionExtras(action);
         } catch (e) {
-            console.log('----------------- DESERIALIZATION ERROR [' + block_num + '] ----------------');
-            console.log(e);
-            console.log('----->>> FOR ACTION',`[Worker ${process.env.worker_id}]`);
-            console.log(action);
-            console.log('---------------------------------------------------------');
+            // write error to CSV
             process.send({
-                t: 'ds_fail',
-                v: {gs: action['receipt']['global_sequence']}
+                event: 'ds_error',
+                data: {
+                    type: 'action_ds_error',
+                    block: block_num,
+                    account: act.account,
+                    action: act.name,
+                    gs: parseInt(action['receipt'][1]['global_sequence'], 10),
+                    message: e.message
+                }
             });
             action['act'] = original_act;
             action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
@@ -73,6 +76,10 @@ module.exports = {
             }
             action['receipt'] = action['receipt'][1];
             action['global_sequence'] = parseInt(action['receipt']['global_sequence'], 10);
+
+            delete action['except'];
+            delete action['error_code'];
+
             _processedTraces.push(action);
         } else {
             console.log(action);

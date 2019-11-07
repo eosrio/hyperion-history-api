@@ -3,10 +3,8 @@ const _ = require('lodash');
 const prettyjson = require('prettyjson');
 const {AbiDefinitions, RexAbi} = require("../definitions/abi_def");
 const async = require('async');
-
 const {debugLog} = require("../helpers/functions");
 const {promisify} = require('util');
-
 const {ConnectionManager} = require('../connections/manager');
 const manager = new ConnectionManager();
 
@@ -42,9 +40,9 @@ const n_deserializers = process.env.DESERIALIZERS;
 const n_ingestors_per_queue = parseInt(process.env.ES_INDEXERS_PER_QUEUE, 10);
 const action_indexing_ratio = parseInt(process.env.ES_ACT_QUEUES, 10);
 
-// Stage 2 consumer prefecth
-const deserializerPrefecth = parseInt(process.env.BLOCK_PREFETCH, 10);
-const consumerQueue = async.cargo(async.ensureAsync(processPayload), deserializerPrefecth);
+// Stage 2 consumer prefetch
+const deserializerPrefetch = parseInt(process.env.BLOCK_PREFETCH, 10);
+const consumerQueue = async.cargo(async.ensureAsync(processPayload), deserializerPrefetch);
 
 const preIndexingQueue = async.queue(async.ensureAsync(sendToIndexQueue), 1);
 
@@ -380,9 +378,13 @@ async function processDeltas(deltas, block_num) {
                     }
                     if (allowProcessing) {
                         const jsonRow = await processContractRow(payload, block_num);
+
                         if (jsonRow['data']) {
                             await processTableDelta(jsonRow, block_num);
+                        } else {
+                            console.log(block_num, jsonRow);
                         }
+
                         if (allowStreaming) {
                             const payload = Buffer.from(JSON.stringify(jsonRow));
                             ch.publish('', queue_prefix + ':stream', payload, {
@@ -474,19 +476,26 @@ async function processContractRow(row, block) {
     const row_sb = createSerialBuffer(row['value']);
     const tableType = await getTableType(row['code'], row['table'], block);
     if (tableType) {
-        let rowData = {};
         try {
-            rowData = tableType.deserialize(row_sb);
+            row['data'] = tableType.deserialize(row_sb);
+            return _.omit(row, ['value']);
         } catch (e) {
-            console.log('-------------- CONTRACT DELTA DS ERROR [' + block + '] ---------------');
-            console.log(e);
-            console.log(tableType);
-            console.log(row);
-            console.log('-------------------------------------------------------');
+            // write error to CSV
+            process.send({
+                event: 'ds_error',
+                data: {
+                    type: 'delta_ds_error',
+                    block: block,
+                    code: row['code'],
+                    table: row['table'],
+                    message: e.message
+                }
+            });
+            return row;
         }
-        row['data'] = rowData;
+    } else {
+        return row;
     }
-    return _.omit(row, ['data_raw']);
 }
 
 async function getTableType(code, table, block) {
@@ -617,6 +626,7 @@ const tableHandlers = {
                     amount: parseFloat(amount),
                     symbol: symbol
                 };
+                delete delta.data['balance'];
             } catch (e) {
                 console.log(delta);
                 console.log(e);
@@ -849,7 +859,7 @@ function assertQueues() {
 
 function initConsumer() {
     if (ch_ready) {
-        ch.prefetch(deserializerPrefecth);
+        ch.prefetch(deserializerPrefetch);
         ch.consume(process.env['worker_queue'], (data) => {
             consumerQueue.push(data);
         });

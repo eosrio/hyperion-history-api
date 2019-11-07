@@ -420,12 +420,11 @@ async function main() {
         fs.mkdirSync('./logs');
     }
 
-    const dsErrorsLog = './logs/' + process.env.CHAIN + "_ds_err_" + starting_block + "_" + head + ".txt";
+    const dsErrorsLog = './logs/' + process.env.CHAIN + "_ds_err_" + starting_block + "_" + head + "_" + Date.now() + ".txt";
     if (fs.existsSync(dsErrorsLog)) {
         fs.unlinkSync(dsErrorsLog);
     }
     const ds_errors = fs.createWriteStream(dsErrorsLog, {flags: 'a'});
-
     const cachedMap = await getAsync(process.env.CHAIN + ":" + 'abi_cache');
     let abiCacheMap;
     if (cachedMap) {
@@ -517,7 +516,10 @@ async function main() {
                 break;
             }
             case 'ds_error': {
-                ds_errors.write(msg.gs + '\n');
+                // console.log(msg.data);
+                const str = JSON.stringify(msg.data);
+                // console.log(str);
+                ds_errors.write(str + '\n');
                 break;
             }
             case 'read_block': {

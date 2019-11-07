@@ -15,6 +15,7 @@ let cch_ready = false;
 let tables = new Map();
 let chainID = null;
 let local_block_num = parseInt(process.env.first_block, 10) - 1;
+
 if (process.env['worker_role'] === 'continuous_reader') {
     local_block_num = parseInt(process.env.worker_last_processed_block, 10) - 1;
 }
@@ -222,8 +223,8 @@ async function onMessage(data) {
                         }
                     } else {
                         console.log(process.env['worker_role']);
-                        console.log(res);
-                        console.log('[FATAL] missing block: ' + (local_block_num + 1) + ' last block:' + blk_num);
+                        console.log('BLOCK', res);
+                        console.log('[FATAL] missing block: ' + (local_block_num + 1) + ' last block: ' + blk_num);
                         return 0;
                     }
                 } else {
