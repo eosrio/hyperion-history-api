@@ -82,6 +82,39 @@ const action = {
                     "amount": {"type": "float"}
                 }
             },
+            "@buyram": {
+                "properties": {
+                    "payer": {"type": "keyword"},
+                    "receiver": {"type": "keyword"},
+                    "quant": {"type": "float"}
+                }
+            },
+            "@buyrambytes": {
+                "properties": {
+                    "payer": {"type": "keyword"},
+                    "receiver": {"type": "keyword"},
+                    "bytes": {"type": "long"}
+                }
+            },
+            "@delegatebw": {
+                "properties": {
+                    "from": {"type": "keyword"},
+                    "receiver": {"type": "keyword"},
+                    "stake_cpu_quantity": {"type": "float"},
+                    "stake_net_quantity": {"type": "float"},
+                    "transfer": {"type": "boolean"},
+                    "amount": {"type": "float"}
+                }
+            },
+            "@undelegatebw": {
+                "properties": {
+                    "from": {"type": "keyword"},
+                    "receiver": {"type": "keyword"},
+                    "unstake_cpu_quantity": {"type": "float"},
+                    "unstake_net_quantity": {"type": "float"},
+                    "amount": {"type": "float"}
+                }
+            },
             "act.authorization.actor": {"type": "keyword"},
             "account_ram_deltas.account": {"enabled": false},
             "act.name": {"type": "keyword"},
