@@ -1,0 +1,27 @@
+const hyperionModule = {
+    chain: "*",
+    contract: 'eosio',
+    action: 'delegatebw',
+    parser_version: '1.8',
+    handler: (action) => {
+        // attach action extras here
+        const data = action['act']['data'];
+        let cpu_qtd = null;
+        let net_qtd = null;
+        if (data['stake_net_quantity'] && data['stake_cpu_quantity']) {
+            cpu_qtd = parseFloat(data['stake_cpu_quantity'].split(' ')[0]);
+            net_qtd = parseFloat(data['stake_net_quantity'].split(' ')[0]);
+        }
+        action['@delegatebw'] = {
+            amount: cpu_qtd + net_qtd,
+            stake_cpu_quantity: cpu_qtd,
+            stake_net_quantity: net_qtd,
+            from: data['from'],
+            receiver: data['receiver'],
+            transfer: data['transfer']
+        };
+        delete action['act']['data'];
+    }
+};
+
+module.exports = {hyperionModule};
