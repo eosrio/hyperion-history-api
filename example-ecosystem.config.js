@@ -41,6 +41,7 @@ module.exports = {
                 USERRES_STATE: 'false',
                 DELBAND_STATE: 'false',
                 REPAIR_MODE: 'false',
+                INDEX_TRANSFER_MEMO: 'false',
                 DEBUG: 'false'
             }
         },
