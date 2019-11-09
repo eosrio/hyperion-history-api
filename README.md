@@ -38,7 +38,7 @@ With those changes the API format focus on delivering faster search times, lower
 
 This setup has only been tested with Ubuntu 18.04, but should work with other OS versions too
 
- - [Elasticsearch 7.3.2](https://www.elastic.co/downloads/elasticsearch)
+ - [Elasticsearch 7.4.X](https://www.elastic.co/downloads/elasticsearch)
  - [RabbitMQ](https://www.rabbitmq.com/install-debian.html)
  - [Redis](https://redis.io/topics/quickstart)
  - [Node.js v12](https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions)
