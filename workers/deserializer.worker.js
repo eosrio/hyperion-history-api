@@ -170,18 +170,17 @@ async function processBlock(res, block, traces, deltas) {
                                 const tempTrace = data;
                                 tempTrace['receipts'] = [];
                                 tempTrace['notified'] = [];
+                                const tempSet = new Set();
                                 digestMap.get(digest).forEach(val => {
-
-                                    tempTrace['notified'].push(val.receiver);
+                                    tempSet.add(val.receiver);
                                     tempTrace['code_sequence'] = val.code_sequence;
                                     tempTrace['abi_sequence'] = val.abi_sequence;
-
                                     delete val['code_sequence'];
                                     delete val['abi_sequence'];
                                     delete val['act_digest'];
-
                                     tempTrace['receipts'].push(val);
                                 });
+                                tempTrace['notified'] = Array.from(tempSet);
                                 delete tempTrace['receipt'];
                                 delete tempTrace['receiver'];
                                 _finalTraces.push(tempTrace);
@@ -195,6 +194,7 @@ async function processBlock(res, block, traces, deltas) {
                     // Submit Actions after deduplication
                     for (const uniqueAction of _finalTraces) {
                         const payload = Buffer.from(JSON.stringify(uniqueAction));
+
                         if (process.env.ENABLE_INDEXING === 'true') {
                             const q = index_queue_prefix + "_actions:" + (act_emit_idx);
                             preIndexingQueue.push({
@@ -206,11 +206,14 @@ async function processBlock(res, block, traces, deltas) {
                                 act_emit_idx = 1;
                             }
                         }
-                        if (allowStreaming) {
+
+                        if (allowStreaming && process.env.STREAM_TRACES === 'true') {
                             ch.publish('', queue_prefix + ':stream', payload, {
                                 headers: {
+                                    event: 'trace',
                                     account: uniqueAction['act']['account'],
-                                    name: uniqueAction['act']['name']
+                                    name: uniqueAction['act']['name'],
+                                    notified: uniqueAction['notified'].join(",")
                                 }
                             });
                         }
@@ -385,11 +388,13 @@ async function processDeltas(deltas, block_num) {
                             console.log(block_num, jsonRow);
                         }
 
-                        if (allowStreaming) {
+                        if (allowStreaming && process.env.STREAM_DELTAS === 'true') {
                             const payload = Buffer.from(JSON.stringify(jsonRow));
                             ch.publish('', queue_prefix + ':stream', payload, {
                                 headers: {
-                                    event: 'delta'
+                                    event: 'delta',
+                                    code: jsonRow.code,
+                                    table: jsonRow.table
                                 }
                             });
                         }
