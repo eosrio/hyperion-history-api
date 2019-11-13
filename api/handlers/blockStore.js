@@ -176,7 +176,7 @@ function onMessage(data) {
                                 trace.actions.push(action);
                             }
                             delete trace.action_traces;
-                            if (trace.actions[0]['act']['account'] === 'eosio' && trace.actions[0]['act']['name'] === 'onblock') {
+                            if (trace.actions[0]['act']['account'] === process.env.SYSTEM_DOMAIN && trace.actions[0]['act']['name'] === 'onblock') {
                                 // ingore onblock
                             } else {
                                 block_data.block.transactions.push(trace);

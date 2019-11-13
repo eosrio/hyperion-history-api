@@ -1,5 +1,7 @@
+const system_domain = process.env.SYSTEM_DOMAIN;
+
 const AbiDefinitions = {
-    version: "eosio::abi/1.1",
+    version: system_domain + "::abi/1.1",
     structs: [
         {
             name: "extensions_entry",
@@ -193,7 +195,7 @@ const AbiDefinitions = {
 };
 
 const RexAbi = {
-    version: "eosio::abi/1.1",
+    version: system_domain + "::abi/1.1",
     types: [],
     structs: [
         {

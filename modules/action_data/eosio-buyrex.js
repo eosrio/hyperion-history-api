@@ -1,6 +1,6 @@
 const hyperionModule = {
     chain: "*",
-    contract: 'eosio',
+    contract: process.env.SYSTEM_DOMAIN,
     action: 'buyrex',
     parser_version: '1.8',
     handler: (action) => {

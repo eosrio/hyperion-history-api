@@ -36,7 +36,7 @@ async function getTokens(fastify, request) {
             size: 0,
             query: {
                 bool: {
-                    // must_not: {term: {"act.account": "eosio.token"}},
+                    // must_not: {term: {"act.account": process.env.SYSTEM_DOMAIN + ".token"}},
                     filter: [
                         {term: {"notified": request.query.account}},
                         {terms: {"act.name": ["transfer", "issue"]}}

@@ -33,6 +33,7 @@ let contracts = new Map();
 let contractHitMap = new Map();
 
 const queue_prefix = process.env.CHAIN;
+const system_domain = process.env.SYSTEM_DOMAIN;
 const queue = queue_prefix + ':blocks';
 const index_queue_prefix = queue_prefix + ':index';
 const index_queues = require('../definitions/index-queues').index_queues;
@@ -376,7 +377,7 @@ async function processDeltas(deltas, block_num) {
 
                     if (process.env.INDEX_ALL_DELTAS === 'true') {
                         allowProcessing = true;
-                    } else if (payload.code === 'eosio' || payload.table === 'accounts') {
+                    } else if (payload.code === system_domain || payload.table === 'accounts') {
                         allowProcessing = true;
                     }
                     if (allowProcessing) {
@@ -543,8 +544,10 @@ async function getTableType(code, table, block) {
     return cType;
 }
 
+
+
 const tableHandlers = {
-    'eosio:voters': async (delta) => {
+    [system_domain + ':voters']: async (delta) => {
         delta['@voters'] = {};
         delta['@voters']['is_proxy'] = delta.data['is_proxy'];
         delete delta.data['is_proxy'];
@@ -567,7 +570,7 @@ const tableHandlers = {
             await storeVoter(delta);
         }
     },
-    'eosio:global': async (delta) => {
+    [system_domain + ':global']: async (delta) => {
         const data = delta['data'];
         delta['@global.data'] = {
             last_name_close: data['last_name_close'],
@@ -583,7 +586,7 @@ const tableHandlers = {
         };
         delete delta['data'];
     },
-    'eosio:producers': async (delta) => {
+    [system_domain + ':producers']: async (delta) => {
         const data = delta['data'];
         delta['@producers'] = {
             total_votes: parseFloat(data['total_votes']),
@@ -592,7 +595,7 @@ const tableHandlers = {
         };
         delete delta['data'];
     },
-    'eosio:userres': async (delta) => {
+    [system_domain + ':userres']: async (delta) => {
         const data = delta['data'];
         const net = parseFloat(data['net_weight'].split(" ")[0]);
         const cpu = parseFloat(data['cpu_weight'].split(" ")[0]);
@@ -606,7 +609,7 @@ const tableHandlers = {
         delete delta['data'];
         // console.log(delta);
     },
-    'eosio:delband': async (delta) => {
+    [system_domain + ':delband']: async (delta) => {
         const data = delta['data'];
         const net = parseFloat(data['net_weight'].split(" ")[0]);
         const cpu = parseFloat(data['cpu_weight'].split(" ")[0]);
@@ -620,7 +623,7 @@ const tableHandlers = {
         delete delta['data'];
         // console.log(delta);
     },
-    // 'eosio:rammarket': async (delta) => {
+    // [system_domain + ':rammarket']: async (delta) => {
     //     console.log(delta);
     // },
     '*:accounts': async (delta) => {
@@ -815,7 +818,7 @@ async function getAbiAtBlock(code, block_num) {
                 console.log('remote abi fetch [3]', code, block_num, elapsed_time);
             }
         } catch (e) {
-            if (code === 'eosio.rex') {
+            if (code === system_domain + '.rex') {
                 _abi = RexAbi;
             } else {
                 console.log(e);

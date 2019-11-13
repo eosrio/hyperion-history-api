@@ -1,5 +1,5 @@
 exports.GET = {
-    description: 'get token transfers utilizing the eosio.token standard',
+    description: 'get token transfers utilizing the ' + process.env.SYSTEM_DOMAIN + '.token standard',
     summary: 'get token transfers',
     tags: ['history'],
     querystring: {

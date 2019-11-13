@@ -20,6 +20,7 @@ module.exports = {
                 FETCH_BLOCK: 'true',
                 FETCH_TRACES: 'true',
                 CHAIN: 'eos',
+                SYSTEM_DOMAIN: 'eosio',
                 CREATE_INDICES: 'v1',
                 PREVIEW: 'false',
                 DISABLE_READING: 'false',

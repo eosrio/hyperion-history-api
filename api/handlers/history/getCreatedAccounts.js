@@ -18,7 +18,7 @@ async function getCreatedAccounts(fastify, request) {
                     must: [
                         {term: {"act.authorization.actor": request.query.account.toLowerCase()}},
                         {term: {"act.name": "newaccount"}},
-                        {term: {"act.account": "eosio"}}
+                        {term: {"act.account": process.env.SYSTEM_DOMAIN}}
                     ]
                 }
             },

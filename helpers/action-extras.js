@@ -1,7 +1,8 @@
 const actionExtras = new Map();
 const chain = process.env.CHAIN;
+const system_domain = process.env.SYSTEM_DOMAIN;
 
-actionExtras.set(`${chain}"::eosio::newaccount`,(action) => {
+actionExtras.set(`${chain}"::${system_domain}::newaccount`,(action) => {
 	let name = null;
 	const data = action['act']['data'];
 	if (data['newact']) {

@@ -2,6 +2,7 @@ const amqp = require('amqplib');
 const {getLastIndexedBlock} = require("../../helpers/functions");
 const {ConnectionManager} = require('../../connections/manager');
 const manager = new ConnectionManager();
+const system_domain = process.env.SYSTEM_DOMAIN;
 
 function createHealth(name, status, data) {
     let time = Date.now();
@@ -21,10 +22,10 @@ async function checkRedis(redis) {
             } else {
                 try {
                     const json = JSON.parse(data);
-                    if (json['eosio']) {
+                    if (json[system_domain]) {
                         resolve('OK');
                     } else {
-                        resolve('Missing eosio on ABI cache.');
+                        resolve('Missing ' + system_domain + ' on ABI cache.');
                     }
                 } catch (e) {
                     console.log(e);

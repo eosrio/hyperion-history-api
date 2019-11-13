@@ -50,7 +50,7 @@ async function getCreator(fastify, request) {
             bool: {
                 must: [
                     {term: {"act.name": "newaccount"}},
-                    {term: {"act.account": "eosio"}},
+                    {term: {"act.account": process.env.SYSTEM_DOMAIN}},
                     {term: {"@timestamp": account_data['created']}}
                 ]
             }
