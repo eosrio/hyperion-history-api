@@ -14,10 +14,12 @@ const schema = {
     }
 };
 
+const route = '/get_block';
 const {blockStore} = require('../blockStore');
+const {getCacheByHash} = require("../../helpers/functions");
 
 async function getBlock(fastify, request, reply) {
-    const {eosjs} = fastify;
+    const {eosjs, redis} = fastify;
     let block_num_or_id;
     try {
         if (typeof request.body === 'object') {
@@ -30,32 +32,43 @@ async function getBlock(fastify, request, reply) {
         console.log(e);
     }
     if (block_num_or_id) {
-        try {
-            const blockdata = await eosjs.rpc.get_block(block_num_or_id);
-            reply.send(blockdata);
-        } catch (e) {
-            const errJson = {
-                "code": 400,
-                "message": "Unknown Block",
-                "error": {
-                    "code": 3100002,
-                    "name": "unknown_block_exception",
-                    "what": "Unknown block",
-                    "details": [
-                        {
-                            "message": "Could not find block: " + block_num_or_id,
-                            "file": "chain_plugin.cpp",
-                            "line_number": 1852,
-                            "method": "get_block"
-                        }
-                    ]
-                }
-            };
-            reply.code(400).send(errJson);
+        let cachedResponse, hash;
+        const key = route + '_' + block_num_or_id;
+        [cachedResponse, hash] = await getCacheByHash(redis, key);
+        console.log(hash);
+        if (cachedResponse) {
+            cachedResponse = JSON.parse(cachedResponse);
+            reply.send(cachedResponse);
+        } else {
+            try {
+                const blockdata = await eosjs.rpc.get_block(block_num_or_id);
+                redis.set(hash, JSON.stringify(blockdata), 'EX', 86400);
+                reply.send(blockdata);
+            } catch (e) {
+                reply.code(400).send({
+                    "code": 400,
+                    "message": "Unknown Block",
+                    "error": {
+                        "code": 3100002,
+                        "name": "unknown_block_exception",
+                        "what": "Unknown block",
+                        "details": [
+                            {
+                                "message": "Could not find block: " + block_num_or_id,
+                                "file": "chain_plugin.cpp",
+                                "line_number": 1852,
+                                "method": "get_block"
+                            }
+                        ]
+                    }
+                });
+            }
         }
     } else {
-        reply.code(404).type('text/html').send('Not Found');
+        reply.code(400).send({});
     }
+
+    // TODO: fallback to state history
     // let from_block;
     // if (request.body['block_num_or_id']) {
     //     from_block = parseInt(request.body['block_num_or_id']);
@@ -67,10 +80,11 @@ async function getBlock(fastify, request, reply) {
     //         reply.send(response);
     //     });
     // }
+
 }
 
 module.exports = function (fastify, opts, next) {
-    fastify.post('/get_block', {schema}, async (request, reply) => {
+    fastify.post(route, {schema}, async (request, reply) => {
         await getBlock(fastify, request, reply);
     });
     next();
