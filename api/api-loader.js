@@ -2,7 +2,6 @@ const Redis = require('ioredis');
 const openApi = require('./config/openApi');
 const AutoLoad = require('fastify-autoload');
 const path = require('path');
-
 process.title = `hyp-${process.env.CHAIN}-api`;
 
 const {ConnectionManager} = require('../connections/manager');
@@ -13,11 +12,28 @@ const fastify = require('fastify')({
     trustProxy: true
 });
 
+if (process.env.ENABLE_WEBSOCKET === 'true') {
+    const {SocketManager} = require("./socketManager");
+    const socketManager = new SocketManager(fastify);
+}
+
 fastify.register(require('fastify-elasticsearch'), {
     client: manager.elasticsearchClient
 });
 
+fastify.register(require('fastify-cors'));
 fastify.register(require('fastify-redis'), manager.redisOptions);
+fastify.register(require('fastify-formbody'));
+
+fastify.addContentTypeParser('*', function (req, done) {
+    let data = '';
+    req.on('data', chunk => {
+        data += chunk
+    });
+    req.on('end', () => {
+        done(null, data)
+    });
+});
 
 fastify.register(require('./plugins/eosjs'));
 
@@ -59,8 +75,6 @@ fastify.register(AutoLoad, {
 });
 
 fastify.register(require('./handlers/health'), {prefix: '/v2'});
-
-fastify.register(require('fastify-cors'));
 
 fastify.ready().then(async () => {
     console.log(process.env.CHAIN + ' api successfully booted!');

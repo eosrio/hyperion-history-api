@@ -43,10 +43,6 @@ async function get_key_accounts(fastify, request) {
     } else {
         public_Key = numeric.convertLegacyPublicKey(public_Key);
     }
-    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.body));
-    if (cachedResponse) {
-        return cachedResponse;
-    }
     const results = await elastic.search({
         index: process.env.CHAIN + '-action-*',
         size: 100,
@@ -88,17 +84,7 @@ async function get_key_accounts(fastify, request) {
             }
         });
     }
-
-    if (response.account_names.length > 0) {
-        response.account_names = Array.from(new Set(response.account_names));
-        redis.set(hash, JSON.stringify(response), 'EX', 30);
-        return response;
-    } else {
-        const err = new Error();
-        err.statusCode = 404;
-        err.message = 'no accounts associated with ' + public_Key;
-        throw err;
-    }
+    return response;
 }
 
 module.exports = function (fastify, opts, next) {

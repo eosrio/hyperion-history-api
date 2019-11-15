@@ -4,6 +4,7 @@ const {
     buildAbiBulk,
     buildDeltaBulk,
     buildTableAccountsBulk,
+    buildTableProposalsBulk,
     buildTableVotersBulk
 } = require("./bulkBuilders");
 const queue_prefix = process.env.CHAIN;
@@ -97,6 +98,18 @@ const routes = {
             index: queue_prefix + '-delta',
             type: '_doc',
             body: buildDeltaBulk(payloads, messageMap)
+        }).then(resp => {
+            onResponse(resp, messageMap, cb, payloads, channel);
+        }).catch(err => {
+            onError(err, channel, cb);
+        });
+    },
+    'table-proposals': async (payloads, channel, cb) => {
+        const messageMap = new Map();
+        client['bulk']({
+            index: queue_prefix + '-table-proposals',
+            type: '_doc',
+            body: buildTableProposalsBulk(payloads, messageMap)
         }).then(resp => {
             onResponse(resp, messageMap, cb, payloads, channel);
         }).catch(err => {

@@ -1,5 +1,5 @@
 const {getActionsSchema} = require("../../schemas");
-const {getCacheByHash} = require("../../helpers/functions");
+const {getCacheByHash, mergeActionMeta} = require("../../helpers/functions");
 const _ = require('lodash');
 
 const maxActions = 1000;
@@ -114,13 +114,13 @@ async function getActions(fastify, request) {
         let _gte = 0;
         if (request.query['before']) {
             _lte = request.query['before'];
-            if(!_lte.endsWith("Z")) {
+            if (!_lte.endsWith("Z")) {
                 _lte += "Z";
             }
         }
         if (request.query['after']) {
             _gte = request.query['after'];
-            if(!_gte.endsWith("Z")) {
+            if (!_gte.endsWith("Z")) {
                 _gte += "Z";
             }
         }
@@ -182,11 +182,7 @@ async function getActions(fastify, request) {
         const actions = results['body']['hits']['hits'];
         for (let action of actions) {
             action = action._source;
-            const name = action.act.name;
-            if (action['@' + name]) {
-                action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
-                delete action['@' + name];
-            }
+            mergeActionMeta(action);
             response.actions.push(action);
         }
     }

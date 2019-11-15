@@ -23,16 +23,22 @@ const action = {
         "properties": {
             "@timestamp": {"type": "date"},
             "global_sequence": {"type": "long"},
-            "parent": {"type": "long"},
-            "act.data": {"enabled": false},
             "account_ram_deltas.delta": {"enabled": false},
+            "account_ram_deltas.account": {"enabled": false},
+            "act.authorization.permission": {"enabled": false},
+            "act.authorization.actor": {"type": "keyword"},
             "act.account": {"type": "keyword"},
+            "act.name": {"type": "keyword"},
+            "act.data": {"enabled": false},
             "block_num": {"type": "long"},
             "action_ordinal": {"type": "long"},
             "creator_action_ordinal": {"type": "long"},
-            "code_sequence": {"type": "long"},
-            "abi_sequence": {"type": "long"},
-            "act.authorization.permission": {"enabled": false},
+            "cpu_usage_us": {"type": "integer"},
+            "net_usage_words": {"type": "integer"},
+            "code_sequence": {"type": "integer"},
+            "abi_sequence": {"type": "integer"},
+            "trx_id": {"type": "keyword"},
+            "producer": {"type": "keyword"},
             "receipts": {
                 "properties": {
                     "global_sequence": {"type": "long"},
@@ -41,7 +47,7 @@ const action = {
                     "auth_sequence": {
                         "properties": {
                             "account": {"type": "keyword"},
-                            "sequence": {"type": "long"}
+                            "sequence": {"type": "integer"}
                         }
                     }
                 }
@@ -114,12 +120,7 @@ const action = {
                     "unstake_net_quantity": {"type": "float"},
                     "amount": {"type": "float"}
                 }
-            },
-            "act.authorization.actor": {"type": "keyword"},
-            "account_ram_deltas.account": {"enabled": false},
-            "act.name": {"type": "keyword"},
-            "trx_id": {"type": "keyword"},
-            "producer": {"type": "keyword"}
+            }
         }
     }
 };
@@ -163,7 +164,31 @@ const block = {
             "new_producers.producers.producer_name": {"type": "keyword"},
             "new_producers.version": {"type": "long"},
             "@timestamp": {"type": "date"},
-            "schedule_version": {"type": "double"}
+            "schedule_version": {"type": "double"},
+            "cpu_usage": {"type": "integer"},
+            "net_usage": {"type": "integer"}
+        }
+    }
+};
+
+const tableProposals = {
+    "index_patterns": [process.env.CHAIN + "-table-proposals-*"],
+    "settings": {
+        "index": {
+            "number_of_shards": 3,
+            "refresh_interval": "5s",
+            "number_of_replicas": 0,
+            "sort.field": "block_num",
+            "sort.order": "desc"
+        }
+    },
+    "mappings": {
+        "properties": {
+            "proposal_name": {"type": "keyword"},
+            "requested_approvals": {"type": "object"},
+            "provided_approvals": {"type": "object"},
+            "executed": {"type": "boolean"},
+            "block_num": {"type": "long"}
         }
     }
 };
@@ -284,13 +309,16 @@ const delta = {
     "mappings": {
         "properties": {
             "block_num": {"type": "long"},
-            "present": {"type": "byte"},
+            "present": {"type": "boolean"},
             "code": {"type": "keyword"},
             "scope": {"type": "keyword"},
             "table": {"type": "keyword"},
             "payer": {"type": "keyword"},
             "data": {"enabled": false},
             "primary_key": {"type": "keyword"},
+            "@approvals.proposal_name": {"type": "keyword"},
+            "@approvals.provided_approvals": {"type": "object"},
+            "@approvals.requested_approvals": {"type": "object"},
             "@accounts.amount": {"type": "float"},
             "@accounts.symbol": {"type": "keyword"},
             "@voters.is_proxy": {"type": "boolean"},
@@ -322,6 +350,7 @@ const delta = {
 
 module.exports = {
     action, block, abi, delta,
+    "table-proposals": tableProposals,
     "table-accounts": tableAccounts,
     "table-delband": tableDelBand,
     "table-userres": tableUserRes,
