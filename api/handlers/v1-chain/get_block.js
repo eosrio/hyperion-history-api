@@ -18,6 +18,34 @@ const route = '/get_block';
 const {blockStore} = require('../blockStore');
 const {getCacheByHash} = require("../../helpers/functions");
 
+let last_get_info = 0;
+let chain_info;
+
+async function getInfo(eosjs) {
+    if (Date.now() - last_get_info > 1000) {
+        chain_info = await eosjs.rpc.get_info();
+        last_get_info = Date.now();
+    }
+}
+
+async function processBlockData(block, eosjs) {
+    // Calculate total usage
+    let total_cpu = 0;
+    let total_net = 0;
+    block.transactions.forEach((trx) => {
+        total_cpu += trx['cpu_usage_us'];
+        total_net += trx['net_usage_words'];
+    });
+    block['total_cpu_usage_us'] = total_cpu;
+    block['total_net_usage_words'] = total_net;
+
+    // check irreversibility
+    await getInfo(eosjs);
+    block['last_irreversible_block_num'] = chain_info.last_irreversible_block_num;
+    block['irreversible'] = block['block_num'] <= block['last_irreversible_block_num'];
+    return block;
+}
+
 async function getBlock(fastify, request, reply) {
     const {eosjs, redis} = fastify;
     let block_num_or_id;
@@ -31,39 +59,54 @@ async function getBlock(fastify, request, reply) {
         console.log(request.body);
         console.log(e);
     }
+
+    if (parseInt(block_num_or_id) === 0) {
+        await getInfo(eosjs);
+        block_num_or_id = chain_info.head_block_num;
+    }
+
     if (block_num_or_id) {
         let cachedResponse, hash;
         const key = route + '_' + block_num_or_id;
         [cachedResponse, hash] = await getCacheByHash(redis, key);
-        console.log(hash);
         if (cachedResponse) {
             cachedResponse = JSON.parse(cachedResponse);
-            reply.send(cachedResponse);
-        } else {
-            try {
-                const blockdata = await eosjs.rpc.get_block(block_num_or_id);
-                redis.set(hash, JSON.stringify(blockdata), 'EX', 86400);
-                reply.send(blockdata);
-            } catch (e) {
-                reply.code(400).send({
-                    "code": 400,
-                    "message": "Unknown Block",
-                    "error": {
-                        "code": 3100002,
-                        "name": "unknown_block_exception",
-                        "what": "Unknown block",
-                        "details": [
-                            {
-                                "message": "Could not find block: " + block_num_or_id,
-                                "file": "chain_plugin.cpp",
-                                "line_number": 1852,
-                                "method": "get_block"
-                            }
-                        ]
-                    }
-                });
+            if (cachedResponse['irreversible']) {
+                reply.send(cachedResponse);
+                return;
             }
         }
+
+        try {
+            let blockdata = await eosjs.rpc.get_block(block_num_or_id);
+            blockdata = await processBlockData(blockdata, eosjs);
+            const blockstring = JSON.stringify(blockdata);
+            if (blockdata['irreversible']) {
+                redis.set(hash, blockstring, 'EX', 86400);
+            } else {
+                redis.set(hash, blockstring, 'EX', 10);
+            }
+            reply.send(blockdata);
+        } catch (e) {
+            reply.code(400).send({
+                "code": 400,
+                "message": "Unknown Block",
+                "error": {
+                    "code": 3100002,
+                    "name": "unknown_block_exception",
+                    "what": "Unknown block",
+                    "details": [
+                        {
+                            "message": "Could not find block: " + block_num_or_id,
+                            "file": "chain_plugin.cpp",
+                            "line_number": 1852,
+                            "method": "get_block"
+                        }
+                    ]
+                }
+            });
+        }
+
     } else {
         reply.code(400).send({});
     }
