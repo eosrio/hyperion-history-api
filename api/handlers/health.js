@@ -1,7 +1,23 @@
 const amqp = require('amqplib');
+const {getCacheByHash} = require("../helpers/functions");
 const {getLastIndexedBlock} = require("../../helpers/functions");
 const {ConnectionManager} = require('../../connections/manager');
 const manager = new ConnectionManager();
+
+const ecosystem = require('../../ecosystem.config');
+
+function checkFeat(name) {
+    return currentENV[name] === 'true';
+}
+
+const currentENV = ecosystem.apps.find(app => app.env.CHAIN === process.env.CHAIN)['env'];
+
+// get current github version
+let last_commit_hash;
+require('child_process').exec('git rev-parse HEAD', function (err, stdout) {
+    console.log('Last commit hash on this branch is:', stdout);
+    last_commit_hash = stdout.trim();
+});
 
 function createHealth(name, status, data) {
     let time = Date.now();
@@ -95,7 +111,33 @@ module.exports = function (fastify, opts, next) {
         const t0 = Date.now();
         const {redis, elastic} = fastify;
 
+        let cachedResponse, hash;
+        [cachedResponse, hash] = await getCacheByHash(redis, 'health');
+        if (cachedResponse) {
+            cachedResponse = JSON.parse(cachedResponse);
+            cachedResponse['query_time'] = Date.now() - t0;
+            cachedResponse['cached'] = true;
+            reply.send(cachedResponse);
+            return;
+        }
+
         let response = {
+            version_hash: last_commit_hash,
+            features: {
+                indices: {
+                    all_deltas: checkFeat('INDEX_ALL_DELTAS'),
+                    transfer_memo: checkFeat('INDEX_TRANSFER_MEMO'),
+                },
+                tables: {
+                    proposals: checkFeat('PROPOSAL_STATE'),
+                    accounts: checkFeat('ACCOUNT_STATE'),
+                    voters: checkFeat('VOTERS_STATE')
+                },
+                stream: {
+                    traces: checkFeat('STREAM_TRACES'),
+                    deltas: checkFeat('STREAM_DELTAS')
+                }
+            },
             health: []
         };
 
@@ -103,9 +145,10 @@ module.exports = function (fastify, opts, next) {
         response.health.push(await checkNodeos());
         response.health.push(await checkRedis(redis));
         response.health.push(await checkElastic(elastic));
-
         response['query_time'] = Date.now() - t0;
 
+        // prevent abuse of the health endpoint
+        redis.set(hash, JSON.stringify(response), 'EX', 10);
         reply.send(response);
     });
     next();
