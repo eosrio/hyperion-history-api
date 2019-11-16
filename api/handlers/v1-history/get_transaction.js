@@ -89,7 +89,7 @@ async function getTransaction(fastify, request) {
         for (let action of actions) {
             action = action._source;
             mergeActionMeta(action);
-            action.act['hex_data'] = new Buffer(JSON.stringify(action.act.data)).toString('hex');
+            action.act['hex_data'] = new Buffer.from(JSON.stringify(action.act.data)).toString('hex');
             if (action.parent === 0) {
                 response.trx.trx.actions.push(action.act);
             }
