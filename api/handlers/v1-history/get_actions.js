@@ -2,7 +2,7 @@ const _ = require('lodash');
 const prettyjson = require("prettyjson");
 const {getCacheByHash, mergeActionMeta} = require("../../helpers/functions");
 
-const maxActions = 1000;
+const maxActions = 500;
 const route = '/get_actions';
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
@@ -158,7 +158,7 @@ async function get_actions(fastify, request) {
         }
     }
     pos = parseInt(reqBody.pos || 0, 10);
-    offset = parseInt(reqBody.offset || maxActions, 10);
+    offset = parseInt(reqBody.offset || 20, 10);
     let from, size;
     from = size = 0;
     if (pos === -1) {
@@ -294,7 +294,7 @@ async function get_actions(fastify, request) {
             };
             mergeActionMeta(action);
             act.action_trace.act = action.act;
-            act.action_trace.act.hex_data = new Buffer(JSON.stringify(action.act.data)).toString('hex');
+            act.action_trace.act.hex_data = new Buffer.from(JSON.stringify(action.act.data)).toString('hex');
             if (action.act.account_ram_deltas) {
                 act.action_trace.account_ram_deltas = action.account_ram_deltas
             }
