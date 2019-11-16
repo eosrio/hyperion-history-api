@@ -9,7 +9,6 @@ let ch;
 let ch_ready = false;
 
 const indexingPrefecthCount = parseInt(process.env.INDEX_PREFETCH, 10);
-
 const indexQueue = async.cargo(async.ensureAsync(router), indexingPrefecthCount);
 
 function router(payload, callback) {
