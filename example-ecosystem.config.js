@@ -3,7 +3,7 @@ module.exports = {
         {
             name: "Indexer",
             script: "./launcher.js",
-            node_args: ["--max-old-space-size=8192"],
+            node_args: ["--max-old-space-size=4096"],
             autorestart: false,
             kill_timeout: 3600,
             env: {
@@ -13,6 +13,11 @@ module.exports = {
                 AUTO_STOP: 0,
                 REWRITE: 'false',
                 PURGE_QUEUES: 'false',
+                DISABLE_READING: 'false',
+                ENABLE_INDEXING: 'true',
+                ENABLE_STREAMING: 'false',
+                STREAM_TRACES: 'false',
+                STREAM_DELTAS: 'false',
                 BATCH_SIZE: 5000,
                 QUEUE_THRESH: 8000,
                 LIVE_READER: 'true',
@@ -22,7 +27,6 @@ module.exports = {
                 CHAIN: 'eos',
                 CREATE_INDICES: 'v1',
                 PREVIEW: 'false',
-                DISABLE_READING: 'false',
                 READERS: 1,
                 DESERIALIZERS: 1,
                 DS_MULT: 1,
@@ -31,7 +35,6 @@ module.exports = {
                 READ_PREFETCH: 50,
                 BLOCK_PREFETCH: 100,
                 INDEX_PREFETCH: 500,
-                ENABLE_INDEXING: 'true',
                 PROC_DELTAS: 'true',
                 INDEX_DELTAS: 'true',
                 INDEX_ALL_DELTAS: 'false',
@@ -43,9 +46,6 @@ module.exports = {
                 DELBAND_STATE: 'false',
                 REPAIR_MODE: 'false',
                 INDEX_TRANSFER_MEMO: 'false',
-                ENABLE_STREAMING: 'false',
-                STREAM_TRACES: 'false',
-                STREAM_DELTAS: 'false',
                 DEBUG: 'false'
             }
         },
@@ -54,17 +54,23 @@ module.exports = {
             script: "./api/api-loader.js",
             exec_mode: 'cluster',
             merge_logs: true,
-            instances: 4,
+            instances: 1,
             autorestart: true,
             exp_backoff_restart_delay: 100,
             watch: ["api"],
             env: {
+                PROVIDER_NAME: 'Provider Name',
+                PROVIDER_URL: 'https://yourproviderwebsite',
+                CHAIN: 'eos',
+                CHAIN_NAME: 'EOS Mainnet',
+                CHAIN_LOGO_URL: 'https://bloks.io/img/chains/eos.png',
                 SERVER_PORT: '7000',
                 SERVER_NAME: 'example.com',
                 SERVER_ADDR: '127.0.0.1',
-                CHAIN: 'eos',
                 ENABLE_CACHING: 'true',
-                CACHE_LIFE: 30
+                CACHE_LIFE: 30,
+                ENABLE_WEBSOCKET: true,
+                ENABLE_SOCKETIO: true,
             }
         }
     ]
