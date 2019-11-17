@@ -1,6 +1,6 @@
 const cluster = require('cluster');
 const fs = require('fs');
-const pmx = require('pmx');
+const pm2io = require('@pm2/io');
 const {promisify} = require('util');
 const doctor = require('./modules/doctor');
 const moment = require('moment');
@@ -651,7 +651,7 @@ async function main() {
         }, 1000);
     }
 
-    pmx['action']('stop', (reply) => {
+    pm2io.action('stop', (reply) => {
         allowMoreReaders = false;
         console.info('Stop signal received. Shutting down readers immediately!');
         console.log('Waiting for queues...');

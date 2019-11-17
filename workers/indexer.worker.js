@@ -1,5 +1,5 @@
 const async = require('async');
-const pmx = require("pmx");
+const pm2io = require('@pm2/io');
 const {routes} = require("../helpers/elastic-routes");
 
 const {ConnectionManager} = require('../connections/manager');
@@ -50,7 +50,7 @@ async function run() {
 
     assertQueues();
 
-    pmx['action']('stop', (reply) => {
+    pm2io.action('stop', (reply) => {
         ch.close();
         reply({
             event: 'index_channel_closed'
