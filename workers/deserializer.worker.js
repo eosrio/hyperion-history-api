@@ -24,6 +24,7 @@ let block_emit_idx = 1;
 
 let tbl_acc_emit_idx = 1;
 let tbl_vote_emit_idx = 1;
+let tbl_prop_emit_idx = 1;
 
 let local_block_count = 0;
 let allowStreaming = false;
@@ -38,8 +39,8 @@ const queue = queue_prefix + ':blocks';
 const index_queue_prefix = queue_prefix + ':index';
 const index_queues = require('../definitions/index-queues').index_queues;
 const n_deserializers = process.env.DESERIALIZERS;
-const n_ingestors_per_queue = parseInt(process.env.ES_INDEXERS_PER_QUEUE, 10);
-const action_indexing_ratio = parseInt(process.env.ES_ACT_QUEUES, 10);
+const n_ingestors_per_queue = parseInt(process.env.ES_IDX_QUEUES, 10);
+const action_indexing_ratio = parseInt(process.env.ES_AD_IDX_QUEUES, 10);
 
 // Stage 2 consumer prefetch
 const deserializerPrefetch = parseInt(process.env.BLOCK_PREFETCH, 10);
@@ -94,12 +95,27 @@ async function processBlock(res, block, traces, deltas) {
             }
             producer = block['producer'];
             ts = block['timestamp'];
+
+            // Collect total CPU and NET usage
+            let total_cpu = 0;
+            let total_net = 0;
+            block.transactions.forEach((trx) => {
+                total_cpu += trx['cpu_usage_us'];
+                total_net += trx['net_usage_words'];
+            });
+
+            // const cpu_pct = ((total_cpu / 200000) * 100).toFixed(2);
+            // const net_pct = ((total_net / 1048576) * 100).toFixed(2);
+            // console.log(`Block: ${res['this_block']['block_num']} | CPU: ${total_cpu} μs (${cpu_pct} %) | NET: ${total_net} bytes (${net_pct} %)`);
+
             const light_block = {
                 block_num: res['this_block']['block_num'],
                 producer: block['producer'],
                 new_producers: block['new_producers'],
                 '@timestamp': block['timestamp'],
-                schedule_version: block['schedule_version']
+                schedule_version: block['schedule_version'],
+                cpu_usage: total_cpu,
+                net_usage: total_net
             };
 
             if (process.env.ENABLE_INDEXING === 'true') {
@@ -130,6 +146,7 @@ async function processBlock(res, block, traces, deltas) {
             const t2 = Date.now();
             for (const trace of traces) {
                 const transaction_trace = trace[1];
+                const {cpu_usage_us, net_usage_words} = transaction_trace;
                 if (transaction_trace.status === 0) {
                     let action_count = 0;
                     const trx_id = transaction_trace['id'].toLowerCase();
@@ -140,9 +157,9 @@ async function processBlock(res, block, traces, deltas) {
                     const t3 = Date.now();
                     for (const action_trace of action_traces) {
                         if (action_trace[0] === 'action_trace_v0') {
-
                             const action = action_trace[1];
-                            const status = await mLoader.actionParser(common, ts, action, trx_id, block_num, producer, _actDataArray, _processedTraces, transaction_trace);
+                            const trx_data = {trx_id, block_num, producer, cpu_usage_us, net_usage_words};
+                            const status = await mLoader.actionParser(common, ts, action, trx_data, _actDataArray, _processedTraces, transaction_trace);
                             if (status) {
                                 action_count++;
                             }
@@ -195,7 +212,6 @@ async function processBlock(res, block, traces, deltas) {
                     // Submit Actions after deduplication
                     for (const uniqueAction of _finalTraces) {
                         const payload = Buffer.from(JSON.stringify(uniqueAction));
-
                         if (process.env.ENABLE_INDEXING === 'true') {
                             const q = index_queue_prefix + "_actions:" + (act_emit_idx);
                             preIndexingQueue.push({
@@ -248,6 +264,10 @@ function hitContract(code, block_num) {
     }
 }
 
+const abi_remapping = {
+    "_Bool": "bool"
+};
+
 async function getContractAtBlock(accountName, block_num) {
     if (contracts.has(accountName)) {
         let _sc = contracts.get(accountName);
@@ -263,8 +283,26 @@ async function getContractAtBlock(accountName, block_num) {
     try {
         types = Serialize.getTypesFromAbi(initialTypes, abi);
     } catch (e) {
-        console.log(accountName, block_num);
-        console.log(e);
+        let remapped = false;
+        for (const struct of abi.structs) {
+            for (const field of struct.fields) {
+                if (abi_remapping[field.type]) {
+                    field.type = abi_remapping[field.type];
+                    remapped = true;
+                }
+            }
+        }
+        if (remapped) {
+            try {
+                types = Serialize.getTypesFromAbi(initialTypes, abi);
+            } catch (e) {
+                console.log('failed after remapping abi');
+                console.log(e);
+            }
+        } else {
+            console.log(accountName, block_num);
+            console.log(e);
+        }
     }
     const actions = new Map();
     for (const {name, type} of abi.actions) {
@@ -301,7 +339,6 @@ function extractDeltaStruct(deltas) {
 }
 
 async function processDeltas(deltas, block_num) {
-
     const deltaStruct = extractDeltaStruct(deltas);
 
     // if (Object.keys(deltaStruct).length > 4) {
@@ -363,9 +400,8 @@ async function processDeltas(deltas, block_num) {
             for (const row of rows) {
                 const sb = createSerialBuffer(row.data);
                 try {
-                    let allowProcessing = false;
-
                     const payload = {
+                        present: row.present,
                         version: sb.get(),
                         code: sb.getName(),
                         scope: sb.getName(),
@@ -374,20 +410,15 @@ async function processDeltas(deltas, block_num) {
                         payer: sb.getName(),
                         value: sb.getBytes()
                     };
-
-                    if (process.env.INDEX_ALL_DELTAS === 'true') {
-                        allowProcessing = true;
-                    } else if (payload.code === system_domain || payload.table === 'accounts') {
-                        allowProcessing = true;
-                    }
-                    if (allowProcessing) {
+                    if (process.env.INDEX_ALL_DELTAS === 'true' || (payload.code === system_domain || payload.table === 'accounts')) {
                         const jsonRow = await processContractRow(payload, block_num);
-
                         if (jsonRow['data']) {
                             await processTableDelta(jsonRow, block_num);
-                        } else {
-                            console.log(block_num, jsonRow);
                         }
+
+                        // if (!payload.present && payload.code === 'eosio.msig') {
+                        //     console.log(block_num, jsonRow);
+                        // }
 
                         if (allowStreaming && process.env.STREAM_DELTAS === 'true') {
                             const payload = Buffer.from(JSON.stringify(jsonRow));
@@ -401,17 +432,26 @@ async function processDeltas(deltas, block_num) {
                         }
                     }
                 } catch (e) {
-                    console.log(e);
+                    console.log(block_num, e);
                 }
             }
         }
 
-        // if (deltaStruct['account_metadata']) {
-        //     if (deltaStruct['account_metadata'].length > 0) {
-        //         for (const account_metadata of deltaStruct['account_metadata']) {
-        //             const serialBuffer = createSerialBuffer(account_metadata.data);
-        //             const data = types.get('account_metadata').deserialize(serialBuffer);
-        //             console.log(prettyjson.render(data));
+        // TODO: store permission links on a dedicated index
+        // if (deltaStruct['permission_link']) {
+        //     if (deltaStruct['permission_link'].length > 0) {
+        //         for (const permission_link of deltaStruct['permission_link']) {
+        //             const serialBuffer = createSerialBuffer(permission_link.data);
+        //             const data = types.get('permission_link').deserialize(serialBuffer);
+        //             console.log(permission_link);
+        //             const payload = {
+        //                 present: permission_link.present,
+        //                 account: data[1].account,
+        //                 code: data[1].code,
+        //                 action: data[1]['message_type'],
+        //                 permission: data[1]['required_permission']
+        //             };
+        //             console.log(payload);
         //         }
         //     }
         // }
@@ -420,17 +460,37 @@ async function processDeltas(deltas, block_num) {
         //     if (deltaStruct['permission'].length > 0) {
         //         for (const permission of deltaStruct['permission']) {
         //             const serialBuffer = createSerialBuffer(permission.data);
-        //             const data = types.get('permission').deserialize(serialBuffer)[1];
+        //             const data = types.get('permission').deserialize(serialBuffer);
         //             console.log(prettyjson.render(data));
         //         }
         //     }
         // }
 
-        // if (deltaStruct['permission_link']) {
-        //     if (deltaStruct['permission_link'].length > 0) {
-        //         for (const permission_link of deltaStruct['permission_link']) {
-        //             const serialBuffer = createSerialBuffer(permission_link.data);
-        //             const data = types.get('permission_link').deserialize(serialBuffer);
+        // if (deltaStruct['contract_index64']) {
+        //     if (deltaStruct['contract_index64'].length > 0) {
+        //         for (const contract_index64 of deltaStruct['contract_index64']) {
+        //             const serialBuffer = createSerialBuffer(contract_index64.data);
+        //             const data = types.get('contract_index64').deserialize(serialBuffer);
+        //             console.log(prettyjson.render(data));
+        //         }
+        //     }
+        // }
+        //
+        // if (deltaStruct['contract_index128']) {
+        //     if (deltaStruct['contract_index128'].length > 0) {
+        //         for (const contract_index128 of deltaStruct['contract_index128']) {
+        //             const serialBuffer = createSerialBuffer(contract_index128.data);
+        //             const data = types.get('contract_index128').deserialize(serialBuffer);
+        //             console.log(prettyjson.render(data));
+        //         }
+        //     }
+        // }
+
+        // if (deltaStruct['account_metadata']) {
+        //     if (deltaStruct['account_metadata'].length > 0) {
+        //         for (const account_metadata of deltaStruct['account_metadata']) {
+        //             const serialBuffer = createSerialBuffer(account_metadata.data);
+        //             const data = types.get('account_metadata').deserialize(serialBuffer);
         //             console.log(prettyjson.render(data));
         //         }
         //     }
@@ -525,7 +585,6 @@ async function getTableType(code, table, block) {
     }
     let cType = contract.types.get(type);
     if (!cType) {
-
         if (types.has(type)) {
             cType = types.get(type);
         } else {
@@ -533,7 +592,6 @@ async function getTableType(code, table, block) {
                 cType = contract.types.get('delegated_bandwidth')
             }
         }
-
         if (!cType) {
             console.log(code, block);
             console.log(`code:${code} | table:${table} | block:${block} | type:${type}`);
@@ -623,9 +681,42 @@ const tableHandlers = {
         delete delta['data'];
         // console.log(delta);
     },
-    // [system_domain + ':rammarket']: async (delta) => {
-    //     console.log(delta);
-    // },
+    [system_domain + '.msig:proposal']: async (delta) => {
+        // decode packed_transaction
+        delta['@proposal'] = {
+            proposal_name: delta['data']['proposal_name']
+        };
+        // console.log('eosio.msig:proposal', delta);
+        delete delta['data'];
+    },
+    [system_domain + '.msig:approvals']: async (delta) => {
+        delta['@approvals'] = {
+            proposal_name: delta['data']['proposal_name'],
+            requested_approvals: delta['data']['requested_approvals'],
+            provided_approvals: delta['data']['provided_approvals']
+        };
+        // console.log('eosio.msig:approvals', delta['@approvals']);
+        delete delta['data'];
+        if (process.env.PROPOSAL_STATE === 'true') {
+            await storeProposal(delta);
+        }
+    },
+    [system_domain + '.msig:approvals2']: async (delta) => {
+        // console.log('eosio.msig:approvals2', delta['data']['requested_approvals']);
+        delta['@approvals'] = {
+            proposal_name: delta['data']['proposal_name'],
+            requested_approvals: delta['data']['requested_approvals'].map((item) => {
+                return {actor: item.level.actor, permission: item.level.permission, time: item.time};
+            }),
+            provided_approvals: delta['data']['provided_approvals'].map((item) => {
+                return {actor: item.level.actor, permission: item.level.permission, time: item.time};
+            })
+        };
+        // console.log('eosio.msig:approvals2', delta['@approvals']);
+        if (process.env.PROPOSAL_STATE === 'true') {
+            await storeProposal(delta);
+        }
+    },
     '*:accounts': async (delta) => {
         if (typeof delta['data']['balance'] === 'string') {
             try {
@@ -645,6 +736,31 @@ const tableHandlers = {
         }
     }
 };
+
+async function storeProposal(data) {
+    const proposalDoc = {
+        proposer: data['scope'],
+        proposal_name: data['@approvals']['proposal_name'],
+        requested_approvals: data['@approvals']['requested_approvals'],
+        provided_approvals: data['@approvals']['provided_approvals'],
+        executed: data.present === false,
+        primary_key: data['primary_key'],
+        block_num: data['block_num']
+    };
+    // console.log('-------------- PROPOSAL --------------');
+    // console.log(prettyjson.render(proposalDoc));
+    if (process.env.ENABLE_INDEXING === 'true') {
+        const q = index_queue_prefix + "_table_proposals:" + (tbl_prop_emit_idx);
+        preIndexingQueue.push({
+            queue: q,
+            content: Buffer.from(JSON.stringify(proposalDoc))
+        });
+        tbl_prop_emit_idx++;
+        if (tbl_prop_emit_idx > (n_ingestors_per_queue)) {
+            tbl_prop_emit_idx = 1;
+        }
+    }
+}
 
 async function storeVoter(data) {
     const voterDoc = {
@@ -709,35 +825,28 @@ async function storeAccount(data) {
 
 async function processTableDelta(data, block_num) {
     if (data['table']) {
-
         data['block_num'] = block_num;
         data['primary_key'] = String(data['primary_key']);
-
         let allowIndex = true;
         let handled = false;
         const key = `${data.code}:${data.table}`;
-
         if (tableHandlers[key]) {
             await tableHandlers[key](data);
             handled = true;
         }
-
         if (tableHandlers[`${data.code}:*`]) {
             await tableHandlers[`${data.code}:*`](data);
             handled = true;
         }
-
         if (tableHandlers[`*:${data.table}`]) {
             await tableHandlers[`*:${data.table}`](data);
             handled = true;
         }
-
         if (!handled && process.env.INDEX_ALL_DELTAS === 'true') {
             allowIndex = true;
         } else if (handled) {
             allowIndex = true;
         }
-
         if (process.env.ENABLE_INDEXING === 'true' && allowIndex && process.env.INDEX_DELTAS === 'true') {
             const q = index_queue_prefix + "_deltas:" + (delta_emit_idx);
             preIndexingQueue.push({
@@ -745,7 +854,7 @@ async function processTableDelta(data, block_num) {
                 content: Buffer.from(JSON.stringify(data))
             });
             delta_emit_idx++;
-            if (delta_emit_idx > n_ingestors_per_queue) {
+            if (delta_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
                 delta_emit_idx = 1;
             }
         }
@@ -815,7 +924,7 @@ async function getAbiAtBlock(code, block_num) {
             _abi = await api.getAbi(code);
             const elapsed_time = (Date.now() - ref_time);
             if (elapsed_time > 10) {
-                console.log('remote abi fetch [3]', code, block_num, elapsed_time);
+                console.log(`[DS ${process.env.worker_id}] remote abi fetch [type 3] for ${code} at ${block_num} took too long (${elapsed_time}ms)`);
             }
         } catch (e) {
             if (code === system_domain + '.rex') {
@@ -841,11 +950,13 @@ function assertQueues() {
         });
     }
 
-    // input
-    for (let i = 0; i < n_deserializers; i++) {
-        ch.assertQueue(queue + ":" + (i + 1), {
-            durable: true
-        });
+    // input queues
+    if (process.env['live_mode'] === 'false') {
+        for (let i = 0; i < n_deserializers; i++) {
+            ch.assertQueue(queue + ":" + (i + 1), {
+                durable: true
+            });
+        }
     }
 
     // output
@@ -856,7 +967,9 @@ function assertQueues() {
         qIdx = 0;
         for (let i = 0; i < n; i++) {
             let m = 1;
-            if (q.type === 'action') m = action_indexing_ratio;
+            if (q.type === 'action' || q.type === 'delta') {
+                m = action_indexing_ratio;
+            }
             for (let j = 0; j < m; j++) {
                 ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: true});
                 qIdx++;

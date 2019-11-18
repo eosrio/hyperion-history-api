@@ -10,5 +10,6 @@ module.exports = {
     getDeltasSchema: require('./get_deltas'),
     getCreatedAccountsSchema: require('./get_created_accounts'),
     getVotersSchema: require('./get_voters'),
+    getProposalsSchema: require('./get_proposals'),
     getBlocksSchema: require('./get_blocks')
 };

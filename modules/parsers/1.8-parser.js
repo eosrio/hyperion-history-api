@@ -18,10 +18,12 @@ function checkWhitelist(act) {
     } else return action_whitelist.has(`${chain}::${act['account']}::${act['name']}`);
 }
 
-module.exports = {
-    actionParser: async (common, ts, action, trx_id, block_num, prod, _actDataArray, _processedTraces, full_trace) => {
-        let act = action['act'];
+const reading_mode = process.env.live_mode;
 
+module.exports = {
+    actionParser: async (common, ts, action, trx_data, _actDataArray, _processedTraces, full_trace) => {
+        const {trx_id, block_num, producer, cpu_usage_us, net_usage_words} = trx_data;
+        let act = action['act'];
         // abort if blacklisted
         if (checkBlacklist(act)) {
             return false;
@@ -34,7 +36,6 @@ module.exports = {
         }
 
         const original_act = Object.assign({}, act);
-        // act.data = new Uint8Array(Object.values(act.data));
         const actions = [];
         actions.push(act);
         let ds_act;
@@ -42,6 +43,8 @@ module.exports = {
             ds_act = await common.deserializeActionsAtBlock(actions, block_num);
             action['act'] = ds_act[0];
             common.attachActionExtras(action);
+            // report deserialization event
+            process.send({event: 'ds_action'});
         } catch (e) {
             // write error to CSV
             process.send({
@@ -58,10 +61,10 @@ module.exports = {
             action['act'] = original_act;
             action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
         }
-        process.send({event: 'ds_action'});
+
         action['@timestamp'] = ts;
         action['block_num'] = block_num;
-        action['producer'] = prod;
+        action['producer'] = producer;
         action['trx_id'] = trx_id;
         if (action['account_ram_deltas'].length === 0) {
             delete action['account_ram_deltas'];
@@ -73,12 +76,18 @@ module.exports = {
             if (!action['receipt']) {
                 console.log(full_trace.status);
                 console.log(action);
+                m
             }
             action['receipt'] = action['receipt'][1];
             action['global_sequence'] = parseInt(action['receipt']['global_sequence'], 10);
-
             delete action['except'];
             delete action['error_code'];
+
+            // add usage data to the first action on the transaction
+            if (action['action_ordinal'] === 1 && action['creator_action_ordinal'] === 0) {
+                action['cpu_usage_us'] = cpu_usage_us;
+                action['net_usage_words'] = net_usage_words;
+            }
 
             _processedTraces.push(action);
         } else {
@@ -114,7 +123,8 @@ module.exports = {
                 if (result) {
                     process.send({
                         event: 'consumed_block',
-                        block_num: result['block_num']
+                        block_num: result['block_num'],
+                        live: reading_mode
                     });
                 } else {
                     console.log('Empty message. No block');

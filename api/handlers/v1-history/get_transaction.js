@@ -1,6 +1,6 @@
 const {getTransactionV1Schema} = require("../../schemas");
 const _ = require('lodash');
-const {getCacheByHash} = require("../../helpers/functions");
+const {getCacheByHash, mergeActionMeta} = require("../../helpers/functions");
 const crypto = require('crypto');
 
 
@@ -24,9 +24,7 @@ async function getTransaction(fastify, request) {
     if (typeof request.body === 'string') {
         request.body = JSON.parse(request.body)
     }
-
     const {redis, elastic, eosjs} = fastify;
-
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.body));
     if (cachedResponse) {
         return cachedResponse;
@@ -90,17 +88,8 @@ async function getTransaction(fastify, request) {
         let seqNum = 0;
         for (let action of actions) {
             action = action._source;
-            const name = action.act.name;
-            if (action['@' + name]) {
-                action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
-                if (name === 'transfer') {
-                    action.act.data.quantity = String(action.act.data.amount) + ' ' + action.act.data.symbol;
-                    delete action.act.data.amount;
-                    delete action.act.data.symbol;
-                }
-                delete action['@' + name];
-            }
-            action.act['hex_data'] = new Buffer(JSON.stringify(action.act.data)).toString('hex');
+            mergeActionMeta(action);
+            action.act['hex_data'] = new Buffer.from(JSON.stringify(action.act.data)).toString('hex');
             if (action.parent === 0) {
                 response.trx.trx.actions.push(action.act);
             }

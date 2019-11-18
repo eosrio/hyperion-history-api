@@ -123,8 +123,8 @@ DISABLE_READING: 'false',              // completely disable block reading, for 
 READERS: 3,                            // parallel state history readers
 DESERIALIZERS: 4,                      // deserialization queues
 DS_MULT: 4,                            // deserialization threads per queue
-ES_INDEXERS_PER_QUEUE: 4,              // elastic indexers per queue
-ES_ACT_QUEUES: 2,                      // multiplier for action indexing queues
+ES_IDX_QUEUES: 4,              // elastic indexers per queue
+ES_AD_IDX_QUEUES: 2,                      // multiplier for action indexing queues
 READ_PREFETCH: 50,                     // Stage 1 prefecth size
 BLOCK_PREFETCH: 5,                     // Stage 2 prefecth size
 INDEX_PREFETCH: 500,                   // Stage 3 prefetch size

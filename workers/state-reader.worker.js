@@ -1,12 +1,9 @@
-const pmx = require('pmx');
 const async = require('async');
 const {Api, Serialize} = require('eosjs');
 const {deserialize, serialize} = require('../helpers/functions');
 const {debugLog} = require("../helpers/functions");
-
 const {ConnectionManager} = require('../connections/manager');
 const manager = new ConnectionManager();
-
 const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
 
@@ -16,7 +13,10 @@ let tables = new Map();
 let chainID = null;
 let local_block_num = parseInt(process.env.first_block, 10) - 1;
 
-if (process.env['worker_role'] === 'continuous_reader') {
+const role = process.env['worker_role'];
+const isLiveReader = role === 'continuous_reader';
+
+if (isLiveReader) {
     local_block_num = parseInt(process.env.worker_last_processed_block, 10) - 1;
 }
 
@@ -27,12 +27,12 @@ let lastPendingCount = 0;
 let reconnectCount = 0;
 let completionSignaled = false;
 let completionMonitoring = null;
-
+let queueSizeCheckInterval = 5000;
 let allowRequests = true;
 let pendingRequest = null;
-
 let recovery = false;
 let local_last_block = 0;
+let future_block = 0;
 
 const qStatusMap = {};
 const queue_prefix = process.env.CHAIN;
@@ -81,8 +81,8 @@ async function processIncomingBlocks(block_array) {
     return true;
 }
 
+// Monitor pending messages
 function signalReaderCompletion() {
-    // Monitor pending messages
     if (!completionSignaled) {
         completionSignaled = true;
         debugLog('reader ' + process.env['worker_id'] + ' signaled completion', range_size, local_distributed_count);
@@ -146,7 +146,7 @@ function processFirstABI(data) {
         data: data
     });
     if (process.env.DISABLE_READING !== 'true') {
-        switch (process.env['worker_role']) {
+        switch (role) {
             case 'reader': {
                 requestBlocks(0);
                 break;
@@ -165,7 +165,7 @@ function processFirstABI(data) {
 async function onMessage(data) {
     if (abi) {
         if (recovery) {
-            if (process.env['worker_role'] === 'continuous_reader') {
+            if (isLiveReader) {
                 console.log(`Resuming live stream from block ${local_block_num}...`);
                 requestBlocks(local_block_num + 1);
                 recovery = false;
@@ -193,15 +193,16 @@ async function onMessage(data) {
                 }
             }
         } else {
-            if (process.env['worker_role']) {
+            if (role) {
                 const res = deserialize('result', data, txEnc, txDec, types)[1];
                 if (res['this_block']) {
                     const blk_num = res['this_block']['block_num'];
-
-                    if (process.env['worker_role'] === 'continuous_reader') {
-                        debugLog(`${process.env.CHAIN.toUpperCase()} reader at block ${blk_num}`);
+                    if (isLiveReader) debugLog(`${process.env.CHAIN.toUpperCase()} reader at block ${blk_num}`);
+                    if (future_block !== 0 && future_block === blk_num) {
+                        console.log('Missing block ' + blk_num + ' received!');
+                    } else {
+                        future_block = 0;
                     }
-
                     if (blk_num === local_block_num + 1) {
                         local_block_num = blk_num;
                         if (res['block'] || res['traces'] || res['deltas']) {
@@ -222,16 +223,15 @@ async function onMessage(data) {
                             }
                         }
                     } else {
-                        console.log(process.env['worker_role']);
-                        console.log('BLOCK', res);
-                        console.log('[FATAL] missing block: ' + (local_block_num + 1) + ' last block: ' + blk_num);
+                        console.log(`[${role}] missing block: ${(local_block_num + 1)} current block: ${blk_num}`);
+                        future_block = blk_num + 1;
                         return 0;
                     }
                 } else {
                     return 0;
                 }
             } else {
-                console.log('something went wrong!');
+                console.log("[FATAL ERROR] undefined role! Exiting now!");
                 ship.close();
                 process.exit(1);
             }
@@ -248,7 +248,7 @@ function distribute(data, cb) {
 
 function recursiveDistribute(data, channel, cb) {
     if (data.length > 0) {
-        const q = queue + ":" + currentIdx;
+        const q = isLiveReader ? queue_prefix + ':live_blocks' : queue + ":" + currentIdx;
         if (!qStatusMap[q]) {
             qStatusMap[q] = true;
         }
@@ -263,17 +263,20 @@ function recursiveDistribute(data, channel, cb) {
                         console.log('Message nacked!');
                         console.log(err.message);
                     } else {
-                        process.send({event: 'read_block'});
+                        process.send({event: 'read_block', live: isLiveReader});
                     }
                 });
-                local_distributed_count++;
-                debugLog(`Block Number: ${d.num} - Range progress: ${local_distributed_count}/${range_size}`);
-                if (local_distributed_count === range_size) {
-                    signalReaderCompletion();
-                }
-                currentIdx++;
-                if (currentIdx > n_deserializers) {
-                    currentIdx = 1;
+
+                if (!isLiveReader) {
+                    local_distributed_count++;
+                    debugLog(`Block Number: ${d.num} - Range progress: ${local_distributed_count}/${range_size}`);
+                    if (local_distributed_count === range_size) {
+                        signalReaderCompletion();
+                    }
+                    currentIdx++;
+                    if (currentIdx > n_deserializers) {
+                        currentIdx = 1;
+                    }
                 }
                 if (result) {
                     if (data.length > 0) {
@@ -285,7 +288,6 @@ function recursiveDistribute(data, channel, cb) {
                     // Send failed
                     qStatusMap[q] = false;
                     drainCount++;
-                    // console.log(`[${process.env['worker_id']}]:[${drainCount}] Block with ${d.length} bytes waiting for queue [${q}] to drain!`);
                     setTimeout(() => {
                         recursiveDistribute(data, channel, cb);
                     }, 500);
@@ -297,7 +299,6 @@ function recursiveDistribute(data, channel, cb) {
             console.log(`waiting for [${q}] to drain!`);
         }
     } else {
-        // console.log('no data');
         cb();
     }
 }
@@ -318,18 +319,6 @@ function startWS() {
     ship.connect(blockReadingQueue.push, handleLostConnection);
 }
 
-function onPmxStop(reply) {
-    if (process.env['worker_role'] === 'continuous_reader') {
-        console.log('[LIVE READER] Closing Websocket');
-        reply({ack: true});
-        ship.close();
-        setTimeout(() => {
-            console.log('[LIVE READER] Process killed');
-            process.exit(1);
-        }, 5000);
-    }
-}
-
 function onIpcMessage(msg) {
     if (msg.event === 'new_range') {
         if (msg.target === process.env.worker_id) {
@@ -346,6 +335,16 @@ function onIpcMessage(msg) {
             } else {
                 pendingRequest = [msg.data.first_block, msg.data.last_block];
             }
+        }
+    }
+    if (msg.event === 'stop') {
+        if (isLiveReader) {
+            console.log('[LIVE READER] Closing Websocket');
+            ship.close();
+            setTimeout(() => {
+                console.log('[LIVE READER] Process killed');
+                process.exit(1);
+            }, 2000);
         }
     }
 }
@@ -367,18 +366,30 @@ function startQueueWatcher() {
                 }
             }
         });
-    }, 5000);
+    }, queueSizeCheckInterval);
 }
 
 function assertQueues() {
-    for (let i = 0; i < n_deserializers; i++) {
-        ch.assertQueue(queue + ":" + (i + 1), {
+
+    if (isLiveReader) {
+        const live_queue = queue_prefix + ':live_blocks';
+        ch.assertQueue(live_queue, {
             durable: true
         });
         ch.on('drain', function () {
             console.log('drain...');
-            qStatusMap[queue + ":" + (i + 1)] = true;
-        })
+            qStatusMap[live_queue] = true;
+        });
+    } else {
+        for (let i = 0; i < n_deserializers; i++) {
+            ch.assertQueue(queue + ":" + (i + 1), {
+                durable: true
+            });
+            ch.on('drain', function () {
+                console.log('drain...');
+                qStatusMap[queue + ":" + (i + 1)] = true;
+            });
+        }
     }
     if (cch) {
         cch_ready = true;
@@ -406,8 +417,6 @@ function createNulledApi(chainID) {
 }
 
 async function run() {
-
-    pmx['action']('stop', onPmxStop);
 
     rpc = manager.nodeosJsonRPC;
     const chain_data = await rpc.get_info();

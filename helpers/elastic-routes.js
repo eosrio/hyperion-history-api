@@ -4,6 +4,7 @@ const {
     buildAbiBulk,
     buildDeltaBulk,
     buildTableAccountsBulk,
+    buildTableProposalsBulk,
     buildTableVotersBulk
 } = require("./bulkBuilders");
 const queue_prefix = process.env.CHAIN;
@@ -66,79 +67,98 @@ function onError(err, channel, callback) {
     }
 }
 
-const routes = {
-    'action': async (payloads, channel, cb) => {
-        const messageMap = new Map();
-        client['bulk']({
-            index: queue_prefix + '-action',
-            type: '_doc',
-            body: buildActionBulk(payloads, messageMap)
-        }).then(resp => {
-            onResponse(resp, messageMap, cb, payloads, channel);
-        }).catch(err => {
-            onError(err, channel, cb);
-        });
-    },
-    'block': async (payloads, channel, cb) => {
-        const messageMap = new Map();
-        client['bulk']({
-            index: queue_prefix + '-block',
-            type: '_doc',
-            body: buildBlockBulk(payloads, messageMap)
-        }).then(resp => {
-            onResponse(resp, messageMap, cb, payloads, channel);
-        }).catch(err => {
-            onError(err, channel, cb);
-        });
-    },
-    'delta': async (payloads, channel, cb) => {
-        const messageMap = new Map();
-        client['bulk']({
-            index: queue_prefix + '-delta',
-            type: '_doc',
-            body: buildDeltaBulk(payloads, messageMap)
-        }).then(resp => {
-            onResponse(resp, messageMap, cb, payloads, channel);
-        }).catch(err => {
-            onError(err, channel, cb);
-        });
-    },
-    'table-accounts': async (payloads, channel, cb) => {
-        const messageMap = new Map();
-        client['bulk']({
-            index: queue_prefix + '-table-accounts',
-            type: '_doc',
-            body: buildTableAccountsBulk(payloads, messageMap)
-        }).then(resp => {
-            onResponse(resp, messageMap, cb, payloads, channel);
-        }).catch(err => {
-            onError(err, channel, cb);
-        });
-    },
-    'table-voters': async (payloads, channel, cb) => {
-        const messageMap = new Map();
-        client['bulk']({
-            index: queue_prefix + '-table-voters',
-            type: '_doc',
-            body: buildTableVotersBulk(payloads, messageMap)
-        }).then(resp => {
-            onResponse(resp, messageMap, cb, payloads, channel);
-        }).catch(err => {
-            onError(err, channel, cb);
-        });
-    },
-    'abi': async (payloads, channel, cb) => {
-        const messageMap = new Map();
-        client['bulk']({
-            index: queue_prefix + '-abi',
-            type: '_doc',
-            body: buildAbiBulk(payloads, messageMap)
-        }).then(resp => {
-            onResponse(resp, messageMap, cb, payloads, channel);
-        }).catch(err => {
-            onError(err, channel, cb);
-        });
-    }
+// Define index routes
+const routes = {};
+
+routes['action'] = async (payloads, channel, cb) => {
+    const messageMap = new Map();
+    client['bulk']({
+        index: queue_prefix + '-action',
+        type: '_doc',
+        body: buildActionBulk(payloads, messageMap)
+    }).then(resp => {
+        onResponse(resp, messageMap, cb, payloads, channel);
+    }).catch(err => {
+        onError(err, channel, cb);
+    });
+};
+
+routes['block'] = async (payloads, channel, cb) => {
+    const messageMap = new Map();
+    client['bulk']({
+        index: queue_prefix + '-block',
+        type: '_doc',
+        body: buildBlockBulk(payloads, messageMap)
+    }).then(resp => {
+        onResponse(resp, messageMap, cb, payloads, channel);
+    }).catch(err => {
+        onError(err, channel, cb);
+    });
+};
+
+routes['delta'] = async (payloads, channel, cb) => {
+    const messageMap = new Map();
+    client['bulk']({
+        index: queue_prefix + '-delta',
+        type: '_doc',
+        body: buildDeltaBulk(payloads, messageMap)
+    }).then(resp => {
+        onResponse(resp, messageMap, cb, payloads, channel);
+    }).catch(err => {
+        onError(err, channel, cb);
+    });
+};
+
+routes['table-proposals'] = async (payloads, channel, cb) => {
+    const messageMap = new Map();
+    client['bulk']({
+        index: queue_prefix + '-table-proposals',
+        type: '_doc',
+        body: buildTableProposalsBulk(payloads, messageMap)
+    }).then(resp => {
+        onResponse(resp, messageMap, cb, payloads, channel);
+    }).catch(err => {
+        onError(err, channel, cb);
+    });
+};
+
+routes['table-accounts'] = async (payloads, channel, cb) => {
+    const messageMap = new Map();
+    client['bulk']({
+        index: queue_prefix + '-table-accounts',
+        type: '_doc',
+        body: buildTableAccountsBulk(payloads, messageMap)
+    }).then(resp => {
+        onResponse(resp, messageMap, cb, payloads, channel);
+    }).catch(err => {
+        onError(err, channel, cb);
+    });
+};
+
+routes['table-voters'] = async (payloads, channel, cb) => {
+    const messageMap = new Map();
+    client['bulk']({
+        index: queue_prefix + '-table-voters',
+        type: '_doc',
+        body: buildTableVotersBulk(payloads, messageMap)
+    }).then(resp => {
+        onResponse(resp, messageMap, cb, payloads, channel);
+    }).catch(err => {
+        onError(err, channel, cb);
+    });
+};
+
+routes['abi'] = async (payloads, channel, cb) => {
+    const messageMap = new Map();
+    client['bulk']({
+        index: queue_prefix + '-abi',
+        type: '_doc',
+        body: buildAbiBulk(payloads, messageMap)
+    }).then(resp => {
+        onResponse(resp, messageMap, cb, payloads, channel);
+    }).catch(err => {
+        onError(err, channel, cb);
+    });
 };
 
 module.exports = {routes};

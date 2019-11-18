@@ -186,6 +186,7 @@ function printWorkerMap(wmp) {
 
 function onSaveAbi(data, abiCacheMap, rClient) {
     const key = data['block'] + ":" + data['account'];
+    debugLog(key);
     rClient.set(process.env.CHAIN + ":" + key, data['abi']);
     let versionMap;
     if (!abiCacheMap[data['account']]) {

@@ -136,7 +136,6 @@ function processFirstABI(data) {
     abi = JSON.parse(data);
     types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
     abi.tables.map(table => tables.set(table.name, table.type));
-    console.log('API Websocket ready!');
 }
 
 function deserializeType(obj) {

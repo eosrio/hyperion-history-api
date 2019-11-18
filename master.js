@@ -1,8 +1,9 @@
 const cluster = require('cluster');
 const fs = require('fs');
-const pmx = require('pmx');
+const pm2io = require('@pm2/io');
 const {promisify} = require('util');
 const doctor = require('./modules/doctor');
+const moment = require('moment');
 
 const {ConnectionManager} = require('./connections/manager');
 const manager = new ConnectionManager();
@@ -27,9 +28,7 @@ async function main() {
     // Preview mode - prints only the proposed worker map
     let preview = process.env.PREVIEW === 'true';
     const queue_prefix = process.env.CHAIN;
-
     if (process.env.PURGE_QUEUES === 'true') {
-
         if (process.env.DISABLE_READING === 'true') {
             console.log('Conflict between PURGE_QUEUES and DISABLE_READING');
             process.exit(1);
@@ -45,8 +44,8 @@ async function main() {
     const getAsync = promisify(rClient.get).bind(rClient);
 
     const n_deserializers = parseInt(process.env.DESERIALIZERS, 10);
-    const n_ingestors_per_queue = parseInt(process.env.ES_INDEXERS_PER_QUEUE, 10);
-    const action_indexing_ratio = parseInt(process.env.ES_ACT_QUEUES, 10);
+    const n_ingestors_per_queue = parseInt(process.env.ES_IDX_QUEUES, 10);
+    const action_indexing_ratio = parseInt(process.env.ES_AD_IDX_QUEUES, 10);
 
     let max_readers = parseInt(process.env.READERS, 10);
     if (process.env.DISABLE_READING === 'true') {
@@ -66,9 +65,7 @@ async function main() {
             script: {
                 lang: "painless",
                 source: `
-                
                     boolean valid = false;
-                    
                     if(ctx._source.block_num != null) {
                       if(params.block_num < ctx._source.block_num) {
                         ctx['op'] = 'none';
@@ -79,7 +76,6 @@ async function main() {
                     } else {
                       valid = true;
                     }
-                    
                     if(valid == true) {
                       for (entry in params.entrySet()) {
                         if(entry.getValue() != null) {
@@ -102,6 +98,11 @@ async function main() {
     }
 
     // Optional state tables
+    if (process.env.PROPOSAL_STATE === 'true') {
+        indicesList.push("table-proposals");
+        index_queues.push({type: 'table-proposals', name: index_queue_prefix + "_table_proposals"});
+    }
+
     if (process.env.ACCOUNT_STATE === 'true') {
         indicesList.push("table-accounts");
         index_queues.push({type: 'table-accounts', name: index_queue_prefix + "_table_accounts"});
@@ -116,6 +117,7 @@ async function main() {
         indicesList.push("table-delband");
         index_queues.push({type: 'table-delband', name: index_queue_prefix + "_table_delband"});
     }
+
     if (process.env.USERRES_STATE === 'true') {
         indicesList.push("table-userres");
         index_queues.push({type: 'table-userres', name: index_queue_prefix + "_table_userres"});
@@ -184,7 +186,9 @@ async function main() {
     const workerMap = [];
     let worker_index = 0;
     let pushedBlocks = 0;
+    let livePushedBlocks = 0;
     let consumedBlocks = 0;
+    let liveConsumedBlocks = 0;
     let indexedObjects = 0;
     let deserializedActions = 0;
     let lastProcessedBlockNum = 0;
@@ -207,6 +211,7 @@ async function main() {
     // Monitoring
     let log_interval = 5000;
     let shutdownTimer;
+    const consume_rates = [];
     setInterval(() => {
         const _workers = Object.keys(cluster.workers).length;
         const tScale = (log_interval / 1000);
@@ -214,16 +219,41 @@ async function main() {
         total_blocks += consumedBlocks;
         total_actions += deserializedActions;
         total_indexed_blocks += indexedObjects;
-        const log_msg = [
-            `Workers: ${_workers}`,
-            `Read: ${pushedBlocks / tScale} blocks/s`,
-            `Consume: ${consumedBlocks / tScale} blocks/s`,
-            `Deserialize: ${deserializedActions / tScale} actions/s`,
-            `Index: ${indexedObjects / tScale} docs/s`,
-            `${total_blocks}/${total_read}/${total_range}`
-        ];
+        const consume_rate = consumedBlocks / tScale;
+        consume_rates.push(consume_rate);
+        if (consume_rates.length > 20) {
+            consume_rates.splice(0, 1);
+        }
+        let avg_consume_rate = 0;
+        if (consume_rates.length > 0) {
+            for (const r of consume_rates) {
+                avg_consume_rate += r;
+            }
+            avg_consume_rate = avg_consume_rate / consume_rates.length;
+        } else {
+            avg_consume_rate = consume_rate;
+        }
+        const log_msg = [];
 
-        console.log(log_msg.join(' | '));
+        log_msg.push(`W:${_workers}`);
+        log_msg.push(`R:${(pushedBlocks + livePushedBlocks) / tScale} b/s`);
+        log_msg.push(`C:${(liveConsumedBlocks + consumedBlocks) / tScale} b/s`);
+        log_msg.push(`D:${deserializedActions / tScale} a/s`);
+        log_msg.push(`I:${indexedObjects / tScale} d/s`);
+
+        if (total_blocks < total_range) {
+            const remaining = total_range - total_blocks;
+            const estimated_time = Math.round(remaining / avg_consume_rate);
+            const time_string = moment()
+                .add(estimated_time, 'seconds')
+                .fromNow(false);
+            const pct_parsed = ((total_blocks / total_range) * 100).toFixed(1);
+            const pct_read = ((total_read / total_range) * 100).toFixed(1);
+            log_msg.push(`${total_blocks}/${total_read}/${total_range}`);
+            log_msg.push(`syncs ${time_string} (${pct_parsed}% ${pct_read}%)`);
+        }
+
+        console.log(log_msg.join(', '));
 
         if (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0) {
 
@@ -255,7 +285,9 @@ async function main() {
 
         // reset counters
         pushedBlocks = 0;
+        livePushedBlocks = 0;
         consumedBlocks = 0;
+        liveConsumedBlocks = 0;
         deserializedActions = 0;
         indexedObjects = 0;
 
@@ -348,6 +380,8 @@ async function main() {
         if (process.env.LIVE_READER === 'true') {
             const _head = chain_data['head_block_num'];
             console.log(`Starting live reader at head = ${_head}`);
+
+            // live block reader
             worker_index++;
             workerMap.push({
                 worker_id: worker_index,
@@ -355,6 +389,17 @@ async function main() {
                 worker_last_processed_block: _head,
                 ws_router: ''
             });
+
+            // live deserializer
+            for (let j = 0; j < process.env.DS_MULT; j++) {
+                worker_index++;
+                workerMap.push({
+                    worker_queue: queue_prefix + ':live_blocks',
+                    worker_id: worker_index,
+                    worker_role: 'deserializer',
+                    live_mode: 'true'
+                });
+            }
         }
     }
 
@@ -365,7 +410,8 @@ async function main() {
             workerMap.push({
                 worker_queue: queue_prefix + ':blocks' + ":" + (i + 1),
                 worker_id: worker_index,
-                worker_role: 'deserializer'
+                worker_role: 'deserializer',
+                live_mode: 'false'
             });
         }
     }
@@ -380,7 +426,7 @@ async function main() {
         qIdx = 0;
         for (let i = 0; i < n; i++) {
             let m = 1;
-            if (q.type === 'action') {
+            if (q.type === 'action' || q.type === 'delta') {
                 m = action_indexing_ratio;
             }
             for (let j = 0; j < m; j++) {
@@ -397,12 +443,22 @@ async function main() {
     });
 
     // Setup ws router
-    if (process.env.ENABLE_STREAMING) {
+    if (process.env.ENABLE_STREAMING === 'true') {
         worker_index++;
         workerMap.push({
             worker_id: worker_index,
             worker_role: 'router'
         });
+
+        if (process.env.STREAM_DELTAS === 'true') {
+            console.log('Delta streaming enabled!');
+        }
+        if (process.env.STREAM_TRACES === 'true') {
+            console.log('Action trace streaming enabled!');
+        }
+        if (process.env.STREAM_DELTAS !== 'true' && process.env.STREAM_TRACES !== 'true') {
+            console.log('WARNING! Streaming is enabled without any datatype, please enable STREAM_TRACES and/or STREAM_DELTAS');
+        }
     }
 
     // Quit App if on preview mode
@@ -523,13 +579,21 @@ async function main() {
                 break;
             }
             case 'read_block': {
-                pushedBlocks++;
+                if (!msg.live) {
+                    pushedBlocks++;
+                } else {
+                    livePushedBlocks++;
+                }
                 break;
             }
             case 'consumed_block': {
-                consumedBlocks++;
-                if (msg.block_num > lastProcessedBlockNum) {
-                    lastProcessedBlockNum = msg.block_num;
+                if (msg.live === 'false') {
+                    consumedBlocks++;
+                    if (msg.block_num > lastProcessedBlockNum) {
+                        lastProcessedBlockNum = msg.block_num;
+                    }
+                } else {
+                    liveConsumedBlocks++;
                 }
                 break;
             }
@@ -587,13 +651,14 @@ async function main() {
         }, 1000);
     }
 
-    pmx['action']('stop', (reply) => {
+    pm2io.action('stop', (reply) => {
         allowMoreReaders = false;
         console.info('Stop signal received. Shutting down readers immediately!');
         console.log('Waiting for queues...');
-        reply({
-            ack: true
+        messageAllWorkers(cluster, {
+            event: 'stop'
         });
+        reply({ack: true});
         setInterval(() => {
             if (allowShutdown) {
                 console.log('Shutting down master...');

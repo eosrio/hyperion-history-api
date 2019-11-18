@@ -1,15 +1,15 @@
 const _ = require('lodash');
-const {getCacheByHash} = require("../../helpers/functions");
+const prettyjson = require("prettyjson");
+const {getCacheByHash, mergeActionMeta} = require("../../helpers/functions");
 
-const maxActions = 1000;
+const maxActions = 500;
 const route = '/get_actions';
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
 const schema = {
-    description: 'get actions based on notified account. this endpoint also accepts generic filters based on indexed fields' +
-        ' (e.g. act.authorization.actor=eosio or act.name=delegatebw), if included they will be combined with a AND operator',
-    summary: 'get root actions',
+    description: 'legacy get actions query',
+    summary: 'get actions',
     tags: ['history'],
     body: {
         type: ['object', 'string'],
@@ -73,6 +73,27 @@ const schema = {
                             action_trace: {
                                 type: 'object',
                                 properties: {
+                                    action_ordinal: {type: 'number'},
+                                    creator_action_ordinal: {type: 'number'},
+                                    receipt: {
+                                        type: 'object',
+                                        properties: {
+                                            receiver: {type: 'string'},
+                                            global_sequence: {type: 'number'},
+                                            recv_sequence: {type: 'number'},
+                                            auth_sequence: {
+                                                type: 'array',
+                                                items: {
+                                                    type: 'object',
+                                                    properties: {
+                                                        account: {type: 'string'},
+                                                        sequence: {type: 'number'}
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    receiver: {type: 'string'},
                                     act: {
                                         type: 'object',
                                         properties: {
@@ -102,28 +123,25 @@ const schema = {
     }
 };
 
-
 async function get_actions(fastify, request) {
     if (typeof request.body === 'string') {
         request.body = JSON.parse(request.body)
     }
+    const reqBody = request.body;
     const t0 = Date.now();
     const {redis, elastic, eosjs} = fastify;
-    const [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.body));
-    if (cachedResponse) {
-        return cachedResponse;
-    }
+
     const should_array = [];
     for (const entry of terms) {
         const tObj = {term: {}};
-        tObj.term[entry] = request.body.account_name;
+        tObj.term[entry] = reqBody.account_name;
         should_array.push(tObj);
     }
     let code, method, pos, offset, parent;
-    let sort_direction = 'asc';
+    let sort_direction = 'desc';
     let filterObj = [];
-    if (request.body.filter) {
-        const filters = request.body.filter.split(',');
+    if (reqBody.filter) {
+        const filters = reqBody.filter.split(',');
         for (const filter of filters) {
             const obj = {bool: {must: []}};
             const parts = filter.split(':');
@@ -139,14 +157,14 @@ async function get_actions(fastify, request) {
             filterObj.push(obj);
         }
     }
-    pos = parseInt(request.body.pos || 0, 10);
-    offset = parseInt(request.body.offset || maxActions, 10);
+    pos = parseInt(reqBody.pos || 0, 10);
+    offset = parseInt(reqBody.offset || 20, 10);
     let from, size;
     from = size = 0;
     if (pos === -1) {
         if (offset < 0) {
             from = 0;
-            size = maxActions;
+            size = Math.abs(offset);
         }
     } else if (pos >= 0) {
         if (offset < 0) {
@@ -158,10 +176,10 @@ async function get_actions(fastify, request) {
         }
     }
 
-    if (request.body.sort) {
-        if (request.body.sort === 'asc' || request.body.sort === '1') {
+    if (reqBody.sort) {
+        if (reqBody.sort === 'asc' || reqBody.sort === '1') {
             sort_direction = 'asc';
-        } else if (request.body.sort === 'desc' || request.body.sort === '-1') {
+        } else if (reqBody.sort === 'desc' || reqBody.sort === '-1') {
             sort_direction = 'desc'
         } else {
             return 'invalid sort direction';
@@ -175,78 +193,68 @@ async function get_actions(fastify, request) {
         }
     };
 
-    if (request.body.parent !== undefined) {
+    if (reqBody.parent !== undefined) {
+        const parent = parseInt(reqBody.parent, 10);
         queryStruct.bool['filter'] = [];
         queryStruct.bool['filter'].push({
             "term": {
-                "parent": parseInt(request.body.parent, 10)
+                "parent": parent
             }
         });
     }
 
-    if (request.body.account_name) {
+    if (reqBody.account_name) {
         queryStruct.bool.must.push({"bool": {should: should_array}});
     }
 
-    for (const prop in request.body) {
-        if (Object.prototype.hasOwnProperty.call(request.body, prop)) {
+    for (const prop in reqBody) {
+        if (Object.prototype.hasOwnProperty.call(reqBody, prop)) {
             const actionName = prop.split(".")[0];
             if (prop.split(".").length > 1) {
                 if (extendedActions.has(actionName)) {
-                    // console.log(prop + " = " + request.body[prop]);
                     const _termQuery = {};
-                    _termQuery["@" + prop] = request.body[prop];
+                    _termQuery["@" + prop] = reqBody[prop];
                     queryStruct.bool.must.push({term: _termQuery});
                 } else {
                     const _termQuery = {};
-                    _termQuery[prop] = request.body[prop];
+                    _termQuery[prop] = reqBody[prop];
                     queryStruct.bool.must.push({term: _termQuery});
                 }
             }
         }
     }
 
-    if (request.body['after'] || request.body['before']) {
+    if (reqBody['after'] || reqBody['before']) {
         let _lte = "now";
         let _gte = 0;
-        if (request.body['before']) {
-            _lte = request.body['before'];
-        }
-        if (request.body['after']) {
-            _gte = request.body['after'];
-        }
-        if (!queryStruct.bool['filter']) {
-            queryStruct.bool['filter'] = [];
-        }
+        if (reqBody['before']) _lte = reqBody['before'];
+        if (reqBody['after']) _gte = reqBody['after'];
+        if (!queryStruct.bool['filter']) queryStruct.bool['filter'] = [];
         queryStruct.bool['filter'].push({
-            range: {
-                "@timestamp": {
-                    "gte": _gte,
-                    "lte": _lte
-                }
-            }
+            range: {"@timestamp": {"gte": _gte, "lte": _lte}}
         });
     }
-    if (request.body.filter) {
+    if (reqBody.filter) {
         queryStruct.bool['should'] = filterObj;
         queryStruct.bool['minimum_should_match'] = 1;
     }
-    const pResults = await Promise.all([eosjs.rpc.get_info(), elastic['search']({
+    const esOpts = {
         "index": process.env.CHAIN + '-action-*',
         "from": from || 0,
         "size": (size > maxActions ? maxActions : size),
         "body": {
-            "track_total_hits": 10000,
             "query": queryStruct,
             "sort": {
                 "global_sequence": sort_direction
             }
         }
-    })]);
+    };
+    // console.log(prettyjson.render(esOpts));
+    const pResults = await Promise.all([eosjs.rpc.get_info(), elastic['search'](esOpts)]);
     const results = pResults[1];
     const response = {
-        last_irreversible_block: pResults[0].last_irreversible_block_num,
-        actions: []
+        actions: [],
+        last_irreversible_block: pResults[0].last_irreversible_block_num
     };
     const hits = results['body']['hits']['hits'];
     if (hits.length > 0) {
@@ -266,7 +274,6 @@ async function get_actions(fastify, request) {
             }
             actions = actions.slice(index);
         }
-
         actions.forEach((action, index) => {
             action = action._source;
             let act = {
@@ -275,39 +282,36 @@ async function get_actions(fastify, request) {
                 "block_num": action.block_num,
                 "block_time": action['@timestamp'],
                 "action_trace": {
+                    "action_ordinal": action['action_ordinal'],
+                    "creator_action_ordinal": action['creator_action_ordinal'],
                     "receipt": {},
+                    'receiver': "",
                     "act": {},
                     "trx_id": action.trx_id,
                     "block_num": action.block_num,
                     "block_time": action['@timestamp']
                 }
             };
-            const name = action.act.name;
-            if (action['@' + name]) {
-                action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
-                if (name === 'transfer') {
-                    action.act.data.quantity = String(action.act.data.amount) + ' ' + action.act.data.symbol;
-                    delete action.act.data.amount;
-                    delete action.act.data.symbol;
-                }
-                delete action['@' + name];
-            }
+            mergeActionMeta(action);
             act.action_trace.act = action.act;
-            act.action_trace.act.hex_data = new Buffer(JSON.stringify(action.act.data)).toString('hex');
+            act.action_trace.act.hex_data = new Buffer.from(JSON.stringify(action.act.data)).toString('hex');
             if (action.act.account_ram_deltas) {
                 act.action_trace.account_ram_deltas = action.account_ram_deltas
             }
+            // include receipt
+            const receipt = action.receipts[0];
+            act.action_trace.receipt = receipt;
+            act.action_trace.receiver = receipt.receiver;
             response.actions.push(act);
-        })
+        });
     }
-    response['query_time'] = Date.now() - t0;
-    redis.set(hash, JSON.stringify(response), 'EX', 30);
+    // console.log(`Response time: ${Date.now() - t0}`);
     return response;
 }
 
 module.exports = function (fastify, opts, next) {
-    fastify.post('/get_actions', {schema}, async (request) => {
-        return await get_actions(fastify, request);
+    fastify.post('/get_actions', {schema}, async (request, reply) => {
+        reply.send(await get_actions(fastify, request));
     });
     next();
 };
