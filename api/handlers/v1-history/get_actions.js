@@ -302,6 +302,7 @@ async function get_actions(fastify, request) {
             const receipt = action.receipts[0];
             act.action_trace.receipt = receipt;
             act.action_trace.receiver = receipt.receiver;
+            act.account_action_seq = receipt['recv_sequence'];
             response.actions.push(act);
         });
     }

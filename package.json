@@ -44,6 +44,7 @@
     "socket.io": "^2.3.0",
     "socket.io-client": "latest",
     "socket.io-redis": "^5.2.0",
-    "ws": "^7.2.0"
+    "ws": "^7.2.0",
+    "fastify-static": "latest"
   }
 }
