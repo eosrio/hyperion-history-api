@@ -160,21 +160,16 @@ async function get_actions(fastify, request) {
     pos = parseInt(reqBody.pos || 0, 10);
     offset = parseInt(reqBody.offset || 20, 10);
     let from, size;
-    from = size = 0;
-    if (pos === -1) {
-        if (offset < 0) {
-            from = 0;
-            size = Math.abs(offset);
-        }
-    } else if (pos >= 0) {
-        if (offset < 0) {
-            from = 0;
-            size = pos + 1
-        } else {
-            from = pos;
-            size = offset + 1;
-        }
+
+    if (pos*offset < 0) { // check if only one (pos or offset) is negative
+        // in this case offset is incorrect, assign default size (20)
+        size = 20;
+    } else {
+        size = Math.min( Math.abs(offset), maxActions);
+        size = Math.max(size, 1); // avoid size = 0
     }
+
+    from = Math.max(pos, 0);
 
     if (reqBody.sort) {
         if (reqBody.sort === 'asc' || reqBody.sort === '1') {
@@ -184,6 +179,8 @@ async function get_actions(fastify, request) {
         } else {
             return 'invalid sort direction';
         }
+    } else {
+        sort_direction = 'desc';
     }
 
     const queryStruct = {
@@ -274,7 +271,8 @@ async function get_actions(fastify, request) {
             }
             actions = actions.slice(index);
         }
-        actions.forEach((action, index) => {
+
+        actions.reverse().forEach((action, index) => {
             action = action._source;
             let act = {
                 "global_action_seq": action.global_sequence,
