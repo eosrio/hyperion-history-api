@@ -82,12 +82,17 @@ exports.GET = {
                                 },
                                 additionalProperties: true
                             },
+                            "cpu_usage_us": {type: "number"},
+                            "net_usage_words": {type: "number"},
+                            "global_sequence": {type: "number"},
+                            "receiver": {type: 'string'},
                             "@timestamp": {type: "string"},
                             "block_num": {type: "number"},
                             "producer": {type: "string"},
                             "trx_id": {type: "string"},
                             "parent": {type: "number"},
-                            "global_sequence": {type: "number"},
+                            "action_ordinal": {type: 'number'},
+                            "creator_action_ordinal": {type: 'number'},
                             "notified": {type: "array", items: {type: "string"}}
                         }
                     }

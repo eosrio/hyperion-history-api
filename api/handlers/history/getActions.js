@@ -5,7 +5,7 @@ const _ = require('lodash');
 const maxActions = 1000;
 const route = '/get_actions';
 const terms = ["notified.keyword", "act.authorization.actor"];
-const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
+const extendedActions = new Set(["transfer", "newaccount", "updateauth", "buyram", "buyrambytes"]);
 
 const enable_caching = process.env.ENABLE_CACHING === 'true';
 let cache_life = 30;
@@ -94,15 +94,20 @@ async function getActions(fastify, request) {
 
     for (const prop in request.query) {
         if (Object.prototype.hasOwnProperty.call(request.query, prop)) {
-            const actionName = prop.split(".")[0];
-            if (prop.split(".").length > 1) {
-                if (extendedActions.has(actionName)) {
-                    const _termQuery = {};
-                    _termQuery["@" + prop] = request.query[prop];
-                    queryStruct.bool.must.push({term: _termQuery});
+            const pair = prop.split(".");
+            if (pair.length > 1) {
+                const actionName = pair[0];
+                const pkey = extendedActions.has(actionName) ? "@" + prop : prop;
+                const parts = request.query[prop].split("-");
+                const _termQuery = {};
+                if (parts.length > 1) {
+                    _termQuery[pkey] = {
+                        "gte": parts[0],
+                        "lte": parts[1]
+                    };
+                    queryStruct.bool.must.push({range: _termQuery});
                 } else {
-                    const _termQuery = {};
-                    _termQuery[prop] = request.query[prop];
+                    _termQuery[pkey] = parts[0];
                     queryStruct.bool.must.push({term: _termQuery});
                 }
             }
@@ -156,13 +161,37 @@ async function getActions(fastify, request) {
         }
     }
 
+    if (request.query.creator_action_ordinal) {
+        queryStruct.bool.must.push({
+            term: {
+                creator_action_ordinal: request.query.creator_action_ordinal
+            }
+        });
+    }
+
+    if (request.query.action_ordinal) {
+        queryStruct.bool.must.push({
+            term: {
+                action_ordinal: request.query.action_ordinal
+            }
+        });
+    }
+
     const query_body = {
         "track_total_hits": trackTotalHits,
-        "query": queryStruct,
-        "sort": {
-            "global_sequence": sort_direction
-        }
+        "query": queryStruct
     };
+
+    if (request.query.sortedBy) {
+        const opts = request.query.sortedBy.split("|");
+        const sortedByObj = {};
+        sortedByObj[opts[0]] = opts[1];
+        query_body['sort'] = sortedByObj;
+    } else {
+        query_body['sort'] = {
+            "global_sequence": sort_direction
+        };
+    }
 
     const pResults = await Promise.all([eosjs.rpc.get_info(), elastic['search']({
         "index": process.env.CHAIN + '-action-*',
@@ -170,6 +199,7 @@ async function getActions(fastify, request) {
         "size": (limit > maxActions ? maxActions : limit) || 10,
         "body": query_body
     })]);
+
     const results = pResults[1];
     const response = {
         query_time: null,
