@@ -2,7 +2,7 @@ const hyperionModule = {
     chain: "*",
     contract: '*',
     action: 'transfer',
-    parser_version: '1.8',
+    parser_version: ['1.8','1.7'],
     handler: (action) => {
         // attach action extras here
         let qtd = null;

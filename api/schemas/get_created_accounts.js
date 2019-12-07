@@ -1,7 +1,7 @@
 exports.GET = {
     description: 'get all accounts created by one creator',
     summary: 'get created accounts',
-    tags: ['history'],
+    tags: ['accounts', 'history'],
     querystring: {
         type: 'object',
         properties: {
@@ -32,9 +32,9 @@ exports.GET = {
                     items: {
                         type: 'object',
                         properties: {
-                            'name': {type:'string'},
-                            'timestamp': {type:'string'},
-                            'trx_id': {type:'string'}
+                            'name': {type: 'string'},
+                            'timestamp': {type: 'string'},
+                            'trx_id': {type: 'string'}
                         }
                     }
                 }

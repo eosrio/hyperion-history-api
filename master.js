@@ -1,5 +1,6 @@
 const cluster = require('cluster');
 const fs = require('fs');
+const path = require('path');
 const pm2io = require('@pm2/io');
 const {promisify} = require('util');
 const doctor = require('./modules/doctor');
@@ -19,47 +20,146 @@ const {
     onSaveAbi
 } = require("./helpers/functions");
 
+// Master proc globals
 let client, rClient, rpc;
 let cachedInitABI = null;
-
 const missingRanges = [];
+let currentSchedule;
+let lastProducer = null;
+const producedBlocks = {};
+let handoffCounter = 0;
+let lastProducedBlockNum = 0;
+const missedRounds = {};
+let dsErrorStream;
+let abiCacheMap;
 
-async function main() {
-    // Preview mode - prints only the proposed worker map
-    let preview = process.env.PREVIEW === 'true';
-    const queue_prefix = process.env.CHAIN;
-    if (process.env.PURGE_QUEUES === 'true') {
-        if (process.env.DISABLE_READING === 'true') {
-            console.log('Conflict between PURGE_QUEUES and DISABLE_READING');
-            process.exit(1);
-        } else {
-            await manager.purgeQueues(queue_prefix);
+async function getCurrentSchedule() {
+    currentSchedule = await rpc.get_producer_schedule();
+}
+
+async function reportMissedBlocks(producer, last_block, size) {
+    console.log(`${producer} missed ${size} ${size === 1 ? "block" : "blocks"} after ${last_block}`);
+    await client.index({
+        index: process.env.CHAIN + '-logs',
+        body: {
+            type: 'missed_blocks',
+            '@timestamp': new Date().toISOString(),
+            'missed_blocks': {
+                'producer': producer,
+                'last_block': last_block,
+                'size': size,
+                'schedule_version': currentSchedule.schedule_version
+            }
         }
+    });
+}
+
+function onLiveBlock(msg) {
+    const prod = msg.producer;
+
+    if (process.env.BP_LOGS === 'true') {
+        console.log(`Received block ${msg.block_num} from ${prod}`);
     }
 
-    rpc = manager.nodeosJsonRPC;
-    rClient = manager.redisClient;
-    client = manager.elasticsearchClient;
-
-    const getAsync = promisify(rClient.get).bind(rClient);
-
-    const n_deserializers = parseInt(process.env.DESERIALIZERS, 10);
-    const n_ingestors_per_queue = parseInt(process.env.ES_IDX_QUEUES, 10);
-    const action_indexing_ratio = parseInt(process.env.ES_AD_IDX_QUEUES, 10);
-
-    let max_readers = parseInt(process.env.READERS, 10);
-    if (process.env.DISABLE_READING === 'true') {
-        // Create a single reader to read the abi struct and quit.
-        max_readers = 1;
+    if (producedBlocks[prod]) {
+        producedBlocks[prod]++;
+    } else {
+        producedBlocks[prod] = 1;
     }
 
-    const {index_queues} = require('./definitions/index-queues');
+    if (lastProducer !== prod) {
 
-    const indicesList = ["action", "block", "abi", "delta"];
+        handoffCounter++;
 
-    const index_queue_prefix = queue_prefix + ':index';
+        if (lastProducer && handoffCounter > 2) {
 
-    const script_status = await client.putScript({
+            const activeProds = currentSchedule.active.producers;
+            const newIdx = activeProds.findIndex(p => p['producer_name'] === prod) + 1;
+            const oldIdx = activeProds.findIndex(p => p['producer_name'] === lastProducer) + 1;
+
+            if ((newIdx === oldIdx + 1) || (newIdx === 1 && oldIdx === activeProds.length)) {
+                // Normal operation
+                if (process.env.BP_LOGS === 'true') {
+                    console.log(`[${msg.block_num}] producer handoff: ${lastProducer} [${oldIdx}] -> ${prod} [${newIdx}]`);
+                }
+
+            } else {
+
+                let cIdx = oldIdx + 1;
+                while (cIdx !== newIdx) {
+                    try {
+                        if (activeProds[cIdx - 1]) {
+                            const missingProd = activeProds[cIdx - 1]['producer_name'];
+
+                            // report
+                            reportMissedBlocks(missingProd, lastProducedBlockNum, 12)
+                                .catch(console.log);
+
+                            // count missed
+                            if (missedRounds[missingProd]) {
+                                missedRounds[missingProd]++;
+                            } else {
+                                missedRounds[missingProd] = 1;
+                            }
+
+                            console.log(`${missingProd} missed a round [${missedRounds[missingProd]}]`);
+                        }
+                    } catch (e) {
+                        console.log(activeProds);
+                        console.log(e);
+                    }
+
+                    cIdx++;
+                    if (cIdx === activeProds.length) {
+                        cIdx = 0;
+                    }
+                }
+            }
+
+            if (producedBlocks[lastProducer]) {
+                if (producedBlocks[lastProducer] < 12) {
+                    const _size = 12 - producedBlocks[lastProducer];
+                    reportMissedBlocks(lastProducer, lastProducedBlockNum, _size)
+                        .catch(console.log)
+                }
+            }
+            producedBlocks[lastProducer] = 0;
+        }
+        lastProducer = prod;
+    }
+    lastProducedBlockNum = msg.block_num;
+}
+
+function setupDSElogs(starting_block, head) {
+    const logPath = './logs/' + process.env.CHAIN;
+    if (!fs.existsSync(logPath)) fs.mkdirSync(logPath);
+    const dsLogFileName = (new Date().toISOString()) + "_ds_err_" + starting_block + "_" + head + ".log";
+    const dsErrorsLog = logPath + '/' + dsLogFileName;
+    if (fs.existsSync(dsErrorsLog)) fs.unlinkSync(dsErrorsLog);
+    const symbolicLink = logPath + '/deserialization_errors.log';
+    if (fs.existsSync(symbolicLink)) fs.unlinkSync(symbolicLink);
+    fs.symlinkSync(dsLogFileName, symbolicLink);
+    dsErrorStream = fs.createWriteStream(dsErrorsLog, {flags: 'a'});
+    console.log(`Deserialization errors are being logged in: ${path.join(__dirname, symbolicLink)}`);
+}
+
+async function initAbiCacheMap(getAsync) {
+    const cachedMap = await getAsync(process.env.CHAIN + ":" + 'abi_cache');
+    if (cachedMap) {
+        abiCacheMap = JSON.parse(cachedMap);
+        console.log(`Found ${Object.keys(abiCacheMap).length} entries in the local ABI cache`)
+    } else {
+        abiCacheMap = {};
+    }
+
+    // Periodically save the current map
+    setInterval(() => {
+        rClient.set(process.env.CHAIN + ":" + 'abi_cache', JSON.stringify(abiCacheMap));
+    }, 10000);
+}
+
+async function applyUpdateScript(esClient) {
+    const script_status = await esClient.putScript({
         id: "updateByBlock",
         body: {
             script: {
@@ -89,14 +189,17 @@ async function main() {
             }
         }
     });
-
     if (!script_status['body']['acknowledged']) {
         console.log('Failed to load script updateByBlock. Aborting!');
         process.exit(1);
     } else {
-        console.log('Script loaded!');
+        console.log('Painless Update Script loaded!');
     }
+}
 
+function addStateTables(indicesList, index_queues) {
+    const queue_prefix = process.env.CHAIN;
+    const index_queue_prefix = queue_prefix + ':index';
     // Optional state tables
     if (process.env.PROPOSAL_STATE === 'true') {
         indicesList.push("table-proposals");
@@ -122,8 +225,95 @@ async function main() {
         indicesList.push("table-userres");
         index_queues.push({type: 'table-userres', name: index_queue_prefix + "_table_userres"});
     }
+}
+
+async function main() {
+
+    // Preview mode - prints only the proposed worker map
+    let preview = process.env.PREVIEW === 'true';
+    const queue_prefix = process.env.CHAIN;
+    if (process.env.PURGE_QUEUES === 'true') {
+        if (process.env.DISABLE_READING === 'true') {
+            console.log('Conflict between PURGE_QUEUES and DISABLE_READING');
+            process.exit(1);
+        } else {
+            await manager.purgeQueues(queue_prefix);
+        }
+    }
+
+    if (process.env.ABI_CACHE_MODE === 'true') {
+        console.log('--------\n ABI CACHING MODE \n ---------');
+    }
+
+    // Chain API
+    rpc = manager.nodeosJsonRPC;
+    await getCurrentSchedule();
+
+    // Redis
+    rClient = manager.redisClient;
+    const getAsync = promisify(rClient.get).bind(rClient);
+
+    // ELasticsearch
+    client = manager.elasticsearchClient;
+    let ingestClients = manager.ingestClients;
+
+    // Check for ingestion nodes
+    for (const ingestClient of ingestClients) {
+        try {
+            const ping_response = await ingestClient.ping();
+            console.log(ping_response.body, ping_response.meta.connection.id);
+        } catch (e) {
+            console.log(e);
+            console.log('Failed to connect to one of the ingestion nodes. Please verify the connections.json file');
+            process.exit(1);
+        }
+    }
+
+    ingestClients = null;
+
+    const n_deserializers = parseInt(process.env.DESERIALIZERS, 10);
+    const n_ingestors_per_queue = parseInt(process.env.ES_IDX_QUEUES, 10);
+    const action_indexing_ratio = parseInt(process.env.ES_AD_IDX_QUEUES, 10);
+
+    let max_readers = parseInt(process.env.READERS, 10);
+    if (process.env.DISABLE_READING === 'true') {
+        // Create a single reader to read the abi struct and quit.
+        max_readers = 1;
+    }
+
+    const {index_queues} = require('./definitions/index-queues');
+
+    const indicesList = ["action", "block", "abi", "delta"];
+
+    addStateTables(indicesList, index_queues);
+
+    await applyUpdateScript(client);
 
     const indexConfig = require('./definitions/mappings');
+
+    // Add lifecycle policy
+    if (indexConfig.ILPs) {
+        // check for existing policy
+        for (const ILP of indexConfig.ILPs) {
+            try {
+                await client.ilm.getLifecycle({
+                    policy: ILP.policy
+                });
+            } catch (e) {
+                console.log(e);
+                try {
+                    const ilm_status = await client.ilm.putLifecycle(ILP);
+                    if (!ilm_status['body']['acknowledged']) {
+                        console.log(`Failed to create ILM Policy`);
+                    }
+                } catch (e) {
+                    console.log(`[FATAL] :: Failed to create ILM Policy`);
+                    console.log(e);
+                    process.exit(1);
+                }
+            }
+        }
+    }
 
     // Update index templates
     for (const index of indicesList) {
@@ -167,7 +357,7 @@ async function main() {
                     name: `${queue_prefix}-${index}`
                 });
             } else {
-                console.log(`Index ${new_index} already created!`);
+                console.log(`${new_index} already created. Skipping...`);
             }
         }
     }
@@ -241,7 +431,7 @@ async function main() {
         log_msg.push(`D:${deserializedActions / tScale} a/s`);
         log_msg.push(`I:${indexedObjects / tScale} d/s`);
 
-        if (total_blocks < total_range) {
+        if (total_blocks < total_range && process.env.LIVE_ONLY !== 'true') {
             const remaining = total_range - total_blocks;
             const estimated_time = Math.round(remaining / avg_consume_rate);
             const time_string = moment()
@@ -253,10 +443,14 @@ async function main() {
             log_msg.push(`syncs ${time_string} (${pct_parsed}% ${pct_read}%)`);
         }
 
-        console.log(log_msg.join(', '));
+        // print monitoring log
+        if (process.env.NOLOGS !== 'true') {
+            console.log(log_msg.join(', '));
+        }
 
         if (indexedObjects === 0 && deserializedActions === 0 && consumedBlocks === 0) {
 
+            // Allow 10s threshold before shutting down the process
             shutdownTimer = setTimeout(() => {
                 allowShutdown = true;
             }, 10000);
@@ -391,15 +585,13 @@ async function main() {
             });
 
             // live deserializer
-            for (let j = 0; j < process.env.DS_MULT; j++) {
-                worker_index++;
-                workerMap.push({
-                    worker_queue: queue_prefix + ':live_blocks',
-                    worker_id: worker_index,
-                    worker_role: 'deserializer',
-                    live_mode: 'true'
-                });
-            }
+            worker_index++;
+            workerMap.push({
+                worker_queue: queue_prefix + ':live_blocks',
+                worker_id: worker_index,
+                worker_role: 'deserializer',
+                live_mode: 'true'
+            });
         }
     }
 
@@ -472,27 +664,9 @@ async function main() {
         cluster.fork(conf);
     });
 
-    if (!fs.existsSync('./logs')) {
-        fs.mkdirSync('./logs');
-    }
+    setupDSElogs(starting_block, head);
 
-    const dsErrorsLog = './logs/' + process.env.CHAIN + "_ds_err_" + starting_block + "_" + head + "_" + Date.now() + ".txt";
-    if (fs.existsSync(dsErrorsLog)) {
-        fs.unlinkSync(dsErrorsLog);
-    }
-    const ds_errors = fs.createWriteStream(dsErrorsLog, {flags: 'a'});
-    const cachedMap = await getAsync(process.env.CHAIN + ":" + 'abi_cache');
-    let abiCacheMap;
-    if (cachedMap) {
-        abiCacheMap = JSON.parse(cachedMap);
-        console.log(`Found ${Object.keys(abiCacheMap).length} entries in the local ABI cache`)
-    } else {
-        abiCacheMap = {};
-    }
-
-    setInterval(() => {
-        rClient.set(process.env.CHAIN + ":" + 'abi_cache', JSON.stringify(abiCacheMap));
-    }, 10000);
+    await initAbiCacheMap(getAsync);
 
     // Worker event listener
     const workerHandler = (msg) => {
@@ -575,7 +749,7 @@ async function main() {
                 // console.log(msg.data);
                 const str = JSON.stringify(msg.data);
                 // console.log(str);
-                ds_errors.write(str + '\n');
+                dsErrorStream.write(str + '\n');
                 break;
             }
             case 'read_block': {
@@ -594,6 +768,7 @@ async function main() {
                     }
                 } else {
                     liveConsumedBlocks++;
+                    onLiveBlock(msg);
                 }
                 break;
             }

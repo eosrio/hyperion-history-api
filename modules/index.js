@@ -14,27 +14,23 @@ class HyperionModuleLoader {
     }
 
     processActionData(action) {
-
         const wildcard = this.#handledActions.get('*');
-
         if (wildcard.has(action.act.name)) {
             wildcard.get(action.act.name)(action);
         }
-
         if (this.#handledActions.has(action.act.account)) {
             const _c = this.#handledActions.get(action.act.account);
             if (_c.has(action.act.name)) {
                 _c.get(action.act.name)(action);
             }
         }
-
     }
 
     loadActionHandlers() {
         const files = fs.readdirSync('modules/action_data/');
         for (const plugin of files) {
             const _module = require(path.join(__dirname, 'action_data', plugin)).hyperionModule;
-            if (_module.parser_version === process.env.PARSER) {
+            if (_module.parser_version.includes(process.env.PARSER)) {
                 if (this.#handledActions.has(_module.contract)) {
                     const existing = this.#handledActions.get(_module.contract);
                     existing.set(_module.action, _module.handler);

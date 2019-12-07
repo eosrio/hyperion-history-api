@@ -2,7 +2,7 @@ module.exports = {
     GET: {
         description: 'get accounts by public key',
         summary: 'get accounts by public key',
-        tags: ['state'],
+        tags: ['accounts','state'],
         querystring: {
             type: 'object',
             properties: {
@@ -30,7 +30,7 @@ module.exports = {
     POST: {
         description: 'get accounts by public key',
         summary: 'get accounts by public key',
-        tags: ['state'],
+        tags: ['accounts','state'],
         body: {
             type: 'object',
             properties: {

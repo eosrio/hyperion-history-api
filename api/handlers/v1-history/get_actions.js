@@ -10,7 +10,7 @@ const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 const schema = {
     description: 'legacy get actions query',
     summary: 'get actions',
-    tags: ['history'],
+    tags: ['actions','history'],
     body: {
         type: ['object', 'string'],
         properties: {

@@ -121,11 +121,15 @@ module.exports = {
                     debugLog(`[WARNING] Deserialization time for block ${result['block_num']} was too high, time elapsed ${elapsedTime}ms`);
                 }
                 if (result) {
-                    process.send({
+                    const evPayload = {
                         event: 'consumed_block',
                         block_num: result['block_num'],
                         live: reading_mode
-                    });
+                    };
+                    if (block) {
+                        evPayload["producer"] = block['producer'];
+                    }
+                    process.send(evPayload);
                 } else {
                     console.log('Empty message. No block');
                     console.log(_.omit(res, ['block', 'traces', 'deltas']));

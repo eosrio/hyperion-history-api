@@ -2,7 +2,7 @@ const hyperionModule = {
     chain: "*",
     contract: 'eosio',
     action: 'buyrex',
-    parser_version: '1.8',
+    parser_version: ['1.8','1.7'],
     handler: (action) => {
         // attach action extras here
         const data = action['act']['data'];
