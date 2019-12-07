@@ -54,7 +54,7 @@ function getTrackTotalHits(query) {
 
 function addSortedBy(query, queryBody, sort_direction) {
     if (query['sortedBy']) {
-        const opts = query['sortedBy'].split("|");
+        const opts = query['sortedBy'].split(":");
         const sortedByObj = {};
         sortedByObj[opts[0]] = opts[1];
         queryBody['sort'] = sortedByObj;

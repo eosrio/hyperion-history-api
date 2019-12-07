@@ -11,11 +11,6 @@ function mergeActionMeta(action) {
     const name = action.act.name;
     if (action['@' + name]) {
         action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
-        if (name === 'transfer') {
-            action.act.data.quantity = String(action.act.data.amount) + ' ' + action.act.data.symbol;
-            delete action.act.data.amount;
-            delete action.act.data.symbol;
-        }
         delete action['@' + name];
     }
 }
