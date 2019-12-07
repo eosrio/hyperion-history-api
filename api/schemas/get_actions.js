@@ -2,7 +2,7 @@ exports.GET = {
     description: 'get actions based on notified account. this endpoint also accepts generic filters based on indexed fields' +
         ' (e.g. act.authorization.actor=eosio or act.name=delegatebw), if included they will be combined with a AND operator',
     summary: 'get root actions',
-    tags: ['history'],
+    tags: ['actions','history'],
     querystring: {
         type: 'object',
         properties: {
@@ -84,6 +84,17 @@ exports.GET = {
                             },
                             "cpu_usage_us": {type: "number"},
                             "net_usage_words": {type: "number"},
+                            "account_ram_deltas": {
+                                type: "array",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        "account": {type: "string"},
+                                        "delta": {type: "number"}
+                                    },
+                                    additionalProperties: true
+                                }
+                            },
                             "global_sequence": {type: "number"},
                             "receiver": {type: 'string'},
                             "@timestamp": {type: "string"},

@@ -8,6 +8,11 @@ const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
 
 let ch, api, abi, ship, types, cch, rpc;
+
+// elasticsearch client access for fork handling operations
+let client;
+const index_version = process.env.CREATE_INDICES;
+
 let cch_ready = false;
 let tables = new Map();
 let chainID = null;
@@ -141,6 +146,7 @@ function processFirstABI(data) {
     abi = JSON.parse(data);
     types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
     abi.tables.map(table => tables.set(table.name, table.type));
+    // console.log(prettyjson.render(abi));
     process.send({
         event: 'init_abi',
         data: data
@@ -162,6 +168,43 @@ function processFirstABI(data) {
     }
 }
 
+async function logForkEvent(starting_block, ending_block, new_id) {
+    await client.index({
+        index: queue_prefix + '-logs',
+        body: {
+            type: 'fork',
+            '@timestamp': new Date().toISOString(),
+            'fork.from_block': starting_block,
+            'fork.to_block': ending_block,
+            'fork.size': ending_block - starting_block + 1,
+            'fork.new_block_id': new_id
+        }
+    });
+}
+
+async function handleFork(data) {
+    const this_block = data['this_block'];
+    await logForkEvent(this_block['block_num'], local_block_num, this_block['block_id']);
+    console.log(`Handling fork event: new block ${this_block['block_num']} has id ${this_block['block_id']}`);
+    console.log(`Removing indexed data from ${this_block['block_num']} to ${local_block_num}`);
+    const searchBody = {
+        query: {
+            bool: {
+                must: [{range: {block_num: {gte: this_block['block_num'], lte: local_block_num}}}]
+            }
+        }
+    };
+    const indexName = queue_prefix + '-delta-' + index_version + '-*';
+    const {body} = await client.deleteByQuery({
+        index: indexName,
+        refresh: true,
+        body: searchBody
+    });
+    console.log(body);
+    console.log(`Live reading resumed!`);
+}
+
+// Entrypoint for incoming blocks
 async function onMessage(data) {
     if (abi) {
         if (recovery) {
@@ -197,35 +240,39 @@ async function onMessage(data) {
                 const res = deserialize('result', data, txEnc, txDec, types)[1];
                 if (res['this_block']) {
                     const blk_num = res['this_block']['block_num'];
-                    if (isLiveReader) debugLog(`${process.env.CHAIN.toUpperCase()} reader at block ${blk_num}`);
-                    if (future_block !== 0 && future_block === blk_num) {
-                        console.log('Missing block ' + blk_num + ' received!');
-                    } else {
-                        future_block = 0;
-                    }
-                    if (blk_num === local_block_num + 1) {
-                        local_block_num = blk_num;
-                        if (res['block'] || res['traces'] || res['deltas']) {
-                            stageOneDistQueue.push({
-                                num: blk_num,
-                                content: data
-                            });
-                            return 1;
+                    if (isLiveReader) {
+                        // console.log(`${new Date().toISOString()} :: ${blk_num} :: ${res['this_block']['block_id'].toLowerCase()}`);
+                        if (blk_num !== local_block_num + 1) {
+                            await handleFork(res);
                         } else {
-                            if (blk_num === 1) {
-                                stageOneDistQueue.push({
-                                    num: blk_num,
-                                    content: data
-                                });
+                            local_block_num = blk_num;
+                        }
+                        stageOneDistQueue.push({num: blk_num, content: data});
+                        return 1;
+                    } else {
+                        if (future_block !== 0 && future_block === blk_num) {
+                            console.log('Missing block ' + blk_num + ' received!');
+                        } else {
+                            future_block = 0;
+                        }
+                        if (blk_num === local_block_num + 1) {
+                            local_block_num = blk_num;
+                            if (res['block'] || res['traces'] || res['deltas']) {
+                                stageOneDistQueue.push({num: blk_num, content: data});
                                 return 1;
                             } else {
-                                return 0;
+                                if (blk_num === 1) {
+                                    stageOneDistQueue.push({num: blk_num, content: data});
+                                    return 1;
+                                } else {
+                                    return 0;
+                                }
                             }
+                        } else {
+                            console.log(`[${role}] missing block: ${(local_block_num + 1)} current block: ${blk_num}`);
+                            future_block = blk_num + 1;
+                            return 0;
                         }
-                    } else {
-                        console.log(`[${role}] missing block: ${(local_block_num + 1)} current block: ${blk_num}`);
-                        future_block = blk_num + 1;
-                        return 0;
                     }
                 } else {
                     return 0;
@@ -419,6 +466,7 @@ function createNulledApi(chainID) {
 async function run() {
 
     rpc = manager.nodeosJsonRPC;
+    client = manager.elasticsearchClient;
     const chain_data = await rpc.get_info();
     chainID = chain_data.chain_id;
     api = createNulledApi(chainID);

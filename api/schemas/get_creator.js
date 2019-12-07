@@ -1,7 +1,7 @@
 exports.GET = {
     description: 'get account creator',
     summary: 'get account creator',
-    tags: ['history'],
+    tags: ['accounts', 'history'],
     querystring: {
         type: 'object',
         properties: {

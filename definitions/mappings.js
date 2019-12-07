@@ -4,6 +4,8 @@ const refresh = "5s";
 const chain = process.env.CHAIN;
 const defaultLifecyclePolicy = "50G30D";
 
+const ILPs = require('./lifecycle_policies').ILPs;
+
 // LZ4 Compression
 const compression = 'default';
 // DEFLATE
@@ -58,7 +60,7 @@ const action = {
                     "auth_sequence": {
                         "properties": {
                             "account": {"type": "keyword"},
-                            "sequence": {"type": "integer"}
+                            "sequence": {"type": "long"}
                         }
                     }
                 }
@@ -148,6 +150,7 @@ const abi = {
     },
     "mappings": {
         "properties": {
+            "@timestamp": {"type": "date"},
             "block": {"type": "long"},
             "account": {"type": "keyword"},
             "abi": {"enabled": false}
@@ -169,12 +172,12 @@ const block = {
     },
     "mappings": {
         "properties": {
+            "@timestamp": {"type": "date"},
             "block_num": {"type": "long"},
             "producer": {"type": "keyword"},
             "new_producers.producers.block_signing_key": {"enabled": false},
             "new_producers.producers.producer_name": {"type": "keyword"},
             "new_producers.version": {"type": "long"},
-            "@timestamp": {"type": "date"},
             "schedule_version": {"type": "double"},
             "cpu_usage": {"type": "integer"},
             "net_usage": {"type": "integer"}
@@ -317,20 +320,20 @@ const delta = {
             "codec": compression,
             "number_of_shards": shards * 2,
             "refresh_interval": refresh,
-            "number_of_replicas": replicas,
-            "sort.field": "block_num",
-            "sort.order": "desc"
+            "number_of_replicas": replicas
         }
     },
     "mappings": {
         "properties": {
+            // "global_sequence": {"type": "long"},
+            // "@timestamp": {"type": "date"},
             "block_num": {"type": "long"},
-            "present": {"type": "boolean"},
+            "data": {"enabled": false},
             "code": {"type": "keyword"},
+            "present": {"type": "boolean"},
             "scope": {"type": "keyword"},
             "table": {"type": "keyword"},
             "payer": {"type": "keyword"},
-            "data": {"enabled": false},
             "primary_key": {"type": "keyword"},
             "@approvals.proposal_name": {"type": "keyword"},
             "@approvals.provided_approvals": {"type": "object"},
@@ -365,7 +368,7 @@ const delta = {
 };
 
 module.exports = {
-    action, block, abi, delta,
+    action, block, abi, delta, ILPs,
     "table-proposals": tableProposals,
     "table-accounts": tableAccounts,
     "table-delband": tableDelBand,

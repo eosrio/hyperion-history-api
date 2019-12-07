@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const schema = {
     description: 'get all actions belonging to the same transaction',
     summary: 'get transaction by id',
-    tags: ['history'],
+    tags: ['transactions','history'],
     body: {
         type: ['object', 'string'],
         properties: {

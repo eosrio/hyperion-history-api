@@ -1,11 +1,33 @@
 const {getActionsSchema} = require("../../schemas");
 const {getCacheByHash, mergeActionMeta} = require("../../helpers/functions");
-const _ = require('lodash');
 
 const maxActions = 1000;
 const route = '/get_actions';
-const terms = ["notified.keyword", "act.authorization.actor"];
-const extendedActions = new Set(["transfer", "newaccount", "updateauth", "buyram", "buyrambytes"]);
+
+const terms = [
+    "notified.keyword",
+    "act.authorization.actor"
+];
+
+const extendedActions = new Set([
+    "transfer",
+    "newaccount",
+    "updateauth",
+    "buyram",
+    "buyrambytes"
+]);
+
+const primaryTerms = [
+    "notified",
+    "block_num",
+    "global_sequence",
+    "producer",
+    "@timestamp",
+    "creator_action_ordinal",
+    "action_ordinal",
+    "cpu_usage_us",
+    "net_usage_words"
+];
 
 const enable_caching = process.env.ENABLE_CACHING === 'true';
 let cache_life = 30;
@@ -13,118 +35,103 @@ if (process.env.CACHE_LIFE) {
     cache_life = parseInt(process.env.CACHE_LIFE);
 }
 
-async function getActions(fastify, request) {
-    const t0 = Date.now();
-    const {redis, elastic, eosjs} = fastify;
-    let cachedResponse, hash;
-    if (enable_caching) {
-        [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(request.query));
-        if (cachedResponse) {
-            cachedResponse = JSON.parse(cachedResponse);
-            cachedResponse['query_time'] = Date.now() - t0;
-            cachedResponse['cached'] = true;
-            return cachedResponse;
-        }
-    }
-
-    const should_array = [];
-    for (const entry of terms) {
-        const tObj = {term: {}};
-        tObj.term[entry] = request.query.account;
-        should_array.push(tObj);
-    }
-    let code, method, skip, limit, parent;
-    let sort_direction = 'desc';
-    let filterObj = [];
-    if (request.query.filter) {
-        const filters = request.query.filter.split(',');
-        for (const filter of filters) {
-            const obj = {bool: {must: []}};
-            const parts = filter.split(':');
-            if (parts.length === 2) {
-                [code, method] = parts;
-                if (code && code !== "*") {
-                    obj.bool.must.push({'term': {'act.account': code}});
-                }
-                if (method && method !== "*") {
-                    obj.bool.must.push({'term': {'act.name': method}});
-                }
-            }
-            filterObj.push(obj);
-        }
-    }
-    skip = parseInt(request.query.skip, 10);
-    if (skip < 0) {
-        return 'invalid skip parameter';
-    }
-    limit = parseInt(request.query.limit, 10);
-    if (limit < 1) {
-        return 'invalid limit parameter';
-    }
-
-    if (request.query.sort) {
-        if (request.query.sort === 'asc' || request.query.sort === '1') {
-            sort_direction = 'asc';
-        } else if (request.query.sort === 'desc' || request.query.sort === '-1') {
-            sort_direction = 'desc'
+function getTrackTotalHits(query) {
+    let trackTotalHits = 15000;
+    if (query.track) {
+        if (query.track === 'true') {
+            trackTotalHits = true;
+        } else if (query.track === 'false') {
+            trackTotalHits = false;
         } else {
-            return 'invalid sort direction';
+            trackTotalHits = parseInt(query.track, 10);
+            if (trackTotalHits !== trackTotalHits) {
+                throw new Error('failed to parse track param');
+            }
         }
     }
+    return trackTotalHits;
+}
 
-    const queryStruct = {
-        "bool": {
-            must: [],
-            boost: 1.0
+function addSortedBy(query, queryBody, sort_direction) {
+    if (query['sortedBy']) {
+        const opts = query['sortedBy'].split("|");
+        const sortedByObj = {};
+        sortedByObj[opts[0]] = opts[1];
+        queryBody['sort'] = sortedByObj;
+    } else {
+        queryBody['sort'] = {
+            "global_sequence": sort_direction
+        };
+    }
+}
+
+function processMultiVars(queryStruct, parts, field) {
+    const must = [];
+    const mustNot = [];
+
+    parts.forEach(part => {
+        if (part.startsWith("!")) {
+            mustNot.push(part.replace("!", ""));
+        } else {
+            must.push(part);
         }
-    };
+    });
 
-    if (request.query.parent !== undefined) {
-        queryStruct.bool['filter'] = [];
-        queryStruct.bool['filter'].push({
-            "term": {
-                "parent": parseInt(request.query.parent, 10)
+    if (must.length > 1) {
+        queryStruct.bool.must.push({
+            bool: {
+                should: must.map(elem => {
+                    const _q = {};
+                    _q[field] = elem;
+                    return {term: _q}
+                })
             }
         });
+    } else if (must.length === 1) {
+        const mustQuery = {};
+        mustQuery[field] = must[0];
+        queryStruct.bool.must.push({term: mustQuery});
     }
 
-    if (request.query.account) {
-        queryStruct.bool.must.push({"bool": {should: should_array}});
-    }
-
-    for (const prop in request.query) {
-        if (Object.prototype.hasOwnProperty.call(request.query, prop)) {
-            const pair = prop.split(".");
-            if (pair.length > 1) {
-                const actionName = pair[0];
-                const pkey = extendedActions.has(actionName) ? "@" + prop : prop;
-                const parts = request.query[prop].split("-");
-                const _termQuery = {};
-                if (parts.length > 1) {
-                    _termQuery[pkey] = {
-                        "gte": parts[0],
-                        "lte": parts[1]
-                    };
-                    queryStruct.bool.must.push({range: _termQuery});
-                } else {
-                    _termQuery[pkey] = parts[0];
-                    queryStruct.bool.must.push({term: _termQuery});
-                }
+    if (mustNot.length > 1) {
+        queryStruct.bool.must_not.push({
+            bool: {
+                should: mustNot.map(elem => {
+                    const _q = {};
+                    _q[field] = elem;
+                    return {term: _q}
+                })
             }
-        }
+        });
+    } else if (mustNot.length === 1) {
+        const mustNotQuery = {};
+        mustNotQuery[field] = mustNot[0].replace("!", "");
+        queryStruct.bool.must_not.push({term: mustNotQuery});
     }
+}
 
-    if (request.query['after'] || request.query['before']) {
+function addRangeQuery(queryStruct, prop, pkey, query) {
+    const _termQuery = {};
+    const parts = query[prop].split("-");
+    _termQuery[pkey] = {
+        "gte": parts[0],
+        "lte": parts[1]
+    };
+    queryStruct.bool.must.push({range: _termQuery});
+}
+
+function applyTimeFilter(query, queryStruct) {
+    if (query['after'] || query['before']) {
         let _lte = "now";
         let _gte = 0;
-        if (request.query['before']) {
-            _lte = request.query['before'];
+        if (query['before']) {
+            _lte = query['before'];
             if (!_lte.endsWith("Z")) {
                 _lte += "Z";
             }
         }
-        if (request.query['after']) {
-            _gte = request.query['after'];
+        if (query['after']) {
+            _gte = query['after'];
             if (!_gte.endsWith("Z")) {
                 _gte += "Z";
             }
@@ -141,58 +148,168 @@ async function getActions(fastify, request) {
             }
         });
     }
+}
 
-    if (request.query.filter) {
-        queryStruct.bool['should'] = filterObj;
-        queryStruct.bool['minimum_should_match'] = 1;
-    }
-
-    let trackTotalHits = 10000;
-    if (request.query.track) {
-        if (request.query.track === 'true') {
-            trackTotalHits = true;
-        } else if (request.query.track === 'false') {
-            trackTotalHits = false;
-        } else {
-            trackTotalHits = parseInt(request.query.track, 10);
-            if (trackTotalHits !== trackTotalHits) {
-                throw new Error('failed to parse track param');
+function applyGenericFilters(query, queryStruct) {
+    for (const prop in query) {
+        if (Object.prototype.hasOwnProperty.call(query, prop)) {
+            const pair = prop.split(".");
+            if (pair.length > 1 || primaryTerms.includes(pair[0])) {
+                let pkey;
+                if (pair.length > 1) {
+                    pkey = extendedActions.has(pair[0]) ? "@" + prop : prop;
+                } else {
+                    pkey = prop;
+                }
+                if (query[prop].indexOf("-") !== -1) {
+                    addRangeQuery(queryStruct, prop, pkey, query);
+                } else {
+                    const _termQuery = {};
+                    const parts = query[prop].split(",");
+                    if (parts.length > 1) {
+                        processMultiVars(queryStruct, parts, prop);
+                    } else if (parts.length === 1) {
+                        const andParts = parts[0].split(" ");
+                        if (andParts.length > 1) {
+                            andParts.forEach(value => {
+                                const _q = {};
+                                console.log(value);
+                                _q[pkey] = value;
+                                queryStruct.bool.must.push({term: _q});
+                            });
+                        } else {
+                            if (parts[0].startsWith("!")) {
+                                _termQuery[pkey] = parts[0].replace("!", "");
+                                queryStruct.bool.must_not.push({term: _termQuery});
+                            } else {
+                                _termQuery[pkey] = parts[0];
+                                queryStruct.bool.must.push({term: _termQuery});
+                            }
+                        }
+                    }
+                }
             }
         }
     }
+}
 
-    if (request.query.creator_action_ordinal) {
-        queryStruct.bool.must.push({
-            term: {
-                creator_action_ordinal: request.query.creator_action_ordinal
+function makeShouldArray(query) {
+    const should_array = [];
+    for (const entry of terms) {
+        const tObj = {term: {}};
+        tObj.term[entry] = query.account;
+        should_array.push(tObj);
+    }
+    return should_array;
+}
+
+function applyCodeActionFilters(query, queryStruct) {
+    let filterObj = [];
+    if (query.filter) {
+        for (const filter of query.filter.split(',')) {
+            const _arr = [];
+            const parts = filter.split(':');
+            if (parts.length === 2) {
+                [code, method] = parts;
+                if (code && code !== "*") {
+                    _arr.push({'term': {'act.account': code}});
+                }
+                if (method && method !== "*") {
+                    _arr.push({'term': {'act.name': method}});
+                }
             }
-        });
+            if (_arr.length > 0) {
+                filterObj.push({bool: {must: _arr}});
+            }
+        }
+        queryStruct.bool['should'] = filterObj;
+        queryStruct.bool['minimum_should_match'] = 1;
+    }
+}
+
+function getSkipLimit(query) {
+    let skip, limit;
+    skip = parseInt(query.skip, 10);
+    if (skip < 0) {
+        throw new Error('invalid skip parameter');
+    }
+    limit = parseInt(query.limit, 10);
+    if (limit < 1) {
+        throw new Error('invalid limit parameter');
+    }
+    return {skip, limit};
+}
+
+function getSortDir(query) {
+    let sort_direction = 'desc';
+    if (query.sort) {
+        if (query.sort === 'asc' || query.sort === '1') {
+            sort_direction = 'asc';
+        } else if (query.sort === 'desc' || query.sort === '-1') {
+            sort_direction = 'desc'
+        } else {
+            throw new Error('invalid sort direction');
+        }
+    }
+    return sort_direction;
+}
+
+function applyAccountFilters(query, queryStruct) {
+    if (query.account) {
+        queryStruct.bool.must.push({"bool": {should: makeShouldArray(query)}});
+    }
+}
+
+async function getActions(fastify, request) {
+    const t0 = Date.now();
+    const {redis, elastic, eosjs} = fastify;
+    const query = request.query;
+    let cachedResponse, hash;
+    if (enable_caching) {
+        [cachedResponse, hash] = await getCacheByHash(redis, route + JSON.stringify(query));
+        if (cachedResponse) {
+            cachedResponse = JSON.parse(cachedResponse);
+            cachedResponse['query_time'] = Date.now() - t0;
+            cachedResponse['cached'] = true;
+            return cachedResponse;
+        }
     }
 
-    if (request.query.action_ordinal) {
-        queryStruct.bool.must.push({
-            term: {
-                action_ordinal: request.query.action_ordinal
-            }
-        });
-    }
+    const queryStruct = {
+        "bool": {
+            must: [],
+            must_not: [],
+            boost: 1.0
+        }
+    };
 
+    const {skip, limit} = getSkipLimit(query);
+
+    const sort_direction = getSortDir(query);
+
+    applyAccountFilters(query, queryStruct);
+
+    applyGenericFilters(query, queryStruct);
+
+    applyTimeFilter(query, queryStruct);
+
+    applyCodeActionFilters(query, queryStruct);
+
+    // allow precise counting of total hits
+    const trackTotalHits = getTrackTotalHits(query);
+
+    // Prepare query body
     const query_body = {
         "track_total_hits": trackTotalHits,
         "query": queryStruct
     };
 
-    if (request.query.sortedBy) {
-        const opts = request.query.sortedBy.split("|");
-        const sortedByObj = {};
-        sortedByObj[opts[0]] = opts[1];
-        query_body['sort'] = sortedByObj;
-    } else {
-        query_body['sort'] = {
-            "global_sequence": sort_direction
-        };
-    }
+    // Include sorting
+    addSortedBy(query, query_body, sort_direction);
 
+    // console.log(prettyjson.render(queryStruct));
+
+    // Perform search
     const pResults = await Promise.all([eosjs.rpc.get_info(), elastic['search']({
         "index": process.env.CHAIN + '-action-*',
         "from": skip || 0,
@@ -200,26 +317,30 @@ async function getActions(fastify, request) {
         "body": query_body
     })]);
 
-    const results = pResults[1];
+    const results = pResults[1]['body']['hits'];
     const response = {
         query_time: null,
         cached: false,
         lib: pResults[0].last_irreversible_block_num,
-        total: results['body']['hits']['total'],
+        total: results['total'],
         actions: []
     };
-    if (results['body']['hits']['hits'].length > 0) {
-        const actions = results['body']['hits']['hits'];
+
+    if (results['hits'].length > 0) {
+        const actions = results['hits'];
         for (let action of actions) {
             action = action._source;
             mergeActionMeta(action);
             response.actions.push(action);
         }
     }
+
     response['query_time'] = Date.now() - t0;
+
     if (enable_caching) {
         redis.set(hash, JSON.stringify(response), 'EX', cache_life);
     }
+
     return response;
 }
 

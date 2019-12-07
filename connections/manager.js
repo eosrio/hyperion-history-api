@@ -48,7 +48,7 @@ class ConnectionManager {
         return redis.createClient(this.redisOptions);
     }
 
-    get elasticsearchClient() {
+    getESClient() {
         let es_url;
         if (conf.elasticsearch.user !== '') {
             es_url = `http://${conf.elasticsearch.user}:${conf.elasticsearch.pass}@${conf.elasticsearch.host}`;
@@ -56,6 +56,33 @@ class ConnectionManager {
             es_url = `http://${conf.elasticsearch.host}`
         }
         return new elasticsearch.Client({node: es_url});
+    }
+
+    get elasticsearchClient() {
+        return this.getESClient();
+    }
+
+    get ingestClients() {
+        if (conf['elasticsearch']['ingest_nodes']) {
+            const clients = [];
+            const nodes = conf['elasticsearch']['ingest_nodes'];
+            if (nodes.length > 0) {
+                for (const node of nodes) {
+                    let es_url;
+                    const _user = conf['elasticsearch']['user'];
+                    const _pass = conf['elasticsearch']['pass'];
+                    if (conf['elasticsearch']['user'] !== '') {
+                        es_url = `http://${_user}:${_pass}@${node}`;
+                    } else {
+                        es_url = `http://${node}`
+                    }
+                    clients.push(new elasticsearch.Client({node: es_url, pingTimeout: 100}));
+                }
+            }
+            return clients;
+        } else {
+            return [this.getESClient()];
+        }
     }
 
     get nodeosJsonRPC() {
