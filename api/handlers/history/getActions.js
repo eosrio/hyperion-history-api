@@ -322,16 +322,35 @@ async function getActions(fastify, request) {
         query_time: null,
         cached: false,
         lib: pResults[0].last_irreversible_block_num,
-        total: results['total'],
-        actions: []
+        total: results['total']
     };
+
+    if (query.simple) {
+        response['simple_actions'] = [];
+    } else {
+        response['actions'] = [];
+    }
 
     if (results['hits'].length > 0) {
         const actions = results['hits'];
         for (let action of actions) {
             action = action._source;
             mergeActionMeta(action);
-            response.actions.push(action);
+            if (query.simple) {
+                response.simple_actions.push({
+                    block: action['block_num'],
+                    irreversible: action['block_num'] < pResults[0].last_irreversible_block_num,
+                    timestamp: action['@timestamp'],
+                    transaction_id: action['trx_id'],
+                    actors: action['act']['authorization'].map(a => `${a.actor}@${a.permission}`).join(","),
+                    notified: action['notified'].join(','),
+                    contract: action['act']['account'],
+                    action: action['act']['name'],
+                    data: action['act']['data']
+                });
+            } else {
+                response.actions.push(action);
+            }
         }
     }
 

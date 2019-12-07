@@ -2,7 +2,7 @@ exports.GET = {
     description: 'get actions based on notified account. this endpoint also accepts generic filters based on indexed fields' +
         ' (e.g. act.authorization.actor=eosio or act.name=delegatebw), if included they will be combined with a AND operator',
     summary: 'get root actions',
-    tags: ['actions','history'],
+    tags: ['actions', 'history'],
     querystring: {
         type: 'object',
         properties: {
@@ -44,10 +44,9 @@ exports.GET = {
                 description: 'filter before specified date (ISO8601)',
                 type: 'string'
             },
-            "parent": {
-                description: 'filter by parent global sequence',
-                type: 'integer',
-                minimum: 0
+            "simple": {
+                description: 'simplified output mode',
+                type: 'boolean'
             }
         }
     },
@@ -67,6 +66,25 @@ exports.GET = {
                     properties: {
                         "value": {type: "number"},
                         "relation": {type: "string"}
+                    }
+                },
+                "simple_actions": {
+                    type: "array",
+                    items: {
+                        type: "object",
+                        properties: {
+                            "block": {type: "number"},
+                            "timestamp": {type: "string"},
+                            "irreversible": {type: "boolean"},
+                            "contract": {type: "string"},
+                            "action": {type: "string"},
+                            "actors": {type: "string"},
+                            "notified": {type: "string"},
+                            "transaction_id": {type: "string"},
+                            "data": {
+                                additionalProperties: true
+                            }
+                        }
                     }
                 },
                 "actions": {
