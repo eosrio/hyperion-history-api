@@ -144,7 +144,7 @@ const abi = {
         "index": {
             "number_of_shards": shards,
             "refresh_interval": refresh,
-            "number_of_replicas": replicas === 0 ? 1 : replicas,
+            "number_of_replicas": replicas,
             "codec": compression
         }
     },
