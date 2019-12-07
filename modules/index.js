@@ -7,6 +7,7 @@ class HyperionModuleLoader {
     #handledActions = new Map();
     actionParser;
     chainMappings = new Map();
+    extraMappings = [];
 
     constructor() {
         this.loadActionHandlers();
@@ -36,6 +37,9 @@ class HyperionModuleLoader {
             const _map = new Map();
             _map.set(_module.action, _module.handler);
             this.#handledActions.set(_module.contract, _map);
+        }
+        if (_module.mappings) {
+            this.extraMappings.push(_module.mappings);
         }
     }
 

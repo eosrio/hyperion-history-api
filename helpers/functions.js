@@ -1,6 +1,7 @@
 const {Serialize} = require('eosjs');
 const zlib = require('zlib');
 const prettyjson = require("prettyjson");
+const _ = require('lodash');
 
 function onError(err) {
     console.log(process.env['worker_role']);
@@ -175,12 +176,52 @@ function messageAllWorkers(cl, payload) {
 }
 
 function printWorkerMap(wmp) {
-    console.log('--------------------------------------------------');
-    console.log(prettyjson.render({
-        'workers': wmp
-    }, {
-        numberColor: 'grey'
-    }));
+    console.log('---------------- PROPOSED WORKER LIST ----------------------');
+    for (const w of wmp) {
+        const str = [];
+        for (const key in w) {
+            if (w.hasOwnProperty(key) && key !== 'worker_id') {
+                switch (key) {
+                    case 'worker_role': {
+                        str.push(`Role: ${w[key]}`);
+                        break;
+                    }
+                    case 'worker_queue': {
+                        str.push(`Queue Name: ${w[key]}`);
+                        break;
+                    }
+                    case 'first_block': {
+                        str.push(`First Block: ${w[key]}`);
+                        break;
+                    }
+                    case 'last_block': {
+                        str.push(`Last Block: ${w[key]}`);
+                        break;
+                    }
+                    case 'live_mode': {
+                        str.push(`Live Mode: ${w[key]}`);
+                        break;
+                    }
+                    case 'type': {
+                        str.push(`Index Type: ${w[key]}`);
+                        break;
+                    }
+                    case 'worker_last_processed_block':{
+                        str.push(`Last Processed Block: ${w[key]}`);
+                        break;
+                    }
+                    case 'queue': {
+                        str.push(`Indexing Queue: ${w[key]}`);
+                        break;
+                    }
+                    default: {
+                        str.push(`${key}: ${w[key]}`);
+                    }
+                }
+            }
+        }
+        console.log(`Worker ID: ${w.worker_id} \t ${str.join(" | ")}`)
+    }
     console.log('--------------------------------------------------');
 }
 
