@@ -1,6 +1,6 @@
 const shards = 2;
 const replicas = 0;
-const refresh = "5s";
+const refresh = "1s";
 const chain = process.env.CHAIN;
 const defaultLifecyclePolicy = "50G30D";
 
@@ -36,8 +36,8 @@ const action = {
         properties: {
             "@timestamp": {"type": "date"},
             "global_sequence": {"type": "long"},
-            "account_ram_deltas.delta": {"enabled": false},
-            "account_ram_deltas.account": {"enabled": false},
+            "account_ram_deltas.delta": {"type": "integer"},
+            "account_ram_deltas.account": {"type": "keyword"},
             "act.authorization.permission": {"enabled": false},
             "act.authorization.actor": {"type": "keyword"},
             "act.account": {"type": "keyword"},

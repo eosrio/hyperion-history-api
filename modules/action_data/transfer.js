@@ -9,10 +9,8 @@ const hyperionModule = {
         const data = action['act']['data'];
         if (data['quantity']) {
             qtd = data['quantity'].split(' ');
-            delete data['quantity'];
         } else if (data['value']) {
             qtd = data['value'].split(' ');
-            delete data['value'];
         }
 
         if (qtd) {
