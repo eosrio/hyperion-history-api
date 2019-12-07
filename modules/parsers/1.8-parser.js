@@ -76,7 +76,6 @@ module.exports = {
             if (!action['receipt']) {
                 console.log(full_trace.status);
                 console.log(action);
-                m
             }
             action['receipt'] = action['receipt'][1];
             action['global_sequence'] = parseInt(action['receipt']['global_sequence'], 10);
