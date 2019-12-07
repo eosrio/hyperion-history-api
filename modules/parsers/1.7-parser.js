@@ -21,9 +21,22 @@ function checkWhitelist(act) {
 
 const reading_mode = process.env.live_mode;
 
-async function actionParser(common, ts, action, trx_data, _actDataArray, _processedTraces, full_trace) {
+async function actionParser(common, ts, action, trx_data, _actDataArray,
+                            _processedTraces, full_trace, parent, current_ord) {
     const {trx_id, block_num, producer, cpu_usage_us, net_usage_words} = trx_data;
     let act = action['act'];
+
+    // Include ordinals
+    if (parent === null) {
+        action['creator_action_ordinal'] = 0;
+        action['action_ordinal'] = 1;
+    } else {
+        action['creator_action_ordinal'] = parent;
+        if (current_ord !== null) {
+            action['action_ordinal'] = current_ord;
+        }
+    }
+
     // abort if blacklisted
     if (checkBlacklist(act)) {
         return false;
@@ -67,6 +80,7 @@ async function actionParser(common, ts, action, trx_data, _actDataArray, _proces
     action['block_num'] = block_num;
     action['producer'] = producer;
     action['trx_id'] = trx_id;
+
     if (action['account_ram_deltas'].length === 0) {
         delete action['account_ram_deltas'];
     }
@@ -88,8 +102,19 @@ async function actionParser(common, ts, action, trx_data, _actDataArray, _proces
             action['cpu_usage_us'] = cpu_usage_us;
             action['net_usage_words'] = net_usage_words;
         }
+
+        if (action['inline_traces']) {
+            let newOrds = action['action_ordinal'] + 1;
+            for (const inline of action['inline_traces']) {
+                await actionParser(common, ts, inline[1], trx_data,
+                    _actDataArray, _processedTraces, full_trace,
+                    action['action_ordinal'], newOrds);
+                newOrds++;
+            }
+        }
+        delete action['inline_traces'];
         _processedTraces.push(action);
-        // console.log(prettyjson.render(action));
+
     } else {
         console.log(action);
     }
