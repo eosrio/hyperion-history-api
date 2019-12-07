@@ -153,23 +153,21 @@ async function processBlock(res, block, traces, deltas) {
                     const _actDataArray = [];
                     const _processedTraces = [];
                     const action_traces = transaction_trace['action_traces'];
-                    // console.log(transaction_trace['partial']);
                     const t3 = Date.now();
                     for (const action_trace of action_traces) {
                         if (action_trace[0] === 'action_trace_v0') {
                             const action = action_trace[1];
                             const trx_data = {trx_id, block_num, producer, cpu_usage_us, net_usage_words};
-                            const status = await mLoader.actionParser(common, ts, action, trx_data, _actDataArray, _processedTraces, transaction_trace);
-                            if (status) {
+                            if (await mLoader.actionParser(common, ts, action, trx_data, _actDataArray, _processedTraces, transaction_trace, null, 0)) {
                                 action_count++;
                             }
                         }
                     }
-                    const _finalTraces = [];
 
+                    const _finalTraces = [];
                     if (_processedTraces.length > 0) {
+
                         const digestMap = new Map();
-                        // console.log(`----------- TRX ${trx_id} ------------------`);
                         for (let i = 0; i < _processedTraces.length; i++) {
                             const receipt = _processedTraces[i].receipt;
                             const act_digest = receipt['act_digest'];
@@ -181,6 +179,7 @@ async function processBlock(res, block, traces, deltas) {
                                 digestMap.set(act_digest, _arr);
                             }
                         }
+
                         _processedTraces.forEach(data => {
                             const digest = data['receipt']['act_digest'];
                             if (digestMap.has(digest)) {
@@ -205,8 +204,6 @@ async function processBlock(res, block, traces, deltas) {
                                 digestMap.delete(digest);
                             }
                         });
-                        // console.log(prettyjson.render(_finalTraces));
-                        // console.log(`---------------------------------------------`);
                     }
 
                     // Submit Actions after deduplication
