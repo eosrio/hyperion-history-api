@@ -134,7 +134,7 @@ function onLiveBlock(msg) {
 
 function setupDSElogs(starting_block, head) {
     const logPath = './logs/' + process.env.CHAIN;
-    if (!fs.existsSync(logPath)) fs.mkdirSync(logPath);
+    if (!fs.existsSync(logPath)) fs.mkdirSync(logPath, {recursive: true});
     const dsLogFileName = (new Date().toISOString()) + "_ds_err_" + starting_block + "_" + head + ".log";
     const dsErrorsLog = logPath + '/' + dsLogFileName;
     if (fs.existsSync(dsErrorsLog)) fs.unlinkSync(dsErrorsLog);
