@@ -65,3 +65,8 @@ typings/
 ecosystem.config.js
 package-lock.json
 connections.json
+api_access.log
+api_error.log
+explorer
+api/explorer
+.ecosystem.config.js.swp
