@@ -54,80 +54,82 @@ async function reportMissedBlocks(producer, last_block, size) {
     });
 }
 
+let blockMsgQueue = [];
+
 function onLiveBlock(msg) {
-    const prod = msg.producer;
 
-    if (process.env.BP_LOGS === 'true') {
-        console.log(`Received block ${msg.block_num} from ${prod}`);
-    }
+    if (msg.block_num === lastProducedBlockNum + 1 || lastProducedBlockNum === 0) {
+        const prod = msg.producer;
 
-    if (producedBlocks[prod]) {
-        producedBlocks[prod]++;
-    } else {
-        producedBlocks[prod] = 1;
-    }
-
-    if (lastProducer !== prod) {
-
-        handoffCounter++;
-
-        if (lastProducer && handoffCounter > 2) {
-
-            const activeProds = currentSchedule.active.producers;
-            const newIdx = activeProds.findIndex(p => p['producer_name'] === prod) + 1;
-            const oldIdx = activeProds.findIndex(p => p['producer_name'] === lastProducer) + 1;
-
-            if ((newIdx === oldIdx + 1) || (newIdx === 1 && oldIdx === activeProds.length)) {
-                // Normal operation
-                if (process.env.BP_LOGS === 'true') {
-                    console.log(`[${msg.block_num}] producer handoff: ${lastProducer} [${oldIdx}] -> ${prod} [${newIdx}]`);
-                }
-
-            } else {
-
-                let cIdx = oldIdx + 1;
-                while (cIdx !== newIdx) {
-                    try {
-                        if (activeProds[cIdx - 1]) {
-                            const missingProd = activeProds[cIdx - 1]['producer_name'];
-
-                            // report
-                            reportMissedBlocks(missingProd, lastProducedBlockNum, 12)
-                                .catch(console.log);
-
-                            // count missed
-                            if (missedRounds[missingProd]) {
-                                missedRounds[missingProd]++;
-                            } else {
-                                missedRounds[missingProd] = 1;
-                            }
-
-                            console.log(`${missingProd} missed a round [${missedRounds[missingProd]}]`);
-                        }
-                    } catch (e) {
-                        console.log(activeProds);
-                        console.log(e);
-                    }
-
-                    cIdx++;
-                    if (cIdx === activeProds.length) {
-                        cIdx = 0;
-                    }
-                }
-            }
-
-            if (producedBlocks[lastProducer]) {
-                if (producedBlocks[lastProducer] < 12) {
-                    const _size = 12 - producedBlocks[lastProducer];
-                    reportMissedBlocks(lastProducer, lastProducedBlockNum, _size)
-                        .catch(console.log)
-                }
-            }
-            producedBlocks[lastProducer] = 0;
+        if (process.env.BP_LOGS === 'true') {
+            console.log(`Received block ${msg.block_num} from ${prod}`);
         }
-        lastProducer = prod;
+        if (producedBlocks[prod]) {
+            producedBlocks[prod]++;
+        } else {
+            producedBlocks[prod] = 1;
+        }
+        if (lastProducer !== prod) {
+            handoffCounter++;
+            if (lastProducer && handoffCounter > 2) {
+                const activeProds = currentSchedule.active.producers;
+                const newIdx = activeProds.findIndex(p => p['producer_name'] === prod) + 1;
+                const oldIdx = activeProds.findIndex(p => p['producer_name'] === lastProducer) + 1;
+                if ((newIdx === oldIdx + 1) || (newIdx === 1 && oldIdx === activeProds.length)) {
+                    // Normal operation
+                    if (process.env.BP_LOGS === 'true') {
+                        console.log(`[${msg.block_num}] producer handoff: ${lastProducer} [${oldIdx}] -> ${prod} [${newIdx}]`);
+                    }
+                } else {
+                    let cIdx = oldIdx + 1;
+                    while (cIdx !== newIdx) {
+                        try {
+                            if (activeProds[cIdx - 1]) {
+                                const missingProd = activeProds[cIdx - 1]['producer_name'];
+                                // report
+                                reportMissedBlocks(missingProd, lastProducedBlockNum, 12)
+                                    .catch(console.log);
+                                // count missed
+                                if (missedRounds[missingProd]) {
+                                    missedRounds[missingProd]++;
+                                } else {
+                                    missedRounds[missingProd] = 1;
+                                }
+                                console.log(`${missingProd} missed a round [${missedRounds[missingProd]}]`);
+                            }
+                        } catch (e) {
+                            console.log(activeProds);
+                            console.log(e);
+                        }
+                        cIdx++;
+                        if (cIdx === activeProds.length) {
+                            cIdx = 0;
+                        }
+                    }
+                }
+                if (producedBlocks[lastProducer]) {
+                    if (producedBlocks[lastProducer] < 12) {
+                        const _size = 12 - producedBlocks[lastProducer];
+                        reportMissedBlocks(lastProducer, lastProducedBlockNum, _size)
+                            .catch(console.log)
+                    }
+                }
+                producedBlocks[lastProducer] = 0;
+            }
+            lastProducer = prod;
+        }
+        lastProducedBlockNum = msg.block_num;
+    } else {
+        blockMsgQueue.push(msg);
+        blockMsgQueue.sort((a, b) => a.block_num - b.block_num);
+        while (blockMsgQueue.length > 0) {
+            if (blockMsgQueue[0].block_num === lastProducedBlockNum + 1) {
+                onLiveBlock(blockMsgQueue.shift());
+            } else {
+                break;
+            }
+        }
     }
-    lastProducedBlockNum = msg.block_num;
 }
 
 function setupDSElogs(starting_block, head) {
