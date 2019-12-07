@@ -233,10 +233,10 @@ async function waitForLaunch() {
     return new Promise(resolve => {
         console.log(`Use "pm2 trigger ${pm2io.getConfig().module_name} start" to start the indexer now or restart without preview mode.`);
         const idleTimeout = setTimeout(() => {
-            console.log('No command received.');
+            console.log('No command received after 10 minutes.');
             console.log('Exiting now! Disable the PREVIEW mode to continue.');
             process.exit(1);
-        }, 60000);
+        }, 60000 * 10);
         pm2io.action('start', (reply) => {
             resolve();
             reply({ack: true});
@@ -248,6 +248,9 @@ async function waitForLaunch() {
 async function main() {
 
     console.log(`--------- Hyperion Indexer ${require('./package').version} ---------`);
+
+    console.log(`Using parser version ${process.env.PARSER}`);
+    console.log(`Chain: ${process.env.CHAIN}`);
 
     if (process.env.ABI_CACHE_MODE === 'true') {
         console.log('--------\n ABI CACHING MODE \n ---------');
@@ -416,6 +419,7 @@ async function main() {
     let worker_index = 0;
     let allowShutdown = false;
     let allowMoreReaders = true;
+    let total_range = 0;
     let maxBatchSize = parseInt(process.env.BATCH_SIZE, 10);
 
     // Auto-stop
@@ -611,7 +615,6 @@ async function main() {
     let total_blocks = 0;
     let total_indexed_blocks = 0;
     let total_actions = 0;
-    let total_range = 0;
     setInterval(() => {
         const _workers = Object.keys(cluster.workers).length;
         const tScale = (log_interval / 1000);

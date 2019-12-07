@@ -31,7 +31,7 @@ function assertQueues() {
             ch.assertQueue(process.env['queue'], {durable: true});
             ch.prefetch(indexingPrefecthCount);
             ch.consume(process.env['queue'], indexQueue.push);
-            console.log(`setting up indexer on queue ${process.env['queue']}`);
+            console.log(`indexer listening on ${process.env['queue']}`);
         }
     } catch (e) {
         console.error('rabbitmq error!');
