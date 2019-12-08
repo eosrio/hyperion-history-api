@@ -607,7 +607,6 @@ async function processContractRow(row, block) {
                     type: 'delta_ds_error',
                     block: block,
                     code: row['code'],
-                    gs: row['global_sequence'],
                     table: row['table'],
                     message: e.message
                 }
