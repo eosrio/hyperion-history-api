@@ -14,10 +14,15 @@ function checkFeat(name) {
     }
 }
 
-const indexerApp = ecosystem.apps.find(app => app.env.CHAIN === process.env.CHAIN && app.script === "./launcher.js");
 let currentENV;
-if (indexerApp) {
-    currentENV = indexerApp['env'];
+if (ecosystem.apps.length > 1) {
+    const indexerApp = ecosystem.apps.find(app => {
+        return app.env.CHAIN === process.env.CHAIN && app.script === "./launcher.js";
+    });
+
+    if (indexerApp) {
+        currentENV = indexerApp['env'];
+    }
 }
 
 // get current github version
