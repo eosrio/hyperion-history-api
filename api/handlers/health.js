@@ -7,10 +7,18 @@ const manager = new ConnectionManager();
 const ecosystem = require('../../ecosystem.config');
 
 function checkFeat(name) {
-    return currentENV[name] === 'true';
+    if (currentENV) {
+        return currentENV[name] === 'true';
+    } else {
+        return null;
+    }
 }
 
-const currentENV = ecosystem.apps.find(app => app.env.CHAIN === process.env.CHAIN && app.script === "./launcher.js")['env'];
+const indexerApp = ecosystem.apps.find(app => app.env.CHAIN === process.env.CHAIN && app.script === "./launcher.js");
+let currentENV;
+if (indexerApp) {
+    currentENV = indexerApp['env'];
+}
 
 // get current github version
 let last_commit_hash;
