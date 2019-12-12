@@ -1,19 +1,30 @@
 const {getKeyAccountsSchema} = require("../../schemas");
 const {getCacheByHash} = require("../../helpers/functions");
 const numeric = require('eosjs/dist/eosjs-numeric');
-const ecc = require('eosjs-ecc');
+
+function invalidKey() {
+    const err = new Error();
+    err.statusCode = 400;
+    err.message = 'invalid public key';
+    throw err;
+}
 
 async function getKeyAccounts(fastify, public_Key) {
 
     const {redis, elastic} = fastify;
     let publicKey;
-    if (!ecc.isValidPublic(public_Key)) {
-        const err = new Error();
-        err.statusCode = 400;
-        err.message = 'invalid public key';
-        throw err;
+
+    if (public_Key.startsWith("PUB_")) {
+        publicKey = public_Key;
+    } else if (public_Key.startsWith("EOS")) {
+        try {
+            publicKey = numeric.convertLegacyPublicKey(public_Key);
+        } catch (e) {
+            console.log(e);
+            invalidKey();
+        }
     } else {
-        publicKey = numeric.convertLegacyPublicKey(public_Key);
+        invalidKey();
     }
 
     const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(publicKey));
