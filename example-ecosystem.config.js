@@ -3,7 +3,7 @@ module.exports = {
         {
             name: "Indexer",
             script: "./launcher.js",
-            node_args: ["--max-old-space-size=4096"],
+            node_args: ["--trace-deprecation","--max-old-space-size=4096"],
             autorestart: false,
             kill_timeout: 3600,
             env: {
@@ -53,6 +53,7 @@ module.exports = {
             name: 'API',
             script: "./api/api-loader.js",
             exec_mode: 'cluster',
+            node_args: ["--trace-deprecation"],
             merge_logs: true,
             instances: 1,
             autorestart: true,
@@ -69,8 +70,7 @@ module.exports = {
                 SERVER_ADDR: '127.0.0.1',
                 ENABLE_CACHING: 'true',
                 CACHE_LIFE: 30,
-                ENABLE_WEBSOCKET: true,
-                ENABLE_SOCKETIO: true,
+                ENABLE_STREAMING: false
             }
         }
     ]
