@@ -109,10 +109,10 @@ async function processBlock(res, block, traces, deltas) {
             // console.log(`Block: ${res['this_block']['block_num']} | CPU: ${total_cpu} μs (${cpu_pct} %) | NET: ${total_net} bytes (${net_pct} %)`);
 
             const light_block = {
+                '@timestamp': block['timestamp'],
                 block_num: res['this_block']['block_num'],
                 producer: block['producer'],
                 new_producers: block['new_producers'],
-                '@timestamp': block['timestamp'],
                 schedule_version: block['schedule_version'],
                 cpu_usage: total_cpu,
                 net_usage: total_net
@@ -1035,6 +1035,23 @@ function initConsumer() {
     }
 }
 
+function onIpcMessage(msg) {
+    switch (msg.event) {
+        case 'initialize_abi': {
+            abi = JSON.parse(msg.data);
+            const initialTypes = Serialize.createInitialTypes();
+            types = Serialize.getTypesFromAbi(initialTypes, abi);
+            abi.tables.map(table => tables.set(table.name, table.type));
+            initConsumer();
+            break;
+        }
+        case 'connect_ws': {
+            allowStreaming = true;
+            break;
+        }
+    }
+}
+
 async function run() {
 
     setInterval(() => {
@@ -1069,20 +1086,7 @@ async function run() {
     });
 
     assertQueues();
-
-    process.on('message', (msg) => {
-        if (msg.event === 'initialize_abi') {
-            abi = JSON.parse(msg.data);
-            const initialTypes = Serialize.createInitialTypes();
-            types = Serialize.getTypesFromAbi(initialTypes, abi);
-            abi.tables.map(table => tables.set(table.name, table.type));
-            // console.log('setting up deserializer on ' + process.env['worker_queue']);
-            initConsumer();
-        }
-        if (msg.event === 'connect_ws') {
-            allowStreaming = true;
-        }
-    });
+    process.on('message',onIpcMessage);
 }
 
 module.exports = {run};
