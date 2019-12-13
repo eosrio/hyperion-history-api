@@ -1,6 +1,7 @@
 const packageData = require('../../package');
 
 const health_link = `https://${process.env.SERVER_NAME}/v2/health`;
+const explorer_link = `https://${process.env.SERVER_NAME}/v2/explore`;
 const description = `
 <img height="64" src="https://eosrio.io/hyperion.png">
 ### Scalable Full History API Solution for EOSIO based blockchains
@@ -9,6 +10,7 @@ const description = `
 #### Current Chain: ${process.env.CHAIN_NAME} <img style="transform: translateY(8px)" height="32" src="${process.env.CHAIN_LOGO_URL}">
 #### Provided by [${process.env.PROVIDER_NAME}](${process.env.PROVIDER_URL})
 #### Health API: <a target="_blank" href="${health_link}">${health_link}</a>
+#### Integrated Explorer: <a target="_blank" href="${explorer_link}">${explorer_link}</a>
 `;
 
 exports.options = {

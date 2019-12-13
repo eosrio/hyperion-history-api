@@ -67,12 +67,12 @@ function processIncomingBlockArray(payload, cb) {
     })
 }
 
+function ackBlockRange(size) {
+    send(['get_blocks_ack_request_v0', {num_messages: size}]);
+}
+
 async function processIncomingBlocks(block_array) {
     if (abi) {
-        send([
-            'get_blocks_ack_request_v0',
-            {num_messages: block_array.length}
-        ]);
         for (const block of block_array) {
             try {
                 await onMessage(block);
@@ -80,6 +80,7 @@ async function processIncomingBlocks(block_array) {
                 console.log(e);
             }
         }
+        ackBlockRange(block_array.length);
     } else {
         await onMessage(block_array[0]);
     }
@@ -146,11 +147,7 @@ function processFirstABI(data) {
     abi = JSON.parse(data);
     types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
     abi.tables.map(table => tables.set(table.name, table.type));
-    // console.log(prettyjson.render(abi));
-    process.send({
-        event: 'init_abi',
-        data: data
-    });
+    process.send({event: 'init_abi', data: data});
     if (process.env.DISABLE_READING !== 'true') {
         switch (role) {
             case 'reader': {
@@ -206,42 +203,26 @@ async function handleFork(data) {
 
 // Entrypoint for incoming blocks
 async function onMessage(data) {
+
+    if (isLiveReader) {
+        console.log('Parsed Block Size:', data.length);
+    }
+
     if (abi) {
-        if (recovery) {
-            if (isLiveReader) {
-                console.log(`Resuming live stream from block ${local_block_num}...`);
-                requestBlocks(local_block_num + 1);
-                recovery = false;
-            } else {
-                if (!completionSignaled) {
-                    let first = local_block_num;
-                    let last = local_last_block;
-                    if (last === 0) {
-                        last = process.env.last_block;
-                    }
-                    last = last - 1;
-                    if (first === 0) {
-                        first = process.env.first_block;
-                    }
-                    console.log(`Resuming stream from block ${first} to ${last}...`);
-                    if (last - first > 0) {
-                        requestBlockRange(first, last);
-                        recovery = false;
-                    } else {
-                        console.log('Invalid range!');
-                    }
-                } else {
-                    console.log('Reader already finished, no need to restart.');
-                    recovery = false;
-                }
-            }
-        } else {
+        // NORMAL OPERATION MODE WITH ABI PRESENT
+        if (!recovery) {
+
+            // NORMAL OPERATION MODE
             if (role) {
                 const res = deserialize('result', data, txEnc, txDec, types)[1];
                 if (res['this_block']) {
                     const blk_num = res['this_block']['block_num'];
                     if (isLiveReader) {
-                        // console.log(`${new Date().toISOString()} :: ${blk_num} :: ${res['this_block']['block_id'].toLowerCase()}`);
+
+                        // LIVE READER MODE
+                        console.log(`${new Date().toISOString()} :: ${blk_num} :: ${res['this_block']['block_id'].toLowerCase()}`);
+                        console.log(blk_num, local_block_num);
+
                         if (blk_num !== local_block_num + 1) {
                             await handleFork(res);
                         } else {
@@ -249,7 +230,10 @@ async function onMessage(data) {
                         }
                         stageOneDistQueue.push({num: blk_num, content: data});
                         return 1;
+
                     } else {
+
+                        // BACKLOG MODE
                         if (future_block !== 0 && future_block === blk_num) {
                             console.log('Missing block ' + blk_num + ' received!');
                         } else {
@@ -282,6 +266,38 @@ async function onMessage(data) {
                 ship.close();
                 process.exit(1);
             }
+
+        } else {
+
+            // RECOVERY MODE
+            if (isLiveReader) {
+                console.log(`Resuming live stream from block ${local_block_num}...`);
+                requestBlocks(local_block_num + 1);
+                recovery = false;
+            } else {
+                if (!completionSignaled) {
+                    let first = local_block_num;
+                    let last = local_last_block;
+                    if (last === 0) {
+                        last = process.env.last_block;
+                    }
+                    last = last - 1;
+                    if (first === 0) {
+                        first = process.env.first_block;
+                    }
+                    console.log(`Resuming stream from block ${first} to ${last}...`);
+                    if (last - first > 0) {
+                        requestBlockRange(first, last);
+                        recovery = false;
+                    } else {
+                        console.log('Invalid range!');
+                    }
+                } else {
+                    console.log('Reader already finished, no need to restart.');
+                    recovery = false;
+                }
+            }
+
         }
     } else {
         processFirstABI(data);
@@ -367,31 +383,34 @@ function startWS() {
 }
 
 function onIpcMessage(msg) {
-    if (msg.event === 'new_range') {
-        if (msg.target === process.env.worker_id) {
-            debugLog(`new_range [${msg.data.first_block},${msg.data.last_block}]`);
-            local_distributed_count = 0;
-            clearInterval(completionMonitoring);
-            completionMonitoring = null;
-            completionSignaled = false;
-            local_last_block = msg.data.last_block;
-            range_size = parseInt(msg.data.last_block) - parseInt(msg.data.first_block);
-            if (allowRequests) {
-                requestBlockRange(msg.data.first_block, msg.data.last_block);
-                pendingRequest = null;
-            } else {
-                pendingRequest = [msg.data.first_block, msg.data.last_block];
+    switch (msg.event) {
+        case 'new_range': {
+            if (msg.target === process.env.worker_id) {
+                debugLog(`new_range [${msg.data.first_block},${msg.data.last_block}]`);
+                local_distributed_count = 0;
+                clearInterval(completionMonitoring);
+                completionMonitoring = null;
+                completionSignaled = false;
+                local_last_block = msg.data.last_block;
+                range_size = parseInt(msg.data.last_block) - parseInt(msg.data.first_block);
+                if (allowRequests) {
+                    requestBlockRange(msg.data.first_block, msg.data.last_block);
+                    pendingRequest = null;
+                } else {
+                    pendingRequest = [msg.data.first_block, msg.data.last_block];
+                }
             }
+            break;
         }
-    }
-    if (msg.event === 'stop') {
-        if (isLiveReader) {
-            console.log('[LIVE READER] Closing Websocket');
-            ship.close();
-            setTimeout(() => {
-                console.log('[LIVE READER] Process killed');
-                process.exit(1);
-            }, 2000);
+        case 'stop': {
+            if (isLiveReader) {
+                console.log('[LIVE READER] Closing Websocket');
+                ship.close();
+                setTimeout(() => {
+                    console.log('[LIVE READER] Process killed');
+                    process.exit(1);
+                }, 2000);
+            }
         }
     }
 }

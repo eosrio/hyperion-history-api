@@ -57,7 +57,6 @@ async function reportMissedBlocks(producer, last_block, size) {
 let blockMsgQueue = [];
 
 function onLiveBlock(msg) {
-    console.log(msg);
     if (msg.block_num === lastProducedBlockNum + 1 || lastProducedBlockNum === 0) {
         const prod = msg.producer;
 
