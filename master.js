@@ -57,7 +57,7 @@ async function reportMissedBlocks(producer, last_block, size) {
 let blockMsgQueue = [];
 
 function onLiveBlock(msg) {
-
+    console.log(msg);
     if (msg.block_num === lastProducedBlockNum + 1 || lastProducedBlockNum === 0) {
         const prod = msg.producer;
 
@@ -273,6 +273,8 @@ async function main() {
     // Chain API
     rpc = manager.nodeosJsonRPC;
     await getCurrentSchedule();
+    console.log(currentSchedule.active.producers.map(p => p['producer_name']));
+    console.log(`${currentSchedule.active.producers.length} active producers`);
 
     // Redis
     rClient = manager.redisClient;
