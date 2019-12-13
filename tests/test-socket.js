@@ -58,8 +58,8 @@ class Connection {
                     fetch_block: true,
                     fetch_traces: false,
                     fetch_deltas: false,
-                    start_block_num: 2,
-                    end_block_num: 3
+                    start_block_num: 84245937,
+                    end_block_num: 84245938
                 }]);
             } else {
                 // Deserialize and dispatch a message

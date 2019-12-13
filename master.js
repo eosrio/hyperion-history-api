@@ -231,7 +231,7 @@ function addStateTables(indicesList, index_queues) {
 
 async function waitForLaunch() {
     return new Promise(resolve => {
-        console.log(`Use "pm2 trigger ${pm2io.getConfig().module_name} start" to start the indexer now or restart without preview mode.`);
+        console.log(`Use "pm2 trigger ${pm2io.getConfig()['module_name']} start" to start the indexer now or restart without preview mode.`);
         const idleTimeout = setTimeout(() => {
             console.log('No command received after 10 minutes.');
             console.log('Exiting now! Disable the PREVIEW mode to continue.');

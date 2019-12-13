@@ -206,7 +206,7 @@ function printWorkerMap(wmp) {
                         str.push(`Index Type: ${w[key]}`);
                         break;
                     }
-                    case 'worker_last_processed_block':{
+                    case 'worker_last_processed_block': {
                         str.push(`Last Processed Block: ${w[key]}`);
                         break;
                     }
@@ -250,7 +250,55 @@ function debugLog(text) {
     }
 }
 
+function getNested(path_array, jsonObj) {
+    const nextPath = path_array.shift();
+    const nextValue = jsonObj[nextPath];
+    if (!nextValue) {
+        return null;
+    } else {
+        if (typeof nextValue !== 'object') {
+            return nextValue;
+        } else {
+            if (Array.isArray(nextValue)) {
+                return nextValue;
+            } else {
+                return getNested(path_array, nextValue);
+            }
+        }
+    }
+}
+
+function checkFilter(filter, _source) {
+    if (filter.field && filter.value) {
+        let fieldValue = getNested(filter.field.split("."), _source);
+        if (!fieldValue) {
+            const fArray = filter.field.split(".");
+            if (fArray[0].startsWith('@')) {
+                const actName = fArray[0].replace('@', '');
+                if (_source.act.name === actName) {
+                    fArray[0] = 'data';
+                    fArray.unshift('act');
+                    fieldValue = getNested(fArray, _source);
+                }
+            }
+        }
+        if (fieldValue) {
+            if (Array.isArray(fieldValue)) {
+                return fieldValue.indexOf(filter.value) !== -1;
+            } else {
+                return fieldValue === filter.value;
+            }
+        } else {
+            return !filter.value;
+        }
+    } else {
+        return false;
+    }
+}
+
 module.exports = {
+    checkFilter,
+    getNested,
     debugLog,
     onError,
     deserialize,

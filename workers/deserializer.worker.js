@@ -197,7 +197,7 @@ async function processBlock(res, block, traces, deltas) {
                                     delete val['act_digest'];
                                     tempTrace['receipts'].push(val);
                                 });
-                                tempTrace['notified'] = Array.from(tempSet);
+                                tempTrace['notified'] = Array.from(tempSet.entries());
                                 delete tempTrace['receipt'];
                                 delete tempTrace['receiver'];
                                 _finalTraces.push(tempTrace);
@@ -222,12 +222,19 @@ async function processBlock(res, block, traces, deltas) {
                         }
 
                         if (allowStreaming && process.env.STREAM_TRACES === 'true') {
+                            const notifArray = new Set();
+                            uniqueAction.act.authorization.forEach(auth => {
+                                notifArray.add(auth.actor);
+                            });
+                            uniqueAction.notified.forEach(acc => {
+                                notifArray.add(acc);
+                            });
                             ch.publish('', queue_prefix + ':stream', payload, {
                                 headers: {
                                     event: 'trace',
                                     account: uniqueAction['act']['account'],
                                     name: uniqueAction['act']['name'],
-                                    notified: uniqueAction['notified'].join(",")
+                                    notified: Array.from(notifArray.entries()).join(",")
                                 }
                             });
                         }
@@ -409,7 +416,7 @@ async function processDeltas(deltas, block_num, block_ts) {
         // Contract Rows
         if (deltaStruct['contract_row']) {
             const rows = deltaStruct['contract_row'];
-            const actionDeltaMap = {};
+            // const actionDeltaMap = {};
             for (const row of rows) {
                 const sb = createSerialBuffer(row.data);
                 try {
@@ -454,7 +461,9 @@ async function processDeltas(deltas, block_num, block_ts) {
                                             headers: {
                                                 event: 'delta',
                                                 code: jsonRow.code,
-                                                table: jsonRow.table
+                                                table: jsonRow.table,
+                                                scope: jsonRow.scope,
+                                                payer: jsonRow.payer
                                             }
                                         });
                                     }
