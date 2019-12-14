@@ -197,16 +197,11 @@ async function handleFork(data) {
         refresh: true,
         body: searchBody
     });
-    console.log(body);
     console.log(`Live reading resumed!`);
 }
 
 // Entrypoint for incoming blocks
 async function onMessage(data) {
-
-    if (isLiveReader) {
-        console.log('Parsed Block Size:', data.length);
-    }
 
     if (abi) {
         // NORMAL OPERATION MODE WITH ABI PRESENT
@@ -221,7 +216,6 @@ async function onMessage(data) {
 
                         // LIVE READER MODE
                         console.log(`${new Date().toISOString()} :: ${blk_num} :: ${res['this_block']['block_id'].toLowerCase()}`);
-                        console.log(blk_num, local_block_num);
 
                         if (blk_num !== local_block_num + 1) {
                             await handleFork(res);
