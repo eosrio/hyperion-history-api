@@ -1,9 +1,8 @@
-const {TextDecoder, TextEncoder} = require('util');
 const {Serialize} = require('eosjs');
 const commander = require('commander');
-const fetch = require('node-fetch');
-const zlib = require('zlib');
 const WebSocket = require('ws');
+const txEnc = new TextEncoder();
+const txDec = new TextDecoder();
 
 class Connection {
     // Connect to the State-History Plugin
@@ -24,14 +23,14 @@ class Connection {
 
     // Convert JSON to binary. type identifies one of the types in this.types.
     serialize(type, value) {
-        const buffer = new Serialize.SerialBuffer({textEncoder: new TextEncoder, textDecoder: new TextDecoder});
+        const buffer = new Serialize.SerialBuffer({textEncoder: txEnc, textDecoder: txDec});
         Serialize.getType(this.types, type).serialize(buffer, value);
         return buffer.asUint8Array();
     }
 
     // Convert binary to JSON. type identifies one of the types in this.types.
     deserialize(type, array) {
-        const buffer = new Serialize.SerialBuffer({textEncoder: new TextEncoder, textDecoder: new TextDecoder, array});
+        const buffer = new Serialize.SerialBuffer({textEncoder: txEnc, textDecoder: txDec, array});
         return Serialize.getType(this.types, type).deserialize(buffer, new Serialize.SerializerState({bytesAsUint8Array: true}));
     }
 
@@ -55,17 +54,19 @@ class Connection {
                     max_messages_in_flight: 10,
                     have_positions: [],
                     irreversible_only: false,
-                    fetch_block: true,
+                    fetch_block: false,
                     fetch_traces: false,
                     fetch_deltas: false,
-                    start_block_num: 84245937,
-                    end_block_num: 84245938
+                    start_block_num: 100000000,
+                    end_block_num: 0xffffffff
                 }]);
             } else {
                 // Deserialize and dispatch a message
                 console.log('Data size:', data.length);
                 const [type, response] = this.deserialize('result', data);
                 this[type](response);
+                // Ack Block
+                this.send(['get_blocks_ack_request_v0', {num_messages: 1}]);
             }
         } catch (e) {
             console.log(e);
@@ -77,8 +78,8 @@ class Connection {
     get_blocks_result_v0(response) {
         console.log('get_blocks_result_v0:');
         console.log(JSON.stringify(response, null, 4));
-        process.exit(0);
     }
+
 } // Connection
 
 commander
