@@ -272,8 +272,8 @@ async function main() {
     // Chain API
     rpc = manager.nodeosJsonRPC;
     await getCurrentSchedule();
-    console.log(currentSchedule.active.producers.map(p => p['producer_name']));
     console.log(`${currentSchedule.active.producers.length} active producers`);
+    console.log(currentSchedule.active.producers.map(p => p['producer_name']));
 
     // Redis
     rClient = manager.redisClient;
