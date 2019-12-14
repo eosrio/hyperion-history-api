@@ -7,7 +7,7 @@
     "logs": "pm2 logs Indexer",
     "start:api": "pm2 start --only API --update-env",
     "start:indexer": "pm2 start --only Indexer --update-env",
-    "postinstall": "chmod u+x run.sh"
+    "postinstall": "chmod u+x run.sh stop.sh"
   },
   "author": {
     "name": "EOS Rio",
