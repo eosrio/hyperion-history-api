@@ -207,19 +207,21 @@ function applyCodeActionFilters(query, queryStruct) {
     let filterObj = [];
     if (query.filter) {
         for (const filter of query.filter.split(',')) {
-            const _arr = [];
-            const parts = filter.split(':');
-            if (parts.length === 2) {
-                [code, method] = parts;
-                if (code && code !== "*") {
-                    _arr.push({'term': {'act.account': code}});
+            if(filter !== '*:*') {
+                const _arr = [];
+                const parts = filter.split(':');
+                if (parts.length === 2) {
+                    [code, method] = parts;
+                    if (code && code !== "*") {
+                        _arr.push({'term': {'act.account': code}});
+                    }
+                    if (method && method !== "*") {
+                        _arr.push({'term': {'act.name': method}});
+                    }
                 }
-                if (method && method !== "*") {
-                    _arr.push({'term': {'act.name': method}});
+                if (_arr.length > 0) {
+                    filterObj.push({bool: {must: _arr}});
                 }
-            }
-            if (_arr.length > 0) {
-                filterObj.push({bool: {must: _arr}});
             }
         }
         queryStruct.bool['should'] = filterObj;
