@@ -1,3 +1,4 @@
+const prettyjson = require("prettyjson");
 const {getActionsSchema} = require("../../schemas");
 const {getCacheByHash, mergeActionMeta} = require("../../helpers/functions");
 
@@ -207,7 +208,7 @@ function applyCodeActionFilters(query, queryStruct) {
     let filterObj = [];
     if (query.filter) {
         for (const filter of query.filter.split(',')) {
-            if(filter !== '*:*') {
+            if (filter !== '*:*') {
                 const _arr = [];
                 const parts = filter.split(':');
                 if (parts.length === 2) {
@@ -224,8 +225,10 @@ function applyCodeActionFilters(query, queryStruct) {
                 }
             }
         }
-        queryStruct.bool['should'] = filterObj;
-        queryStruct.bool['minimum_should_match'] = 1;
+        if (filterObj.length > 0) {
+            queryStruct.bool['should'] = filterObj;
+            queryStruct.bool['minimum_should_match'] = 1;
+        }
     }
 }
 
