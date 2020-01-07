@@ -1,0 +1,78 @@
+version: '3.7'
+services:
+  hyperion-elastic:
+    container_name: hyperion-elastic
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.5.1
+    restart: on-failure
+    environment:
+      - discovery.type=single-node
+      - cluster.name=myCluster
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+      - ELASTIC_USERNAME=elastic
+      - ELASTIC_PASSWORD=changeme
+    volumes:
+      - ./hyperion/data/elastic:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+  hyperion-kibana:
+    container_name: hyperion-kibana
+    image: docker.elastic.co/kibana/kibana:7.5.1
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://hyperion-elastic:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=changeme
+    depends_on:
+      - hyperion-elastic
+  hyperion-redis:
+    container_name: hyperion-redis
+    image: redis:5-alpine
+    restart: on-failure
+    volumes:
+      - ./hyperion/data/redis:/data
+  hyperion-mq:
+    container_name: hyperion-mq
+    image: rabbitmq:3.8-management
+    restart: on-failure
+    environment:
+      - RABBITMQ_DEFAULT_USER=input
+      - RABBITMQ_DEFAULT_PASS=changeme
+      - RABBITMQ_DEFAULT_VHOST=/hyperion
+    volumes:
+      - ./hyperion/data/rabbitmq:/var/lib/rabbitmq
+    ports:
+      - "15672:15672"
+  hyperion-indexer:
+    container_name: hyperion-indexer
+    build:
+      context: ./hyperion/build/
+      dockerfile: Indexer.Dockerfile
+      network: host
+    restart: on-failure
+    depends_on:
+      - hyperion-elastic
+      - hyperion-redis
+      - hyperion-mq
+    volumes:
+      - ./hyperion/config/ecosystem.config.json:/root/app/Hyperion-History-API/ecosystem.config.json
+      - ./hyperion/config/connections.json:/root/app/Hyperion-History-API/connections.json
+  hyperion-api:
+    container_name: hyperion-api
+    build:
+      context: ./hyperion/build/
+      dockerfile: API.Dockerfile
+    restart: on-failure
+    ports:
+      - "7000:7000"
+    depends_on:
+      - hyperion-elastic
+      - hyperion-redis
+      - hyperion-mq
+    volumes:
+      - ./hyperion/config/ecosystem.config.json:/root/app/Hyperion-History-API/ecosystem.config.json
+      - ./hyperion/config/connections.json:/root/app/Hyperion-History-API/connections.json
+      - ./hyperion/config/wait-for-elastic.sh:/root/app/wait-for-elastic.sh
+    command: sh -c '/root/app/wait-for-mq.sh hyperion-mq:15672 -- pm2-runtime ecosystem.config.json --only API --update-env'
