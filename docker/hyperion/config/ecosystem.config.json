@@ -3,9 +3,7 @@
       {
          "name":"Indexer",
          "script":"./launcher.js",
-         "node_args":[
-            "--max-old-space-size=4096"
-         ],
+         "node_args":["--trace-deprecation","--max-old-space-size=4096"],
          "autorestart":false,
          "kill_timeout":3600,
          "env":{
@@ -55,6 +53,7 @@
          "name":"API",
          "script":"./api/api-loader.js",
          "exec_mode":"cluster",
+         "node_args":["--trace-deprecation"],
          "merge_logs":true,
          "instances":1,
          "autorestart":true,
@@ -71,8 +70,7 @@
             "SERVER_ADDR":"127.0.0.1",
             "ENABLE_CACHING":"true",
             "CACHE_LIFE":30,
-            "ENABLE_WEBSOCKET":"false",
-            "ENABLE_SOCKETIO":"true"
+            "ENABLE_STREAMING": false
          }
       }
    ]
