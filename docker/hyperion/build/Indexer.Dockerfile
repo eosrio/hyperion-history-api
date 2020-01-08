@@ -1,5 +1,6 @@
 FROM node:12.9-alpine
 
+RUN apk add netcat-openbsd
 RUN apk add git
 RUN apk --no-cache add --virtual native-deps \
   g++ gcc libgcc libstdc++ linux-headers make python
@@ -13,4 +14,4 @@ WORKDIR /root/app/Hyperion-History-API
 
 RUN npm install pm2 -g && npm install
 
-CMD pm2-runtime ecosystem.config.json --only Indexer --update-env
+#CMD pm2-runtime ecosystem.config.json --only Indexer --update-env

@@ -17,11 +17,11 @@
     "port": "6379"
   },
   "chains": {
-     "eos": {
+    "eos": {
       "name": "EOS Mainnet",
       "chain_id": "aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906",
-      "http": "http://10.211.55.2:8888",
-      "ship": "ws://10.211.55.2:8080",
+      "http": "http://1host.docker.internal:8888",
+      "ship": "ws://host.docker.internal:8080",
       "WS_ROUTER_PORT": 7001
     }
   }
