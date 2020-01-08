@@ -1,0 +1,28 @@
+{
+  "amqp": {
+    "host": "hyperion-mq:5672",
+    "api": "hyperion-mq:15672",
+    "user": "input",
+    "pass": "changeme",
+    "vhost": "hyperion"
+  },
+  "elasticsearch": {
+    "host": "hyperion-elastic:9200",
+    "ingest_nodes": ["hyperion-elastic:9200"],
+    "user": "elastic",
+    "pass": "changeme"
+  },
+  "redis": {
+    "host": "hyperion-redis",
+    "port": "6379"
+  },
+  "chains": {
+     "eos": {
+      "name": "EOS Mainnet",
+      "chain_id": "aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906",
+      "http": "http://10.211.55.2:8888",
+      "ship": "ws://10.211.55.2:8080",
+      "WS_ROUTER_PORT": 7001
+    }
+  }
+}

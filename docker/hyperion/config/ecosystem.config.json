@@ -59,9 +59,7 @@
          "instances":1,
          "autorestart":true,
          "exp_backoff_restart_delay":100,
-         "watch":[
-            "api"
-         ],
+         "watch":["api"],
          "env":{
             "PROVIDER_NAME":"Provider Name",
             "PROVIDER_URL":"https://yourproviderwebsite",
