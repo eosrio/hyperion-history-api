@@ -1,7 +1,6 @@
 FROM node:12.9-alpine
 
 RUN apk add netcat-openbsd
-RUN apk add bash
 RUN apk add git
 RUN apk --no-cache add --virtual native-deps \
   g++ gcc libgcc libstdc++ linux-headers make python
