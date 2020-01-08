@@ -49,8 +49,8 @@ services:
     container_name: hyperion-indexer
     build:
       context: ./hyperion/build/
-      dockerfile: Indexer.Dockerfile
-      network: host
+      dockerfile: Hyperion.Dockerfile
+    image: hyperion
     restart: on-failure
     depends_on:
       - hyperion-elastic
@@ -63,16 +63,12 @@ services:
     command: sh -c '/root/app/wait-for.sh hyperion-mq:15672 -- pm2-runtime ecosystem.config.json --only Indexer --update-env'
   hyperion-api:
     container_name: hyperion-api
-    build:
-      context: ./hyperion/build/
-      dockerfile: API.Dockerfile
+    image: hyperion
     restart: on-failure
     ports:
       - "7000:7000"
     depends_on:
-      - hyperion-elastic
-      - hyperion-redis
-      - hyperion-mq
+      - hyperion-indexer
     volumes:
       - ./hyperion/config/ecosystem.config.json:/root/app/Hyperion-History-API/ecosystem.config.json
       - ./hyperion/config/connections.json:/root/app/Hyperion-History-API/connections.json

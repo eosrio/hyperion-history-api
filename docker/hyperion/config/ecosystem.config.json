@@ -24,7 +24,7 @@
             "LIVE_ONLY":"false",
             "FETCH_BLOCK":"true",
             "FETCH_TRACES":"true",
-            "CHAIN":"eos",
+            "CHAIN":"wax",
             "CREATE_INDICES":"v1",
             "PREVIEW":"false",
             "READERS":1,
@@ -62,12 +62,12 @@
          "env":{
             "PROVIDER_NAME":"Provider Name",
             "PROVIDER_URL":"https://yourproviderwebsite",
-            "CHAIN":"eos",
+            "CHAIN":"wax",
             "CHAIN_NAME":"EOS Mainnet",
             "CHAIN_LOGO_URL":"https://bloks.io/img/chains/eos.png",
             "SERVER_PORT":"7000",
             "SERVER_NAME":"example.com",
-            "SERVER_ADDR":"127.0.0.1",
+            "SERVER_ADDR":"0.0.0.0",
             "ENABLE_CACHING":"true",
             "CACHE_LIFE":30,
             "ENABLE_STREAMING": false
