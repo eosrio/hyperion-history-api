@@ -74,5 +74,5 @@ services:
     volumes:
       - ./hyperion/config/ecosystem.config.json:/root/app/Hyperion-History-API/ecosystem.config.json
       - ./hyperion/config/connections.json:/root/app/Hyperion-History-API/connections.json
-      - ./hyperion/config/wait-for-elastic.sh:/root/app/wait-for-elastic.sh
+      - ./hyperion/config/wait-for-mq.sh:/root/app/wait-for-mq.sh
     command: sh -c '/root/app/wait-for-mq.sh hyperion-mq:15672 -- pm2-runtime ecosystem.config.json --only API --update-env'
