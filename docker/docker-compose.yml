@@ -60,7 +60,7 @@ services:
       - ./hyperion/config/ecosystem.config.json:/root/app/Hyperion-History-API/ecosystem.config.json
       - ./hyperion/config/connections.json:/root/app/Hyperion-History-API/connections.json
       - ./hyperion/config/wait-for.sh:/root/app/wait-for.sh
-    command: sh -c '/root/app/wait-for.sh hyperion-mq:15672 -- pm2-runtime ecosystem.config.json --only API --update-env'
+    command: sh -c '/root/app/wait-for.sh hyperion-mq:15672 -- pm2-runtime ecosystem.config.json --only Indexer --update-env'
   hyperion-api:
     container_name: hyperion-api
     build:
