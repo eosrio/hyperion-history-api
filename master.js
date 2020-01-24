@@ -146,7 +146,7 @@ function setupDSElogs(starting_block, head) {
     if (fs.existsSync(symbolicLink)) fs.unlinkSync(symbolicLink);
     fs.symlinkSync(dsLogFileName, symbolicLink);
     dsErrorStream = fs.createWriteStream(dsErrorsLog, {flags: 'a'});
-    console.log(`Deserialization errors are being logged in: ${path.join(__dirname, symbolicLink)}`);
+    console.log(`📣️  Deserialization errors are being logged in: ${path.join(__dirname, symbolicLink)}`);
 }
 
 async function initAbiCacheMap(getAsync) {
@@ -498,8 +498,8 @@ async function main() {
                 starting_block = lastIndexedBlockOnRange;
             }
         }
-        console.log('First Block: ' + starting_block);
-        console.log('Last  Block: ' + head);
+        console.log(' |>> First Block: ' + starting_block);
+        console.log(' >>| Last  Block: ' + head);
     }
 
     // Setup Readers

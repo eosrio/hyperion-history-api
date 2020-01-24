@@ -136,6 +136,7 @@ async function processMessages(messages) {
 // Stage 2 - Block handler
 async function processBlock(res, block, traces, deltas) {
     if (!res['this_block']) {
+        // missing current block data
         console.log(res);
         return null;
     } else {
@@ -143,8 +144,8 @@ async function processBlock(res, block, traces, deltas) {
         let ts = '';
         const block_num = res['this_block']['block_num'];
         const block_ts = res['this_time'];
-        let light_block;
 
+        let light_block;
 
         if (config.indexer.fetch_block) {
             if (!block) {
@@ -451,7 +452,19 @@ async function verifyLocalType(contract, type, block_num, field) {
             }
         } else {
             console.log(`Abi not indexed at or before block ${block_num} for ${contract}`);
-            _status = false;
+            console.log('Retrying with the current revision...');
+            const currentAbi = await rpc.getRawAbi(contract);
+            _status = abieos['load_abi_hex'](contract, Buffer.from(currentAbi.abi).toString('hex'));
+            if (_status) {
+                resultType = abieos['get_type_for_' + field](contract, type);
+                if (resultType === "NOT_FOUND") {
+                    console.log(`⚠️ ⚠️  Current ABI version for ${contract} doesn't contain the ${field} type ${type}`);
+                    _status = false;
+                } else {
+                    console.log(`✅️  ${contract} abi cache updated at block ${block_num}`);
+                    _status = true;
+                }
+            }
         }
     } else {
         _status = true;
@@ -483,8 +496,10 @@ async function deserializeActionAtBlockNative(_action, block_num) {
         }
     }
     console.log('native deserialization failed, falling back to eosjs...');
+    const fallbackResult = await deserializeActionAtBlock(_action, block_num);
     console.log(_action.account, block_num);
-    return await deserializeActionAtBlock(_action, block_num);
+    console.log(fallbackResult);
+    return fallbackResult;
 }
 
 function attachActionExtras(action) {
@@ -540,7 +555,7 @@ async function processDeltas(deltas, block_num, block_ts) {
                     const abi_actions = abiObj.actions.map(a => a.name);
                     const abi_tables = abiObj.tables.map(t => t.name);
 
-                    console.log(`[${block_num}] Contract: ${account['name']} with actions: ${abi_actions.join(",")}`);
+                    console.log(`📝  New code for ${account['name']} at block ${block_num} with ${abi_actions.length} actions`);
 
                     const new_abi_object = {
                         account: account['name'],
@@ -567,6 +582,11 @@ async function processDeltas(deltas, block_num, block_ts) {
                 } catch (e) {
                     console.log(e);
                     console.log(account['abi'], block_num, account['name']);
+                }
+            } else {
+                if (account.name === 'eosio') {
+                    console.log(`---------- ${block_num} ----------------`);
+                    console.log(account);
                 }
             }
         }
@@ -765,8 +785,10 @@ async function processContractRowNative(row, block) {
                 delete row.value;
                 return row;
             } catch (e) {
-                console.log(e);
-                console.log(result);
+                console.log(`JSON Parse error: ${e.message} | string: "${result}"`);
+                console.log('------------- contract row ----------------');
+                console.log(row);
+                console.log('-------------------------------------------')
             }
         } else {
             console.log(result, block, row);
@@ -785,7 +807,9 @@ async function processContractRowNative(row, block) {
         }
     }
     console.log('fallback');
-    return await processContractRow(row, block);
+    const fallbackResult = await processContractRow(row, block);
+    console.log(fallbackResult);
+    return fallbackResult;
 }
 
 async function processContractRow(row, block) {
@@ -1148,8 +1172,12 @@ async function fetchAbiHexAtBlockElastic(contract_name, last_block) {
         });
         const t_end = process.hrtime.bigint();
         const results = queryResult.body.hits.hits;
-        console.log(`fetch abi from elastic took: ${t_end - t_start} ns | hex size: ${results[0]._source.abi_hex.length}`);
-        return results[0]._source;
+        if (results.length > 0) {
+            console.log(`fetch abi from elastic took: ${t_end - t_start} ns | hex size: ${results[0]._source.abi_hex.length}`);
+            return results[0]._source;
+        } else {
+            return null;
+        }
     } catch (e) {
         console.log(e);
         return null;

@@ -217,8 +217,6 @@ async function onMessage(data) {
                     if (isLiveReader) {
 
                         // LIVE READER MODE
-                        // console.log(` >> ${blk_num} :: ${res['this_block']['block_id'].toLowerCase()}`);
-
                         if (blk_num !== local_block_num + 1) {
                             await handleFork(res);
                         } else {
