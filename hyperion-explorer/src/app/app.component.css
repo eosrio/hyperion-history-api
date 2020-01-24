@@ -1,0 +1,14 @@
+.action-card {
+  box-shadow: 0 0 30px -20px black;
+  padding: 20px;
+  border: lightgray 2px solid;
+  margin-bottom: 5px;
+}
+
+.header {
+  background-color: black;
+  padding: 10px;
+  text-align: center;
+  color: azure;
+  font-size: 20pt;
+}
