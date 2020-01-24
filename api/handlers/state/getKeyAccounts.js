@@ -71,7 +71,7 @@ async function getKeyAccounts(fastify, public_Key) {
         });
     }
     if (response.account_names.length > 0) {
-        response.account_names = Array.from(new Set(response.account_names));
+        response.account_names = [...(new Set(response.account_names))];
         redis.set(hash, JSON.stringify(response), 'EX', 30);
         return response;
     } else {

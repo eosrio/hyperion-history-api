@@ -82,7 +82,7 @@ async function getKeyAccounts(fastify, request) {
         });
     }
     if (response.controlled_accounts.length > 0) {
-        response.controlled_accounts = Array.from(new Set(response.controlled_accounts));
+        response.controlled_accounts = [...(new Set(response.controlled_accounts))];
         redis.set(hash, JSON.stringify(response), 'EX', 30);
     }
     return response;
