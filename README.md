@@ -1,4 +1,4 @@
-# Hyperion History API
+# Hyperion History API - Private
 Scalable Full History API Solution for EOSIO based blockchains
 
 Made with ♥ by [EOS Rio](https://eosrio.io/)
