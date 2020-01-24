@@ -1,8 +1,9 @@
-const chain = process.env.CHAIN;
-process.title = `hyp-${chain}-api`;
-
+const connections = require('../connections.json');
 const {ConnectionManager} = require('../connections/manager');
 const manager = new ConnectionManager();
+
+const chain = process.env.CHAIN;
+process.title = `hyp-${chain}-api`;
 
 const Redis = require('ioredis');
 const ioRedisClient = new Redis(manager.redisOptions.port, manager.redisOptions.host);
@@ -14,11 +15,17 @@ const api_rate_limit = {
     redis: ioRedisClient
 };
 
-const fastify = require('fastify')({ignoreTrailingSlash: true, trustProxy: true});
+const fastify = require('fastify')({ignoreTrailingSlash: false, trustProxy: true});
 
-if (process.env.ENABLE_WEBSOCKET === 'true') {
+if (process.env.ENABLE_STREAMING === 'true') {
+    const connOpts = connections.chains[chain];
     const {SocketManager} = require("./socketManager");
-    const socketManager = new SocketManager(fastify);
+    const socketManager = new SocketManager(
+        fastify,
+        `http://${connOpts['WS_ROUTER_HOST']}:${connOpts['WS_ROUTER_PORT']}`,
+        connections.redis
+    );
+    socketManager.startRelay();
 }
 
 // Register fastify plugins
@@ -38,6 +45,56 @@ fastify.register(AutoLoad, {dir: path.join(__dirname, 'handlers', 'v1-chain'), o
 fastify.register(AutoLoad, {dir: path.join(__dirname, 'handlers', 'history'), options: {prefix: '/v2/history'}});
 fastify.register(AutoLoad, {dir: path.join(__dirname, 'handlers', 'state'), options: {prefix: '/v2/state'}});
 fastify.register(require('./handlers/health'), {prefix: '/v2'});
+
+// Serve integrated explorer
+fastify.register(require('fastify-static'), {
+    root: path.join(__dirname, '..', 'hyperion-explorer', 'dist'),
+    redirect: true,
+    wildcard: true,
+    prefix: '/v2/explore'
+});
+
+const fs = require('fs');
+fastify.get('/stream-client.js', (request, reply) => {
+    const stream = fs.createReadStream('./api/bundle.js');
+    reply.type('application/javascript').send(stream);
+});
+
+// // Serve streaming api
+// fastify.register(fastifyStatic, {
+//     root: path.join(__dirname, '..', 'explorer', 'dist', 'explorer'),
+//     redirect: true,
+//     wildcard: true,
+//     prefix: '/client'
+// });
+
+// Redirect routes to documentation
+fastify.route({
+    url: '/v2',
+    method: 'GET',
+    schema: {hide: true},
+    handler: async (request, reply) => {
+        reply.redirect('/v2/docs');
+    }
+});
+
+fastify.route({
+    url: '/v2/history',
+    method: 'GET',
+    schema: {hide: true},
+    handler: async (request, reply) => {
+        reply.redirect('/v2/docs/index.html#/history');
+    }
+});
+
+fastify.route({
+    url: '/v2/state',
+    method: 'GET',
+    schema: {hide: true},
+    handler: async (request, reply) => {
+        reply.redirect('/v2/docs/index.html#/state');
+    }
+});
 
 // allow parsing any content type
 fastify.addContentTypeParser('*', (req, done) => {
