@@ -5,7 +5,9 @@ const {deserialize, debugLog, unzipAsync} = require('../../helpers/functions');
 const {TextEncoder, TextDecoder} = require('util');
 const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
-const chain = process.env.CHAIN;
+
+const config = require(`../../${process.env.CONFIG_JSON}`);
+const chain = config.settings.chain;
 
 function checkBlacklist(act) {
     if (action_blacklist.has(`${chain}::${act['account']}::*`)) {

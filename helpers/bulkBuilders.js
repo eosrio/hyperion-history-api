@@ -1,5 +1,4 @@
 const _ = require('lodash');
-const crypto = require('crypto');
 
 function makeScriptedOp(id, body) {
     return [

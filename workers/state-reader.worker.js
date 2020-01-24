@@ -6,12 +6,13 @@ const {ConnectionManager} = require('../connections/manager');
 const manager = new ConnectionManager();
 const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
+const config = require(`../${process.env.CONFIG_JSON}`);
 
 let ch, api, abi, ship, types, cch, rpc;
 
 // elasticsearch client access for fork handling operations
 let client;
-const index_version = process.env.CREATE_INDICES;
+const index_version = config.settings.index_version;
 
 let cch_ready = false;
 let tables = new Map();
@@ -40,10 +41,10 @@ let local_last_block = 0;
 let future_block = 0;
 
 const qStatusMap = {};
-const queue_prefix = process.env.CHAIN;
+const queue_prefix = config.settings.chain;
 const queue = queue_prefix + ':blocks';
-const n_deserializers = process.env.DESERIALIZERS;
-const maxMessagesInFlight = parseInt(process.env.READ_PREFETCH, 10);
+const n_deserializers = config.scaling.ds_queues;
+const maxMessagesInFlight = config.prefetch.read;
 let range_size = parseInt(process.env.last_block) - parseInt(process.env.first_block);
 
 const blockReadingQueue = async.cargo(async.ensureAsync(processIncomingBlockArray), maxMessagesInFlight);
@@ -53,8 +54,8 @@ const baseRequest = {
     max_messages_in_flight: maxMessagesInFlight,
     have_positions: [],
     irreversible_only: false,
-    fetch_block: process.env.FETCH_BLOCK === 'true',
-    fetch_traces: process.env.FETCH_TRACES === 'true',
+    fetch_block: config.indexer.fetch_block,
+    fetch_traces: config.indexer.fetch_traces,
     fetch_deltas: true
 };
 
@@ -148,7 +149,7 @@ function processFirstABI(data) {
     types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), abi);
     abi.tables.map(table => tables.set(table.name, table.type));
     process.send({event: 'init_abi', data: data});
-    if (process.env.DISABLE_READING !== 'true') {
+    if (!config.indexer['disable_reading']) {
         switch (role) {
             case 'reader': {
                 requestBlocks(0);
@@ -197,6 +198,7 @@ async function handleFork(data) {
         refresh: true,
         body: searchBody
     });
+    console.log(body);
     console.log(`Live reading resumed!`);
 }
 
@@ -215,7 +217,7 @@ async function onMessage(data) {
                     if (isLiveReader) {
 
                         // LIVE READER MODE
-                        console.log(`${new Date().toISOString()} :: ${blk_num} :: ${res['this_block']['block_id'].toLowerCase()}`);
+                        // console.log(` >> ${blk_num} :: ${res['this_block']['block_id'].toLowerCase()}`);
 
                         if (blk_num !== local_block_num + 1) {
                             await handleFork(res);
@@ -417,7 +419,7 @@ function startQueueWatcher() {
             checkArr.push(manager.checkQueueSize(q));
         }
         Promise.all(checkArr).then(data => {
-            if (data.some(el => el > process.env.QUEUE_THRESH)) {
+            if (data.some(el => el > config.scaling.queue_limit)) {
                 allowRequests = false;
             } else {
                 allowRequests = true;

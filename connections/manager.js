@@ -1,6 +1,6 @@
-let conf;
+let conn;
 try {
-    conf = require('../connections.json');
+    conn = require('../connections.json');
 } catch (e) {
     console.log(e);
     console.log(`Failed to parse connections.json!`);
@@ -13,7 +13,7 @@ const {StateHistorySocket} = require("./state-history");
 const {amqpConnect, checkQueueSize} = require("./rabbitmq");
 const {JsonRpc} = require('eosjs');
 const got = require('got');
-const prettyjson = require('prettyjson');
+const config = require(`../${process.env.CONFIG_JSON}`);
 
 class ConnectionManager {
 
@@ -22,25 +22,26 @@ class ConnectionManager {
     }
 
     async createAMQPChannels(onReconnect) {
-        return await amqpConnect(onReconnect, conf.amqp);
+        return await amqpConnect(onReconnect, conn.amqp);
     }
 
     get ampqUrl() {
-        return `amqp://${conf.amqp.user}:${conf.amqp.pass}@${conf.amqp.host}/%2F${conf.amqp.vhost}`;
+        const _amqp = conn.amqp;
+        return `amqp://${_amqp.user}:${_amqp.pass}@${_amqp.host}/%2F${_amqp.vhost}`;
     }
 
     async checkQueueSize(queue) {
-        return await checkQueueSize(queue, conf.amqp);
+        return await checkQueueSize(queue, conn.amqp);
     }
 
     get shipClient() {
-        return new StateHistorySocket(conf.chains[process.env.CHAIN]['ship']);
+        return new StateHistorySocket(conn.chains[config.settings.chain]['ship']);
     }
 
     get redisOptions() {
         return {
-            host: conf.redis.host,
-            port: conf.redis.port
+            host: conn.redis.host,
+            port: conn.redis.port
         };
     }
 
@@ -50,10 +51,11 @@ class ConnectionManager {
 
     getESClient() {
         let es_url;
-        if (conf.elasticsearch.user !== '') {
-            es_url = `http://${conf.elasticsearch.user}:${conf.elasticsearch.pass}@${conf.elasticsearch.host}`;
+        const _es = conn['elasticsearch'];
+        if (_es.user !== '') {
+            es_url = `http://${_es.user}:${_es.pass}@${_es.host}`;
         } else {
-            es_url = `http://${conf.elasticsearch.host}`
+            es_url = `http://${_es.host}`
         }
         return new elasticsearch.Client({node: es_url});
     }
@@ -63,15 +65,16 @@ class ConnectionManager {
     }
 
     get ingestClients() {
-        if (conf['elasticsearch']['ingest_nodes']) {
+        const _es = conn['elasticsearch'];
+        if (_es['ingest_nodes']) {
             const clients = [];
-            const nodes = conf['elasticsearch']['ingest_nodes'];
+            const nodes = _es['ingest_nodes'];
             if (nodes.length > 0) {
                 for (const node of nodes) {
                     let es_url;
-                    const _user = conf['elasticsearch']['user'];
-                    const _pass = conf['elasticsearch']['pass'];
-                    if (conf['elasticsearch']['user'] !== '') {
+                    const _user = _es['user'];
+                    const _pass = _es['pass'];
+                    if (_es['user'] !== '') {
                         es_url = `http://${_user}:${_pass}@${node}`;
                     } else {
                         es_url = `http://${node}`
@@ -86,20 +89,20 @@ class ConnectionManager {
     }
 
     get nodeosJsonRPC() {
-        return new JsonRpc(conf.chains[process.env.CHAIN]['http'], {fetch});
+        return new JsonRpc(conn.chains[config.settings.chain]['http'], {fetch});
     }
 
     async purgeQueues(queue_prefix) {
         console.log(`Purging all ${queue_prefix} queues!`);
-        const apiUrl = `http://${conf.amqp.user}:${conf.amqp.pass}@${conf.amqp.api}`;
-        const getAllQueuesFromVHost = apiUrl + `/api/queues/%2F${conf.amqp.vhost}`;
+        const apiUrl = `http://${conn.amqp.user}:${conn.amqp.pass}@${conn.amqp.api}`;
+        const getAllQueuesFromVHost = apiUrl + `/api/queues/%2F${conn.amqp.vhost}`;
         const result = JSON.parse((await got(getAllQueuesFromVHost)).body);
         for (const queue of result) {
             if (queue.name.startsWith(queue_prefix + ":")) {
                 const msg_count = parseInt(queue.messages);
                 if (msg_count > 0) {
                     try {
-                        await got.delete(apiUrl + `/api/queues/%2F${conf.amqp.vhost}/${queue.name}/contents`);
+                        await got.delete(apiUrl + `/api/queues/%2F${conn.amqp.vhost}/${queue.name}/contents`);
                         console.log(`${queue.messages} messages deleted on queue ${queue.name}`);
                     } catch (e) {
                         console.log(e);

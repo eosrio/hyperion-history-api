@@ -7,7 +7,8 @@ const {
     buildTableProposalsBulk,
     buildTableVotersBulk
 } = require("./bulkBuilders");
-const queue_prefix = process.env.CHAIN;
+const config = require(`../${process.env.CONFIG_JSON}`);
+const chain = config.settings.chain;
 const prettyjson = require('prettyjson');
 
 const {ConnectionManager} = require('../connections/manager');
@@ -109,7 +110,7 @@ routes['action'] = async (payloads, channel, cb) => {
     const messageMap = new Map();
     const t0 = Date.now();
     bulkAction({
-        index: queue_prefix + '-action',
+        index: chain + '-action',
         type: '_doc',
         body: buildActionBulk(payloads, messageMap)
     }).then(resp => {
@@ -124,7 +125,7 @@ routes['delta'] = async (payloads, channel, cb) => {
     const messageMap = new Map();
     const t0 = Date.now();
     bulkAction({
-        index: queue_prefix + '-delta',
+        index: chain + '-delta',
         type: '_doc',
         body: buildDeltaBulk(payloads, messageMap)
     }).then(resp => {
@@ -138,7 +139,7 @@ routes['delta'] = async (payloads, channel, cb) => {
 routes['block'] = async (payloads, channel, cb) => {
     const messageMap = new Map();
     bulkAction({
-        index: queue_prefix + '-block',
+        index: chain + '-block',
         type: '_doc',
         body: buildBlockBulk(payloads, messageMap)
     }).then(resp => {
@@ -151,7 +152,7 @@ routes['block'] = async (payloads, channel, cb) => {
 routes['table-proposals'] = async (payloads, channel, cb) => {
     const messageMap = new Map();
     bulkAction({
-        index: queue_prefix + '-table-proposals',
+        index: chain + '-table-proposals',
         type: '_doc',
         body: buildTableProposalsBulk(payloads, messageMap)
     }).then(resp => {
@@ -164,7 +165,7 @@ routes['table-proposals'] = async (payloads, channel, cb) => {
 routes['table-accounts'] = async (payloads, channel, cb) => {
     const messageMap = new Map();
     bulkAction({
-        index: queue_prefix + '-table-accounts',
+        index: chain + '-table-accounts',
         type: '_doc',
         body: buildTableAccountsBulk(payloads, messageMap)
     }).then(resp => {
@@ -177,7 +178,7 @@ routes['table-accounts'] = async (payloads, channel, cb) => {
 routes['table-voters'] = async (payloads, channel, cb) => {
     const messageMap = new Map();
     bulkAction({
-        index: queue_prefix + '-table-voters',
+        index: chain + '-table-voters',
         type: '_doc',
         body: buildTableVotersBulk(payloads, messageMap)
     }).then(resp => {
@@ -190,7 +191,7 @@ routes['table-voters'] = async (payloads, channel, cb) => {
 routes['abi'] = async (payloads, channel, cb) => {
     const messageMap = new Map();
     bulkAction({
-        index: queue_prefix + '-abi',
+        index: chain + '-abi',
         type: '_doc',
         body: buildAbiBulk(payloads, messageMap)
     }).then(resp => {

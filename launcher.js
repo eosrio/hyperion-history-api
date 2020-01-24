@@ -1,17 +1,20 @@
 const cluster = require('cluster');
 const {onError} = require('./helpers/functions');
 
+const config = require(`./${process.env.CONFIG_JSON}`);
+const chain = config.settings.chain;
+
 (async () => {
     if (cluster.isMaster) {
-        process.title = `hyp-${process.env.CHAIN}-master`;
+        process.title = `hyp-${chain}-master`;
         require('./master').main().catch(onError);
     } else {
-        process.title = `hyp-${process.env.CHAIN}-${process.env['worker_role']}:${process.env.worker_id}`;
+        process.title = `hyp-${chain}-${process.env['worker_role']}:${process.env.worker_id}`;
         let delay = 0;
         // Make sure readers are launched later
         // TODO: use IPC to trigger
         if (process.env['worker_role'] === 'reader') {
-            delay = process.env.DESERIALIZERS * 200;
+            delay = config['scaling']['ds_queues'] * 200;
         }
         setTimeout(() => {
             switch (process.env['worker_role']) {

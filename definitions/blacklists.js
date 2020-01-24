@@ -1,13 +1,16 @@
-const chain_prefix = process.env.CHAIN;
-
-const delta_blacklist = new Set([
-
-]);
+const config = require(`../${process.env.CONFIG_JSON}`);
+let EOSIO_ALIAS = 'eosio';
+if (config.settings.eosio_alias) {
+    EOSIO_ALIAS = config.settings.eosio_alias;
+}
+const chain = config.settings.chain;
+const delta_blacklist = new Set([]);
 
 // chain::contract::action
 const action_blacklist = new Set([
-    chain_prefix + '::eosio::onblock',
-    chain_prefix + '::eosio.null::*'
+    chain + '::' + EOSIO_ALIAS + '::onblock',
+    chain + '::' + EOSIO_ALIAS + '.null::*',
+    // 'eos::eidosonecoin::*'
 ]);
 
 module.exports = {

@@ -1,10 +1,11 @@
-const chain_prefix = process.env.CHAIN;
+const config = require(`../${process.env.CONFIG_JSON}`);
+const chain = config.settings.chain;
 
 const delta_whitelist = new Set([]);
 
 const action_whitelist = new Set([
-    // chain_prefix + '::eosio::newaccount'
-    // chain_prefix + '::eosio.token::transfer'
+    // chain + '::eosio::newaccount'
+    // chain + '::eosio.token::transfer'
 ]);
 
 module.exports = {

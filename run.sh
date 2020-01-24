@@ -6,4 +6,4 @@ if [ $# -eq 0 ]; then
 fi
 
 pm2 start --only "$@" --update-env
-pm2 logs "$@"
+pm2 logs --raw "$@"

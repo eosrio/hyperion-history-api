@@ -9,6 +9,11 @@ const moment = require('moment');
 const {ConnectionManager} = require('./connections/manager');
 const manager = new ConnectionManager();
 
+const config = require(`./${process.env.CONFIG_JSON}`);
+const scaling = config['scaling'];
+const settings = config['settings'];
+const features = config['features'];
+
 const {
     getLastIndexedBlock,
     messageAllWorkers,
@@ -40,7 +45,7 @@ async function getCurrentSchedule() {
 async function reportMissedBlocks(producer, last_block, size) {
     console.log(`${producer} missed ${size} ${size === 1 ? "block" : "blocks"} after ${last_block}`);
     await client.index({
-        index: process.env.CHAIN + '-logs',
+        index: settings.chain + '-logs',
         body: {
             type: 'missed_blocks',
             '@timestamp': new Date().toISOString(),
@@ -60,7 +65,7 @@ function onLiveBlock(msg) {
     if (msg.block_num === lastProducedBlockNum + 1 || lastProducedBlockNum === 0) {
         const prod = msg.producer;
 
-        if (process.env.BP_LOGS === 'true') {
+        if (settings['bp_logs']) {
             console.log(`Received block ${msg.block_num} from ${prod}`);
         }
         if (producedBlocks[prod]) {
@@ -76,7 +81,7 @@ function onLiveBlock(msg) {
                 const oldIdx = activeProds.findIndex(p => p['producer_name'] === lastProducer) + 1;
                 if ((newIdx === oldIdx + 1) || (newIdx === 1 && oldIdx === activeProds.length)) {
                     // Normal operation
-                    if (process.env.BP_LOGS === 'true') {
+                    if (settings['bp_logs']) {
                         console.log(`[${msg.block_num}] producer handoff: ${lastProducer} [${oldIdx}] -> ${prod} [${newIdx}]`);
                     }
                 } else {
@@ -132,7 +137,7 @@ function onLiveBlock(msg) {
 }
 
 function setupDSElogs(starting_block, head) {
-    const logPath = './logs/' + process.env.CHAIN;
+    const logPath = './logs/' + settings.chain;
     if (!fs.existsSync(logPath)) fs.mkdirSync(logPath, {recursive: true});
     const dsLogFileName = (new Date().toISOString()) + "_ds_err_" + starting_block + "_" + head + ".log";
     const dsErrorsLog = logPath + '/' + dsLogFileName;
@@ -145,7 +150,7 @@ function setupDSElogs(starting_block, head) {
 }
 
 async function initAbiCacheMap(getAsync) {
-    const cachedMap = await getAsync(process.env.CHAIN + ":" + 'abi_cache');
+    const cachedMap = await getAsync(settings.chain + ":" + 'abi_cache');
     if (cachedMap) {
         abiCacheMap = JSON.parse(cachedMap);
         console.log(`Found ${Object.keys(abiCacheMap).length} entries in the local ABI cache`)
@@ -155,7 +160,7 @@ async function initAbiCacheMap(getAsync) {
 
     // Periodically save the current map
     setInterval(() => {
-        rClient.set(process.env.CHAIN + ":" + 'abi_cache', JSON.stringify(abiCacheMap));
+        rClient.set(settings.chain + ":" + 'abi_cache', JSON.stringify(abiCacheMap));
     }, 10000);
 }
 
@@ -199,30 +204,31 @@ async function applyUpdateScript(esClient) {
 }
 
 function addStateTables(indicesList, index_queues) {
-    const queue_prefix = process.env.CHAIN;
+    const queue_prefix = settings.chain;
     const index_queue_prefix = queue_prefix + ':index';
     // Optional state tables
-    if (process.env.PROPOSAL_STATE === 'true') {
+    const table_feats = features.tables;
+    if (table_feats.proposals) {
         indicesList.push("table-proposals");
         index_queues.push({type: 'table-proposals', name: index_queue_prefix + "_table_proposals"});
     }
 
-    if (process.env.ACCOUNT_STATE === 'true') {
+    if (table_feats.accounts) {
         indicesList.push("table-accounts");
         index_queues.push({type: 'table-accounts', name: index_queue_prefix + "_table_accounts"});
     }
 
-    if (process.env.VOTERS_STATE === 'true') {
+    if (table_feats.voters) {
         indicesList.push("table-voters");
         index_queues.push({type: 'table-voters', name: index_queue_prefix + "_table_voters"});
     }
 
-    if (process.env.DELBAND_STATE === 'true') {
+    if (table_feats['delband']) {
         indicesList.push("table-delband");
         index_queues.push({type: 'table-delband', name: index_queue_prefix + "_table_delband"});
     }
 
-    if (process.env.USERRES_STATE === 'true') {
+    if (table_feats['userres']) {
         indicesList.push("table-userres");
         index_queues.push({type: 'table-userres', name: index_queue_prefix + "_table_userres"});
     }
@@ -244,25 +250,38 @@ async function waitForLaunch() {
     });
 }
 
-async function main() {
+function onScheduleUpdate(msg) {
+    if (msg.live === 'true') {
+        console.log(`Producer schedule updated at block ${msg.block_num}`);
+        currentSchedule.active.producers = msg.new_producers.producers
+    }
+}
 
+async function main() {
     console.log(`--------- Hyperion Indexer ${require('./package').version} ---------`);
 
-    console.log(`Using parser version ${process.env.PARSER}`);
-    console.log(`Chain: ${process.env.CHAIN}`);
+    console.log(`Using parser version ${config.settings.parser}`);
+    console.log(`Chain: ${config.settings.chain}`);
 
-    if (process.env.ABI_CACHE_MODE === 'true') {
-        console.log('--------\n ABI CACHING MODE \n ---------');
+    if (config.indexer['abi_scan_mode']) {
+        if (config.indexer['fetch_block'] || config.indexer['fetch_traces']) {
+            console.log('Invalid configuration! indexer.fetch_block and indexer.fetch_traces must' +
+                ' be both set to [false] while indexer.abi_scan_mode is [true]');
+            process.exit(1);
+        }
+        console.log('-------------------\n ABI SCAN MODE \n-------------------');
+    } else {
+        console.log('---------------\n INDEXING MODE \n---------------');
     }
 
     // Preview mode - prints only the proposed worker map
-    let preview = process.env.PREVIEW === 'true';
-    const queue_prefix = process.env.CHAIN;
+    let preview = config.settings.preview;
+    const queue_prefix = config.settings.chain;
 
     // Purge queues
-    if (process.env.PURGE_QUEUES === 'true') {
-        if (process.env.DISABLE_READING === 'true') {
-            console.log('Conflict between PURGE_QUEUES and DISABLE_READING');
+    if (config.indexer['purge_queues']) {
+        if (config.indexer['disable_reading']) {
+            console.log('Cannot purge queue with disabled reading! Exiting now!');
             process.exit(1);
         } else {
             await manager.purgeQueues(queue_prefix);
@@ -273,7 +292,6 @@ async function main() {
     rpc = manager.nodeosJsonRPC;
     await getCurrentSchedule();
     console.log(`${currentSchedule.active.producers.length} active producers`);
-    console.log(currentSchedule.active.producers.map(p => p['producer_name']));
 
     // Redis
     rClient = manager.redisClient;
@@ -298,19 +316,19 @@ async function main() {
     }
     ingestClients = null;
 
-    const n_deserializers = parseInt(process.env.DESERIALIZERS, 10);
-    const n_ingestors_per_queue = parseInt(process.env.ES_IDX_QUEUES, 10);
-    const action_indexing_ratio = parseInt(process.env.ES_AD_IDX_QUEUES, 10);
+    const n_deserializers = scaling['ds_queues'];
+    const n_ingestors_per_queue = scaling['indexing_queues'];
+    const action_indexing_ratio = scaling['ad_idx_queues'];
 
-    let max_readers = parseInt(process.env.READERS, 10);
-    if (process.env.DISABLE_READING === 'true') {
+    let max_readers = scaling['readers'];
+    if (config.indexer['disable_reading']) {
         // Create a single reader to read the abi struct and quit.
         max_readers = 1;
     }
 
     const {index_queues} = require('./definitions/index-queues');
 
-    const indicesList = ["action", "block", "abi", "delta"];
+    const indicesList = ["action", "block", "abi", "delta", "logs"];
 
     addStateTables(indicesList, index_queues);
 
@@ -345,7 +363,7 @@ async function main() {
     // Check for extra mappings
     // Load Modules
     const HyperionModuleLoader = require('./modules/index').HyperionModuleLoader;
-    const mLoader = new HyperionModuleLoader(process.env.PARSER);
+    const mLoader = new HyperionModuleLoader(config.indexer['parser']);
 
     // Modify mappings
     for (const exM of mLoader.extraMappings) {
@@ -378,13 +396,13 @@ async function main() {
     console.log('Index templates updated');
 
     // Create indices
-    if (process.env.CREATE_INDICES !== 'false' && process.env.CREATE_INDICES) {
+    if (config.settings['index_version']) {
         // Create indices
         let version;
-        if (process.env.CREATE_INDICES === 'true') {
+        if (config.settings['index_version'] === true) {
             version = 'v1';
         } else {
-            version = process.env.CREATE_INDICES;
+            version = config.settings['index_version'];
         }
         for (const index of indicesList) {
             const new_index = `${queue_prefix}-${index}-${version}-000001`;
@@ -421,17 +439,17 @@ async function main() {
     let allowShutdown = false;
     let allowMoreReaders = true;
     let total_range = 0;
-    let maxBatchSize = parseInt(process.env.BATCH_SIZE, 10);
+    let maxBatchSize = scaling['batch_size'];
 
     // Auto-stop
     let auto_stop = 0;
     let idle_count = 0;
-    if (process.env.AUTO_STOP) {
-        auto_stop = parseInt(process.env.AUTO_STOP, 10);
+    if (config.settings['auto_stop']) {
+        auto_stop = config.settings['auto_stop'];
     }
 
     let lastIndexedBlock;
-    if (process.env.INDEX_DELTAS === 'true') {
+    if (config.features['index_deltas']) {
         lastIndexedBlock = await getLastIndexedBlockByDelta(client);
         console.log('Last indexed block (deltas):', lastIndexedBlock);
     } else {
@@ -450,27 +468,30 @@ async function main() {
         starting_block = lastIndexedBlock;
     }
 
-    if (process.env.STOP_ON !== "0") {
-        head = parseInt(process.env.STOP_ON, 10);
+    if (config.indexer['stop_on'] !== 0) {
+        head = config.indexer['stop_on'];
     }
 
     let lastIndexedABI = await getLastIndexedABI(client);
     console.log(`Last indexed ABI: ${lastIndexedABI}`);
-    if (process.env.ABI_CACHE_MODE === 'true') {
+    if (config.indexer['abi_scan_mode']) {
         starting_block = lastIndexedABI;
     }
 
     // Define block range
-    if (process.env.START_ON !== "0") {
-        starting_block = parseInt(process.env.START_ON, 10);
+    if (config.indexer['start_on'] !== 0) {
+        starting_block = config.indexer['start_on'];
         // Check last indexed block again
-        if (process.env.REWRITE !== 'true') {
+        if (!config.indexer['rewrite']) {
+
             let lastIndexedBlockOnRange;
-            if (process.env.INDEX_DELTAS === 'true') {
+
+            if (config.features['index_deltas']) {
                 lastIndexedBlockOnRange = await getLastIndexedBlockByDeltaFromRange(client, starting_block, head);
             } else {
                 lastIndexedBlockOnRange = await getLastIndexedBlockFromRange(client, starting_block, head);
             }
+
             if (lastIndexedBlockOnRange > starting_block) {
                 console.log('WARNING! Data present on target range!');
                 console.log('Changing initial block num. Use REWRITE = true to bypass.');
@@ -485,8 +506,8 @@ async function main() {
     total_range = head - starting_block;
     let lastAssignedBlock = starting_block;
     let activeReadersCount = 0;
-    if (process.env.REPAIR_MODE === 'false') {
-        if (process.env.LIVE_ONLY === 'false') {
+    if (!config.indexer['repair_mode']) {
+        if (!config.indexer['live_only_mode']) {
             while (activeReadersCount < max_readers && lastAssignedBlock < head) {
                 worker_index++;
                 const start = lastAssignedBlock;
@@ -509,7 +530,7 @@ async function main() {
         }
 
         // Setup Serial reader worker
-        if (process.env.LIVE_READER === 'true') {
+        if (config.indexer['live_reader']) {
             const _head = chain_data['head_block_num'];
             console.log(`Setting live reader at head = ${_head}`);
 
@@ -535,7 +556,7 @@ async function main() {
 
     // Setup Deserialization Workers
     for (let i = 0; i < n_deserializers; i++) {
-        for (let j = 0; j < process.env.DS_MULT; j++) {
+        for (let j = 0; j < scaling['ds_threads']; j++) {
             worker_index++;
             workerMap.push({
                 worker_id: worker_index,
@@ -572,22 +593,20 @@ async function main() {
         }
     });
 
+    const _streaming = config.features['streaming'];
+
     // Setup ws router
-    if (process.env.ENABLE_STREAMING === 'true') {
+    if (_streaming.enable) {
         worker_index++;
         workerMap.push({
             worker_id: worker_index,
             worker_role: 'router'
         });
-
-        if (process.env.STREAM_DELTAS === 'true') {
-            console.log('Delta streaming enabled!');
-        }
-        if (process.env.STREAM_TRACES === 'true') {
-            console.log('Action trace streaming enabled!');
-        }
-        if (process.env.STREAM_DELTAS !== 'true' && process.env.STREAM_TRACES !== 'true') {
-            console.log('WARNING! Streaming is enabled without any datatype, please enable STREAM_TRACES and/or STREAM_DELTAS');
+        if (_streaming.deltas) console.log('Delta streaming enabled!');
+        if (_streaming.traces) console.log('Action trace streaming enabled!');
+        if (!_streaming.deltas && !_streaming.traces) {
+            console.log('WARNING! Streaming is enabled without any datatype,' +
+                'please enable STREAM_TRACES and/or STREAM_DELTAS');
         }
     }
 
@@ -645,7 +664,7 @@ async function main() {
         log_msg.push(`D:${deserializedActions / tScale} a/s`);
         log_msg.push(`I:${indexedObjects / tScale} d/s`);
 
-        if (total_blocks < total_range && process.env.LIVE_ONLY !== 'true') {
+        if (total_blocks < total_range && !config.indexer['live_only_mode']) {
             const remaining = total_range - total_blocks;
             const estimated_time = Math.round(remaining / avg_consume_rate);
             const time_string = moment()
@@ -658,7 +677,7 @@ async function main() {
         }
 
         // print monitoring log
-        if (process.env.NOLOGS !== 'true') {
+        if (config.settings['rate_monitoring']) {
             console.log(log_msg.join(', '));
         }
 
@@ -815,6 +834,13 @@ async function main() {
                 }
                 break;
             }
+            case 'new_schedule': {
+                onScheduleUpdate(msg);
+                break;
+            }
+            default: {
+                // console.log(msg);
+            }
         }
     };
 
@@ -831,7 +857,7 @@ async function main() {
     let doctorStarted = false;
     let doctorIdle = true;
     let doctorId = 0;
-    if (process.env.REPAIR_MODE === 'true') {
+    if (config.indexer['repair_mode']) {
         doctor.run(missingRanges).then(() => {
             console.log('repair completed!');
         });

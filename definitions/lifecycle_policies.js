@@ -1,8 +1,8 @@
 module.exports = {
-    ILPs: [
+    "ILPs": [
         {
-            policy: "50G30D",
-            body: {
+            "policy": "50G30D",
+            "body": {
                 "policy": {
                     "phases": {
                         "hot": {

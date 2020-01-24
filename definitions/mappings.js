@@ -1,7 +1,8 @@
 const shards = 2;
 const replicas = 0;
 const refresh = "1s";
-const chain = process.env.CHAIN;
+const config = require(`../${process.env.CONFIG_JSON}`);
+const chain = config.settings.chain;
 const defaultLifecyclePolicy = "50G30D";
 
 const ILPs = require('./lifecycle_policies').ILPs;
@@ -52,6 +53,7 @@ const action = {
             "abi_sequence": {"type": "integer"},
             "trx_id": {"type": "keyword"},
             "producer": {"type": "keyword"},
+            "notified": {"type": "keyword"},
             "receipts": {
                 "properties": {
                     "global_sequence": {"type": "long"},
@@ -153,7 +155,22 @@ const abi = {
             "@timestamp": {"type": "date"},
             "block": {"type": "long"},
             "account": {"type": "keyword"},
-            "abi": {"enabled": false}
+            "abi": {"enabled": false},
+            "abi_hex": {"enabled": false},
+            "actions": {"type": "keyword"},
+            "tables": {"type": "keyword"}
+        }
+    }
+};
+
+const logs = {
+    "index_patterns": [chain + "-logs-*"],
+    "settings": {
+        "index": {
+            "number_of_shards": shards,
+            "refresh_interval": refresh,
+            "number_of_replicas": replicas,
+            "codec": compression
         }
     }
 };
@@ -368,7 +385,7 @@ const delta = {
 };
 
 module.exports = {
-    action, block, abi, delta, ILPs,
+    action, block, abi, delta, ILPs, logs,
     "table-proposals": tableProposals,
     "table-accounts": tableAccounts,
     "table-delband": tableDelBand,

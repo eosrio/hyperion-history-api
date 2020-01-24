@@ -4,7 +4,9 @@ const {deserialize, debugLog} = require('../../helpers/functions');
 const {TextEncoder, TextDecoder} = require('util');
 const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
-const chain = process.env.CHAIN;
+
+const config = require(`../../${process.env.CONFIG_JSON}`);
+const chain = config.settings.chain;
 
 function checkBlacklist(act) {
     if (action_blacklist.has(`${chain}::${act['account']}::*`)) {
@@ -22,8 +24,8 @@ const reading_mode = process.env.live_mode;
 
 module.exports = {
     actionParser: async (common, ts, action, trx_data, _actDataArray, _processedTraces, full_trace) => {
-        const {trx_id, block_num, producer, cpu_usage_us, net_usage_words} = trx_data;
         let act = action['act'];
+
         // abort if blacklisted
         if (checkBlacklist(act)) {
             return false;
@@ -35,17 +37,21 @@ module.exports = {
             }
         }
 
+        const {trx_id, block_num, producer, cpu_usage_us, net_usage_words} = trx_data;
         const original_act = Object.assign({}, act);
-        const actions = [];
-        actions.push(act);
         let ds_act;
         try {
-            ds_act = await common.deserializeActionsAtBlock(actions, block_num);
-            action['act'] = ds_act[0];
+
+            ds_act = await common.deserializeActionAtBlockNative(act, block_num);
+            action['act']['data'] = ds_act;
             common.attachActionExtras(action);
+
             // report deserialization event
-            process.send({event: 'ds_action'});
+            process.send({
+                event: 'ds_action'
+            });
         } catch (e) {
+            console.log(e);
             // write error to CSV
             process.send({
                 event: 'ds_error',
@@ -87,7 +93,6 @@ module.exports = {
                 action['cpu_usage_us'] = cpu_usage_us;
                 action['net_usage_words'] = net_usage_words;
             }
-
             _processedTraces.push(action);
         } else {
             console.log(action);
@@ -96,21 +101,34 @@ module.exports = {
     },
     messageParser: async (common, messages, types, ch, ch_ready) => {
         for (const message of messages) {
-            const ds_msg = deserialize('result', message.content, txEnc, txDec, types);
+            const ds_msg = common.deserializeNative('result', message.content);
             const res = ds_msg[1];
             let block, traces = [], deltas = [];
+
             if (res.block && res.block.length) {
-                block = deserialize('signed_block', res.block, txEnc, txDec, types);
+                // block = deserialize('signed_block', res.block, txEnc, txDec, types);
+                // console.log( new Uint8Array(Buffer.from(res.block)));
+                block = common.deserializeNative('signed_block', res.block);
                 if (block === null) {
                     console.log(res);
                 }
             }
+
             if (res['traces'] && res['traces'].length) {
-                traces = deserialize('transaction_trace[]', res['traces'], txEnc, txDec, types);
+                // traces = deserialize('transaction_trace[]', res['traces'], txEnc, txDec, types);
+                try {
+                    traces = common.deserializeNative('transaction_trace[]', res['traces']);
+                } catch (e) {
+                    console.log(e);
+                    console.log(res);
+                }
             }
+
             if (res['deltas'] && res['deltas'].length) {
-                deltas = deserialize('table_delta[]', res['deltas'], txEnc, txDec, types);
+                // deltas = deserialize('table_delta[]', res['deltas'], txEnc, txDec, types);
+                deltas = common.deserializeNative('table_delta[]', res['deltas']);
             }
+
             let result;
             try {
                 const t0 = Date.now();

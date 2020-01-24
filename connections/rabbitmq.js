@@ -38,7 +38,6 @@ async function amqpConnect(onReconnect, config) {
     if (connection) {
         const channels = await createChannels(connection);
         if (channels) {
-            // Set connection event handlers
             connection.on('error', (err) => {
                 console.log('[AMQP] Error!');
                 console.log(err);

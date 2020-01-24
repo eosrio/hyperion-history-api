@@ -1,4 +1,5 @@
-const {elasticsearchConnect} = require("../connections/elasticsearch");
+const {ConnectionManager} = require('../connections/manager');
+const manager = new ConnectionManager();
 
 let client;
 let total_missing = 0;
@@ -86,7 +87,7 @@ function startMonitoringLoop() {
 const main = async (missingArray) => {
     const start_time = Date.now();
     last_block = starting_block - 1;
-    client = elasticsearchConnect();
+    client = manager.elasticsearchClient;
     console.log('Hyperion Doctor initialized.');
     total_missing = await countMissingBlocks();
     activeScrollID = await createScroller(missingArray);
