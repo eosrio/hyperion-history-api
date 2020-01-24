@@ -2,12 +2,8 @@ const {Serialize} = require('../eosjs-native');
 
 const abieos = require('../addons/node-abieos/abieos.node');
 
-const fastparse = require('fast-json-parse');
-
-// const {Serialize} = require('eosjs');
 const {Api} = require('eosjs');
-const _ = require('lodash');
-const prettyjson = require('prettyjson');
+
 const {AbiDefinitions, RexAbi} = require("../definitions/abi_def");
 const async = require('async');
 const {debugLog} = require("../helpers/functions");
@@ -419,7 +415,7 @@ async function getContractAtBlock(accountName, block_num) {
 
 async function deserializeActionAtBlock(action, block_num) {
     const contract = await getContractAtBlock(action.account, block_num);
-    const result = Serialize.deserializeAction(
+    return Serialize.deserializeAction(
         contract[0],
         action.account,
         action.name,
@@ -428,33 +424,43 @@ async function deserializeActionAtBlock(action, block_num) {
         txEnc,
         txDec
     );
-    return result;
 }
 
-async function deserializeActionAtBlockNative(_action, block_num) {
-    let actionType = abieos['get_type_for_action'](_action.account, _action.name);
+async function verifyLocalType(contract, type, block_num, field) {
+    let resultType = abieos['get_type_for_' + field](contract, type);
     let _status;
-    if (actionType === "NOT_FOUND") {
-        // console.log(`action type not found for ${_action.name} on ${_action.account}`);
-        const savedAbi = await getAbiAtBlock(_action.account, block_num);
-        const actionList = savedAbi.abi.actions.map(a => a.name);
-        // console.log(actionList);
-        if (actionList.includes(_action.name)) {
-            // console.log('action found on saved abi!');
-            // console.log('reloading abi...');
-            _status = abieos['load_abi'](_action.account, JSON.stringify(savedAbi.abi));
-            // console.log('reload status:', _status);
-            actionType = abieos['get_type_for_action'](_action.account, _action.name);
-            // console.log('verifying action type: ' + actionType);
-            if (actionType === "NOT_FOUND") {
-                _status = false;
+    if (resultType === "NOT_FOUND") {
+        console.log(`${field} type not found for ${type} on ${contract}`);
+        const savedAbi = await fetchAbiHexAtBlockElastic(contract, block_num);
+        if (savedAbi) {
+            if (savedAbi[field + 's'].includes(type)) {
+                console.log('🔄  reloading abi');
+                _status = abieos['load_abi_hex'](contract, savedAbi.abi_hex);
+                console.log('reload status:', _status);
+                resultType = abieos['get_type_for_' + field](contract, type);
+                console.log(`verifying ${field} type: ${resultType}`);
+                if (resultType === "NOT_FOUND") {
+                    _status = false;
+                } else {
+                    console.log(`✅️  ${contract} abi cache updated at block ${block_num}`);
+                    _status = true;
+                }
             } else {
-                console.log(`[${block_num}] - ${_action.account} abi replaced`);
+                console.log(`⚠️ ⚠️  action "${contract}" not found on saved abi! Something is wrong!`);
+                _status = false;
             }
+        } else {
+            console.log(`Abi not indexed at or before block ${block_num} for ${contract}`);
+            _status = false;
         }
     } else {
         _status = true;
     }
+    return [_status, resultType];
+}
+
+async function deserializeActionAtBlockNative(_action, block_num) {
+    const [_status, actionType] = await verifyLocalType(_action.account, _action.name, block_num, "action");
     if (_status) {
         const result = abieos['bin_to_json'](_action.account, actionType, Buffer.from(_action.data, 'hex'));
         switch (result) {
@@ -477,6 +483,7 @@ async function deserializeActionAtBlockNative(_action, block_num) {
         }
     }
     console.log('native deserialization failed, falling back to eosjs...');
+    console.log(_action.account, block_num);
     return await deserializeActionAtBlock(_action, block_num);
 }
 
@@ -743,16 +750,7 @@ async function processDeltas(deltas, block_num, block_ts) {
 }
 
 async function processContractRowNative(row, block) {
-    let tableType = abieos['get_type_for_table'](row['code'], row['table']);
-    let _status;
-    if (tableType === "NOT_FOUND") {
-        const savedAbi = await getAbiAtBlock(row['code'], block);
-        _status = abieos['load_abi'](row['code'], JSON.stringify(savedAbi.abi));
-        console.log('Loading ABI for ', row['code']);
-        tableType = abieos['get_type_for_table'](row['code'], row['table']);
-    } else {
-        _status = true;
-    }
+    const [_status, tableType] = await verifyLocalType(row['code'], row['table'], block, "table");
     if (_status) {
         let result;
         if (typeof row.value === 'string') {
@@ -762,8 +760,8 @@ async function processContractRowNative(row, block) {
         }
         if (result !== 'PARSING_ERROR') {
             try {
-                // row['data'] = JSON.parse(result);
-                row['data'] = fastparse(result).value;
+                row['data'] = JSON.parse(result);
+                // row['data'] = fastparse(result).value;
                 delete row.value;
                 return row;
             } catch (e) {
@@ -1111,22 +1109,51 @@ function createSerialBuffer(inputArray) {
     return new Serialize.SerialBuffer({textEncoder: txEnc, textDecoder: txDec, array: inputArray});
 }
 
-async function processDeferred(data, block_num) {
-    if (data['packed_trx']) {
-        const sb_trx = createSerialBuffer(Serialize.hexToUint8Array(data['packed_trx']));
-        const data_trx = types.get('transaction').deserialize(sb_trx);
-        data = _.omit(_.merge(data, data_trx), ['packed_trx']);
-        data['actions'] = await api.deserializeActions(data['actions']);
-        data['trx_id'] = data['trx_id'].toLowerCase();
-        if (data['delay_sec'] > 0) {
-            console.log(`-------------- DELAYED ${block_num} -----------------`);
-            console.log(prettyjson.render(data));
-        }
-    }
-}
+// async function processDeferred(data, block_num) {
+//     if (data['packed_trx']) {
+//         const sb_trx = createSerialBuffer(Serialize.hexToUint8Array(data['packed_trx']));
+//         const data_trx = types.get('transaction').deserialize(sb_trx);
+//         data = _.omit(_.merge(data, data_trx), ['packed_trx']);
+//         data['actions'] = await api.deserializeActions(data['actions']);
+//         data['trx_id'] = data['trx_id'].toLowerCase();
+//         if (data['delay_sec'] > 0) {
+//             console.log(`-------------- DELAYED ${block_num} -----------------`);
+//             console.log(prettyjson.render(data));
+//         }
+//     }
+// }
 
 async function getAbiFromHeadBlock(code) {
     return {abi: await api.getAbi(code), valid_until: null, valid_from: null};
+}
+
+async function fetchAbiHexAtBlockElastic(contract_name, last_block) {
+    try {
+        const t_start = process.hrtime.bigint();
+        const queryResult = await client.search({
+            index: `${queue_prefix}-abi-*`,
+            body: {
+                size: 1,
+                query: {
+                    bool: {
+                        must: [
+                            {term: {account: contract_name}},
+                            {range: {block: {lte: last_block}}}
+                        ]
+                    }
+                },
+                sort: [{block: {order: "desc"}}],
+                _source: {includes: ["abi_hex", "actions", "tables"]}
+            }
+        });
+        const t_end = process.hrtime.bigint();
+        const results = queryResult.body.hits.hits;
+        console.log(`fetch abi from elastic took: ${t_end - t_start} ns | hex size: ${results[0]._source.abi_hex.length}`);
+        return results[0]._source;
+    } catch (e) {
+        console.log(e);
+        return null;
+    }
 }
 
 async function getAbiAtBlock(code, block_num) {
@@ -1143,17 +1170,20 @@ async function getAbiAtBlock(code, block_num) {
                     lastblock = block;
                 }
             }
+
+            // fetch from redis
+            const t_start = process.hrtime.bigint();
             const cachedAbiAtBlock = await getAsync(config.settings.chain + ":" + lastblock + ":" + code);
+            const t_end = process.hrtime.bigint();
+            console.log(`fetch abi from redis took: ${t_end - t_start} ns`);
+
             let abi;
             if (!cachedAbiAtBlock) {
                 console.log('remote abi fetch [1]', code, block_num);
                 return await getAbiFromHeadBlock(code);
             } else {
                 try {
-                    const t0 = process.hrtime();
                     abi = JSON.parse(cachedAbiAtBlock);
-                    const hrend = process.hrtime(t0);
-                    // console.info('Execution time (hr): %ds %dms', hrend[0], hrend[1] / 1000000);
                     return {abi: abi, valid_until: validity, valid_from: lastblock};
                 } catch (e) {
                     console.log('failed to parse saved ABI', code, block_num);
