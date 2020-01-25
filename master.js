@@ -727,7 +727,7 @@ async function main() {
 
     // Launch all workers
     workerMap.forEach((conf) => {
-        cluster.fork(conf);
+        conf['wref'] = cluster.fork(conf);
     });
 
     // Worker event listener
@@ -753,6 +753,17 @@ async function main() {
             }
             case 'save_abi': {
                 onSaveAbi(msg.data, abiCacheMap, rClient);
+                if (msg.live_mode === 'true') {
+                    console.log(`deserializer ${msg.worker_id} received new abi! propagating changes to other workers...`);
+                    for (const worker of workerMap) {
+                        if (worker.worker_role === 'deserializer' && worker.worker_id !== parseInt(msg.worker_id)) {
+                            worker.wref.send({
+                                event: 'update_abi',
+                                abi: msg.data
+                            });
+                        }
+                    }
+                }
                 break;
             }
             case 'completed': {

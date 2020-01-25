@@ -575,10 +575,23 @@ async function processDeltas(deltas, block_num, block_ts) {
                         queue: q,
                         content: Buffer.from(JSON.stringify(new_abi_object))
                     });
+
+                    // update locally cached abi
+                    if (process.env['live_mode'] === 'true') {
+                        console.log('Abi changed during live mode, updating local version...');
+                        const abi_update_status = abieos['load_abi_hex'](account['name'], abiHex);
+                        if (abi_update_status) {
+                            console.log(`Reload status: ${abi_update_status}`);
+                        }
+                    }
+
                     process.send({
                         event: 'save_abi',
-                        data: new_abi_object
+                        data: new_abi_object,
+                        live_mode: process.env['live_mode'],
+                        worker_id: process.env.worker_id
                     });
+
                 } catch (e) {
                     console.log(e);
                     console.log(account['abi'], block_num, account['name']);
@@ -781,7 +794,6 @@ async function processContractRowNative(row, block) {
         if (result !== 'PARSING_ERROR') {
             try {
                 row['data'] = JSON.parse(result);
-                // row['data'] = fastparse(result).value;
                 delete row.value;
                 return row;
             } catch (e) {
@@ -1303,6 +1315,15 @@ function onIpcMessage(msg) {
             types = Serialize.getTypesFromAbi(initialTypes, abi);
             abi.tables.map(table => tables.set(table.name, table.type));
             initConsumer();
+            break;
+        }
+        case 'update_abi': {
+            if (msg.abi) {
+                if (msg.abi.abi_hex) {
+                    abieos['load_abi_hex'](msg.abi.account, msg.abi.abi_hex);
+                    console.log(`Worker ${process.env.worker_id} updated the abi for ${msg.abi.account}`);
+                }
+            }
             break;
         }
         case 'connect_ws': {
