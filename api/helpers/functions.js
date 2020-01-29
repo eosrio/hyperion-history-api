@@ -8,6 +8,11 @@ async function getCacheByHash(redis, key) {
 }
 
 function mergeActionMeta(action) {
+    
+    action['notified'] = action['notified'].map((a) => {
+        return a.split(",")[0];
+    });
+    
     const name = action.act.name;
     if (action['@' + name]) {
         action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
