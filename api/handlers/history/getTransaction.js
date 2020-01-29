@@ -1,6 +1,6 @@
 const {getTransactionSchema} = require("../../schemas");
 const _ = require('lodash');
-const {getCacheByHash} = require("../../helpers/functions");
+const {getCacheByHash, mergeActionMeta} = require("../../helpers/functions");
 
 async function getTransaction(fastify, request) {
     const {redis, elastic, eosjs} = fastify;
@@ -33,11 +33,7 @@ async function getTransaction(fastify, request) {
     if (hits.length > 0) {
         for (let action of hits) {
             action = action._source;
-            const name = action.act.name;
-            if (action['@' + name]) {
-                action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
-                delete action['@' + name];
-            }
+            mergeActionMeta(action);
             response.actions.push(action);
         }
     }
