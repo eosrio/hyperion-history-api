@@ -9,11 +9,7 @@ async function getCacheByHash(redis, key) {
 
 function mergeActionMeta(action) {
     
-    if(action['notified'].length > 0) {
-        action['notified'].forEach((notif) => {
-            notif = notif.split(",")[0];
-        });
-    }
+    action['notified'].map((notif) => notif[0]);
     
     const name = action.act.name;
     if (action['@' + name]) {
