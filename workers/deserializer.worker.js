@@ -2,6 +2,8 @@ const {Serialize} = require('../eosjs-native');
 
 const abieos = require('../addons/node-abieos/abieos.node');
 
+const simdjson = require('simdjson');
+
 const {Api} = require('eosjs');
 
 const {AbiDefinitions, RexAbi} = require("../definitions/abi_def");
@@ -13,8 +15,8 @@ const manager = new ConnectionManager();
 
 const config = require(`../${process.env.CONFIG_JSON}`);
 let EOSIO_ALIAS = 'eosio';
-if (config.settings.eosio_alias) {
-    EOSIO_ALIAS = config.settings.eosio_alias;
+if (config.settings['eosio_alias']) {
+    EOSIO_ALIAS = config.settings['eosio_alias'];
 }
 
 const rClient = manager.redisClient;
@@ -61,14 +63,13 @@ const HyperionModuleLoader = require('../modules/index').HyperionModuleLoader;
 const mLoader = new HyperionModuleLoader(config.settings.parser);
 
 const common = {
-    deserializeActionAtBlock,
     attachActionExtras,
     processBlock,
     deserializeActionAtBlockNative,
     deserializeNative
 };
 
-function deserializeNative(datatype, array) {
+function deserializeNative(datatype, array, use_simdjson) {
     let result;
     if (typeof array === 'string') {
         result = abieos['hex_to_json']("0", datatype, array);
@@ -77,13 +78,11 @@ function deserializeNative(datatype, array) {
     }
     if (result !== 'PARSING_ERROR') {
         try {
-            return JSON.parse(result);
-            // const parsed = fastparse(result);
-            // if (parsed.err) {
-            //     console.log(parsed.err);
-            // } else {
-            //     return parsed.value;
-            // }
+            if (use_simdjson) {
+                return simdjson['lazyParse'](result);
+            } else {
+                return JSON.parse(result);
+            }
         } catch (e) {
             console.log(datatype, e);
             return null;
@@ -133,6 +132,84 @@ async function processMessages(messages) {
 //     }
 // }, 1000);
 
+function pushToBlocksQueue(light_block) {
+    if (!config.indexer['disable_indexing']) {
+        const data = Buffer.from(JSON.stringify(light_block));
+        const q = index_queue_prefix + "_blocks:" + (block_emit_idx);
+        preIndexingQueue.push({
+            queue: q,
+            content: data
+        });
+        block_emit_idx++;
+        if (block_emit_idx > n_ingestors_per_queue) {
+            block_emit_idx = 1;
+        }
+    }
+    local_block_count++;
+}
+
+function pushToActionsQueue(payload) {
+    if (!config.indexer['disable_indexing']) {
+        const q = index_queue_prefix + "_actions:" + (act_emit_idx);
+        preIndexingQueue.push({
+            queue: q,
+            content: payload
+        });
+        act_emit_idx++;
+        if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+            act_emit_idx = 1;
+        }
+    }
+}
+
+function pushToActionStreamingQueue(payload, uniqueAction) {
+    if (allowStreaming && config.features['streaming'].traces) {
+        const notifArray = new Set();
+        uniqueAction.act.authorization.forEach(auth => {
+            notifArray.add(auth.actor);
+        });
+        uniqueAction.notified.forEach(acc => {
+            notifArray.add(acc);
+        });
+        const headers = {
+            event: 'trace',
+            account: uniqueAction['act']['account'],
+            name: uniqueAction['act']['name'],
+            notified: [...notifArray].join(",")
+        };
+        ch.publish('', queue_prefix + ':stream', payload, {headers});
+    }
+}
+
+function pushToDeltaQueue(bufferdata) {
+    const q = index_queue_prefix + "_deltas:" + (delta_emit_idx);
+    preIndexingQueue.push({
+        queue: q,
+        content: bufferdata
+    });
+    delta_emit_idx++;
+    if (delta_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+        delta_emit_idx = 1;
+    }
+}
+
+function pushToDeltaStreamingQueue(payload, jsonRow) {
+    if (allowStreaming && config.features['streaming']['deltas']) {
+        ch.publish('', queue_prefix + ':stream', payload, {
+            headers: {
+                event: 'delta',
+                code: jsonRow.code,
+                table: jsonRow.table,
+                scope: jsonRow.scope,
+                payer: jsonRow.payer
+            }
+        });
+    }
+}
+
+let temp_ds_counter = 0;
+let temp_delta_counter = 0;
+
 // Stage 2 - Block handler
 async function processBlock(res, block, traces, deltas) {
     if (!res['this_block']) {
@@ -140,6 +217,7 @@ async function processBlock(res, block, traces, deltas) {
         console.log(res);
         return null;
     } else {
+
         let producer = '';
         let ts = '';
         const block_num = res['this_block']['block_num'];
@@ -191,15 +269,19 @@ async function processBlock(res, block, traces, deltas) {
             const t1 = Date.now();
             await processDeltas(deltas, block_num, block_ts);
             const elapsed_time = Date.now() - t1;
-            if (elapsed_time > 10) {
-                debugLog(`[WARNING] Delta processing took ${elapsed_time}ms on block ${block_num}`);
+            if (elapsed_time > 1000) {
+                console.log(`[WARNING] Delta processing took ${elapsed_time} ms on block ${block_num}`);
             }
         }
 
         // Process Action Traces
-        if (traces.length > 0 && config.indexer.fetch_traces) {
+        let _traces = traces;
+        if (traces["valueForKeyPath"]) {
+            _traces = traces['valueForKeyPath'](".");
+        }
+        if (_traces.length > 0 && config.indexer.fetch_traces) {
             const t2 = Date.now();
-            for (const trace of traces) {
+            for (const trace of _traces) {
                 const transaction_trace = trace[1];
                 const {cpu_usage_us, net_usage_words} = transaction_trace;
                 if (transaction_trace.status === 0) {
@@ -211,6 +293,7 @@ async function processBlock(res, block, traces, deltas) {
                     const t3 = Date.now();
 
                     // if (action_traces.length < 50) {
+                    // console.log(action_traces.length);
 
                     for (const action_trace of action_traces) {
                         if (action_trace[0] === 'action_trace_v0') {
@@ -218,8 +301,10 @@ async function processBlock(res, block, traces, deltas) {
                             const trx_data = {trx_id, block_num, producer, cpu_usage_us, net_usage_words};
 
                             // const start = process.hrtime.bigint();
+                            const ds_status = await mLoader.actionParser(common, ts, action, trx_data, _actDataArray, _processedTraces, transaction_trace);
 
-                            if (await mLoader.actionParser(common, ts, action, trx_data, _actDataArray, _processedTraces, transaction_trace, null, 0)) {
+                            if (ds_status) {
+                                temp_ds_counter++;
                                 action_count++;
                             }
 
@@ -284,35 +369,12 @@ async function processBlock(res, block, traces, deltas) {
                     // Submit Actions after deduplication
                     // console.log(_finalTraces.length);
                     for (const uniqueAction of _finalTraces) {
-                        const payload = Buffer.from(JSON.stringify(uniqueAction));
-                        if (!config.indexer['disable_indexing']) {
-                            const q = index_queue_prefix + "_actions:" + (act_emit_idx);
-                            preIndexingQueue.push({
-                                queue: q,
-                                content: payload
-                            });
-                            act_emit_idx++;
-                            if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
-                                act_emit_idx = 1;
-                            }
-                        }
 
-                        if (allowStreaming && config.features.streaming.traces) {
-                            const notifArray = new Set();
-                            uniqueAction.act.authorization.forEach(auth => {
-                                notifArray.add(auth.actor);
-                            });
-                            uniqueAction.notified.forEach(acc => {
-                                notifArray.add(acc);
-                            });
-                            const headers = {
-                                event: 'trace',
-                                account: uniqueAction['act']['account'],
-                                name: uniqueAction['act']['name'],
-                                notified: [...notifArray].join(",")
-                            };
-                            ch.publish('', queue_prefix + ':stream', payload, {headers});
-                        }
+                        const payload = Buffer.from(JSON.stringify(uniqueAction));
+
+                        pushToActionsQueue(payload);
+
+                        pushToActionStreamingQueue(payload, uniqueAction);
                     }
 
                     const act_elapsed_time = Date.now() - t3;
@@ -330,19 +392,7 @@ async function processBlock(res, block, traces, deltas) {
 
         // Send light block to indexer
         if (config.indexer.fetch_block) {
-            if (!config.indexer['disable_indexing']) {
-                const data = Buffer.from(JSON.stringify(light_block));
-                const q = index_queue_prefix + "_blocks:" + (block_emit_idx);
-                preIndexingQueue.push({
-                    queue: q,
-                    content: data
-                });
-                block_emit_idx++;
-                if (block_emit_idx > n_ingestors_per_queue) {
-                    block_emit_idx = 1;
-                }
-            }
-            local_block_count++;
+            pushToBlocksQueue(light_block);
         }
 
         return {block_num: res['this_block']['block_num'], size: traces.length};
@@ -365,16 +415,42 @@ const abi_remapping = {
     "_Bool": "bool"
 };
 
-async function getContractAtBlock(accountName, block_num) {
+async function getContractAtBlock(accountName, block_num, check_action) {
+
     if (contracts.has(accountName)) {
         let _sc = contracts.get(accountName);
         hitContract(accountName, block_num);
         if ((_sc['valid_until'] > block_num && block_num > _sc['valid_from']) || _sc['valid_until'] === -1) {
-            return [_sc['contract'], null];
+            if (_sc['contract'].actions.has(check_action)) {
+                console.log('cached abi');
+                return [_sc['contract'], null];
+            }
         }
     }
-    const savedAbi = await getAbiAtBlock(accountName, block_num);
-    const abi = savedAbi.abi;
+
+    let savedAbi, abi;
+    savedAbi = await fetchAbiHexAtBlockElastic(accountName, block_num, true);
+
+    if (savedAbi === null || !savedAbi.actions.includes(check_action)) {
+        // console.log(`no ABI indexed for ${accountName}`);
+        savedAbi = await getAbiFromHeadBlock(accountName);
+        if (!savedAbi) {
+            return null;
+        }
+        abi = savedAbi.abi;
+    } else {
+        try {
+            abi = JSON.parse(savedAbi.abi);
+        } catch (e) {
+            console.log(e);
+            return null;
+        }
+    }
+
+    if (!abi) {
+        return null;
+    }
+
     const initialTypes = Serialize.createInitialTypes();
     let types;
     try {
@@ -394,6 +470,7 @@ async function getContractAtBlock(accountName, block_num) {
                 types = Serialize.getTypesFromAbi(initialTypes, abi);
             } catch (e) {
                 console.log('failed after remapping abi');
+                console.log(accountName, block_num, check_action);
                 console.log(e);
             }
         } else {
@@ -406,65 +483,100 @@ async function getContractAtBlock(accountName, block_num) {
         actions.set(name, Serialize.getType(types, type));
     }
     const result = {types, actions, tables: abi.tables};
-    contracts.set(accountName, {
-        contract: result,
-        valid_until: savedAbi.valid_until,
-        valid_from: savedAbi.valid_from
-    });
+    if (check_action) {
+        // console.log(actions);
+        if (actions.has(check_action)) {
+            // console.log(check_action, 'check type', actions.get(check_action).name);
+            // console.log(abi);
+            try {
+                abieos['load_abi'](accountName, JSON.stringify(abi));
+            } catch (e) {
+                console.log(e);
+            }
+            contracts.set(accountName, {
+                contract: result,
+                valid_until: savedAbi.valid_until,
+                valid_from: savedAbi.valid_from
+            });
+        }
+    }
     return [result, abi];
 }
 
 async function deserializeActionAtBlock(action, block_num) {
-    const contract = await getContractAtBlock(action.account, block_num);
-    return Serialize.deserializeAction(
-        contract[0],
-        action.account,
-        action.name,
-        action.authorization,
-        action.data,
-        txEnc,
-        txDec
-    );
+    const contract = await getContractAtBlock(action.account, block_num, action.name);
+    if (contract) {
+        if (contract[0].actions.has(action.name)) {
+            try {
+                return Serialize.deserializeAction(
+                    contract[0],
+                    action.account,
+                    action.name,
+                    action.authorization,
+                    action.data,
+                    txEnc,
+                    txDec
+                );
+            } catch (e) {
+                console.log(e);
+                return null;
+            }
+        } else {
+            return null;
+        }
+    } else {
+        return null;
+    }
 }
 
 async function verifyLocalType(contract, type, block_num, field) {
-    let resultType = abieos['get_type_for_' + field](contract, type);
     let _status;
+    let resultType = abieos['get_type_for_' + field](contract, type);
+    // console.log(contract, type, resultType);
     if (resultType === "NOT_FOUND") {
-        console.log(`${field} type not found for ${type} on ${contract}`);
-        const savedAbi = await fetchAbiHexAtBlockElastic(contract, block_num);
+        // console.log(`${field} not found for ${type} on ${contract}`);
+        const savedAbi = await fetchAbiHexAtBlockElastic(contract, block_num, false);
         if (savedAbi) {
             if (savedAbi[field + 's'].includes(type)) {
-                console.log('🔄  reloading abi');
-                _status = abieos['load_abi_hex'](contract, savedAbi.abi_hex);
-                console.log('reload status:', _status);
-                resultType = abieos['get_type_for_' + field](contract, type);
-                console.log(`verifying ${field} type: ${resultType}`);
-                if (resultType === "NOT_FOUND") {
-                    _status = false;
-                } else {
-                    console.log(`✅️  ${contract} abi cache updated at block ${block_num}`);
-                    _status = true;
+                if (savedAbi.abi_hex) {
+                    _status = abieos['load_abi_hex'](contract, savedAbi.abi_hex);
                 }
-            } else {
-                console.log(`⚠️ ⚠️  action "${contract}" not found on saved abi! Something is wrong!`);
-                _status = false;
+                // console.log('🔄  reloaded abi');
+                if (_status) {
+                    resultType = abieos['get_type_for_' + field](contract, type);
+                    // console.log(`verifying ${field} type: ${resultType}`);
+                    if (resultType === "NOT_FOUND") {
+                        _status = false;
+                    } else {
+                        // console.log(`✅️  ${contract} abi cache updated at block ${block_num}`);
+                        _status = true;
+                        return [_status, resultType];
+                    }
+                }
             }
+            // else {
+            //     // console.log(`⚠️ ⚠️  ${field} "${type}" not found on saved abi for ${contract} at block ${block_num}!`);
+            // }
+        }
+        // console.log(`Abi not indexed at or before block ${block_num} for ${contract}`);
+        const currentAbi = await rpc.getRawAbi(contract);
+        // console.log('Retrying with the current revision...');
+        if (currentAbi.abi.byteLength > 0) {
+            const abi_hex = Buffer.from(currentAbi.abi).toString('hex');
+            _status = abieos['load_abi_hex'](contract, abi_hex);
         } else {
-            console.log(`Abi not indexed at or before block ${block_num} for ${contract}`);
-            console.log('Retrying with the current revision...');
-            const currentAbi = await rpc.getRawAbi(contract);
-            _status = abieos['load_abi_hex'](contract, Buffer.from(currentAbi.abi).toString('hex'));
-            if (_status) {
-                resultType = abieos['get_type_for_' + field](contract, type);
-                if (resultType === "NOT_FOUND") {
-                    console.log(`⚠️ ⚠️  Current ABI version for ${contract} doesn't contain the ${field} type ${type}`);
-                    _status = false;
-                } else {
-                    console.log(`✅️  ${contract} abi cache updated at block ${block_num}`);
-                    _status = true;
-                }
-            }
+            _status = false;
+        }
+        if (_status === true) {
+            resultType = abieos['get_type_for_' + field](contract, type);
+            _status = resultType !== "NOT_FOUND"
+            // if (resultType === "NOT_FOUND") {
+            //     // console.log(`⚠️ ⚠️  Current ABI version for ${contract} doesn't contain the ${field} type ${type}`);
+            //     _status = false;
+            // } else {
+            //     // console.log(`✅️  ${contract} abi cache updated at block ${block_num}`);
+            //     _status = true;
+            // }
         }
     } else {
         _status = true;
@@ -485,20 +597,32 @@ async function deserializeActionAtBlockNative(_action, block_num) {
                 console.log(result, block_num, _action);
                 break;
             }
+            case 'invalid string size': {
+                console.log(result, _action.data);
+                console.log(_action);
+                break;
+            }
+            case 'read past end': {
+                console.log(result, _action.data);
+                console.log(_action);
+                break;
+            }
             default: {
                 try {
                     return JSON.parse(result);
                 } catch (e) {
-                    console.log(e);
+                    console.log(e.message);
                     console.log('string >>', result);
                 }
             }
         }
     }
-    console.log('native deserialization failed, falling back to eosjs...');
+
     const fallbackResult = await deserializeActionAtBlock(_action, block_num);
-    console.log(_action.account, block_num);
-    console.log(fallbackResult);
+    if (!fallbackResult) {
+        console.log(`action fallback result: ${fallbackResult} @ ${block_num}`);
+        console.log(_action);
+    }
     return fallbackResult;
 }
 
@@ -516,19 +640,32 @@ function extractDeltaStruct(deltas) {
     return deltaStruct;
 }
 
-function pushToDeltaQueue(bufferdata) {
-    const q = index_queue_prefix + "_deltas:" + (delta_emit_idx);
-    preIndexingQueue.push({
-        queue: q,
-        content: bufferdata
-    });
-    delta_emit_idx++;
-    if (delta_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
-        delta_emit_idx = 1;
+async function processDeltaContractRow(row, block_num) {
+    try {
+        const payload = deserializeNative('contract_row', row.data)[1];
+        payload['present'] = row.present;
+        payload['block_num'] = block_num;
+        if (config.features['index_all_deltas'] || (payload.code === EOSIO_ALIAS || payload.table === 'accounts')) {
+            const jsonRow = await processContractRowNative(payload, block_num);
+            if (jsonRow['data']) {
+                const indexableData = await processTableDelta(jsonRow, block_num);
+                if (indexableData) {
+                    if (!config.indexer['disable_indexing'] && config.features['index_deltas']) {
+                        const payload = Buffer.from(JSON.stringify(jsonRow));
+                        pushToDeltaQueue(payload);
+                        temp_delta_counter++;
+                        pushToDeltaStreamingQueue(payload, jsonRow);
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.log(block_num, e);
     }
 }
 
 async function processDeltas(deltas, block_num, block_ts) {
+
     const deltaStruct = extractDeltaStruct(deltas);
 
     // if (Object.keys(deltaStruct).length > 4) {
@@ -580,7 +717,7 @@ async function processDeltas(deltas, block_num, block_ts) {
                     if (process.env['live_mode'] === 'true') {
                         console.log('Abi changed during live mode, updating local version...');
                         const abi_update_status = abieos['load_abi_hex'](account['name'], abiHex);
-                        if (abi_update_status) {
+                        if (!abi_update_status) {
                             console.log(`Reload status: ${abi_update_status}`);
                         }
                     }
@@ -621,67 +758,11 @@ async function processDeltas(deltas, block_num, block_ts) {
 
         // Contract Rows
         if (deltaStruct['contract_row']) {
-            const rows = deltaStruct['contract_row'];
-            for (const row of rows) {
-                try {
-                    const payload = deserializeNative('contract_row', row.data)[1];
-                    payload['present'] = row.present;
-                    payload['block_num'] = block_num;
-                    if (config.features['index_all_deltas'] || (payload.code === EOSIO_ALIAS || payload.table === 'accounts')) {
-                        // const gs = payload['global_sequence'];
-                        const jsonRow = await processContractRowNative(payload, block_num);
-                        if (jsonRow['data']) {
-                            // check for specific deltas to be indexed
-                            const indexableData = await processTableDelta(jsonRow, block_num);
-                            if (indexableData) {
-                                if (!config.indexer['disable_indexing'] && config.features['index_deltas']) {
-                                    const payload = Buffer.from(JSON.stringify(jsonRow));
-                                    pushToDeltaQueue(payload);
-                                    if (allowStreaming && config.features['streaming']['deltas']) {
-                                        ch.publish('', queue_prefix + ':stream', payload, {
-                                            headers: {
-                                                event: 'delta',
-                                                code: jsonRow.code,
-                                                table: jsonRow.table,
-                                                scope: jsonRow.scope,
-                                                payer: jsonRow.payer
-                                            }
-                                        });
-                                    }
-                                    // if (config['experimental']['PATCHED_SHIP']) {
-                                    //     if (!actionDeltaMap[gs]) {
-                                    //         actionDeltaMap[gs] = {
-                                    //             "@timestamp": block_ts,
-                                    //             global_sequence: gs,
-                                    //             block_num: block_num,
-                                    //             code: payload['code'],
-                                    //             delta: [_.omit(jsonRow, ['code'])]
-                                    //         };
-                                    //     } else {
-                                    //         actionDeltaMap[gs].delta.push(_.omit(jsonRow, ['code']));
-                                    //     }
-                                    // } else {
-                                    //     pushToDeltaQueue(payload);
-                                    // }
-
-                                }
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.log(block_num, e);
-                }
+            for (const row of deltaStruct['contract_row']) {
+                await processDeltaContractRow(row, block_num);
             }
-
-            // for (const key of Object.keys(actionDeltaMap)) {
-            //
-            //     console.log(actionDeltaMap[key]);
-            //
-            // }
-
         }
 
-        // TODO: store permission links on a dedicated index
         // if (deltaStruct['permission_link']) {
         //     if (deltaStruct['permission_link'].length > 0) {
         //         for (const permission_link of deltaStruct['permission_link']) {
@@ -783,7 +864,11 @@ async function processDeltas(deltas, block_num, block_ts) {
 }
 
 async function processContractRowNative(row, block) {
+
     const [_status, tableType] = await verifyLocalType(row['code'], row['table'], block, "table");
+
+    let debugFallback;
+
     if (_status) {
         let result;
         if (typeof row.value === 'string') {
@@ -791,64 +876,65 @@ async function processContractRowNative(row, block) {
         } else {
             result = abieos['bin_to_json'](row['code'], tableType, row.value);
         }
-        if (result !== 'PARSING_ERROR') {
-            try {
-                row['data'] = JSON.parse(result);
-                delete row.value;
-                return row;
-            } catch (e) {
-                console.log(`JSON Parse error: ${e.message} | string: "${result}"`);
-                console.log('------------- contract row ----------------');
+        switch (result) {
+            case "Extra data": {
+                console.log(`Extra data on row with type "${tableType}"`);
                 console.log(row);
-                console.log('-------------------------------------------')
+                debugFallback = true;
+                break;
             }
-        } else {
-            console.log(result, block, row);
-            // write error to CSV
-            process.send({
-                event: 'ds_error',
-                data: {
-                    type: 'delta_ds_error',
-                    block: block,
-                    code: row['code'],
-                    table: row['table'],
-                    message: result
+            case 'PARSING_ERROR': {
+                console.log(`Row parsing error`);
+                break;
+            }
+            default: {
+                try {
+                    row['data'] = JSON.parse(result);
+                    delete row.value;
+                    return row;
+                } catch (e) {
+                    console.log(`JSON Parse error: ${e.message} | string: "${result}"`);
+                    console.log('------------- contract row ----------------');
+                    console.log(row);
+                    console.log('-------------------------------------------')
                 }
-            });
-            return row;
+            }
         }
     }
-    console.log('fallback');
+
     const fallbackResult = await processContractRow(row, block);
-    console.log(fallbackResult);
+    if (debugFallback) {
+        console.log('delta fallback', fallbackResult);
+    }
     return fallbackResult;
 }
 
 async function processContractRow(row, block) {
-    const row_sb = createSerialBuffer(row['value']);
+    const row_sb = createSerialBuffer(Serialize.hexToUint8Array(row['value']));
     const tableType = await getTableType(row['code'], row['table'], block);
+    let error;
     if (tableType) {
         try {
             row['data'] = tableType.deserialize(row_sb);
             delete row.value;
             return row;
         } catch (e) {
-            // write error to CSV
-            process.send({
-                event: 'ds_error',
-                data: {
-                    type: 'delta_ds_error',
-                    block: block,
-                    code: row['code'],
-                    table: row['table'],
-                    message: e.message
-                }
-            });
-            return row;
+            error = e.message;
         }
-    } else {
-        return row;
     }
+
+    process.send({
+        event: 'ds_error',
+        data: {
+            type: 'delta_ds_error',
+            block: block,
+            code: row['code'],
+            table: row['table'],
+            message: error
+        }
+    });
+
+    return row;
 }
 
 async function getTableType(code, table, block) {
@@ -868,10 +954,28 @@ async function getTableType(code, table, block) {
         }
     }
     if (this_table) {
-        type = this_table.type
+        type = this_table.type;
     } else {
         // console.error(`Could not find table "${table}" in the abi for ${code} at block ${block}`);
-        return;
+        // retry with the current abi
+        const currentABI = await getAbiFromHeadBlock(code);
+        if (!currentABI) {
+            return;
+        }
+        abi_tables = currentABI.abi.tables;
+        for (let t of abi_tables) {
+            if (t.name === table) {
+                this_table = t;
+                break;
+            }
+        }
+        if (this_table) {
+            type = this_table.type;
+            const initialTypes = Serialize.createInitialTypes();
+            contract.types = Serialize.getTypesFromAbi(initialTypes, currentABI.abi);
+        } else {
+            return;
+        }
     }
     let cType = contract.types.get(type);
     if (!cType) {
@@ -1136,7 +1240,9 @@ async function processTableDelta(data) {
         }
         if (!handled && config.features['index_all_deltas']) {
             allowIndex = true;
-        } else allowIndex = handled;
+        } else {
+            allowIndex = handled;
+        }
         return allowIndex;
     }
 }
@@ -1160,12 +1266,24 @@ function createSerialBuffer(inputArray) {
 // }
 
 async function getAbiFromHeadBlock(code) {
-    return {abi: await api.getAbi(code), valid_until: null, valid_from: null};
+    let _abi;
+    try {
+        _abi = (await rpc.get_abi(code)).abi;
+    } catch (e) {
+        console.log(e);
+    }
+    return {abi: _abi, valid_until: null, valid_from: null};
 }
 
-async function fetchAbiHexAtBlockElastic(contract_name, last_block) {
+async function fetchAbiHexAtBlockElastic(contract_name, last_block, get_json) {
     try {
-        const t_start = process.hrtime.bigint();
+        const _includes = ["actions", "tables"];
+        if (get_json) {
+            _includes.push("abi");
+        } else {
+            _includes.push("abi_hex");
+        }
+        // const t_start = process.hrtime.bigint();
         const queryResult = await client.search({
             index: `${queue_prefix}-abi-*`,
             body: {
@@ -1179,13 +1297,14 @@ async function fetchAbiHexAtBlockElastic(contract_name, last_block) {
                     }
                 },
                 sort: [{block: {order: "desc"}}],
-                _source: {includes: ["abi_hex", "actions", "tables"]}
+                _source: {includes: _includes}
             }
         });
-        const t_end = process.hrtime.bigint();
+        // const t_end = process.hrtime.bigint();
         const results = queryResult.body.hits.hits;
+        // const duration = (Number(t_end - t_start) / 1000 / 1000).toFixed(2);
         if (results.length > 0) {
-            console.log(`fetch abi from elastic took: ${t_end - t_start} ns | hex size: ${results[0]._source.abi_hex.length}`);
+            // console.log(`fetch abi from elastic took: ${duration} ms`);
             return results[0]._source;
         } else {
             return null;
@@ -1212,10 +1331,10 @@ async function getAbiAtBlock(code, block_num) {
             }
 
             // fetch from redis
-            const t_start = process.hrtime.bigint();
+            // const t_start = process.hrtime.bigint();
             const cachedAbiAtBlock = await getAsync(config.settings.chain + ":" + lastblock + ":" + code);
-            const t_end = process.hrtime.bigint();
-            console.log(`fetch abi from redis took: ${t_end - t_start} ns`);
+            // const t_end = process.hrtime.bigint();
+            // console.log(`fetch abi from redis took: ${t_end - t_start} ns`);
 
             let abi;
             if (!cachedAbiAtBlock) {
@@ -1330,10 +1449,35 @@ function onIpcMessage(msg) {
             allowStreaming = true;
             break;
         }
+        case 'new_range': {
+            break;
+        }
+        default: {
+            console.log('-----------> IPC Message <--------------');
+            console.log(msg);
+            console.log('----------------------------------------');
+        }
     }
 }
 
 async function run() {
+
+    // Check for attached debbuger
+    if (/--inspect/.test(process.execArgv.join(' '))) {
+        const inspector = require('inspector');
+        console.log('DEBUGGER', process.env['queue'], inspector.url());
+    }
+
+    // Monitor DS Counter
+    setInterval(() => {
+        process.send({
+            event: 'ds_report',
+            actions: temp_ds_counter,
+            deltas: temp_delta_counter
+        });
+        temp_ds_counter = 0;
+        temp_delta_counter = 0;
+    }, 1000);
 
     // setInterval(() => {
     //     debugLog(` ${process.env.worker_id} - Contract Map Count: ${contracts.size}`);
@@ -1357,6 +1501,7 @@ async function run() {
         textEncoder: txEnc,
     });
 
+    // Init ES Client
     client = manager.elasticsearchClient;
 
     // Connect to RabbitMQ (amqplib)
@@ -1366,8 +1511,13 @@ async function run() {
         initConsumer();
     });
 
+    // Init Queues
     assertQueues();
-    process.on('message', onIpcMessage);
+
+    // Handle IPC Messages
+    process.on("message", (msg) => {
+        onIpcMessage(msg);
+    });
 }
 
 module.exports = {run};

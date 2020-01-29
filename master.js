@@ -630,17 +630,24 @@ async function main() {
     let liveConsumedBlocks = 0;
     let indexedObjects = 0;
     let deserializedActions = 0;
+    let deserializedDeltas = 0;
     let lastProcessedBlockNum = 0;
     let total_read = 0;
     let total_blocks = 0;
     let total_indexed_blocks = 0;
     let total_actions = 0;
+    let total_deltas = 0;
+
+    const reference_time = Date.now();
+    let range_completed = false;
+
     setInterval(() => {
         const _workers = Object.keys(cluster.workers).length;
         const tScale = (log_interval / 1000);
         total_read += pushedBlocks;
         total_blocks += consumedBlocks;
         total_actions += deserializedActions;
+        total_deltas += deserializedDeltas;
         total_indexed_blocks += indexedObjects;
         const consume_rate = consumedBlocks / tScale;
         consume_rates.push(consume_rate);
@@ -661,7 +668,7 @@ async function main() {
         log_msg.push(`W:${_workers}`);
         log_msg.push(`R:${(pushedBlocks + livePushedBlocks) / tScale} b/s`);
         log_msg.push(`C:${(liveConsumedBlocks + consumedBlocks) / tScale} b/s`);
-        log_msg.push(`D:${deserializedActions / tScale} a/s`);
+        log_msg.push(`D:${(deserializedActions + deserializedDeltas) / tScale} a/s`);
         log_msg.push(`I:${indexedObjects / tScale} d/s`);
 
         if (total_blocks < total_range && !config.indexer['live_only_mode']) {
@@ -674,6 +681,19 @@ async function main() {
             const pct_read = ((total_read / total_range) * 100).toFixed(1);
             log_msg.push(`${total_blocks}/${total_read}/${total_range}`);
             log_msg.push(`syncs ${time_string} (${pct_parsed}% ${pct_read}%)`);
+        }
+
+        // Report completed range (parallel reading)
+        if (total_blocks === total_range && !range_completed) {
+            console.log(`-------- BLOCK RANGE COMPLETED -------------`);
+            console.log(`Range: ${starting_block} >> ${head}`);
+            const ttime = (Date.now() - reference_time) / 1000;
+            console.log(`Total time: ${ttime} seconds`);
+            console.log(`Blocks: ${total_range}`);
+            console.log(`Actions: ${total_actions}`);
+            console.log(`Deltas: ${total_deltas}`);
+            console.log('--------------------------------------------');
+            range_completed = true;
         }
 
         // print monitoring log
@@ -716,6 +736,7 @@ async function main() {
         consumedBlocks = 0;
         liveConsumedBlocks = 0;
         deserializedActions = 0;
+        deserializedDeltas = 0;
         indexedObjects = 0;
 
         if (_workers === 0) {
@@ -725,14 +746,39 @@ async function main() {
 
     }, log_interval);
 
+    cluster.on('disconnect', (worker) => {
+        console.log(`The worker #${worker.id} has disconnected`);
+    });
+
     // Launch all workers
     workerMap.forEach((conf) => {
         conf['wref'] = cluster.fork(conf);
     });
 
+
+    let totalMessages = 0;
+    setInterval(() => {
+        console.log(`IPC Messaging Rate: ${(totalMessages / 10).toFixed(2)} msg/s`);
+        totalMessages = 0;
+    }, 10000);
+
     // Worker event listener
     const workerHandler = (msg) => {
+        totalMessages++;
         switch (msg.event) {
+            case 'consumed_block': {
+                if (msg.live === 'false') {
+                    consumedBlocks++;
+                    // console.log(`[RECEIVED] consumed_block ${msg.block_num}`);
+                    if (msg.block_num > lastProcessedBlockNum) {
+                        lastProcessedBlockNum = msg.block_num;
+                    }
+                } else {
+                    liveConsumedBlocks++;
+                    onLiveBlock(msg);
+                }
+                break;
+            }
             case 'init_abi': {
                 if (!cachedInitABI) {
                     cachedInitABI = msg.data;
@@ -814,8 +860,9 @@ async function main() {
                 indexedObjects += msg.size;
                 break;
             }
-            case 'ds_action': {
-                deserializedActions++;
+            case 'ds_report': {
+                deserializedActions += msg.actions;
+                deserializedDeltas += msg.deltas;
                 break;
             }
             case 'ds_error': {
@@ -833,24 +880,23 @@ async function main() {
                 }
                 break;
             }
-            case 'consumed_block': {
-                if (msg.live === 'false') {
-                    consumedBlocks++;
-                    if (msg.block_num > lastProcessedBlockNum) {
-                        lastProcessedBlockNum = msg.block_num;
-                    }
-                } else {
-                    liveConsumedBlocks++;
-                    onLiveBlock(msg);
-                }
-                break;
-            }
             case 'new_schedule': {
                 onScheduleUpdate(msg);
                 break;
             }
             default: {
-                // console.log(msg);
+                if (msg.type) {
+                    if (msg.type === 'axm:monitor') {
+                        if (process.env['AXM_DEBUG'] === 'true') {
+                            console.log(`----------- axm:monitor ------------`);
+                            for (const key in msg.data) {
+                                if (msg.data.hasOwnProperty(key)) {
+                                    console.log(`${key}: ${msg.data[key].value}`);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     };

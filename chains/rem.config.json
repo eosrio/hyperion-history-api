@@ -20,11 +20,11 @@
     "ad_idx_queues": 1
   },
   "indexer": {
-    "start_on": 0,
+    "start_on": 4000000,
     "stop_on": 0,
-    "rewrite": false,
-    "purge_queues": false,
-    "live_reader": false,
+    "rewrite": true,
+    "purge_queues": true,
+    "live_reader": true,
     "live_only_mode": false,
     "abi_scan_mode": false,
     "fetch_block": true,

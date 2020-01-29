@@ -5,6 +5,8 @@ const {TextEncoder, TextDecoder} = require('util');
 const txDec = new TextDecoder();
 const txEnc = new TextEncoder();
 
+const {Serialize} = require('eosjs');
+
 const config = require(`../../${process.env.CONFIG_JSON}`);
 const chain = config.settings.chain;
 
@@ -39,20 +41,24 @@ module.exports = {
 
         const {trx_id, block_num, producer, cpu_usage_us, net_usage_words} = trx_data;
         const original_act = Object.assign({}, act);
-        let ds_act;
+
+        let ds_act, error_message;
+
         try {
-
             ds_act = await common.deserializeActionAtBlockNative(act, block_num);
-            action['act']['data'] = ds_act;
-            common.attachActionExtras(action);
-
-            // report deserialization event
-            process.send({
-                event: 'ds_action'
-            });
         } catch (e) {
             console.log(e);
-            // write error to CSV
+            error_message = e.message;
+        }
+
+        if (ds_act) {
+            action['act']['data'] = ds_act;
+            common.attachActionExtras(action);
+        } else {
+            action['act'] = original_act;
+            if (typeof action['act']['data'] !== 'string') {
+                action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
+            }
             process.send({
                 event: 'ds_error',
                 data: {
@@ -61,17 +67,16 @@ module.exports = {
                     account: act.account,
                     action: act.name,
                     gs: parseInt(action['receipt'][1]['global_sequence'], 10),
-                    message: e.message
+                    message: error_message
                 }
             });
-            action['act'] = original_act;
-            action['act']['data'] = Buffer.from(action['act']['data']).toString('hex');
         }
 
         action['@timestamp'] = ts;
         action['block_num'] = block_num;
         action['producer'] = producer;
         action['trx_id'] = trx_id;
+
         if (action['account_ram_deltas'].length === 0) {
             delete action['account_ram_deltas'];
         }
@@ -101,42 +106,37 @@ module.exports = {
     },
     messageParser: async (common, messages, types, ch, ch_ready) => {
         for (const message of messages) {
-            const ds_msg = common.deserializeNative('result', message.content);
+            const ds_msg = common.deserializeNative('result', message.content, false);
             const res = ds_msg[1];
             let block, traces = [], deltas = [];
-
             if (res.block && res.block.length) {
                 // block = deserialize('signed_block', res.block, txEnc, txDec, types);
                 // console.log( new Uint8Array(Buffer.from(res.block)));
-                block = common.deserializeNative('signed_block', res.block);
+                block = common.deserializeNative('signed_block', res.block, false);
                 if (block === null) {
                     console.log(res);
                 }
             }
-
             if (res['traces'] && res['traces'].length) {
                 // traces = deserialize('transaction_trace[]', res['traces'], txEnc, txDec, types);
                 try {
-                    traces = common.deserializeNative('transaction_trace[]', res['traces']);
+                    traces = common.deserializeNative(
+                        'transaction_trace[]',
+                        res['traces'],
+                        res['traces'].length > 2000000
+                    );
                 } catch (e) {
                     console.log(e);
                     console.log(res);
                 }
             }
-
             if (res['deltas'] && res['deltas'].length) {
                 // deltas = deserialize('table_delta[]', res['deltas'], txEnc, txDec, types);
-                deltas = common.deserializeNative('table_delta[]', res['deltas']);
+                deltas = common.deserializeNative('table_delta[]', res['deltas'], false);
             }
-
             let result;
             try {
-                const t0 = Date.now();
                 result = await common.processBlock(res, block, traces, deltas);
-                const elapsedTime = Date.now() - t0;
-                if (elapsedTime > 10) {
-                    debugLog(`[WARNING] Deserialization time for block ${result['block_num']} was too high, time elapsed ${elapsedTime}ms`);
-                }
                 if (result) {
                     const evPayload = {
                         event: 'consumed_block',

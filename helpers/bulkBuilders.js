@@ -44,7 +44,7 @@ function buildDeltaBulk(payloads, messageMap) {
 }
 
 function buildTableProposalsBulk(payloads, messageMap) {
-    return _(payloads)['map'](payload => {
+    return _(payloads).map(payload => {
         const body = JSON.parse(payload.content);
         const id = `${body.proposer}-${body.proposal_name}-${body.primary_key}`;
         messageMap.set(id, _.omit(payload, ['content']));
@@ -53,7 +53,7 @@ function buildTableProposalsBulk(payloads, messageMap) {
 }
 
 function buildTableAccountsBulk(payloads, messageMap) {
-    return _(payloads)['map'](payload => {
+    return _(payloads).map(payload => {
         const body = JSON.parse(payload.content);
         const id = `${body.code}-${body.scope}-${body.primary_key}`;
         messageMap.set(id, _.omit(payload, ['content']));

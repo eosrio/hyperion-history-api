@@ -12,9 +12,16 @@ let ch_ready = false;
 const indexingPrefecthCount = config.prefetch.index;
 const indexQueue = async.cargo(async.ensureAsync(router), indexingPrefecthCount);
 
+let temp_indexed_count = 0;
+
 function router(payload, callback) {
     if (ch_ready && payload) {
-        routes[process.env.type](payload, ch, callback);
+        routes[process.env.type](payload, ch, (indexed_size) => {
+            if (indexed_size) {
+                temp_indexed_count += indexed_size;
+            }
+            callback();
+        });
     }
 }
 
@@ -51,13 +58,18 @@ async function run() {
 
     assertQueues();
 
-    const _debug = typeof v8debug === 'object'
-        || /--debug|--inspect/.test(process.execArgv.join(' '));
-
-    if (_debug) {
+    // Check for attached debbuger
+    if (/--inspect/.test(process.execArgv.join(' '))) {
         const inspector = require('inspector');
-        console.log(process.env['queue'], inspector.url());
+        console.log('DEBUGGER', process.env['queue'], inspector.url());
     }
+
+    setInterval(() => {
+        if (temp_indexed_count > 0) {
+            process.send({event: 'add_index', size: temp_indexed_count});
+        }
+        temp_indexed_count = 0;
+    }, 1000);
 
     pm2io.action('stop', (reply) => {
         ch.close();

@@ -7,6 +7,7 @@ const {
     buildTableProposalsBulk,
     buildTableVotersBulk
 } = require("./bulkBuilders");
+
 const config = require(`../${process.env.CONFIG_JSON}`);
 const chain = config.settings.chain;
 const prettyjson = require('prettyjson');
@@ -84,13 +85,12 @@ function ackOrNack(resp, messageMap, channel) {
 }
 
 function onResponse(resp, messageMap, callback, payloads, channel) {
-    process.send({event: 'add_index', size: payloads.length});
     if (resp.errors) {
         ackOrNack(resp, messageMap, channel);
     } else {
         channel.ackAll();
     }
-    callback();
+    callback(messageMap.size);
 }
 
 function onError(err, channel, callback) {
