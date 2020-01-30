@@ -70,4 +70,4 @@ api_error.log
 explorer
 api/explorer
 .ecosystem.config.js.swp
-chains/*.json
+chains
