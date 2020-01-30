@@ -584,7 +584,20 @@ async function verifyLocalType(contract, type, block_num, field) {
     return [_status, resultType];
 }
 
+let contractUsage = {};
+let totalHits = 0;
+
+function recordContractUsage(code) {
+    totalHits++;
+    if (contractUsage[code]) {
+        contractUsage[code]++;
+    } else {
+        contractUsage[code] = 1;
+    }
+}
+
 async function deserializeActionAtBlockNative(_action, block_num) {
+    recordContractUsage(_action.account);
     const [_status, actionType] = await verifyLocalType(_action.account, _action.name, block_num, "action");
     if (_status) {
         const result = abieos['bin_to_json'](_action.account, actionType, Buffer.from(_action.data, 'hex'));
@@ -1477,6 +1490,17 @@ async function run() {
         });
         temp_ds_counter = 0;
         temp_delta_counter = 0;
+    }, 1000);
+
+    // Monitor Contract Usage
+    setInterval(() => {
+        process.send({
+            event: 'contract_usage_report',
+            data: contractUsage,
+            total_hits: totalHits
+        });
+        contractUsage = {};
+        totalHits = 0;
     }, 1000);
 
     // setInterval(() => {

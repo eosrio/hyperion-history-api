@@ -38,6 +38,10 @@ const missedRounds = {};
 let dsErrorStream;
 let abiCacheMap;
 
+const dsPoolMap = new Map();
+let globalUsageMap = {};
+let totalContractHits = 0;
+
 async function getCurrentSchedule() {
     currentSchedule = await rpc.get_producer_schedule();
 }
@@ -255,6 +259,73 @@ function onScheduleUpdate(msg) {
         console.log(`Producer schedule updated at block ${msg.block_num}`);
         currentSchedule.active.producers = msg.new_producers.producers
     }
+}
+
+function updateWorkerAssignments() {
+    const worker_max_pct = 1 / scaling['ds_pool_size'];
+    const worker_shares = {};
+    for (let i = 0; i < scaling['ds_pool_size']; i++) {
+        worker_shares[i] = 0.0;
+    }
+    for (const code in globalUsageMap) {
+        if (globalUsageMap.hasOwnProperty(code)) {
+            const _pct = globalUsageMap[code][0] / totalContractHits;
+            let used_pct = 0;
+            const proposedWorkers = [];
+            for (let i = 0; i < scaling['ds_pool_size']; i++) {
+                if (worker_shares[i] < worker_max_pct) {
+                    const rem_pct = (_pct - used_pct);
+                    if (rem_pct === 0) {
+                        break;
+                    }
+                    if (rem_pct > worker_max_pct) {
+                        used_pct += (worker_max_pct - worker_shares[i]);
+                        worker_shares[i] = worker_max_pct;
+                    } else {
+                        if (worker_shares[i] + rem_pct > worker_max_pct) {
+                            used_pct += (worker_max_pct - worker_shares[i]);
+                            worker_shares[i] = worker_max_pct;
+                        } else {
+                            used_pct += rem_pct;
+                            worker_shares[i] += rem_pct;
+                        }
+                    }
+                    proposedWorkers.push(i);
+                }
+            }
+            globalUsageMap[code][1] = _pct;
+            if (JSON.stringify(globalUsageMap[code][2]) !== JSON.stringify(proposedWorkers)) {
+
+                console.log(globalUsageMap[code][2], ">>", proposedWorkers);
+
+                proposedWorkers.forEach(w => {
+                    const idx = globalUsageMap[code][2].indexOf(w);
+                    if (idx === -1) {
+                        console.log(`Worker ${w} assigned to ${code}`);
+                    } else {
+                        globalUsageMap[code][2].splice(idx, 1);
+                    }
+                });
+
+                globalUsageMap[code][2].forEach(w_id => {
+                    console.log(`>>>> Worker ${globalUsageMap[code][2]} removed from ${code}!`);
+                    if (dsPoolMap.has(w_id)) {
+                        dsPoolMap.get(w_id).send({
+                            event: "remove_contract",
+                            contract: code
+                        });
+                    }
+                });
+
+                globalUsageMap[code][2] = proposedWorkers;
+            }
+        }
+    }
+}
+
+function clearUsageMap() {
+    globalUsageMap = {};
+    totalContractHits = 0;
 }
 
 async function main() {
@@ -610,6 +681,17 @@ async function main() {
         }
     }
 
+    // Setup deserialization pool
+    for (let i = 0; i < scaling['ds_pool_size']; i++) {
+        worker_index++;
+        workerMap.push({
+            worker_id: worker_index,
+            worker_role: 'ds_pool_worker',
+            local_id: i
+        });
+    }
+
+
     // Quit App if on preview mode
     if (preview) {
         printWorkerMap(workerMap);
@@ -753,8 +835,10 @@ async function main() {
     // Launch all workers
     workerMap.forEach((conf) => {
         conf['wref'] = cluster.fork(conf);
+        if (conf.worker_role === 'ds_pool_worker') {
+            dsPoolMap.set(conf.local_id, conf['wref']);
+        }
     });
-
 
     let totalMessages = 0;
     setInterval(() => {
@@ -884,6 +968,25 @@ async function main() {
                 onScheduleUpdate(msg);
                 break;
             }
+            case 'ds_ready': {
+                console.log(msg);
+                break;
+            }
+            case 'contract_usage_report': {
+                if (msg.data) {
+                    totalContractHits += msg.total_hits;
+                    for (const contract in msg.data) {
+                        if (msg.data.hasOwnProperty(contract)) {
+                            if (globalUsageMap[contract]) {
+                                globalUsageMap[contract][0] += msg.data[contract];
+                            } else {
+                                globalUsageMap[contract] = [msg.data[contract], 0, []];
+                            }
+                        }
+                    }
+                }
+                break;
+            }
             default: {
                 if (msg.type) {
                     if (msg.type === 'axm:monitor') {
@@ -951,6 +1054,18 @@ async function main() {
             }
         }, 1000);
     }
+
+    // Monitor Global Contract Usage
+    setInterval(() => {
+        const t0 = process.hrtime.bigint();
+        updateWorkerAssignments();
+        const t1 = process.hrtime.bigint();
+        console.log('----------- Usage Report ----------');
+        console.log(`Total Hits: ${totalContractHits}`);
+        console.log(`Update time: ${parseInt((t1 - t0).toString()) / 1000000} ms`);
+        console.log(globalUsageMap);
+        // clearUsageMap();
+    }, 2000);
 
     // Attach stop handler
     pm2io.action('stop', (reply) => {

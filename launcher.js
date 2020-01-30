@@ -18,6 +18,10 @@ const chain = config.settings.chain;
         }
         setTimeout(() => {
             switch (process.env['worker_role']) {
+                case 'ds_pool_worker': {
+                    require('./workers/ds_pool.worker').run().catch(onError);
+                    break;
+                }
                 case 'reader': {
                     require('./workers/state-reader.worker').run().catch(onError);
                     break;

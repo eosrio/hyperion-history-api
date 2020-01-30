@@ -305,6 +305,10 @@ function checkFilter(filter, _source) {
     }
 }
 
+function checkDebugger() {
+
+}
+
 module.exports = {
     checkFilter,
     getNested,
@@ -321,5 +325,6 @@ module.exports = {
     getLastIndexedBlockByDeltaFromRange,
     getLastIndexedBlockByDelta,
     getLastIndexedABI,
-    onSaveAbi
+    onSaveAbi,
+    checkDebugger
 };
