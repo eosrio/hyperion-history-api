@@ -29,7 +29,7 @@ let ch, api, types, client, cch, rpc, abi;
 let ch_ready = false;
 let tables = new Map();
 let chainID = null;
-let act_emit_idx = 1;
+
 let delta_emit_idx = 1;
 let block_emit_idx = 1;
 
@@ -43,6 +43,7 @@ let cachedMap;
 
 let contracts = new Map();
 let contractHitMap = new Map();
+let dsPoolMap = {};
 
 const queue_prefix = config.settings.chain;
 const queue = queue_prefix + ':blocks';
@@ -65,7 +66,6 @@ const mLoader = new HyperionModuleLoader(config.settings.parser);
 const common = {
     attachActionExtras,
     processBlock,
-    deserializeActionAtBlockNative,
     deserializeNative
 };
 
@@ -119,19 +119,6 @@ async function processMessages(messages) {
     await mLoader.messageParser(common, messages, types, ch, ch_ready);
 }
 
-// let tempDSCount = BigInt(0);
-// let totalDSTime = BigInt(0);
-// setInterval(() => {
-//     if (tempDSCount > 1000) {
-//         const avg_ds_time = totalDSTime / tempDSCount;
-//         console.log(`AVG DS Time: ${avg_ds_time} ns | Speed: ${BigInt(1000000000) / avg_ds_time} actions/s`);
-//     }
-//     if (tempDSCount > 100000) {
-//         tempDSCount = BigInt(0);
-//         totalDSTime = BigInt(0);
-//     }
-// }, 1000);
-
 function pushToBlocksQueue(light_block) {
     if (!config.indexer['disable_indexing']) {
         const data = Buffer.from(JSON.stringify(light_block));
@@ -146,39 +133,6 @@ function pushToBlocksQueue(light_block) {
         }
     }
     local_block_count++;
-}
-
-function pushToActionsQueue(payload) {
-    if (!config.indexer['disable_indexing']) {
-        const q = index_queue_prefix + "_actions:" + (act_emit_idx);
-        preIndexingQueue.push({
-            queue: q,
-            content: payload
-        });
-        act_emit_idx++;
-        if (act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
-            act_emit_idx = 1;
-        }
-    }
-}
-
-function pushToActionStreamingQueue(payload, uniqueAction) {
-    if (allowStreaming && config.features['streaming'].traces) {
-        const notifArray = new Set();
-        uniqueAction.act.authorization.forEach(auth => {
-            notifArray.add(auth.actor);
-        });
-        uniqueAction.notified.forEach(acc => {
-            notifArray.add(acc);
-        });
-        const headers = {
-            event: 'trace',
-            account: uniqueAction['act']['account'],
-            name: uniqueAction['act']['name'],
-            notified: [...notifArray].join(",")
-        };
-        ch.publish('', queue_prefix + ':stream', payload, {headers});
-    }
 }
 
 function pushToDeltaQueue(bufferdata) {
@@ -209,6 +163,54 @@ function pushToDeltaStreamingQueue(payload, jsonRow) {
 
 let temp_ds_counter = 0;
 let temp_delta_counter = 0;
+
+const ds_pool_counters = {};
+
+function routeToPool(trace, headers) {
+    const first_action = trace['action_traces'][0][1];
+    const _code = first_action.act.account;
+    const _name = first_action.act.name;
+    if (_code === EOSIO_ALIAS && _name === 'onblock') {
+        return false;
+    }
+
+    let selected_q = 0;
+    if (dsPoolMap[_code]) {
+        const workers = dsPoolMap[_code][2];
+        for (const w of workers) {
+            if (!ds_pool_counters[_code]) {
+                selected_q = w;
+                ds_pool_counters[_code] = w;
+                break;
+            } else {
+                if (ds_pool_counters[_code] === workers[workers.length - 1]) {
+                    ds_pool_counters[_code] = workers[0];
+                    selected_q = w;
+                    ds_pool_counters[_code] = w;
+                    break;
+                } else {
+                    if (ds_pool_counters[_code] === w) {
+                        continue;
+                    }
+                    if (w > ds_pool_counters[_code]) {
+                        selected_q = w;
+                        ds_pool_counters[_code] = w;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    const pool_queue = `${queue_prefix}:ds_pool:${selected_q}`;
+
+    if (ch_ready) {
+        ch.sendToQueue(pool_queue, Buffer.from(JSON.stringify(trace)), {headers});
+        return true;
+    } else {
+        return false;
+    }
+}
 
 // Stage 2 - Block handler
 async function processBlock(res, block, traces, deltas) {
@@ -283,106 +285,8 @@ async function processBlock(res, block, traces, deltas) {
             const t2 = Date.now();
             for (const trace of _traces) {
                 const transaction_trace = trace[1];
-                const {cpu_usage_us, net_usage_words} = transaction_trace;
-                if (transaction_trace.status === 0) {
-                    let action_count = 0;
-                    const trx_id = transaction_trace['id'].toLowerCase();
-                    const _actDataArray = [];
-                    const _processedTraces = [];
-                    const action_traces = transaction_trace['action_traces'];
-                    const t3 = Date.now();
-
-                    // if (action_traces.length < 50) {
-                    // console.log(action_traces.length);
-
-                    for (const action_trace of action_traces) {
-                        if (action_trace[0] === 'action_trace_v0') {
-                            const action = action_trace[1];
-                            const trx_data = {trx_id, block_num, producer, cpu_usage_us, net_usage_words};
-
-                            // const start = process.hrtime.bigint();
-                            const ds_status = await mLoader.actionParser(common, ts, action, trx_data, _actDataArray, _processedTraces, transaction_trace);
-
-                            if (ds_status) {
-                                temp_ds_counter++;
-                                action_count++;
-                            }
-
-                            // const end = process.hrtime.bigint();
-                            // totalDSTime += (end - start);
-                            // tempDSCount++;
-                        }
-                    }
-
-                    // }
-
-                    const _finalTraces = [];
-                    if (_processedTraces.length > 1) {
-                        const act_digests = {};
-
-                        // collect digests & receipts
-                        for (const _trace of _processedTraces) {
-                            if (act_digests[_trace.receipt.act_digest]) {
-                                act_digests[_trace.receipt.act_digest].push(_trace.receipt);
-                            } else {
-                                act_digests[_trace.receipt.act_digest] = [_trace.receipt];
-                            }
-                        }
-
-                        // Apply notified accounts to first trace instance
-                        for (const _trace of _processedTraces) {
-                            if (act_digests[_trace.receipt.act_digest]) {
-                                const notifiedSet = new Set();
-                                _trace['receipts'] = [];
-                                for (const _receipt of act_digests[_trace.receipt.act_digest]) {
-                                    notifiedSet.add(_receipt.receiver);
-                                    _trace['code_sequence'] = _receipt['code_sequence'];
-                                    delete _receipt['code_sequence'];
-                                    _trace['abi_sequence'] = _receipt['abi_sequence'];
-                                    delete _receipt['abi_sequence'];
-                                    delete _receipt['act_digest'];
-                                    _trace['receipts'].push(_receipt);
-                                }
-                                _trace['notified'] = [...notifiedSet];
-                                delete act_digests[_trace.receipt.act_digest];
-                                delete _trace['receipt'];
-                                delete _trace['receiver'];
-                                _finalTraces.push(_trace);
-                            }
-                        }
-
-                    } else if (_processedTraces.length === 1) {
-                        // single action on trx
-                        const _trace = _processedTraces[0];
-                        _trace['code_sequence'] = _trace['receipt'].code_sequence;
-                        _trace['abi_sequence'] = _trace['receipt'].abi_sequence;
-                        _trace['act_digest'] = _trace['receipt'].act_digest;
-                        _trace['notified'] = [_trace['receipt'].receiver];
-                        delete _trace['receipt']['code_sequence'];
-                        delete _trace['receipt']['abi_sequence'];
-                        delete _trace['receipt']['act_digest'];
-                        _trace['receipts'] = [_trace['receipt']];
-                        delete _trace['receipt'];
-                        _finalTraces.push(_trace);
-                    }
-
-                    // Submit Actions after deduplication
-                    // console.log(_finalTraces.length);
-                    for (const uniqueAction of _finalTraces) {
-
-                        const payload = Buffer.from(JSON.stringify(uniqueAction));
-
-                        pushToActionsQueue(payload);
-
-                        pushToActionStreamingQueue(payload, uniqueAction);
-                    }
-
-                    const act_elapsed_time = Date.now() - t3;
-                    if (act_elapsed_time > 100) {
-                        debugLog(`[WARNING] Actions processing took ${act_elapsed_time}ms on trx ${trx_id}`);
-                        // console.log(action_traces);
-                    }
-                }
+                // route trx trace to pool based on first action
+                routeToPool(transaction_trace, {block_num, producer, ts});
             }
             const traces_elapsed_time = Date.now() - t2;
             if (traces_elapsed_time > 10) {
@@ -394,7 +298,6 @@ async function processBlock(res, block, traces, deltas) {
         if (config.indexer.fetch_block) {
             pushToBlocksQueue(light_block);
         }
-
         return {block_num: res['this_block']['block_num'], size: traces.length};
     }
 }
@@ -503,32 +406,6 @@ async function getContractAtBlock(accountName, block_num, check_action) {
     return [result, abi];
 }
 
-async function deserializeActionAtBlock(action, block_num) {
-    const contract = await getContractAtBlock(action.account, block_num, action.name);
-    if (contract) {
-        if (contract[0].actions.has(action.name)) {
-            try {
-                return Serialize.deserializeAction(
-                    contract[0],
-                    action.account,
-                    action.name,
-                    action.authorization,
-                    action.data,
-                    txEnc,
-                    txDec
-                );
-            } catch (e) {
-                console.log(e);
-                return null;
-            }
-        } else {
-            return null;
-        }
-    } else {
-        return null;
-    }
-}
-
 async function verifyLocalType(contract, type, block_num, field) {
     let _status;
     let resultType = abieos['get_type_for_' + field](contract, type);
@@ -586,58 +463,6 @@ async function verifyLocalType(contract, type, block_num, field) {
 
 let contractUsage = {};
 let totalHits = 0;
-
-function recordContractUsage(code) {
-    totalHits++;
-    if (contractUsage[code]) {
-        contractUsage[code]++;
-    } else {
-        contractUsage[code] = 1;
-    }
-}
-
-async function deserializeActionAtBlockNative(_action, block_num) {
-    recordContractUsage(_action.account);
-    const [_status, actionType] = await verifyLocalType(_action.account, _action.name, block_num, "action");
-    if (_status) {
-        const result = abieos['bin_to_json'](_action.account, actionType, Buffer.from(_action.data, 'hex'));
-        switch (result) {
-            case 'PARSING_ERROR': {
-                console.log(result, block_num, _action);
-                break;
-            }
-            case 'NOT_FOUND': {
-                console.log(result, block_num, _action);
-                break;
-            }
-            case 'invalid string size': {
-                console.log(result, _action.data);
-                console.log(_action);
-                break;
-            }
-            case 'read past end': {
-                console.log(result, _action.data);
-                console.log(_action);
-                break;
-            }
-            default: {
-                try {
-                    return JSON.parse(result);
-                } catch (e) {
-                    console.log(e.message);
-                    console.log('string >>', result);
-                }
-            }
-        }
-    }
-
-    const fallbackResult = await deserializeActionAtBlock(_action, block_num);
-    if (!fallbackResult) {
-        console.log(`action fallback result: ${fallbackResult} @ ${block_num}`);
-        console.log(_action);
-    }
-    return fallbackResult;
-}
 
 function attachActionExtras(action) {
     mLoader.processActionData(action);
@@ -1463,6 +1288,10 @@ function onIpcMessage(msg) {
             break;
         }
         case 'new_range': {
+            break;
+        }
+        case 'update_pool_map': {
+            dsPoolMap = msg.data;
             break;
         }
         default: {

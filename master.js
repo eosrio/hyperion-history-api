@@ -1064,8 +1064,20 @@ async function main() {
         console.log(`Total Hits: ${totalContractHits}`);
         console.log(`Update time: ${parseInt((t1 - t0).toString()) / 1000000} ms`);
         console.log(globalUsageMap);
+        console.log('-----------------------------------');
+
+        // update on deserializers
+        for (const w of workerMap) {
+            if (w.worker_role === 'deserializer') {
+                w.wref.send({
+                    event: 'update_pool_map',
+                    data: globalUsageMap
+                });
+            }
+        }
+
         // clearUsageMap();
-    }, 2000);
+    }, 5000);
 
     // Attach stop handler
     pm2io.action('stop', (reply) => {

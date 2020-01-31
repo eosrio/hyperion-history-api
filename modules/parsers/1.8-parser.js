@@ -25,7 +25,7 @@ function checkWhitelist(act) {
 const reading_mode = process.env.live_mode;
 
 module.exports = {
-    actionParser: async (common, ts, action, trx_data, _actDataArray, _processedTraces, full_trace) => {
+    actionParser: async (self, ts, action, trx_data, _actDataArray, _processedTraces, full_trace) => {
         let act = action['act'];
 
         // abort if blacklisted
@@ -45,7 +45,7 @@ module.exports = {
         let ds_act, error_message;
 
         try {
-            ds_act = await common.deserializeActionAtBlockNative(act, block_num);
+            ds_act = await self.common.deserializeActionAtBlockNative(self, act, block_num);
         } catch (e) {
             console.log(e);
             error_message = e.message;
@@ -53,7 +53,7 @@ module.exports = {
 
         if (ds_act) {
             action['act']['data'] = ds_act;
-            common.attachActionExtras(action);
+            self.common.attachActionExtras(self, action);
         } else {
             action['act'] = original_act;
             if (typeof action['act']['data'] !== 'string') {

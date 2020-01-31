@@ -10,39 +10,53 @@ const chain = config.settings.chain;
         require('./master').main().catch(onError);
     } else {
         process.title = `hyp-${chain}-${process.env['worker_role']}:${process.env.worker_id}`;
-        let delay = 0;
-        // Make sure readers are launched later
-        // TODO: use IPC to trigger
-        if (process.env['worker_role'] === 'reader') {
-            delay = config['scaling']['ds_queues'] * 200;
-        }
-        setTimeout(() => {
-            switch (process.env['worker_role']) {
-                case 'ds_pool_worker': {
-                    require('./workers/ds_pool.worker').run().catch(onError);
-                    break;
-                }
-                case 'reader': {
-                    require('./workers/state-reader.worker').run().catch(onError);
-                    break;
-                }
-                case 'deserializer': {
-                    require('./workers/deserializer.worker').run().catch(onError);
-                    break;
-                }
-                case 'continuous_reader': {
-                    require('./workers/state-reader.worker').run().catch(onError);
-                    break;
-                }
-                case 'ingestor': {
-                    require('./workers/indexer.worker').run().catch(onError);
-                    break;
-                }
-                case 'router': {
-                    require('./workers/ws-router.worker').run().catch(onError);
-                    break;
-                }
+
+        // let delay = 0;
+
+        // // Make sure readers are launched later
+        // // TODO: use IPC to trigger
+        // if (process.env['worker_role'] === 'reader') {
+        //     delay = config['scaling']['ds_queues'] * 200;
+        // }
+
+        switch (process.env['worker_role']) {
+            case 'ds_pool_worker': {
+                require('./workers/ds_pool.worker')
+                    .run()
+                    .catch(onError);
+                break;
             }
-        }, delay);
+            case 'reader': {
+                require('./workers/state-reader.worker')
+                    .run()
+                    .catch(onError);
+                break;
+            }
+            case 'deserializer': {
+                require('./workers/deserializer.worker')
+                    .run()
+                    .catch(onError);
+                break;
+            }
+            case 'continuous_reader': {
+                require('./workers/state-reader.worker')
+                    .run()
+                    .catch(onError);
+                break;
+            }
+            case 'ingestor': {
+                require('./workers/indexer.worker')
+                    .run()
+                    .catch(onError);
+                break;
+            }
+            case 'router': {
+                require('./workers/ws-router.worker')
+                    .run()
+                    .catch(onError);
+                break;
+            }
+        }
+
     }
 })();
