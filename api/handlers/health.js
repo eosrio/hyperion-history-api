@@ -85,6 +85,7 @@ async function checkNodeos() {
         if (results) {
             return createHealth('NodeosRPC', 'OK', {
                 head_block_num: results.head_block_num,
+                head_block_time: results.head_block_time,
                 last_irreversible_block: results.last_irreversible_block_num,
                 chain_id: results.chain_id
             });
