@@ -1,6 +1,8 @@
-import {ConfigurationModule, HyperionConfig, HyperionConnections} from "./config";
+import {ConfigurationModule} from "./config";
 import {join} from "path";
 import {readdirSync} from "fs";
+import {HyperionConnections} from "../interfaces/hyperionConnections";
+import {HyperionConfig} from "../interfaces/hyperionConfig";
 
 export class HyperionModuleLoader {
 

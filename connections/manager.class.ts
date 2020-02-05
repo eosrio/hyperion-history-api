@@ -1,7 +1,10 @@
-import {ConfigurationModule, HyperionConfig, HyperionConnections} from "../modules/config";
+import {ConfigurationModule} from "../modules/config";
 import {JsonRpc} from "eosjs/dist";
 import got from "got";
 import {Client} from '@elastic/elasticsearch'
+import {HyperionConnections} from "../interfaces/hyperionConnections";
+import {HyperionConfig} from "../interfaces/hyperionConfig";
+import {amqpConnect, checkQueueSize} from "./amqp";
 
 const fetch = require('node-fetch');
 
@@ -79,5 +82,13 @@ export class ConnectionManager {
         } else {
             return [this.getESClient()];
         }
+    }
+
+    async createAMQPChannels(onReconnect) {
+        return await amqpConnect(onReconnect, this.conn.amqp);
+    }
+
+    async checkQueueSize(queue) {
+        return await checkQueueSize(queue, this.conn.amqp);
     }
 }

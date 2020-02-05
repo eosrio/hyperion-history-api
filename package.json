@@ -55,6 +55,9 @@
     "ws": "7.2.1"
   },
   "devDependencies": {
+    "@types/amqplib": "^0.5.13",
+    "@types/got": "^9.6.9",
+    "@types/async": "^3.0.7",
     "@types/node": "^13.5.3",
     "@types/ws": "^7.2.1",
     "@types/node-fetch": "2.5.4",

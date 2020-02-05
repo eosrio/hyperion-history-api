@@ -1,8 +1,9 @@
-import {ConfigurationModule, HyperionConfig} from "./config";
+import {ConfigurationModule} from "./config";
 import {ConnectionManager} from "../connections/manager.class";
 import {JsonRpc} from "eosjs/dist";
 import {ApiResponse, Client} from "@elastic/elasticsearch";
 import {HyperionModuleLoader} from "./loader";
+
 import {
     getLastIndexedABI,
     getLastIndexedBlock,
@@ -11,34 +12,20 @@ import {
     getLastIndexedBlockFromRange,
     messageAllWorkers
 } from "../helpers/common_functions";
+
 import {GetInfoResult} from "eosjs/dist/eosjs-rpc-interfaces";
 import * as pm2io from '@pm2/io';
-import {
-    createWriteStream,
-    existsSync,
-    mkdirSync,
-    readFileSync,
-    symlinkSync,
-    unlinkSync,
-    WriteStream
-} from "fs";
+
+import {createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, WriteStream} from "fs";
+
 import {join} from "path";
 import * as cluster from "cluster";
+import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef";
 import moment = require("moment");
 import Timeout = NodeJS.Timeout;
+import {HyperionConfig} from "../interfaces/hyperionConfig";
 
 // const doctor = require('./modules/doctor');
-
-interface HyperionWorkerDef {
-    worker_id?: number;
-    worker_role?: string;
-    worker_queue?: string;
-    local_id?: number;
-    worker_last_processed_block?: number;
-    ws_router?: string;
-    live_mode?: string;
-    wref?: cluster.Worker;
-}
 
 export class HyperionMaster {
 
@@ -272,11 +259,6 @@ export class HyperionMaster {
         console.log(`Using parser version ${this.conf.settings.parser}`);
         console.log(`Chain: ${this.conf.settings.chain}`);
         if (this.conf.indexer.abi_scan_mode) {
-            if (this.conf.indexer.fetch_block || this.conf.indexer.fetch_traces) {
-                console.log('Invalid configuration! indexer.fetch_block and indexer.fetch_traces must' +
-                    ' be both set to [false] while indexer.abi_scan_mode is [true]');
-                process.exit(1);
-            }
             console.log('-------------------\n ABI SCAN MODE \n-------------------');
         } else {
             console.log('---------------\n INDEXING MODE \n---------------');
@@ -903,14 +885,16 @@ export class HyperionMaster {
     private startContractMonitoring() {
         // Monitor Global Contract Usage
         setInterval(() => {
-            const t0 = process.hrtime.bigint();
+
+            // const t0 = process.hrtime.bigint();
             this.updateWorkerAssignments();
-            const t1 = process.hrtime.bigint();
-            console.log('----------- Usage Report ----------');
-            console.log(`Total Hits: ${this.totalContractHits}`);
-            console.log(`Update time: ${parseInt((t1 - t0).toString()) / 1000000} ms`);
-            console.log(this.globalUsageMap);
-            console.log('-----------------------------------');
+            // const t1 = process.hrtime.bigint();
+
+            // console.log('----------- Usage Report ----------');
+            // console.log(`Total Hits: ${this.totalContractHits}`);
+            // console.log(`Update time: ${parseInt((t1 - t0).toString()) / 1000000} ms`);
+            // console.log(this.globalUsageMap);
+            // console.log('-----------------------------------');
 
             // update on deserializers
             for (const w of this.workerMap) {
@@ -1195,3 +1179,4 @@ export class HyperionMaster {
         this.onPm2Stop();
     }
 }
+
