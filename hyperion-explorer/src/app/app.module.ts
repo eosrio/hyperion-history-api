@@ -1,27 +1,51 @@
-import {BrowserModule} from '@angular/platform-browser';
 import {NgModule} from '@angular/core';
-
-import {AppComponent} from './app.component';
-import {ServiceWorkerModule} from '@angular/service-worker';
-import {environment} from '../environments/environment';
+import {BrowserModule} from '@angular/platform-browser';
+import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
+import {RouterModule, Routes} from '@angular/router';
 import {NgxJsonViewerModule} from 'ngx-json-viewer';
 import {HttpClientModule} from '@angular/common/http';
-import {CommonModule} from '@angular/common';
-import {RouterModule} from '@angular/router';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import {ReactiveFormsModule} from '@angular/forms';
+import {MatToolbarModule} from '@angular/material/toolbar';
+import {MatFormFieldModule} from '@angular/material/form-field';
+import {MatInputModule} from '@angular/material/input';
+import {MatAutocompleteModule} from '@angular/material/autocomplete';
+
+import {AppComponent} from './app.component';
+import {HomeComponent} from './home/home.component';
+import {SearchResultsComponent} from './search-results/search-results.component';
+import {AccountComponent} from './search-results/account/account.component';
+
+const appRoutes: Routes = [
+  {
+    path: '', component: HomeComponent
+  },
+  {
+    path: '',
+    component: SearchResultsComponent,
+    children: [
+      {path: 'account/:account_name', component: AccountComponent}
+    ]
+  }
+];
 
 @NgModule({
   declarations: [
-    AppComponent
+    AppComponent,
+    HomeComponent,
+    SearchResultsComponent,
+    AccountComponent
   ],
   imports: [
     BrowserModule,
-    CommonModule,
-    HttpClientModule,
-    ServiceWorkerModule.register('ngsw-worker.js', {enabled: environment.production}),
+    BrowserAnimationsModule,
+    RouterModule.forRoot(appRoutes),
     NgxJsonViewerModule,
-    RouterModule.forRoot([]),
-    BrowserAnimationsModule
+    ReactiveFormsModule,
+    HttpClientModule,
+    MatToolbarModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatAutocompleteModule
   ],
   providers: [],
   bootstrap: [AppComponent]
