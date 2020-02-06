@@ -41,6 +41,17 @@ export interface HyperionConfig {
     settings: MainSettings;
     scaling: ScalingConfigs;
     indexer: IndexerConfigs;
+
+    blacklists: {
+        actions: string[],
+        deltas: string[]
+    };
+
+    whitelists: {
+        actions: string[],
+        deltas: string[]
+    };
+
     features: {
         streaming: {
             enable: boolean,
@@ -57,11 +68,13 @@ export interface HyperionConfig {
         index_deltas: boolean,
         index_transfer_memo: boolean,
         index_all_deltas: boolean
-    },
+    };
+
     prefetch: {
         read: number,
         block: number,
         index: number
-    },
+    };
+
     experimental: any;
 }

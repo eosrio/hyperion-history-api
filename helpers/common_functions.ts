@@ -1,4 +1,5 @@
 import {ApiResponse, Client} from "@elastic/elasticsearch";
+import {Serialize} from "../eosjs-native";
 
 function getLastResult(results: ApiResponse) {
     if (results.body.hits?.hits?.length > 0) {
@@ -97,5 +98,69 @@ export function messageAllWorkers(cl, payload) {
             const _w = cl.workers[c];
             _w.send(payload);
         }
+    }
+}
+
+export function serialize(type, value, txtEnc, txtDec, types) {
+    const buffer = new Serialize.SerialBuffer({
+        textEncoder: txtEnc,
+        textDecoder: txtDec
+    });
+    Serialize.getType(types, type).serialize(buffer, value);
+    return buffer.asUint8Array();
+}
+
+export function deserialize(type, array, txtEnc, txtDec, types) {
+    const buffer = new Serialize.SerialBuffer({
+        textEncoder: txtEnc,
+        textDecoder: txtDec,
+        array
+    });
+    return Serialize.getType(types, type).deserialize(buffer, new Serialize.SerializerState({bytesAsUint8Array: true}));
+}
+
+function getNested(path_array, jsonObj) {
+    const nextPath = path_array.shift();
+    const nextValue = jsonObj[nextPath];
+    if (!nextValue) {
+        return null;
+    } else {
+        if (typeof nextValue !== 'object') {
+            return nextValue;
+        } else {
+            if (Array.isArray(nextValue)) {
+                return nextValue;
+            } else {
+                return getNested(path_array, nextValue);
+            }
+        }
+    }
+}
+
+export function checkFilter(filter, _source) {
+    if (filter.field && filter.value) {
+        let fieldValue = getNested(filter.field.split("."), _source);
+        if (!fieldValue) {
+            const fArray = filter.field.split(".");
+            if (fArray[0].startsWith('@')) {
+                const actName = fArray[0].replace('@', '');
+                if (_source.act.name === actName) {
+                    fArray[0] = 'data';
+                    fArray.unshift('act');
+                    fieldValue = getNested(fArray, _source);
+                }
+            }
+        }
+        if (fieldValue) {
+            if (Array.isArray(fieldValue)) {
+                return fieldValue.indexOf(filter.value) !== -1;
+            } else {
+                return fieldValue === filter.value;
+            }
+        } else {
+            return !filter.value;
+        }
+    } else {
+        return false;
     }
 }

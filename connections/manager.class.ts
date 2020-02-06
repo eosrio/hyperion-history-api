@@ -6,6 +6,7 @@ import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {amqpConnect, checkQueueSize} from "./amqp";
 
+const {StateHistorySocket} = require("./state-history");
 const fetch = require('node-fetch');
 
 export class ConnectionManager {
@@ -90,5 +91,9 @@ export class ConnectionManager {
 
     async checkQueueSize(queue) {
         return await checkQueueSize(queue, this.conn.amqp);
+    }
+
+    get shipClient() {
+        return new StateHistorySocket(this.conn.chains[this.config.settings.chain]['ship']);
     }
 }

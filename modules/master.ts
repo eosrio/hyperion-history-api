@@ -296,24 +296,24 @@ export class HyperionMaster {
         const index_queue_prefix = queue_prefix + ':index';
         const table_feats = this.conf.features.tables;
         if (table_feats.proposals) {
-            indicesList.push("table-proposals");
-            index_queues.push({type: 'table-proposals', name: index_queue_prefix + "_table_proposals"});
+            indicesList.push("tableProposals");
+            index_queues.push({type: 'tableProposals', name: index_queue_prefix + "_table_proposals"});
         }
         if (table_feats.accounts) {
-            indicesList.push("table-accounts");
-            index_queues.push({type: 'table-accounts', name: index_queue_prefix + "_table_accounts"});
+            indicesList.push("tableAccounts");
+            index_queues.push({type: 'tableAccounts', name: index_queue_prefix + "_table_accounts"});
         }
         if (table_feats.voters) {
-            indicesList.push("table-voters");
-            index_queues.push({type: 'table-voters', name: index_queue_prefix + "_table_voters"});
+            indicesList.push("tableVoters");
+            index_queues.push({type: 'tableVoters', name: index_queue_prefix + "_table_voters"});
         }
         if (table_feats.delband) {
-            indicesList.push("table-delband");
-            index_queues.push({type: 'table-delband', name: index_queue_prefix + "_table_delband"});
+            indicesList.push("tableDelband");
+            index_queues.push({type: 'tableDelband', name: index_queue_prefix + "_table_delband"});
         }
         if (table_feats.userres) {
-            indicesList.push("table-userres");
-            index_queues.push({type: 'table-userres', name: index_queue_prefix + "_table_userres"});
+            indicesList.push("tableUserres");
+            index_queues.push({type: 'tableUserres', name: index_queue_prefix + "_table_userres"});
         }
     }
 
@@ -1076,12 +1076,31 @@ export class HyperionMaster {
         if (this.conf.indexer.disable_reading) {
             this.max_readers = 1;
         }
-        const {index_queues} = require('../definitions/index-queues');
-        this.IndexingQueues = index_queues;
+
+        const prefix = this.chain + ':index';
+        this.IndexingQueues = [
+            {
+                type: 'action',
+                name: prefix + "_actions"
+            },
+            {
+                type: 'block',
+                name: prefix + "_blocks"
+            },
+            {
+                type: 'delta',
+                name: prefix + "_deltas"
+            },
+            {
+                type: 'abi',
+                name: prefix + "_abis"
+            }
+        ];
+
+        const indexConfig = await import('../definitions/index-templates');
         const indicesList = ["action", "block", "abi", "delta", "logs"];
-        this.addStateTables(indicesList, index_queues);
+        this.addStateTables(indicesList, this.IndexingQueues);
         await this.applyUpdateScript();
-        const indexConfig = require('../definitions/mappings');
         await this.addLifecyclePolicies(indexConfig);
         await this.appendExtraMappings(indexConfig);
         await this.updateIndexTemplates(indicesList, indexConfig);

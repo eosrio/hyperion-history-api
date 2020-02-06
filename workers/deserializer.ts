@@ -1,6 +1,6 @@
 import {HyperionWorker} from "./hyperionWorker";
-import {Api, JsonRpc} from "eosjs/dist";
-import {ApiResponse, Client} from "@elastic/elasticsearch";
+import {Api} from "eosjs/dist";
+import {ApiResponse} from "@elastic/elasticsearch";
 import {AsyncCargo, AsyncQueue, cargo, queue} from 'async';
 
 const index_queues = require('../definitions/index-queues').index_queues;
@@ -32,8 +32,6 @@ function extractDeltaStruct(deltas) {
 
 export default class MainDSWorker extends HyperionWorker {
 
-    private rpc: JsonRpc;
-    private client: Client;
     private ch_ready = false;
     private consumerQueue: AsyncCargo;
     private preIndexingQueue: AsyncQueue<QueuePayload>;
@@ -46,8 +44,6 @@ export default class MainDSWorker extends HyperionWorker {
     private block_emit_idx = 1;
     private local_block_count = 0;
     common: any;
-    txEnc = new TextEncoder();
-    txDec = new TextDecoder();
     tableHandlers = {};
     api: Api;
 
@@ -59,6 +55,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     constructor() {
         super();
+
         this.consumerQueue = cargo((payload, cb) => {
             this.processMessages(payload).then(() => {
                 cb();
@@ -98,9 +95,6 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     async run(): Promise<void> {
-        this.rpc = this.manager.nodeosJsonRPC;
-        this.client = this.manager.elasticsearchClient;
-
         return undefined;
     }
 
@@ -641,7 +635,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     async processContractRow(row, block) {
         const row_sb = this.createSerialBuffer(Serialize.hexToUint8Array(row['value']));
-        const tableType = await this.getTableType(row['code'], row['table'], block);
+        const tableType: Type = await this.getTableType(row['code'], row['table'], block);
         let error;
         if (tableType) {
             try {
@@ -772,7 +766,7 @@ export default class MainDSWorker extends HyperionWorker {
                         const abiHex = account['abi'];
                         const abiBin = new Uint8Array(Buffer.from(abiHex, 'hex'));
                         const initialTypes = Serialize.createInitialTypes();
-                        const abiDefTypes = Serialize.getTypesFromAbi(initialTypes, AbiDefinitions).get('abi_def');
+                        const abiDefTypes: Type = Serialize.getTypesFromAbi(initialTypes, AbiDefinitions).get('abi_def');
                         const abiObj = abiDefTypes.deserialize(this.createSerialBuffer(abiBin));
                         const jsonABIString = JSON.stringify(abiObj);
                         const abi_actions = abiObj.actions.map(a => a.name);

@@ -8,6 +8,13 @@ export class ConfigurationModule {
     public connections: HyperionConnections;
     EOSIO_ALIAS: string;
 
+    public filters = {
+        action_blacklist: new Set([]),
+        action_whitelist: new Set([]),
+        delta_whitelist: new Set([]),
+        delta_blacklist: new Set([])
+    };
+
     constructor() {
         this.loadConfigJson();
         this.loadConnectionsJson();
@@ -25,6 +32,36 @@ export class ConfigurationModule {
             this.EOSIO_ALIAS = this.config.settings.eosio_alias;
         } else {
             this.config.settings.eosio_alias = 'eosio';
+        }
+
+        // append default blacklists (eosio::onblock & eosio.null)
+        this.filters.action_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}::onblock`);
+        this.filters.action_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}.null::*`);
+
+        // append user blacklists
+        if (this.config.blacklists) {
+
+            if (this.config.blacklists.actions) {
+                this.config.blacklists.actions.forEach(this.filters.action_blacklist.add);
+            }
+
+            if (this.config.blacklists.deltas) {
+                this.config.blacklists.deltas.forEach(this.filters.delta_blacklist.add);
+            }
+
+        }
+
+        // append user whitelists
+        if (this.config.whitelists) {
+
+            if (this.config.whitelists.actions) {
+                this.config.whitelists.actions.forEach(this.filters.action_whitelist.add);
+            }
+
+            if (this.config.whitelists.deltas) {
+                this.config.whitelists.deltas.forEach(this.filters.delta_whitelist.add);
+            }
+
         }
     }
 

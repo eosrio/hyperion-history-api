@@ -2,6 +2,9 @@ import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionModuleLoader} from "../modules/loader";
 import {ConfigurationModule} from "../modules/config";
+import {JsonRpc} from "eosjs/dist";
+import {Client} from "@elastic/elasticsearch";
+import {Channel, ConfirmChannel} from "amqplib/callback_api";
 
 export abstract class HyperionWorker {
 
@@ -12,8 +15,15 @@ export abstract class HyperionWorker {
     chainId: string;
 
     // AMQP Channels
-    ch: any;
-    cch: any;
+    ch: Channel;
+    cch: ConfirmChannel;
+
+    rpc: JsonRpc;
+    client: Client;
+    ship: any;
+
+    txEnc = new TextEncoder();
+    txDec = new TextDecoder();
 
     protected constructor() {
         this.checkDebugger();
@@ -23,6 +33,10 @@ export abstract class HyperionWorker {
         this.mLoader = new HyperionModuleLoader(cm);
         this.chain = this.conf.settings.chain;
         this.chainId = this.manager.conn.chains[this.chain].chain_id;
+
+        this.rpc = this.manager.nodeosJsonRPC;
+        this.client = this.manager.elasticsearchClient;
+        this.ship = this.manager.shipClient;
 
         // Connect to RabbitMQ (amqplib)
         this.connectAMQP().catch(console.log);
