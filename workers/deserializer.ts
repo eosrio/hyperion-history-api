@@ -102,7 +102,7 @@ export default class MainDSWorker extends HyperionWorker {
         switch (msg.event) {
             case 'initialize_abi': {
                 this.abi = JSON.parse(msg.data);
-                AbiEOS['load_abi']("0", msg.data);
+                AbiEOS.load_abi("0", msg.data);
                 const initialTypes = Serialize.createInitialTypes();
                 this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
                 this.abi.tables.map(table => this.tables.set(table.name, table.type));
@@ -112,7 +112,7 @@ export default class MainDSWorker extends HyperionWorker {
             case 'update_abi': {
                 if (msg.abi) {
                     if (msg.abi.abi_hex) {
-                        AbiEOS['load_abi_hex'](msg.abi.account, msg.abi.abi_hex);
+                        AbiEOS.load_abi_hex(msg.abi.account, msg.abi.abi_hex);
                         console.log(`Worker ${process.env.worker_id} updated the abi for ${msg.abi.account}`);
                     }
                 }
@@ -415,7 +415,7 @@ export default class MainDSWorker extends HyperionWorker {
             if (savedAbi) {
                 if (savedAbi[field + 's'].includes(type)) {
                     if (savedAbi.abi_hex) {
-                        _status = AbiEOS['load_abi_hex'](contract, savedAbi.abi_hex);
+                        _status = AbiEOS.load_abi_hex(contract, savedAbi.abi_hex);
                     }
                     // console.log('🔄  reloaded abi');
                     if (_status) {
@@ -439,7 +439,7 @@ export default class MainDSWorker extends HyperionWorker {
             // console.log('Retrying with the current revision...');
             if (currentAbi.abi.byteLength > 0) {
                 const abi_hex = Buffer.from(currentAbi.abi).toString('hex');
-                _status = AbiEOS['load_abi_hex'](contract, abi_hex);
+                _status = AbiEOS.load_abi_hex(contract, abi_hex);
             } else {
                 _status = false;
             }
@@ -466,9 +466,9 @@ export default class MainDSWorker extends HyperionWorker {
         if (_status) {
             let result;
             if (typeof row.value === 'string') {
-                result = AbiEOS['hex_to_json'](row['code'], tableType, row.value);
+                result = AbiEOS.hex_to_json(row['code'], tableType, row.value);
             } else {
-                result = AbiEOS['bin_to_json'](row['code'], tableType, row.value);
+                result = AbiEOS.bin_to_json(row['code'], tableType, row.value);
             }
             switch (result) {
                 case "Extra data": {
@@ -960,7 +960,7 @@ export default class MainDSWorker extends HyperionWorker {
     async deserializeActionAtBlockNative(_action, block_num) {
         const [_status, actionType] = await this.verifyLocalType(_action.account, _action.name, block_num, "action");
         if (_status) {
-            const result = AbiEOS['bin_to_json'](_action.account, actionType, Buffer.from(_action.data, 'hex'));
+            const result = AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
             switch (result) {
                 case 'PARSING_ERROR': {
                     console.log(result, block_num, _action);

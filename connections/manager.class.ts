@@ -5,9 +5,9 @@ import {Client} from '@elastic/elasticsearch'
 import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {amqpConnect, checkQueueSize} from "./amqp";
-
-const {StateHistorySocket} = require("./state-history");
-const fetch = require('node-fetch');
+import {StateHistorySocket} from "./state-history";
+import * as nodeFetch from 'node-fetch';
+import fetch from "node-fetch";
 
 export class ConnectionManager {
 
@@ -23,7 +23,7 @@ export class ConnectionManager {
     }
 
     get nodeosJsonRPC() {
-        return new JsonRpc(this.conn.chains[this.chain].http, {fetch});
+        return new JsonRpc(this.conn.chains[this.chain].http);
     }
 
     async purgeQueues() {

@@ -15,8 +15,8 @@ export abstract class HyperionWorker {
     chainId: string;
 
     // AMQP Channels
-    ch: Channel;
-    cch: ConfirmChannel;
+    ch: any;
+    cch: any;
 
     rpc: JsonRpc;
     client: Client;

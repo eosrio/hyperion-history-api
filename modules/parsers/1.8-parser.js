@@ -1,5 +1,3 @@
-const {action_blacklist} = require('../../definitions/blacklists');
-const {action_whitelist} = require('../../definitions/whitelists');
 const {deserialize, debugLog} = require('../../helpers/functions');
 const {TextEncoder, TextDecoder} = require('util');
 const txDec = new TextDecoder();

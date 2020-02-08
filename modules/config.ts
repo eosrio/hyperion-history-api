@@ -9,10 +9,10 @@ export class ConfigurationModule {
     EOSIO_ALIAS: string;
 
     public filters = {
-        action_blacklist: new Set([]),
-        action_whitelist: new Set([]),
-        delta_whitelist: new Set([]),
-        delta_blacklist: new Set([])
+        action_blacklist: new Set(),
+        action_whitelist: new Set(),
+        delta_whitelist: new Set(),
+        delta_blacklist: new Set()
     };
 
     constructor() {
@@ -35,33 +35,36 @@ export class ConfigurationModule {
         }
 
         // append default blacklists (eosio::onblock & eosio.null)
+
         this.filters.action_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}::onblock`);
         this.filters.action_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}.null::*`);
 
         // append user blacklists
         if (this.config.blacklists) {
-
             if (this.config.blacklists.actions) {
-                this.config.blacklists.actions.forEach(this.filters.action_blacklist.add);
+                this.config.blacklists.actions.forEach((a) => {
+                    this.filters.action_blacklist.add(a);
+                });
             }
-
             if (this.config.blacklists.deltas) {
-                this.config.blacklists.deltas.forEach(this.filters.delta_blacklist.add);
+                this.config.blacklists.deltas.forEach((d) => {
+                    this.filters.delta_blacklist.add(d);
+                });
             }
-
         }
 
         // append user whitelists
         if (this.config.whitelists) {
-
             if (this.config.whitelists.actions) {
-                this.config.whitelists.actions.forEach(this.filters.action_whitelist.add);
+                this.config.whitelists.actions.forEach((a) => {
+                    this.filters.action_whitelist.add(a);
+                });
             }
-
             if (this.config.whitelists.deltas) {
-                this.config.whitelists.deltas.forEach(this.filters.delta_whitelist.add);
+                this.config.whitelists.deltas.forEach((d) => {
+                    this.filters.delta_whitelist.add(d);
+                });
             }
-
         }
     }
 
@@ -73,7 +76,7 @@ export class ConfigurationModule {
                 this.processConfig();
             } catch (e) {
                 console.log(`Failed to Load configuration file ${process.env.CONFIG_JSON}`);
-                console.log(e.message);
+                console.log(e);
                 process.exit(1);
             }
         } else {

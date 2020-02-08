@@ -1,72 +1,35 @@
-const {checkDebugger} = require("../helpers/functions");
-const {ConnectionManager} = require('../connections/manager');
-const HyperionModuleLoader = require('../modules/index').HyperionModuleLoader;
-const AbiEos = require('../addons/node-abieos/abieos.node');
-const {Serialize} = require('../eosjs-native');
-const config = require(`../${process.env.CONFIG_JSON}`);
-const async = require('async');
-const chain = config.settings.chain;
-const index_queue_prefix = chain + ':index';
-const n_ingestors_per_queue = config['scaling']['indexing_queues'];
-
-const action_indexing_ratio = config['scaling']['ad_idx_queues'];
+import {HyperionWorker} from "./hyperionWorker";
+import {cargo, queue} from "async";
+import {AbiEOS} from "../addons/node-abieos";
+import {Serialize} from "../eosjs-native";
 
 const abi_remapping = {
     "_Bool": "bool"
 };
 
-class DeserializationWorker {
+export default class DSPoolWorker extends HyperionWorker {
 
     abi;
     types;
     tables = new Map();
-
-    onReady;
-    ch;
-    cch;
-    manager;
-
     ch_ready;
     local_queue;
-
     consumerQueue;
     preIndexingQueue;
-
     temp_ds_counter = 0;
     act_emit_idx = 1;
     allowStreaming = false;
-
-    // module loader instance
-    mLoader;
-
     // common functions
     common;
-
     totalHits = 0;
-
     // contract usage map (temporary)
     contractUsage = {};
-    esClient;
-
     contracts = new Map();
-    txDec = new TextDecoder();
-    txEnc = new TextEncoder();
 
-    constructor(onReady) {
+    constructor() {
+        super();
 
-        this.onReady = onReady;
-        this.manager = new ConnectionManager();
-
-        // Load Modules
-        this.mLoader = new HyperionModuleLoader(config.settings.parser);
-
-        // Create elasticsearch client
-        this.esClient = this.manager.elasticsearchClient;
-
-        // Create EOSJS Rpc
-        this.rpc = this.manager.nodeosJsonRPC;
-
-        this.consumerQueue = async.cargo(async.ensureAsync((payload, cb) => {
+        this.consumerQueue = cargo((payload: any[], cb) => {
             this.processMessages(payload).then(() => {
                 cb();
             }).catch((err) => {
@@ -75,16 +38,16 @@ class DeserializationWorker {
                     this.ch.nackAll();
                 }
             });
-        }), config.prefetch.block);
+        }, this.conf.prefetch.block);
 
-        this.preIndexingQueue = async.queue(async.ensureAsync((data, cb) => {
+        this.preIndexingQueue = queue((data: any, cb) => {
             if (this.ch_ready) {
                 this.ch.sendToQueue(data.queue, data.content);
                 cb();
             } else {
                 console.log('Channel is not ready!');
             }
-        }), 1);
+        }, 1);
 
         // Define Common Functions
         this.common = {
@@ -115,8 +78,8 @@ class DeserializationWorker {
                 _includes.push("abi_hex");
             }
             // const t_start = process.hrtime.bigint();
-            const queryResult = await this.esClient.search({
-                index: `${chain}-abi-*`,
+            const queryResult = await this.client.search({
+                index: `${this.chain}-abi-*`,
                 body: {
                     size: 1,
                     query: {
@@ -148,52 +111,35 @@ class DeserializationWorker {
 
     async verifyLocalType(contract, type, block_num, field) {
         let _status;
-        let resultType = AbiEos['get_type_for_' + field](contract, type);
-        // console.log(contract, type, resultType);
+        let resultType = AbiEOS['get_type_for_' + field](contract, type);
         if (resultType === "NOT_FOUND") {
-            // console.log(`${field} not found for ${type} on ${contract}`);
             const savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
             if (savedAbi) {
                 if (savedAbi[field + 's'].includes(type)) {
                     if (savedAbi.abi_hex) {
-                        _status = AbiEos['load_abi_hex'](contract, savedAbi.abi_hex);
+                        _status = AbiEOS.load_abi_hex(contract, savedAbi.abi_hex);
                     }
-                    // console.log('🔄  reloaded abi');
                     if (_status) {
-                        resultType = AbiEos['get_type_for_' + field](contract, type);
-                        // console.log(`verifying ${field} type: ${resultType}`);
+                        resultType = AbiEOS['get_type_for_' + field](contract, type);
                         if (resultType === "NOT_FOUND") {
                             _status = false;
                         } else {
-                            // console.log(`✅️  ${contract} abi cache updated at block ${block_num}`);
                             _status = true;
                             return [_status, resultType];
                         }
                     }
                 }
-                // else {
-                //     // console.log(`⚠️ ⚠️  ${field} "${type}" not found on saved abi for ${contract} at block ${block_num}!`);
-                // }
             }
-            // console.log(`Abi not indexed at or before block ${block_num} for ${contract}`);
             const currentAbi = await this.rpc.getRawAbi(contract);
-            // console.log('Retrying with the current revision...');
             if (currentAbi.abi.byteLength > 0) {
                 const abi_hex = Buffer.from(currentAbi.abi).toString('hex');
-                _status = AbiEos['load_abi_hex'](contract, abi_hex);
+                _status = AbiEOS.load_abi_hex(contract, abi_hex);
             } else {
                 _status = false;
             }
             if (_status === true) {
-                resultType = AbiEos['get_type_for_' + field](contract, type);
+                resultType = AbiEOS['get_type_for_' + field](contract, type);
                 _status = resultType !== "NOT_FOUND"
-                // if (resultType === "NOT_FOUND") {
-                //     // console.log(`⚠️ ⚠️  Current ABI version for ${contract} doesn't contain the ${field} type ${type}`);
-                //     _status = false;
-                // } else {
-                //     // console.log(`✅️  ${contract} abi cache updated at block ${block_num}`);
-                //     _status = true;
-                // }
             }
         } else {
             _status = true;
@@ -205,7 +151,7 @@ class DeserializationWorker {
         self.recordContractUsage(_action.account);
         const [_status, actionType] = await self.verifyLocalType(_action.account, _action.name, block_num, "action");
         if (_status) {
-            const result = AbiEos['bin_to_json'](_action.account, actionType, Buffer.from(_action.data, 'hex'));
+            const result = AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
             switch (result) {
                 case 'PARSING_ERROR': {
                     console.log(result, block_num, _action);
@@ -235,7 +181,6 @@ class DeserializationWorker {
                 }
             }
         }
-
         const fallbackResult = await self.deserializeActionAtBlock(_action, block_num);
         if (!fallbackResult) {
             console.log(`action fallback result: ${fallbackResult} @ ${block_num}`);
@@ -324,7 +269,7 @@ class DeserializationWorker {
                 // console.log(check_action, 'check type', actions.get(check_action).name);
                 // console.log(abi);
                 try {
-                    AbiEos['load_abi'](accountName, JSON.stringify(abi));
+                    AbiEOS.load_abi(accountName, JSON.stringify(abi));
                 } catch (e) {
                     console.log(e);
                 }
@@ -463,21 +408,21 @@ class DeserializationWorker {
     }
 
     pushToActionsQueue(payload) {
-        if (!config.indexer['disable_indexing']) {
-            const q = index_queue_prefix + "_actions:" + (this.act_emit_idx);
+        if (!this.conf.indexer.disable_indexing) {
+            const q = this.chain + ":index_actions:" + (this.act_emit_idx);
             this.preIndexingQueue.push({
                 queue: q,
                 content: payload
             });
             this.act_emit_idx++;
-            if (this.act_emit_idx > (n_ingestors_per_queue * action_indexing_ratio)) {
+            if (this.act_emit_idx > (this.conf.scaling.indexing_queues * this.conf.scaling.ad_idx_queues)) {
                 this.act_emit_idx = 1;
             }
         }
     }
 
     pushToActionStreamingQueue(payload, uniqueAction) {
-        if (this.allowStreaming && config.features['streaming'].traces) {
+        if (this.allowStreaming && this.conf.features['streaming'].traces) {
             const notifArray = new Set();
             uniqueAction.act.authorization.forEach(auth => {
                 notifArray.add(auth.actor);
@@ -491,7 +436,7 @@ class DeserializationWorker {
                 name: uniqueAction['act']['name'],
                 notified: [...notifArray].join(",")
             };
-            this.ch.publish('', chain + ':stream', payload, {headers});
+            this.ch.publish('', this.chain + ':stream', payload, {headers});
         }
     }
 
@@ -505,20 +450,9 @@ class DeserializationWorker {
         this.initConsumer();
     }
 
-    assertQueues() {
-        const queue_prefix = config.settings.chain;
-        this.local_queue = queue_prefix + ':ds_pool:' + process.env.local_id;
-        if (this.ch) {
-            this.ch_ready = true;
-            this.ch.assertQueue(this.local_queue, {
-                durable: true
-            });
-        }
-    }
-
     initConsumer() {
         if (this.ch_ready) {
-            this.ch.prefetch(config.prefetch.block);
+            this.ch.prefetch(this.conf.prefetch.block);
             this.ch.consume(this.local_queue, (data) => {
                 this.consumerQueue.push(data);
             });
@@ -528,35 +462,11 @@ class DeserializationWorker {
 
     deleteCache(contract) {
         // delete cache contract on abieos context
-        const status = AbiEos['delete_contract'](contract);
+        const status = AbiEOS.delete_contract(contract);
         if (!status) {
             console.log('Contract not found on cache!');
         } else {
             console.log(`🗑️ Contract Successfully removed from cache!`);
-        }
-    }
-
-    onIpcMessage(msg) {
-        switch (msg.event) {
-            case 'initialize_abi': {
-                this.initializeShipAbi(msg.data);
-                // abi = JSON.parse(msg.data);
-                // abieos['load_abi']("0", msg.data);
-                // const initialTypes = Serialize.createInitialTypes();
-                // types = Serialize.getTypesFromAbi(initialTypes, abi);
-                // abi.tables.map(table => tables.set(table.name, table.type));
-                // initConsumer();
-                break;
-            }
-            case 'remove_contract': {
-                console.log(`[${process.env.local_id}] Delete contract: ${msg.contract}`);
-                this.deleteCache(msg.contract);
-                break;
-            }
-            case 'connect_ws': {
-                this.allowStreaming = true;
-                break;
-            }
         }
     }
 
@@ -576,7 +486,7 @@ class DeserializationWorker {
     initializeShipAbi(data) {
         console.log(`state history abi ready on ds_worker ${process.env.local_id}`);
         this.abi = JSON.parse(data);
-        AbiEos['load_abi']("0", data);
+        AbiEOS.load_abi("0", data);
         const initialTypes = Serialize.createInitialTypes();
         this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
         this.abi.tables.map(table => this.tables.set(table.name, table.type));
@@ -584,20 +494,44 @@ class DeserializationWorker {
         this.initQueues().catch(console.log);
         this.startMonitoring();
     }
-}
 
-module.exports = {
-    run: async () => {
-        checkDebugger();
-        console.log(`Standalone deserializer launched with id: ${process.env.local_id}`);
-        const dsWorker = new DeserializationWorker(() => {
-            process.send({
-                event: 'ds_ready',
-                id: process.env.local_id
+    assertQueues(): void {
+        const queue_prefix = this.conf.settings.chain;
+        this.local_queue = queue_prefix + ':ds_pool:' + process.env.local_id;
+        if (this.ch) {
+            this.ch_ready = true;
+            this.ch.assertQueue(this.local_queue, {
+                durable: true
             });
-        });
-        process.on("message", (msg) => {
-            dsWorker.onIpcMessage(msg);
+        }
+    }
+
+    onIpcMessage(msg: any): void {
+        switch (msg.event) {
+            case 'initialize_abi': {
+                this.initializeShipAbi(msg.data);
+                break;
+            }
+            case 'remove_contract': {
+                console.log(`[${process.env.local_id}] Delete contract: ${msg.contract}`);
+                this.deleteCache(msg.contract);
+                break;
+            }
+            case 'connect_ws': {
+                this.allowStreaming = true;
+                break;
+            }
+        }
+    }
+
+    onReady() {
+        process.send({
+            event: 'ds_ready',
+            id: process.env.local_id
         });
     }
-};
+
+    async run(): Promise<void> {
+        console.log(`Standalone deserializer launched with id: ${process.env.local_id}`);
+    }
+}
