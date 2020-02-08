@@ -14,6 +14,7 @@ const abi_remapping = {
 import {AbiEOS} from "../addons/node-abieos";
 import {Serialize} from "../eosjs-native";
 import {Type} from "../eosjs-native/eosjs-serialize";
+import {type} from "os";
 
 interface QueuePayload {
     queue: string;
@@ -32,7 +33,7 @@ function extractDeltaStruct(deltas) {
 
 export default class MainDSWorker extends HyperionWorker {
 
-    private ch_ready = false;
+    ch_ready = false;
     private consumerQueue: AsyncCargo;
     private preIndexingQueue: AsyncQueue<QueuePayload>;
     private abi: any;
@@ -54,6 +55,7 @@ export default class MainDSWorker extends HyperionWorker {
     temp_delta_counter = 0;
 
     constructor() {
+
         super();
 
         this.consumerQueue = cargo((payload, cb) => {
@@ -76,13 +78,6 @@ export default class MainDSWorker extends HyperionWorker {
             }
         }, 1);
 
-        // Define Common Functions
-        this.common = {
-            attachActionExtras: this.attachActionExtras,
-            processBlock: this.processBlock,
-            deserializeNative: this.deserializeNative
-        };
-
         this.api = new Api({
             rpc: this.rpc,
             signatureProvider: null,
@@ -99,6 +94,7 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     onIpcMessage(msg: any): void {
+        console.log('deserializer got:', msg.event);
         switch (msg.event) {
             case 'initialize_abi': {
                 this.abi = JSON.parse(msg.data);
@@ -210,7 +206,7 @@ export default class MainDSWorker extends HyperionWorker {
     // }
 
     async processMessages(messages) {
-        await this.mLoader.messageParser(this.common, messages, this.types, this.ch, this.ch_ready);
+        await this.mLoader.parser.parseMessage(this, messages);
     }
 
     private initConsumer() {
@@ -948,7 +944,10 @@ export default class MainDSWorker extends HyperionWorker {
                     return JSON.parse(result);
                 }
             } catch (e) {
-                console.log(datatype, result, e);
+                console.log(`Input: ${typeof array}`);
+                console.log(`Datatype: ${datatype}`);
+                console.log(`Result: ${result}`);
+                console.log(e);
                 return null;
             }
         } else {

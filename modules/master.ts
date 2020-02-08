@@ -143,12 +143,11 @@ export class HyperionMaster {
             'init_abi': (msg: any) => {
                 if (!this.cachedInitABI) {
                     this.cachedInitABI = msg.data;
-                    setTimeout(() => {
-                        messageAllWorkers(cluster, {
-                            event: 'initialize_abi',
-                            data: msg.data
-                        });
-                    }, 1000);
+                    console.log('Master received abi for distribution');
+                    messageAllWorkers(cluster, {
+                        event: 'initialize_abi',
+                        data: msg.data
+                    });
                 }
             },
             'router_ready': () => {
@@ -296,24 +295,24 @@ export class HyperionMaster {
         const index_queue_prefix = queue_prefix + ':index';
         const table_feats = this.conf.features.tables;
         if (table_feats.proposals) {
-            indicesList.push("tableProposals");
-            index_queues.push({type: 'tableProposals', name: index_queue_prefix + "_table_proposals"});
+            indicesList.push({name: 'tableProposals', type: 'table-proposals'});
+            index_queues.push({type: 'table-proposals', name: index_queue_prefix + "_table_proposals"});
         }
         if (table_feats.accounts) {
-            indicesList.push("tableAccounts");
-            index_queues.push({type: 'tableAccounts', name: index_queue_prefix + "_table_accounts"});
+            indicesList.push({name: 'tableAccounts', type: 'table-accounts'});
+            index_queues.push({type: 'table-accounts', name: index_queue_prefix + "_table_accounts"});
         }
         if (table_feats.voters) {
-            indicesList.push("tableVoters");
-            index_queues.push({type: 'tableVoters', name: index_queue_prefix + "_table_voters"});
+            indicesList.push({name: 'tableVoters', type: 'table-voters'});
+            index_queues.push({type: 'table-voters', name: index_queue_prefix + "_table_voters"});
         }
         if (table_feats.delband) {
-            indicesList.push("tableDelband");
-            index_queues.push({type: 'tableDelband', name: index_queue_prefix + "_table_delband"});
+            indicesList.push({name: 'tableDelband', type: 'table-delband'});
+            index_queues.push({type: 'table-delband', name: index_queue_prefix + "_table_delband"});
         }
         if (table_feats.userres) {
-            indicesList.push("tableUserres");
-            index_queues.push({type: 'tableUserres', name: index_queue_prefix + "_table_userres"});
+            indicesList.push({name: 'tableUserres', type: 'table-userres'});
+            index_queues.push({type: 'table-userres', name: index_queue_prefix + "_table_userres"});
         }
     }
 
@@ -398,26 +397,27 @@ export class HyperionMaster {
         }
     }
 
-    private async updateIndexTemplates(indicesList: string[], indexConfig) {
+    private async updateIndexTemplates(indicesList: { name: string, type: string }[], indexConfig) {
         // Update index templates
         for (const index of indicesList) {
             try {
                 const creation_status: ApiResponse = await this.client['indices'].putTemplate({
-                    name: `${this.conf.settings.chain}-${index}`,
-                    body: indexConfig[index]
+                    name: `${this.conf.settings.chain}-${index.type}`,
+                    body: indexConfig[index.name]
                 });
                 if (!creation_status['body']['acknowledged']) {
                     console.log(`Failed to create template: ${this.conf.settings.chain}-${index}`);
                 }
             } catch (e) {
                 console.log(e);
+                console.log(e.meta.body);
                 process.exit(1);
             }
         }
         console.log('Index templates updated');
     }
 
-    private async createIndices(indicesList: string[]) {
+    private async createIndices(indicesList: { name: string, type: string }[]) {
         // Create indices
         const queue_prefix = this.conf.settings.chain;
         if (this.conf.settings.index_version) {
@@ -429,7 +429,7 @@ export class HyperionMaster {
                 version = this.conf.settings.index_version;
             }
             for (const index of indicesList) {
-                const new_index = `${queue_prefix}-${index}-${version}-000001`;
+                const new_index = `${queue_prefix}-${index.type}-${version}-000001`;
                 const exists = await this.client.indices.exists({
                     index: new_index
                 });
@@ -438,10 +438,10 @@ export class HyperionMaster {
                     await this.client['indices'].create({
                         index: new_index
                     });
-                    console.log(`Creating alias ${queue_prefix}-${index} >> ${new_index}`);
+                    console.log(`Creating alias ${queue_prefix}-${index.type} >> ${new_index}`);
                     await this.client.indices.putAlias({
                         index: new_index,
-                        name: `${queue_prefix}-${index}`
+                        name: `${queue_prefix}-${index.type}`
                     });
                 }
             }
@@ -450,10 +450,10 @@ export class HyperionMaster {
         // Check for indexes
         for (const index of indicesList) {
             const status = await this.client.indices.existsAlias({
-                name: `${queue_prefix}-${index}`
+                name: `${queue_prefix}-${index.type}`
             });
             if (!status) {
-                console.log('Alias ' + `${queue_prefix}-${index}` + ' not found! Aborting!');
+                console.log('Alias ' + `${queue_prefix}-${index.type}` + ' not found! Aborting!');
                 process.exit(1);
             }
         }
@@ -1098,7 +1098,13 @@ export class HyperionMaster {
         ];
 
         const indexConfig = await import('../definitions/index-templates');
-        const indicesList = ["action", "block", "abi", "delta", "logs"];
+        const indicesList = [
+            {name: "action", type: "action"},
+            {name: "block", type: "block"},
+            {name: "abi", type: "abi"},
+            {name: "delta", type: "delta"},
+            {name: "logs", type: "logs"}
+        ];
         this.addStateTables(indicesList, this.IndexingQueues);
         await this.applyUpdateScript();
         await this.addLifecyclePolicies(indexConfig);

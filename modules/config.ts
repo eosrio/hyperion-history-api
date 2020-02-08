@@ -2,13 +2,20 @@ import {existsSync, readFileSync} from "fs";
 import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 
+export interface Filters {
+    action_blacklist: Set<string>;
+    action_whitelist: Set<string>;
+    delta_whitelist: Set<string>;
+    delta_blacklist: Set<string>;
+}
+
 export class ConfigurationModule {
 
     public config: HyperionConfig;
     public connections: HyperionConnections;
     EOSIO_ALIAS: string;
 
-    public filters = {
+    public filters: Filters = {
         action_blacklist: new Set(),
         action_whitelist: new Set(),
         delta_whitelist: new Set(),

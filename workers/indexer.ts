@@ -1,20 +1,22 @@
 import {HyperionWorker} from "./hyperionWorker";
 import {AsyncCargo, cargo} from "async";
-
-const {routes} = require("../helpers/elastic-routes");
+import {ElasticRoutes} from '../helpers/elastic-routes';
 
 import * as pm2io from '@pm2/io';
 
 export default class IndexerWorker extends HyperionWorker {
-    private ch_ready = false;
+
     private indexQueue: AsyncCargo;
     private temp_indexed_count = 0;
 
+    esRoutes: ElasticRoutes;
+
     constructor() {
         super();
+        this.esRoutes = new ElasticRoutes(this.manager);
         this.indexQueue = cargo((payload: any[], callback) => {
             if (this.ch_ready && payload) {
-                routes[process.env.type](payload, this.ch, (indexed_size) => {
+                this.esRoutes.routes[process.env.type](payload, this.ch, (indexed_size) => {
                     if (indexed_size) {
                         this.temp_indexed_count += indexed_size;
                     }
@@ -54,7 +56,7 @@ export default class IndexerWorker extends HyperionWorker {
     }
 
     onIpcMessage(msg: any): void {
-        console.log(msg);
+        // console.log(msg);
     }
 
     async run(): Promise<void> {

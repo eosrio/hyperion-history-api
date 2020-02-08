@@ -2,7 +2,6 @@ import {HyperionWorker} from "./hyperionWorker";
 import {AsyncCargo, cargo} from "async";
 import {Serialize} from "../eosjs-native";
 import {Type} from "eosjs/dist/eosjs-serialize";
-import {abi} from "../definitions/index-templates";
 import {deserialize, serialize} from "../helpers/common_functions";
 
 const {debugLog} = require("../helpers/functions");
@@ -14,7 +13,6 @@ export default class StateReader extends HyperionWorker {
     private abi: any;
     private qStatusMap = {};
     private recovery = false;
-    private cch_ready = false;
     private tables = new Map();
     private allowRequests = true;
     private pendingRequest = null;
@@ -36,7 +34,6 @@ export default class StateReader extends HyperionWorker {
 
     constructor() {
         super();
-
         this.stageOneDistQueue = cargo((tasks, callback) => {
             this.distribute(tasks, callback);
         }, this.conf.prefetch.read);
@@ -124,25 +121,18 @@ export default class StateReader extends HyperionWorker {
     assertQueues(): void {
         if (this.isLiveReader) {
             const live_queue = this.chain + ':live_blocks';
-
             this.ch.assertQueue(live_queue, {
                 durable: true
-            }).then(r => {
-                console.log(r);
             });
-
             this.ch.on('drain', () => {
                 console.log('drain...');
                 this.qStatusMap[live_queue] = true;
             });
-
         } else {
             for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-
+                console.log(`Asserting queue ${this.chain + ":blocks:" + (i + 1)}`);
                 this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {
                     durable: true
-                }).then(r => {
-                    console.log(r);
                 });
 
                 this.ch.on('drain', () => {
@@ -196,7 +186,10 @@ export default class StateReader extends HyperionWorker {
 
     async run(): Promise<void> {
         this.startQueueWatcher();
-        this.startWS();
+        this.events.once('ready', () => {
+            console.log('StateReader channel ready, starting ship websocket...');
+            this.startWS();
+        });
     }
 
     private signalReaderCompletion() {
@@ -247,17 +240,15 @@ export default class StateReader extends HyperionWorker {
     }
 
     private async onMessage(data: any) {
-
-        if (abi) {
+        if (this.abi) {
             // NORMAL OPERATION MODE WITH ABI PRESENT
             if (!this.recovery) {
                 // NORMAL OPERATION MODE
-                if (process.env['worker_role']) {
+                if (process.env.worker_role) {
                     const res = deserialize('result', data, this.txEnc, this.txDec, this.types)[1];
                     if (res['this_block']) {
                         const blk_num = res['this_block']['block_num'];
                         if (this.isLiveReader) {
-
                             // LIVE READER MODE
                             if (blk_num !== this.local_block_num + 1) {
                                 await this.handleFork(res);
@@ -266,9 +257,7 @@ export default class StateReader extends HyperionWorker {
                             }
                             this.stageOneDistQueue.push({num: blk_num, content: data});
                             return 1;
-
                         } else {
-
                             // BACKLOG MODE
                             if (this.future_block !== 0 && this.future_block === blk_num) {
                                 console.log('Missing block ' + blk_num + ' received!');
@@ -346,6 +335,7 @@ export default class StateReader extends HyperionWorker {
         this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
         this.abi.tables.map(table => this.tables.set(table.name, table.type));
         process.send({event: 'init_abi', data: data});
+        console.log('state reader sent first abi!');
         if (!this.conf.indexer.disable_reading) {
             switch (process.env['worker_role']) {
                 case 'reader': {

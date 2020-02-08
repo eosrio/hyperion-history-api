@@ -3,26 +3,32 @@ import {join} from "path";
 import {readdirSync} from "fs";
 import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
+import {BaseParser} from "./parsers/base-parser";
 
 export class HyperionModuleLoader {
 
     private handledActions = new Map();
-    actionParser;
     chainMappings = new Map();
     extraMappings = [];
-    messageParser: any;
     chainID;
     private conn: HyperionConnections;
     private config: HyperionConfig;
+    public parser: BaseParser;
 
     constructor(private cm: ConfigurationModule) {
         this.conn = cm.connections;
         this.config = cm.config;
         this.chainID = this.conn.chains[this.config.settings.chain].chain_id;
         this.loadActionHandlers();
-        const parsers = require(join(__dirname, 'parsers', this.config.settings.parser + "-parser"));
-        this.actionParser = parsers.actionParser;
-        this.messageParser = parsers.messageParser;
+        this.loadParser().catch((err) => {
+            console.log(err);
+        });
+    }
+
+    async loadParser() {
+        const path = join(__dirname, 'parsers', this.config.settings.parser + "-parser");
+        const mod = (await import(path)).default;
+        this.parser = new mod(this.cm) as BaseParser;
     }
 
     processActionData(action) {

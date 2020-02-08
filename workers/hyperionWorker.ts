@@ -5,6 +5,7 @@ import {ConfigurationModule} from "../modules/config";
 import {JsonRpc} from "eosjs/dist";
 import {Client} from "@elastic/elasticsearch";
 import {Channel, ConfirmChannel} from "amqplib/callback_api";
+import {EventEmitter} from "events";
 
 export abstract class HyperionWorker {
 
@@ -24,6 +25,10 @@ export abstract class HyperionWorker {
 
     txEnc = new TextEncoder();
     txDec = new TextDecoder();
+    cch_ready = false;
+    ch_ready = false;
+
+    events: EventEmitter;
 
     protected constructor() {
         this.checkDebugger();
@@ -33,13 +38,16 @@ export abstract class HyperionWorker {
         this.mLoader = new HyperionModuleLoader(cm);
         this.chain = this.conf.settings.chain;
         this.chainId = this.manager.conn.chains[this.chain].chain_id;
-
         this.rpc = this.manager.nodeosJsonRPC;
         this.client = this.manager.elasticsearchClient;
         this.ship = this.manager.shipClient;
+        this.events = new EventEmitter();
 
         // Connect to RabbitMQ (amqplib)
-        this.connectAMQP().catch(console.log);
+        this.connectAMQP().then(() => {
+            this.assertQueues();
+            this.events.emit('ready');
+        }).catch(console.log);
 
         // handle ipc messages
         process.on('message', (msg: any) => {
@@ -50,6 +58,8 @@ export abstract class HyperionWorker {
     async connectAMQP() {
         [this.ch, this.cch] = await this.manager.createAMQPChannels((channels) => {
             [this.ch, this.cch] = channels;
+            this.ch_ready = true;
+            this.cch_ready = true;
             this.assertQueues();
         });
     }

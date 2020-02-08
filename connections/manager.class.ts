@@ -6,8 +6,7 @@ import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {amqpConnect, checkQueueSize} from "./amqp";
 import {StateHistorySocket} from "./state-history";
-import * as nodeFetch from 'node-fetch';
-import fetch from "node-fetch";
+import fetch from 'cross-fetch'
 
 export class ConnectionManager {
 
@@ -23,7 +22,7 @@ export class ConnectionManager {
     }
 
     get nodeosJsonRPC() {
-        return new JsonRpc(this.conn.chains[this.chain].http);
+        return new JsonRpc(this.conn.chains[this.chain].http, {fetch});
     }
 
     async purgeQueues() {

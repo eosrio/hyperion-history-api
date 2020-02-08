@@ -43,9 +43,9 @@
     "fastparse": "^1.1.2",
     "got": "10.4.0",
     "ioredis": "4.14.1",
-    "lodash": "4.17.15",
+    "lodash": "^4.17.15",
     "moment": "2.24.0",
-    "node-fetch": "^2.6.0",
+    "cross-fetch": "^3.0.4",
     "prettyjson": "1.2.1",
     "redis": "2.8.0",
     "simdjson": "^0.2.1",
@@ -55,13 +55,14 @@
     "ws": "7.2.1"
   },
   "devDependencies": {
-    "@types/socket.io": "^2.1.4",
+    "@types/lodash": "^4.14.149",
     "@types/amqplib": "^0.5.13",
-    "@types/got": "^9.6.9",
     "@types/async": "^3.0.7",
+    "@types/got": "^9.6.9",
     "@types/node": "^13.5.3",
-    "@types/ws": "^7.2.1",
     "@types/node-fetch": "latest",
+    "@types/socket.io": "^2.1.4",
+    "@types/ws": "^7.2.1",
     "ts-node": "8.6.2",
     "typescript": "3.7.5"
   }
