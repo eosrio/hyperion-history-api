@@ -44,7 +44,7 @@ class HyperionModuleLoader {
     }
 
     loadActionHandlers() {
-        const files = fs.readdirSync('modules/action_data/');
+        const files = fs.readdirSync(path.join(__dirname, 'action_data'));
         for (const plugin of files) {
             const _module = require(path.join(__dirname, 'action_data', plugin)).hyperionModule;
             if (_module.parser_version.includes(process.env.PARSER)) {
