@@ -71,7 +71,9 @@ api_error.log
 explorer
 api/explorer
 .ecosystem.config.js.swp
-chains
+
+chains/*
+!chains/example.config.json
 
 api/**/*.js
 api/**/*.js.map
