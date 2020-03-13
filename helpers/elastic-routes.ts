@@ -1,6 +1,7 @@
 import {Channel} from "amqplib/callback_api";
 import {ConnectionManager} from "../connections/manager.class";
 import * as _ from "lodash";
+import {hLog} from "./common_functions";
 
 function makeScriptedOp(id, body) {
     return [
@@ -140,7 +141,7 @@ export class ElasticRoutes {
     onError(err, channel: Channel, callback) {
         try {
             channel.nackAll();
-            console.log('nack all', err.stack);
+            hLog('NackAll', err);
         } finally {
             callback();
         }

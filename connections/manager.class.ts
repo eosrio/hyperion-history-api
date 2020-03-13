@@ -4,9 +4,10 @@ import got from "got";
 import {Client} from '@elastic/elasticsearch'
 import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
-import {amqpConnect, checkQueueSize} from "./amqp";
+import {amqpConnect, checkQueueSize, getAmpqUrl} from "./amqp";
 import {StateHistorySocket} from "./state-history";
 import fetch from 'cross-fetch'
+import {exec} from "child_process";
 
 export class ConnectionManager {
 
@@ -14,11 +15,19 @@ export class ConnectionManager {
     conn: HyperionConnections;
 
     chain: string;
+    last_commit_hash: string;
+    current_version: string;
+
+    private esIngestClients: Client[];
+    private esIngestClient: Client;
 
     constructor(private cm: ConfigurationModule) {
         this.config = cm.config;
         this.conn = cm.connections;
         this.chain = this.config.settings.chain;
+        this.esIngestClients = [];
+        this.prepareESClient();
+        this.prepareIngestClients();
     }
 
     get nodeosJsonRPC() {
@@ -29,7 +38,14 @@ export class ConnectionManager {
         console.log(`Purging all ${this.chain} queues!`);
         const apiUrl = `http://${this.conn.amqp.user}:${this.conn.amqp.pass}@${this.conn.amqp.api}`;
         const getAllQueuesFromVHost = apiUrl + `/api/queues/%2F${this.conn.amqp.vhost}`;
-        const result = JSON.parse((await got(getAllQueuesFromVHost)).body);
+        let result;
+        try {
+            result = JSON.parse((await got(getAllQueuesFromVHost)).body);
+        } catch (e) {
+            console.log(e.message);
+            console.error('failed to connect to rabbitmq http api');
+            process.exit(1);
+        }
         for (const queue of result) {
             if (queue.name.startsWith(this.chain + ":")) {
                 const msg_count = parseInt(queue.messages);
@@ -38,7 +54,8 @@ export class ConnectionManager {
                         await got.delete(apiUrl + `/api/queues/%2F${this.conn.amqp.vhost}/${queue.name}/contents`);
                         console.log(`${queue.messages} messages deleted on queue ${queue.name}`);
                     } catch (e) {
-                        console.log(e);
+                        console.log(e.message);
+                        console.error('failed to connect to rabbitmq http api');
                         process.exit(1);
                     }
                 }
@@ -46,7 +63,7 @@ export class ConnectionManager {
         }
     }
 
-    getESClient() {
+    prepareESClient() {
         let es_url;
         const _es = this.conn.elasticsearch;
         if (_es.user !== '') {
@@ -54,18 +71,17 @@ export class ConnectionManager {
         } else {
             es_url = `http://${_es.host}`
         }
-        return new Client({node: es_url});
+        this.esIngestClient = new Client({node: es_url});
     }
 
     get elasticsearchClient() {
-        return this.getESClient();
+        return this.esIngestClient;
     }
 
-    get ingestClients() {
+    prepareIngestClients() {
         const _es = this.conn.elasticsearch;
         if (_es.ingest_nodes) {
             if (_es.ingest_nodes.length > 0) {
-                const clients = [];
                 for (const node of _es.ingest_nodes) {
                     let es_url;
                     if (_es.user !== '') {
@@ -73,14 +89,17 @@ export class ConnectionManager {
                     } else {
                         es_url = `http://${node}`
                     }
-                    clients.push(new Client({node: es_url, pingTimeout: 100}));
+                    this.esIngestClients.push(new Client({node: es_url, pingTimeout: 100}));
                 }
-                return clients;
-            } else {
-                return [this.getESClient()];
             }
+        }
+    }
+
+    get ingestClients() {
+        if (this.esIngestClients.length > 0) {
+            return this.esIngestClients;
         } else {
-            return [this.getESClient()];
+            return [this.esIngestClient];
         }
     }
 
@@ -94,5 +113,24 @@ export class ConnectionManager {
 
     get shipClient() {
         return new StateHistorySocket(this.conn.chains[this.config.settings.chain]['ship']);
+    }
+
+    get ampqUrl() {
+        return getAmpqUrl(this.conn.amqp);
+    }
+
+    calculateServerHash() {
+        exec('git rev-parse HEAD', (err, stdout) => {
+            console.log('Last commit hash on this branch is:', stdout);
+            this.last_commit_hash = stdout.trim();
+        });
+    }
+
+    getServerHash() {
+        return this.last_commit_hash;
+    }
+
+    getHyperionVersion() {
+        this.current_version = require('../package.json').version
     }
 }

@@ -44,7 +44,7 @@ fastify.register(AutoLoad, {dir: path.join(__dirname, 'handlers', 'v1-history'),
 fastify.register(AutoLoad, {dir: path.join(__dirname, 'handlers', 'v1-chain'), options: {prefix: '/v1/chain'}});
 fastify.register(AutoLoad, {dir: path.join(__dirname, 'handlers', 'history'), options: {prefix: '/v2/history'}});
 fastify.register(AutoLoad, {dir: path.join(__dirname, 'handlers', 'state'), options: {prefix: '/v2/state'}});
-fastify.register(require('./handlers/health'), {prefix: '/v2'});
+fastify.register(require('./routes/health'), {prefix: '/v2'});
 
 // Serve integrated explorer
 fastify.register(require('fastify-static'), {

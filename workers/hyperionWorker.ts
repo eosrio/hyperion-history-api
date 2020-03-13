@@ -6,6 +6,9 @@ import {JsonRpc} from "eosjs/dist";
 import {Client} from "@elastic/elasticsearch";
 import {Channel, ConfirmChannel} from "amqplib/callback_api";
 import {EventEmitter} from "events";
+import * as v8 from "v8";
+import {HeapInfo} from "v8";
+import {hLog} from "../helpers/common_functions";
 
 export abstract class HyperionWorker {
 
@@ -45,12 +48,23 @@ export abstract class HyperionWorker {
 
         // Connect to RabbitMQ (amqplib)
         this.connectAMQP().then(() => {
-            this.assertQueues();
-            this.events.emit('ready');
+            this.onConnect();
         }).catch(console.log);
 
         // handle ipc messages
         process.on('message', (msg: any) => {
+            if (msg.event === 'request_v8_heap_stats') {
+                const report: HeapInfo = v8.getHeapStatistics();
+                const used_pct = report.used_heap_size / report.heap_size_limit;
+                process.send({
+                    event: 'v8_heap_report',
+                    id: process.env.worker_role + ':' + process.env.worker_id,
+                    data: {
+                        heap_usage: (used_pct * 100).toFixed(2) + "%"
+                    }
+                });
+                return;
+            }
             this.onIpcMessage(msg);
         });
     }
@@ -58,10 +72,21 @@ export abstract class HyperionWorker {
     async connectAMQP() {
         [this.ch, this.cch] = await this.manager.createAMQPChannels((channels) => {
             [this.ch, this.cch] = channels;
-            this.ch_ready = true;
-            this.cch_ready = true;
-            this.assertQueues();
+            this.onConnect();
         });
+    }
+
+    onConnect() {
+        this.ch_ready = true;
+        this.cch_ready = true;
+        this.assertQueues();
+        this.ch.on('close', () => {
+            hLog('CHANNEL CLOSED!');
+            this.ch_ready = false;
+            this.cch_ready = false;
+            this.connectAMQP().catch(console.log);
+        });
+        this.events.emit('ready');
     }
 
     checkDebugger() {

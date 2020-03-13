@@ -1,7 +1,8 @@
 import {HyperionWorker} from "./hyperionWorker";
 import {cargo, queue} from "async";
 import {AbiEOS} from "../addons/node-abieos";
-import {Serialize} from "../eosjs-native";
+import {Serialize} from "../addons/eosjs-native";
+import {hLog} from "../helpers/common_functions";
 
 const abi_remapping = {
     "_Bool": "bool"
@@ -33,7 +34,8 @@ export default class DSPoolWorker extends HyperionWorker {
             this.processMessages(payload).then(() => {
                 cb();
             }).catch((err) => {
-                console.log('NACK ALL', err);
+                console.log(this.ch);
+                hLog('NackAll', err.message);
                 if (this.ch_ready) {
                     this.ch.nackAll();
                 }
@@ -45,7 +47,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 this.ch.sendToQueue(data.queue, data.content);
                 cb();
             } else {
-                console.log('Channel is not ready!');
+                hLog('Channel is not ready!');
             }
         }, 1);
 
@@ -98,13 +100,13 @@ export default class DSPoolWorker extends HyperionWorker {
             const results = queryResult.body.hits.hits;
             // const duration = (Number(t_end - t_start) / 1000 / 1000).toFixed(2);
             if (results.length > 0) {
-                // console.log(`fetch abi from elastic took: ${duration} ms`);
+                // hLog(`fetch abi from elastic took: ${duration} ms`);
                 return results[0]._source;
             } else {
                 return null;
             }
         } catch (e) {
-            console.log(e);
+            hLog(e);
             return null;
         }
     }
@@ -154,37 +156,37 @@ export default class DSPoolWorker extends HyperionWorker {
             const result = AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
             switch (result) {
                 case 'PARSING_ERROR': {
-                    console.log(result, block_num, _action);
+                    hLog(result, block_num, _action);
                     break;
                 }
                 case 'NOT_FOUND': {
-                    console.log(result, block_num, _action);
+                    hLog(result, block_num, _action);
                     break;
                 }
                 case 'invalid string size': {
-                    console.log(result, _action.data);
-                    console.log(_action);
+                    hLog(result, _action.data);
+                    hLog(_action);
                     break;
                 }
                 case 'read past end': {
-                    console.log(result, _action.data);
-                    console.log(_action);
+                    hLog(result, _action.data);
+                    hLog(_action);
                     break;
                 }
                 default: {
                     try {
                         return JSON.parse(result);
                     } catch (e) {
-                        console.log(e.message);
-                        console.log('string >>', result);
+                        hLog(e.message);
+                        hLog('string >>', result);
                     }
                 }
             }
         }
         const fallbackResult = await self.deserializeActionAtBlock(_action, block_num);
         if (!fallbackResult) {
-            console.log(`action fallback result: ${fallbackResult} @ ${block_num}`);
-            console.log(_action);
+            hLog(`action fallback result: ${fallbackResult} @ ${block_num}`);
+            hLog(_action);
         }
         return fallbackResult;
     }
@@ -194,7 +196,7 @@ export default class DSPoolWorker extends HyperionWorker {
         try {
             _abi = (await this.rpc.get_abi(code)).abi;
         } catch (e) {
-            console.log(e);
+            hLog(e);
         }
         return {abi: _abi, valid_until: null, valid_from: null};
     }
@@ -204,7 +206,7 @@ export default class DSPoolWorker extends HyperionWorker {
             let _sc = this.contracts.get(accountName);
             if ((_sc['valid_until'] > block_num && block_num > _sc['valid_from']) || _sc['valid_until'] === -1) {
                 if (_sc['contract'].actions.has(check_action)) {
-                    console.log('cached abi');
+                    hLog('cached abi');
                     return [_sc['contract'], null];
                 }
             }
@@ -212,7 +214,7 @@ export default class DSPoolWorker extends HyperionWorker {
         let savedAbi, abi;
         savedAbi = await this.fetchAbiHexAtBlockElastic(accountName, block_num, true);
         if (savedAbi === null || !savedAbi.actions.includes(check_action)) {
-            // console.log(`no ABI indexed for ${accountName}`);
+            // hLog(`no ABI indexed for ${accountName}`);
             savedAbi = await this.getAbiFromHeadBlock(accountName);
             if (!savedAbi) {
                 return null;
@@ -222,7 +224,7 @@ export default class DSPoolWorker extends HyperionWorker {
             try {
                 abi = JSON.parse(savedAbi.abi);
             } catch (e) {
-                console.log(e);
+                hLog(e);
                 return null;
             }
         }
@@ -249,13 +251,13 @@ export default class DSPoolWorker extends HyperionWorker {
                 try {
                     types = Serialize.getTypesFromAbi(initialTypes, abi);
                 } catch (e) {
-                    console.log('failed after remapping abi');
-                    console.log(accountName, block_num, check_action);
-                    console.log(e);
+                    hLog('failed after remapping abi');
+                    hLog(accountName, block_num, check_action);
+                    hLog(e);
                 }
             } else {
-                console.log(accountName, block_num);
-                console.log(e);
+                hLog(accountName, block_num);
+                hLog(e);
             }
         }
         const actions = new Map();
@@ -264,14 +266,14 @@ export default class DSPoolWorker extends HyperionWorker {
         }
         const result = {types, actions, tables: abi.tables};
         if (check_action) {
-            // console.log(actions);
+            // hLog(actions);
             if (actions.has(check_action)) {
-                // console.log(check_action, 'check type', actions.get(check_action).name);
-                // console.log(abi);
+                // hLog(check_action, 'check type', actions.get(check_action).name);
+                // hLog(abi);
                 try {
                     AbiEOS.load_abi(accountName, JSON.stringify(abi));
                 } catch (e) {
-                    console.log(e);
+                    hLog(e);
                 }
                 this.contracts.set(accountName, {
                     contract: result,
@@ -298,7 +300,7 @@ export default class DSPoolWorker extends HyperionWorker {
                         this.txDec
                     );
                 } catch (e) {
-                    console.log(e);
+                    hLog(e);
                     return null;
                 }
             } else {
@@ -398,7 +400,7 @@ export default class DSPoolWorker extends HyperionWorker {
             }
 
             // Submit Actions after deduplication
-            // console.log(_finalTraces.length);
+            // hLog(_finalTraces.length);
             for (const uniqueAction of _finalTraces) {
                 const payload = Buffer.from(JSON.stringify(uniqueAction));
                 this.pushToActionsQueue(payload);
@@ -456,7 +458,7 @@ export default class DSPoolWorker extends HyperionWorker {
             this.ch.consume(this.local_queue, (data) => {
                 this.consumerQueue.push(data);
             });
-            console.log(`DS Pool Worker ${process.env.local_id} consuming from ${this.local_queue}`);
+            hLog(`started consuming from ${this.local_queue}`);
         }
     }
 
@@ -464,9 +466,9 @@ export default class DSPoolWorker extends HyperionWorker {
         // delete cache contract on abieos context
         const status = AbiEOS.delete_contract(contract);
         if (!status) {
-            console.log('Contract not found on cache!');
+            hLog('Contract not found on cache!');
         } else {
-            console.log(`🗑️ Contract Successfully removed from cache!`);
+            hLog(`🗑️ Contract Successfully removed from cache!`);
         }
     }
 
@@ -484,14 +486,14 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     initializeShipAbi(data) {
-        console.log(`state history abi ready on ds_worker ${process.env.local_id}`);
+        hLog(`state history abi ready on ds_worker ${process.env.local_id}`);
         this.abi = JSON.parse(data);
         AbiEOS.load_abi("0", data);
         const initialTypes = Serialize.createInitialTypes();
         this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
         this.abi.tables.map(table => this.tables.set(table.name, table.type));
         this.onReady();
-        this.initQueues().catch(console.log);
+        this.initQueues().catch(hLog);
         this.startMonitoring();
     }
 
@@ -513,7 +515,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 break;
             }
             case 'remove_contract': {
-                console.log(`[${process.env.local_id}] Delete contract: ${msg.contract}`);
+                hLog(`[${process.env.local_id}] Delete contract: ${msg.contract}`);
                 this.deleteCache(msg.contract);
                 break;
             }
@@ -532,6 +534,6 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     async run(): Promise<void> {
-        console.log(`Standalone deserializer launched with id: ${process.env.local_id}`);
+        hLog(`Standalone deserializer launched with id: ${process.env.local_id}`);
     }
 }

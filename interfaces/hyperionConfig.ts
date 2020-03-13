@@ -10,6 +10,7 @@ export interface ScalingConfigs {
 }
 
 export interface MainSettings {
+    bp_monitoring: boolean;
     preview: boolean;
     chain: string;
     eosio_alias: string;
@@ -37,10 +38,37 @@ export interface IndexerConfigs {
     repair_mode: boolean;
 }
 
+interface ApiLimits {
+    get_actions?: number;
+    get_blocks?: number;
+    get_created_accounts?: number;
+    get_deltas?: number;
+    get_key_accounts?: number;
+    get_proposals?: number;
+    get_tokens?: number;
+    get_transfers?: number;
+    get_voters?: number;
+}
+
+interface ApiConfigs {
+    chain_name: string;
+    server_port: number;
+    server_addr: string;
+    server_name: string;
+    provider_name: string;
+    provider_url: string;
+    chain_logo_url: string;
+    enable_caching: boolean,
+    cache_life: number;
+    limits: ApiLimits
+}
+
 export interface HyperionConfig {
     settings: MainSettings;
     scaling: ScalingConfigs;
     indexer: IndexerConfigs;
+
+    api: ApiConfigs;
 
     blacklists: {
         actions: string[],

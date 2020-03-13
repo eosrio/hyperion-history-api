@@ -1,7 +1,9 @@
 import * as cluster from "cluster";
 import {ConfigurationModule} from "./modules/config";
-import {onError} from "./helpers/functions";
 import {HyperionWorker} from "./workers/hyperionWorker";
+import {hLog, messageAllWorkers} from "./helpers/common_functions";
+import * as pm2io from "@pm2/io";
+import * as v8 from "v8";
 
 interface WorkerEnv {
     worker_role: string;
@@ -18,7 +20,6 @@ const hyperionWorkers = {
 };
 
 export async function launch() {
-
     const conf = new ConfigurationModule();
     const chain_name = conf.config.settings.chain;
     const env: WorkerEnv = {
@@ -26,10 +27,18 @@ export async function launch() {
         worker_role: process.env.worker_role
     };
 
+    process.on('SIGINT', function () {
+        hLog("caught interrupt signal. Exiting now!");
+        process.exit();
+    });
+
     if (cluster.isMaster) {
         process.title = `hyp-${chain_name}-master`;
         const master = await import('./modules/master');
-        new master.HyperionMaster().runMaster().catch(onError);
+        new master.HyperionMaster().runMaster().catch((err) => {
+            console.log(process.env['worker_role']);
+            console.log(err);
+        });
     } else {
         if (hyperionWorkers[env.worker_role]) {
             process.title = `hyp-${chain_name}-${env.worker_role}:${env.worker_id}`;

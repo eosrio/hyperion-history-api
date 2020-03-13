@@ -1,5 +1,5 @@
 // nodejs native eosjs
-const {Serialize} = require('../eosjs-native');
+const {Serialize} = require('../addons/eosjs-native');
 // const {Serialize} = require('eosjs');
 
 // abieos addon

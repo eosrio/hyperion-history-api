@@ -10,7 +10,7 @@ const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 const schema = {
     description: 'legacy get actions query',
     summary: 'get actions',
-    tags: ['actions','history'],
+    tags: ['actions', 'history'],
     body: {
         type: ['object', 'string'],
         properties: {
@@ -128,6 +128,7 @@ async function get_actions(fastify, request) {
         request.body = JSON.parse(request.body)
     }
     const reqBody = request.body;
+    console.log(reqBody);
     const t0 = Date.now();
     const {redis, elastic, eosjs} = fastify;
 

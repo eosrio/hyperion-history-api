@@ -90,7 +90,7 @@ var __values = (this && this.__values) || function (o) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 var ser = require("./eosjs-serialize");
-var abiAbi = require('./src/abi.abi');
+var abiAbi = require('./src/abi.abi.json');
 var transactionAbi = require('./src/transaction.abi.json');
 var Api = /** @class */ (function () {
     /**

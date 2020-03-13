@@ -1,3 +1,5 @@
+import {hLog} from "../helpers/common_functions";
+
 const got = require('got');
 import {connect, Connection} from 'amqplib';
 
@@ -5,7 +7,7 @@ const {debugLog} = require("../helpers/functions");
 
 export async function createConnection(config): Promise<Connection> {
     try {
-        const amqp_url = `amqp://${config.user}:${config.pass}@${config.host}/%2F${config.vhost}`;
+        const amqp_url = getAmpqUrl(config);
         const conn: Connection = await connect(amqp_url);
         debugLog("[AMQP] connection established");
         return conn;
@@ -16,6 +18,11 @@ export async function createConnection(config): Promise<Connection> {
         return await createConnection(config);
     }
 }
+
+export function getAmpqUrl(config): string {
+    return `amqp://${config.user}:${config.pass}@${config.host}/%2F${config.vhost}`;
+}
+
 
 async function createChannels(connection) {
     try {
@@ -35,17 +42,16 @@ export async function amqpConnect(onReconnect, config) {
         const channels = await createChannels(connection);
         if (channels) {
             connection.on('error', (err) => {
-                console.log('[AMQP] Error!');
-                console.log(err);
+                hLog(err.message);
             });
             connection.on('close', () => {
-                console.log('[AMQP] Connection closed!');
+                hLog('Connection closed!');
                 setTimeout(async () => {
-                    console.log('Retrying in 5 seconds...');
+                    hLog('Retrying in 3 seconds...');
                     const _channels = await amqpConnect(onReconnect, config);
                     onReconnect(_channels);
                     return _channels;
-                }, 5000);
+                }, 3000);
             });
             return channels;
         } else {

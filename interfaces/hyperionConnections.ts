@@ -23,7 +23,7 @@ interface HyperionChainData {
 
 interface RedisConfig {
     host: string;
-    port: string | number;
+    port: number;
 }
 
 export interface HyperionConnections {

@@ -1,8 +1,8 @@
 import {HyperionWorker} from "./hyperionWorker";
 import {AsyncCargo, cargo} from "async";
-import {Serialize} from "../eosjs-native";
+import {Serialize} from "../addons/eosjs-native";
 import {Type} from "eosjs/dist/eosjs-serialize";
-import {deserialize, serialize} from "../helpers/common_functions";
+import {deserialize, hLog, serialize} from "../helpers/common_functions";
 
 const {debugLog} = require("../helpers/functions");
 
@@ -130,7 +130,7 @@ export default class StateReader extends HyperionWorker {
             });
         } else {
             for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                console.log(`Asserting queue ${this.chain + ":blocks:" + (i + 1)}`);
+                // console.log(`Asserting queue ${this.chain + ":blocks:" + (i + 1)}`);
                 this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {
                     durable: true
                 });
@@ -187,7 +187,6 @@ export default class StateReader extends HyperionWorker {
     async run(): Promise<void> {
         this.startQueueWatcher();
         this.events.once('ready', () => {
-            console.log('StateReader channel ready, starting ship websocket...');
             this.startWS();
         });
     }
@@ -335,7 +334,7 @@ export default class StateReader extends HyperionWorker {
         this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
         this.abi.tables.map(table => this.tables.set(table.name, table.type));
         process.send({event: 'init_abi', data: data});
-        console.log('state reader sent first abi!');
+        // console.log('state reader sent first abi!');
         if (!this.conf.indexer.disable_reading) {
             switch (process.env['worker_role']) {
                 case 'reader': {
@@ -448,7 +447,7 @@ export default class StateReader extends HyperionWorker {
     private handleLostConnection() {
         this.recovery = true;
         this.ship.close();
-        console.log(`Retrying connection in 5 seconds... [attempt: ${this.reconnectCount + 1}]`);
+        hLog(`Retrying connection in 5 seconds... [attempt: ${this.reconnectCount + 1}]`);
         debugLog('PENDING REQUESTS:', this.pendingRequest);
         debugLog('LOCAL BLOCK:', this.local_block_num);
         setTimeout(() => {

@@ -1,4 +1,19 @@
 {
+  "api": {
+    "chain_name": "REM Mainnet",
+    "server_addr": "192.168.0.130",
+    "server_port": 7000,
+    "server_name": "192.168.0.130:7000",
+    "provider_name": "EOS Rio",
+    "provider_url": "https://eosrio.io",
+    "chain_logo_url": "",
+    "enable_caching": true,
+    "cache_life": 1,
+    "limits": {
+      "get_actions": 1000,
+      "get_voters": 100
+    }
+  },
   "settings": {
     "preview": false,
     "chain": "rem",
@@ -8,7 +23,20 @@
     "index_version": "v1",
     "debug": false,
     "rate_monitoring": true,
-    "bp_logs": false
+    "bp_logs": false,
+    "bp_monitoring": false
+  },
+  "blacklists": {
+    "actions": [
+      "rem::rem.null::*"
+    ],
+    "deltas": [
+      "rem::rem::global"
+    ]
+  },
+  "whitelists": {
+    "actions": [],
+    "deltas": []
   },
   "scaling": {
     "batch_size": 10000,
@@ -16,15 +44,16 @@
     "readers": 1,
     "ds_queues": 1,
     "ds_threads": 1,
+    "ds_pool_size": 2,
     "indexing_queues": 1,
     "ad_idx_queues": 1
   },
   "indexer": {
-    "start_on": 4000000,
+    "start_on": 0,
     "stop_on": 0,
     "rewrite": true,
     "purge_queues": true,
-    "live_reader": true,
+    "live_reader": false,
     "live_only_mode": false,
     "abi_scan_mode": false,
     "fetch_block": true,

@@ -1,5 +1,5 @@
 import {ApiResponse, Client} from "@elastic/elasticsearch";
-import {Serialize} from "../eosjs-native";
+import {Serialize} from "../addons/eosjs-native";
 
 function getLastResult(results: ApiResponse) {
     if (results.body.hits?.hits?.length > 0) {
@@ -163,4 +163,24 @@ export function checkFilter(filter, _source) {
     } else {
         return false;
     }
+}
+
+export function hLog(input: any, ...extra: any[]) {
+    let role;
+    if (process.env.worker_role) {
+        const id = parseInt(process.env.worker_id);
+        role = `[${(id < 10 ? '0' : '') + id.toString()}_${process.env.worker_role}]`;
+    } else {
+        role = '[00_master]';
+    }
+    if (process.env.TRACE_LOGS === 'true') {
+        const e = new Error();
+        const frame = e.stack.split("\n")[2];
+        const where = frame.split(" ")[6].split(/[:()]/);
+        const arr = where[1].split("/");
+        const fileName = arr[arr.length - 1];
+        const lineNumber = where[2];
+        role += ` ${fileName}:${lineNumber}`;
+    }
+    console.log(role, input, ...extra);
 }
