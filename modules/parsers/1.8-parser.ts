@@ -84,8 +84,8 @@ export default class HyperionParser extends BaseParser {
             if (!ds_msg) {
                 if (worker.ch_ready) {
                     worker.ch.nack(message);
+                    throw new Error('failed to deserialize datatype=result');
                 }
-                process.exit(1);
             }
             const res = ds_msg[1];
             let block, traces = [], deltas = [];

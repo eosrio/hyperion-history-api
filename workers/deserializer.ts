@@ -291,7 +291,7 @@ export default class MainDSWorker extends HyperionWorker {
                         // route trx trace to pool based on first action
                         this.routeToPool(transaction_trace, {block_num, producer, ts});
                     } else {
-                        hLog(transaction_trace);
+                        // hLog(transaction_trace, transaction_trace.partial[1].transaction_extensions);
                     }
                 }
                 const traces_elapsed_time = Date.now() - t2;
@@ -438,14 +438,11 @@ export default class MainDSWorker extends HyperionWorker {
                             return [_status, resultType];
                         }
                     }
+                } else {
+                    hLog(`⚠️  ⚠️  ${field} "${type}" not found on saved abi for ${contract} at block ${block_num}!`);
                 }
-                // else {
-                //     // hLog(`⚠️ ⚠️  ${field} "${type}" not found on saved abi for ${contract} at block ${block_num}!`);
-                // }
             }
-            // hLog(`Abi not indexed at or before block ${block_num} for ${contract}`);
             const currentAbi = await this.rpc.getRawAbi(contract);
-            // hLog('Retrying with the current revision...');
             if (currentAbi.abi.byteLength > 0) {
                 const abi_hex = Buffer.from(currentAbi.abi).toString('hex');
                 _status = AbiEOS.load_abi_hex(contract, abi_hex);
@@ -455,13 +452,10 @@ export default class MainDSWorker extends HyperionWorker {
             if (_status === true) {
                 resultType = AbiEOS['get_type_for_' + field](contract, type);
                 _status = resultType !== "NOT_FOUND"
-                // if (resultType === "NOT_FOUND") {
-                //     // hLog(`⚠️ ⚠️  Current ABI version for ${contract} doesn't contain the ${field} type ${type}`);
-                //     _status = false;
-                // } else {
-                //     // hLog(`✅️  ${contract} abi cache updated at block ${block_num}`);
-                //     _status = true;
-                // }
+                if (resultType === "NOT_FOUND") {
+                    hLog(`⚠️ ⚠️  Current ABI version for ${contract} doesn't contain the ${field} type ${type}`);
+
+                }
             }
         } else {
             _status = true;
@@ -471,7 +465,6 @@ export default class MainDSWorker extends HyperionWorker {
 
     async processContractRowNative(row, block) {
         const [_status, tableType] = await this.verifyLocalType(row['code'], row['table'], block, "table");
-        let debugFallback;
         if (_status) {
             let result;
             if (typeof row.value === 'string') {
@@ -483,7 +476,6 @@ export default class MainDSWorker extends HyperionWorker {
                 case "Extra data": {
                     hLog(`Extra data on row with type "${tableType}"`);
                     hLog(row);
-                    debugFallback = true;
                     break;
                 }
                 case 'PARSING_ERROR': {
@@ -497,17 +489,17 @@ export default class MainDSWorker extends HyperionWorker {
                         return row;
                     } catch (e) {
                         hLog(`JSON Parse error: ${e.message} | string: "${result}"`);
-                        hLog('------------- contract row ----------------');
-                        hLog(row);
-                        hLog('-------------------------------------------')
+                        // hLog('------------- contract row ----------------');
+                        // hLog(row);
+                        // hLog('-------------------------------------------')
                     }
                 }
             }
         }
 
         const fallbackResult = await this.processContractRow(row, block);
-        if (debugFallback) {
-            hLog('delta fallback', fallbackResult);
+        if (fallbackResult['data']) {
+            hLog('fallback success!');
         }
         return fallbackResult;
     }
@@ -709,19 +701,15 @@ export default class MainDSWorker extends HyperionWorker {
             // }
 
             if (this.conf.features.index_all_deltas || (payload.code === this.conf.settings.eosio_alias || payload.table === 'accounts')) {
-                if (payload.code === 'rem' && payload.table === 'voters' && payload.payer === 'remmeteamgrd') {
-                    // temp
-                } else {
-                    const jsonRow = await this.processContractRowNative(payload, block_num);
-                    if (jsonRow['data']) {
-                        const indexableData = await this.processTableDelta(jsonRow);
-                        if (indexableData) {
-                            if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {
-                                const payload = Buffer.from(JSON.stringify(jsonRow));
-                                this.pushToDeltaQueue(payload);
-                                this.temp_delta_counter++;
-                                this.pushToDeltaStreamingQueue(payload, jsonRow);
-                            }
+                const jsonRow = await this.processContractRowNative(payload, block_num);
+                if (jsonRow) {
+                    const indexableData = await this.processTableDelta(jsonRow);
+                    if (indexableData) {
+                        if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {
+                            const payload = Buffer.from(JSON.stringify(jsonRow));
+                            this.pushToDeltaQueue(payload);
+                            this.temp_delta_counter++;
+                            this.pushToDeltaStreamingQueue(payload, jsonRow);
                         }
                     }
                 }
@@ -949,24 +937,24 @@ export default class MainDSWorker extends HyperionWorker {
 
     deserializeNative(datatype: string, array: any, use_simdjson: boolean) {
         const result = AbiEOS[typeof array === 'string' ? 'hex_to_json' : 'bin_to_json']("0", datatype, array);
+        let parsed;
         if (result !== 'PARSING_ERROR') {
             try {
                 if (use_simdjson) {
-                    return simdjson['lazyParse'](result);
+                    parsed = simdjson['lazyParse'](result);
                 } else {
-                    return JSON.parse(result);
+                    parsed = JSON.parse(result);
                 }
             } catch (e) {
                 hLog(`Input: ${typeof array}`);
                 hLog(`Datatype: ${datatype}`);
                 hLog(`Result: ${result}`);
                 hLog(e);
-                return null;
             }
         } else {
-            hLog(result, datatype);
-            return null;
+            hLog('Parsing Error', datatype);
         }
+        return parsed;
     }
 
     async deserializeActionAtBlockNative(_action, block_num) {

@@ -72,8 +72,10 @@ export abstract class HyperionWorker {
     async connectAMQP() {
         [this.ch, this.cch] = await this.manager.createAMQPChannels((channels) => {
             [this.ch, this.cch] = channels;
+            hLog('AMPQ Reconnecting...');
             this.onConnect();
         });
+        hLog('AMPQ Connected!');
     }
 
     onConnect() {
@@ -81,10 +83,10 @@ export abstract class HyperionWorker {
         this.cch_ready = true;
         this.assertQueues();
         this.ch.on('close', () => {
-            hLog('CHANNEL CLOSED!');
             this.ch_ready = false;
+        });
+        this.cch.on('close', () => {
             this.cch_ready = false;
-            this.connectAMQP().catch(console.log);
         });
         this.events.emit('ready');
     }

@@ -870,20 +870,17 @@ export class HyperionMaster {
                 }
                 this.globalUsageMap[code][1] = _pct;
                 if (JSON.stringify(this.globalUsageMap[code][2]) !== JSON.stringify(proposedWorkers)) {
-
-                    hLog(this.globalUsageMap[code][2], ">>", proposedWorkers);
-
+                    // hLog(this.globalUsageMap[code][2], ">>", proposedWorkers);
                     proposedWorkers.forEach(w => {
                         const idx = this.globalUsageMap[code][2].indexOf(w);
-                        if (idx === -1) {
-                            hLog(`Worker ${w} assigned to ${code}`);
-                        } else {
+                        if (idx !== -1) {
                             this.globalUsageMap[code][2].splice(idx, 1);
+                        } else {
+                            // hLog(`Worker ${w} assigned to ${code}`);
                         }
                     });
-
                     this.globalUsageMap[code][2].forEach(w_id => {
-                        hLog(`>>>> Worker ${this.globalUsageMap[code][2]} removed from ${code}!`);
+                        // hLog(`>>>> Worker ${this.globalUsageMap[code][2]} removed from ${code}!`);
                         if (this.dsPoolMap.has(w_id)) {
                             this.dsPoolMap.get(w_id).send({
                                 event: "remove_contract",

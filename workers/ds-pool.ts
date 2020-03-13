@@ -183,12 +183,8 @@ export default class DSPoolWorker extends HyperionWorker {
                 }
             }
         }
-        const fallbackResult = await self.deserializeActionAtBlock(_action, block_num);
-        if (!fallbackResult) {
-            hLog(`action fallback result: ${fallbackResult} @ ${block_num}`);
-            hLog(_action);
-        }
-        return fallbackResult;
+        // fallback to eosjs deserializer
+        return await self.deserializeActionAtBlock(_action, block_num);
     }
 
     async getAbiFromHeadBlock(code) {
@@ -442,16 +438,6 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    async initQueues() {
-        [this.ch, this.cch] = await this.manager.createAMQPChannels((channels) => {
-            [this.ch, this.cch] = channels;
-            this.assertQueues();
-            this.initConsumer();
-        });
-        this.assertQueues();
-        this.initConsumer();
-    }
-
     initConsumer() {
         if (this.ch_ready) {
             this.ch.prefetch(this.conf.prefetch.block);
@@ -493,7 +479,7 @@ export default class DSPoolWorker extends HyperionWorker {
         this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
         this.abi.tables.map(table => this.tables.set(table.name, table.type));
         this.onReady();
-        this.initQueues().catch(hLog);
+        this.connectAMQP().catch(console.log);
         this.startMonitoring();
     }
 
@@ -505,6 +491,7 @@ export default class DSPoolWorker extends HyperionWorker {
             this.ch.assertQueue(this.local_queue, {
                 durable: true
             });
+            this.initConsumer();
         }
     }
 

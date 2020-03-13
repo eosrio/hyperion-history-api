@@ -47,11 +47,11 @@ export async function amqpConnect(onReconnect, config) {
             connection.on('close', () => {
                 hLog('Connection closed!');
                 setTimeout(async () => {
-                    hLog('Retrying in 3 seconds...');
+                    hLog('Retrying in 5 seconds...');
                     const _channels = await amqpConnect(onReconnect, config);
                     onReconnect(_channels);
                     return _channels;
-                }, 3000);
+                }, 5000);
             });
             return channels;
         } else {
