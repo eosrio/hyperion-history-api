@@ -103,8 +103,8 @@ export class ConnectionManager {
         }
     }
 
-    async createAMQPChannels(onReconnect) {
-        return await amqpConnect(onReconnect, this.conn.amqp);
+    async createAMQPChannels(onReconnect, onClose) {
+        return await amqpConnect(onReconnect, this.conn.amqp, onClose);
     }
 
     async checkQueueSize(queue) {

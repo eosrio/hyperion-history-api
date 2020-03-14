@@ -198,14 +198,11 @@ export default class StateReader extends HyperionWorker {
             this.local_distributed_count = 0;
             this.completionMonitoring = setInterval(() => {
                 let pending = 0;
-                if (this.cch.unconfirmed.length > 0) {
-                    this.cch.unconfirmed.forEach((elem) => {
-                        if (elem) {
-                            pending++;
-                        }
-                    });
+                const unconfirmed = this.cch['unconfirmed'];
+                if (unconfirmed.length > 0) {
+                    pending += unconfirmed.length;
                     if (pending === this.lastPendingCount && pending > 0) {
-                        // console.log(`[${process.env['worker_id']}] Pending blocks: ${pending}`);
+                        // hLog(`Pending blocks: ${pending}`);
                     } else {
                         this.lastPendingCount = pending;
                     }

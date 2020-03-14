@@ -19,8 +19,8 @@ export abstract class HyperionWorker {
     chainId: string;
 
     // AMQP Channels
-    ch: any;
-    cch: any;
+    ch: Channel;
+    cch: ConfirmChannel;
 
     rpc: JsonRpc;
     client: Client;
@@ -72,10 +72,13 @@ export abstract class HyperionWorker {
     async connectAMQP() {
         [this.ch, this.cch] = await this.manager.createAMQPChannels((channels) => {
             [this.ch, this.cch] = channels;
-            hLog('AMPQ Reconnecting...');
+            hLog('AMQP Reconnecting...');
             this.onConnect();
+        }, () => {
+            this.ch_ready = false;
+            this.cch_ready = false;
         });
-        hLog('AMPQ Connected!');
+        hLog('AMQP Connected!');
     }
 
     onConnect() {

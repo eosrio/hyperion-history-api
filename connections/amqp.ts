@@ -36,7 +36,7 @@ async function createChannels(connection) {
     }
 }
 
-export async function amqpConnect(onReconnect, config) {
+export async function amqpConnect(onReconnect, config, onClose) {
     let connection = await createConnection(config);
     if (connection) {
         const channels = await createChannels(connection);
@@ -46,9 +46,10 @@ export async function amqpConnect(onReconnect, config) {
             });
             connection.on('close', () => {
                 hLog('Connection closed!');
+                onClose();
                 setTimeout(async () => {
                     hLog('Retrying in 5 seconds...');
-                    const _channels = await amqpConnect(onReconnect, config);
+                    const _channels = await amqpConnect(onReconnect, config, onClose);
                     onReconnect(_channels);
                     return _channels;
                 }, 5000);

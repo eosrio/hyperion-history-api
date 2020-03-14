@@ -3,6 +3,7 @@ import {cargo, queue} from "async";
 import {AbiEOS} from "../addons/node-abieos";
 import {Serialize} from "../addons/eosjs-native";
 import {hLog} from "../helpers/common_functions";
+import {Message} from "amqplib";
 
 const abi_remapping = {
     "_Bool": "bool"
@@ -39,7 +40,7 @@ export default class DSPoolWorker extends HyperionWorker {
                     try {
                         this.ch.nackAll();
                     } catch (e) {
-                        console.log(e);
+                        hLog(e.message);
                     }
                 }
             });
@@ -50,7 +51,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 try {
                     this.ch.sendToQueue(data.queue, data.content);
                 } catch (e) {
-                    console.log(data.content);
+                    hLog(e.message);
                 }
                 cb();
             } else {
@@ -314,13 +315,20 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    async processMessages(msg_array) {
+    async processMessages(msg_array: Message[]) {
         for (const data of msg_array) {
             const parsedData = JSON.parse(Buffer.from(data.content).toString());
             await this.processTraces(parsedData, data.properties.headers);
             // ack message
             if (this.ch_ready) {
-                this.ch.ack(data);
+                // console.log(data.fields.deliveryTag);
+                try {
+                    this.ch.ack(data);
+                } catch (e) {
+                    console.log(e);
+                    console.log(parsedData);
+                    console.log(data.properties.headers);
+                }
             }
         }
     }
@@ -450,6 +458,8 @@ export default class DSPoolWorker extends HyperionWorker {
             this.ch.prefetch(this.conf.prefetch.block);
             this.ch.consume(this.local_queue, (data) => {
                 this.consumerQueue.push(data);
+            }, {}, (err, ok) => {
+                hLog(err, ok);
             });
             hLog(`started consuming from ${this.local_queue}`);
         }
@@ -488,9 +498,6 @@ export default class DSPoolWorker extends HyperionWorker {
         this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
         this.abi.tables.map(table => this.tables.set(table.name, table.type));
         this.onReady();
-        setTimeout(() => {
-            this.connectAMQP().catch(console.log);
-        }, 3000);
         this.startMonitoring();
     }
 
