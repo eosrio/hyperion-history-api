@@ -36,14 +36,22 @@ export default class DSPoolWorker extends HyperionWorker {
             }).catch((err) => {
                 hLog('NackAll:', err.message);
                 if (this.ch_ready) {
-                    this.ch.nackAll();
+                    try {
+                        this.ch.nackAll();
+                    } catch (e) {
+                        console.log(e);
+                    }
                 }
             });
         }, this.conf.prefetch.block);
 
         this.preIndexingQueue = queue((data: any, cb) => {
             if (this.ch_ready) {
-                this.ch.sendToQueue(data.queue, data.content);
+                try {
+                    this.ch.sendToQueue(data.queue, data.content);
+                } catch (e) {
+                    console.log(data.content);
+                }
                 cb();
             } else {
                 hLog('Channel is not ready!');
