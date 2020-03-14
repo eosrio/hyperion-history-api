@@ -126,6 +126,7 @@ export class HyperionMaster {
     private cachedInitABI = false;
     private activeReadersCount = 0;
     private lastAssignedBlock: number;
+    private lastIndexedABI: number;
 
 
     constructor() {
@@ -481,15 +482,20 @@ export class HyperionMaster {
             // Check last indexed block again
             if (!this.conf.indexer.rewrite) {
                 let lastIndexedBlockOnRange;
-                if (this.conf.features.index_deltas) {
-                    lastIndexedBlockOnRange = await getLastIndexedBlockByDeltaFromRange(this.client, this.chain, this.starting_block, this.head);
+                if (this.conf.indexer.abi_scan_mode) {
+                    hLog(`Last indexed ABI: ${this.lastIndexedABI}`);
+                    this.starting_block = this.lastIndexedABI;
                 } else {
-                    lastIndexedBlockOnRange = await getLastIndexedBlockFromRange(this.client, this.chain, this.starting_block, this.head);
-                }
-                if (lastIndexedBlockOnRange > this.starting_block) {
-                    hLog('WARNING! Data present on target range!');
-                    hLog('Changing initial block num. Use REWRITE = true to bypass.');
-                    this.starting_block = lastIndexedBlockOnRange;
+                    if (this.conf.features.index_deltas) {
+                        lastIndexedBlockOnRange = await getLastIndexedBlockByDeltaFromRange(this.client, this.chain, this.starting_block, this.head);
+                    } else {
+                        lastIndexedBlockOnRange = await getLastIndexedBlockFromRange(this.client, this.chain, this.starting_block, this.head);
+                    }
+                    if (lastIndexedBlockOnRange > this.starting_block) {
+                        hLog('WARNING! Data present on target range!');
+                        hLog('Changing initial block num. Use REWRITE = true to bypass.');
+                        this.starting_block = lastIndexedBlockOnRange;
+                    }
                 }
             }
             hLog(' |>> First Block: ' + this.starting_block);
@@ -1176,12 +1182,7 @@ Deltas: ${this.total_deltas}
             this.head = this.conf.indexer.stop_on;
         }
 
-        let lastIndexedABI = await getLastIndexedABI(this.client, queue_prefix);
-        hLog(`Last indexed ABI: ${lastIndexedABI}`);
-        if (this.conf.indexer.abi_scan_mode) {
-            this.starting_block = lastIndexedABI;
-        }
-
+        this.lastIndexedABI = await getLastIndexedABI(this.client, queue_prefix);
         await this.defineBlockRange();
         this.total_range = this.head - this.starting_block;
         await this.setupReaders();
