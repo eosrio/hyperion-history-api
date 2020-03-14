@@ -146,7 +146,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         if (process.env['live_mode'] === 'false') {
             for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                this.ch.assertQueue(queue + ":" + (i + 1), {
+                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {
                     durable: true
                 });
             }
