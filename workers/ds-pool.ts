@@ -34,8 +34,7 @@ export default class DSPoolWorker extends HyperionWorker {
             this.processMessages(payload).then(() => {
                 cb();
             }).catch((err) => {
-                console.log(this.ch);
-                hLog('NackAll', err.message);
+                hLog('NackAll:', err.message);
                 if (this.ch_ready) {
                     this.ch.nackAll();
                 }
@@ -461,11 +460,13 @@ export default class DSPoolWorker extends HyperionWorker {
     startMonitoring() {
         // Monitor Contract Usage
         setInterval(() => {
-            process.send({
-                event: 'contract_usage_report',
-                data: this.contractUsage,
-                total_hits: this.totalHits
-            });
+            if (this.totalHits > 0) {
+                process.send({
+                    event: 'contract_usage_report',
+                    data: this.contractUsage,
+                    total_hits: this.totalHits
+                });
+            }
             this.contractUsage = {};
             this.totalHits = 0;
         }, 1000);
@@ -479,7 +480,9 @@ export default class DSPoolWorker extends HyperionWorker {
         this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
         this.abi.tables.map(table => this.tables.set(table.name, table.type));
         this.onReady();
-        this.connectAMQP().catch(console.log);
+        setTimeout(() => {
+            this.connectAMQP().catch(console.log);
+        }, 3000);
         this.startMonitoring();
     }
 
