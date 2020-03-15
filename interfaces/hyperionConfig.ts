@@ -10,7 +10,8 @@ export interface ScalingConfigs {
 }
 
 export interface MainSettings {
-    bp_monitoring: boolean;
+    ipc_debug_rate?: number;
+    bp_monitoring?: boolean;
     preview: boolean;
     chain: string;
     eosio_alias: string;

@@ -78,7 +78,6 @@ export abstract class HyperionWorker {
             this.ch_ready = false;
             this.cch_ready = false;
         });
-        hLog('AMQP Connected!');
     }
 
     onConnect() {

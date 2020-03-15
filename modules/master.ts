@@ -147,8 +147,11 @@ export class HyperionMaster {
                         this.lastProcessedBlockNum = msg.block_num;
                     }
                 } else {
+                    // LIVE READER
                     this.liveConsumedBlocks++;
-                    this.onLiveBlock(msg);
+                    if (this.conf.settings.bp_monitoring) {
+                        this.onLiveBlock(msg);
+                    }
                 }
             },
             'init_abi': (msg: any) => {
@@ -243,9 +246,9 @@ export class HyperionMaster {
             'new_schedule': (msg: any) => {
                 this.onScheduleUpdate(msg);
             },
-            'ds_ready': (msg: any) => {
-                hLog(msg);
-            },
+            // 'ds_ready': (msg: any) => {
+            //     hLog(msg);
+            // },
             'contract_usage_report': (msg: any) => {
                 if (msg.data) {
                     this.totalContractHits += msg.total_hits;
@@ -330,6 +333,10 @@ export class HyperionMaster {
     private async getCurrentSchedule() {
         try {
             this.currentSchedule = await this.rpc.get_producer_schedule();
+            if (!this.currentSchedule) {
+                console.error('empty producer schedule, something went wrong!');
+                process.exit(1);
+            }
         } catch (e) {
             console.error('failed to connect to api');
             process.exit(1);
@@ -723,7 +730,9 @@ export class HyperionMaster {
     }
 
     handleMessage(msg) {
-        this.totalMessages++;
+        if (this.conf.settings.ipc_debug_rate && this.conf.settings.ipc_debug_rate > 1000) {
+            this.totalMessages++;
+        }
         if (this.msgHandlerMap[msg.event]) {
             this.msgHandlerMap[msg.event](msg);
         } else {
@@ -1210,11 +1219,14 @@ Deltas: ${this.total_deltas}
         // Launch all workers
         this.launchWorkers();
 
-        this.totalMessages = 0;
-        setInterval(() => {
-            hLog(`IPC Messaging Rate: ${(this.totalMessages / 10).toFixed(2)} msg/s`);
+        if (this.conf.settings.ipc_debug_rate && this.conf.settings.ipc_debug_rate > 1000) {
+            const rate = this.conf.settings.ipc_debug_rate;
             this.totalMessages = 0;
-        }, 10000);
+            setInterval(() => {
+                hLog(`IPC Messaging Rate: ${(this.totalMessages / (rate / 1000)).toFixed(2)} msg/s`);
+                this.totalMessages = 0;
+            }, rate);
+        }
 
         // Attach handlers
         for (const c in cluster.workers) {
@@ -1238,7 +1250,7 @@ Deltas: ${this.total_deltas}
             for (const id in cluster.workers) {
                 if (cluster.workers.hasOwnProperty(id)) {
                     const worker: Worker = cluster.workers[id];
-                    requests.push(new Promise((resolve, reject) => {
+                    requests.push(new Promise((resolve) => {
                         const _timeout = setTimeout(() => {
                             worker.removeListener('message', _listener);
                             resolve([id, null]);

@@ -24,7 +24,8 @@
     "debug": false,
     "rate_monitoring": true,
     "bp_logs": false,
-    "bp_monitoring": false
+    "bp_monitoring": false,
+    "ipc_debug_rate": 2000
   },
   "blacklists": {
     "actions": [],
