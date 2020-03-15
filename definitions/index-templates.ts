@@ -1,5 +1,4 @@
 import {ConfigurationModule} from "../modules/config";
-import exp = require("constants");
 
 const shards = 2;
 const replicas = 0;
@@ -9,9 +8,9 @@ const defaultLifecyclePolicy = "50G30D";
 export * from './index-lifecycle-policies';
 
 // LZ4 Compression
-const compression = 'default';
+// const compression = 'default';
 // DEFLATE
-// const compression = "best_compression";
+const compression = "best_compression";
 
 const cm = new ConfigurationModule();
 const chain = cm.config.settings.chain;
