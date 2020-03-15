@@ -9,6 +9,7 @@ import {EventEmitter} from "events";
 import * as v8 from "v8";
 import {HeapInfo} from "v8";
 import {hLog} from "../helpers/common_functions";
+import {StateHistorySocket} from "../connections/state-history";
 
 export abstract class HyperionWorker {
 
@@ -24,7 +25,7 @@ export abstract class HyperionWorker {
 
     rpc: JsonRpc;
     client: Client;
-    ship: any;
+    ship: StateHistorySocket;
 
     txEnc = new TextEncoder();
     txDec = new TextDecoder();

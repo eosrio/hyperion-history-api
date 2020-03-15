@@ -446,7 +446,15 @@ export default class StateReader extends HyperionWorker {
     }
 
     private startWS() {
-        this.ship.connect(this.blockReadingQueue.push, this.handleLostConnection);
+        this.ship.connect(
+            this.blockReadingQueue.push,
+            this.handleLostConnection.bind(this),
+            () => {
+                hLog('connection failed');
+            }, () => {
+                this.reconnectCount = 0;
+            }
+        );
     }
 
     private handleLostConnection() {

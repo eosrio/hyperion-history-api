@@ -111,7 +111,7 @@ export class ConnectionManager {
         return await checkQueueSize(queue, this.conn.amqp);
     }
 
-    get shipClient() {
+    get shipClient(): StateHistorySocket {
         return new StateHistorySocket(this.conn.chains[this.config.settings.chain]['ship']);
     }
 

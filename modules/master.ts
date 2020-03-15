@@ -730,7 +730,7 @@ export class HyperionMaster {
     }
 
     handleMessage(msg) {
-        if (this.conf.settings.ipc_debug_rate && this.conf.settings.ipc_debug_rate > 1000) {
+        if (this.conf.settings.ipc_debug_rate && this.conf.settings.ipc_debug_rate >= 1000) {
             this.totalMessages++;
         }
         if (this.msgHandlerMap[msg.event]) {
@@ -1219,7 +1219,12 @@ Deltas: ${this.total_deltas}
         // Launch all workers
         this.launchWorkers();
 
-        if (this.conf.settings.ipc_debug_rate && this.conf.settings.ipc_debug_rate > 1000) {
+        if (this.conf.settings.ipc_debug_rate > 0 && this.conf.settings.ipc_debug_rate < 1000) {
+            hLog(`settings.ipc_debug_rate was set too low (${this.conf.settings.ipc_debug_rate}) using 1000 instead!`);
+            this.conf.settings.ipc_debug_rate = 1000;
+        }
+
+        if (this.conf.settings.ipc_debug_rate && this.conf.settings.ipc_debug_rate >= 1000) {
             const rate = this.conf.settings.ipc_debug_rate;
             this.totalMessages = 0;
             setInterval(() => {
