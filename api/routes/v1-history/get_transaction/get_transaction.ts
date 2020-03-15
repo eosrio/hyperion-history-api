@@ -1,36 +1,14 @@
-const {getTransactionV1Schema} = require("../../schemas");
-const _ = require('lodash');
-const {getCacheByHash, mergeActionMeta} = require("../../helpers/functions");
-const crypto = require('crypto');
+import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
+import {ServerResponse} from "http";
+import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
+import {createHash} from "crypto";
 
-
-const schema = {
-    description: 'get all actions belonging to the same transaction',
-    summary: 'get transaction by id',
-    tags: ['transactions','history'],
-    body: {
-        type: ['object', 'string'],
-        properties: {
-            "id": {
-                description: 'transaction id',
-                type: 'string'
-            }
-        },
-        required: ["id"]
-    }
-};
-
-async function getTransaction(fastify, request) {
+async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
     if (typeof request.body === 'string') {
         request.body = JSON.parse(request.body)
     }
-    const {redis, elastic, eosjs} = fastify;
-    const [cachedResponse, hash] = await getCacheByHash(redis, JSON.stringify(request.body));
-    if (cachedResponse) {
-        return cachedResponse;
-    }
-    const pResults = await Promise.all([eosjs.rpc.get_info(), elastic['search']({
-        "index": process.env.CHAIN + '-action-*',
+    const pResults = await Promise.all([fastify.eosjs.rpc.get_info(), fastify.elastic['search']({
+        "index": fastify.manager.chain + '-action-*',
         "body": {
             "query": {
                 "bool": {
@@ -45,7 +23,7 @@ async function getTransaction(fastify, request) {
         }
     })]);
     const results = pResults[1];
-    const response = {
+    const response: any = {
         "id": request.body.id,
         "trx": {
             "receipt": {
@@ -89,7 +67,7 @@ async function getTransaction(fastify, request) {
         for (let action of actions) {
             action = action._source;
             mergeActionMeta(action);
-            action.act['hex_data'] = new Buffer.from(JSON.stringify(action.act.data)).toString('hex');
+            action.act['hex_data'] = Buffer.from(JSON.stringify(action.act.data)).toString('hex');
             if (action.parent === 0) {
                 response.trx.trx.actions.push(action.act);
             }
@@ -122,7 +100,7 @@ async function getTransaction(fastify, request) {
                 trx_id: request.body.id,
                 notified: action.notified
             };
-            let hash = crypto.createHash('sha256');
+            let hash = createHash('sha256');
             hash.update(JSON.stringify(action.act));
             trace.receipt.act_digest = hash.digest('hex');
             traces[action.global_sequence] = trace;
@@ -184,8 +162,8 @@ async function getTransaction(fastify, request) {
             });
             delete traces[action.global_sequence].notified;
         });
-        redis.set(hash, JSON.stringify(response), 'EX', 30);
     } else {
+        const errmsg = "Transaction " + request.body.id.toLowerCase() + " not found in history and no block hint was given";
         return {
             code: 500,
             message: "Internal Service Error",
@@ -195,22 +173,20 @@ async function getTransaction(fastify, request) {
                 what: "The transaction can not be found",
                 details: [
                     {
-                        "message": "Transaction " + request.body.id.toLowerCase() + " not found in history and no block hint was given",
-                        "file": "",
-                        "line_number": 1,
-                        "method": "get_transaction"
+                        message: errmsg,
+                        file: "",
+                        line_number: 1,
+                        method: "get_transaction"
                     }
                 ]
             }
         }
     }
-
     return response;
 }
 
-module.exports = function (fastify, opts, next) {
-    fastify.post('/get_transaction', {schema}, async (request, reply) => {
-        reply.send(await getTransaction(fastify, request));
-    });
-    next()
-};
+export function getTransactionHandler(fastify: FastifyInstance, route: string) {
+    return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+        reply.send(await timedQuery(getTransaction, fastify, request, route));
+    }
+}

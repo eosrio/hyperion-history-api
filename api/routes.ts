@@ -29,6 +29,7 @@ export function registerRoutes(server: FastifyInstance) {
     addRoute(server, 'v2', '/v2');
     addRoute(server, 'v2-history', '/v2/history');
     addRoute(server, 'v2-state', '/v2/state');
+    addRoute(server, 'v1-history', '/v1/history');
     // addRoute(server,'v1-chain', '/v1/chain');
     // addRoute(server,'history', '/v2/history');
     // addRoute(server,'state', '/v2/state');

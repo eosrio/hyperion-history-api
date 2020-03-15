@@ -1,33 +1,8 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {ServerResponse} from "http";
-import {Redis} from "ioredis";
 import {connect} from "amqplib";
 import {timedQuery} from "../../../helpers/functions";
 import {getLastIndexedBlock} from "../../../../helpers/common_functions";
-
-async function checkRedis(fastify: FastifyInstance) {
-    let result = await new Promise((resolve) => {
-        fastify.redis.get(fastify.manager.chain + ":" + 'abi_cache', (err, data) => {
-            if (err) {
-                resolve('Error');
-            } else {
-                try {
-                    const json = JSON.parse(data);
-                    if (json['eosio']) {
-                        resolve('OK');
-                    } else {
-                        resolve('Missing eosio on ABI cache.');
-                    }
-                } catch (e) {
-                    console.log(e);
-                    resolve('Error');
-                }
-            }
-        });
-        resolve('OK');
-    });
-    return createHealth('Redis', result)
-}
 
 async function checkRabbit(fastify: FastifyInstance) {
     try {
@@ -104,7 +79,6 @@ async function getHealthQuery(fastify: FastifyInstance, request: FastifyRequest)
     };
     response.health.push(await checkRabbit(fastify));
     response.health.push(await checkNodeos(fastify));
-    response.health.push(await checkRedis(fastify));
     response.health.push(await checkElastic(fastify));
     return response;
 }

@@ -67,6 +67,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 items: {
                     type: 'object',
                     properties: {
+                        "@timestamp": {type: "string"},
                         "timestamp": {type: "string"},
                         "block_num": {type: "number"},
                         "trx_id": {type: "string"},
