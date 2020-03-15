@@ -34,6 +34,9 @@ export default class StateReader extends HyperionWorker {
 
     constructor() {
         super();
+        if (this.isLiveReader) {
+            this.local_block_num = parseInt(process.env.worker_last_processed_block, 10) - 1;
+        }
         this.stageOneDistQueue = cargo((tasks, callback) => {
             this.distribute(tasks, callback);
         }, this.conf.prefetch.read);
@@ -251,6 +254,7 @@ export default class StateReader extends HyperionWorker {
                         if (this.isLiveReader) {
                             // LIVE READER MODE
                             if (blk_num !== this.local_block_num + 1) {
+                                hLog(`exptected: ${this.local_block_num + 1}, received: ${blk_num}`);
                                 await this.handleFork(res);
                             } else {
                                 this.local_block_num = blk_num;
