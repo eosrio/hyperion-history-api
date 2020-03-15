@@ -11,7 +11,7 @@ const abi_remapping = {
     "_Bool": "bool"
 };
 
-import {AbiEOS} from "../addons/node-abieos";
+import * as AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "../addons/eosjs-native";
 import {Type} from "../addons/eosjs-native/eosjs-serialize";
 import {hLog} from "../helpers/common_functions";

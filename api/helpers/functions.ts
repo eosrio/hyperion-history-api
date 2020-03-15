@@ -18,7 +18,6 @@ export function extendResponseSchema(responseProps: any) {
     };
     for (const p in responseProps) {
         if (responseProps.hasOwnProperty(p)) {
-            console.log(p, responseProps[p]);
             props[p] = responseProps[p];
         }
     }
@@ -67,7 +66,7 @@ export function mergeActionMeta(action) {
         delete action['@' + name];
     }
     action['timestamp'] = action['@timestamp'];
-    delete action['@timestamp'];
+    // delete action['@timestamp'];
 }
 
 export function mergeDeltaMeta(delta: any) {
@@ -101,11 +100,7 @@ export function addApiRoute(
     fastifyInstance: FastifyInstance,
     method: HTTPMethod | HTTPMethod[],
     routeName: string,
-    routeBuilder: (fastify: FastifyInstance, route: string) => (
-        request: FastifyRequest,
-        reply: FastifyReply<ServerResponse>
-    ) => Promise<void>,
-    schema: RouteSchema) {
+    routeBuilder: (fastify: FastifyInstance, route: string) => (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => Promise<void>, schema: RouteSchema) {
     fastifyInstance.route({
         url: '/' + routeName,
         method,

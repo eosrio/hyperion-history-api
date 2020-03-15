@@ -1,6 +1,6 @@
 import {HyperionWorker} from "./hyperionWorker";
 import {cargo, queue} from "async";
-import {AbiEOS} from "../addons/node-abieos";
+import * as AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "../addons/eosjs-native";
 import {hLog} from "../helpers/common_functions";
 import {Message} from "amqplib";

@@ -3,7 +3,7 @@ const {Serialize} = require('../addons/eosjs-native');
 // const {Serialize} = require('eosjs');
 
 // abieos addon
-const abieos = require('../addons/node-abieos/abieos.node');
+const abieos = require('@eosrio/node-abieos');
 
 // original eosjs
 // const {Serialize} = require('eosjs');

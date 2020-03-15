@@ -52,6 +52,7 @@ interface ApiLimits {
 }
 
 interface ApiConfigs {
+    access_log: boolean;
     chain_name: string;
     server_port: number;
     server_addr: string;
