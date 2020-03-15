@@ -7,7 +7,9 @@
     "logs": "pm2 logs Indexer",
     "start:api": "pm2 start --only API --update-env",
     "start:indexer": "pm2 start --only Indexer --update-env",
-    "fix-permissions": "chmod u+x run.sh stop.sh"
+    "fix-permissions": "chmod u+x run.sh stop.sh",
+    "tsc": "tsc",
+    "postinstall": "npm run tsc"
   },
   "author": {
     "name": "EOS Rio",
@@ -19,14 +21,12 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@elastic/elasticsearch": "7.6.0",
-    "@eosrio/node-abieos": "^1.0.2",
+    "@elastic/elasticsearch": "7.6.1",
+    "@eosrio/node-abieos": "1.0.3",
     "@pm2/io": "4.3.3",
     "amqplib": "0.5.5",
     "async": "3.2.0",
     "async-redis": "1.1.7",
-    "bitcoin-ts": "1.13.0",
-    "commander": "4.1.1",
     "eosjs": "21.0.1-rc2",
     "eosjs-ecc": "4.0.7",
     "fast-json-parse": "1.0.3",
@@ -41,13 +41,11 @@
     "fastify-redis": "3.1.1",
     "fastify-static": "2.6.0",
     "fastify-websocket": "1.1.1",
-    "fastparse": "1.1.2",
     "got": "10.6.0",
     "ioredis": "4.16.0",
     "lodash": "4.17.15",
     "moment": "2.24.0",
     "cross-fetch": "3.0.4",
-    "prettyjson": "1.2.1",
     "redis": "3.0.2",
     "simdjson": "0.2.1",
     "socket.io": "2.3.0",
@@ -61,11 +59,12 @@
     "@types/amqplib": "0.5.13",
     "@types/async": "3.0.8",
     "@types/got": "9.6.9",
-    "@types/node": "13.9.0",
+    "@types/node": "13.9.1",
     "@types/node-fetch": "2.5.5",
     "@types/socket.io": "2.1.4",
     "@types/ws": "7.2.2",
     "ts-node": "8.6.2",
+    "eslint": "^6.8.0",
     "typescript": "3.8.3"
   }
 }
