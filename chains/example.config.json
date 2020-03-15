@@ -12,7 +12,8 @@
     "limits": {
       "get_actions": 1000,
       "get_voters": 100
-    }
+    },
+    "access_log": false
   },
   "settings": {
     "preview": false,
