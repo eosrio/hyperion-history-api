@@ -9,6 +9,7 @@ import {registerPlugins} from "./plugins";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes";
 import {generateOpenApiConfig} from "./config/open_api";
+import {createWriteStream} from "fs";
 
 class HyperionApiServer {
 
@@ -25,10 +26,27 @@ class HyperionApiServer {
         this.manager = new ConnectionManager(cm);
         this.manager.calculateServerHash();
         this.manager.getHyperionVersion();
+        const logStream = createWriteStream('./logs/' + this.chain + '/api.access.log');
         this.fastify = Fastify({
-            ignoreTrailingSlash: false, trustProxy: true, logger: {
-                level: 'trace'
-            }
+            ignoreTrailingSlash: false, trustProxy: true, logger: this.conf.api.access_log ? {
+                stream: logStream,
+                redact: ['req.headers.authorization'],
+                level: 'info',
+                serializers: {
+                    res: (res) => {
+                        return {
+                            status: res.statusCode
+                        };
+                    },
+                    req: (req) => {
+                        return {
+                            method: req.method,
+                            url: req.url,
+                            ip: req.headers['x-real-ip']
+                        }
+                    }
+                }
+            } : false
         });
         this.fastify.decorate('manager', this.manager);
         const ioRedisClient = new Redis(this.manager.conn.redis);
