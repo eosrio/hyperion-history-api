@@ -25,24 +25,23 @@ function addRoute(server: FastifyInstance, handlersPath: string, prefix: string)
 }
 
 export function registerRoutes(server: FastifyInstance) {
+
     // Register fastify api routes
     addRoute(server, 'v2', '/v2');
     addRoute(server, 'v2-history', '/v2/history');
     addRoute(server, 'v2-state', '/v2/state');
     addRoute(server, 'v1-history', '/v1/history');
     // addRoute(server,'v1-chain', '/v1/chain');
-    // addRoute(server,'history', '/v2/history');
-    // addRoute(server,'state', '/v2/state');
-
-    // server.register(health, {prefix: '/v2'});
 
     // Serve integrated explorer
-    server.register(fastify_static, {
-        root: join(__dirname, '..', 'hyperion-explorer', 'dist'),
-        redirect: true,
-        wildcard: true,
-        prefix: '/v2/explore'
-    });
+    if(server.manager.config.api.enable_explorer) {
+        server.register(fastify_static, {
+            root: join(__dirname, '..', 'hyperion-explorer', 'dist'),
+            redirect: true,
+            wildcard: true,
+            prefix: '/v2/explore'
+        });
+    }
 
     // steam client lib
     server.get('/stream-client.js', (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {

@@ -3,6 +3,8 @@ import {AsyncCargo, cargo} from "async";
 import {ElasticRoutes} from '../helpers/elastic-routes';
 
 import * as pm2io from '@pm2/io';
+import {hLog} from "../helpers/common_functions";
+import {Message} from "amqplib";
 
 export default class IndexerWorker extends HyperionWorker {
 
@@ -14,14 +16,19 @@ export default class IndexerWorker extends HyperionWorker {
     constructor() {
         super();
         this.esRoutes = new ElasticRoutes(this.manager);
-        this.indexQueue = cargo((payload: any[], callback) => {
+        this.indexQueue = cargo((payload: Message[], callback) => {
             if (this.ch_ready && payload) {
-                this.esRoutes.routes[process.env.type](payload, this.ch, (indexed_size) => {
-                    if (indexed_size) {
-                        this.temp_indexed_count += indexed_size;
-                    }
-                    callback();
-                });
+                if (this.esRoutes.routes[process.env.type]) {
+                    this.esRoutes.routes[process.env.type](payload, this.ch, (indexed_size) => {
+                        if (indexed_size) {
+                            this.temp_indexed_count += indexed_size;
+                        }
+                        callback();
+                    });
+                } else {
+                    hLog(`No route for type: ${process.env.type}`);
+                    process.exit(1);
+                }
             }
         })
     }

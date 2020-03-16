@@ -40,6 +40,7 @@ export interface IndexerConfigs {
 }
 
 interface ApiLimits {
+    get_links?: number;
     get_actions?: number;
     get_blocks?: number;
     get_created_accounts?: number;
@@ -52,6 +53,7 @@ interface ApiLimits {
 }
 
 interface ApiConfigs {
+    enable_explorer?: boolean;
     access_log: boolean;
     chain_name: string;
     server_port: number;

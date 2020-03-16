@@ -27,6 +27,8 @@ export default class DSPoolWorker extends HyperionWorker {
     // contract usage map (temporary)
     contractUsage = {};
     contracts = new Map();
+    monitoringLoop: NodeJS.Timeout;
+    actionDsCounter = 0;
 
     constructor() {
         super();
@@ -121,8 +123,16 @@ export default class DSPoolWorker extends HyperionWorker {
 
     async verifyLocalType(contract, type, block_num, field) {
         let _status;
-        let resultType = AbiEOS['get_type_for_' + field](contract, type);
-        if (resultType === "NOT_FOUND") {
+        let resultType;
+
+        try {
+            resultType = AbiEOS['get_type_for_' + field](contract, type);
+            _status = true;
+        } catch {
+            _status = false;
+        }
+
+        if (!_status) {
             const savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
             if (savedAbi) {
                 if (savedAbi[field + 's'].includes(type)) {
@@ -151,44 +161,18 @@ export default class DSPoolWorker extends HyperionWorker {
                 resultType = AbiEOS['get_type_for_' + field](contract, type);
                 _status = resultType !== "NOT_FOUND"
             }
-        } else {
-            _status = true;
         }
         return [_status, resultType];
     }
 
-    async deserializeActionAtBlockNative(self, _action, block_num) {
+    async deserializeActionAtBlockNative(self, _action, block_num): Promise<any> {
         self.recordContractUsage(_action.account);
         const [_status, actionType] = await self.verifyLocalType(_action.account, _action.name, block_num, "action");
         if (_status) {
-            const result = AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
-            switch (result) {
-                case 'PARSING_ERROR': {
-                    hLog(result, block_num, _action);
-                    break;
-                }
-                case 'NOT_FOUND': {
-                    hLog(result, block_num, _action);
-                    break;
-                }
-                case 'invalid string size': {
-                    hLog(result, _action.data);
-                    hLog(_action);
-                    break;
-                }
-                case 'read past end': {
-                    hLog(result, _action.data);
-                    hLog(_action);
-                    break;
-                }
-                default: {
-                    try {
-                        return JSON.parse(result);
-                    } catch (e) {
-                        hLog(e.message);
-                        hLog('string >>', result);
-                    }
-                }
+            try {
+                return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
+            } catch (e) {
+                hLog('bin_to_json', e.message);
             }
         }
         // fallback to eosjs deserializer
@@ -414,6 +398,7 @@ export default class DSPoolWorker extends HyperionWorker {
             // hLog(_finalTraces.length);
             for (const uniqueAction of _finalTraces) {
                 const payload = Buffer.from(JSON.stringify(uniqueAction));
+                this.actionDsCounter++;
                 this.pushToActionsQueue(payload);
                 this.pushToActionStreamingQueue(payload, uniqueAction);
             }
@@ -477,17 +462,24 @@ export default class DSPoolWorker extends HyperionWorker {
 
     startMonitoring() {
         // Monitor Contract Usage
-        setInterval(() => {
-            if (this.totalHits > 0) {
-                process.send({
-                    event: 'contract_usage_report',
-                    data: this.contractUsage,
-                    total_hits: this.totalHits
-                });
-            }
-            this.contractUsage = {};
-            this.totalHits = 0;
-        }, 1000);
+        if (!this.monitoringLoop) {
+            this.monitoringLoop = setInterval(() => {
+                if (this.totalHits > 0) {
+                    process.send({
+                        event: 'contract_usage_report',
+                        data: this.contractUsage,
+                        total_hits: this.totalHits
+                    });
+                    process.send({
+                        event: 'ds_report',
+                        actions: this.actionDsCounter
+                    });
+                }
+                this.contractUsage = {};
+                this.totalHits = 0;
+                this.actionDsCounter = 0;
+            }, 1000);
+        }
     }
 
     initializeShipAbi(data) {

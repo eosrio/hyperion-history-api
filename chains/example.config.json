@@ -13,7 +13,8 @@
       "get_actions": 1000,
       "get_voters": 100
     },
-    "access_log": false
+    "access_log": false,
+    "enable_explorer": false
   },
   "settings": {
     "preview": false,

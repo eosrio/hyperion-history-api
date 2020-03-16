@@ -166,6 +166,29 @@ export const abi = {
     }
 };
 
+export const permissionLink = {
+    "index_patterns": [chain + "-link-*"],
+    "settings": {
+        "index": {
+            "number_of_shards": shards,
+            "refresh_interval": refresh,
+            "number_of_replicas": replicas,
+            "codec": compression
+        }
+    },
+    "mappings": {
+        "properties": {
+            "@timestamp": {"type": "date"},
+            "present": {"type": "boolean"},
+            "block_num": {"type": "long"},
+            "account": {"type": "keyword"},
+            "code": {"type": "keyword"},
+            "action": {"type": "keyword"},
+            "permission": {"type": "keyword"}
+        }
+    }
+};
+
 export const logs = {
     "index_patterns": [chain + "-logs-*"],
     "settings": {

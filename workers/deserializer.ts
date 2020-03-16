@@ -2,23 +2,22 @@ import {HyperionWorker} from "./hyperionWorker";
 import {Api} from "eosjs/dist";
 import {ApiResponse} from "@elastic/elasticsearch";
 import {AsyncCargo, AsyncQueue, cargo, queue} from 'async';
-
-const index_queues = require('../definitions/index-queues').index_queues;
-const {debugLog} = require("../helpers/functions");
-const simdjson = require('simdjson');
-const {AbiDefinitions} = require("../definitions/abi_def");
-const abi_remapping = {
-    "_Bool": "bool"
-};
-
 import * as AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "../addons/eosjs-native";
 import {Type} from "../addons/eosjs-native/eosjs-serialize";
 import {hLog} from "../helpers/common_functions";
 
+const index_queues = require('../definitions/index-queues').index_queues;
+const {debugLog} = require("../helpers/functions");
+const {AbiDefinitions} = require("../definitions/abi_def");
+const abi_remapping = {
+    "_Bool": "bool"
+};
+
 interface QueuePayload {
     queue: string;
     content: Buffer;
+    headers?: any;
 }
 
 function extractDeltaStruct(deltas) {
@@ -48,11 +47,14 @@ export default class MainDSWorker extends HyperionWorker {
     tableHandlers = {};
     api: Api;
 
+    // generic queue id
+    emit_idx = 1;
     tbl_acc_emit_idx = 1;
     tbl_vote_emit_idx = 1;
     tbl_prop_emit_idx = 1;
     delta_emit_idx = 1;
     temp_delta_counter = 0;
+    private monitoringLoop: NodeJS.Timeout;
 
     constructor() {
 
@@ -71,7 +73,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         this.preIndexingQueue = queue((data, cb) => {
             if (this.ch_ready) {
-                this.ch.sendToQueue(data.queue, data.content);
+                this.ch.sendToQueue(data.queue, data.content, {headers: data.headers});
                 cb();
             } else {
                 hLog('Channel is not ready!');
@@ -90,6 +92,7 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     async run(): Promise<void> {
+        this.startReports();
         return undefined;
     }
 
@@ -176,33 +179,24 @@ export default class MainDSWorker extends HyperionWorker {
         self.mLoader.processActionData(action);
     }
 
-    // sendDsCounterReport() {
-    //     // send ds counters
-    //     process.send({
-    //         event: 'ds_report',
-    //         actions: temp_ds_counter,
-    //         deltas: temp_delta_counter
-    //     });
-    //     temp_ds_counter = 0;
-    //     temp_delta_counter = 0;
-    // }
-    //
-    // sendContractUsageReport() {
-    //     // send contract usage
-    //     process.send({
-    //         event: 'contract_usage_report',
-    //         data: contractUsage,
-    //         total_hits: totalHits
-    //     });
-    //     contractUsage = {};
-    //     totalHits = 0;
-    // }
+    sendDsCounterReport() {
+        // send ds counters
+        if (this.temp_delta_counter > 0) {
+            process.send({
+                event: 'ds_report',
+                deltas: this.temp_delta_counter
+            });
+            this.temp_delta_counter = 0;
+        }
+    }
 
-    // startReports() {
-    //     setInterval(() => {
-    //         this.sendDsCounterReport();
-    //     });
-    // }
+    startReports() {
+        if (!this.monitoringLoop) {
+            this.monitoringLoop = setInterval(() => {
+                this.sendDsCounterReport();
+            }, 1000);
+        }
+    }
 
     async processMessages(messages) {
         await this.mLoader.parser.parseMessage(this, messages);
@@ -230,7 +224,7 @@ export default class MainDSWorker extends HyperionWorker {
             let light_block;
             if (this.conf.indexer.fetch_block) {
                 if (!block) {
-                    hLog(res);
+                    return null;
                 }
                 producer = block['producer'];
                 ts = block['timestamp'];
@@ -467,33 +461,17 @@ export default class MainDSWorker extends HyperionWorker {
         const [_status, tableType] = await this.verifyLocalType(row['code'], row['table'], block, "table");
         if (_status) {
             let result;
-            if (typeof row.value === 'string') {
-                result = AbiEOS.hex_to_json(row['code'], tableType, row.value);
-            } else {
-                result = AbiEOS.bin_to_json(row['code'], tableType, row.value);
-            }
-            switch (result) {
-                case "Extra data": {
-                    hLog(`Extra data on row with type "${tableType}"`);
-                    hLog(row);
-                    break;
+            try {
+                if (typeof row.value === 'string') {
+                    result = AbiEOS.hex_to_json(row['code'], tableType, row.value);
+                } else {
+                    result = AbiEOS.bin_to_json(row['code'], tableType, row.value);
                 }
-                case 'PARSING_ERROR': {
-                    hLog(`Row parsing error`);
-                    break;
-                }
-                default: {
-                    try {
-                        row['data'] = JSON.parse(result);
-                        delete row.value;
-                        return row;
-                    } catch (e) {
-                        hLog(`JSON Parse error: ${e.message} | string: "${result}"`);
-                        // hLog('------------- contract row ----------------');
-                        // hLog(row);
-                        // hLog('-------------------------------------------')
-                    }
-                }
+                row['data'] = result;
+                delete row.value;
+                return row;
+            } catch (e) {
+                hLog(e);
             }
         }
 
@@ -691,7 +669,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     async processDeltaContractRow(row, block_num, block_ts) {
         try {
-            const payload = this.deserializeNative('contract_row', row.data, false)[1];
+            const payload = this.deserializeNative('contract_row', row.data)[1];
             payload['@timestamp'] = block_ts;
             payload['present'] = row.present;
             payload['block_num'] = block_num;
@@ -735,13 +713,23 @@ export default class MainDSWorker extends HyperionWorker {
 
     pushToDeltaQueue(bufferdata) {
         const q = this.chain + ":index_deltas:" + (this.delta_emit_idx);
-        this.preIndexingQueue.push({
-            queue: q,
-            content: bufferdata
-        });
+        this.preIndexingQueue.push({queue: q, content: bufferdata});
         this.delta_emit_idx++;
         if (this.delta_emit_idx > (this.conf.scaling.indexing_queues * this.conf.scaling.ad_idx_queues)) {
             this.delta_emit_idx = 1;
+        }
+    }
+
+    pushToIndexQueue(data: any, type: string) {
+        const q = this.chain + ":index_generic:" + (this.emit_idx);
+        this.preIndexingQueue.push({
+            queue: q,
+            content: Buffer.from(JSON.stringify(data)),
+            headers: {type}
+        });
+        this.emit_idx++;
+        if (this.emit_idx > this.conf.scaling.indexing_queues) {
+            this.emit_idx = 1;
         }
     }
 
@@ -756,7 +744,7 @@ export default class MainDSWorker extends HyperionWorker {
         if (deltaStruct['account']) {
             const rows = deltaStruct['account'];
             for (const account_raw of rows) {
-                const data = this.deserializeNative('account', account_raw.data, false);
+                const data = this.deserializeNative('account', account_raw.data);
                 const account = data[1];
                 if (account['abi'] !== '') {
                     try {
@@ -835,23 +823,23 @@ export default class MainDSWorker extends HyperionWorker {
                 }
             }
 
-            // if (deltaStruct['permission_link']) {
-            //     if (deltaStruct['permission_link'].length > 0) {
-            //         for (const permission_link of deltaStruct['permission_link']) {
-            //             const serialBuffer = createSerialBuffer(permission_link.data);
-            //             const data = types.get('permission_link').deserialize(serialBuffer);
-            //             hLog(permission_link);
-            //             const payload = {
-            //                 present: permission_link.present,
-            //                 account: data[1].account,
-            //                 code: data[1].code,
-            //                 action: data[1]['message_type'],
-            //                 permission: data[1]['required_permission']
-            //             };
-            //             hLog(payload);
-            //         }
-            //     }
-            // }
+            if (deltaStruct['permission_link']) {
+                if (deltaStruct['permission_link'].length > 0) {
+                    for (const link of deltaStruct['permission_link']) {
+                        const data = this.deserializeNative('permission_link', link.data);
+                        const payload = {
+                            "@timestamp": block_ts,
+                            block_num: block_num,
+                            present: link.present,
+                            account: data[1].account,
+                            code: data[1].code,
+                            action: data[1]['message_type'],
+                            permission: data[1]['required_permission']
+                        };
+                        this.pushToIndexQueue(payload, 'permission_link');
+                    }
+                }
+            }
 
             // if (deltaStruct['permission']) {
             //     if (deltaStruct['permission'].length > 0) {
@@ -935,59 +923,23 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    deserializeNative(datatype: string, array: any, use_simdjson: boolean) {
-        const result = AbiEOS[typeof array === 'string' ? 'hex_to_json' : 'bin_to_json']("0", datatype, array);
-        let parsed;
-        if (result !== 'PARSING_ERROR') {
-            try {
-                if (use_simdjson) {
-                    parsed = simdjson['lazyParse'](result);
-                } else {
-                    parsed = JSON.parse(result);
-                }
-            } catch (e) {
-                hLog(`Input: ${typeof array}`);
-                hLog(`Datatype: ${datatype}`);
-                hLog(`Result: ${result}`);
-                hLog(e);
-            }
-        } else {
-            hLog('Parsing Error', datatype);
+    deserializeNative(datatype: string, array: any): any {
+        try {
+            const parser = typeof array === 'string' ? 'hex_to_json' : 'bin_to_json';
+            return AbiEOS[parser]("0", datatype, array);
+        } catch (e) {
+            hLog(e);
         }
-        return parsed;
+        return null;
     }
 
-    async deserializeActionAtBlockNative(_action, block_num) {
+    async deserializeActionAtBlockNative(_action, block_num): Promise<any> {
         const [_status, actionType] = await this.verifyLocalType(_action.account, _action.name, block_num, "action");
         if (_status) {
-            const result = AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
-            switch (result) {
-                case 'PARSING_ERROR': {
-                    hLog(result, block_num, _action);
-                    break;
-                }
-                case 'NOT_FOUND': {
-                    hLog(result, block_num, _action);
-                    break;
-                }
-                case 'invalid string size': {
-                    hLog(result, _action.data);
-                    hLog(_action);
-                    break;
-                }
-                case 'read past end': {
-                    hLog(result, _action.data);
-                    hLog(_action);
-                    break;
-                }
-                default: {
-                    try {
-                        return JSON.parse(result);
-                    } catch (e) {
-                        hLog(e.message);
-                        hLog('string >>', result);
-                    }
-                }
+            try {
+                return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
+            } catch (e) {
+                hLog(e);
             }
         }
         return null;

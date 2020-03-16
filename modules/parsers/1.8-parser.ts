@@ -80,7 +80,7 @@ export default class HyperionParser extends BaseParser {
 
     public async parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void> {
         for (const message of messages) {
-            const ds_msg = worker.deserializeNative('result', message.content, false);
+            const ds_msg = worker.deserializeNative('result', message.content);
             if (!ds_msg) {
                 if (worker.ch_ready) {
                     worker.ch.nack(message);
@@ -90,24 +90,21 @@ export default class HyperionParser extends BaseParser {
             const res = ds_msg[1];
             let block, traces = [], deltas = [];
             if (res.block && res.block.length) {
-                block = worker.deserializeNative('signed_block', res.block, false);
+                block = worker.deserializeNative('signed_block', res.block);
                 if (block === null) {
                     console.log(res);
+                    process.exit(1);
                 }
             }
             if (res['traces'] && res['traces'].length) {
                 try {
-                    traces = worker.deserializeNative(
-                        'transaction_trace[]',
-                        res['traces'],
-                        res['traces'].length > 2000000
-                    );
+                    traces = worker.deserializeNative('transaction_trace[]', res['traces']);
                 } catch (e) {
                     console.log(e);
                 }
             }
             if (res['deltas'] && res['deltas'].length) {
-                deltas = worker.deserializeNative('table_delta[]', res['deltas'], false);
+                deltas = worker.deserializeNative('table_delta[]', res['deltas']);
             }
             let result;
             try {

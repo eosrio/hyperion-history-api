@@ -229,8 +229,12 @@ export class HyperionMaster {
                 this.indexedObjects += msg.size;
             },
             'ds_report': (msg: any) => {
-                this.deserializedActions += msg.actions;
-                this.deserializedDeltas += msg.deltas;
+                if (msg.actions) {
+                    this.deserializedActions += msg.actions;
+                }
+                if (msg.deltas) {
+                    this.deserializedDeltas += msg.deltas;
+                }
             },
             'ds_error': (msg: any) => {
                 const str = JSON.stringify(msg.data);
@@ -987,12 +991,12 @@ export class HyperionMaster {
                 avg_consume_rate = consume_rate;
             }
             const log_msg = [];
-
             log_msg.push(`W:${_workers}`);
-            log_msg.push(`R:${(this.pushedBlocks + this.livePushedBlocks) / tScale} b/s`);
-            log_msg.push(`C:${(this.liveConsumedBlocks + this.consumedBlocks) / tScale} b/s`);
-            log_msg.push(`D:${(this.deserializedActions + this.deserializedDeltas) / tScale} a/s`);
-            log_msg.push(`I:${this.indexedObjects / tScale} d/s`);
+            log_msg.push(`R:${(this.pushedBlocks + this.livePushedBlocks) / tScale}`);
+            log_msg.push(`C:${(this.liveConsumedBlocks + this.consumedBlocks) / tScale}`);
+            log_msg.push(`A:${(this.deserializedActions) / tScale}`);
+            log_msg.push(`D:${(this.deserializedDeltas) / tScale}`);
+            log_msg.push(`I:${this.indexedObjects / tScale}`);
 
             if (this.total_blocks < this.total_range && !this.conf.indexer.live_only_mode) {
                 const remaining = this.total_range - this.total_blocks;
@@ -1007,21 +1011,20 @@ export class HyperionMaster {
             // Report completed range (parallel reading)
             if (this.total_blocks === this.total_range && !this.range_completed) {
                 const ttime = (Date.now() - reference_time) / 1000;
-                hLog(`
--------- BLOCK RANGE COMPLETED -------------
-Range: ${this.starting_block} >> ${this.head}
-Total time: ${ttime} seconds
-Blocks: ${this.total_range}
-Actions: ${this.total_actions}
-Deltas: ${this.total_deltas}
---------------------------------------------
-                `);
+                hLog(`\n
+        -------- BLOCK RANGE COMPLETED -------------
+        | Range: ${this.starting_block} >> ${this.head}
+        | Total time: ${ttime} seconds
+        | Blocks: ${this.total_range}
+        | Actions: ${this.total_actions}
+        | Deltas: ${this.total_deltas}
+        --------------------------------------------\n`);
                 this.range_completed = true;
             }
 
             // print monitoring log
             if (this.conf.settings.rate_monitoring) {
-                hLog(log_msg.join(', '));
+                hLog(log_msg.join(' | '));
             }
 
             if (this.indexedObjects === 0 && this.deserializedActions === 0 && this.consumedBlocks === 0) {
@@ -1132,17 +1135,24 @@ Deltas: ${this.total_deltas}
             {
                 type: 'abi',
                 name: prefix + "_abis"
+            },
+            {
+                type: 'generic',
+                name: prefix + "_generic"
             }
         ];
 
         const indexConfig = await import('../definitions/index-templates');
+
         const indicesList = [
             {name: "action", type: "action"},
             {name: "block", type: "block"},
             {name: "abi", type: "abi"},
             {name: "delta", type: "delta"},
-            {name: "logs", type: "logs"}
+            {name: "logs", type: "logs"},
+            {name: 'permissionLink', type: 'link'}
         ];
+
         this.addStateTables(indicesList, this.IndexingQueues);
         await this.applyUpdateScript();
         await this.addLifecyclePolicies(indexConfig);

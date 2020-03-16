@@ -1,4 +1,4 @@
-import {Channel} from "amqplib/callback_api";
+import {Channel, Message} from "amqplib/callback_api";
 import {ConnectionManager} from "../connections/manager.class";
 import * as _ from "lodash";
 import {hLog} from "./common_functions";
@@ -73,6 +73,14 @@ function buildTableVotersBulk(payloads, messageMap) {
     });
 }
 
+function buildLinkBulk(payloads, messageMap) {
+    return flatMap(payloads, (payload, body) => {
+        const id = `${body.account}-${body.permission}-${body.code}-${body.action}`;
+        messageMap.set(id, _.omit(payload, ['content']));
+        return makeScriptedOp(id, body);
+    });
+}
+
 export class ElasticRoutes {
     public routes: any;
     cm: ConnectionManager;
@@ -80,11 +88,36 @@ export class ElasticRoutes {
     ingestNodeCounters = {};
 
     constructor(connectionManager: ConnectionManager) {
-        this.routes = {};
+        this.routes = {
+            generic: this.handleGenericRoute.bind(this)
+        };
         this.cm = connectionManager;
         this.chain = this.cm.chain;
         this.registerRoutes();
         this.resetCounters();
+    }
+
+    async handleGenericRoute(payload: Message[], channel: Channel, cb: (indexed_size: number) => void): Promise<void> {
+        const collection = {};
+        for (const message of payload) {
+            const type = message.properties.headers.type;
+            if (!collection[type]) {
+                collection[type] = [];
+            }
+            collection[type].push(message);
+        }
+        if (collection['permission_link']) {
+            const messageMap = new Map();
+            this.bulkAction({
+                index: this.chain + '-link',
+                type: '_doc',
+                body: buildLinkBulk(collection['permission_link'], messageMap)
+            }).then(resp => {
+                this.onResponse(resp, messageMap, cb, collection['permission_link'], channel);
+            }).catch(err => {
+                this.onError(err, channel, cb);
+            });
+        }
     }
 
     resetCounters() {
