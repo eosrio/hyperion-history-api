@@ -140,12 +140,13 @@ export default class DSPoolWorker extends HyperionWorker {
                         _status = AbiEOS.load_abi_hex(contract, savedAbi.abi_hex);
                     }
                     if (_status) {
-                        resultType = AbiEOS['get_type_for_' + field](contract, type);
-                        if (resultType === "NOT_FOUND") {
-                            _status = false;
-                        } else {
+                        try {
+                            resultType = AbiEOS['get_type_for_' + field](contract, type);
                             _status = true;
                             return [_status, resultType];
+                        } catch (e) {
+                            hLog(`(abieos/cached) >> ${e.message}`);
+                            _status = false;
                         }
                     }
                 }
@@ -158,8 +159,13 @@ export default class DSPoolWorker extends HyperionWorker {
                 _status = false;
             }
             if (_status === true) {
-                resultType = AbiEOS['get_type_for_' + field](contract, type);
-                _status = resultType !== "NOT_FOUND"
+                try {
+                    resultType = AbiEOS['get_type_for_' + field](contract, type);
+                    _status = true;
+                } catch (e) {
+                    hLog(`(abieos/current) >> ${e.message}`);
+                    _status = false;
+                }
             }
         }
         return [_status, resultType];
@@ -172,7 +178,7 @@ export default class DSPoolWorker extends HyperionWorker {
             try {
                 return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
             } catch (e) {
-                hLog('bin_to_json', e.message);
+                hLog(`(abieos) ${_action.account}::${_action.name} @ ${block_num} >>> ${e.message}`);
             }
         }
         // fallback to eosjs deserializer
@@ -288,7 +294,8 @@ export default class DSPoolWorker extends HyperionWorker {
                         this.txDec
                     );
                 } catch (e) {
-                    hLog(e);
+                    hLog(`(eosjs)  ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
+                    // hLog(action.data, contract[0].actions.get(action.name).fields.map(f => `${f.name}: ${f.typeName}`));
                     return null;
                 }
             } else {

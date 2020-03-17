@@ -7,6 +7,8 @@ export interface ScalingConfigs {
     ds_pool_size: number;
     indexing_queues: number;
     ad_idx_queues: number;
+    "max_autoscale": number;
+    "auto_scale_trigger": number;s
 }
 
 export interface MainSettings {
