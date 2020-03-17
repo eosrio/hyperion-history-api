@@ -61,7 +61,7 @@ install_build_hyperion(){
 
 install_pm2(){
   echo -e "\n\n${COLOR_BLUE}Installing pm2...${COLOR_NC}\n\n"
-  npm i pm2@latest -g
+  npm install pm2@latest -g
 }
 
 install_redis(){
@@ -148,11 +148,13 @@ printf "
 | | | \ \ / /  _ \| ____|  _ \|_ _/ _ \| \ | |
 | |_| |\ V /| |_) |  _| | |_) || | | | |  \| |
 |  _  | | | |  __/| |___|  _ < | | |_| | |\  |
-|_| |_| |_| |_|   |_____|_| \_\___\___/|_| \_|"
+|_| |_| |_| |_|   |_____|_| \_\___\___/|_| \_|
+Made with ♥ by EOS Rio
+"
 
 echo -e "\n\n${COLOR_GREEN}Hyperion History API successfully installed!!${COLOR_NC}"
 echo -e "\n${COLOR_YELLOW}Please, check your installation: ${COLOR_NC}"
 echo -e "${COLOR_YELLOW}- Elastic: http://localhost:9200 ${COLOR_NC}"
 echo -e "${COLOR_YELLOW}- Kibana: http://localhost:5601 ${COLOR_NC}"
 echo -e "${COLOR_YELLOW}- RabbitMQ: http://localhost:15672 ${COLOR_NC}"
-echo -e "${COLOR_YELLOW}- Make pm2 auto-boot at server restart: \$ pm2 startup ${COLOR_NC}"
+echo -e "${COLOR_YELLOW}- Make pm2 auto-boot at server restart: \$ pm2 startup ${COLOR_NC}\n"
