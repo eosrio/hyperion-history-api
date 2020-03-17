@@ -429,14 +429,18 @@ export class HyperionMaster {
         hLog(`Updating index templates for ${this.conf.settings.chain}`);
         for (const index of indicesList) {
             try {
-                const creation_status: ApiResponse = await this.client['indices'].putTemplate({
-                    name: `${this.conf.settings.chain}-${index.type}`,
-                    body: indexConfig[index.name]
-                });
-                if (!creation_status || !creation_status['body']['acknowledged']) {
-                    hLog(`Failed to create template: ${this.conf.settings.chain}-${index}`);
+                if (indexConfig[index.name]) {
+                    const creation_status: ApiResponse = await this.client['indices'].putTemplate({
+                        name: `${this.conf.settings.chain}-${index.type}`,
+                        body: indexConfig[index.name]
+                    });
+                    if (!creation_status || !creation_status['body']['acknowledged']) {
+                        hLog(`Failed to create template: ${this.conf.settings.chain}-${index}`);
+                    } else {
+                        hLog(`${this.conf.settings.chain}-${index.type} template updated!`);
+                    }
                 } else {
-                    hLog(`${this.conf.settings.chain}-${index.type} template updated!`);
+                    hLog(`${index.name} template not found!`);
                 }
             } catch (e) {
                 hLog(e);

@@ -35,7 +35,7 @@ export default class WSRouter extends HyperionWorker {
 
 
     onIpcMessage(msg: any): void {
-        hLog(msg.event);
+        // hLog(msg.event);
     }
 
     async run(): Promise<void> {
