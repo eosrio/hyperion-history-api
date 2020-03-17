@@ -426,7 +426,6 @@ export class HyperionMaster {
     }
 
     private async updateIndexTemplates(indicesList: { name: string, type: string }[], indexConfig) {
-        // Update index templates
         for (const index of indicesList) {
             try {
                 const creation_status: ApiResponse = await this.client['indices'].putTemplate({
@@ -438,7 +437,9 @@ export class HyperionMaster {
                 }
             } catch (e) {
                 hLog(e);
-                hLog(e.meta.body);
+                if (e.meta) {
+                    hLog(e.meta.body);
+                }
                 process.exit(1);
             }
         }
