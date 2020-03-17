@@ -11,7 +11,9 @@
     "cache_life": 1,
     "limits": {
       "get_actions": 1000,
-      "get_voters": 100
+      "get_voters": 100,
+      "get_links": 1000,
+      "get_deltas": 1000
     },
     "access_log": false,
     "enable_explorer": false

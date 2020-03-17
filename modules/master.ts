@@ -941,6 +941,40 @@ export class HyperionMaster {
         }, 5000);
     }
 
+    private monitorIndexingQueues() {
+        const limit = this.conf.scaling.auto_scale_trigger;
+        const autoscaleConsumers = {};
+        setInterval(async () => {
+            const testedQueues = new Set();
+            for (const worker of this.workerMap) {
+                if (worker.worker_role === 'ingestor') {
+                    const queue = worker.queue;
+                    if (!testedQueues.has(queue)) {
+                        testedQueues.add(queue);
+                        const size = await this.manager.checkQueueSize(queue);
+                        if (size > limit) {
+                            if (!autoscaleConsumers[queue]) {
+                                autoscaleConsumers[queue] = 0;
+                            }
+                            if (autoscaleConsumers[queue] < this.conf.scaling.max_autoscale) {
+                                hLog(`${queue} is above the limit (${size}/${limit}). Launching consumer...`);
+                                this.addWorker({
+                                    queue: queue,
+                                    type: worker.type,
+                                    worker_role: 'ingestor'
+                                });
+                                this.launchWorkers();
+                                autoscaleConsumers[queue]++;
+                            } else {
+                                // hLog(`WARN: Max consumer limit reached on ${queue}!`);
+                            }
+                        }
+                    }
+                }
+            }
+        }, 20000);
+    }
+
     private onPm2Stop() {
         pm2io.action('stop', (reply) => {
             this.allowMoreReaders = false;
@@ -1086,9 +1120,14 @@ export class HyperionMaster {
 
     private launchWorkers() {
         this.workerMap.forEach((conf) => {
-            conf['wref'] = cluster.fork(conf);
-            if (conf.worker_role === 'ds_pool_worker') {
-                this.dsPoolMap.set(conf.local_id, conf['wref']);
+            if (!conf.wref) {
+                conf['wref'] = cluster.fork(conf);
+                conf['wref'].on('message', (msg) => {
+                    this.handleMessage(msg);
+                });
+                if (conf.worker_role === 'ds_pool_worker') {
+                    this.dsPoolMap.set(conf.local_id, conf['wref']);
+                }
             }
         });
     }
@@ -1243,21 +1282,13 @@ export class HyperionMaster {
             }, rate);
         }
 
-        // Attach handlers
-        for (const c in cluster.workers) {
-            if (cluster.workers.hasOwnProperty(c)) {
-                cluster.workers[c].on('message', (msg) => {
-                    this.handleMessage(msg);
-                });
-            }
-        }
-
         // TODO: reimplement the indexer repair mode in typescript modules
         // if (this.conf.indexer.repair_mode) {
         //     this.startRepairMode();
         // }
 
         this.startContractMonitoring();
+        this.monitorIndexingQueues();
         this.onPm2Stop();
 
         pm2io.action('get_heap', (reply) => {

@@ -4,6 +4,7 @@ import {Message} from "amqplib";
 import DSPoolWorker from "../../workers/ds-pool";
 import {TrxMetadata} from "../../interfaces/trx-metadata";
 import {ActionTrace} from "../../interfaces/action-trace";
+import {hLog} from "../../helpers/common_functions";
 
 export default class HyperionParser extends BaseParser {
 
@@ -73,7 +74,7 @@ export default class HyperionParser extends BaseParser {
             }
             _processedTraces.push(action);
         } else {
-            console.log(action);
+            hLog(action);
         }
         return true;
     }
