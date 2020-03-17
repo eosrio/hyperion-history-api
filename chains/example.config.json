@@ -47,7 +47,9 @@
     "ds_threads": 1,
     "ds_pool_size": 1,
     "indexing_queues": 1,
-    "ad_idx_queues": 1
+    "ad_idx_queues": 1,
+    "max_autoscale": 4,
+    "auto_scale_trigger": 20000
   },
   "indexer": {
     "start_on": 0,
