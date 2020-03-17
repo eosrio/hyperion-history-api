@@ -44,7 +44,6 @@ install_node(){
   echo -e "\n\n${COLOR_BLUE}Installing nodejs...${COLOR_NC}\n\n"
   sudo apt install -y nodejs
   configure_npm
-  #sudo chown -R $USER /usr/local/lib/node_modules
   npm install -g node-gyp
   npm install -g typescript
 
@@ -60,7 +59,6 @@ install_build_hyperion(){
 install_pm2(){
   echo -e "\n\n${COLOR_BLUE}Installing pm2...${COLOR_NC}\n\n"
   npm i pm2@latest -g
-  #pm2 startup
 }
 
 install_redis(){
@@ -75,7 +73,7 @@ install_earlang(){
   sudo apt update
   sudo apt -y install erlang
 }
-
+#ask user for rabbit credentials
 rabbit_credentials(){
   read -p "Enter rabbitmq user [hyperion]: " RABBIT_USER
   RABBIT_USER=${RABBIT_USER:-hyperion}
@@ -103,8 +101,9 @@ install_elastic(){
 
   echo -e "\n\n${COLOR_BLUE}Configuring elastic...${COLOR_NC}\n\n"
 
-  #edit configs
+  # edit configs
   sudo sed -ie 's/#cluster.name: my-application/cluster.name: myCluster/; s/#bootstrap.memory_lock: true/bootstrap.memory_lock: true/' /etc/elasticsearch/elasticsearch.yml
+  # set jvm options based on system RAM
   check_ram
   if [ "$RAM" -lt 20 ]; then
     let RAM=$RAM/2
