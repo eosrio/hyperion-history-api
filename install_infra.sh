@@ -21,6 +21,9 @@ check_ram(){
 configure_npm(){
   mkdir ~/.npm-global
   npm config set prefix '~/.npm-global'
+  #export path for the current session
+  export PATH=~/.npm-global/bin:$PATH
+  #make PATH persistent
   echo "export PATH=~/.npm-global/bin:$PATH" >> ~/.profile
   source ~/.profile
 }
@@ -126,7 +129,7 @@ install_kibana(){
   sudo systemctl start kibana
 }
 
-echo -e "\n\n${COLOR_BLUE}*** STARTING HYPERION HISTORY API INFRA CONFIGURATION ***${COLOR_NC}\n\n"
+echo -e "\n\n${COLOR_BLUE}*** STARTING HYPERION HISTORY API CONFIGURATION ***${COLOR_NC}\n\n"
 
 rabbit_credentials
 install_dep
