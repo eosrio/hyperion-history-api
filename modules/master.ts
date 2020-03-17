@@ -432,7 +432,7 @@ export class HyperionMaster {
                     name: `${this.conf.settings.chain}-${index.type}`,
                     body: indexConfig[index.name]
                 });
-                if (!creation_status['body']['acknowledged']) {
+                if (!creation_status || !creation_status['body']['acknowledged']) {
                     hLog(`Failed to create template: ${this.conf.settings.chain}-${index}`);
                 }
             } catch (e) {

@@ -1,7 +1,7 @@
 import {HyperionWorker} from "./hyperionWorker";
 
 import * as IOServer from 'socket.io';
-import {checkFilter} from "../helpers/common_functions";
+import {checkFilter, hLog} from "../helpers/common_functions";
 
 const greylist = ['eosio.token'];
 
@@ -30,12 +30,12 @@ export default class WSRouter extends HyperionWorker {
 
     assertQueues(): void {
         this.ch.assertQueue(this.q);
-        this.ch.consume(this.q, this.onConsume);
+        this.ch.consume(this.q, this.onConsume.bind(this));
     }
 
 
     onIpcMessage(msg: any): void {
-        console.log(msg);
+        hLog(msg.event);
     }
 
     async run(): Promise<void> {
@@ -292,6 +292,7 @@ export default class WSRouter extends HyperionWorker {
             serveClient: false,
             cookie: false
         });
+
         this.io.on('connection', (socket) => {
             console.log(`[ROUTER] New relay connected with ID = ${socket.id}`);
             this.relays[socket.id] = {clients: 0, connected: true};
