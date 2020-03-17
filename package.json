@@ -22,7 +22,7 @@
   "license": "MIT",
   "dependencies": {
     "@elastic/elasticsearch": "7.6.1",
-    "@eosrio/node-abieos": "1.0.4",
+    "@eosrio/node-abieos": "1.0.5",
     "@pm2/io": "4.3.3",
     "amqplib": "0.5.5",
     "async": "3.2.0",
