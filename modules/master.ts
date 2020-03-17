@@ -34,6 +34,7 @@ import moment = require("moment");
 import Timeout = NodeJS.Timeout;
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {Worker} from "cluster";
+import got from "got";
 
 // const doctor = require('./modules/doctor');
 
@@ -276,9 +277,9 @@ export class HyperionMaster {
         hLog(`Using parser version ${this.conf.settings.parser}`);
         hLog(`Chain: ${this.conf.settings.chain}`);
         if (this.conf.indexer.abi_scan_mode) {
-            hLog('-------------------\n ABI SCAN MODE \n-------------------');
+            hLog('\n-------------------\n ABI SCAN MODE \n-------------------');
         } else {
-            hLog('---------------\n INDEXING MODE \n---------------');
+            hLog('\n---------------\n INDEXING MODE \n---------------');
         }
     }
 
@@ -1151,6 +1152,13 @@ export class HyperionMaster {
 
         // ELasticsearch
         this.client = this.manager.elasticsearchClient;
+        try {
+            const esInfo = await this.client.info();
+            hLog(`Elasticsearch: ${esInfo.body.version.number} | Lucene: ${esInfo.body.version.lucene_version}`);
+        } catch (e) {
+            hLog('Failed to check elasticsearch version!');
+            process.exit();
+        }
         await this.verifyIngestClients();
         this.max_readers = this.conf.scaling.readers;
         if (this.conf.indexer.disable_reading) {
