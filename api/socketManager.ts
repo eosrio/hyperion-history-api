@@ -4,19 +4,62 @@ import * as IOClient from 'socket.io-client';
 import * as socketIOredis from 'socket.io-redis';
 import {FastifyInstance} from "fastify";
 
-function addBlockRangeOpts(data, search_body) {
-    if ((data['start_from'] !== '' && data['start_from'] !== 0) || (data['read_until'] !== '' && data['read_until'] !== 0)) {
-        const rangeOpts = {
-            block_num: {},
-        };
-        if (data['start_from'] !== '' && data['start_from'] !== 0) {
-            rangeOpts.block_num['gte'] = parseInt(data['start_from'], 10);
+async function addBlockRangeOpts(data, search_body, fastify: FastifyInstance) {
+
+    let timeRange;
+    let blockRange;
+    let head;
+
+    if (typeof data['start_from'] === 'string') {
+        if (!timeRange) {
+            timeRange = {"@timestamp": {}};
         }
-        if (data['read_until'] !== '' && data['read_until'] !== 0) {
-            rangeOpts.block_num['lte'] = parseInt(data['read_until'], 10);
+        timeRange["@timestamp"]['gte'] = data['start_from'];
+    }
+
+    if (typeof data['read_until'] === 'string') {
+        if (!timeRange) {
+            timeRange = {"@timestamp": {}};
         }
+        timeRange["@timestamp"]['lte'] = data['read_until'];
+    }
+
+    if (typeof data['start_from'] === 'number' && data['start_from'] !== 0) {
+        if (!blockRange) {
+            blockRange = {"block_num": {}};
+        }
+        if (data['start_from'] < 0) {
+            if (!head) {
+                head = (await fastify.eosjs.rpc.get_info()).head_block_num;
+            }
+            blockRange["block_num"]['gte'] = head + data['start_from'];
+        } else {
+            blockRange["block_num"]['gte'] = data['start_from'];
+        }
+    }
+
+    if (typeof data['read_until'] === 'number' && data['read_until'] !== 0) {
+        if (!blockRange) {
+            blockRange = {"block_num": {}};
+        }
+        if (data['read_until'] < 0) {
+            if (!head) {
+                head = (await fastify.eosjs.rpc.get_info()).head_block_num;
+            }
+            blockRange["block_num"]['lte'] = head + data['read_until'];
+        } else {
+            blockRange["block_num"]['lte'] = data['read_until'];
+        }
+    }
+
+    if (timeRange) {
         search_body.query.bool.must.push({
-            range: rangeOpts,
+            range: timeRange,
+        });
+    }
+    if (blockRange) {
+        search_body.query.bool.must.push({
+            range: blockRange,
         });
     }
 }
@@ -36,7 +79,7 @@ async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
         query: {bool: {must: []}},
         sort: {block_num: 'asc'},
     };
-    addBlockRangeOpts(data, search_body);
+    await addBlockRangeOpts(data, search_body, fastify);
     deltaQueryFields.forEach(f => {
         addTermMatch(data, search_body, f);
     });
@@ -79,7 +122,8 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
         query: {bool: {must: []}},
         sort: {global_sequence: 'asc'},
     };
-    addBlockRangeOpts(data, search_body);
+
+    await addBlockRangeOpts(data, search_body, fastify);
 
     if (data.account !== '') {
         search_body.query.bool.must.push({
@@ -171,16 +215,6 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
     }
 }
 
-function checkRange(data) {
-    let status = false;
-    if (data.start_from !== 0 || data.read_until >= 0) {
-        if ((data.read_until > data.start_from) || (data.start_from >= 1 && data.read_until === 0)) {
-            status = true;
-        }
-    }
-    return status;
-}
-
 export class SocketManager {
 
     private io;
@@ -198,29 +232,43 @@ export class SocketManager {
         });
         this.io.adapter(socketIOredis(redisOpts));
         this.io.on('connection', (socket) => {
-            console.log(`${socket.id} connected via ${socket.handshake.headers['x-forwarded-for']}`);
+
+            if (socket.handshake.headers['x-forwarded-for']) {
+                console.log(`${socket.id} connected via ${socket.handshake.headers['x-forwarded-for']}`);
+            } else {
+                console.log(socket.handshake.headers);
+            }
+
             socket.emit('message', {
                 event: 'handshake',
                 chain: fastify.manager.chain,
             });
+
             if (this.relay) {
                 this.relay.emit('event', {
                     type: 'client_count',
                     counter: Object.keys(this.io.sockets.connected).length,
                 });
             }
+
             socket.on('delta_stream_request', async (data, callback) => {
-                if (checkRange(data)) {
+                try {
                     await streamPastDeltas(this.server, socket, data);
+                    this.emitToRelay(data, 'delta_request', socket, callback);
+                } catch (e) {
+                    console.log(e);
                 }
-                this.emitToRelay(data, 'delta_request', socket, callback);
             });
+
             socket.on('action_stream_request', async (data, callback) => {
-                if (checkRange(data)) {
+                try {
                     await streamPastActions(this.server, socket, data);
+                    this.emitToRelay(data, 'action_request', socket, callback);
+                } catch (e) {
+                    console.log(e);
                 }
-                this.emitToRelay(data, 'action_request', socket, callback);
             });
+
             socket.on('disconnect', (reason) => {
                 console.log(`${socket.id} disconnected`);
                 this.relay.emit('event', {
