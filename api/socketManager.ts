@@ -227,16 +227,17 @@ export class SocketManager {
     constructor(fastify: FastifyInstance, url, redisOpts) {
         this.server = fastify;
         this.url = url;
+
         this.io = sockets(fastify.server, {
             transports: ['websocket', 'polling'],
         });
+
         this.io.adapter(socketIOredis(redisOpts));
+
         this.io.on('connection', (socket) => {
 
             if (socket.handshake.headers['x-forwarded-for']) {
-                console.log(`${socket.id} connected via ${socket.handshake.headers['x-forwarded-for']}`);
-            } else {
-                console.log(socket.handshake.headers);
+                console.log(`[socket] ${socket.id} connected via ${socket.handshake.headers['x-forwarded-for']}`);
             }
 
             socket.emit('message', {
@@ -270,7 +271,7 @@ export class SocketManager {
             });
 
             socket.on('disconnect', (reason) => {
-                console.log(`${socket.id} disconnected`);
+                console.log(`[socket] ${socket.id} disconnected - ${reason}`);
                 this.relay.emit('event', {
                     type: 'client_disconnected',
                     id: socket.id,
