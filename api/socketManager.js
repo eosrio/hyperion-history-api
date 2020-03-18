@@ -1,10 +1,12 @@
+const {ConnectionManager} = require('../connections/manager.class');
+const {ConfigurationModule} = require('../modules/config');
 const sockets = require('socket.io');
 const IOClient = require('socket.io-client');
 const redis = require('socket.io-redis');
 const {checkFilter} = require("../helpers/functions");
 
-const {ConnectionManager} = require('../connections/manager');
-const manager = new ConnectionManager();
+const cm = new ConfigurationModule();
+const manager = new ConnectionManager(cm);
 const es_client = manager.elasticsearchClient;
 
 function addBlockRangeOpts(data, search_body) {
