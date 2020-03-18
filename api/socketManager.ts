@@ -4,20 +4,43 @@ import * as IOClient from 'socket.io-client';
 import * as socketIOredis from 'socket.io-redis';
 import {FastifyInstance} from "fastify";
 
+export interface StreamDeltasRequest {
+    code: string;
+    table: string;
+    scope: string;
+    payer: string;
+    start_from: number | string;
+    read_until: number | string;
+}
+
+export interface RequestFilter {
+    field: string;
+    value: string;
+}
+
+export interface StreamActionsRequest {
+    contract: string;
+    account: string;
+    action: string;
+    filters: RequestFilter[];
+    start_from: number | string;
+    read_until: number | string;
+}
+
 async function addBlockRangeOpts(data, search_body, fastify: FastifyInstance) {
 
     let timeRange;
     let blockRange;
     let head;
 
-    if (typeof data['start_from'] === 'string') {
+    if (typeof data['start_from'] === 'string' && data['start_from'] !== '') {
         if (!timeRange) {
             timeRange = {"@timestamp": {}};
         }
         timeRange["@timestamp"]['gte'] = data['start_from'];
     }
 
-    if (typeof data['read_until'] === 'string') {
+    if (typeof data['read_until'] === 'string' && data['read_until'] !== '') {
         if (!timeRange) {
             timeRange = {"@timestamp": {}};
         }
@@ -252,18 +275,22 @@ export class SocketManager {
                 });
             }
 
-            socket.on('delta_stream_request', async (data, callback) => {
+            socket.on('delta_stream_request', async (data: StreamDeltasRequest, callback) => {
                 try {
-                    await streamPastDeltas(this.server, socket, data);
+                    if (data.start_from) {
+                        await streamPastDeltas(this.server, socket, data);
+                    }
                     this.emitToRelay(data, 'delta_request', socket, callback);
                 } catch (e) {
                     console.log(e);
                 }
             });
 
-            socket.on('action_stream_request', async (data, callback) => {
+            socket.on('action_stream_request', async (data: StreamActionsRequest, callback) => {
                 try {
-                    await streamPastActions(this.server, socket, data);
+                    if (data.start_from) {
+                        await streamPastActions(this.server, socket, data);
+                    }
                     this.emitToRelay(data, 'action_request', socket, callback);
                 } catch (e) {
                     console.log(e);
