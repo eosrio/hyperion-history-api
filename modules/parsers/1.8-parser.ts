@@ -8,7 +8,7 @@ import {hLog} from "../../helpers/common_functions";
 
 export default class HyperionParser extends BaseParser {
 
-    public async parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace): Promise<boolean> {
+    public async parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace, usageIncluded): Promise<boolean> {
         let act = action.act;
         if (this.checkBlacklist(act)) return false;
         if (this.filters.action_whitelist.size > 0) {
@@ -68,9 +68,10 @@ export default class HyperionParser extends BaseParser {
             delete action.error_code;
 
             // add usage data to the first action on the transaction
-            if (action.action_ordinal === 1 && action.creator_action_ordinal === 0) {
+            if (!usageIncluded.status) {
                 action.cpu_usage_us = trx_data.cpu_usage_us;
                 action.net_usage_words = trx_data.net_usage_words;
+                usageIncluded.status = true;
             }
             _processedTraces.push(action);
         } else {

@@ -341,9 +341,12 @@ export default class DSPoolWorker extends HyperionWorker {
                 net_usage_words,
                 ts
             };
+            const usageIncluded = {
+                status: false
+            };
             for (const action_trace of action_traces) {
                 if (action_trace[0] === 'action_trace_v0') {
-                    const ds_status = await this.mLoader.parser.parseAction(this, ts, action_trace[1], trx_data, _actDataArray, _processedTraces, transaction_trace);
+                    const ds_status = await this.mLoader.parser.parseAction(this, ts, action_trace[1], trx_data, _actDataArray, _processedTraces, transaction_trace, usageIncluded);
                     if (ds_status) {
                         this.temp_ds_counter++;
                         action_count++;
