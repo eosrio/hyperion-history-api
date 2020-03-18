@@ -45,7 +45,7 @@ export function registerRoutes(server: FastifyInstance) {
 
     // steam client lib
     server.get('/stream-client.js', (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
-        const stream = createReadStream('./api/client_bundle.js');
+        const stream = createReadStream('./client_bundle.js');
         reply.type('application/javascript').send(stream);
     });
 
