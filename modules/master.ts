@@ -856,8 +856,6 @@ export class HyperionMaster {
         this.client.index({
             index: this.chain + '-logs',
             body: _body
-        }).then((response: ApiResponse) => {
-            console.log(response.body, _body);
         }).catch(hLog);
     }
 
