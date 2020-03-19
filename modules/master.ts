@@ -9,7 +9,8 @@ import {
     getLastIndexedBlock,
     getLastIndexedBlockByDelta,
     getLastIndexedBlockByDeltaFromRange,
-    getLastIndexedBlockFromRange, hLog,
+    getLastIndexedBlockFromRange,
+    hLog,
     messageAllWorkers
 } from "../helpers/common_functions";
 
@@ -29,14 +30,11 @@ import {
 
 import {join} from "path";
 import * as cluster from "cluster";
+import {Worker} from "cluster";
 import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef";
+import {HyperionConfig} from "../interfaces/hyperionConfig";
 import moment = require("moment");
 import Timeout = NodeJS.Timeout;
-import {HyperionConfig} from "../interfaces/hyperionConfig";
-import {Worker} from "cluster";
-import got from "got";
-
-// const doctor = require('./modules/doctor');
 
 export class HyperionMaster {
 
@@ -128,6 +126,9 @@ export class HyperionMaster {
     private activeReadersCount = 0;
     private lastAssignedBlock: number;
     private lastIndexedABI: number;
+    private activeSchedule: any;
+    private pendingSchedule: any;
+    private proposedSchedule: any;
 
 
     constructor() {
@@ -154,6 +155,9 @@ export class HyperionMaster {
                         this.onLiveBlock(msg);
                     }
                 }
+            },
+            'new_schedule': (msg: any) => {
+                this.onScheduleUpdate(msg);
             },
             'init_abi': (msg: any) => {
                 if (!this.cachedInitABI) {
@@ -248,9 +252,6 @@ export class HyperionMaster {
                     this.livePushedBlocks++;
                 }
             },
-            'new_schedule': (msg: any) => {
-                this.onScheduleUpdate(msg);
-            },
             // 'ds_ready': (msg: any) => {
             //     hLog(msg);
             // },
@@ -341,6 +342,16 @@ export class HyperionMaster {
             if (!this.currentSchedule) {
                 console.error('empty producer schedule, something went wrong!');
                 process.exit(1);
+            } else {
+                if (this.currentSchedule.active) {
+                    this.activeSchedule = this.currentSchedule.active;
+                }
+                if (this.currentSchedule.pending) {
+                    this.pendingSchedule = this.currentSchedule.pending;
+                }
+                if (this.currentSchedule.proposed) {
+                    this.proposedSchedule = this.currentSchedule.proposed;
+                }
             }
         } catch (e) {
             console.error('failed to connect to api');
@@ -673,21 +684,30 @@ export class HyperionMaster {
     }
 
     onLiveBlock(msg) {
+
+        if (this.proposedSchedule && this.proposedSchedule.version) {
+            if (msg.schedule_version >= this.proposedSchedule.version) {
+                hLog(`Active producers changed!`);
+                this.printActiveProds();
+                this.activeSchedule = this.proposedSchedule;
+                this.printActiveProds();
+                this.proposedSchedule = null;
+            }
+        }
+
         if (msg.block_num === this.lastProducedBlockNum + 1 || this.lastProducedBlockNum === 0) {
             const prod = msg.producer;
 
-            if (this.conf.settings.bp_logs) {
-                hLog(`Received block ${msg.block_num} from ${prod}`);
-            }
             if (this.producedBlocks[prod]) {
                 this.producedBlocks[prod]++;
             } else {
                 this.producedBlocks[prod] = 1;
             }
+
             if (this.lastProducer !== prod) {
                 this.handoffCounter++;
                 if (this.lastProducer && this.handoffCounter > 2) {
-                    const activeProds = this.currentSchedule.active.producers;
+                    const activeProds = this.activeSchedule.producers;
                     const newIdx = activeProds.findIndex(p => p['producer_name'] === prod) + 1;
                     const oldIdx = activeProds.findIndex(p => p['producer_name'] === this.lastProducer) + 1;
                     if ((newIdx === oldIdx + 1) || (newIdx === 1 && oldIdx === activeProds.length)) {
@@ -728,6 +748,15 @@ export class HyperionMaster {
                 }
                 this.lastProducer = prod;
             }
+
+            if (this.conf.settings.bp_logs) {
+                if (this.proposedSchedule) {
+                    hLog(`received block ${msg.block_num} from ${prod} [${this.activeSchedule.version} >> ${this.proposedSchedule.version}]`);
+                } else {
+                    hLog(`received block ${msg.block_num} from ${prod} [${this.activeSchedule.version}]`);
+                }
+            }
+
             this.lastProducedBlockNum = msg.block_num;
         } else {
             this.blockMsgQueue.push(msg);
@@ -766,8 +795,11 @@ export class HyperionMaster {
 
     private async setupReaders() {
         // Setup Readers
+
         this.lastAssignedBlock = this.starting_block;
+
         this.activeReadersCount = 0;
+
         if (!this.conf.indexer.repair_mode) {
             if (!this.conf.indexer.live_only_mode) {
                 while (this.activeReadersCount < this.max_readers && this.lastAssignedBlock < this.head) {
@@ -786,16 +818,19 @@ export class HyperionMaster {
                     hLog(`Setting parallel reader [${this.worker_index}] from block ${start} to ${end}`);
                 }
             }
+
             // Setup Serial reader worker
             if (this.conf.indexer.live_reader) {
                 const _head = this.chain_data.head_block_num;
                 hLog(`Setting live reader at head = ${_head}`);
+
                 // live block reader
                 this.addWorker({
                     worker_role: 'continuous_reader',
                     worker_last_processed_block: _head,
                     ws_router: ''
                 });
+
                 // live deserializer
                 this.addWorker({
                     worker_role: 'deserializer',
@@ -808,18 +843,21 @@ export class HyperionMaster {
 
     private reportMissedBlocks(missingProd: any, lastProducedBlockNum: number, size: number) {
         hLog(`${missingProd} missed ${size} ${size === 1 ? "block" : "blocks"} after ${lastProducedBlockNum}`);
+        const _body = {
+            type: 'missed_blocks',
+            '@timestamp': new Date().toISOString(),
+            'missed_blocks': {
+                'producer': missingProd,
+                'last_block': lastProducedBlockNum,
+                'size': size,
+                'schedule_version': this.activeSchedule.version
+            }
+        };
         this.client.index({
             index: this.chain + '-logs',
-            body: {
-                type: 'missed_blocks',
-                '@timestamp': new Date().toISOString(),
-                'missed_blocks': {
-                    'producer': missingProd,
-                    'last_block': lastProducedBlockNum,
-                    'size': size,
-                    'schedule_version': this.currentSchedule.schedule_version
-                }
-            }
+            body: _body
+        }).then((response: ApiResponse) => {
+            console.log(response.body, _body);
         }).catch(hLog);
     }
 
@@ -1121,9 +1159,10 @@ export class HyperionMaster {
     }
 
     private onScheduleUpdate(msg: any) {
+        hLog(msg);
         if (msg.live === 'true') {
-            hLog(`Producer schedule updated at block ${msg.block_num}`);
-            this.currentSchedule.active.producers = msg.new_producers.producers
+            hLog(`Producer schedule updated at block ${msg.block_num}. Waiting version update...`);
+            this.proposedSchedule = msg.new_producers;
         }
     }
 
@@ -1141,6 +1180,16 @@ export class HyperionMaster {
         });
     }
 
+    printActiveProds() {
+        if (this.activeSchedule && this.activeSchedule.producers) {
+            const arr = this.activeSchedule.producers.map((p, i) => {
+                const pos = (i < 9 ? "0" + (i + 1) : i + 1);
+                return "| " + pos + " " + p['producer_name'] + "\t|";
+            });
+            hLog(`${arr.length} active producers \n-------------------\n${arr.join('\n')}\n--------------------`);
+        }
+    }
+
     async runMaster() {
 
         this.printMode();
@@ -1155,7 +1204,7 @@ export class HyperionMaster {
         this.rpc = this.manager.nodeosJsonRPC;
         if (this.conf.settings.bp_monitoring) {
             await this.getCurrentSchedule();
-            hLog(`${this.currentSchedule.active.producers.length} active producers`);
+            this.printActiveProds();
         }
 
         // ELasticsearch
