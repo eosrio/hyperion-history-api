@@ -124,14 +124,12 @@ export default class DSPoolWorker extends HyperionWorker {
     async verifyLocalType(contract, type, block_num, field) {
         let _status;
         let resultType;
-
         try {
             resultType = AbiEOS['get_type_for_' + field](contract, type);
             _status = true;
         } catch {
             _status = false;
         }
-
         if (!_status) {
             const savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
             if (savedAbi) {

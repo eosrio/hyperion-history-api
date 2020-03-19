@@ -410,30 +410,30 @@ export default class MainDSWorker extends HyperionWorker {
 
     async verifyLocalType(contract, type, block_num, field) {
         let _status;
-        let resultType = AbiEOS['get_type_for_' + field](contract, type);
-        // hLog(contract, type, resultType);
-        if (resultType === "NOT_FOUND") {
-            // hLog(`${field} not found for ${type} on ${contract}`);
+        let resultType;
+        try {
+            resultType = AbiEOS['get_type_for_' + field](contract, type);
+            _status = true;
+        } catch {
+            _status = false;
+        }
+        if (!_status) {
             const savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
             if (savedAbi) {
                 if (savedAbi[field + 's'].includes(type)) {
                     if (savedAbi.abi_hex) {
                         _status = AbiEOS.load_abi_hex(contract, savedAbi.abi_hex);
                     }
-                    // hLog('🔄  reloaded abi');
                     if (_status) {
-                        resultType = AbiEOS['get_type_for_' + field](contract, type);
-                        // hLog(`verifying ${field} type: ${resultType}`);
-                        if (resultType === "NOT_FOUND") {
-                            _status = false;
-                        } else {
-                            // hLog(`✅️  ${contract} abi cache updated at block ${block_num}`);
+                        try {
+                            resultType = AbiEOS['get_type_for_' + field](contract, type);
                             _status = true;
                             return [_status, resultType];
+                        } catch (e) {
+                            hLog(`(abieos/cached) >> ${e.message}`);
+                            _status = false;
                         }
                     }
-                } else {
-                    hLog(`⚠️  ⚠️  ${field} "${type}" not found on saved abi for ${contract} at block ${block_num}!`);
                 }
             }
             const currentAbi = await this.rpc.getRawAbi(contract);
@@ -444,15 +444,14 @@ export default class MainDSWorker extends HyperionWorker {
                 _status = false;
             }
             if (_status === true) {
-                resultType = AbiEOS['get_type_for_' + field](contract, type);
-                _status = resultType !== "NOT_FOUND"
-                if (resultType === "NOT_FOUND") {
-                    hLog(`⚠️ ⚠️  Current ABI version for ${contract} doesn't contain the ${field} type ${type}`);
-
+                try {
+                    resultType = AbiEOS['get_type_for_' + field](contract, type);
+                    _status = true;
+                } catch (e) {
+                    hLog(`(abieos/current) >> ${e.message}`);
+                    _status = false;
                 }
             }
-        } else {
-            _status = true;
         }
         return [_status, resultType];
     }
