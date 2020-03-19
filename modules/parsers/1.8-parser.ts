@@ -115,10 +115,12 @@ export default class HyperionParser extends BaseParser {
                     const evPayload = {
                         event: 'consumed_block',
                         block_num: result['block_num'],
+                        lib: res.last_irreversible.block_num,
                         live: process.env.live_mode
                     };
                     if (block) {
                         evPayload["producer"] = block['producer'];
+                        evPayload["schedule_version"] = block['schedule_version'];
                     }
                     process.send(evPayload);
                 } else {
