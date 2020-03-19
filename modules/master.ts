@@ -28,7 +28,7 @@ import {
     WriteStream
 } from "fs";
 
-import {join} from "path";
+import * as path from "path";
 import * as cluster from "cluster";
 import {Worker} from "cluster";
 import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef";
@@ -671,7 +671,7 @@ export class HyperionMaster {
     }
 
     setupDSElogs() {
-        const logPath = './logs/' + this.chain;
+        const logPath = path.join(path.resolve(), 'logs', this.chain);
         if (!existsSync(logPath)) mkdirSync(logPath, {recursive: true});
         const dsLogFileName = (new Date().toISOString()) + "_ds_err_" + this.starting_block + "_" + this.head + ".log";
         const dsErrorsLog = logPath + '/' + dsLogFileName;
@@ -680,7 +680,8 @@ export class HyperionMaster {
         if (existsSync(symbolicLink)) unlinkSync(symbolicLink);
         symlinkSync(dsLogFileName, symbolicLink);
         this.dsErrorStream = createWriteStream(dsErrorsLog, {flags: 'a'});
-        hLog(`📣️  Deserialization errors are being logged in:\n ${join(__dirname, symbolicLink)}`);
+        hLog(`📣️  Deserialization errors are being logged in:\n ${symbolicLink}`);
+        this.dsErrorStream.write(`begin ${this.chain} error logs\n`);
     }
 
     onLiveBlock(msg) {
@@ -1182,9 +1183,10 @@ export class HyperionMaster {
         if (this.activeSchedule && this.activeSchedule.producers) {
             const arr = this.activeSchedule.producers.map((p, i) => {
                 const pos = (i < 9 ? "0" + (i + 1) : i + 1);
-                return "| " + pos + " " + p['producer_name'] + "\t|";
+                return "│ " + pos + " " + p['producer_name'] + "\t│";
             });
-            hLog(`${arr.length} active producers \n-------------------\n${arr.join('\n')}\n--------------------`);
+            const div = '──────────────────';
+            console.log(`\n ⛏  Active Producers\n┌${div}┐\n${arr.join('\n')}\n└${div}┘`);
         }
     }
 
