@@ -1183,7 +1183,7 @@ export class HyperionMaster {
         if (this.activeSchedule && this.activeSchedule.producers) {
             const arr = this.activeSchedule.producers.map((p, i) => {
                 const pos = (i < 9 ? "0" + (i + 1) : i + 1);
-                return "│ " + pos + " " + p['producer_name'] + "\t│";
+                return "│ " + pos + " " + p.producer_name + "\t│";
             });
             const div = '──────────────────';
             console.log(`\n ⛏  Active Producers\n┌${div}┐\n${arr.join('\n')}\n└${div}┘`);
