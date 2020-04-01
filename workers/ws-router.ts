@@ -1,7 +1,7 @@
 import {HyperionWorker} from "./hyperionWorker";
 
 import * as IOServer from 'socket.io';
-import {checkFilter} from "../helpers/common_functions";
+import {checkFilter, hLog} from "../helpers/common_functions";
 
 const greylist = ['eosio.token'];
 
@@ -30,12 +30,12 @@ export default class WSRouter extends HyperionWorker {
 
     assertQueues(): void {
         this.ch.assertQueue(this.q);
-        this.ch.consume(this.q, this.onConsume);
+        this.ch.consume(this.q, this.onConsume.bind(this));
     }
 
 
     onIpcMessage(msg: any): void {
-        console.log(msg);
+        // hLog(msg.event);
     }
 
     async run(): Promise<void> {
@@ -54,11 +54,14 @@ export default class WSRouter extends HyperionWorker {
                 const code = actHeader.account;
                 const name = actHeader.name;
                 const notified = actHeader.notified.split(',');
-                // console.log(`ACTION: ${code}::${name} - [${actHeader.notified}]`);
                 let decodedMsg;
+
+                // send to contract subscribers
                 if (this.codeActionMap.has(code)) {
                     const codeReq = this.codeActionMap.get(code);
                     decodedMsg = Buffer.from(msg.content).toString();
+
+                    // send to action subscribers
                     if (codeReq.has(name)) {
                         for (const link of codeReq.get(name).links) {
                             this.forwardActionMessage(decodedMsg, link, notified);
@@ -72,6 +75,7 @@ export default class WSRouter extends HyperionWorker {
                     }
                 }
 
+                // send to notification subscribers
                 notified.forEach((acct) => {
                     if (this.notifiedMap.has(acct)) {
                         if (!decodedMsg) {
@@ -179,8 +183,9 @@ export default class WSRouter extends HyperionWorker {
 
     addActionRequest(data, id) {
         const req = data.request;
+        console.log(req);
         if (greylist.indexOf(req.contract) !== -1) {
-            if (req.notified === '' || req.notified === req.contract) {
+            if (req.account === '' || req.account === req.contract) {
                 return {
                     status: 'FAIL',
                     reason: 'request too broad, please be more specific'
@@ -292,6 +297,7 @@ export default class WSRouter extends HyperionWorker {
             serveClient: false,
             cookie: false
         });
+
         this.io.on('connection', (socket) => {
             console.log(`[ROUTER] New relay connected with ID = ${socket.id}`);
             this.relays[socket.id] = {clients: 0, connected: true};
@@ -352,8 +358,9 @@ export default class WSRouter extends HyperionWorker {
 
     private forwardActionMessage(msg: any, link: any, notified: string[]) {
         let allow = false;
-        if (this.io.sockets.connected[link.relay]) {
-            if (link.notified !== '') {
+        const relay = this.io.sockets.connected[link.relay];
+        if (relay) {
+            if (link.account !== '') {
                 allow = notified.indexOf(link.account) !== -1;
             } else {
                 allow = true;
@@ -366,10 +373,7 @@ export default class WSRouter extends HyperionWorker {
                 });
             }
             if (allow) {
-                this.io.sockets.connected[link.relay].emit('trace', {
-                    client: link.client,
-                    message: msg
-                });
+                relay.emit('trace', {client: link.client, message: msg});
                 this.totalRoutedMessages++;
             }
         }
@@ -377,7 +381,8 @@ export default class WSRouter extends HyperionWorker {
 
     private forwardDeltaMessage(msg, link, payer) {
         let allow = false;
-        if (this.io.sockets.connected[link.relay]) {
+        const relay = this.io.sockets.connected[link.relay];
+        if (relay) {
             if (link.payer !== '') {
                 allow = link.payer === payer;
             } else {
@@ -391,10 +396,7 @@ export default class WSRouter extends HyperionWorker {
             //     });
             // }
             if (allow) {
-                this.io.sockets.connected[link.relay].emit('delta', {
-                    client: link.client,
-                    message: msg
-                });
+                relay.emit('delta', {client: link.client, message: msg});
                 this.totalRoutedMessages++;
             }
         }

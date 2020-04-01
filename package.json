@@ -22,7 +22,7 @@
   "license": "MIT",
   "dependencies": {
     "@elastic/elasticsearch": "7.6.1",
-    "@eosrio/node-abieos": "1.0.4",
+    "@eosrio/node-abieos": "1.0.6-1",
     "@pm2/io": "4.3.3",
     "amqplib": "0.5.5",
     "async": "3.2.0",
@@ -62,6 +62,7 @@
     "@types/node": "13.9.1",
     "@types/node-fetch": "2.5.5",
     "@types/socket.io": "2.1.4",
+    "@types/socket.io-client": "^1.4.32",
     "@types/ws": "7.2.2",
     "ts-node": "8.6.2",
     "eslint": "^6.8.0",

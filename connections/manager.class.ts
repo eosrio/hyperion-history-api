@@ -8,6 +8,7 @@ import {amqpConnect, checkQueueSize, getAmpqUrl} from "./amqp";
 import {StateHistorySocket} from "./state-history";
 import fetch from 'cross-fetch'
 import {exec} from "child_process";
+import {hLog} from "../helpers/common_functions";
 
 export class ConnectionManager {
 
@@ -35,28 +36,33 @@ export class ConnectionManager {
     }
 
     async purgeQueues() {
-        console.log(`Purging all ${this.chain} queues!`);
+        hLog(`Purging all ${this.chain} queues!`);
         const apiUrl = `http://${this.conn.amqp.user}:${this.conn.amqp.pass}@${this.conn.amqp.api}`;
         const getAllQueuesFromVHost = apiUrl + `/api/queues/%2F${this.conn.amqp.vhost}`;
         let result;
         try {
-            result = JSON.parse((await got(getAllQueuesFromVHost)).body);
+            const data = await got(getAllQueuesFromVHost);
+            if (data) {
+                result = JSON.parse(data.body);
+            }
         } catch (e) {
             console.log(e.message);
             console.error('failed to connect to rabbitmq http api');
             process.exit(1);
         }
-        for (const queue of result) {
-            if (queue.name.startsWith(this.chain + ":")) {
-                const msg_count = parseInt(queue.messages);
-                if (msg_count > 0) {
-                    try {
-                        await got.delete(apiUrl + `/api/queues/%2F${this.conn.amqp.vhost}/${queue.name}/contents`);
-                        console.log(`${queue.messages} messages deleted on queue ${queue.name}`);
-                    } catch (e) {
-                        console.log(e.message);
-                        console.error('failed to connect to rabbitmq http api');
-                        process.exit(1);
+        if (result) {
+            for (const queue of result) {
+                if (queue.name.startsWith(this.chain + ":")) {
+                    const msg_count = parseInt(queue.messages);
+                    if (msg_count > 0) {
+                        try {
+                            await got.delete(apiUrl + `/api/queues/%2F${this.conn.amqp.vhost}/${queue.name}/contents`);
+                            hLog(`${queue.messages} messages deleted on queue ${queue.name}`);
+                        } catch (e) {
+                            console.log(e.message);
+                            console.error('failed to connect to rabbitmq http api');
+                            process.exit(1);
+                        }
                     }
                 }
             }

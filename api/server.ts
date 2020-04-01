@@ -10,6 +10,7 @@ import {AddressInfo} from "net";
 import {registerRoutes} from "./routes";
 import {generateOpenApiConfig} from "./config/open_api";
 import {createWriteStream} from "fs";
+import {SocketManager} from "./socketManager";
 
 class HyperionApiServer {
 
@@ -17,6 +18,7 @@ class HyperionApiServer {
     private readonly manager: ConnectionManager;
     private readonly fastify: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>;
     private readonly chain: string;
+    socketManager: SocketManager;
 
     constructor() {
         const cm = new ConfigurationModule();
@@ -83,14 +85,16 @@ class HyperionApiServer {
     }
 
     activateStreaming() {
-        const connOpts = this.manager.conn.chains[this.chain];
-        const {SocketManager} = require("./socketManager");
-        const socketManager = new SocketManager(
-            this.fastify,
-            `http://${connOpts['WS_ROUTER_HOST']}:${connOpts['WS_ROUTER_PORT']}`,
-            this.manager.conn.redis
-        );
-        socketManager.startRelay();
+        console.log('Importing stream module');
+        import('./socketManager').then((mod) => {
+            const connOpts = this.manager.conn.chains[this.chain];
+            this.socketManager = new mod.SocketManager(
+                this.fastify,
+                `http://${connOpts['WS_ROUTER_HOST']}:${connOpts['WS_ROUTER_PORT']}`,
+                this.manager.conn.redis
+            );
+            this.socketManager.startRelay();
+        });
     }
 
     private addGenericTypeParsing() {

@@ -41,7 +41,7 @@ export abstract class BaseParser {
         } else return this.filters.action_whitelist.has(this.codeActionPair(act));
     }
 
-    abstract async parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace): Promise<boolean>
+    abstract async parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace, usageIncluded: { status: boolean }): Promise<boolean>
 
     abstract async parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void>
 }
