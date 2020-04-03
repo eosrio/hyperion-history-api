@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eo pipefail
+#set -eo pipefail
 
 #terminal colors
 export COLOR_NC=$(tput sgr0) #No Color
@@ -9,12 +9,72 @@ export COLOR_YELLOW=$(tput setaf 3)
 export COLOR_BLUE=$(tput setaf 4)
 
 #variables
+GLOBAL="y"
 RABBIT_USER="hyperion"
 RABBIT_PASSWORD="123456"
+NODE=false
+ELASTIC=false
+REDIS=false
+RABBIT=false
+KIBANA=false
 RAM=0
 
 check_ram(){
   RAM=$(free --giga | awk '/Mem/ {print $2}')
+}
+#first check if is installed, after check version
+check_dependecies(){
+  echo -e "\n\n${COLOR_BLUE}Checking dependencies...${COLOR_NC}\n\n"
+  CMD=$(if(dpkg --compare-versions 2> /dev/null $(dpkg -s  nodejs 2> /dev/null | awk '/Version/ {print $2}') ge "5"); then echo true; else echo false; fi)
+  if("$CMD" = true); then
+    NODE=true
+    echo -e "\n\n${COLOR_BLUE}Nodejs compatible version already installed ${COLOR_NC}\n\n"
+  elif("$CMD" = false); then
+    echo -e "\n\n${COLOR_RED}Nodejs installed version is < 13. Please, update and try again. ${COLOR_NC}\n\n"
+    exit 1
+  else
+    echo -e "\n\n${COLOR_BLUE}Nodejs not installed ${COLOR_NC}\n\n"
+  fi
+  CMD=$(if(dpkg --compare-versions 2> /dev/null $(dpkg -s  elasticsearch 2> /dev/null | awk '/Version/ {print $2}') ge "7.6"); then echo true; else echo false; fi)
+  if("$CMD" = true); then
+    ELASTIC=true
+    echo -e "\n\n${COLOR_BLUE}Elasticsearch compatible version already installed ${COLOR_NC}\n\n"
+  elif ("$CMD" = false); then
+    echo -e "\n\n${COLOR_RED}Elasticsearch installed version is < 7.6. Please, update and try again. ${COLOR_NC}\n\n"
+    exit 1
+  else
+    echo -e "\n\n${COLOR_BLUE}Elasticsearch not installed ${COLOR_NC}\n\n"
+  fi
+  CMD=$(if(dpkg --compare-versions 2> /dev/null $(dpkg -s  redis-server 2> /dev/null | awk '/Version/ {print $2}') ge "5"); then echo true; else echo false; fi)
+  if("$CMD" = true); then
+    REDIS=true
+    echo -e "\n\n${COLOR_BLUE}Redis compatible version already installed ${COLOR_NC}\n\n"
+  elif("$CMD" = false); then
+    echo -e "\n\n${COLOR_RED}Redis installed version is < 5. Please, update and try again. ${COLOR_NC}\n\n"
+    exit 1
+  else
+    echo -e "\n\n${COLOR_BLUE}Redis not installed ${COLOR_NC}\n\n"
+  fi
+  CMD=$(if(dpkg --compare-versions 2> /dev/null $(dpkg -s  rabbitmq-server 2> /dev/null | awk '/Version/ {print $2}') ge "3.8"); then echo true; else echo false; fi)
+  if("$CMD" = true); then
+    RABBIT=true
+    echo -e "\n\n${COLOR_BLUE}RabbitMQ compatible version already installed ${COLOR_NC}\n\n"
+  elif("$CMD" = false); then
+    echo -e "\n\n${COLOR_RED}RabbitMQ installed version is < 3.8. Please, update and try again. ${COLOR_NC}\n\n"
+    exit 1
+  else
+    echo -e "\n\n${COLOR_BLUE}RabbitMQ not installed ${COLOR_NC}\n\n"
+  fi
+  CMD=$(if(dpkg --compare-versions 2> /dev/null $(dpkg -s  kibana 2> /dev/null | awk '/Version/ {print $2}') ge "7.6"); then echo true; else echo false; fi)
+  if("$CMD" = true); then
+    RABBIT=true
+    echo -e "\n\n${COLOR_BLUE}Kibana compatible version already installed ${COLOR_NC}\n\n"
+  elif("$CMD" = false); then
+    echo -e "\n\n${COLOR_RED}Kibana installed version is < 7.6. Please, update and try again. ${COLOR_NC}\n\n"
+    exit 1
+  else
+    echo -e "\n\n${COLOR_BLUE}Kibana not installed ${COLOR_NC}\n\n"
+  fi
 }
 
 # Make a directory for global installations
@@ -30,11 +90,30 @@ configure_npm(){
 
 install_keys_sources(){
   echo -e "\n\n${COLOR_BLUE}Configuring keys and sources...${COLOR_NC}\n\n"
-  wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
-  echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
-  wget -O- https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | sudo apt-key add -
-  wget -O - "https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey" | sudo apt-key add -
-  curl -sL "https://deb.nodesource.com/setup_13.x" | sudo -E bash -
+
+  #export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1
+
+  PPA="https://artifacts.elastic.co/packages/7.x/apt stable main"
+  if ! grep -q "^deb .*$PPA" /etc/apt/sources.list /etc/apt/sources.list.d/*; then
+    wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+    echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
+  fi
+
+  KEY=$(apt-key list 2> /dev/null | grep erlang)
+  if [[ ! $KEY ]]; then
+    wget -O- https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | sudo apt-key add -
+  fi
+
+  KEY=$(apt-key list 2> /dev/null | grep rabbitmq)
+  if [[ ! $KEY ]]; then
+    wget -O - "https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey" | sudo apt-key add -
+  fi
+
+  PPA="https://deb.nodesource.com/node_13.x bionic main"
+  if ! grep -q "^deb .*$PPA" /etc/apt/sources.list /etc/apt/sources.list.d/*; then
+    curl -sL "https://deb.nodesource.com/setup_13.x" | sudo -E bash -
+  fi
+
   sudo apt update -y
 }
 
@@ -46,27 +125,36 @@ install_dep(){
 install_node(){
   echo -e "\n\n${COLOR_BLUE}Installing nodejs...${COLOR_NC}\n\n"
   sudo apt install -y nodejs
-  configure_npm
-  npm install -g node-gyp
-  npm install -g typescript
-
+  read -p "Do you want to create a directory for npm global installations [Y/n] : " GLOBAL
+  GLOBAL=${GLOBAL:-y}
+  if [ "$GLOBAL" = "y" ]; then
+    configure_npm
+    npm install -g node-gyp
+    npm install -g typescript
+  else
+    sudo npm install -g node-gyp
+    sudo npm install -g typescript
+  fi
 }
 
 install_build_hyperion(){
   echo -e "\n\n${COLOR_BLUE}Installing and building hyperion...${COLOR_NC}\n\n"
   npm install
-  tsc
-
 }
 
 install_pm2(){
   echo -e "\n\n${COLOR_BLUE}Installing pm2...${COLOR_NC}\n\n"
-  npm install pm2@latest -g
+  if [ "$GLOBAL" = "y" ]; then
+    npm install pm2@latest -g
+  else
+    sudo npm install pm2@latest -g
+  fi
 }
 
 install_redis(){
   echo -e "\n\n${COLOR_BLUE}Installing redis...${COLOR_NC}\n\n"
   sudo apt install -y redis-server
+  sudo sed -ie 's/supervised no/supervised systemd/' /etc/redis/redis.conf
   sudo systemctl restart redis.service
 }
 
@@ -131,17 +219,28 @@ install_kibana(){
 
 echo -e "\n\n${COLOR_BLUE}*** STARTING HYPERION HISTORY API CONFIGURATION ***${COLOR_NC}\n\n"
 
-rabbit_credentials
+check_dependecies
+if [ "$RABBIT" = false ] ; then
+  rabbit_credentials
+fi
 install_dep
 install_keys_sources
-install_node
+if [ "$NODE" = false ] ; then
+  install_node
+fi
 install_pm2
 install_build_hyperion
-install_earlang
-install_rabittmq
-install_redis
-install_elastic
-install_kibana
+if [ "$RABBIT" = false ] ; then
+  install_earlang
+  install_rabittmq
+fi
+if [ "$REDIS" = false ] ; then
+  install_redis
+fi
+if [ "$ELASTIC" = false ] ; then
+  install_elastic
+  install_kibana
+fi
 
 printf "
  _   ___   ______  _____ ____  ___ ___  _   _
@@ -151,7 +250,6 @@ printf "
 |_| |_| |_| |_|   |_____|_| \_\___\___/|_| \_|
 Made with ♥ by EOS Rio
 "
-
 echo -e "\n\n${COLOR_GREEN}Hyperion History API successfully installed!!${COLOR_NC}"
 echo -e "\n${COLOR_YELLOW}Please, check your installation: ${COLOR_NC}"
 echo -e "${COLOR_YELLOW}- Elastic: http://localhost:9200 ${COLOR_NC}"
