@@ -319,7 +319,6 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     routeToPool(trace, headers) {
-
         let first_action;
         if (trace['action_traces'][0].length === 2) {
             first_action = trace['action_traces'][0][1];
@@ -329,13 +328,11 @@ export default class MainDSWorker extends HyperionWorker {
             console.log(trace);
             return false;
         }
-
         const _code = first_action.act.account;
         const _name = first_action.act.name;
         if (_code === this.conf.settings.eosio_alias && _name === 'onblock') {
             return false;
         }
-
         let selected_q = 0;
         if (this.dsPoolMap[_code]) {
             const workers = this.dsPoolMap[_code][2];
@@ -448,7 +445,7 @@ export default class MainDSWorker extends HyperionWorker {
                     resultType = AbiEOS['get_type_for_' + field](contract, type);
                     _status = true;
                 } catch (e) {
-                    hLog(`(abieos/current) >> ${e.message}`);
+                    // hLog(`(abieos/current) >> ${e.message}`);
                     _status = false;
                 }
             }
@@ -469,16 +466,11 @@ export default class MainDSWorker extends HyperionWorker {
                 row['data'] = result;
                 delete row.value;
                 return row;
-            } catch (e) {
-                hLog(e);
+            } catch {
             }
         }
-
-        const fallbackResult = await this.processContractRow(row, block);
-        if (fallbackResult['data']) {
-            hLog('fallback success!');
-        }
-        return fallbackResult;
+        return await this.processContractRow(row, block);
+        ;
     }
 
     async getAbiFromHeadBlock(code) {
@@ -672,10 +664,6 @@ export default class MainDSWorker extends HyperionWorker {
             payload['@timestamp'] = block_ts;
             payload['present'] = row.present;
             payload['block_num'] = block_num;
-
-            // if (!row.present) {
-            //     hLog(payload);
-            // }
 
             if (this.conf.features.index_all_deltas || (payload.code === this.conf.settings.eosio_alias || payload.table === 'accounts')) {
                 const jsonRow = await this.processContractRowNative(payload, block_num);

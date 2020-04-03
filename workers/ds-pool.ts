@@ -4,6 +4,7 @@ import * as AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "../addons/eosjs-native";
 import {hLog} from "../helpers/common_functions";
 import {Message} from "amqplib";
+import {parseDSPEvent} from "../modules/custom/dsp-parser";
 
 const abi_remapping = {
     "_Bool": "bool"
@@ -161,7 +162,7 @@ export default class DSPoolWorker extends HyperionWorker {
                     resultType = AbiEOS['get_type_for_' + field](contract, type);
                     _status = true;
                 } catch (e) {
-                    hLog(`(abieos/current) >> ${e.message}`);
+                    // hLog(`(abieos/current) >> ${e.message}`);
                     _status = false;
                 }
             }
@@ -357,6 +358,15 @@ export default class DSPoolWorker extends HyperionWorker {
 
                 // collect digests & receipts
                 for (const _trace of _processedTraces) {
+
+                    if (this.conf.settings.dsp_parser) {
+                        if (_trace.console !== '') {
+                            await parseDSPEvent(this, _trace);
+                        }
+                    } else {
+                        delete _trace.console;
+                    }
+
                     if (act_digests[_trace.receipt.act_digest]) {
                         act_digests[_trace.receipt.act_digest].push(_trace.receipt);
                     } else {
@@ -510,6 +520,11 @@ export default class DSPoolWorker extends HyperionWorker {
                 durable: true
             });
             this.initConsumer();
+        }
+        if (this.conf.settings.dsp_parser) {
+            this.ch.assertQueue(`${queue_prefix}:dsp`, {
+                durable: true
+            });
         }
     }
 

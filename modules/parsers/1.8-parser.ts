@@ -53,10 +53,6 @@ export default class HyperionParser extends BaseParser {
             delete action.account_ram_deltas;
         }
 
-        if (action['console'] === '') {
-            delete action['console'];
-        }
-
         if (action.except === null) {
             if (!action.receipt) {
                 console.log(full_trace.status);
