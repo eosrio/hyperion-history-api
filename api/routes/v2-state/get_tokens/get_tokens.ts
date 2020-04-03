@@ -13,12 +13,11 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
     };
 
     const results = await fastify.elastic.search({
-        "index": process.env.CHAIN + '-action-*',
+        "index": fastify.manager.chain + '-action-*',
         "body": {
             size: 0,
             query: {
                 bool: {
-                    // must_not: {term: {"act.account": "eosio.token"}},
                     filter: [
                         {term: {"notified": request.query.account}},
                         {terms: {"act.name": ["transfer", "issue"]}}
