@@ -529,9 +529,16 @@ export class HyperionMaster {
                     }
                 }
             }
-            hLog(' |>> First Block: ' + this.starting_block);
-            hLog(' >>| Last  Block: ' + this.head);
+        } else {
+            // Auto Mode
+            if(this.conf.indexer.abi_scan_mode) {
+                hLog(`Last indexed ABI: ${this.lastIndexedABI}`);
+                this.starting_block = this.lastIndexedABI;
+            }
         }
+        // print results
+        hLog(' |>> First Block: ' + this.starting_block);
+        hLog(' >>| Last  Block: ' + this.head);
     }
 
     private static printWorkerMap(wmp) {
@@ -1278,10 +1285,10 @@ export class HyperionMaster {
         let lastIndexedBlock;
         if (this.conf.features.index_deltas) {
             lastIndexedBlock = await getLastIndexedBlockByDelta(this.client, queue_prefix);
-            hLog('Last indexed block (deltas):', lastIndexedBlock);
+            hLog(`Last indexed block (deltas): ${lastIndexedBlock}`);
         } else {
             lastIndexedBlock = await getLastIndexedBlock(this.client, queue_prefix);
-            hLog('Last indexed block (blocks):', lastIndexedBlock);
+            hLog(`Last indexed block (blocks): ${lastIndexedBlock}`);
         }
 
         // Start from the last indexed block
