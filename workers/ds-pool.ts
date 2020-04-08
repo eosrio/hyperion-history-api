@@ -488,6 +488,7 @@ export default class DSPoolWorker extends HyperionWorker {
                         data: this.contractUsage,
                         total_hits: this.totalHits
                     });
+                    hLog(`${this.local_queue} ->> ${this.actionDsCounter} actions`);
                     process.send({
                         event: 'ds_report',
                         actions: this.actionDsCounter

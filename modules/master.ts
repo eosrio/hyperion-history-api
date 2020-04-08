@@ -531,7 +531,7 @@ export class HyperionMaster {
             }
         } else {
             // Auto Mode
-            if(this.conf.indexer.abi_scan_mode) {
+            if (this.conf.indexer.abi_scan_mode) {
                 hLog(`Last indexed ABI: ${this.lastIndexedABI}`);
                 this.starting_block = this.lastIndexedABI;
             }
@@ -970,15 +970,15 @@ export class HyperionMaster {
         // Monitor Global Contract Usage
         setInterval(() => {
 
-            // const t0 = process.hrtime.bigint();
+            const t0 = process.hrtime.bigint();
             this.updateWorkerAssignments();
-            // const t1 = process.hrtime.bigint();
+            const t1 = process.hrtime.bigint();
 
-            // hLog('----------- Usage Report ----------');
-            // hLog(`Total Hits: ${this.totalContractHits}`);
-            // hLog(`Update time: ${parseInt((t1 - t0).toString()) / 1000000} ms`);
-            // hLog(this.globalUsageMap);
-            // hLog('-----------------------------------');
+            hLog('----------- Usage Report ----------');
+            hLog(`Total Hits: ${this.totalContractHits}`);
+            hLog(`Update time: ${parseInt((t1 - t0).toString()) / 1000000} ms`);
+            hLog(this.globalUsageMap);
+            hLog('-----------------------------------');
 
             // update on deserializers
             for (const w of this.workerMap) {
