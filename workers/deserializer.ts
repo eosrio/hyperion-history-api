@@ -333,20 +333,34 @@ export default class MainDSWorker extends HyperionWorker {
         if (_code === this.conf.settings.eosio_alias && _name === 'onblock') {
             return false;
         }
+
+        if (_code === `${this.conf.settings.eosio_alias}.null`) {
+            return false;
+        }
+
         let selected_q = 0;
         if (this.dsPoolMap[_code]) {
             const workers = this.dsPoolMap[_code][2];
             for (const w of workers) {
-                if (!this.ds_pool_counters[_code]) {
+
+                if (typeof this.ds_pool_counters[_code] === 'undefined') {
+
                     selected_q = w;
                     this.ds_pool_counters[_code] = w;
                     break;
+
                 } else {
+
                     if (this.ds_pool_counters[_code] === workers[workers.length - 1]) {
+
                         this.ds_pool_counters[_code] = workers[0];
+
                         selected_q = w;
+
                         this.ds_pool_counters[_code] = w;
+
                         break;
+
                     } else {
                         if (this.ds_pool_counters[_code] === w) {
                             continue;
@@ -361,6 +375,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         }
         const pool_queue = `${this.chain}:ds_pool:${selected_q}`;
+        // hLog('sent to ->', pool_queue);
         if (this.ch_ready) {
             this.ch.sendToQueue(pool_queue, Buffer.from(JSON.stringify(trace)), {headers});
             return true;
@@ -942,9 +957,9 @@ export default class MainDSWorker extends HyperionWorker {
             primary_key: data['primary_key'],
             block_num: data['block_num']
         };
-        if (proposalDoc.executed) {
-            hLog(proposalDoc);
-        }
+        // if (proposalDoc.executed) {
+        //     hLog(proposalDoc);
+        // }
         if (!this.conf.indexer.disable_indexing) {
             const q = this.chain + ":index_table_proposals:" + (this.tbl_prop_emit_idx);
             this.preIndexingQueue.push({
