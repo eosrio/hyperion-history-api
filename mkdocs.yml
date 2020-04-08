@@ -4,8 +4,8 @@ markdown_extensions:
   - admonition
 
 # Repository
-repo_name: 'felipeasf/hyperion-docs'
-repo_url: 'https://github.com/felipeasf/hyperion-docs'
+repo_name: 'eosrio/Hyperion-History-API'
+repo_url: 'https://github.com/eosrio/Hyperion-History-API'
 
 nav:
     - Home: index.md
@@ -28,7 +28,6 @@ nav:
       - RabbitMQ: rabbit.md
       - FAQ: faq.md
 
-#theme: readthedocs
 theme:
   name: 'material'
   palette:
