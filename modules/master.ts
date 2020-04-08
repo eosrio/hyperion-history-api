@@ -970,15 +970,15 @@ export class HyperionMaster {
         // Monitor Global Contract Usage
         setInterval(() => {
 
-            const t0 = process.hrtime.bigint();
+            // const t0 = process.hrtime.bigint();
             this.updateWorkerAssignments();
-            const t1 = process.hrtime.bigint();
+            // const t1 = process.hrtime.bigint();
 
-            hLog('----------- Usage Report ----------');
-            hLog(`Total Hits: ${this.totalContractHits}`);
-            hLog(`Update time: ${parseInt((t1 - t0).toString()) / 1000000} ms`);
-            hLog(this.globalUsageMap);
-            hLog('-----------------------------------');
+            // hLog('----------- Usage Report ----------');
+            // hLog(`Total Hits: ${this.totalContractHits}`);
+            // hLog(`Update time: ${parseInt((t1 - t0).toString()) / 1000000} ms`);
+            // hLog(this.globalUsageMap);
+            // hLog('-----------------------------------');
 
             // update on deserializers
             for (const w of this.workerMap) {
@@ -1165,7 +1165,6 @@ export class HyperionMaster {
     }
 
     private onScheduleUpdate(msg: any) {
-        hLog(msg);
         if (msg.live === 'true') {
             hLog(`Producer schedule updated at block ${msg.block_num}. Waiting version update...`);
             this.proposedSchedule = msg.new_producers;
@@ -1362,6 +1361,10 @@ export class HyperionMaster {
         this.startContractMonitoring();
         this.monitorIndexingQueues();
         this.onPm2Stop();
+
+        pm2io.action('get_usage_map', (reply) => {
+            reply(this.globalUsageMap);
+        });
 
         pm2io.action('get_heap', (reply) => {
             const requests = [];

@@ -40,6 +40,7 @@ export interface IndexerConfigs {
     disable_indexing: boolean;
     process_deltas: boolean;
     repair_mode: boolean;
+    max_inline: number;
 }
 
 interface ApiLimits {

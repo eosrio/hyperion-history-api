@@ -64,7 +64,8 @@
     "disable_reading": false,
     "disable_indexing": false,
     "process_deltas": true,
-    "repair_mode": false
+    "repair_mode": false,
+    "max_inline": 20
   },
   "features": {
     "streaming": {

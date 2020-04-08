@@ -340,9 +340,11 @@ export default class DSPoolWorker extends HyperionWorker {
                 net_usage_words,
                 ts
             };
+
             const usageIncluded = {
                 status: false
             };
+
             for (const action_trace of action_traces) {
                 if (action_trace[0] === 'action_trace_v0') {
                     const ds_status = await this.mLoader.parser.parseAction(this, ts, action_trace[1], trx_data, _actDataArray, _processedTraces, transaction_trace, usageIncluded);
@@ -351,7 +353,13 @@ export default class DSPoolWorker extends HyperionWorker {
                         action_count++;
                     }
                 }
+
+                // abort processing after reaching the maximum inline indexing limit
+                if (this.conf.indexer.max_inline && (_processedTraces.length >= this.conf.indexer.max_inline)) {
+                    break;
+                }
             }
+
             const _finalTraces = [];
             if (_processedTraces.length > 1) {
                 const act_digests = {};
@@ -488,7 +496,7 @@ export default class DSPoolWorker extends HyperionWorker {
                         data: this.contractUsage,
                         total_hits: this.totalHits
                     });
-                    hLog(`${this.local_queue} ->> ${this.actionDsCounter} actions`);
+                    // hLog(`${this.local_queue} ->> ${this.actionDsCounter} actions`);
                     process.send({
                         event: 'ds_report',
                         actions: this.actionDsCounter
