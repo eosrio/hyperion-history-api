@@ -10,10 +10,12 @@ export default class HyperionParser extends BaseParser {
 
     public async parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace, usageIncluded): Promise<boolean> {
         let act = action.act;
+
         if (this.checkBlacklist(act)) return false;
         if (this.filters.action_whitelist.size > 0) {
             if (!this.checkWhitelist(act)) return false;
         }
+
         const original_act = Object.assign({}, act);
         let ds_act, error_message;
         try {
@@ -67,8 +69,22 @@ export default class HyperionParser extends BaseParser {
             if (!usageIncluded.status) {
                 action.cpu_usage_us = trx_data.cpu_usage_us;
                 action.net_usage_words = trx_data.net_usage_words;
+
+                // add inline action count for the root action
+                if (full_trace.action_traces.length > 1) {
+                    action.inline_count = full_trace.action_traces.length - 1;
+                    if (worker.conf.indexer.max_inline < full_trace.action_traces.length) {
+                        action.max_inline = worker.conf.indexer.max_inline;
+                        action.inline_filtered = true;
+                    } else {
+                        action.inline_filtered = false;
+                    }
+                } else {
+                    action.inline_count = 0;
+                }
                 usageIncluded.status = true;
             }
+
             _processedTraces.push(action);
         } else {
             hLog(action);
