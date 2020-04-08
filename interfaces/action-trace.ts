@@ -1,8 +1,8 @@
 import {HyperionAction} from "./hyperion-action";
 
 export interface ActionTrace {
-    act: HyperionAction
     '@timestamp': string;
+    act: HyperionAction
     block_num: number;
     global_sequence: number;
     producer: string;
@@ -16,4 +16,7 @@ export interface ActionTrace {
     cpu_usage_us: number;
     net_usage_words: number;
     error_code: any;
+    max_inline: number;
+    inline_count: number;
+    inline_filtered: boolean;
 }

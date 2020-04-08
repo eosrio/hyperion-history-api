@@ -334,13 +334,15 @@ export default class MainDSWorker extends HyperionWorker {
             return false;
         }
         const _code = first_action.act.account;
-        const _name = first_action.act.name;
-        if (_code === this.conf.settings.eosio_alias && _name === 'onblock') {
+        
+        if (this.checkBlacklist(first_action.act)) {
             return false;
         }
 
-        if (_code === `${this.conf.settings.eosio_alias}.null`) {
-            return false;
+        if (this.filters.action_whitelist.size > 0) {
+            if (!this.checkWhitelist(first_action.act)) {
+                return false;
+            }
         }
 
         let selected_q = 0;

@@ -57,6 +57,9 @@ export const action = {
             "trx_id": {"type": "keyword"},
             "producer": {"type": "keyword"},
             "notified": {"type": "keyword"},
+            "inline_count": {"type": "short"},
+            "max_inline": {"type": "short"},
+            "inline_filtered": {"type": "boolean"},
             "receipts": {
                 "properties": {
                     "global_sequence": {"type": "long"},

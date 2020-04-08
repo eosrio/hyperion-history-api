@@ -1,7 +1,7 @@
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionModuleLoader} from "../modules/loader";
-import {ConfigurationModule} from "../modules/config";
+import {ConfigurationModule, Filters} from "../modules/config";
 import {JsonRpc} from "eosjs/dist";
 import {Client} from "@elastic/elasticsearch";
 import {Channel, ConfirmChannel} from "amqplib/callback_api";
@@ -34,10 +34,13 @@ export abstract class HyperionWorker {
 
     events: EventEmitter;
 
+    filters: Filters;
+
     protected constructor() {
         this.checkDebugger();
         const cm = new ConfigurationModule();
         this.conf = cm.config;
+        this.filters = cm.filters;
         this.manager = new ConnectionManager(cm);
         this.mLoader = new HyperionModuleLoader(cm);
         this.chain = this.conf.settings.chain;
@@ -101,6 +104,28 @@ export abstract class HyperionWorker {
                 process.env.worker_role + "::" + process.env.worker_id,
                 inspector.url());
         }
+    }
+
+    private anyFromCode(act) {
+        return this.chain + '::' + act['account'] + '::*'
+    }
+
+    private codeActionPair(act) {
+        return this.chain + '::' + act['account'] + '::' + act['name'];
+    }
+
+    protected checkBlacklist(act) {
+        if (this.filters.action_blacklist
+            .has(this.anyFromCode(act))) {
+            return true;
+        } else return this.filters.action_blacklist
+            .has(this.codeActionPair(act));
+    }
+
+    protected checkWhitelist(act) {
+        if (this.filters.action_whitelist.has(this.anyFromCode(act))) {
+            return true;
+        } else return this.filters.action_whitelist.has(this.codeActionPair(act));
     }
 
     abstract async run(): Promise<void>
