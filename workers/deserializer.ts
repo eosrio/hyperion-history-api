@@ -324,6 +324,7 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     routeToPool(trace, headers) {
+
         let first_action;
         if (trace['action_traces'][0].length === 2) {
             first_action = trace['action_traces'][0][1];
@@ -333,8 +334,7 @@ export default class MainDSWorker extends HyperionWorker {
             console.log(trace);
             return false;
         }
-        const _code = first_action.act.account;
-        
+
         if (this.checkBlacklist(first_action.act)) {
             return false;
         }
@@ -346,6 +346,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
 
         let selected_q = 0;
+        const _code = first_action.act.account;
         if (this.dsPoolMap[_code]) {
             const workers = this.dsPoolMap[_code][2];
             for (const w of workers) {
