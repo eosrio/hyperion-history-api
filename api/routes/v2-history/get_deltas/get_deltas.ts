@@ -8,7 +8,6 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
     const mustArray = [];
     for (const param in request.query) {
         if (Object.prototype.hasOwnProperty.call(request.query, param)) {
-            console.log(param, request.query[param]);
             const value = request.query[param];
             switch (param) {
                 case 'limit': {
