@@ -1,7 +1,16 @@
-const {Serialize} = require('eosjs');
+// nodejs native eosjs
+const {Serialize} = require('../addons/eosjs-native');
+// const {Serialize} = require('eosjs');
+
+// abieos addon
+const abieos = require('@eosrio/node-abieos');
+
+// original eosjs
+// const {Serialize} = require('eosjs');
+
 const zlib = require('zlib');
-const prettyjson = require("prettyjson");
-const _ = require('lodash');
+const config = require(`../${process.env.CONFIG_JSON}`);
+const CHAIN = config.settings.chain;
 
 function onError(err) {
     console.log(process.env['worker_role']);
@@ -40,7 +49,7 @@ function unzipAsync(data) {
 
 async function getLastIndexedBlock(es_client) {
     const results = await es_client.search({
-        index: process.env.CHAIN + '-block-*',
+        index: CHAIN + '-block-*',
         size: 1,
         body: {
             query: {bool: {filter: {match_all: {}}}},
@@ -57,7 +66,7 @@ async function getLastIndexedBlock(es_client) {
 
 async function getLastIndexedBlockByDelta(es_client) {
     const results = await es_client.search({
-        index: process.env.CHAIN + '-delta-*',
+        index: CHAIN + '-delta-*',
         size: 1,
         body: {
             query: {bool: {filter: {match_all: {}}}},
@@ -74,7 +83,7 @@ async function getLastIndexedBlockByDelta(es_client) {
 
 async function getFirstIndexedBlockFromRange(es_client, first, last) {
     const results = await es_client.search({
-        index: process.env.CHAIN + '-block-*',
+        index: CHAIN + '-block-*',
         size: 1,
         body: {
             query: {
@@ -99,7 +108,7 @@ async function getFirstIndexedBlockFromRange(es_client, first, last) {
 
 async function getLastIndexedBlockFromRange(es_client, first, last) {
     const results = await es_client.search({
-        index: process.env.CHAIN + '-block-*',
+        index: CHAIN + '-block-*',
         size: 1,
         body: {
             query: {
@@ -124,7 +133,7 @@ async function getLastIndexedBlockFromRange(es_client, first, last) {
 
 async function getLastIndexedABI(es_client, first, last) {
     const results = await es_client.search({
-        index: process.env.CHAIN + '-abi-*',
+        index: CHAIN + '-abi-*',
         size: 1,
         body: {
             query: {
@@ -143,7 +152,7 @@ async function getLastIndexedABI(es_client, first, last) {
 
 async function getLastIndexedBlockByDeltaFromRange(es_client, first, last) {
     const results = await es_client.search({
-        index: process.env.CHAIN + '-delta-*',
+        index: CHAIN + '-delta-*',
         size: 1,
         body: {
             query: {
@@ -228,7 +237,7 @@ function printWorkerMap(wmp) {
 function onSaveAbi(data, abiCacheMap, rClient) {
     const key = data['block'] + ":" + data['account'];
     debugLog(key);
-    rClient.set(process.env.CHAIN + ":" + key, data['abi']);
+    rClient.set(CHAIN + ":" + key, data['abi']);
     let versionMap;
     if (!abiCacheMap[data['account']]) {
         versionMap = [];
@@ -239,13 +248,13 @@ function onSaveAbi(data, abiCacheMap, rClient) {
         versionMap.sort(function (a, b) {
             return a - b;
         });
-        versionMap = Array.from(new Set(versionMap));
+        versionMap = [...(new Set(versionMap))];
     }
     abiCacheMap[data['account']] = versionMap;
 }
 
 function debugLog(text) {
-    if (process.env.DEBUG === 'true') {
+    if (config.settings.debug) {
         console.log(text);
     }
 }
@@ -296,6 +305,10 @@ function checkFilter(filter, _source) {
     }
 }
 
+function checkDebugger() {
+
+}
+
 module.exports = {
     checkFilter,
     getNested,
@@ -312,5 +325,6 @@ module.exports = {
     getLastIndexedBlockByDeltaFromRange,
     getLastIndexedBlockByDelta,
     getLastIndexedABI,
-    onSaveAbi
+    onSaveAbi,
+    checkDebugger
 };

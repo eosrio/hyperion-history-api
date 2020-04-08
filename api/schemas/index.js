@@ -11,5 +11,6 @@ module.exports = {
     getCreatedAccountsSchema: require('./get_created_accounts'),
     getVotersSchema: require('./get_voters'),
     getProposalsSchema: require('./get_proposals'),
-    getBlocksSchema: require('./get_blocks')
+    getBlocksSchema: require('./get_blocks'),
+    getAccountSchema: require('./get_account')
 };

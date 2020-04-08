@@ -1,0 +1,47 @@
+site_name: Hyperion
+
+markdown_extensions:
+  - admonition
+
+# Repository
+repo_name: 'felipeasf/hyperion-docs'
+repo_url: 'https://github.com/felipeasf/hyperion-docs'
+
+nav:
+    - Home: index.md
+    - Providers:
+      - Quick Start: quickstart.md
+      - Install: install.md
+      - Docker: docker.md
+      - Connections: connections.md
+      - Chain Configuration: chain.md
+      - Ecosystem: ecosystem.md
+    - Users / Developers:
+      - Getting Started: howtouse.md
+      - Stream Client: stream_client.md
+      - Endpoint List: endpoint.md
+    - API Reference:
+        - v2: v2.md
+        - v1 compatible: v1.md
+    - Troubleshooting:
+      - Kibana: kibana.md
+      - RabbitMQ: rabbit.md
+      - FAQ: faq.md
+
+#theme: readthedocs
+theme:
+  name: 'material'
+  palette:
+    primary: 'Blue Grey'
+    accent: 'Blue Grey'
+  logo: 'img/logo.png'
+  favicon: 'img/logo.png'
+
+extra:
+  social:
+    - type: 'github'
+      link: 'https://github.com/eosrio'
+    - type: 'twitter'
+      link: 'https://twitter.com/eosriobrazil'
+    - type: 'telegram'
+      link: 'https://t.me/eosrio'

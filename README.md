@@ -1,4 +1,4 @@
-# Hyperion History API
+# Hyperion History API - Private
 Scalable Full History API Solution for EOSIO based blockchains
 
 Made with ♥ by [EOS Rio](https://eosrio.io/)
@@ -38,12 +38,12 @@ With those changes the API format focus on delivering faster search times, lower
 
 This setup has only been tested with Ubuntu 18.04, but should work with other OS versions too
 
- - [Elasticsearch 7.4.X](https://www.elastic.co/downloads/elasticsearch)
+ - [Elasticsearch 7.5.X](https://www.elastic.co/downloads/elasticsearch)
  - [RabbitMQ](https://www.rabbitmq.com/install-debian.html)
  - [Redis](https://redis.io/topics/quickstart)
- - [Node.js v12](https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions)
+ - [Node.js v13](https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions)
  - [PM2](http://pm2.keymetrics.io/docs/usage/quick-start/)
- - Nodeos 1.8.4 w/ state_history_plugin and chain_api_plugin
+ - Nodeos w/ state_history_plugin and chain_api_plugin
   
   > The indexer requires redis, pm2 and node.js to be on the same machine. Other dependencies might be installed on other machines, preferably over a very high speed and low latency network. Indexing speed will vary greatly depending on this configuration.
   
@@ -81,7 +81,8 @@ connections.json Reference
     "vhost": "hyperion" // RabbitMQ vhost
   },
   "elasticsearch": {
-    "host": "127.0.0.1:9200", // Elasticsearch HTTP API Endpoint
+    "host": "127.0.0.1:9200",              // Elasticsearch HTTP API Endpoint
+    "ingest_nodes": ["127.0.0.1:9200"],    // List of ES ingest nodes
     "user": "elastic",
     "pass": "password"
   },
@@ -134,6 +135,8 @@ INDEX_ALL_DELTAS: 'false'              // index all table deltas (WARNING)
  
  #### 3. Starting
  
+ `./run.sh Indexer`
+ or
  ```
  pm2 start --only Indexer --update-env
  pm2 logs Indexer
@@ -153,6 +156,8 @@ INDEX_ALL_DELTAS: 'false'              // index all table deltas (WARNING)
  
  #### 5. Starting the API node
  
+ `./run.sh API`
+ or
  ```
  pm2 start --only API --update-env
  pm2 logs API

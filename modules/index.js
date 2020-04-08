@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const chainID = require('../connections.json').chains[process.env.CHAIN]['chain_id'];
+const config = require(`../${process.env.CONFIG_JSON}`);
+const chainID = require('../connections.json').chains[config.settings.chain]['chain_id'];
 
 class HyperionModuleLoader {
 
@@ -11,7 +12,7 @@ class HyperionModuleLoader {
 
     constructor() {
         this.loadActionHandlers();
-        const parsers = require(path.join(__dirname, 'parsers', process.env.PARSER + "-parser"));
+        const parsers = require(path.join(__dirname, 'parsers', config.settings.parser + "-parser"));
         this.actionParser = parsers.actionParser;
         this.messageParser = parsers.messageParser;
     }
@@ -47,7 +48,7 @@ class HyperionModuleLoader {
         const files = fs.readdirSync('modules/action_data/');
         for (const plugin of files) {
             const _module = require(path.join(__dirname, 'action_data', plugin)).hyperionModule;
-            if (_module.parser_version.includes(process.env.PARSER)) {
+            if (_module.parser_version.includes(config.settings.parser)) {
                 if (_module.chain === chainID || _module.chain === '*') {
                     const key = `${_module.contract}::${_module.action}`;
                     if (this.chainMappings.has(key)) {

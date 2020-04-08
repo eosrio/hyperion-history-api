@@ -1,0 +1,14 @@
+<mat-toolbar>
+  <div>Hyperion Explorer</div>
+  <form [formGroup]="searchForm" (ngSubmit)="submit()">
+    <mat-form-field>
+      <label><input matInput formControlName="search_field" [matAutocomplete]="auto"></label>
+    </mat-form-field>
+    <mat-autocomplete #auto="matAutocomplete">
+      <mat-option *ngFor="let account of filteredAccounts" [value]="account">{{account}}</mat-option>
+    </mat-autocomplete>
+    <button type="submit" (keyup.enter)="submit()">Search</button>
+  </form>
+</mat-toolbar>
+
+<router-outlet></router-outlet>
