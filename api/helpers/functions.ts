@@ -135,8 +135,10 @@ export function getTrackTotalHits(query) {
         } else if (query.track === 'false') {
             trackTotalHits = false;
         } else {
-            trackTotalHits = parseInt(query.track, 10);
-            if (isNaN(trackTotalHits)) {
+            const parsed = parseInt(query.track, 10);
+            if (parsed > 0) {
+                trackTotalHits = parsed;
+            } else {
                 throw new Error('failed to parse track param');
             }
         }
