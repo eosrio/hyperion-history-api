@@ -16,6 +16,7 @@ declare module 'fastify' {
         eosjs: {
             rpc: JsonRpc,
             api: Api
-        }
+        },
+        tokenCache: Map<string, any>
     }
 }

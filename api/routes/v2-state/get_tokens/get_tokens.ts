@@ -5,59 +5,50 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 
 async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 
-    const response = {
-        query_time: null,
-        cached: false,
-        'account': request.query.account,
-        'tokens': []
-    };
+    const response = {'account': request.query.account, 'tokens': []};
 
-    const results = await fastify.elastic.search({
-        "index": fastify.manager.chain + '-action-*',
+    const stateResult = await fastify.elastic.search({
+        "index": fastify.manager.chain + '-table-accounts-*',
         "body": {
-            size: 0,
-            query: {
-                bool: {
-                    filter: [
-                        {term: {"notified": request.query.account}},
-                        {terms: {"act.name": ["transfer", "issue"]}}
-                    ]
-                }
-            },
-            aggs: {
-                tokens: {
-                    terms: {
-                        field: "act.account",
-                        size: 1000
-                    }
-                }
-            }
+            query: {bool: {filter: [{term: {"scope": request.query.account}}]}}
         }
     });
 
-    for (const bucket of results['body']['aggregations']['tokens']['buckets']) {
-        let token_data;
-        try {
-            token_data = await fastify.eosjs.rpc.get_currency_balance(bucket['key'], request.query.account);
-        } catch (e) {
-            console.log(`get_currency_balance error - contract:${bucket['key']} - account:${request.query.account}`);
-            continue;
+    for (const hit of stateResult.body.hits.hits) {
+        const data = hit._source;
+        let precision;
+        const key = `${data.code}_${data.symbol}`;
+        if (!fastify.tokenCache) {
+            fastify.tokenCache = new Map<string, any>();
         }
-        for (const entry of token_data) {
-            let precision = 0;
-            const [amount, symbol] = entry.split(" ");
-            const amount_arr = amount.split(".");
-            if (amount_arr.length === 2) {
-                precision = amount_arr[1].length;
+        if (fastify.tokenCache.has(key)) {
+            precision = fastify.tokenCache.get(key).precision;
+        } else {
+            let token_data;
+            try {
+                token_data = await fastify.eosjs.rpc.get_currency_balance(data.code, request.query.account, data.symbol);
+                if (token_data.length > 0) {
+                    const [amount, symbol] = token_data[0].split(" ");
+                    const amount_arr = amount.split(".");
+                    if (amount_arr.length === 2) {
+                        precision = amount_arr[1].length;
+                        fastify.tokenCache.set(key, {precision});
+                        console.log('Caching token precision -', key, precision);
+                    }
+                }
+            } catch (e) {
+                console.log(`get_currency_balance error - contract:${data.code} - account:${request.query.account}`);
             }
-            response.tokens.push({
-                symbol: symbol,
-                precision: precision,
-                amount: parseFloat(amount),
-                contract: bucket['key']
-            });
         }
+
+        response.tokens.push({
+            symbol: data.symbol,
+            precision: precision,
+            amount: parseFloat(data.amount),
+            contract: data.code
+        });
     }
+
     return response;
 }
 
