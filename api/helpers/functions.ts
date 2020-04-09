@@ -29,7 +29,7 @@ export function extendResponseSchema(responseProps: any) {
     };
 }
 
-export function extendQueryStringSchema(queryParams: any) {
+export function extendQueryStringSchema(queryParams: any, required?: string[]) {
     const params = {
         limit: {
             description: 'limit of [n] results per page',
@@ -47,10 +47,14 @@ export function extendQueryStringSchema(queryParams: any) {
             params[p] = queryParams[p];
         }
     }
-    return {
+    const schema = {
         type: 'object',
         properties: params
     }
+    if (required && required.length > 0) {
+        schema["required"] = required;
+    }
+    return schema;
 }
 
 export async function getCacheByHash(redis, key, chain) {
