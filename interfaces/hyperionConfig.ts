@@ -24,6 +24,7 @@ export interface MainSettings {
     rate_monitoring: boolean;
     bp_logs: boolean;
     dsp_parser: boolean;
+    allow_custom_abi: boolean;
 }
 
 export interface IndexerConfigs {
