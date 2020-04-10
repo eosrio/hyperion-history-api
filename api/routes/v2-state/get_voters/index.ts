@@ -1,31 +1,36 @@
 import {FastifyInstance} from "fastify";
 import {getVotersHandler} from "./get_voters";
-import {addApiRoute, getRouteName} from "../../../helpers/functions";
+import {addApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName} from "../../../helpers/functions";
 
 export default function (fastify: FastifyInstance, opts: any, next) {
     const schema = {
         description: 'get voters',
         summary: 'get voters',
         tags: ['accounts', 'state'],
-        querystring: {
-            type: 'object',
-            properties: {
-                "producer": {
-                    description: 'filter by voted producer (comma separated)',
-                    type: 'string'
-                },
-                "skip": {
-                    description: 'skip [n] actions (pagination)',
-                    type: 'integer',
-                    minimum: 0
-                },
-                "limit": {
-                    description: 'limit of [n] actions per page',
-                    type: 'integer',
-                    minimum: 1
+        querystring: extendQueryStringSchema({
+            "producer": {
+                description: 'filter by voted producer (comma separated)',
+                type: 'string',
+                minLength: 1,
+                maxLength: 12
+            }
+        }),
+        response: extendResponseSchema({
+            "voters": {
+                type: "array",
+                items: {
+                    type: "object",
+                    properties: {
+                        "account": {type: "string"},
+                        "weight": {type: "number"},
+                        "last_vote": {type: "number"},
+                        "data": {
+                            additionalProperties: true
+                        }
+                    }
                 }
             }
-        }
+        })
     };
     addApiRoute(
         fastify,

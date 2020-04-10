@@ -1,22 +1,13 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
+import {getSkipLimit} from "../../v2-history/get_actions/functions";
 
 async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
 
-    let skip, limit;
-
-    skip = parseInt(request.query.skip, 10);
-    if (skip < 0) {
-        return 'invalid skip parameter';
-    }
-    limit = parseInt(request.query.limit, 10);
-    if (limit < 1) {
-        return 'invalid limit parameter';
-    }
+    const {skip, limit} = getSkipLimit(request.query);
 
     const response = {
-        query_time: null,
         voter_count: 0,
         'voters': []
     };
