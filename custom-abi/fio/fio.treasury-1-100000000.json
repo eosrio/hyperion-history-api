@@ -1,0 +1,232 @@
+{
+  "version": "eosio::abi/1.1",
+  "types": [],
+  "structs": [
+    {
+      "name": "tpidclaim",
+      "base": "",
+      "fields": [
+        {
+          "name": "actor",
+          "type": "name"
+        }
+      ]
+    },
+    {
+      "name": "startclock",
+      "base": "",
+      "fields": []
+    },
+    {
+      "name": "bpclaim",
+      "base": "",
+      "fields": [
+        {
+          "name": "fio_address",
+          "type": "string"
+        },
+        {
+          "name": "actor",
+          "type": "name"
+        }
+      ]
+    },
+    {
+      "name": "treasurystate",
+      "base": "",
+      "fields": [
+        {
+          "name": "lasttpidpayout",
+          "type": "uint64"
+        },
+        {
+          "name": "payschedtimer",
+          "type": "uint64"
+        },
+        {
+          "name": "rewardspaid",
+          "type": "uint64"
+        },
+        {
+          "name": "reservetokensminted",
+          "type": "uint64"
+        }
+      ]
+    },
+    {
+      "name": "bpreward",
+      "base": "",
+      "fields": [
+        {
+          "name": "rewards",
+          "type": "uint64"
+        }
+      ]
+    },
+    {
+      "name": "fdtnreward",
+      "base": "",
+      "fields": [
+        {
+          "name": "rewards",
+          "type": "uint64"
+        }
+      ]
+    },
+    {
+      "name": "fdtnrwdupdat",
+      "base": "",
+      "fields": [
+        {
+          "name": "amount",
+          "type": "uint64"
+        }
+      ]
+    },
+    {
+      "name": "bprewdupdate",
+      "base": "",
+      "fields": [
+        {
+          "name": "amount",
+          "type": "uint64"
+        }
+      ]
+    },
+    {
+      "name": "bppoolupdate",
+      "base": "",
+      "fields": [
+        {
+          "name": "amount",
+          "type": "uint64"
+        }
+      ]
+    },
+    {
+      "name": "bucketpool",
+      "base": "",
+      "fields": [
+        {
+          "name": "rewards",
+          "type": "uint64"
+        }
+      ]
+    },
+    {
+      "name": "bppaysched",
+      "base": "",
+      "fields": [
+        {
+          "name": "owner",
+          "type": "name"
+        },
+        {
+          "name": "abpayshare",
+          "type": "uint64"
+        },
+        {
+          "name": "sbpayshare",
+          "type": "uint64"
+        },
+        {
+          "name": "votes",
+          "type": "float64"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "tpidclaim",
+      "type": "tpidclaim",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "bpclaim",
+      "type": "bpclaim",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "startclock",
+      "type": "startclock",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "fdtnrwdupdat",
+      "type": "fdtnrwdupdat",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "bprewdupdate",
+      "type": "bprewdupdate",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "bppoolupdate",
+      "type": "bppoolupdate",
+      "ricardian_contract": ""
+    }
+  ],
+  "tables": [
+    {
+      "name": "clockstate",
+      "index_type": "i64",
+      "key_names": [
+        "lastrun"
+      ],
+      "key_types": [
+        "uint64"
+      ],
+      "type": "treasurystate"
+    },
+    {
+      "name": "bprewards",
+      "index_type": "i64",
+      "key_names": [
+        "rewards"
+      ],
+      "key_types": [
+        "uint64"
+      ],
+      "type": "bpreward"
+    },
+    {
+      "name": "fdtnrewards",
+      "index_type": "i64",
+      "key_names": [
+        "rewards"
+      ],
+      "key_types": [
+        "uint64"
+      ],
+      "type": "fdtnreward"
+    },
+    {
+      "name": "bpbucketpool",
+      "index_type": "i64",
+      "key_names": [
+        "rewards"
+      ],
+      "key_types": [
+        "uint64"
+      ],
+      "type": "bucketpool"
+    },
+    {
+      "name": "voteshares",
+      "index_type": "i64",
+      "key_names": [
+        "owner"
+      ],
+      "key_types": [
+        "uint64"
+      ],
+      "type": "bppaysched"
+    }
+  ],
+  "ricardian_clauses": [],
+  "error_messages": [],
+  "abi_extensions": [],
+  "variants": []
+}
