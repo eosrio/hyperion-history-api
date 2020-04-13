@@ -30,7 +30,7 @@
     "bp_logs": false,
     "bp_monitoring": false,
     "ipc_debug_rate": 60000,
-    "allow_custom_abi": true
+    "allow_custom_abi": false
   },
   "blacklists": {
     "actions": [],
