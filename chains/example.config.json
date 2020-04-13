@@ -29,7 +29,8 @@
     "rate_monitoring": true,
     "bp_logs": false,
     "bp_monitoring": false,
-    "ipc_debug_rate": 2000
+    "ipc_debug_rate": 60000,
+    "allow_custom_abi": true
   },
   "blacklists": {
     "actions": [],
