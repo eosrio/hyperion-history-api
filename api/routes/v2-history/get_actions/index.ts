@@ -2,6 +2,43 @@ import {FastifyInstance, RouteSchema} from "fastify";
 import {getActionsHandler} from "./get_actions";
 import {addApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName} from "../../../helpers/functions";
 
+export const getActionResponseSchema = {
+    "@timestamp": {type: "string"},
+    "timestamp": {type: "string"},
+    "block_num": {type: "number"},
+    "trx_id": {type: "string"},
+    "act": {
+        type: 'object',
+        properties: {
+            "account": {type: "string"},
+            "name": {type: "string"}
+        },
+        additionalProperties: true
+    },
+    "notified": {
+        type: "array", items: {type: "string"}
+    },
+    "cpu_usage_us": {type: "number"},
+    "net_usage_words": {type: "number"},
+    "account_ram_deltas": {
+        type: "array",
+        items: {
+            type: "object",
+            properties: {
+                "account": {type: "string"},
+                "delta": {type: "number"}
+            },
+            additionalProperties: true
+        }
+    },
+    "global_sequence": {type: "number"},
+    "receiver": {type: 'string'},
+    "producer": {type: "string"},
+    "parent": {type: "number"},
+    "action_ordinal": {type: 'number'},
+    "creator_action_ordinal": {type: 'number'}
+};
+
 export default function (fastify: FastifyInstance, opts: any, next) {
     const schema: RouteSchema = {
         description: 'get actions based on notified account. this endpoint also accepts generic filters based on indexed fields' +
@@ -66,42 +103,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 type: "array",
                 items: {
                     type: 'object',
-                    properties: {
-                        "@timestamp": {type: "string"},
-                        "timestamp": {type: "string"},
-                        "block_num": {type: "number"},
-                        "trx_id": {type: "string"},
-                        "act": {
-                            type: 'object',
-                            properties: {
-                                "account": {type: "string"},
-                                "name": {type: "string"}
-                            },
-                            additionalProperties: true
-                        },
-                        "notified": {
-                            type: "array", items: {type: "string"}
-                        },
-                        "cpu_usage_us": {type: "number"},
-                        "net_usage_words": {type: "number"},
-                        "account_ram_deltas": {
-                            type: "array",
-                            items: {
-                                type: "object",
-                                properties: {
-                                    "account": {type: "string"},
-                                    "delta": {type: "number"}
-                                },
-                                additionalProperties: true
-                            }
-                        },
-                        "global_sequence": {type: "number"},
-                        "receiver": {type: 'string'},
-                        "producer": {type: "string"},
-                        "parent": {type: "number"},
-                        "action_ordinal": {type: 'number'},
-                        "creator_action_ordinal": {type: 'number'}
-                    }
+                    properties: getActionResponseSchema
                 }
             }
         })

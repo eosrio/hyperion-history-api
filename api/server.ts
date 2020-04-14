@@ -76,6 +76,7 @@ class HyperionApiServer {
         registerRoutes(this.fastify);
 
         this.addGenericTypeParsing();
+
         this.fastify.ready().then(async () => {
             await this.fastify.oas();
             console.log(this.chain + ' api ready!');

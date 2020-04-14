@@ -86,12 +86,8 @@ export function mergeDeltaMeta(delta: any) {
 
 export function setCacheByHash(fastify, hash, response) {
     if (fastify.manager.config.api.enable_caching) {
-        fastify.redis
-            .set(hash,
-                JSON.stringify(response),
-                'EX',
-                fastify.manager.config.api.cache_life)
-            .catch(console.log);
+        const exp = fastify.manager.config.api.cache_life;
+        fastify.redis.set(hash, JSON.stringify(response), 'EX', exp).catch(console.log);
     }
 }
 

@@ -6,9 +6,11 @@ const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
 async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
+
     if (typeof request.body === 'string') {
         request.body = JSON.parse(request.body);
     }
+
     const reqBody = request.body;
     const should_array = [];
     for (const entry of terms) {
