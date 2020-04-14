@@ -31,10 +31,11 @@ export function registerRoutes(server: FastifyInstance) {
     addRoute(server, 'v2-history', '/v2/history');
     addRoute(server, 'v2-state', '/v2/state');
     addRoute(server, 'v1-history', '/v1/history');
+    addRoute(server, 'v1-trace', '/v1/trace_api');
     // addRoute(server,'v1-chain', '/v1/chain');
 
     // Serve integrated explorer
-    if(server.manager.config.api.enable_explorer) {
+    if (server.manager.config.api.enable_explorer) {
         server.register(fastify_static, {
             root: join(__dirname, '..', 'hyperion-explorer', 'dist'),
             redirect: true,

@@ -245,12 +245,17 @@ export default class MainDSWorker extends HyperionWorker {
                 light_block = {
                     '@timestamp': block['timestamp'],
                     block_num: res['this_block']['block_num'],
+                    block_id: res['this_block']['block_id'].toLowerCase(),
                     producer: block['producer'],
                     new_producers: block['new_producers'],
                     schedule_version: block['schedule_version'],
                     cpu_usage: total_cpu,
                     net_usage: total_net
                 };
+
+                if (res['prev_block']) {
+                    light_block.prev_id = res['prev_block']['block_id'].toLowerCase();
+                }
 
                 if (light_block.new_producers) {
                     process.send({
