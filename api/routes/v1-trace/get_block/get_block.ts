@@ -21,24 +21,45 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
 
     const reqBody = request.body;
     const targetBlock = parseInt(reqBody.block_num);
-    const searchTerms = [];
-
-    if (targetBlock > 0) {
-        searchTerms.push({term: {block_num: targetBlock}});
-    }
+    let searchBody;
 
     if (reqBody.block_id) {
-        searchTerms.push({term: {block_id: reqBody.block_id}});
+        searchBody = {
+            query: {
+                bool: {
+                    must: [
+                        {term: {block_id: reqBody.block_id}}
+                    ]
+                }
+            }
+        };
+    } else {
+        if (targetBlock > 0) {
+            searchBody = {
+                query: {
+                    bool: {
+                        must: [
+                            {term: {block_num: targetBlock}}
+                        ]
+                    }
+                }
+            };
+        } else if (targetBlock < 0) {
+            searchBody = {
+                query: {match_all: {}},
+                sort: {block_num: "desc"}
+            }
+        }
     }
 
     const response = {transactions: []} as getBlockTraceResponse;
 
-    if (searchTerms.length > 0) {
+    if (searchBody) {
 
         const getBlockHeader = await fastify.elastic.search({
             index: fastify.manager.chain + "-block-*",
             size: 1,
-            body: {query: {bool: {must: searchTerms}}}
+            body: searchBody
         });
 
         if (getBlockHeader.body.hits.hits.length === 1) {
