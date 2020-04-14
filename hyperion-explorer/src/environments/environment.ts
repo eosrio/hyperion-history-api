@@ -4,8 +4,8 @@
 
 export const environment = {
   production: false,
-  eosioNodeUrl: 'http://192.168.0.130:58131',
-  hyperionApiUrl: 'http://vm.ubuntu-server:7000',
+  eosioNodeUrl: 'https://wax.eosrio.io',
+  hyperionApiUrl: 'https://wax.eosrio.io',
   systemContract: 'eosio',
   userResourcesTable: 'userres'
 };

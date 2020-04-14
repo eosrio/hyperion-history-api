@@ -11,7 +11,7 @@ export class AccountComponent implements OnInit {
 
   constructor(
     private activatedRoute: ActivatedRoute,
-    private accountService: AccountService
+    public accountService: AccountService
   ) {
   }
 
