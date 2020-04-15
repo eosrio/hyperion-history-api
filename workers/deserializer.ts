@@ -661,27 +661,38 @@ export default class MainDSWorker extends HyperionWorker {
 
     async processTableDelta(data) {
         if (data['table']) {
+
             data['primary_key'] = String(data['primary_key']);
+
             let allowIndex;
             let handled = false;
+
             const key = `${data.code}:${data.table}`;
+
+            // strict code::table handlers
             if (this.tableHandlers[key]) {
                 await this.tableHandlers[key](data);
                 handled = true;
             }
+
+            // generic code handlers
             if (this.tableHandlers[`${data.code}:*`]) {
                 await this.tableHandlers[`${data.code}:*`](data);
                 handled = true;
             }
+
+            // generic table handlers
             if (this.tableHandlers[`*:${data.table}`]) {
                 await this.tableHandlers[`*:${data.table}`](data);
                 handled = true;
             }
+
             if (!handled && this.conf.features.index_all_deltas) {
                 allowIndex = true;
             } else {
                 allowIndex = handled;
             }
+
             return allowIndex;
         }
     }
@@ -1164,7 +1175,28 @@ export default class MainDSWorker extends HyperionWorker {
         };
 
         this.tableHandlers['*:accounts'] = async (delta) => {
-            if (typeof delta['data']['balance'] === 'string') {
+
+            if (!delta.data) {
+                // attempt forced deserialization
+                if (delta.value.length === 32) {
+                    try {
+                        hLog(`Attempting forced deserialization for ${delta['code']}::accounts`);
+                        const sb = new Serialize.SerialBuffer({
+                            textDecoder: new TextDecoder(),
+                            textEncoder: new TextEncoder(),
+                            array: Buffer.from(delta['value'], 'hex'),
+                        });
+                        delta['data'] = {
+                            balance: sb.getAsset()
+                        };
+                    } catch (e) {
+                        console.log(e);
+                        hLog(`Forced accounts table deserialization failed on ${delta['code']}`);
+                    }
+                }
+            }
+
+            if (delta['data'] && typeof delta['data']['balance'] === 'string') {
                 try {
                     const [amount, symbol] = delta['data']['balance'].split(" ");
                     delta['@accounts'] = {
@@ -1177,6 +1209,7 @@ export default class MainDSWorker extends HyperionWorker {
                     hLog(e);
                 }
             }
+
             if (this.conf.features.tables.accounts) {
                 await this.storeAccount(delta);
             }

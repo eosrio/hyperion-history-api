@@ -31,12 +31,15 @@ export default class StateReader extends HyperionWorker {
     private future_block = 0;
     private drainCount = 0;
     private currentIdx = 1;
+    private receivedFirstBlock = false;
 
     constructor() {
         super();
+
         if (this.isLiveReader) {
             this.local_block_num = parseInt(process.env.worker_last_processed_block, 10) - 1;
         }
+
         this.stageOneDistQueue = cargo((tasks, callback) => {
             this.distribute(tasks, callback);
         }, this.conf.prefetch.read);
@@ -244,30 +247,46 @@ export default class StateReader extends HyperionWorker {
 
     private async onMessage(data: any) {
         if (this.abi) {
+
             // NORMAL OPERATION MODE WITH ABI PRESENT
             if (!this.recovery) {
+
                 // NORMAL OPERATION MODE
                 if (process.env.worker_role) {
                     const res = deserialize('result', data, this.txEnc, this.txDec, this.types)[1];
                     if (res['this_block']) {
                         const blk_num = res['this_block']['block_num'];
                         if (this.isLiveReader) {
+
                             // LIVE READER MODE
                             if (blk_num !== this.local_block_num + 1) {
-                                hLog(`exptected: ${this.local_block_num + 1}, received: ${blk_num}`);
+                                hLog(`Expected: ${this.local_block_num + 1}, received: ${blk_num}`);
                                 await this.handleFork(res);
                             } else {
                                 this.local_block_num = blk_num;
                             }
+
                             this.stageOneDistQueue.push({num: blk_num, content: data});
                             return 1;
                         } else {
+
+                            // Detect skipped first block
+                            if (!this.receivedFirstBlock) {
+                                if (blk_num !== this.local_block_num + 1) {
+                                    hLog(`WARNING: First block received was #${blk_num}, but #${this.local_block_num + 1} was expected!`);
+                                    hLog(`Make sure the block.log file contains the requested range, check with "eosio-blocklog --smoke-test"`);
+                                    this.local_block_num = blk_num - 1;
+                                }
+                                this.receivedFirstBlock = true;
+                            }
+
                             // BACKLOG MODE
                             if (this.future_block !== 0 && this.future_block === blk_num) {
                                 console.log('Missing block ' + blk_num + ' received!');
                             } else {
                                 this.future_block = 0;
                             }
+
                             if (blk_num === this.local_block_num + 1) {
                                 this.local_block_num = blk_num;
                                 if (res['block'] || res['traces'] || res['deltas']) {

@@ -136,7 +136,7 @@ export default class HyperionParser extends BaseParser {
                     }
                     process.send(evPayload);
                 } else {
-                    console.log('Empty message. No block');
+                    hLog(`ERROR: Block data not found for #${res['this_block']['block_num']}`);
                 }
                 if (worker.ch_ready) {
                     worker.ch.ack(message);
