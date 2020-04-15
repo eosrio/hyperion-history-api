@@ -15,7 +15,11 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     const account = request.query.account;
     const reqQueue = [];
 
-    reqQueue.push(fastify.eosjs.rpc.get_account(account));
+    try {
+        response.account = await fastify.eosjs.rpc.get_account(account);
+    } catch (e) {
+        throw new Error("Account not found!");
+    }
 
     const localApi = `http://${fastify.manager.config.api.server_addr}:${fastify.manager.config.api.server_port}/v2`;
     const getTokensApi = localApi + '/state/get_tokens';
@@ -32,10 +36,9 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     reqQueue.push(got.get(`${getLinksApi}?account=${account}`).json());
 
     const results = await Promise.all(reqQueue);
-    response.account = results[0];
-    response.actions = results[1].actions;
-    response.tokens = results[2].tokens;
-    response.links = results[3].links;
+    response.actions = results[0].actions;
+    response.tokens = results[1].tokens;
+    response.links = results[2].links;
     return response;
 }
 
