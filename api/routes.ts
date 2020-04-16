@@ -44,7 +44,7 @@ export function registerRoutes(server: FastifyInstance) {
         });
     }
 
-    server.get('/v2/explorer_metadata', async (request, reply) => {
+    server.get('/v2/explorer_metadata', {schema: {tags: ['internal']}}, async (request, reply) => {
         reply.send({
             logo: server.manager.config.api.chain_logo_url,
             provider: server.manager.config.api.provider_name,
@@ -55,7 +55,7 @@ export function registerRoutes(server: FastifyInstance) {
     });
 
     // steam client lib
-    server.get('/stream-client.js', (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+    server.get('/stream-client.js', {schema: {tags: ['internal']}}, (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
         const stream = createReadStream('./client_bundle.js');
         reply.type('application/javascript').send(stream);
     });
