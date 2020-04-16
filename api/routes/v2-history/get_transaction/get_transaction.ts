@@ -7,6 +7,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         fastify.eosjs.rpc.get_info(),
         fastify.elastic.search({
             "index": fastify.manager.chain + '-action-*',
+            "size": fastify.manager.config.api.limits.get_trx_actions || 100,
             "body": {
                 "query": {
                     "bool": {
