@@ -28,52 +28,52 @@ check_dependecies(){
   CMD=$(if(dpkg --compare-versions 2> /dev/null $(dpkg -s  nodejs 2> /dev/null | awk '/Version/ {print $2}') ge "5"); then echo true; else echo false; fi)
   if("$CMD" = true); then
     NODE=true
-    echo -e "\n\n${COLOR_BLUE}Nodejs compatible version already installed ${COLOR_NC}\n\n"
+    echo -e "\n\n${COLOR_BLUE}Nodejs compatible version already installed ${COLOR_NC}"
   elif("$CMD" = false); then
     echo -e "\n\n${COLOR_RED}Nodejs installed version is < 13. Please, update and try again. ${COLOR_NC}\n\n"
     exit 1
   else
-    echo -e "\n\n${COLOR_BLUE}Nodejs not installed ${COLOR_NC}\n\n"
+    echo -e "\n\n${COLOR_BLUE}Nodejs not installed ${COLOR_NC}"
   fi
   CMD=$(if(dpkg --compare-versions 2> /dev/null $(dpkg -s  elasticsearch 2> /dev/null | awk '/Version/ {print $2}') ge "7.6"); then echo true; else echo false; fi)
   if("$CMD" = true); then
     ELASTIC=true
-    echo -e "\n\n${COLOR_BLUE}Elasticsearch compatible version already installed ${COLOR_NC}\n\n"
+    echo -e "\n${COLOR_BLUE}Elasticsearch compatible version already installed ${COLOR_NC}"
   elif ("$CMD" = false); then
     echo -e "\n\n${COLOR_RED}Elasticsearch installed version is < 7.6. Please, update and try again. ${COLOR_NC}\n\n"
     exit 1
   else
-    echo -e "\n\n${COLOR_BLUE}Elasticsearch not installed ${COLOR_NC}\n\n"
+    echo -e "\n${COLOR_BLUE}Elasticsearch not installed ${COLOR_NC}"
   fi
   CMD=$(if(dpkg --compare-versions 2> /dev/null $(dpkg -s  redis-server 2> /dev/null | awk '/Version/ {print $2}') ge "5"); then echo true; else echo false; fi)
   if("$CMD" = true); then
     REDIS=true
-    echo -e "\n\n${COLOR_BLUE}Redis compatible version already installed ${COLOR_NC}\n\n"
+    echo -e "\n${COLOR_BLUE}Redis compatible version already installed ${COLOR_NC}"
   elif("$CMD" = false); then
     echo -e "\n\n${COLOR_RED}Redis installed version is < 5. Please, update and try again. ${COLOR_NC}\n\n"
     exit 1
   else
-    echo -e "\n\n${COLOR_BLUE}Redis not installed ${COLOR_NC}\n\n"
+    echo -e "\n${COLOR_BLUE}Redis not installed ${COLOR_NC}"
   fi
   CMD=$(if(dpkg --compare-versions 2> /dev/null $(dpkg -s  rabbitmq-server 2> /dev/null | awk '/Version/ {print $2}') ge "3.8"); then echo true; else echo false; fi)
   if("$CMD" = true); then
     RABBIT=true
-    echo -e "\n\n${COLOR_BLUE}RabbitMQ compatible version already installed ${COLOR_NC}\n\n"
+    echo -e "\n${COLOR_BLUE}RabbitMQ compatible version already installed ${COLOR_NC}"
   elif("$CMD" = false); then
     echo -e "\n\n${COLOR_RED}RabbitMQ installed version is < 3.8. Please, update and try again. ${COLOR_NC}\n\n"
     exit 1
   else
-    echo -e "\n\n${COLOR_BLUE}RabbitMQ not installed ${COLOR_NC}\n\n"
+    echo -e "\n${COLOR_BLUE}RabbitMQ not installed ${COLOR_NC}"
   fi
   CMD=$(if(dpkg --compare-versions 2> /dev/null $(dpkg -s  kibana 2> /dev/null | awk '/Version/ {print $2}') ge "7.6"); then echo true; else echo false; fi)
   if("$CMD" = true); then
     RABBIT=true
-    echo -e "\n\n${COLOR_BLUE}Kibana compatible version already installed ${COLOR_NC}\n\n"
+    echo -e "\n${COLOR_BLUE}Kibana compatible version already installed ${COLOR_NC}"
   elif("$CMD" = false); then
     echo -e "\n\n${COLOR_RED}Kibana installed version is < 7.6. Please, update and try again. ${COLOR_NC}\n\n"
     exit 1
   else
-    echo -e "\n\n${COLOR_BLUE}Kibana not installed ${COLOR_NC}\n\n"
+    echo -e "\n${COLOR_BLUE}Kibana not installed ${COLOR_NC}\n\n"
   fi
 }
 
@@ -138,7 +138,7 @@ install_node(){
 }
 
 install_build_hyperion(){
-  echo -e "\n\n${COLOR_BLUE}Installing and building hyperion...${COLOR_NC}\n\n"
+  echo -e "\n\n${COLOR_BLUE}Installing packages and building hyperion...${COLOR_NC}\n\n"
   npm install
 }
 
@@ -202,17 +202,29 @@ install_elastic(){
   else
     sudo sed -ie 's/-Xms1g/-Xms16g/; s/-Xmx1g/-Xmx16g/' /etc/elasticsearch/jvm.options
   fi
+
+  sudo bash -c 'echo "xpack.security.enabled: true" >> /etc/elasticsearch/elasticsearch.yml'
+
   sudo mkdir -p /etc/systemd/system/elasticsearch.service.d/
   echo -e "[Service]\nLimitMEMLOCK=infinity" | sudo tee /etc/systemd/system/elasticsearch.service.d/override.conf
   sudo systemctl daemon-reload
   sudo service elasticsearch start
   sudo systemctl enable elasticsearch
 
+  echo -e "\n\n${COLOR_BLUE}Generating Elasticsearch cluster passwords...${COLOR_NC}\n\n"
+
+  echo "y" | sudo /usr/share/elasticsearch/bin/elasticsearch-setup-passwords auto > elastic_pass.txt
+
 }
 
 install_kibana(){
-  echo -e "\n\n${COLOR_BLUE}Installing kibana...${COLOR_NC}\n\n"
+  echo -e "\n\n${COLOR_BLUE}Installing and configuring Kibana...${COLOR_NC}\n\n"
   sudo apt install -y kibana
+
+  KIBANA_PASSWORD=$(cat elastic_pass.txt | awk '/PASSWORD kibana =/ {print $4}')
+
+  sudo sed -ie 's/#elasticsearch.password: "pass"/elasticsearch.password: '"$KIBANA_PASSWORD"'/; s/#elasticsearch.username: "kibana"/elasticsearch.username: "kibana"/' /etc/kibana/kibana.yml
+
   sudo systemctl enable kibana
   sudo systemctl start kibana
 }
