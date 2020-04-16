@@ -7,7 +7,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     const schema = {
         description: 'get account data',
         summary: 'get account summary',
-        tags: ['accounts', 'state'],
+        tags: ['accounts'],
         querystring: extendQueryStringSchema({
             "account": {
                 description: 'account name',

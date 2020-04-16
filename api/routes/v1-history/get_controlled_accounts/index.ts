@@ -6,7 +6,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     addApiRoute(fastify, 'POST', getRouteName(__filename), getControlledAccountsHandler, {
         description: 'get controlled accounts by controlling accounts',
         summary: 'get controlled accounts by controlling accounts',
-        tags: ['state'],
+        tags: ['accounts'],
         body: {
             type: ['object', 'string'],
             properties: {

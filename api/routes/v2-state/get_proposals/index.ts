@@ -6,7 +6,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     const schema = {
         description: 'get proposals',
         summary: 'get proposals',
-        tags: ['state'],
+        tags: ['system'],
         querystring: {
             type: 'object',
             properties: {

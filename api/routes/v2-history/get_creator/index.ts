@@ -6,7 +6,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     const schema: RouteSchema = {
         description: 'get account creator',
         summary: 'get account creator',
-        tags: ['accounts', 'history'],
+        tags: ['accounts'],
         querystring: {
             type: 'object',
             properties: {

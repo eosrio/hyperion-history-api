@@ -6,7 +6,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     const schema = {
         description: 'get permission links',
         summary: 'get permission links',
-        tags: ['accounts', 'state'],
+        tags: ['accounts'],
         querystring: {
             type: 'object',
             properties: {

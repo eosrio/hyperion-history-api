@@ -6,7 +6,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     const schema = {
         description: 'get all actions belonging to the same transaction',
         summary: 'get transaction by id',
-        tags: ['transactions', 'history'],
+        tags: ['history'],
         querystring: {
             type: 'object',
             properties: {

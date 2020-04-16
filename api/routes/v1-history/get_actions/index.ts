@@ -8,7 +8,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     addApiRoute(fastify, 'POST', getRouteName(__filename), getActionsHandler, {
         description: 'legacy get actions query',
         summary: 'get actions',
-        tags: ['actions', 'history'],
+        tags: ['history'],
         body: {
             type: ['object', 'string'],
             properties: {

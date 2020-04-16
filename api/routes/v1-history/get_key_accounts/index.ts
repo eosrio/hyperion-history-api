@@ -8,7 +8,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     addApiRoute(fastify, 'POST', getRouteName(__filename), getKeyAccountsHandler, {
         description: 'get accounts by public key',
         summary: 'get accounts by public key',
-        tags: ['accounts', 'state'],
+        tags: ['accounts'],
         body: {
             type: 'object',
             properties: {"public_key": {description: 'public key', type: 'string'}},

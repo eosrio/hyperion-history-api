@@ -6,7 +6,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     addApiRoute(fastify, 'POST', getRouteName(__filename), getTransactionHandler, {
         description: 'get all actions belonging to the same transaction',
         summary: 'get transaction by id',
-        tags: ['transactions', 'history'],
+        tags: ['history'],
         body: {
             type: ['object', 'string'],
             properties: {id: {description: 'transaction id', type: 'string'}},

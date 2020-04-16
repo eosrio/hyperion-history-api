@@ -6,7 +6,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     const schema = {
         description: 'get voters',
         summary: 'get voters',
-        tags: ['accounts', 'state'],
+        tags: ['system'],
         querystring: extendQueryStringSchema({
             "producer": {
                 description: 'filter by voted producer (comma separated)',

@@ -6,7 +6,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     const schema: RouteSchema = {
         description: 'get all accounts created by one creator',
         summary: 'get created accounts',
-        tags: ['accounts', 'history'],
+        tags: ['accounts'],
         querystring: extendQueryStringSchema({
             "account": {
                 description: 'creator account',

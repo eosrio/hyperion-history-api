@@ -8,7 +8,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     const getSchema = {
         description: 'get accounts by public key',
         summary: 'get accounts by public key',
-        tags: ['accounts', 'state'],
+        tags: ['accounts'],
         querystring: {
             type: 'object',
             properties: {

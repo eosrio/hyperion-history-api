@@ -6,7 +6,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     const schema = {
         description: 'get block traces',
         summary: 'get block traces',
-        tags: ['block', 'history'],
+        tags: ['history'],
         body: {
             type: ['object', 'string'],
             properties: {
