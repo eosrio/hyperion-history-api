@@ -5,10 +5,9 @@ import {AsyncCargo, AsyncQueue, cargo, queue} from 'async';
 import * as AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "../addons/eosjs-native";
 import {Type} from "../addons/eosjs-native/eosjs-serialize";
-import {hLog} from "../helpers/common_functions";
+import {debugLog, hLog} from "../helpers/common_functions";
 
 const index_queues = require('../definitions/index-queues').index_queues;
-const {debugLog} = require("../helpers/functions");
 const {AbiDefinitions} = require("../definitions/abi_def");
 const abi_remapping = {
     "_Bool": "bool"
@@ -446,9 +445,11 @@ export default class MainDSWorker extends HyperionWorker {
             const savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
             if (savedAbi) {
                 if (savedAbi[field + 's'].includes(type)) {
+
                     if (savedAbi.abi_hex) {
-                        _status = AbiEOS.load_abi_hex(contract, savedAbi.abi_hex);
+                        _status = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
                     }
+
                     if (_status) {
                         try {
                             resultType = AbiEOS['get_type_for_' + field](contract, type);
@@ -461,13 +462,9 @@ export default class MainDSWorker extends HyperionWorker {
                     }
                 }
             }
-            const currentAbi = await this.rpc.getRawAbi(contract);
-            if (currentAbi.abi.byteLength > 0) {
-                const abi_hex = Buffer.from(currentAbi.abi).toString('hex');
-                _status = AbiEOS.load_abi_hex(contract, abi_hex);
-            } else {
-                _status = false;
-            }
+
+            _status = await this.loadCurrentAbiHex(contract);
+
             if (_status === true) {
                 try {
                     resultType = AbiEOS['get_type_for_' + field](contract, type);
@@ -477,6 +474,8 @@ export default class MainDSWorker extends HyperionWorker {
                     _status = false;
                 }
             }
+
+
         }
         return [_status, resultType];
     }

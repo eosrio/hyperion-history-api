@@ -1,9 +1,7 @@
-import {hLog} from "../helpers/common_functions";
+import {debugLog, hLog} from "../helpers/common_functions";
 
 const got = require('got');
 import {connect, Connection} from 'amqplib';
-
-const {debugLog} = require("../helpers/functions");
 
 export async function createConnection(config): Promise<Connection> {
     try {

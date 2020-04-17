@@ -10,6 +10,7 @@ import * as v8 from "v8";
 import {HeapInfo} from "v8";
 import {hLog} from "../helpers/common_functions";
 import {StateHistorySocket} from "../connections/state-history";
+import * as AbiEOS from "@eosrio/node-abieos";
 
 export abstract class HyperionWorker {
 
@@ -35,6 +36,8 @@ export abstract class HyperionWorker {
     events: EventEmitter;
 
     filters: Filters;
+
+    failedAbiMap: Map<string, Set<number>> = new Map();
 
     protected constructor() {
         this.checkDebugger();
@@ -126,6 +129,62 @@ export abstract class HyperionWorker {
         if (this.filters.action_whitelist.has(this.anyFromCode(act))) {
             return true;
         } else return this.filters.action_whitelist.has(this.codeActionPair(act));
+    }
+
+    loadAbiHex(contract, block_num, abi_hex) {
+        // check local blacklist for corrupted abis that failed to load before
+        let _status = false;
+        if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract).has(block_num)) {
+            _status = false;
+            hLog('ignore saved abi for', contract, block_num);
+        } else {
+            _status = AbiEOS.load_abi_hex(contract, abi_hex);
+            if (!_status) {
+                hLog(`AbiEOS.load_abi_hex error for ${contract} at ${block_num}`);
+                if (this.failedAbiMap.has(contract)) {
+                    this.failedAbiMap.get(contract).add(block_num);
+                } else {
+                    this.failedAbiMap.set(contract, new Set([block_num]));
+                }
+            } else {
+                this.removeFromFailed(contract);
+            }
+        }
+        return _status;
+    }
+
+    removeFromFailed(contract) {
+        if (this.failedAbiMap.has(contract)) {
+            this.failedAbiMap.delete(contract);
+            hLog(`${contract} was removed from the failed map!`);
+        }
+    }
+
+    async loadCurrentAbiHex(contract) {
+        let _status = false;
+        if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract).has(-1)) {
+            _status = false;
+            hLog('ignore current abi for', contract);
+        } else {
+            const currentAbi = await this.rpc.getRawAbi(contract);
+            if (currentAbi.abi.byteLength > 0) {
+                const abi_hex = Buffer.from(currentAbi.abi).toString('hex');
+                _status = AbiEOS.load_abi_hex(contract, abi_hex);
+                if (!_status) {
+                    hLog(`AbiEOS.load_abi_hex error for ${contract} at head`);
+                    if (this.failedAbiMap.has(contract)) {
+                        this.failedAbiMap.get(contract).add(-1);
+                    } else {
+                        this.failedAbiMap.set(contract, new Set([-1]));
+                    }
+                } else {
+                    this.removeFromFailed(contract);
+                }
+            } else {
+                _status = false;
+            }
+        }
+        return _status;
     }
 
     abstract async run(): Promise<void>

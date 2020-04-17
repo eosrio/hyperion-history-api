@@ -2,9 +2,7 @@ import {HyperionWorker} from "./hyperionWorker";
 import {AsyncCargo, cargo} from "async";
 import {Serialize} from "../addons/eosjs-native";
 import {Type} from "eosjs/dist/eosjs-serialize";
-import {deserialize, hLog, serialize} from "../helpers/common_functions";
-
-const {debugLog} = require("../helpers/functions");
+import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions";
 
 export default class StateReader extends HyperionWorker {
 
@@ -200,7 +198,7 @@ export default class StateReader extends HyperionWorker {
     private signalReaderCompletion() {
         if (!this.completionSignaled) {
             this.completionSignaled = true;
-            debugLog('reader ' + process.env['worker_id'] + ' signaled completion', this.range_size, this.local_distributed_count);
+            debugLog(`Reader completion signal - ${this.range_size} - ${this.local_distributed_count}`);
             this.local_distributed_count = 0;
             this.completionMonitoring = setInterval(() => {
                 let pending = 0;
@@ -218,7 +216,7 @@ export default class StateReader extends HyperionWorker {
                     }
                 }
                 if (pending === 0) {
-                    debugLog('reader ' + process.env['worker_id'] + ' completed', this.range_size, this.local_distributed_count);
+                    debugLog(`Reader completed - ${this.range_size} - ${this.local_distributed_count}`);
                     clearInterval(this.completionMonitoring);
                     process.send({
                         event: 'completed',
@@ -256,6 +254,9 @@ export default class StateReader extends HyperionWorker {
                     const res = deserialize('result', data, this.txEnc, this.txDec, this.types)[1];
                     if (res['this_block']) {
                         const blk_num = res['this_block']['block_num'];
+
+                        debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
+
                         if (this.isLiveReader) {
 
                             // LIVE READER MODE
@@ -480,8 +481,8 @@ export default class StateReader extends HyperionWorker {
         this.recovery = true;
         this.ship.close();
         hLog(`Retrying connection in 5 seconds... [attempt: ${this.reconnectCount + 1}]`);
-        debugLog('PENDING REQUESTS:', this.pendingRequest);
-        debugLog('LOCAL BLOCK:', this.local_block_num);
+        debugLog(`PENDING REQUESTS:', ${this.pendingRequest}`);
+        debugLog(`LOCAL BLOCK:', ${this.local_block_num}`);
         setTimeout(() => {
             this.reconnectCount++;
             this.startWS();

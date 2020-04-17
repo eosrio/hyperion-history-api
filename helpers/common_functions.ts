@@ -1,6 +1,9 @@
 import {ApiResponse, Client} from "@elastic/elasticsearch";
 import {Serialize} from "../addons/eosjs-native";
 
+const config = require(`../${process.env.CONFIG_JSON}`);
+const CHAIN = config.settings.chain;
+
 function getLastResult(results: ApiResponse) {
     if (results.body.hits?.hits?.length > 0) {
         return parseInt(results.body.hits.hits[0].sort[0], 10);
@@ -183,4 +186,10 @@ export function hLog(input: any, ...extra: any[]) {
         role += ` ${fileName}:${lineNumber}`;
     }
     console.log(role, input, ...extra);
+}
+
+export function debugLog(text) {
+    if (config.settings.debug) {
+        hLog(text);
+    }
 }

@@ -40,6 +40,7 @@ export default class DSPoolWorker extends HyperionWorker {
     actionDsCounter = 0;
 
     customAbiMap: Map<string, CustomAbiDef[]> = new Map();
+    private noActionCounter = 0;
 
     constructor() {
         super();
@@ -132,7 +133,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     async fetchAbiHexAtBlockElastic(contract_name, last_block, get_json) {
         try {
-            const _includes = ["actions", "tables"];
+            const _includes = ["block", "actions", "tables"];
             if (get_json) {
                 _includes.push("abi");
             } else {
@@ -199,12 +200,13 @@ export default class DSPoolWorker extends HyperionWorker {
                 if (savedAbi) {
                     if (savedAbi[field + 's'].includes(type)) {
                         if (savedAbi.abi_hex) {
-                            _status = AbiEOS.load_abi_hex(contract, savedAbi.abi_hex);
+                            _status = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
                         }
                     }
                 }
             }
 
+            // successful load from ES cache
             if (_status) {
                 try {
                     resultType = AbiEOS['get_type_for_' + field](contract, type);
@@ -216,19 +218,15 @@ export default class DSPoolWorker extends HyperionWorker {
                 }
             }
 
-            const currentAbi = await this.rpc.getRawAbi(contract);
-            if (currentAbi.abi.byteLength > 0) {
-                const abi_hex = Buffer.from(currentAbi.abi).toString('hex');
-                _status = AbiEOS.load_abi_hex(contract, abi_hex);
-            } else {
-                _status = false;
-            }
+
+            _status = await this.loadCurrentAbiHex(contract);
+
             if (_status === true) {
                 try {
                     resultType = AbiEOS['get_type_for_' + field](contract, type);
                     _status = true;
                 } catch (e) {
-                    // hLog(`(abieos/current) >> ${e.message}`);
+                    hLog(`(abieos/current) >> ${e.message}`);
                     _status = false;
                 }
             }
@@ -246,7 +244,6 @@ export default class DSPoolWorker extends HyperionWorker {
                 hLog(`(abieos) ${_action.account}::${_action.name} @ ${block_num} >>> ${e.message}`);
             }
         }
-        // fallback to eosjs deserializer
         return await self.deserializeActionAtBlock(_action, block_num);
     }
 
@@ -325,14 +322,15 @@ export default class DSPoolWorker extends HyperionWorker {
         }
         const result = {types, actions, tables: abi.tables};
         if (check_action) {
-            // hLog(actions);
             if (actions.has(check_action)) {
-                // hLog(check_action, 'check type', actions.get(check_action).name);
-                // hLog(abi);
-                try {
-                    AbiEOS.load_abi(accountName, JSON.stringify(abi));
-                } catch (e) {
-                    hLog(e);
+                if (!this.failedAbiMap.has(accountName) || !this.failedAbiMap.get(accountName).has(-1)) {
+                    try {
+                        AbiEOS.load_abi(accountName, JSON.stringify(abi));
+                    } catch (e) {
+                        hLog(e);
+                    }
+                } else {
+                    hLog('ignore reloading of current abi for', accountName);
                 }
                 this.contracts.set(accountName, {
                     contract: result,
@@ -360,7 +358,6 @@ export default class DSPoolWorker extends HyperionWorker {
                     );
                 } catch (e) {
                     hLog(`(eosjs)  ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
-                    // hLog(action.data, contract[0].actions.get(action.name).fields.map(f => `${f.name}: ${f.typeName}`));
                     return null;
                 }
             } else {
@@ -568,6 +565,14 @@ export default class DSPoolWorker extends HyperionWorker {
                         event: 'ds_report',
                         actions: this.actionDsCounter
                     });
+                    this.noActionCounter = 0;
+                } else {
+                    if (!this.conf.indexer.abi_scan_mode && !this.conf.indexer.live_reader) {
+                        this.noActionCounter++;
+                        if (this.noActionCounter > 60) {
+                            hLog(`No actions processed for ${this.noActionCounter} seconds!`);
+                        }
+                    }
                 }
                 this.contractUsage = {};
                 this.totalHits = 0;
