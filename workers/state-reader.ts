@@ -255,7 +255,19 @@ export default class StateReader extends HyperionWorker {
                     if (res['this_block']) {
                         const blk_num = res['this_block']['block_num'];
 
-                        debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
+                        if (res.block && res.traces && res.deltas) {
+                            debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
+                        } else {
+                            if (!res.traces) {
+                                debugLog('missing traces');
+                            }
+                            if (!res.deltas) {
+                                debugLog('missing deltas');
+                            }
+                            if (!res.block) {
+                                debugLog('missing block');
+                            }
+                        }
 
                         if (this.isLiveReader) {
 
