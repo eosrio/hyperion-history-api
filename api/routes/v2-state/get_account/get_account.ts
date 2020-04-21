@@ -27,7 +27,7 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     const getLinksApi = localApi + '/state/get_links';
 
     // fetch recent actions
-    reqQueue.push(got.get(`${getActionsApi}?account=${account}&limit=10`).json());
+    reqQueue.push(got.get(`${getActionsApi}?account=${account}&limit=10&noBinary=true`).json());
 
     // fetch account tokens
     reqQueue.push(got.get(`${getTokensApi}?account=${account}`).json());

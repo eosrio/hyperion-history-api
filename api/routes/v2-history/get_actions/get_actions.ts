@@ -69,6 +69,17 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         for (let action of actions) {
             action = action._source;
             mergeActionMeta(action);
+
+            if (query.noBinary === true) {
+                for (const key in action['act']['data']) {
+                    if (action['act']['data'].hasOwnProperty(key)) {
+                        if (typeof action['act']['data'][key] === 'string' && action['act']['data'][key].length > 256) {
+                            action['act']['data'][key] = action['act']['data'][key].slice(0, 32) + "...";
+                        }
+                    }
+                }
+            }
+
             if (query.simple) {
                 response.simple_actions.push({
                     block: action['block_num'],
