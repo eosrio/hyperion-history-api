@@ -63,7 +63,6 @@
     "@types/socket.io": "2.1.4",
     "@types/socket.io-client": "^1.4.32",
     "@types/ws": "7.2.2",
-    "eslint": "^6.8.0",
     "typescript": "3.8.3"
   }
 }
