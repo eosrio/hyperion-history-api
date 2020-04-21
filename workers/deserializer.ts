@@ -266,7 +266,7 @@ export default class MainDSWorker extends HyperionWorker {
                 }
             }
 
-            // Process Delta Traces
+            // Process Delta Traces (must be done first to catch ABI updates)
             if (deltas && this.conf.indexer.process_deltas) {
                 const t1 = Date.now();
                 await this.processDeltas(deltas, block_num, block_ts);
@@ -281,6 +281,7 @@ export default class MainDSWorker extends HyperionWorker {
             if (traces["valueForKeyPath"]) {
                 _traces = traces['valueForKeyPath'](".");
             }
+
             if (_traces.length > 0 && this.conf.indexer.fetch_traces) {
                 const t2 = Date.now();
                 for (const trace of _traces) {
@@ -813,6 +814,7 @@ export default class MainDSWorker extends HyperionWorker {
                             live_mode: process.env['live_mode'],
                             worker_id: process.env.worker_id
                         });
+
 
                     } catch (e) {
                         hLog(e);

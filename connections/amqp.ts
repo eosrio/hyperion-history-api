@@ -1,6 +1,5 @@
 import {debugLog, hLog} from "../helpers/common_functions";
-
-const got = require('got');
+import got from "got";
 import {connect, Connection} from 'amqplib';
 
 export async function createConnection(config): Promise<Connection> {
@@ -63,8 +62,11 @@ export async function amqpConnect(onReconnect, config, onClose) {
 
 export async function checkQueueSize(q_name, config) {
     try {
-        const apiUrl = `http://${config.user}:${config.pass}@${config.api}/api/queues/%2F${config.vhost}/${q_name}`;
-        const result = JSON.parse((await got(apiUrl)).body);
+        const apiUrl = `http://${config.api}/api/queues/%2F${config.vhost}/${q_name}`;
+        const result = JSON.parse((await got(apiUrl, {
+            username: config.user,
+            password: config.pass
+        })).body);
         return result.messages;
     } catch (e) {
         console.log('Checking queue size failed, HTTP API is not ready!');

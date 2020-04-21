@@ -37,11 +37,15 @@ export class ConnectionManager {
 
     async purgeQueues() {
         hLog(`Purging all ${this.chain} queues!`);
-        const apiUrl = `http://${this.conn.amqp.user}:${this.conn.amqp.pass}@${this.conn.amqp.api}`;
+        const apiUrl = `http://${this.conn.amqp.api}`;
         const getAllQueuesFromVHost = apiUrl + `/api/queues/%2F${this.conn.amqp.vhost}`;
+        const opts = {
+            username: this.conn.amqp.user,
+            password: this.conn.amqp.pass
+        };
         let result;
         try {
-            const data = await got(getAllQueuesFromVHost);
+            const data = await got(getAllQueuesFromVHost, opts);
             if (data) {
                 result = JSON.parse(data.body);
             }
@@ -56,7 +60,7 @@ export class ConnectionManager {
                     const msg_count = parseInt(queue.messages);
                     if (msg_count > 0) {
                         try {
-                            await got.delete(apiUrl + `/api/queues/%2F${this.conn.amqp.vhost}/${queue.name}/contents`);
+                            await got.delete(apiUrl + `/api/queues/%2F${this.conn.amqp.vhost}/${queue.name}/contents`, opts);
                             hLog(`${queue.messages} messages deleted on queue ${queue.name}`);
                         } catch (e) {
                             console.log(e.message);
