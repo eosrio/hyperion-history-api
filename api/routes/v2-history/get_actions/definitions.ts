@@ -8,7 +8,10 @@ export const extendedActions = new Set([
     "newaccount",
     "updateauth",
     "buyram",
-    "buyrambytes"
+    "buyrambytes",
+    "delegatebw",
+    "undelegatebw",
+    "voteproducer"
 ]);
 
 export const primaryTerms = [

@@ -41,22 +41,23 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
     // Perform search
     const maxActions = fastify.manager.config.api.limits.get_actions;
-    const pResults = await Promise.all([
-        fastify.eosjs.rpc.get_info(),
-        fastify.elastic.search({
-            "index": fastify.manager.chain + '-action-*',
-            "from": skip || 0,
-            "size": (limit > maxActions ? maxActions : limit) || 10,
-            "body": query_body
-        })
-    ]);
+    const esResults = await fastify.elastic.search({
+        "index": fastify.manager.chain + '-action-*',
+        "from": skip || 0,
+        "size": (limit > maxActions ? maxActions : limit) || 10,
+        "body": query_body
+    });
 
-    const results = pResults[1]['body']['hits'];
+    const results = esResults['body']['hits'];
     const response: any = {
         cached: false,
-        lib: pResults[0].last_irreversible_block_num,
+        lib: 0,
         total: results['total']
     };
+
+    if (query.checkLib) {
+        response.lib = (await fastify.eosjs.rpc.get_info()).last_irreversible_block_num;
+    }
 
     if (query.simple) {
         response['simple_actions'] = [];
@@ -83,7 +84,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             if (query.simple) {
                 response.simple_actions.push({
                     block: action['block_num'],
-                    irreversible: action['block_num'] < pResults[0].last_irreversible_block_num,
+                    irreversible: response.lib !== 0 ? action['block_num'] < response.lib : undefined,
                     timestamp: action['@timestamp'],
                     transaction_id: action['trx_id'],
                     actors: action['act']['authorization'].map(a => `${a.actor}@${a.permission}`).join(","),
@@ -92,6 +93,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
                     action: action['act']['name'],
                     data: action['act']['data']
                 });
+
             } else {
                 response.actions.push(action);
             }
