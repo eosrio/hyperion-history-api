@@ -394,7 +394,7 @@ export default class DSPoolWorker extends HyperionWorker {
             const trx_id = transaction_trace['id'].toLowerCase();
             const _actDataArray = [];
             const _processedTraces = [];
-            const action_traces = transaction_trace['action_traces'];
+            let action_traces = transaction_trace['action_traces'];
             const trx_data = {
                 trx_id,
                 block_num,
@@ -408,8 +408,18 @@ export default class DSPoolWorker extends HyperionWorker {
                 status: false
             };
 
-            for (const action_trace of action_traces) {
+            // perform action flattening if necessary
+            if (this.mLoader.parser.flatten) {
+                const trace_counters = {
+                    trace_index: 0
+                };
+                action_traces = await this.mLoader.parser.flattenInlineActions(action_traces, 0, trace_counters, 0);
+                action_traces.sort((a, b) => {
+                    return a[1].receipt[1].global_sequence - b[1].receipt[1].global_sequence;
+                });
+            }
 
+            for (const action_trace of action_traces) {
                 if (action_trace[0] === 'action_trace_v0') {
                     const ds_status = await this.mLoader.parser.parseAction(this, ts, action_trace[1], trx_data, _actDataArray, _processedTraces, transaction_trace, usageIncluded);
                     if (ds_status) {
@@ -417,7 +427,6 @@ export default class DSPoolWorker extends HyperionWorker {
                         action_count++;
                     }
                 }
-
                 // abort processing after reaching the maximum inline indexing limit
                 if (this.conf.indexer.max_inline && (_processedTraces.length >= this.conf.indexer.max_inline)) {
                     break;

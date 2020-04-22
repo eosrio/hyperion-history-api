@@ -12,6 +12,7 @@ export abstract class BaseParser {
     configModule: ConfigurationModule;
     filters: Filters;
     private readonly chain: string;
+    flatten: boolean = false;
 
     protected constructor(cm: ConfigurationModule) {
         this.configModule = cm;
@@ -41,7 +42,59 @@ export abstract class BaseParser {
         } else return this.filters.action_whitelist.has(this.codeActionPair(act));
     }
 
+    protected extendFirstAction(worker: DSPoolWorker, action: ActionTrace, trx_data: TrxMetadata, full_trace: any, usageIncluded) {
+        action.cpu_usage_us = trx_data.cpu_usage_us;
+        action.net_usage_words = trx_data.net_usage_words;
+        // add inline action count for the root action
+        if (full_trace.action_traces.length > 1) {
+            action.inline_count = full_trace.action_traces.length - 1;
+            if (worker.conf.indexer.max_inline < full_trace.action_traces.length) {
+                action.max_inline = worker.conf.indexer.max_inline;
+                action.inline_filtered = true;
+            } else {
+                action.inline_filtered = false;
+            }
+        } else {
+            action.inline_count = 0;
+        }
+        usageIncluded.status = true;
+    }
+
+    async deserializeActionData(worker: DSPoolWorker, action: ActionTrace, trx_data) {
+        let act = action.act;
+        const original_act = Object.assign({}, act);
+        let ds_act, error_message;
+        try {
+            ds_act = await worker.common.deserializeActionAtBlockNative(worker, act, trx_data.block_num);
+        } catch (e) {
+            console.log(e);
+            error_message = e.message;
+        }
+        if (ds_act) {
+            action.act.data = ds_act;
+            worker.common.attachActionExtras(worker, action);
+        } else {
+            action['act'] = original_act;
+            if (typeof action.act.data !== 'string') {
+                action.act.data = Buffer.from(action.act.data).toString('hex');
+            }
+            process.send({
+                event: 'ds_error',
+                data: {
+                    type: 'action_ds_error',
+                    block: trx_data.block_num,
+                    account: act.account,
+                    action: act.name,
+                    gs: parseInt(action.receipt[1].global_sequence, 10),
+                    message: error_message
+                }
+            });
+        }
+    }
+
     abstract async parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace, usageIncluded: { status: boolean }): Promise<boolean>
 
     abstract async parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void>
+
+    abstract async flattenInlineActions(action_traces: any[], level?: number, trace_counter?: any, parent_index?: number): Promise<any[]>
 }

@@ -9,6 +9,9 @@ export interface ActionTrace {
     trx_id: string;
     account_ram_deltas?: any[];
     console?: string;
+    elapsed?: any;
+    context_free?: any;
+    level?: number;
     except: any;
     receipt: any;
     creator_action_ordinal: number;
