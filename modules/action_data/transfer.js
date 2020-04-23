@@ -1,3 +1,5 @@
+const config = require(`../../${process.env.CONFIG_JSON}`);
+
 const hyperionModule = {
     chain: "*",
     contract: '*',
@@ -12,7 +14,6 @@ const hyperionModule = {
         } else if (data['value']) {
             qtd = data['value'].split(' ');
         }
-
         if (qtd) {
             action['@transfer'] = {
                 from: String(data['from']),
@@ -22,8 +23,7 @@ const hyperionModule = {
             };
             delete data['from'];
             delete data['to'];
-
-            if (process.env.INDEX_TRANSFER_MEMO === 'true') {
+            if (config.features['index_transfer_memo']) {
                 action['@transfer']['memo'] = data['memo'];
                 delete data['memo'];
             }

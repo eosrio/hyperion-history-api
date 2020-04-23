@@ -1,0 +1,52 @@
+<div style="padding-left: 10px" *ngIf="accountService.account">
+  <h4>Account: {{accountService.account['account_name']}}</h4>
+  <p><strong>Liquid Balance: {{accountService.account['core_liquid_balance']}}</strong></p>
+  <p>RAM: {{accountService.account['ram_usage']}} bytes / {{accountService.account['ram_quota']}} bytes
+    ({{(accountService.account['ram_usage'] / accountService.account['ram_quota']) * 100 | number}}%)</p>
+  <p>CPU: {{accountService.account['cpu_limit']['used']}} us / {{accountService.account['cpu_limit']['max']}} us
+    ({{(accountService.account['cpu_limit']['used'] / accountService.account['cpu_limit']['max']) * 100 | number}}%)</p>
+  <p>NET: {{accountService.account['net_limit']['used']}} bytes / {{accountService.account['net_limit']['max']}} bytes
+    ({{(accountService.account['net_limit']['used'] / accountService.account['net_limit']['max']) * 100 | number}}%)</p>
+
+  <h5>Permissions</h5>
+
+  <div *ngFor="let perm of accountService.account['permissions']">
+    <strong>{{perm['perm_name']}} <span *ngIf="perm['parent'] !== ''">[{{perm['parent']}}]</span> -
+      threshold: <span>{{perm['required_auth']['threshold']}}</span></strong>
+    <div *ngIf="perm['required_auth']['keys'].length > 0">
+      <p>Keys</p>
+      <div *ngFor="let key of perm['required_auth']['keys']"> - {{key.key}} - weight: {{key.weight}}</div>
+    </div>
+    <div *ngIf="perm['required_auth']['accounts'].length > 0">
+      <p>Accounts</p>
+      <div *ngFor="let acct of perm['required_auth']['accounts']"> - {{acct.permission['actor']}}
+        @{{acct.permission['permission']}} - weight: {{acct.weight}}</div>
+    </div>
+    <div *ngIf="perm['required_auth']['waits'].length > 0">
+      <p>Waits</p>
+      <div *ngFor="let wait of perm['required_auth']['waits']"> - {{wait['wait_sec']}} - weight: {{wait.weight}}</div>
+    </div>
+  </div>
+
+  <ngx-json-viewer [json]="accountService.account"></ngx-json-viewer>
+
+  <h4>Actions</h4>
+
+  <div class="action-card" *ngFor="let action of accountService.actions">
+    <p>{{action['act']['account']}}::{{action['act']['name']}}
+      <a href="https://bloks.io/transaction/{{action['trx_id']}}" target="_blank">{{action['trx_id']}}</a>
+    </p>
+    <p>{{action['@timestamp']}} - {{action['block_num']}}</p>
+    <p>{{action['notified'].join(", ")}}</p>
+    <p>{{action['act']['authorization'][0]['actor']}}@{{action['act']['authorization'][0].permission}}</p>
+    <div *ngFor="let item of action['act']['data'] | keyvalue">
+      <b>{{item.key}}</b>: <b>{{item.value}}</b>
+    </div>
+  </div>
+
+  <h4>Tokens</h4>
+
+  <div *ngFor="let token of accountService.tokens">
+    <ngx-json-viewer [json]="token"></ngx-json-viewer>
+  </div>
+</div>

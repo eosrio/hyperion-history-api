@@ -1,0 +1,385 @@
+{
+  "version": "eosio::abi/1.0",
+  "types": [],
+  "structs": [
+    {
+      "name": "fioname",
+      "base": "",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uint64"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "namehash",
+          "type": "uint128"
+        },
+        {
+          "name": "domain",
+          "type": "string"
+        },
+        {
+          "name": "domainhash",
+          "type": "uint128"
+        },
+        {
+          "name": "expiration",
+          "type": "uint64"
+        },
+        {
+          "name": "owner_account",
+          "type": "name"
+        },
+        {
+          "name": "addresses",
+          "type": "tokenpubaddr[]"
+        },
+        {
+          "name": "bundleeligiblecountdown",
+          "type": "uint64"
+        }
+      ]
+    },
+    {
+      "name": "domain",
+      "base": "",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uint64"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "domainhash",
+          "type": "uint128"
+        },
+        {
+          "name": "account",
+          "type": "name"
+        },
+        {
+          "name": "is_public",
+          "type": "uint8"
+        },
+        {
+          "name": "expiration",
+          "type": "uint32"
+        }
+      ]
+    },
+    {
+      "name": "eosio_name",
+      "base": "",
+      "fields": [
+        {
+          "name": "account",
+          "type": "name"
+        },
+        {
+          "name": "clientkey",
+          "type": "string"
+        },
+        {
+          "name": "keyhash",
+          "type": "uint128"
+        }
+      ]
+    },
+    {
+      "name": "regaddress",
+      "base": "",
+      "fields": [
+        {
+          "name": "fio_address",
+          "type": "string"
+        },
+        {
+          "name": "owner_fio_public_key",
+          "type": "string"
+        },
+        {
+          "name": "max_fee",
+          "type": "int64"
+        },
+        {
+          "name": "actor",
+          "type": "name"
+        },
+        {
+          "name": "tpid",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "tokenpubaddr",
+      "base": "",
+      "fields": [
+        {
+          "name": "token_code",
+          "type": "string"
+        },
+        {
+          "name": "chain_code",
+          "type": "string"
+        },
+        {
+          "name": "public_address",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "addaddress",
+      "base": "",
+      "fields": [
+        {
+          "name": "fio_address",
+          "type": "string"
+        },
+        {
+          "name": "public_addresses",
+          "type": "tokenpubaddr[]"
+        },
+        {
+          "name": "max_fee",
+          "type": "int64"
+        },
+        {
+          "name": "actor",
+          "type": "name"
+        },
+        {
+          "name": "tpid",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "regdomain",
+      "base": "",
+      "fields": [
+        {
+          "name": "fio_domain",
+          "type": "string"
+        },
+        {
+          "name": "owner_fio_public_key",
+          "type": "string"
+        },
+        {
+          "name": "max_fee",
+          "type": "int64"
+        },
+        {
+          "name": "actor",
+          "type": "name"
+        },
+        {
+          "name": "tpid",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "renewdomain",
+      "base": "",
+      "fields": [
+        {
+          "name": "fio_domain",
+          "type": "string"
+        },
+        {
+          "name": "max_fee",
+          "type": "int64"
+        },
+        {
+          "name": "tpid",
+          "type": "string"
+        },
+        {
+          "name": "actor",
+          "type": "name"
+        }
+      ]
+    },
+    {
+      "name": "renewaddress",
+      "base": "",
+      "fields": [
+        {
+          "name": "fio_address",
+          "type": "string"
+        },
+        {
+          "name": "max_fee",
+          "type": "int64"
+        },
+        {
+          "name": "tpid",
+          "type": "string"
+        },
+        {
+          "name": "actor",
+          "type": "name"
+        }
+      ]
+    },
+    {
+      "name": "setdomainpub",
+      "base": "",
+      "fields": [
+        {
+          "name": "fio_domain",
+          "type": "string"
+        },
+        {
+          "name": "is_public",
+          "type": "int8"
+        },
+        {
+          "name": "max_fee",
+          "type": "int64"
+        },
+        {
+          "name": "actor",
+          "type": "name"
+        },
+        {
+          "name": "tpid",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "burnexpired",
+      "base": "",
+      "fields": []
+    },
+    {
+      "name": "decrcounter",
+      "base": "",
+      "fields": [
+        {
+          "name": "fio_address",
+          "type": "string"
+        },
+        {
+          "name": "step",
+          "type": "int32"
+        }
+      ]
+    },
+    {
+      "name": "bind2eosio",
+      "base": "",
+      "fields": [
+        {
+          "name": "account",
+          "type": "name"
+        },
+        {
+          "name": "client_key",
+          "type": "string"
+        },
+        {
+          "name": "existing",
+          "type": "bool"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "decrcounter",
+      "type": "decrcounter",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "regaddress",
+      "type": "regaddress",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "addaddress",
+      "type": "addaddress",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "regdomain",
+      "type": "regdomain",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "renewdomain",
+      "type": "renewdomain",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "renewaddress",
+      "type": "renewaddress",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "burnexpired",
+      "type": "burnexpired",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "setdomainpub",
+      "type": "setdomainpub",
+      "ricardian_contract": ""
+    },
+    {
+      "name": "bind2eosio",
+      "type": "bind2eosio",
+      "ricardian_contract": ""
+    }
+  ],
+  "tables": [
+    {
+      "name": "fionames",
+      "index_type": "i64",
+      "key_names": [
+        "id"
+      ],
+      "key_types": [
+        "string"
+      ],
+      "type": "fioname"
+    },
+    {
+      "name": "domains",
+      "index_type": "i64",
+      "key_names": [
+        "id"
+      ],
+      "key_types": [
+        "string"
+      ],
+      "type": "domain"
+    },
+    {
+      "name": "accountmap",
+      "index_type": "i64",
+      "key_names": [
+        "account"
+      ],
+      "key_types": [
+        "uint64"
+      ],
+      "type": "eosio_name"
+    }
+  ],
+  "ricardian_clauses": [],
+  "error_messages": [],
+  "abi_extensions": [],
+  "variants": []
+}
