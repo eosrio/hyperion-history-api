@@ -1260,7 +1260,8 @@ export class HyperionMaster {
             {name: "abi", type: "abi"},
             {name: "delta", type: "delta"},
             {name: "logs", type: "logs"},
-            {name: 'permissionLink', type: 'link'}
+            {name: 'permissionLink', type: 'link'},
+            {name: 'permission', type: 'perm'}
         ];
 
         this.addStateTables(indicesList, this.IndexingQueues);
@@ -1344,13 +1345,15 @@ export class HyperionMaster {
             this.conf.settings.ipc_debug_rate = 1000;
         }
 
-        if (this.conf.settings.ipc_debug_rate && this.conf.settings.ipc_debug_rate >= 1000) {
-            const rate = this.conf.settings.ipc_debug_rate;
-            this.totalMessages = 0;
-            setInterval(() => {
-                hLog(`IPC Messaging Rate: ${(this.totalMessages / (rate / 1000)).toFixed(2)} msg/s`);
+        if (this.conf.settings.debug) {
+            if (this.conf.settings.ipc_debug_rate && this.conf.settings.ipc_debug_rate >= 1000) {
+                const rate = this.conf.settings.ipc_debug_rate;
                 this.totalMessages = 0;
-            }, rate);
+                setInterval(() => {
+                    hLog(`IPC Messaging Rate: ${(this.totalMessages / (rate / 1000)).toFixed(2)} msg/s`);
+                    this.totalMessages = 0;
+                }, rate);
+            }
         }
 
         // TODO: reimplement the indexer repair mode in typescript modules

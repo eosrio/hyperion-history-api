@@ -410,9 +410,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
             // perform action flattening if necessary
             if (this.mLoader.parser.flatten) {
-                const trace_counters = {
-                    trace_index: 0
-                };
+                const trace_counters = {trace_index: 0};
                 action_traces = await this.mLoader.parser.flattenInlineActions(action_traces, 0, trace_counters, 0);
                 action_traces.sort((a, b) => {
                     return a[1].receipt[1].global_sequence - b[1].receipt[1].global_sequence;
