@@ -1,5 +1,5 @@
 export const terms = [
-    "notified.keyword",
+    "notified",
     "act.authorization.actor"
 ];
 
