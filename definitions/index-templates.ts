@@ -192,6 +192,29 @@ export const permissionLink = {
     }
 };
 
+export const permission = {
+    "index_patterns": [chain + "-perm-*"],
+    "settings": {
+        "index": {
+            "number_of_shards": shards,
+            "refresh_interval": refresh,
+            "number_of_replicas": replicas,
+            "codec": compression
+        }
+    },
+    "mappings": {
+        "properties": {
+            "block_num": {"type": "long"},
+            "present": {"type": "boolean"},
+            "owner": {"type": "keyword"},
+            "name": {"type": "keyword"},
+            "parent": {"type": "keyword"},
+            "last_updated": {"type": "date"},
+            "auth": {"type": "object"}
+        }
+    }
+};
+
 export const logs = {
     "index_patterns": [chain + "-logs-*"],
     "settings": {

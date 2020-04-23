@@ -81,6 +81,14 @@ function buildLinkBulk(payloads, messageMap) {
     });
 }
 
+function buildPermBulk(payloads, messageMap) {
+    return flatMap(payloads, (payload, body) => {
+        const id = `${body.owner}-${body.name}`;
+        messageMap.set(id, _.omit(payload, ['content']));
+        return makeScriptedOp(id, body);
+    });
+}
+
 export class ElasticRoutes {
     public routes: any;
     cm: ConnectionManager;
@@ -106,6 +114,20 @@ export class ElasticRoutes {
             }
             collection[type].push(message);
         }
+
+        if (collection['permission']) {
+            const messageMap = new Map();
+            this.bulkAction({
+                index: this.chain + '-perm',
+                type: '_doc',
+                body: buildPermBulk(collection['permission'], messageMap)
+            }).then(resp => {
+                this.onResponse(resp, messageMap, cb, collection['permission'], channel);
+            }).catch(err => {
+                this.onError(err, channel, cb);
+            });
+        }
+
         if (collection['permission_link']) {
             const messageMap = new Map();
             this.bulkAction({
