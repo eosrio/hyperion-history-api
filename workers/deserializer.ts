@@ -225,6 +225,7 @@ export default class MainDSWorker extends HyperionWorker {
                 if (!block) {
                     return null;
                 }
+
                 producer = block['producer'];
                 ts = block['timestamp'];
                 block_ts = ts;
@@ -236,6 +237,8 @@ export default class MainDSWorker extends HyperionWorker {
                     total_cpu += trx['cpu_usage_us'];
                     total_net += trx['net_usage_words'];
                 });
+
+                // console.log(`Block:${block_num} | Transactions: ${block.transactions.length} | Traces: ${traces.length}`);
 
                 // const cpu_pct = ((total_cpu / 200000) * 100).toFixed(2);
                 // const net_pct = ((total_net / 1048576) * 100).toFixed(2);
@@ -333,6 +336,14 @@ export default class MainDSWorker extends HyperionWorker {
         let first_action;
         if (trace['action_traces'][0].length === 2) {
             first_action = trace['action_traces'][0][1];
+
+            // replace first action if the root is eosio.null::nonce
+            if (first_action.act.account === this.conf.settings.eosio_alias + '.null' && first_action.act.name === 'nonce') {
+                if (trace['action_traces'][1].length === 2) {
+                    first_action = trace['action_traces'][1][1];
+                }
+            }
+
         } else {
             console.log('missing action_trace_v0');
             console.log(trace['action_traces']);
@@ -355,25 +366,16 @@ export default class MainDSWorker extends HyperionWorker {
         if (this.dsPoolMap[_code]) {
             const workers = this.dsPoolMap[_code][2];
             for (const w of workers) {
-
                 if (typeof this.ds_pool_counters[_code] === 'undefined') {
-
                     selected_q = w;
                     this.ds_pool_counters[_code] = w;
                     break;
-
                 } else {
-
                     if (this.ds_pool_counters[_code] === workers[workers.length - 1]) {
-
                         this.ds_pool_counters[_code] = workers[0];
-
                         selected_q = w;
-
                         this.ds_pool_counters[_code] = w;
-
                         break;
-
                     } else {
                         if (this.ds_pool_counters[_code] === w) {
                             continue;
@@ -388,7 +390,6 @@ export default class MainDSWorker extends HyperionWorker {
             }
         }
         const pool_queue = `${this.chain}:ds_pool:${selected_q}`;
-        // hLog('sent to ->', pool_queue);
         if (this.ch_ready) {
             this.ch.sendToQueue(pool_queue, Buffer.from(JSON.stringify(trace)), {headers});
             return true;
@@ -446,26 +447,22 @@ export default class MainDSWorker extends HyperionWorker {
             const savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
             if (savedAbi) {
                 if (savedAbi[field + 's'].includes(type)) {
-
                     if (savedAbi.abi_hex) {
                         _status = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
                     }
-
                     if (_status) {
                         try {
                             resultType = AbiEOS['get_type_for_' + field](contract, type);
                             _status = true;
                             return [_status, resultType];
                         } catch (e) {
-                            hLog(`(abieos/cached) >> ${e.message}`);
+                            // hLog(`(abieos/cached) >> ${e.message}`);
                             _status = false;
                         }
                     }
                 }
             }
-
             _status = await this.loadCurrentAbiHex(contract);
-
             if (_status === true) {
                 try {
                     resultType = AbiEOS['get_type_for_' + field](contract, type);
@@ -475,8 +472,6 @@ export default class MainDSWorker extends HyperionWorker {
                     _status = false;
                 }
             }
-
-
         }
         return [_status, resultType];
     }
@@ -498,7 +493,6 @@ export default class MainDSWorker extends HyperionWorker {
             }
         }
         return await this.processContractRow(row, block);
-        ;
     }
 
     async getAbiFromHeadBlock(code) {
@@ -575,8 +569,6 @@ export default class MainDSWorker extends HyperionWorker {
         let abi, contract, abi_tables;
         [contract, abi] = await this.getContractAtBlock(code, block);
         if (!contract.tables) {
-            // abi = (await this.getAbiAtBlock(code, block)).abi;
-            // abi_tables = abi.tables;
             return;
         } else {
             abi_tables = contract.tables
@@ -591,8 +583,6 @@ export default class MainDSWorker extends HyperionWorker {
         if (this_table) {
             type = this_table.type;
         } else {
-            // console.error(`Could not find table "${table}" in the abi for ${code} at block ${block}`);
-            // retry with the current abi
             const currentABI = await this.getAbiFromHeadBlock(code);
             if (!currentABI) {
                 return;
@@ -644,7 +634,6 @@ export default class MainDSWorker extends HyperionWorker {
                 error = e.message;
             }
         }
-
         process.send({
             event: 'ds_error',
             data: {
@@ -655,11 +644,11 @@ export default class MainDSWorker extends HyperionWorker {
                 message: error
             }
         });
-
         return row;
     }
 
     async processTableDelta(data) {
+
         if (data['table']) {
 
             data['primary_key'] = String(data['primary_key']);
@@ -687,6 +676,7 @@ export default class MainDSWorker extends HyperionWorker {
                 handled = true;
             }
 
+
             if (!handled && this.conf.features.index_all_deltas) {
                 allowIndex = true;
             } else {
@@ -696,6 +686,7 @@ export default class MainDSWorker extends HyperionWorker {
             return allowIndex;
         }
     }
+    
 
     async processDeltaContractRow(row, block_num, block_ts) {
         try {
@@ -707,8 +698,7 @@ export default class MainDSWorker extends HyperionWorker {
             if (this.conf.features.index_all_deltas || (payload.code === this.conf.settings.eosio_alias || payload.table === 'accounts')) {
                 const jsonRow = await this.processContractRowNative(payload, block_num);
                 if (jsonRow) {
-                    const indexableData = await this.processTableDelta(jsonRow);
-                    if (indexableData) {
+                    if (await this.processTableDelta(jsonRow)) {
                         if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {
                             const payload = Buffer.from(JSON.stringify(jsonRow));
                             this.pushToDeltaQueue(payload);
@@ -737,9 +727,9 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    pushToDeltaQueue(bufferdata) {
+    pushToDeltaQueue(bufferData: any) {
         const q = this.chain + ":index_deltas:" + (this.delta_emit_idx);
-        this.preIndexingQueue.push({queue: q, content: bufferdata});
+        this.preIndexingQueue.push({queue: q, content: bufferData});
         this.delta_emit_idx++;
         if (this.delta_emit_idx > (this.conf.scaling.indexing_queues * this.conf.scaling.ad_idx_queues)) {
             this.delta_emit_idx = 1;
@@ -762,9 +752,7 @@ export default class MainDSWorker extends HyperionWorker {
     async processDeltas(deltas, block_num, block_ts) {
         const deltaStruct = extractDeltaStruct(deltas);
 
-        // if (Object.keys(deltaStruct).length > 4) {
-        //     hLog(Object.keys(deltaStruct));
-        // }
+        // hLog(block_num, Object.keys(deltaStruct).join(", "));
 
         // Check account deltas for ABI changes
         if (deltaStruct['account']) {
@@ -782,7 +770,7 @@ export default class MainDSWorker extends HyperionWorker {
                         const jsonABIString = JSON.stringify(abiObj);
                         const abi_actions = abiObj.actions.map(a => a.name);
                         const abi_tables = abiObj.tables.map(t => t.name);
-                        hLog(`📝  New code for ${account['name']} at block ${block_num} with ${abi_actions.length} actions`);
+                        debugLog(`📝  New code for ${account['name']} at block ${block_num} with ${abi_actions.length} actions`);
                         const new_abi_object = {
                             '@timestamp': block_ts,
                             account: account['name'],
@@ -868,15 +856,28 @@ export default class MainDSWorker extends HyperionWorker {
                 }
             }
 
-            // if (deltaStruct['permission']) {
-            //     if (deltaStruct['permission'].length > 0) {
-            //         for (const permission of deltaStruct['permission']) {
-            //             const serialBuffer = createSerialBuffer(permission.data);
-            //             const data = types.get('permission').deserialize(serialBuffer);
-            //             hLog(prettyjson.render(data));
+            // if (deltaStruct['account_metadata']) {
+            //     if (deltaStruct['account_metadata'].length > 0) {
+            //         for (const account_metadata of deltaStruct['account_metadata']) {
+            //             const data = this.deserializeNative('account_metadata', account_metadata.data);
+            //             hLog(data);
             //         }
             //     }
             // }
+
+            if (deltaStruct['permission']) {
+                if (deltaStruct['permission'].length > 0) {
+                    for (const permission of deltaStruct['permission']) {
+                        const data = this.deserializeNative('permission', permission.data);
+                        const payload = {
+                            block_num: block_num,
+                            present: permission.present,
+                            ...data[1]
+                        };
+                        this.pushToIndexQueue(payload, 'permission');
+                    }
+                }
+            }
 
             // if (deltaStruct['contract_index64']) {
             //     if (deltaStruct['contract_index64'].length > 0) {
@@ -893,16 +894,6 @@ export default class MainDSWorker extends HyperionWorker {
             //         for (const contract_index128 of deltaStruct['contract_index128']) {
             //             const serialBuffer = createSerialBuffer(contract_index128.data);
             //             const data = types.get('contract_index128').deserialize(serialBuffer);
-            //             hLog(prettyjson.render(data));
-            //         }
-            //     }
-            // }
-
-            // if (deltaStruct['account_metadata']) {
-            //     if (deltaStruct['account_metadata'].length > 0) {
-            //         for (const account_metadata of deltaStruct['account_metadata']) {
-            //             const serialBuffer = createSerialBuffer(account_metadata.data);
-            //             const data = types.get('account_metadata').deserialize(serialBuffer);
             //             hLog(prettyjson.render(data));
             //         }
             //     }
