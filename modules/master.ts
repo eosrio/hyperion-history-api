@@ -330,10 +330,6 @@ export class HyperionMaster {
             indicesList.push({name: 'tableDelband', type: 'table-delband'});
             index_queues.push({type: 'table-delband', name: index_queue_prefix + "_table_delband"});
         }
-        if (table_feats.userres) {
-            indicesList.push({name: 'tableUserres', type: 'table-userres'});
-            index_queues.push({type: 'table-userres', name: index_queue_prefix + "_table_userres"});
-        }
     }
 
     private async getCurrentSchedule() {
@@ -477,19 +473,34 @@ export class HyperionMaster {
             }
             for (const index of indicesList) {
                 const new_index = `${queue_prefix}-${index.type}-${version}-000001`;
+
                 const exists = await this.client.indices.exists({
                     index: new_index
                 });
+
                 if (!exists.body) {
-                    hLog(`Creating index ${new_index}...`);
-                    await this.client['indices'].create({
-                        index: new_index
-                    });
-                    hLog(`Creating alias ${queue_prefix}-${index.type} >> ${new_index}`);
-                    await this.client.indices.putAlias({
-                        index: new_index,
-                        name: `${queue_prefix}-${index.type}`
-                    });
+
+                    try {
+                        hLog(`Creating index ${new_index}...`);
+                        await this.client.indices.create({
+                            index: new_index
+                        });
+                    } catch (e) {
+                        console.log(e);
+                        process.exit(1);
+                    }
+
+                    try {
+                        hLog(`Creating alias ${queue_prefix}-${index.type} >> ${new_index}`);
+                        await this.client.indices.putAlias({
+                            index: new_index,
+                            name: `${queue_prefix}-${index.type}`
+                        });
+                    } catch (e) {
+                        console.log(e);
+                        process.exit(1);
+                    }
+
                 }
             }
         }
@@ -1261,7 +1272,9 @@ export class HyperionMaster {
             {name: "delta", type: "delta"},
             {name: "logs", type: "logs"},
             {name: 'permissionLink', type: 'link'},
-            {name: 'permission', type: 'perm'}
+            {name: 'permission', type: 'perm'},
+            {name: 'resourceLimits', type: 'reslimits'},
+            {name: 'resourceUsage', type: 'userres'},
         ];
 
         this.addStateTables(indicesList, this.IndexingQueues);
