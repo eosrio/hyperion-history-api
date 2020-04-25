@@ -5,6 +5,7 @@ import {ElasticRoutes} from '../helpers/elastic-routes';
 import * as pm2io from '@pm2/io';
 import {hLog} from "../helpers/common_functions";
 import {Message} from "amqplib";
+import {ApiResponse} from "@elastic/elasticsearch";
 
 export default class IndexerWorker extends HyperionWorker {
 
@@ -19,12 +20,19 @@ export default class IndexerWorker extends HyperionWorker {
         this.indexQueue = cargo((payload: Message[], callback) => {
             if (this.ch_ready && payload) {
                 if (this.esRoutes.routes[process.env.type]) {
+
+                    // call route type
                     this.esRoutes.routes[process.env.type](payload, this.ch, (indexed_size) => {
                         if (indexed_size) {
                             this.temp_indexed_count += indexed_size;
                         }
-                        callback();
+                        try {
+                            callback();
+                        } catch (e) {
+                            hLog(`${e.message} on ${process.env.type}`);
+                        }
                     });
+
                 } else {
                     hLog(`No route for type: ${process.env.type}`);
                     process.exit(1);
