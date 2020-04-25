@@ -55,6 +55,8 @@ export default class MainDSWorker extends HyperionWorker {
     temp_delta_counter = 0;
     private monitoringLoop: NodeJS.Timeout;
 
+    autoBlacklist: Map<string, any[]> = new Map();
+
     constructor() {
 
         super();
@@ -63,7 +65,7 @@ export default class MainDSWorker extends HyperionWorker {
             this.processMessages(payload).then(() => {
                 cb();
             }).catch((err) => {
-                hLog('NACK ALL', err);
+                hLog('NACK ALL', err.message);
                 if (this.ch_ready) {
                     this.ch.nackAll();
                 }
@@ -171,7 +173,10 @@ export default class MainDSWorker extends HyperionWorker {
             }
         });
 
-        this.initConsumer();
+        // reload consumer only if ship abi is on cache
+        if (this.abi) {
+            this.initConsumer();
+        }
     }
 
     attachActionExtras(self, action) {
@@ -271,12 +276,8 @@ export default class MainDSWorker extends HyperionWorker {
 
             // Process Delta Traces (must be done first to catch ABI updates)
             if (deltas && this.conf.indexer.process_deltas) {
-                const t1 = Date.now();
+                const t1 = process.hrtime.bigint();
                 await this.processDeltas(deltas, block_num, block_ts);
-                const elapsed_time = Date.now() - t1;
-                if (elapsed_time > 1000) {
-                    hLog(`[WARNING] Delta processing took ${elapsed_time} ms on block ${block_num}`);
-                }
             }
 
             // Process Action Traces
@@ -303,7 +304,7 @@ export default class MainDSWorker extends HyperionWorker {
                 }
                 const traces_elapsed_time = Date.now() - t2;
                 if (traces_elapsed_time > 10) {
-                    debugLog(`[WARNING] Traces processing took ${traces_elapsed_time}ms on block ${block_num}`);
+                    hLog(`[WARNING] Traces processing took ${traces_elapsed_time}ms on block ${block_num}`);
                 }
             }
 
@@ -404,7 +405,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     async fetchAbiHexAtBlockElastic(contract_name, last_block, get_json) {
         try {
-            const _includes = ["actions", "tables"];
+            const _includes = ["actions", "tables", "block"];
             if (get_json) {
                 _includes.push("abi");
             } else {
@@ -427,10 +428,46 @@ export default class MainDSWorker extends HyperionWorker {
                 }
             });
             const results = queryResult.body.hits.hits;
-            return results.length > 0 ? results[0]._source : null;
+            if (results.length > 0) {
+                const nextRefResponse: ApiResponse = await this.client.search({
+                    index: `${this.chain}-abi-*`,
+                    body: {
+                        size: 1,
+                        query: {
+                            bool: {
+                                must: [
+                                    {term: {account: contract_name}},
+                                    {range: {block: {gte: last_block}}}
+                                ]
+                            }
+                        },
+                        sort: [{block: {order: "asc"}}],
+                        _source: {includes: ["block"]}
+                    }
+                });
+                const nextRef = nextRefResponse.body.hits.hits;
+                if (nextRef.length > 0) {
+                    return {
+                        valid_until: nextRef[0]._source.block,
+                        ...results[0]._source
+                    };
+                }
+                return results[0]._source;
+            } else {
+                return null;
+            }
         } catch (e) {
             hLog(e);
             return null;
+        }
+    }
+
+    registerAutoBlacklist(contract, field, type, block, valid_until) {
+        const info = {field, type, block, valid_until};
+        if (!this.autoBlacklist.has(contract)) {
+            this.autoBlacklist.set(contract, [info]);
+        } else {
+            this.autoBlacklist.get(contract).push(info)
         }
     }
 
@@ -443,9 +480,23 @@ export default class MainDSWorker extends HyperionWorker {
         } catch {
             _status = false;
         }
+        let savedAbi = null;
+        let valid_until;
+        let valid_from = block_num;
         if (!_status) {
-            const savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
+
+            savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
+
             if (savedAbi) {
+
+                if (savedAbi.valid_until) {
+                    valid_until = savedAbi.valid_until;
+                }
+
+                if (savedAbi.block) {
+                    valid_from = savedAbi.block;
+                }
+
                 if (savedAbi[field + 's'].includes(type)) {
                     if (savedAbi.abi_hex) {
                         _status = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
@@ -455,29 +506,52 @@ export default class MainDSWorker extends HyperionWorker {
                             resultType = AbiEOS['get_type_for_' + field](contract, type);
                             _status = true;
                             return [_status, resultType];
-                        } catch (e) {
-                            // hLog(`(abieos/cached) >> ${e.message}`);
+                        } catch {
                             _status = false;
                         }
                     }
                 }
             }
+
             _status = await this.loadCurrentAbiHex(contract);
             if (_status === true) {
                 try {
                     resultType = AbiEOS['get_type_for_' + field](contract, type);
                     _status = true;
                 } catch (e) {
-                    // hLog(`(abieos/current) >> ${e.message}`);
+                    debugLog(`(abieos/current) >> ${e.message}`);
                     _status = false;
                 }
             }
         }
-        return [_status, resultType];
+
+        if (!_status && savedAbi) {
+            this.registerAutoBlacklist(contract, field, type, valid_from, valid_until);
+        }
+
+        return [_status, resultType, valid_from, valid_until];
     }
 
     async processContractRowNative(row, block) {
-        const [_status, tableType] = await this.verifyLocalType(row['code'], row['table'], block, "table");
+
+        // check blacklist
+        if (this.autoBlacklist.has(row.code)) {
+            const info = this.autoBlacklist.get(row.code).find(v => {
+                if (v.field === "table" && v.type === row.table) {
+                    if (v.block <= block) {
+                        if (v.valid_until > block || v.valid_until === 0) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            });
+            if (info) {
+                return row;
+            }
+        }
+
+        const [_status, tableType, validFrom, validUntil] = await this.verifyLocalType(row['code'], row['table'], block, "table");
         if (_status) {
             let result;
             try {
@@ -489,10 +563,11 @@ export default class MainDSWorker extends HyperionWorker {
                 row['data'] = result;
                 delete row.value;
                 return row;
-            } catch {
+            } catch (e) {
+                debugLog(e);
             }
         }
-        return await this.processContractRow(row, block);
+        return await this.processContractRow(row, block, validFrom, validUntil);
     }
 
     async getAbiFromHeadBlock(code) {
@@ -621,7 +696,7 @@ export default class MainDSWorker extends HyperionWorker {
         return cType;
     }
 
-    async processContractRow(row, block) {
+    async processContractRow(row, block, validFrom, validUntil) {
         const row_sb = this.createSerialBuffer(Serialize.hexToUint8Array(row['value']));
         const tableType: Type = await this.getTableType(row['code'], row['table'], block);
         let error;
@@ -639,11 +714,13 @@ export default class MainDSWorker extends HyperionWorker {
             data: {
                 type: 'delta_ds_error',
                 block: block,
+                valid_until: validUntil,
                 code: row['code'],
                 table: row['table'],
                 message: error
             }
         });
+        this.registerAutoBlacklist(row['code'], "table", row['table'], validFrom, validUntil || 0);
         return row;
     }
 
@@ -676,6 +753,7 @@ export default class MainDSWorker extends HyperionWorker {
                 handled = true;
             }
 
+            await this.processDynamicTokenParsers(data);
 
             if (!handled && this.conf.features.index_all_deltas) {
                 allowIndex = true;
@@ -686,30 +764,10 @@ export default class MainDSWorker extends HyperionWorker {
             return allowIndex;
         }
     }
-    
 
-    async processDeltaContractRow(row, block_num, block_ts) {
-        try {
-            const payload = this.deserializeNative('contract_row', row.data)[1];
-            payload['@timestamp'] = block_ts;
-            payload['present'] = row.present;
-            payload['block_num'] = block_num;
-
-            if (this.conf.features.index_all_deltas || (payload.code === this.conf.settings.eosio_alias || payload.table === 'accounts')) {
-                const jsonRow = await this.processContractRowNative(payload, block_num);
-                if (jsonRow) {
-                    if (await this.processTableDelta(jsonRow)) {
-                        if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {
-                            const payload = Buffer.from(JSON.stringify(jsonRow));
-                            this.pushToDeltaQueue(payload);
-                            this.temp_delta_counter++;
-                            this.pushToDeltaStreamingQueue(payload, jsonRow);
-                        }
-                    }
-                }
-            }
-        } catch (e) {
-            hLog(block_num, e);
+    async processDynamicTokenParsers(data) {
+        if (data.code === 'simpleassets') {
+            console.log(data);
         }
     }
 
@@ -749,206 +807,258 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async processDeltas(deltas, block_num, block_ts) {
-        const deltaStruct = extractDeltaStruct(deltas);
+    deltaStructHandlers = {
+        "account": async (account, block_num, block_ts) => {
+            if (account['abi'] !== '') {
+                try {
+                    const abiHex = account['abi'];
+                    const abiBin = new Uint8Array(Buffer.from(abiHex, 'hex'));
+                    const initialTypes = Serialize.createInitialTypes();
+                    const abiDefTypes: Type = Serialize.getTypesFromAbi(initialTypes, AbiDefinitions).get('abi_def');
+                    const abiObj = abiDefTypes.deserialize(this.createSerialBuffer(abiBin));
+                    const jsonABIString = JSON.stringify(abiObj);
+                    const abi_actions = abiObj.actions.map(a => a.name);
+                    const abi_tables = abiObj.tables.map(t => t.name);
+                    debugLog(`📝  New code for ${account['name']} at block ${block_num} with ${abi_actions.length} actions`);
+                    const new_abi_object = {
+                        '@timestamp': block_ts,
+                        account: account['name'],
+                        block: block_num,
+                        abi: jsonABIString,
+                        abi_hex: abiHex,
+                        actions: abi_actions,
+                        tables: abi_tables
+                    };
+                    debugLog(`[Worker ${process.env.worker_id}] read ${account['name']} ABI at block ${block_num}`);
+                    const q = this.chain + ":index_abis:1";
+                    this.preIndexingQueue.push({
+                        queue: q,
+                        content: Buffer.from(JSON.stringify(new_abi_object))
+                    });
 
-        // hLog(block_num, Object.keys(deltaStruct).join(", "));
+                    // update locally cached abi
+                    if (process.env['live_mode'] === 'true') {
+                        hLog('Abi changed during live mode, updating local version...');
+                        const abi_update_status = AbiEOS['load_abi_hex'](account['name'], abiHex);
+                        if (!abi_update_status) {
+                            hLog(`Reload status: ${abi_update_status}`);
+                        }
+                    }
 
-        // Check account deltas for ABI changes
-        if (deltaStruct['account']) {
-            const rows = deltaStruct['account'];
-            for (const account_raw of rows) {
-                const data = this.deserializeNative('account', account_raw.data);
-                const account = data[1];
-                if (account['abi'] !== '') {
-                    try {
-                        const abiHex = account['abi'];
-                        const abiBin = new Uint8Array(Buffer.from(abiHex, 'hex'));
-                        const initialTypes = Serialize.createInitialTypes();
-                        const abiDefTypes: Type = Serialize.getTypesFromAbi(initialTypes, AbiDefinitions).get('abi_def');
-                        const abiObj = abiDefTypes.deserialize(this.createSerialBuffer(abiBin));
-                        const jsonABIString = JSON.stringify(abiObj);
-                        const abi_actions = abiObj.actions.map(a => a.name);
-                        const abi_tables = abiObj.tables.map(t => t.name);
-                        debugLog(`📝  New code for ${account['name']} at block ${block_num} with ${abi_actions.length} actions`);
-                        const new_abi_object = {
-                            '@timestamp': block_ts,
-                            account: account['name'],
-                            block: block_num,
-                            abi: jsonABIString,
-                            abi_hex: abiHex,
-                            actions: abi_actions,
-                            tables: abi_tables
-                        };
-                        debugLog(`[Worker ${process.env.worker_id}] read ${account['name']} ABI at block ${block_num}`);
-                        const q = this.chain + ":index_abis:1";
-                        this.preIndexingQueue.push({
-                            queue: q,
-                            content: Buffer.from(JSON.stringify(new_abi_object))
-                        });
+                    process.send({
+                        event: 'save_abi',
+                        data: new_abi_object,
+                        live_mode: process.env['live_mode'],
+                        worker_id: process.env.worker_id
+                    });
 
-                        // update locally cached abi
-                        if (process.env['live_mode'] === 'true') {
-                            hLog('Abi changed during live mode, updating local version...');
-                            const abi_update_status = AbiEOS['load_abi_hex'](account['name'], abiHex);
-                            if (!abi_update_status) {
-                                hLog(`Reload status: ${abi_update_status}`);
+                } catch (e) {
+                    hLog(e);
+                    hLog(account['abi'], block_num, account['name']);
+                }
+            } else {
+                if (account.name === 'eosio') {
+                    hLog(`---------- ${block_num} ----------------`);
+                    hLog(account);
+                }
+            }
+        },
+
+        "contract_row": async (payload, block_num, block_ts, row) => {
+            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+                payload['@timestamp'] = block_ts;
+                payload['present'] = row.present;
+                payload['block_num'] = block_num;
+                if (this.conf.features.index_all_deltas || (payload.code === this.conf.settings.eosio_alias || payload.table === 'accounts')) {
+                    const jsonRow = await this.processContractRowNative(payload, block_num);
+                    if (jsonRow) {
+                        if (await this.processTableDelta(jsonRow)) {
+                            if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {
+                                const payload = Buffer.from(JSON.stringify(jsonRow));
+                                this.pushToDeltaQueue(payload);
+                                this.temp_delta_counter++;
+                                this.pushToDeltaStreamingQueue(payload, jsonRow);
                             }
                         }
-
-                        process.send({
-                            event: 'save_abi',
-                            data: new_abi_object,
-                            live_mode: process.env['live_mode'],
-                            worker_id: process.env.worker_id
-                        });
-
-
-                    } catch (e) {
-                        hLog(e);
-                        hLog(account['abi'], block_num, account['name']);
-                    }
-                } else {
-                    if (account.name === 'eosio') {
-                        hLog(`---------- ${block_num} ----------------`);
-                        hLog(account);
                     }
                 }
             }
-        }
+        },
 
-        if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+        "permission_link": async (link, block_num, block_ts, row) => {
+            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+                this.pushToIndexQueue({
+                    "@timestamp": block_ts,
+                    block_num: block_num,
+                    present: row.present,
+                    account: link.account,
+                    code: link.code,
+                    action: link['message_type'],
+                    permission: link['required_permission']
+                }, 'permission_link');
+            }
+        },
 
-            // // Generated transactions
-            // if (process.env.PROCESS_GEN_TX === 'true') {
-            //     if (deltaStruct['generated_transaction']) {
-            //         const rows = deltaStruct['generated_transaction'];
-            //         for (const gen_trx of rows) {
-            //             const serialBuffer = createSerialBuffer(gen_trx.data);
-            //             const data = types.get('generated_transaction').deserialize(serialBuffer);
-            //             await processDeferred(data[1], block_num);
-            //         }
-            //     }
-            // }
+        "permission": async (perm, block_num, block_ts, row) => {
+            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+                this.pushToIndexQueue({
+                    block_num: block_num,
+                    present: row.present,
+                    ...perm
+                }, 'permission');
+            }
+        },
 
-            // Contract Rows
-            if (deltaStruct['contract_row']) {
-                for (const row of deltaStruct['contract_row']) {
-                    await this.processDeltaContractRow(row, block_num, block_ts);
-                }
+        // "account_metadata": async (account_metadata, block_num, block_ts, row) => {
+        //     if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+        //         if (account_metadata.code) {
+        //             hLog(`new code hash ${account_metadata.code.code_hash} on ${account_metadata.name}`);
+        //         }
+        //     }
+        // },
+
+        // Deferred Transactions
+        // "generated_transaction": async (generated_transaction: any, block_num, block_ts, row) => {
+        //     if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+        //         console.log(`----- generated_transaction -----`);
+        //         const unpackedTrx = this.api.deserializeTransaction(Buffer.from(generated_transaction.packed_trx, 'hex'));
+        //         for (const action of unpackedTrx.actions) {
+        //             const act_data = await this.deserializeActionAtBlockNative(action, block_num);
+        //             if (act_data) {
+        //                 action.data = act_data;
+        //             }
+        //         }
+        //         const genTrx = {
+        //             sender: generated_transaction.sender,
+        //             sender_id: generated_transaction.sender_id,
+        //             payer: generated_transaction.payer,
+        //             trx_id: generated_transaction.trx_id,
+        //             actions: unpackedTrx.actions
+        //         };
+        //         console.log(genTrx);
+        //         console.log(`---------------------------------`);
+        //     }
+        // },
+
+
+        // Account resource updates
+        "resource_limits": async (resource_limits, block_num, block_ts) => {
+            const cpu = parseInt(resource_limits.cpu_weight);
+            const net = parseInt(resource_limits.net_weight);
+            this.pushToIndexQueue({
+                block_num: block_num,
+                '@timestamp': block_ts,
+                owner: resource_limits.owner,
+                ram_bytes: parseInt(resource_limits.ram_bytes),
+                cpu_weight: cpu,
+                net_weight: net,
+                total_weight: cpu + net
+            }, 'resource_limits');
+        },
+
+        // "resource_limits_config": async (resource_limits_config, block_num, block_ts, row) => {
+        //     console.log(resource_limits_config);
+        // },
+
+        // "resource_limits_state": async (resource_limits_state, block_num, block_ts, row) => {
+        //     hLog(block_num, resource_limits_state);
+        // },
+
+        "resource_usage": async (resource_usage, block_num, block_ts, row) => {
+
+            const net_used = parseInt(resource_usage.net_usage[1].consumed);
+            const net_total = parseInt(resource_usage.net_usage[1].value_ex);
+            let net_pct = 0.0;
+            if (net_total > 0) {
+                net_pct = net_used / net_total;
             }
 
-            if (deltaStruct['permission_link']) {
-                if (deltaStruct['permission_link'].length > 0) {
-                    for (const link of deltaStruct['permission_link']) {
-                        const data = this.deserializeNative('permission_link', link.data);
-                        const payload = {
-                            "@timestamp": block_ts,
-                            block_num: block_num,
-                            present: link.present,
-                            account: data[1].account,
-                            code: data[1].code,
-                            action: data[1]['message_type'],
-                            permission: data[1]['required_permission']
-                        };
-                        this.pushToIndexQueue(payload, 'permission_link');
+            const cpu_used = parseInt(resource_usage.cpu_usage[1].consumed);
+            const cpu_total = parseInt(resource_usage.cpu_usage[1].value_ex);
+            let cpu_pct = 0.0;
+            if (cpu_total > 0) {
+                cpu_pct = cpu_used / cpu_total;
+            }
+
+            const payload = {
+                block_num: block_num,
+                '@timestamp': block_ts,
+                owner: resource_usage.owner,
+                net_used: net_used,
+                net_total: net_total,
+                net_pct: net_pct,
+                cpu_used: cpu_used,
+                cpu_total: cpu_total,
+                cpu_pct: cpu_pct,
+                ram: parseInt(resource_usage.ram_usage[1])
+            }
+            this.pushToIndexQueue(payload, 'resource_usage');
+        },
+
+        // Global Chain configuration update
+        // "global_property": async (global_property, block_num, block_ts, row) => {
+        //     hLog(block_num, global_property);
+        // },
+
+        // Activated Protocol features
+        // "protocol_state": async (protocol_state, block_num, block_ts, row) => {
+        //     hLog(block_num, protocol_state);
+        // },
+
+        // Updated contracts
+        // "code": async (code, block_num, block_ts, row) => {
+        //     hLog(block_num, code);
+        // },
+
+        // "contract_index_double": async (contract_index_double, block_num, block_ts, row) => {
+        //     return;
+        // },
+
+        // "contract_index64": async (cIndex64, block_num, block_ts, row) => {
+        //     return;
+        // },
+
+        // "contract_index128": async (cIndex128, block_num, block_ts, row) => {
+        //     return;
+        // },
+
+        // "contract_table": async (contract_table, block_num, block_ts, row) => {
+        //     return;
+        // },
+    }
+
+    async processDeltas(deltas, block_num, block_ts) {
+        const deltaStruct = extractDeltaStruct(deltas);
+        for (const key in deltaStruct) {
+            if (this.deltaStructHandlers[key] && deltaStruct.hasOwnProperty(key)) {
+                if (deltaStruct[key].length > 0) {
+                    const tRef = process.hrtime.bigint();
+                    for (const row of deltaStruct[key]) {
+                        const data = this.deserializeNative(key, row.data);
+                        await this.deltaStructHandlers[key](data[1], block_num, block_ts, row);
+                    }
+                    const tPerRow = Number((process.hrtime.bigint() - tRef)) / 1000000 / deltaStruct[key].length;
+                    if (tPerRow > 25.0) {
+                        hLog(`[WARNING] ${key} processing took ${tPerRow} ms/row on block ${block_num} (total: ${deltaStruct[key].length} rows)`);
                     }
                 }
             }
-
-            // if (deltaStruct['account_metadata']) {
-            //     if (deltaStruct['account_metadata'].length > 0) {
-            //         for (const account_metadata of deltaStruct['account_metadata']) {
-            //             const data = this.deserializeNative('account_metadata', account_metadata.data);
-            //             hLog(data);
-            //         }
-            //     }
-            // }
-
-            if (deltaStruct['permission']) {
-                if (deltaStruct['permission'].length > 0) {
-                    for (const permission of deltaStruct['permission']) {
-                        const data = this.deserializeNative('permission', permission.data);
-                        const payload = {
-                            block_num: block_num,
-                            present: permission.present,
-                            ...data[1]
-                        };
-                        this.pushToIndexQueue(payload, 'permission');
-                    }
-                }
-            }
-
-            // if (deltaStruct['contract_index64']) {
-            //     if (deltaStruct['contract_index64'].length > 0) {
-            //         for (const contract_index64 of deltaStruct['contract_index64']) {
-            //             const serialBuffer = createSerialBuffer(contract_index64.data);
-            //             const data = types.get('contract_index64').deserialize(serialBuffer);
-            //             hLog(prettyjson.render(data));
-            //         }
-            //     }
-            // }
-            //
-            // if (deltaStruct['contract_index128']) {
-            //     if (deltaStruct['contract_index128'].length > 0) {
-            //         for (const contract_index128 of deltaStruct['contract_index128']) {
-            //             const serialBuffer = createSerialBuffer(contract_index128.data);
-            //             const data = types.get('contract_index128').deserialize(serialBuffer);
-            //             hLog(prettyjson.render(data));
-            //         }
-            //     }
-            // }
-
-            // if (deltaStruct['resource_limits']) {
-            //     if (deltaStruct['resource_limits'].length > 0) {
-            //         for (const resource_limits of deltaStruct['resource_limits']) {
-            //             const serialBuffer = createSerialBuffer(resource_limits.data);
-            //             const data = types.get('resource_limits').deserialize(serialBuffer);
-            //             hLog(prettyjson.render(data));
-            //         }
-            //     }
-            // }
-
-            // if (deltaStruct['resource_usage']) {
-            //     if (deltaStruct['resource_usage'].length > 0) {
-            //         for (const resource_usage of deltaStruct['resource_usage']) {
-            //             const serialBuffer = createSerialBuffer(resource_usage.data);
-            //             const data = types.get('resource_usage').deserialize(serialBuffer);
-            //             hLog(prettyjson.render(data));
-            //         }
-            //     }
-            // }
-
-            // if (deltaStruct['resource_limits_state']) {
-            //     if (deltaStruct['resource_limits_state'].length > 0) {
-            //         for (const resource_limits_state of deltaStruct['resource_limits_state']) {
-            //             const serialBuffer = createSerialBuffer(resource_limits_state.data);
-            //             const data = types.get('resource_limits_state').deserialize(serialBuffer);
-            //             hLog(prettyjson.render(data));
-            //         }
-            //     }
-            // }
-
-            // if (deltaStruct['contract_table']) {
-            //     if (deltaStruct['contract_table'].length > 0) {
-            //         for (const contract_table of deltaStruct['contract_table']) {
-            //             const serialBuffer = createSerialBuffer(contract_table.data);
-            //             const data = types.get('contract_table').deserialize(serialBuffer);
-            //             hLog(prettyjson.render(data));
-            //         }
-            //     }
-            // }
         }
     }
 
     deserializeNative(datatype: string, array: any): any {
-        try {
-            const parser = typeof array === 'string' ? 'hex_to_json' : 'bin_to_json';
-            return AbiEOS[parser]("0", datatype, array);
-        } catch (e) {
-            hLog(e);
+        if (this.abi) {
+            try {
+                if (typeof array === 'string') {
+                    return AbiEOS.hex_to_json("0", datatype, array);
+                } else {
+                    return AbiEOS.bin_to_json("0", datatype, array);
+                }
+            } catch (e) {
+                hLog(e.message);
+            }
+            return null;
         }
-        return null;
     }
 
     async deserializeActionAtBlockNative(_action, block_num): Promise<any> {
@@ -957,7 +1067,7 @@ export default class MainDSWorker extends HyperionWorker {
             try {
                 return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
             } catch (e) {
-                hLog(e);
+                hLog(`deserializeActionAtBlockNative: ${e.message}`);
             }
         }
         return null;
@@ -973,9 +1083,6 @@ export default class MainDSWorker extends HyperionWorker {
             primary_key: data['primary_key'],
             block_num: data['block_num']
         };
-        // if (proposalDoc.executed) {
-        //     hLog(proposalDoc);
-        // }
         if (!this.conf.indexer.disable_indexing) {
             const q = this.chain + ":index_table_proposals:" + (this.tbl_prop_emit_idx);
             this.preIndexingQueue.push({
@@ -1043,8 +1150,8 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     private populateTableHandlers() {
-        const EOSIO_ALIAS = this.conf.settings.eosio_alias;
 
+        const EOSIO_ALIAS = this.conf.settings.eosio_alias;
         this.tableHandlers[EOSIO_ALIAS + ':voters'] = async (delta) => {
             delta['@voters'] = {};
             delta['@voters']['is_proxy'] = delta.data['is_proxy'];
@@ -1070,20 +1177,9 @@ export default class MainDSWorker extends HyperionWorker {
         };
 
         this.tableHandlers[EOSIO_ALIAS + ':global'] = async (delta) => {
-            const data = delta['data'];
-            delta['@global'] = {
-                last_name_close: data['last_name_close'],
-                last_pervote_bucket_fill: data['last_pervote_bucket_fill'],
-                last_producer_schedule_update: data['last_producer_schedule_update'],
-                perblock_bucket: parseFloat(data['perblock_bucket']) / 10000,
-                pervote_bucket: parseFloat(data['perblock_bucket']) / 10000,
-                total_activated_stake: parseFloat(data['total_activated_stake']) / 10000,
-                total_producer_vote_weight: parseFloat(data['total_producer_vote_weight']),
-                total_ram_kb_reserved: parseFloat(data['total_ram_bytes_reserved']) / 1024,
-                total_ram_stake: parseFloat(data['total_ram_stake']) / 10000,
-                total_unpaid_blocks: data['total_unpaid_blocks']
-            };
+            delta['@global'] = delta['data'];
             delete delta['data'];
+            // console.log(delta);
         };
 
         this.tableHandlers[EOSIO_ALIAS + ':producers'] = async (delta) => {
