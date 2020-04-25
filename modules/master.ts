@@ -5,6 +5,7 @@ import {ApiResponse, Client} from "@elastic/elasticsearch";
 import {HyperionModuleLoader} from "./loader";
 
 import {
+    debugLog,
     getLastIndexedABI,
     getLastIndexedBlock,
     getLastIndexedBlockByDelta,
@@ -401,8 +402,7 @@ export class HyperionMaster {
                     await this.client.ilm.getLifecycle({
                         policy: ILP.policy
                     });
-                } catch (e) {
-                    hLog(e);
+                } catch {
                     try {
                         const ilm_status: ApiResponse = await this.client.ilm.putLifecycle(ILP);
                         if (!ilm_status.body['acknowledged']) {
@@ -433,7 +433,8 @@ export class HyperionMaster {
     }
 
     private async updateIndexTemplates(indicesList: { name: string, type: string }[], indexConfig) {
-        hLog(`Updating index templates for ${this.conf.settings.chain}`);
+        hLog(`Updating index templates for ${this.conf.settings.chain}...`);
+        let updateCounter = 0;
         for (const index of indicesList) {
             try {
                 if (indexConfig[index.name]) {
@@ -444,42 +445,43 @@ export class HyperionMaster {
                     if (!creation_status || !creation_status['body']['acknowledged']) {
                         hLog(`Failed to create template: ${this.conf.settings.chain}-${index}`);
                     } else {
-                        hLog(`${this.conf.settings.chain}-${index.type} template updated!`);
+                        updateCounter++;
+                        debugLog(`${this.conf.settings.chain}-${index.type} template updated!`);
                     }
                 } else {
                     hLog(`${index.name} template not found!`);
                 }
             } catch (e) {
-                hLog(e);
+                hLog(`[FATAL] ${e.message}`);
                 if (e.meta) {
                     hLog(e.meta.body);
                 }
                 process.exit(1);
             }
         }
-        hLog('Index templates updated');
+        hLog(`${updateCounter} index templates updated`);
     }
 
     private async createIndices(indicesList: { name: string, type: string }[]) {
         // Create indices
         const queue_prefix = this.conf.settings.chain;
         if (this.conf.settings.index_version) {
-            // Create indices
-            let version;
-            if (this.conf.settings.index_version === 'true') {
-                version = 'v1';
-            } else {
+
+            // Start with version=1 if none is defined
+            let version = 'v1';
+            if (this.conf.settings.index_version) {
                 version = this.conf.settings.index_version;
             }
+
             for (const index of indicesList) {
+
+                // check for existing first index in the sequence
                 const new_index = `${queue_prefix}-${index.type}-${version}-000001`;
+                const exists = await this.client.indices.exists({index: new_index});
 
-                const exists = await this.client.indices.exists({
-                    index: new_index
-                });
+                if (exists.body === false) {
 
-                if (!exists.body) {
-
+                    // create index
                     try {
                         hLog(`Creating index ${new_index}...`);
                         await this.client.indices.create({
@@ -490,6 +492,7 @@ export class HyperionMaster {
                         process.exit(1);
                     }
 
+                    // create alias pointing to the new index
                     try {
                         hLog(`Creating alias ${queue_prefix}-${index.type} >> ${new_index}`);
                         await this.client.indices.putAlias({
@@ -614,7 +617,66 @@ export class HyperionMaster {
         }
     }
 
+    async getLastBlock(index_name) {
+        const lastBlockSearch = await this.manager.elasticsearchClient.search({
+            index: index_name,
+            size: 1,
+            _source: "block_num",
+            body: {
+                "query": {"match_all": {}},
+                sort: [{"block_num": {"order": "desc"}}]
+            }
+        });
+        if (lastBlockSearch.body.hits.hits[0]) {
+            return lastBlockSearch.body.hits.hits[0]._source.block_num;
+        } else {
+            return null;
+        }
+    }
+
+    async getFirstBlock(index_name) {
+        const firstBlockSearch = await this.manager.elasticsearchClient.search({
+            index: index_name,
+            size: 1,
+            _source: "block_num",
+            body: {
+                "query": {"match_all": {}},
+                sort: [{"block_num": {"order": "asc"}}]
+            }
+        });
+        if (firstBlockSearch.body.hits.hits[0]) {
+            return firstBlockSearch.body.hits.hits[0]._source.block_num;
+        } else {
+            return null;
+        }
+    }
+
     private async setupIndexers() {
+
+        if (this.conf.indexer.rewrite) {
+            hLog(`Indexer rewrite enabled (${this.conf.indexer.start_on} - ${this.conf.indexer.stop_on})`);
+            const getIndicesResponse = await this.manager.elasticsearchClient.indices.get({
+                index: this.chain + "-*"
+            });
+            if (getIndicesResponse) {
+                const indices = getIndicesResponse.body;
+                const actionIndices = Object.keys(indices).filter(k => k.startsWith(this.chain + "-action"));
+                for (const actionIndex of actionIndices) {
+                    const last_block = await this.getLastBlock(actionIndex);
+                    const first_block = await this.getFirstBlock(actionIndex);
+                    console.log(`${actionIndex} from ${first_block} to ${last_block}`);
+                }
+
+                const deltaIndices = Object.keys(indices).filter(k => k.startsWith(this.chain + "-delta"));
+                for (const deltaIndex of deltaIndices) {
+                    const last_block = await this.getLastBlock(deltaIndex);
+                    const first_block = await this.getFirstBlock(deltaIndex);
+                    console.log(`${deltaIndex} from ${first_block} to ${last_block}`);
+                }
+            }
+        }
+
+
         let qIdx = 0;
         this.IndexingQueues.forEach((q) => {
             let n = this.conf.scaling.indexing_queues;
