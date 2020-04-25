@@ -9,7 +9,7 @@ import {registerPlugins} from "./plugins";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes";
 import {generateOpenApiConfig} from "./config/open_api";
-import {createWriteStream} from "fs";
+import {createWriteStream, existsSync, mkdirSync} from "fs";
 import {SocketManager} from "./socketManager";
 
 class HyperionApiServer {
@@ -28,6 +28,9 @@ class HyperionApiServer {
         this.manager = new ConnectionManager(cm);
         this.manager.calculateServerHash();
         this.manager.getHyperionVersion();
+        if (!existsSync('./logs/' + this.chain)) {
+            mkdirSync('./logs/' + this.chain);
+        }
         const logStream = createWriteStream('./logs/' + this.chain + '/api.access.log');
         this.fastify = Fastify({
             ignoreTrailingSlash: false, trustProxy: true, logger: this.conf.api.access_log ? {
