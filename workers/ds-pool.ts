@@ -2,7 +2,7 @@ import {HyperionWorker} from "./hyperionWorker";
 import {cargo, queue} from "async";
 import * as AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "../addons/eosjs-native";
-import {hLog} from "../helpers/common_functions";
+import {debugLog, hLog} from "../helpers/common_functions";
 import {Message} from "amqplib";
 import {parseDSPEvent} from "../modules/custom/dsp-parser";
 import {resolve, join} from "path";
@@ -213,7 +213,7 @@ export default class DSPoolWorker extends HyperionWorker {
                     _status = true;
                     return [_status, resultType];
                 } catch (e) {
-                    hLog(`(abieos/cached) >> ${e.message}`);
+                    debugLog(`(abieos/cached) >> ${e.message}`);
                     _status = false;
                 }
             }
@@ -226,7 +226,7 @@ export default class DSPoolWorker extends HyperionWorker {
                     resultType = AbiEOS['get_type_for_' + field](contract, type);
                     _status = true;
                 } catch (e) {
-                    hLog(`(abieos/current) >> ${e.message}`);
+                    debugLog(`(abieos/current) >> ${e.message}`);
                     _status = false;
                 }
             }
@@ -241,7 +241,7 @@ export default class DSPoolWorker extends HyperionWorker {
             try {
                 return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
             } catch (e) {
-                hLog(`(abieos) ${_action.account}::${_action.name} @ ${block_num} >>> ${e.message}`);
+                debugLog(`(abieos) ${_action.account}::${_action.name} @ ${block_num} >>> ${e.message}`);
             }
         }
         return await self.deserializeActionAtBlock(_action, block_num);
@@ -357,7 +357,7 @@ export default class DSPoolWorker extends HyperionWorker {
                         this.txDec
                     );
                 } catch (e) {
-                    hLog(`(eosjs)  ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
+                    debugLog(`(eosjs)  ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
                     return null;
                 }
             } else {
