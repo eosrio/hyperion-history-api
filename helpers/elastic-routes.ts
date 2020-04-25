@@ -89,6 +89,22 @@ function buildPermBulk(payloads, messageMap) {
     });
 }
 
+function buildResLimitBulk(payloads, messageMap) {
+    return flatMap(payloads, (payload, body) => {
+        const id = `${body.owner}`;
+        messageMap.set(id, _.omit(payload, ['content']));
+        return makeScriptedOp(id, body);
+    });
+}
+
+function buildResUsageBulk(payloads, messageMap) {
+    return flatMap(payloads, (payload, body) => {
+        const id = `${body.owner}`;
+        messageMap.set(id, _.omit(payload, ['content']));
+        return makeScriptedOp(id, body);
+    });
+}
+
 export class ElasticRoutes {
     public routes: any;
     cm: ConnectionManager;
@@ -105,6 +121,32 @@ export class ElasticRoutes {
         this.resetCounters();
     }
 
+    createGenericBuilder(collection, channel, counter, index_name, method) {
+        return new Promise((resolve) => {
+            const messageMap = new Map();
+            this.bulkAction({
+                index: index_name,
+                type: '_doc',
+                body: method(collection, messageMap)
+            }).then((resp: any) => {
+                if (resp.errors) {
+                    this.ackOrNack(resp, messageMap, channel);
+                } else {
+                    channel.ackAll();
+                }
+                counter += messageMap.size;
+                resolve();
+            }).catch((err) => {
+                try {
+                    channel.nackAll();
+                    hLog('NackAll', err);
+                } finally {
+                    resolve();
+                }
+            });
+        })
+    }
+
     async handleGenericRoute(payload: Message[], channel: Channel, cb: (indexed_size: number) => void): Promise<void> {
         const collection = {};
         for (const message of payload) {
@@ -115,31 +157,27 @@ export class ElasticRoutes {
             collection[type].push(message);
         }
 
+        const queue = [];
+        let counter = 0;
+
         if (collection['permission']) {
-            const messageMap = new Map();
-            this.bulkAction({
-                index: this.chain + '-perm',
-                type: '_doc',
-                body: buildPermBulk(collection['permission'], messageMap)
-            }).then(resp => {
-                this.onResponse(resp, messageMap, cb, collection['permission'], channel);
-            }).catch(err => {
-                this.onError(err, channel, cb);
-            });
+            queue.push(this.createGenericBuilder(collection['permission'], channel, counter, this.chain + '-perm', buildPermBulk));
         }
 
         if (collection['permission_link']) {
-            const messageMap = new Map();
-            this.bulkAction({
-                index: this.chain + '-link',
-                type: '_doc',
-                body: buildLinkBulk(collection['permission_link'], messageMap)
-            }).then(resp => {
-                this.onResponse(resp, messageMap, cb, collection['permission_link'], channel);
-            }).catch(err => {
-                this.onError(err, channel, cb);
-            });
+            queue.push(this.createGenericBuilder(collection['permission_link'], channel, counter, this.chain + '-link', buildLinkBulk));
         }
+
+        if (collection['resource_limits']) {
+            queue.push(this.createGenericBuilder(collection['resource_limits'], channel, counter, this.chain + '-reslimits', buildResLimitBulk));
+        }
+
+        if (collection['resource_usage']) {
+            queue.push(this.createGenericBuilder(collection['resource_usage'], channel, counter, this.chain + '-userres', buildResUsageBulk));
+        }
+
+        await Promise.all(queue);
+        cb(counter);
     }
 
     resetCounters() {
