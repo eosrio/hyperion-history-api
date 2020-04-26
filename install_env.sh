@@ -197,7 +197,7 @@ install_elastic() {
   sudo sed -ie 's/#cluster.name: my-application/cluster.name: myCluster/; s/#bootstrap.memory_lock: true/bootstrap.memory_lock: true/' /etc/elasticsearch/elasticsearch.yml
   # set jvm options based on system RAM
   check_ram
-  if [ "$RAM" -lt 20 ]; then
+  if [ "$RAM" -lt 32 ]; then
     (( RAM=RAM/2 ))
     sudo sed -ie 's/-Xms1g/-Xms'"$RAM"'g/; s/-Xmx1g/-Xmx'"$RAM"'g/' /etc/elasticsearch/jvm.options
   else
