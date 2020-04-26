@@ -76,9 +76,7 @@
     "tables": {
       "proposals": true,
       "accounts": true,
-      "voters": true,
-      "userres": false,
-      "delband": false
+      "voters": true
     },
     "index_deltas": true,
     "index_transfer_memo": true,
