@@ -82,6 +82,8 @@ export const action = {
                     }
                 }
             },
+
+            // eosio::newaccount
             "@newaccount": {
                 "properties": {
                     "active": {"type": "object"},
@@ -89,6 +91,8 @@ export const action = {
                     "newact": {"type": "keyword"}
                 }
             },
+
+            // eosio::updateauth
             "@updateauth": {
                 "properties": {
                     "permission": {"type": "keyword"},
@@ -96,6 +100,8 @@ export const action = {
                     "auth": {"type": "object"}
                 }
             },
+
+            // *::transfer
             "@transfer": {
                 "properties": {
                     "from": {"type": "keyword"},
@@ -105,6 +111,8 @@ export const action = {
                     "memo": {"type": "text"}
                 }
             },
+
+            // eosio::unstaketorex
             "@unstaketorex": {
                 "properties": {
                     "owner": {"type": "keyword"},
@@ -112,12 +120,16 @@ export const action = {
                     "amount": {"type": "float"}
                 }
             },
+
+            // eosio::buyrex
             "@buyrex": {
                 "properties": {
                     "from": {"type": "keyword"},
                     "amount": {"type": "float"}
                 }
             },
+
+            // eosio::buyram
             "@buyram": {
                 "properties": {
                     "payer": {"type": "keyword"},
@@ -125,6 +137,8 @@ export const action = {
                     "quant": {"type": "float"}
                 }
             },
+
+            // eosio::buyrambytes
             "@buyrambytes": {
                 "properties": {
                     "payer": {"type": "keyword"},
@@ -132,6 +146,8 @@ export const action = {
                     "bytes": {"type": "long"}
                 }
             },
+
+            // eosio::delegatebw
             "@delegatebw": {
                 "properties": {
                     "from": {"type": "keyword"},
@@ -142,6 +158,8 @@ export const action = {
                     "amount": {"type": "float"}
                 }
             },
+
+            // eosio::undelegatebw
             "@undelegatebw": {
                 "properties": {
                     "from": {"type": "keyword"},
@@ -180,21 +198,31 @@ export const delta = {
             "table": {"type": "keyword"},
             "payer": {"type": "keyword"},
             "primary_key": {"type": "keyword"},
+
+            // eosio.msig::approvals
             "@approvals.proposal_name": {"type": "keyword"},
             "@approvals.provided_approvals": {"type": "object"},
             "@approvals.requested_approvals": {"type": "object"},
+
+            // *::accounts
             "@accounts.amount": {"type": "float"},
             "@accounts.symbol": {"type": "keyword"},
+
+            // eosio::voters
             "@voters.is_proxy": {"type": "boolean"},
             "@voters.producers": {"type": "keyword"},
             "@voters.last_vote_weight": {"type": "double"},
             "@voters.proxied_vote_weight": {"type": "double"},
             "@voters.staked": {"type": "float"},
             "@voters.proxy": {"type": "keyword"},
+
+            // eosio::producers
             "@producers.total_votes": {"type": "double"},
             "@producers.is_active": {"type": "boolean"},
             "@producers.unpaid_blocks": {"type": "long"},
-            "@global.data": {
+
+            // eosio::global
+            "@global": {
                 "properties": {
                     "last_name_close": {"type": "date"},
                     "last_pervote_bucket_fill": {"type": "date"},
@@ -202,9 +230,11 @@ export const delta = {
                     "perblock_bucket": {"type": "double"},
                     "pervote_bucket": {"type": "double"},
                     "total_activated_stake": {"type": "double"},
+                    "total_voteshare_change_rate": {"type": "double"},
+                    "total_unpaid_voteshare": {"type": "double"},
                     "total_producer_vote_weight": {"type": "double"},
-                    "total_ram_kb_reserved": {"type": "float"},
-                    "total_ram_stake": {"type": "float"},
+                    "total_ram_bytes_reserved": {"type": "long"},
+                    "total_ram_stake": {"type": "long"},
                     "total_unpaid_blocks": {"type": "long"},
                 }
             }
