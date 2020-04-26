@@ -585,17 +585,17 @@ export default class MainDSWorker extends HyperionWorker {
         savedAbi = await this.fetchAbiHexAtBlockElastic(accountName, block_num, true);
         if (savedAbi === null || !savedAbi.actions.includes(check_action)) {
             savedAbi = await this.getAbiFromHeadBlock(accountName);
-            if (!savedAbi) return null;
+            if (!savedAbi) return [null, null];
             abi = savedAbi.abi;
         } else {
             try {
                 abi = JSON.parse(savedAbi.abi);
             } catch (e) {
                 hLog(e);
-                return null;
+                return [null, null];
             }
         }
-        if (!abi) return null;
+        if (!abi) return [null, null];
         const initialTypes = Serialize.createInitialTypes();
         let types;
         try {
@@ -644,14 +644,17 @@ export default class MainDSWorker extends HyperionWorker {
         let abi, contract, abi_tables;
 
         try {
-            [contract, abi] = await this.getContractAtBlock(code, block);
+            const r = await this.getContractAtBlock(code, block);
+            if (r) {
+                [contract, abi] = r;
+            }
             if (contract && contract.tables) {
                 abi_tables = contract.tables
             } else {
                 return;
             }
         } catch (e) {
-            hLog(e);
+            hLog(e.message);
             return;
         }
 
