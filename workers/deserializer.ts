@@ -642,12 +642,19 @@ export default class MainDSWorker extends HyperionWorker {
 
     async getTableType(code, table, block) {
         let abi, contract, abi_tables;
-        [contract, abi] = await this.getContractAtBlock(code, block);
-        if (!contract.tables) {
+
+        try {
+            [contract, abi] = await this.getContractAtBlock(code, block);
+            if (contract && contract.tables) {
+                abi_tables = contract.tables
+            } else {
+                return;
+            }
+        } catch (e) {
+            hLog(e);
             return;
-        } else {
-            abi_tables = contract.tables
         }
+
         let this_table, type;
         for (let t of abi_tables) {
             if (t.name === table) {
@@ -698,16 +705,21 @@ export default class MainDSWorker extends HyperionWorker {
 
     async processContractRow(row, block, validFrom, validUntil) {
         const row_sb = this.createSerialBuffer(Serialize.hexToUint8Array(row['value']));
-        const tableType: Type = await this.getTableType(row['code'], row['table'], block);
         let error;
-        if (tableType) {
-            try {
-                row['data'] = tableType.deserialize(row_sb);
-                delete row.value;
-                return row;
-            } catch (e) {
-                error = e.message;
+        try {
+            const tableType: Type = await this.getTableType(row['code'], row['table'], block);
+            if (tableType) {
+                try {
+                    row['data'] = tableType.deserialize(row_sb);
+                    delete row.value;
+                    return row;
+                } catch (e) {
+                    error = e.message;
+                }
             }
+        } catch (e) {
+            hLog(e.message);
+            error = e.message;
         }
         process.send({
             event: 'ds_error',
@@ -853,8 +865,7 @@ export default class MainDSWorker extends HyperionWorker {
                     });
 
                 } catch (e) {
-                    hLog(e);
-                    hLog(account['abi'], block_num, account['name']);
+                    hLog(`Failed to process ABI from ${account['name']} at ${block_num}: ${e.message}`);
                 }
             } else {
                 if (account.name === 'eosio') {
@@ -1039,7 +1050,7 @@ export default class MainDSWorker extends HyperionWorker {
                     }
                     const tPerRow = Number((process.hrtime.bigint() - tRef)) / 1000000 / deltaStruct[key].length;
                     if (tPerRow > 25.0) {
-                        hLog(`[WARNING] ${key} processing took ${tPerRow} ms/row on block ${block_num} (total: ${deltaStruct[key].length} rows)`);
+                        hLog(`[WARNING] ${key} processing took ${tPerRow.toFixed(2)} ms/row on block ${block_num} (total: ${deltaStruct[key].length} rows)`);
                     }
                 }
             }
@@ -1179,7 +1190,6 @@ export default class MainDSWorker extends HyperionWorker {
         this.tableHandlers[EOSIO_ALIAS + ':global'] = async (delta) => {
             delta['@global'] = delta['data'];
             delete delta['data'];
-            // console.log(delta);
         };
 
         this.tableHandlers[EOSIO_ALIAS + ':producers'] = async (delta) => {
