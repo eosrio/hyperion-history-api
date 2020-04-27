@@ -236,8 +236,10 @@ export default class MainDSWorker extends HyperionWorker {
                 block_ts = ts;
 
                 // Collect total CPU and NET usage
+
                 let total_cpu = 0;
                 let total_net = 0;
+
                 block.transactions.forEach((trx) => {
                     total_cpu += trx['cpu_usage_us'];
                     total_net += trx['net_usage_words'];
@@ -287,24 +289,14 @@ export default class MainDSWorker extends HyperionWorker {
             }
 
             if (_traces.length > 0 && this.conf.indexer.fetch_traces) {
-                const t2 = Date.now();
                 for (const trace of _traces) {
-                    const transaction_trace = trace[1];
-                    if (transaction_trace.action_traces.length > 0) {
+                    if (trace[1] && trace[1].action_traces.length > 0) {
                         // route trx trace to pool based on first action
-
-                        if (this.conf.indexer.max_inline && transaction_trace.action_traces.length > this.conf.indexer.max_inline) {
-                            transaction_trace.action_traces = transaction_trace.action_traces.slice(0, this.conf.indexer.max_inline);
+                        if (this.conf.indexer.max_inline && trace[1].action_traces.length > this.conf.indexer.max_inline) {
+                            trace[1].action_traces = trace[1].action_traces.slice(0, this.conf.indexer.max_inline);
                         }
-
-                        this.routeToPool(transaction_trace, {block_num, producer, ts});
-                    } else {
-                        // hLog(transaction_trace, transaction_trace.partial[1].transaction_extensions);
+                        this.routeToPool(trace[1], {block_num, producer, ts});
                     }
-                }
-                const traces_elapsed_time = Date.now() - t2;
-                if (traces_elapsed_time > 10) {
-                    hLog(`[WARNING] Traces processing took ${traces_elapsed_time}ms on block ${block_num}`);
                 }
             }
 
@@ -742,12 +734,9 @@ export default class MainDSWorker extends HyperionWorker {
     async processTableDelta(data) {
 
         if (data['table']) {
-
             data['primary_key'] = String(data['primary_key']);
-
             let allowIndex;
             let handled = false;
-
             const key = `${data.code}:${data.table}`;
 
             // strict code::table handlers
@@ -768,7 +757,7 @@ export default class MainDSWorker extends HyperionWorker {
                 handled = true;
             }
 
-            await this.processDynamicTokenParsers(data);
+            // await this.processDynamicTokenParsers(data);
 
             if (!handled && this.conf.features.index_all_deltas) {
                 allowIndex = true;
@@ -823,6 +812,36 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     deltaStructHandlers = {
+
+        "contract_row": async (payload, block_num, block_ts, row) => {
+            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+                payload['@timestamp'] = block_ts;
+                payload['present'] = row.present;
+                payload['block_num'] = block_num;
+                if (this.conf.features.index_all_deltas || (payload.code === this.conf.settings.eosio_alias || payload.table === 'accounts')) {
+                    try {
+                        if (this.checkDeltaBlacklist(payload)) return false;
+                        if (this.filters.action_whitelist.size > 0) {
+                            if (!this.checkDeltaWhitelist(payload)) return false;
+                        }
+                        const jsonRow = await this.processContractRowNative(payload, block_num);
+                        if (jsonRow) {
+                            if (await this.processTableDelta(jsonRow)) {
+                                if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {
+                                    const payload = Buffer.from(JSON.stringify(jsonRow));
+                                    this.pushToDeltaQueue(payload);
+                                    this.temp_delta_counter++;
+                                    this.pushToDeltaStreamingQueue(payload, jsonRow);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        hLog(`Contract row processing error: ${e.message}`);
+                    }
+                }
+            }
+        },
+
         "account": async (account, block_num, block_ts) => {
             if (account['abi'] !== '') {
                 try {
@@ -874,27 +893,6 @@ export default class MainDSWorker extends HyperionWorker {
                 if (account.name === 'eosio') {
                     hLog(`---------- ${block_num} ----------------`);
                     hLog(account);
-                }
-            }
-        },
-
-        "contract_row": async (payload, block_num, block_ts, row) => {
-            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
-                payload['@timestamp'] = block_ts;
-                payload['present'] = row.present;
-                payload['block_num'] = block_num;
-                if (this.conf.features.index_all_deltas || (payload.code === this.conf.settings.eosio_alias || payload.table === 'accounts')) {
-                    const jsonRow = await this.processContractRowNative(payload, block_num);
-                    if (jsonRow) {
-                        if (await this.processTableDelta(jsonRow)) {
-                            if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {
-                                const payload = Buffer.from(JSON.stringify(jsonRow));
-                                this.pushToDeltaQueue(payload);
-                                this.temp_delta_counter++;
-                                this.pushToDeltaStreamingQueue(payload, jsonRow);
-                            }
-                        }
-                    }
                 }
             }
         },
@@ -1049,7 +1047,11 @@ export default class MainDSWorker extends HyperionWorker {
                     const tRef = process.hrtime.bigint();
                     for (const row of deltaStruct[key]) {
                         const data = this.deserializeNative(key, row.data);
-                        await this.deltaStructHandlers[key](data[1], block_num, block_ts, row);
+                        try {
+                            await this.deltaStructHandlers[key](data[1], block_num, block_ts, row);
+                        } catch (e) {
+                            hLog(`Delta struct deserialization error: ${e.message}`);
+                        }
                     }
                     const tPerRow = Number((process.hrtime.bigint() - tRef)) / 1000000 / deltaStruct[key].length;
                     if (tPerRow > 25.0) {
@@ -1111,30 +1113,32 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     async storeVoter(data) {
-        const voterDoc: any = {
-            "voter": data['payer'],
-            "last_vote_weight": data['@voters']['last_vote_weight'],
-            "is_proxy": data['@voters']['is_proxy'],
-            "proxied_vote_weight": data['@voters']['proxied_vote_weight'],
-            "staked": data['@voters']['staked'],
-            "primary_key": data['primary_key'],
-            "block_num": data['block_num']
-        };
-        if (data['@voters']['proxy']) {
-            voterDoc.proxy = data['@voters']['proxy'];
-        }
-        if (data['@voters']['producers']) {
-            voterDoc.producers = data['@voters']['producers'];
-        }
-        if (!this.conf.indexer.disable_indexing) {
-            const q = this.chain + ":index_table_voters:" + (this.tbl_vote_emit_idx);
-            this.preIndexingQueue.push({
-                queue: q,
-                content: Buffer.from(JSON.stringify(voterDoc))
-            });
-            this.tbl_vote_emit_idx++;
-            if (this.tbl_vote_emit_idx > (this.conf.scaling.indexing_queues)) {
-                this.tbl_vote_emit_idx = 1;
+        if (data['@voters']) {
+            const voterDoc: any = {
+                "voter": data['payer'],
+                "last_vote_weight": data['@voters']['last_vote_weight'],
+                "is_proxy": data['@voters']['is_proxy'],
+                "proxied_vote_weight": data['@voters']['proxied_vote_weight'],
+                "staked": data['@voters']['staked'],
+                "primary_key": data['primary_key'],
+                "block_num": data['block_num']
+            };
+            if (data['@voters']['proxy']) {
+                voterDoc.proxy = data['@voters']['proxy'];
+            }
+            if (data['@voters']['producers']) {
+                voterDoc.producers = data['@voters']['producers'];
+            }
+            if (!this.conf.indexer.disable_indexing) {
+                const q = this.chain + ":index_table_voters:" + (this.tbl_vote_emit_idx);
+                this.preIndexingQueue.push({
+                    queue: q,
+                    content: Buffer.from(JSON.stringify(voterDoc))
+                });
+                this.tbl_vote_emit_idx++;
+                if (this.tbl_vote_emit_idx > (this.conf.scaling.indexing_queues)) {
+                    this.tbl_vote_emit_idx = 1;
+                }
             }
         }
     }
