@@ -109,12 +109,20 @@ export abstract class HyperionWorker {
         }
     }
 
-    private anyFromCode(act) {
-        return this.chain + '::' + act['account'] + '::*'
+    private anyFromCode(act: any) {
+        return this.chain + '::' + act.account + '::*'
     }
 
-    private codeActionPair(act) {
-        return this.chain + '::' + act['account'] + '::' + act['name'];
+    private codeActionPair(act: any) {
+        return this.chain + '::' + act.account + '::' + act.name;
+    }
+
+    private anyFromDeltaCode(delta: any) {
+        return this.chain + '::' + delta.code + '::*'
+    }
+
+    private codeDeltaPair(delta: any) {
+        return this.chain + '::' + delta.code + '::' + delta.table;
     }
 
     protected checkBlacklist(act) {
@@ -129,6 +137,18 @@ export abstract class HyperionWorker {
         if (this.filters.action_whitelist.has(this.anyFromCode(act))) {
             return true;
         } else return this.filters.action_whitelist.has(this.codeActionPair(act));
+    }
+
+    protected checkDeltaBlacklist(delta) {
+        if (this.filters.delta_blacklist.has(this.anyFromDeltaCode(delta))) {
+            return true;
+        } else return this.filters.delta_blacklist.has(this.codeDeltaPair(delta));
+    }
+
+    protected checkDeltaWhitelist(delta) {
+        if (this.filters.delta_whitelist.has(this.anyFromDeltaCode(delta))) {
+            return true;
+        } else return this.filters.delta_whitelist.has(this.codeDeltaPair(delta));
     }
 
     loadAbiHex(contract, block_num, abi_hex) {
