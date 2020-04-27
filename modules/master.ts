@@ -36,7 +36,6 @@ import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import moment = require("moment");
 import Timeout = NodeJS.Timeout;
-import {min} from "moment";
 
 export class HyperionMaster {
 
@@ -618,39 +617,39 @@ export class HyperionMaster {
         }
     }
 
-    async getLastBlock(index_name) {
-        const lastBlockSearch = await this.manager.elasticsearchClient.search({
-            index: index_name,
-            size: 1,
-            _source: "block_num",
-            body: {
-                "query": {"match_all": {}},
-                sort: [{"block_num": {"order": "desc"}}]
-            }
-        });
-        if (lastBlockSearch.body.hits.hits[0]) {
-            return lastBlockSearch.body.hits.hits[0]._source.block_num;
-        } else {
-            return null;
-        }
-    }
+    // async getLastBlock(index_name) {
+    //     const lastBlockSearch = await this.manager.elasticsearchClient.search({
+    //         index: index_name,
+    //         size: 1,
+    //         _source: "block_num",
+    //         body: {
+    //             "query": {"match_all": {}},
+    //             sort: [{"block_num": {"order": "desc"}}]
+    //         }
+    //     });
+    //     if (lastBlockSearch.body.hits.hits[0]) {
+    //         return lastBlockSearch.body.hits.hits[0]._source.block_num;
+    //     } else {
+    //         return null;
+    //     }
+    // }
 
-    async getFirstBlock(index_name) {
-        const firstBlockSearch = await this.manager.elasticsearchClient.search({
-            index: index_name,
-            size: 1,
-            _source: "block_num",
-            body: {
-                "query": {"match_all": {}},
-                sort: [{"block_num": {"order": "asc"}}]
-            }
-        });
-        if (firstBlockSearch.body.hits.hits[0]) {
-            return firstBlockSearch.body.hits.hits[0]._source.block_num;
-        } else {
-            return null;
-        }
-    }
+    // async getFirstBlock(index_name) {
+    //     const firstBlockSearch = await this.manager.elasticsearchClient.search({
+    //         index: index_name,
+    //         size: 1,
+    //         _source: "block_num",
+    //         body: {
+    //             "query": {"match_all": {}},
+    //             sort: [{"block_num": {"order": "asc"}}]
+    //         }
+    //     });
+    //     if (firstBlockSearch.body.hits.hits[0]) {
+    //         return firstBlockSearch.body.hits.hits[0]._source.block_num;
+    //     } else {
+    //         return null;
+    //     }
+    // }
 
     private async setupIndexers() {
 
@@ -1180,6 +1179,9 @@ export class HyperionMaster {
         | Deltas: ${this.total_deltas}
         --------------------------------------------\n`);
                 this.range_completed = true;
+                if (!this.conf.indexer.live_reader) {
+                    process.exit();
+                }
             }
 
             // print monitoring log
