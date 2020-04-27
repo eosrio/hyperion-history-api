@@ -135,8 +135,10 @@ export default class WSRouter extends HyperionWorker {
 
     startRoutingRateMonitor() {
         setInterval(() => {
-            console.log('[Router] Routing rate: ' + (this.totalRoutedMessages / 20) + ' msg/s');
-            this.totalRoutedMessages = 0;
+            if (this.totalRoutedMessages > 0) {
+                console.log('[Router] Routing rate: ' + (this.totalRoutedMessages / 20) + ' msg/s');
+                this.totalRoutedMessages = 0;
+            }
         }, 20000);
     }
 
