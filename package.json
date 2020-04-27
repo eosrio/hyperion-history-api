@@ -9,7 +9,7 @@
     "start:indexer": "pm2 start --only Indexer --update-env",
     "fix-permissions": "chmod u+x run.sh stop.sh",
     "tsc": "tsc",
-    "postinstall": "npm run tsc"
+    "postinstall": "npm run tsc && npm run fix-permissions"
   },
   "author": {
     "name": "EOS Rio",
