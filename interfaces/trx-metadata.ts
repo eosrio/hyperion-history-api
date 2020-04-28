@@ -4,4 +4,6 @@ export interface TrxMetadata {
     producer: string;
     cpu_usage_us: number;
     net_usage_words: number;
+    inline_count: number;
+    filtered: boolean;
 }

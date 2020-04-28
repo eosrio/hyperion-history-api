@@ -45,14 +45,11 @@ export abstract class BaseParser {
     protected extendFirstAction(worker: DSPoolWorker, action: ActionTrace, trx_data: TrxMetadata, full_trace: any, usageIncluded) {
         action.cpu_usage_us = trx_data.cpu_usage_us;
         action.net_usage_words = trx_data.net_usage_words;
-        // add inline action count for the root action
         if (full_trace.action_traces.length > 1) {
-            action.inline_count = full_trace.action_traces.length - 1;
-            if (worker.conf.indexer.max_inline < full_trace.action_traces.length) {
+            action.inline_count = trx_data.inline_count - 1;
+            action.inline_filtered = trx_data.filtered;
+            if (action.inline_filtered) {
                 action.max_inline = worker.conf.indexer.max_inline;
-                action.inline_filtered = true;
-            } else {
-                action.inline_filtered = false;
             }
         } else {
             action.inline_count = 0;

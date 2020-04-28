@@ -291,11 +291,13 @@ export default class MainDSWorker extends HyperionWorker {
             if (_traces.length > 0 && this.conf.indexer.fetch_traces) {
                 for (const trace of _traces) {
                     if (trace[1] && trace[1].action_traces.length > 0) {
-                        // route trx trace to pool based on first action
-                        if (this.conf.indexer.max_inline && trace[1].action_traces.length > this.conf.indexer.max_inline) {
+                        const inline_count = trace[1].action_traces.length;
+                        let filtered = false;
+                        if (this.conf.indexer.max_inline && inline_count > this.conf.indexer.max_inline) {
                             trace[1].action_traces = trace[1].action_traces.slice(0, this.conf.indexer.max_inline);
+                            filtered = true;
                         }
-                        this.routeToPool(trace[1], {block_num, producer, ts});
+                        this.routeToPool(trace[1], {block_num, producer, ts, inline_count, filtered});
                     }
                 }
             }

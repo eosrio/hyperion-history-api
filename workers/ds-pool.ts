@@ -388,7 +388,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     async processTraces(transaction_trace, extra) {
         const {cpu_usage_us, net_usage_words} = transaction_trace;
-        const {block_num, producer, ts} = extra;
+        const {block_num, producer, ts, inline_count, filtered} = extra;
         if (transaction_trace.status === 0) {
             let action_count = 0;
             const trx_id = transaction_trace['id'].toLowerCase();
@@ -401,12 +401,12 @@ export default class DSPoolWorker extends HyperionWorker {
                 producer,
                 cpu_usage_us,
                 net_usage_words,
-                ts
+                ts,
+                inline_count,
+                filtered
             };
 
-            const usageIncluded = {
-                status: false
-            };
+            const usageIncluded = {status: false};
 
             // perform action flattening if necessary
             if (this.mLoader.parser.flatten) {
@@ -424,10 +424,6 @@ export default class DSPoolWorker extends HyperionWorker {
                         this.temp_ds_counter++;
                         action_count++;
                     }
-                }
-                // abort processing after reaching the maximum inline indexing limit
-                if (this.conf.indexer.max_inline && (_processedTraces.length >= this.conf.indexer.max_inline)) {
-                    break;
                 }
             }
 
