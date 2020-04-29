@@ -7,7 +7,7 @@
     "logs": "pm2 logs Indexer",
     "start:api": "pm2 start --only API --update-env",
     "start:indexer": "pm2 start --only Indexer --update-env",
-    "fix-permissions": "chmod u+x run.sh stop.sh",
+    "fix-permissions": "chmod u+x run.sh stop.sh install_env.sh",
     "tsc": "tsc",
     "postinstall": "npm run tsc && npm run fix-permissions"
   },
