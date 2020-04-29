@@ -4,6 +4,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {ServerResponse} from "http";
 import {createReadStream} from "fs";
 import * as AutoLoad from "fastify-autoload";
+import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     server.route({
@@ -30,9 +31,38 @@ export function registerRoutes(server: FastifyInstance) {
     addRoute(server, 'v2', '/v2');
     addRoute(server, 'v2-history', '/v2/history');
     addRoute(server, 'v2-state', '/v2/state');
+
+    // legacy routes
     addRoute(server, 'v1-history', '/v1/history');
     addRoute(server, 'v1-trace', '/v1/trace_api');
-    // addRoute(server,'v1-chain', '/v1/chain');
+
+    addSharedSchemas(server);
+
+    // chain api redirects
+    addRoute(server, 'v1-chain', '/v1/chain');
+    server.route({
+        url: '/v1/chain/*',
+        method: ["GET", "POST"],
+        schema: {
+            summary: "Wildcard chain api handler",
+            tags: ["chain"]
+        },
+        handler: async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+            await handleChainApiRedirect(request, reply, server);
+        }
+    });
+
+    server.addHook('onError', (request, reply, error, done) => {
+        console.log(`${request.req.url} failed with error: ${error.message}`);
+        done();
+    });
+
+    // server.addHook('onResponse', (request, reply, done) => {
+    //     if (reply.res.statusCode !== 200) {
+    //         console.log(`${request.req.url} - code: ${reply.res.statusCode}`);
+    //     }
+    //     done();
+    // });
 
     // Serve integrated explorer
     if (server.manager.config.api.enable_explorer) {

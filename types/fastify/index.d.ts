@@ -17,6 +17,8 @@ declare module 'fastify' {
             rpc: JsonRpc,
             api: Api
         },
+        chain_api: string,
+        push_api: string,
         tokenCache: Map<string, any>
     }
 }

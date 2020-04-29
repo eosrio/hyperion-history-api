@@ -56,6 +56,17 @@ class HyperionApiServer {
             } : false
         });
         this.fastify.decorate('manager', this.manager);
+
+        if (this.conf.api.chain_api && this.conf.api.chain_api !== "") {
+            this.fastify.decorate('chain_api', this.conf.api.chain_api);
+        } else {
+            this.fastify.decorate('chain_api', this.manager.conn.chains[this.chain].http);
+        }
+
+        if (this.conf.api.push_api && this.conf.api.push_api !== "") {
+            this.fastify.decorate('push_api', this.conf.api.push_api);
+        }
+
         const ioRedisClient = new Redis(this.manager.conn.redis);
         const api_rate_limit = {
             max: 1000,

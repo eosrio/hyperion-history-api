@@ -59,6 +59,8 @@ interface ApiLimits {
 }
 
 interface ApiConfigs {
+    chain_api?: string;
+    push_api?: string;
     enable_explorer?: boolean;
     access_log: boolean;
     chain_name: string;

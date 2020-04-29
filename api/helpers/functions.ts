@@ -2,6 +2,7 @@ import {createHash} from "crypto";
 import * as _ from "lodash";
 import {FastifyInstance, FastifyReply, FastifyRequest, HTTPMethod, RouteSchema} from "fastify";
 import {ServerResponse} from "http";
+import got from "got";
 
 export function extendResponseSchema(responseProps: any) {
     const props = {
@@ -181,4 +182,226 @@ export async function timedQuery(
     } else {
         return {};
     }
+}
+
+export function chainApiHandler(fastify: FastifyInstance) {
+    return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+        await handleChainApiRedirect(request, reply, fastify);
+    }
+}
+
+export async function handleChainApiRedirect(
+    request: FastifyRequest,
+    reply: FastifyReply<ServerResponse>,
+    fastify: FastifyInstance
+) {
+    const urlParts = request.req.url.split("?");
+    let reqUrl = fastify.chain_api + urlParts[0];
+
+    if (urlParts[0] === '/v1/chain/push_transaction' && fastify.push_api && fastify.push_api !== "") {
+        reqUrl = fastify.push_api + urlParts[0];
+    }
+
+    const opts = {};
+
+    if (request.req.method === 'POST') {
+        if (request.body) {
+            if (typeof request.body === 'string') {
+                opts['body'] = request.body;
+            } else if (typeof request.body === 'object') {
+                opts['body'] = JSON.stringify(request.body);
+            }
+        } else {
+            opts['body'] = "";
+        }
+    } else if (request.req.method === 'GET') {
+        opts['json'] = request.query;
+    }
+
+    try {
+        const apiResponse = await got.post(reqUrl, opts);
+        reply.send(apiResponse.body);
+    } catch (error) {
+        if (error.response) {
+            reply.status(error.response.statusCode).send(error.response.body);
+        } else {
+            console.log(error);
+            reply.status(500).send();
+        }
+        try {
+            if (error.response) {
+                const error_msg = JSON.parse(error.response.body).error.details[0].message;
+                console.log(`endpoint: ${request.req.url} | status: ${error.response.statusCode} | error: ${error_msg}`);
+            } else {
+                console.log(error);
+            }
+            // if (request.req.url === '/v1/chain/push_transaction') {
+            //     const packedTrx = JSON.parse(opts['body']).packed_trx;
+            //     const trxBuffer = Buffer.from(packedTrx, 'hex');
+            //     const trxData = await fastify.eosjs.api.deserializeTransactionWithActions(trxBuffer);
+            //     console.log(trxData);
+            // }
+        } catch (e) {
+            console.log(e);
+        }
+    }
+}
+
+export function addChainApiRoute(fastify: FastifyInstance, routeName, description, props?, required?) {
+    const baseSchema = {
+        description: description,
+        summary: description,
+        tags: ['chain']
+    };
+    addApiRoute(
+        fastify,
+        'GET',
+        routeName,
+        chainApiHandler,
+        {
+            ...baseSchema,
+            querystring: props ? {
+                type: 'object',
+                properties: props,
+                required: required
+            } : undefined
+        }
+    );
+    addApiRoute(
+        fastify,
+        'POST',
+        routeName,
+        chainApiHandler,
+        {
+            ...baseSchema,
+            body: props ? {
+                type: ['object', 'string'],
+                properties: props,
+                required: required
+            } : undefined
+        }
+    );
+}
+
+export function addSharedSchemas(fastify: FastifyInstance) {
+    fastify.addSchema({
+        $id: "WholeNumber",
+        description: "A whole number",
+        anyOf: [
+            {
+                type: "string",
+                pattern: "^\\d+$"
+            },
+            {
+                type: "integer"
+            }
+        ],
+    });
+
+    fastify.addSchema({
+        $id: "Symbol",
+        type: "string",
+        description: "A symbol composed of capital letters between 1-7.",
+        pattern: "^([A-Z]{1,7})$",
+        title: "Symbol"
+    });
+
+    fastify.addSchema({
+        $id: "Signature",
+        type: "string",
+        description: "String representation of an EOSIO compatible cryptographic signature",
+        pattern: "^SIG_([RK]1|WA)_[1-9A-HJ-NP-Za-km-z]+$",
+        title: "Signature"
+    })
+
+    fastify.addSchema({
+        $id: "AccountName",
+        "anyOf": [
+            {
+                "type": "string",
+                "description": "String representation of privileged EOSIO name type",
+                "pattern": "^(eosio[\\.][a-z1-5]{1,6})([a-j]{1})?$",
+                "title": "NamePrivileged"
+            },
+            {
+                "type": "string",
+                "description": "String representation of basic EOSIO name type, must be 12 characters and contain only a-z and 0-5",
+                "pattern": "^([a-z]{1}[a-z1-5]{11})([a-j]{1})?$",
+                "title": "NameBasic"
+            },
+            {
+                "type": "string",
+                "description": "String representation of EOSIO bid name type, 1-12 characters and only a-z and 0-5 are allowed",
+                "pattern": "^([a-z1-5]{1,12})([a-j]{1})?$",
+                "title": "NameBid"
+            },
+            {
+                "type": "string",
+                "description": "String representation of EOSIO name type",
+                "pattern": "^([a-z1-5]{1}[a-z1-5\\.]{0,10}[a-z1-5]{1})([a-j]{1})?$",
+                "title": "NameCatchAll"
+            }
+        ],
+        "title": "Name"
+    });
+
+    fastify.addSchema({
+        $id: "Expiration",
+        "description": "Time that transaction must be confirmed by.",
+        "type": "string",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$",
+        "title": "DateTime"
+    });
+
+    fastify.addSchema({
+        $id: "BlockExtensions",
+        "type": "array",
+        "items": {
+            "anyOf": [{"type": "integer"}, {"type": "string"}]
+        },
+        "title": "Extension"
+    })
+
+    fastify.addSchema({
+        $id: "ActionItems",
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 5,
+        "required": [
+            "account",
+            "name",
+            "authorization",
+            "data",
+            "hex_data"
+        ],
+        "properties": {
+            "account": 'AccountName#',
+            "name": 'AccountName#',
+            "authorization": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 2,
+                    "required": [
+                        "actor",
+                        "permission"
+                    ],
+                    "properties": {
+                        "actor": 'AccountName#',
+                        "permission": 'AccountName#'
+                    },
+                    "title": "Authority"
+                }
+            },
+            "data": {
+                "type": "object",
+                "additionalProperties": true
+            },
+            "hex_data": {
+                "type": "string"
+            }
+        },
+        "title": "Action"
+    });
 }

@@ -85,7 +85,8 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
                                 {term: {block_num: block.block_num}}
                             ]
                         }
-                    }
+                    },
+                    sort: {global_sequence: "asc"}
                 }
             });
 
