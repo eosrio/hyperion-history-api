@@ -343,7 +343,19 @@ export default class WSRouter extends HyperionWorker {
             });
         });
 
-        server.listen(this.manager.conn.chains[this.chain].WS_ROUTER_PORT, () => {
+        const connOpts = this.manager.conn.chains[this.chain];
+
+        let _port = 57200;
+        if (connOpts.WS_ROUTER_PORT) {
+            _port = connOpts.WS_ROUTER_PORT;
+        }
+
+        let _host = "127.0.0.1";
+        if (connOpts.WS_ROUTER_HOST) {
+            _host = connOpts.WS_ROUTER_HOST;
+        }
+
+        server.listen(_port, _host, () => {
             this.ready();
             setTimeout(() => {
                 if (!this.firstData) {

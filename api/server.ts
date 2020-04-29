@@ -105,9 +105,20 @@ class HyperionApiServer {
         console.log('Importing stream module');
         import('./socketManager').then((mod) => {
             const connOpts = this.manager.conn.chains[this.chain];
+
+            let _port = 57200;
+            if (connOpts.WS_ROUTER_PORT) {
+                _port = connOpts.WS_ROUTER_PORT;
+            }
+
+            let _host = "127.0.0.1";
+            if (connOpts.WS_ROUTER_HOST) {
+                _host = connOpts.WS_ROUTER_HOST;
+            }
+
             this.socketManager = new mod.SocketManager(
                 this.fastify,
-                `http://${connOpts['WS_ROUTER_HOST']}:${connOpts['WS_ROUTER_PORT']}`,
+                `http://${_host}:${_port}`,
                 this.manager.conn.redis
             );
             this.socketManager.startRelay();
