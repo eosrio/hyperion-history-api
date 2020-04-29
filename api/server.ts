@@ -28,9 +28,11 @@ class HyperionApiServer {
         this.manager = new ConnectionManager(cm);
         this.manager.calculateServerHash();
         this.manager.getHyperionVersion();
+
         if (!existsSync('./logs/' + this.chain)) {
-            mkdirSync('./logs/' + this.chain);
+            mkdirSync('./logs/' + this.chain, {recursive: true});
         }
+
         const logStream = createWriteStream('./logs/' + this.chain + '/api.access.log');
         this.fastify = Fastify({
             ignoreTrailingSlash: false, trustProxy: true, logger: this.conf.api.access_log ? {
@@ -57,7 +59,7 @@ class HyperionApiServer {
         const ioRedisClient = new Redis(this.manager.conn.redis);
         const api_rate_limit = {
             max: 1000,
-            whitelist: [],
+            whitelist: ['127.0.0.1'],
             timeWindow: '1 minute',
             redis: ioRedisClient
         };
