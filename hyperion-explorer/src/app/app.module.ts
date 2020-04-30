@@ -28,6 +28,7 @@ import {MatTooltipModule} from "@angular/material/tooltip";
 import { TransactionComponent } from './search-results/transaction/transaction.component';
 import { BlockComponent } from './search-results/block/block.component';
 import {MatChipsModule} from "@angular/material/chips";
+import { KeyComponent } from './search-results/key/key.component';
 
 const appRoutes: Routes = [
   {
@@ -39,7 +40,8 @@ const appRoutes: Routes = [
     children: [
       {path: 'account/:account_name', component: AccountComponent},
       {path: 'transaction/:transaction_id', component: TransactionComponent},
-      {path: 'block/:block_num', component: BlockComponent}
+      {path: 'block/:block_num', component: BlockComponent},
+      {path: 'key/:key', component: KeyComponent}
     ],
   },
   {
@@ -54,7 +56,8 @@ const appRoutes: Routes = [
     SearchResultsComponent,
     AccountComponent,
     TransactionComponent,
-    BlockComponent
+    BlockComponent,
+    KeyComponent
   ],
   imports: [
     BrowserModule,
