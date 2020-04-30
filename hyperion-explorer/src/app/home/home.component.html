@@ -1,12 +1,36 @@
-<div class="">
-  <div class="">Hyperion Explorer</div>
-  <form [formGroup]="searchForm" (ngSubmit)="submit()">
-    <mat-form-field>
-      <label><input matInput formControlName="search_field" [matAutocomplete]="auto"></label>
-    </mat-form-field>
-    <mat-autocomplete #auto="matAutocomplete">
-      <mat-option *ngFor="let account of filteredAccounts" [value]="account">{{account}}</mat-option>
-    </mat-autocomplete>
-    <button type="submit" (keyup.enter)="submit()">Search</button>
-  </form>
+<div style="height: 100vh" fxLayout="column" fxLayoutAlign="space-between stretch" >
+  <mat-card class="search-card" fxLayout="column" fxLayoutAlign="end center">
+    <div fxLayout="column" fxLayoutAlign="center center" style="text-align: center;" fxLayoutGap="20px">
+    <img src="../../assets/logo.png" alt="logo" class="logo">
+    <form [formGroup]="searchForm" (ngSubmit)="submit()">
+      <div fxLayout="row" fxLayoutAlign="center start">
+      <mat-form-field appearance="outline" class="home-search-input">
+        <label>
+          <input matInput formControlName="search_field" [matAutocomplete]="auto"
+                 placeholder="Search account name...">
+        </label>
+      </mat-form-field>
+      <mat-autocomplete #auto="matAutocomplete" (optionSelected)="submit()">
+        <mat-option *ngFor="let account of filteredAccounts" [value]="account">{{account}}</mat-option>
+      </mat-autocomplete>
+      <button mat-stroked-button matSuffix type="submit" [attr.aria-label]="'search'" class="search-btn"
+              (keyup.enter)="submit()">
+        <fa-icon [icon]="faSearch"></fa-icon>
+      </button>
+      </div>
+    </form>
+      <div>
+        <div style="margin-bottom: 10px;" fxLayout="row" fxLayoutAlign="center center" fxLayoutGap="6px">
+          <span>Connected to</span>
+          <span class="outline" fxLayout="row" fxLayoutAlign="center center" fxLayoutGap="5px">
+            <img [src]="chainData.chainInfoData.logo" alt="logo" style="height: 28px">
+            <span>{{chainData.chainInfoData.chain_name}}</span>
+          </span>
+        </div>
+        <div>Provided by <a [href]="chainData.chainInfoData.provider_url" target="_blank">{{chainData.chainInfoData.provider}}</a>
+        </div>
+      </div>
+    </div>
+  </mat-card>
+  <div class="faded footer-text" style="">Made with ❤ by EOS Rio</div>
 </div>

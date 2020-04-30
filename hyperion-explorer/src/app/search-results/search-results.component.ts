@@ -4,6 +4,8 @@ import {Router} from '@angular/router';
 import {debounceTime} from 'rxjs/operators';
 import {SearchService} from '../services/search.service';
 import {AccountService} from '../services/account.service';
+import {faSearch} from "@fortawesome/free-solid-svg-icons/faSearch";
+import {ChainService} from "../services/chain.service";
 
 @Component({
   selector: 'app-search-results',
@@ -13,12 +15,14 @@ import {AccountService} from '../services/account.service';
 export class SearchResultsComponent implements OnInit {
   searchForm: FormGroup;
   filteredAccounts: string[];
+  faSearch = faSearch;
 
   constructor(
     private formBuilder: FormBuilder,
     private router: Router,
     private accountService: AccountService,
-    private searchService: SearchService
+    private searchService: SearchService,
+    public chainData: ChainService
   ) {
     this.searchForm = this.formBuilder.group({
       search_field: ['', Validators.required]

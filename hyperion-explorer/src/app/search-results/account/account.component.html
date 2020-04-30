@@ -1,52 +1,283 @@
-<div style="padding-left: 10px" *ngIf="accountService.account">
-  <h4>Account: {{accountService.account['account_name']}}</h4>
-  <p><strong>Liquid Balance: {{accountService.account['core_liquid_balance']}}</strong></p>
-  <p>RAM: {{accountService.account['ram_usage']}} bytes / {{accountService.account['ram_quota']}} bytes
-    ({{(accountService.account['ram_usage'] / accountService.account['ram_quota']) * 100 | number}}%)</p>
-  <p>CPU: {{accountService.account['cpu_limit']['used']}} us / {{accountService.account['cpu_limit']['max']}} us
-    ({{(accountService.account['cpu_limit']['used'] / accountService.account['cpu_limit']['max']) * 100 | number}}%)</p>
-  <p>NET: {{accountService.account['net_limit']['used']}} bytes / {{accountService.account['net_limit']['max']}} bytes
-    ({{(accountService.account['net_limit']['used'] / accountService.account['net_limit']['max']) * 100 | number}}%)</p>
-
-  <h5>Permissions</h5>
-
-  <div *ngFor="let perm of accountService.account['permissions']">
-    <strong>{{perm['perm_name']}} <span *ngIf="perm['parent'] !== ''">[{{perm['parent']}}]</span> -
-      threshold: <span>{{perm['required_auth']['threshold']}}</span></strong>
-    <div *ngIf="perm['required_auth']['keys'].length > 0">
-      <p>Keys</p>
-      <div *ngFor="let key of perm['required_auth']['keys']"> - {{key.key}} - weight: {{key.weight}}</div>
-    </div>
-    <div *ngIf="perm['required_auth']['accounts'].length > 0">
-      <p>Accounts</p>
-      <div *ngFor="let acct of perm['required_auth']['accounts']"> - {{acct.permission['actor']}}
-        @{{acct.permission['permission']}} - weight: {{acct.weight}}</div>
-    </div>
-    <div *ngIf="perm['required_auth']['waits'].length > 0">
-      <p>Waits</p>
-      <div *ngFor="let wait of perm['required_auth']['waits']"> - {{wait['wait_sec']}} - weight: {{wait.weight}}</div>
-    </div>
-  </div>
-
-  <ngx-json-viewer [json]="accountService.account"></ngx-json-viewer>
-
-  <h4>Actions</h4>
-
-  <div class="action-card" *ngFor="let action of accountService.actions">
-    <p>{{action['act']['account']}}::{{action['act']['name']}}
-      <a href="https://bloks.io/transaction/{{action['trx_id']}}" target="_blank">{{action['trx_id']}}</a>
-    </p>
-    <p>{{action['@timestamp']}} - {{action['block_num']}}</p>
-    <p>{{action['notified'].join(", ")}}</p>
-    <p>{{action['act']['authorization'][0]['actor']}}@{{action['act']['authorization'][0].permission}}</p>
-    <div *ngFor="let item of action['act']['data'] | keyvalue">
-      <b>{{item.key}}</b>: <b>{{item.value}}</b>
-    </div>
-  </div>
-
-  <h4>Tokens</h4>
-
-  <div *ngFor="let token of accountService.tokens">
-    <ngx-json-viewer [json]="token"></ngx-json-viewer>
-  </div>
+<div *ngIf="!accountService.jsonData" class="container" fxLayout="column" fxLayoutAlign="start center"
+     fxLayoutGap="15px" style="height: calc(100vh - 209px);">
+  <mat-card style="width: 100%;">
+    <h1 class="faded">
+      <fa-icon [icon]="faSadTear" style="margin-right: 5px"></fa-icon>
+      Account not found
+    </h1>
+    <div>We couldn't find the account <strong>{{accountName}}</strong></div>
+  </mat-card>
 </div>
+
+<div *ngIf="accountService.jsonData" class="container" fxLayout="column" fxLayoutAlign="start center"
+     fxLayoutGap="15px">
+
+  <mat-card fxFlex="100" fxFlexFill>
+    <h2 style="letter-spacing: 1px;">
+      <fa-icon [icon]="faUserCircle" style="margin-right: 5px"></fa-icon>
+      {{accountService.account['account_name']}}
+    </h2>
+    <p><strong>Liquid Balance: {{accountService.account['core_liquid_balance']}}</strong></p>
+    <div fxLayout="row" fxLayoutAlign="space-between center">
+      <div>
+        <div><span class="title">RAM</span>
+          <span
+            class="faded used">{{(accountService.account['ram_usage'] / accountService.account['ram_quota']) * 100 | number}}
+            % used</span>
+        </div>
+        <div class="values">{{accountService.account['ram_usage']}} bytes / {{accountService.account['ram_quota']}}
+          bytes
+        </div>
+        <mat-progress-bar class="progress-bar" mode="determinate"
+                          [value]="(accountService.account['ram_usage'] / accountService.account['ram_quota']) * 100"></mat-progress-bar>
+      </div>
+      <div>
+        <div>
+          <span class="title">CPU</span>
+          <span
+            class="faded used">{{(accountService.account['cpu_limit']['used'] / accountService.account['cpu_limit']['max']) * 100 | number}}
+            % used</span>
+        </div>
+        <div class="values">{{accountService.account['cpu_limit']['used']}} µs
+          / {{accountService.account['cpu_limit']['max']}} µs
+        </div>
+        <mat-progress-bar class="progress-bar" mode="determinate"
+                          [value]="(accountService.account['cpu_limit']['used'] / accountService.account['cpu_limit']['max']) * 100"></mat-progress-bar>
+      </div>
+      <div>
+        <div>
+          <span class="title">NET</span>
+          <span
+            class="faded used">{{(accountService.account['net_limit']['used'] / accountService.account['net_limit']['max']) * 100 | number}}
+            % used</span>
+        </div>
+        <div class="values">{{accountService.account['net_limit']['used']}} bytes
+          / {{accountService.account['net_limit']['max']}} bytes
+        </div>
+        <mat-progress-bar class="progress-bar" mode="determinate"
+                          [value]="(accountService.account['net_limit']['used'] / accountService.account['net_limit']['max']) * 100"></mat-progress-bar>
+      </div>
+    </div>
+  </mat-card>
+
+  <div fxLayout.gt-sm="row" fxLayoutAlign.gt-sm="space-between"
+       fxLayout.lt-md="column" fxLayoutAlign.lt-md="start auto"
+       fxLayoutGap="10px" fxFlexFill fxFlex="auto">
+
+    <mat-card fxFlex.gt-sm="25" ngClass.gt-sm="middle-card">
+      <h3>
+        <fa-layers [fixedWidth]="true" style="margin-right: 5px">
+          <fa-icon [icon]="faCircle" transform="grow-3"></fa-icon>
+          <fa-icon [icon]="faStar" [inverse]="true" transform="shrink-5"></fa-icon>
+        </fa-layers>
+        Tokens
+      </h3>
+
+      <div fxLayout.lt-md="row wrap" fxLayoutAlign.lt-md="start stretch"
+           fxLayoutGap.lt-md="30px"
+           fxLayoutGap.lt-sm="20px">
+
+        <div *ngFor="let token of accountService.tokens"
+             fxFlex.lt-md="0 0 calc((100% - 132px) / 3)"
+             fxFlex.lt-sm="0 0 calc((100% - 132px) / 2)">
+          <div class="token-cell">
+            <div class="faded monospace">{{token.contract}}</div>
+            <div class="token-amount">{{token.amount | number :'1.0-' + token.precision}}
+              <span class="token">{{token.symbol}}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </mat-card>
+
+    <mat-card fxFlex.gt-sm="75" ngClass.gt-sm="middle-card">
+
+      <h3>
+        <fa-layers [fixedWidth]="true" style="margin-right: 5px">
+          <fa-icon [icon]="faCircle" transform="grow-3"></fa-icon>
+          <fa-icon [icon]="faLink" [inverse]="true" transform="shrink-5"></fa-icon>
+        </fa-layers>
+        Permissions & Keys
+      </h3>
+
+      <mat-tree [dataSource]="dataSource" [treeControl]="treeControl">
+        <!-- This is the tree node template for leaf nodes -->
+        <mat-tree-node *matTreeNodeDef="let node" matTreeNodePadding>
+          <!-- use a disabled button to provide padding for tree leaf -->
+          <button mat-icon-button disabled></button>
+          <div fxLayout="column" fxLayoutGap="7px" class="permission-cell">
+            <div><h3 class="primary" style="display: inline">{{node.perm_name}}</h3></div>
+            <ng-container *ngIf="node['required_auth']['keys'].length > 0">
+              <div *ngFor="let key of node['required_auth']['keys']">
+                <div>
+                  <strong class="space-right" matTooltip="weight / threshold" matTooltipClass="tooltip-bigger">
+                    {{key.weight}}/{{node.required_auth.threshold}}
+                  </strong>
+                  <fa-icon [icon]="faKey"></fa-icon>
+                  <span class="monospace m-left break-word">{{key.key}}</span>
+                </div>
+              </div>
+            </ng-container>
+            <ng-container *ngIf="node['required_auth']['accounts'].length > 0">
+              <div *ngFor="let acc of node['required_auth']['accounts']">
+                <div *ngFor="let perm of acc['permission']">
+                  <strong class="space-right" matTooltip="weight / threshold" matTooltipClass="tooltip-bigger">
+                    {{acc.weight}}/{{node.required_auth.threshold}}
+                  </strong>
+                  <fa-icon [icon]="faUser"></fa-icon>
+                  <a [routerLink]="['/account', perm.actor]" class="m-left">
+                    {{perm.actor}}
+                  </a> @{{perm.permission}}
+                </div>
+              </div>
+            </ng-container>
+            <ng-container *ngIf="node['required_auth']['waits'].length > 0">
+              <div *ngFor="let waits of node['required_auth']['waits']">
+                <strong class="space-right" matTooltip="weight / threshold" matTooltipClass="tooltip-bigger">
+                  {{waits.weight}}/{{node.required_auth.threshold}}
+                </strong>
+                <fa-icon [icon]="faClock"></fa-icon>
+                <span class="m-left">{{waits.wait_sec}}s</span>
+              </div>
+            </ng-container>
+          </div>
+        </mat-tree-node>
+
+        <!-- This is the tree node template for expandable nodes -->
+        <!--suppress AngularUndefinedBinding -->
+        <mat-tree-node *matTreeNodeDef="let node; when: hasChild" matTreeNodePadding>
+          <button mat-icon-button matTreeNodeToggle>
+            <fa-icon [icon]="treeControl.isExpanded(node) ? faChevronDown : faChevronRight"></fa-icon>
+          </button>
+          <div fxLayout="column" fxLayoutGap="7px" class="permission-cell">
+            <div><h3 class="primary" style="display: inline">{{node.perm_name}}</h3></div>
+            <ng-container *ngIf="node['required_auth']['keys'].length > 0">
+              <div *ngFor="let key of node['required_auth']['keys']">
+                <div>
+                  <strong class="space-right" matTooltip="weight / threshold" matTooltipClass="tooltip-bigger">
+                    {{key.weight}}/{{node.required_auth.threshold}}
+                  </strong>
+                  <fa-icon [icon]="faKey"></fa-icon>
+                  <span class="monospace m-left break-word">{{key.key}}</span>
+                </div>
+              </div>
+            </ng-container>
+            <ng-container *ngIf="node['required_auth']['accounts'].length > 0">
+              <div *ngFor="let acc of node['required_auth']['accounts']">
+                <div *ngFor="let perm of acc['permission']">
+                  <strong class="space-right" matTooltip="weight / threshold" matTooltipClass="tooltip-bigger">
+                    {{acc.weight}}/{{node.required_auth.threshold}}
+                  </strong>
+                  <fa-icon [icon]="faUser"></fa-icon>
+                  <a [routerLink]="['/account', perm.actor]" class="m-left">
+                    {{perm.actor}}
+                  </a> @{{perm.permission}}
+                </div>
+              </div>
+            </ng-container>
+            <ng-container *ngIf="node['required_auth']['waits'].length > 0">
+              <div *ngFor="let waits of node['required_auth']['waits']">
+                <strong class="space-right" matTooltip="weight / threshold" matTooltipClass="tooltip-bigger">
+                  {{waits.weight}}/{{node.required_auth.threshold}}
+                </strong>
+                <fa-icon [icon]="faClock"></fa-icon>
+                <span class="m-left">{{waits.wait_sec}}s</span>
+              </div>
+            </ng-container>
+          </div>
+        </mat-tree-node>
+      </mat-tree>
+      <!--      <ngx-json-viewer [json]="accountService.account['permissions']"></ngx-json-viewer>-->
+    </mat-card>
+  </div>
+
+  <mat-card fxFlexFill fxFlex="100">
+    <div fxLayout="row" fxLayoutAlign="space-between start">
+      <h3 style="margin-top: 0;">
+        <fa-layers [fixedWidth]="true" style="margin-right: 5px">
+          <fa-icon [icon]="faCircle" transform="grow-3"></fa-icon>
+          <fa-icon [icon]="faHistory" [inverse]="true" transform="shrink-5"></fa-icon>
+        </fa-layers>
+        Actions
+      </h3>
+
+      <div class="livestream" matTooltip="click to turn on/off" matTooltipClass="tooltip-bigger">
+        <span class="dot pulse"></span>
+        action live stream on
+      </div>
+    </div>
+    <table mat-table [dataSource]="accountService.tableDataSource"
+           matSort
+           matSortActive="block_num"
+           matSortStart="desc"
+           matSortDirection="desc" class="actions-table">
+
+      <!-- TX Column -->
+      <ng-container matColumnDef="trx_id">
+        <th mat-header-cell *matHeaderCellDef> TX</th>
+        <td mat-cell *matCellDef="let action" data-label="TX">
+          <fa-icon [icon]="faClock" class="accent" style="margin-right: 5px"></fa-icon>
+          <a [routerLink]="['/transaction', action['trx_id']]">
+            {{action['trx_id'].slice(0, 8)}}...
+          </a>
+        </td>
+      </ng-container>
+
+      <!-- Action Column -->
+      <ng-container matColumnDef="action">
+        <th mat-header-cell *matHeaderCellDef [ngStyle.gt-xs]="{'padding-left': '14px', 'padding-right':'14px'}">
+          Action
+        </th>
+        <td mat-cell *matCellDef="let action" [ngStyle.gt-xs]="{'padding-left': '14px', 'padding-right':'14px'}"
+            data-label="Action">
+          <span class="action-cell" [ngStyle.gt-xs]="{'min-width': '170px'}" [ngClass.gt-sm]="'action-border'">
+            <span class="accent w-500">{{action['act']['name']}}</span>
+            on <span class="w-500">{{action['act']['account']}}</span>
+          </span>
+        </td>
+      </ng-container>
+
+      <!-- Data Column -->
+      <ng-container matColumnDef="data">
+        <th mat-header-cell *matHeaderCellDef> Data</th>
+        <td mat-cell *matCellDef="let action" [ngStyle.gt-xs]="{'padding': '10px 10px 7px 0'}" data-label="Data">
+          <div *ngFor="let item of action['act']['data'] | keyvalue"
+               [ngClass]="{'data-item': objectKeyCount(action['act']['data']) > 1}">
+            <span class="w-500">{{item.key}}</span>: <span class="break-word">{{action['act']['data'][item.key]}}</span>
+          </div>
+        </td>
+      </ng-container>
+
+      <!-- Block & Date Column -->
+      <ng-container matColumnDef="block_num">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Block & Date</th>
+        <td mat-cell *matCellDef="let action" data-label="Block & Date">
+          <a [routerLink]="['/block', action['block_num']]">{{action['block_num']}}</a>
+          <span> ({{formatDate(action['@timestamp'])}})</span>
+        </td>
+      </ng-container>
+
+      <!--suppress AngularUndefinedBinding -->
+      <tr mat-header-row *matHeaderRowDef="columnsToDisplay; sticky: true"></tr>
+
+      <!--suppress AngularUndefinedBinding -->
+      <tr mat-row *matRowDef="let myRowData; columns: columnsToDisplay"></tr>
+    </table>
+
+
+    <!--  <div class="action-card" *ngFor="let action of accountService.actions">-->
+    <!--    <p>{{action['act']['account']}}::{{action['act']['name']}}-->
+    <!--      <a href="https://bloks.io/transaction/{{action['trx_id']}}" target="_blank">{{action['trx_id']}}</a>-->
+    <!--    </p>-->
+    <!--    <p>{{action['@timestamp']}} - {{action['block_num']}}</p>-->
+    <!--    <p>{{action['notified'].join(", ")}}</p>-->
+    <!--    <p>{{action['act']['authorization'][0]['actor']}}@{{action['act']['authorization'][0].permission}}</p>-->
+    <!--    <div *ngFor="let item of action['act']['data'] | keyvalue">-->
+    <!--      <b>{{item.key}}</b>: <b>{{item.value}}</b>-->
+    <!--    </div>-->
+    <!--  </div>-->
+
+  </mat-card>
+
+</div>
+
