@@ -38,6 +38,7 @@ export class SearchService {
       }
     } catch (error) {
       console.log(error);
+      return [];
     }
   }
 }
