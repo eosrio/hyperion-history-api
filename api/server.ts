@@ -67,6 +67,9 @@ class HyperionApiServer {
             this.fastify.decorate('push_api', this.conf.api.push_api);
         }
 
+        console.log(`Chain API URL: ${this.fastify.chain_api}`);
+        console.log(`Push API URL: ${this.fastify.push_api}`);
+
         const ioRedisClient = new Redis(this.manager.conn.redis);
         const api_rate_limit = {
             max: 1000,
