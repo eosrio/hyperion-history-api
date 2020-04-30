@@ -63,7 +63,7 @@ export default class DSPoolWorker extends HyperionWorker {
         this.preIndexingQueue = queue((data: any, cb) => {
             if (this.ch_ready) {
                 try {
-                    this.ch.sendToQueue(data.queue, data.content);
+                    this.ch.sendToQueue(data.queue, data.content, {headers: data.headers});
                 } catch (e) {
                     hLog(e.message);
                 }
@@ -492,18 +492,19 @@ export default class DSPoolWorker extends HyperionWorker {
             for (const uniqueAction of _finalTraces) {
                 const payload = Buffer.from(JSON.stringify(uniqueAction));
                 this.actionDsCounter++;
-                this.pushToActionsQueue(payload);
+                this.pushToActionsQueue(payload, block_num);
                 this.pushToActionStreamingQueue(payload, uniqueAction);
             }
         }
     }
 
-    pushToActionsQueue(payload) {
+    pushToActionsQueue(payload, block_num) {
         if (!this.conf.indexer.disable_indexing) {
             const q = this.chain + ":index_actions:" + (this.act_emit_idx);
             this.preIndexingQueue.push({
                 queue: q,
-                content: payload
+                content: payload,
+                headers: {block_num}
             });
             this.act_emit_idx++;
             if (this.act_emit_idx > (this.conf.scaling.indexing_queues * this.conf.scaling.ad_idx_queues)) {

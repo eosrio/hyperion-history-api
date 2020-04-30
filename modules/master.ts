@@ -594,6 +594,14 @@ export class HyperionMaster {
                             str.push(`Indexing Queue: ${w[key]}`);
                             break;
                         }
+                        case 'distribution': {
+                            if (!!w[key]) {
+                                str.push(`Dist Map: ${Object.keys(w[key]).length} indices`);
+                            } else {
+                                str.push(`Dist Map: N/A`);
+                            }
+                            break;
+                        }
                         default: {
                             str.push(`${key}: ${w[key]}`);
                         }
@@ -617,64 +625,79 @@ export class HyperionMaster {
         }
     }
 
-    // async getLastBlock(index_name) {
-    //     const lastBlockSearch = await this.manager.elasticsearchClient.search({
-    //         index: index_name,
-    //         size: 1,
-    //         _source: "block_num",
-    //         body: {
-    //             "query": {"match_all": {}},
-    //             sort: [{"block_num": {"order": "desc"}}]
-    //         }
-    //     });
-    //     if (lastBlockSearch.body.hits.hits[0]) {
-    //         return lastBlockSearch.body.hits.hits[0]._source.block_num;
-    //     } else {
-    //         return null;
-    //     }
-    // }
+    async getLastBlock(index_name) {
+        const lastBlockSearch = await this.manager.elasticsearchClient.search({
+            index: index_name,
+            size: 1,
+            _source: "block_num",
+            body: {
+                "query": {"match_all": {}},
+                sort: [{"block_num": {"order": "desc"}}]
+            }
+        });
+        if (lastBlockSearch.body.hits.hits[0]) {
+            return lastBlockSearch.body.hits.hits[0]._source.block_num;
+        } else {
+            return null;
+        }
+    }
 
-    // async getFirstBlock(index_name) {
-    //     const firstBlockSearch = await this.manager.elasticsearchClient.search({
-    //         index: index_name,
-    //         size: 1,
-    //         _source: "block_num",
-    //         body: {
-    //             "query": {"match_all": {}},
-    //             sort: [{"block_num": {"order": "asc"}}]
-    //         }
-    //     });
-    //     if (firstBlockSearch.body.hits.hits[0]) {
-    //         return firstBlockSearch.body.hits.hits[0]._source.block_num;
-    //     } else {
-    //         return null;
-    //     }
-    // }
+    async getFirstBlock(index_name) {
+        const firstBlockSearch = await this.manager.elasticsearchClient.search({
+            index: index_name,
+            size: 1,
+            _source: "block_num",
+            body: {
+                "query": {"match_all": {}},
+                sort: [{"block_num": {"order": "asc"}}]
+            }
+        });
+        if (firstBlockSearch.body.hits.hits[0]) {
+            return firstBlockSearch.body.hits.hits[0]._source.block_num;
+        } else {
+            return null;
+        }
+    }
 
     private async setupIndexers() {
 
-        // if (this.conf.indexer.rewrite) {
-        //     hLog(`Indexer rewrite enabled (${this.conf.indexer.start_on} - ${this.conf.indexer.stop_on})`);
-        //     const getIndicesResponse = await this.manager.elasticsearchClient.indices.get({
-        //         index: this.chain + "-*"
-        //     });
-        //     if (getIndicesResponse) {
-        //         const indices = getIndicesResponse.body;
-        //         const actionIndices = Object.keys(indices).filter(k => k.startsWith(this.chain + "-action"));
-        //         for (const actionIndex of actionIndices) {
-        //             const last_block = await this.getLastBlock(actionIndex);
-        //             const first_block = await this.getFirstBlock(actionIndex);
-        //             console.log(`${actionIndex} from ${first_block} to ${last_block}`);
-        //         }
-        //
-        //         const deltaIndices = Object.keys(indices).filter(k => k.startsWith(this.chain + "-delta"));
-        //         for (const deltaIndex of deltaIndices) {
-        //             const last_block = await this.getLastBlock(deltaIndex);
-        //             const first_block = await this.getFirstBlock(deltaIndex);
-        //             console.log(`${deltaIndex} from ${first_block} to ${last_block}`);
-        //         }
-        //     }
-        // }
+        const indexDist = {
+            action: [],
+            delta: []
+        };
+
+        const getIndicesResponse = await this.manager.elasticsearchClient.indices.get({
+            index: this.chain + "-*"
+        });
+
+        if (getIndicesResponse) {
+            const indices = getIndicesResponse.body;
+            const actionIndices = Object.keys(indices).filter(k => k.startsWith(this.chain + "-action"));
+            for (const actionIndex of actionIndices) {
+                const last_block = await this.getLastBlock(actionIndex);
+                const first_block = await this.getFirstBlock(actionIndex);
+                indexDist.action.push({
+                    index: actionIndex,
+                    first_block,
+                    last_block
+                });
+            }
+
+            const deltaIndices = Object.keys(indices).filter(k => k.startsWith(this.chain + "-delta"));
+            for (const deltaIndex of deltaIndices) {
+                const last_block = await this.getLastBlock(deltaIndex);
+                const first_block = await this.getFirstBlock(deltaIndex);
+                indexDist.delta.push({
+                    index: deltaIndex,
+                    first_block,
+                    last_block
+                });
+            }
+        }
+
+        if (this.conf.indexer.rewrite || this.conf.settings.preview) {
+            hLog(`Indexer rewrite enabled (${this.conf.indexer.start_on} - ${this.conf.indexer.stop_on})`);
+        }
 
 
         let qIdx = 0;
@@ -693,7 +716,8 @@ export class HyperionMaster {
                     this.addWorker({
                         worker_role: 'ingestor',
                         queue: q.name + ":" + (qIdx + 1),
-                        type: q.type
+                        type: q.type,
+                        distribution: JSON.stringify(indexDist[q.type])
                     });
                     qIdx++;
                 }

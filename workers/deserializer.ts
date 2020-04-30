@@ -791,9 +791,13 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    pushToDeltaQueue(bufferData: any) {
+    pushToDeltaQueue(bufferData: any, block_num) {
         const q = this.chain + ":index_deltas:" + (this.delta_emit_idx);
-        this.preIndexingQueue.push({queue: q, content: bufferData});
+        this.preIndexingQueue.push({
+            queue: q,
+            content: bufferData,
+            headers: {block_num}
+        });
         this.delta_emit_idx++;
         if (this.delta_emit_idx > (this.conf.scaling.indexing_queues * this.conf.scaling.ad_idx_queues)) {
             this.delta_emit_idx = 1;
@@ -831,7 +835,7 @@ export default class MainDSWorker extends HyperionWorker {
                             if (await this.processTableDelta(jsonRow)) {
                                 if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {
                                     const payload = Buffer.from(JSON.stringify(jsonRow));
-                                    this.pushToDeltaQueue(payload);
+                                    this.pushToDeltaQueue(payload, block_num);
                                     this.temp_delta_counter++;
                                     this.pushToDeltaStreamingQueue(payload, jsonRow);
                                 }
