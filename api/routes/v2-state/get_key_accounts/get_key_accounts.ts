@@ -30,31 +30,45 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
 
     const response = {
         account_names: []
-    };
+    } as any;
+
+    if (request.req.method === 'GET' && request.query.details) {
+        response.permissions = [];
+    }
 
     try {
+
         const permTableResults = await fastify.elastic.search({
             index: fastify.manager.chain + '-perm-*',
             body: {
                 query: {
                     bool: {
                         must: [
-                            {term: {"auth.keys.key.keyword": publicKey}}
+                            {
+                                term: {
+                                    "auth.keys.key.keyword": publicKey
+                                }
+                            }
                         ],
                     }
                 }
             }
         });
+
         if (permTableResults.body.hits.hits.length > 0) {
             for (const perm of permTableResults.body.hits.hits) {
                 response.account_names.push(perm._source.owner);
+                if (request.req.method === 'GET' && request.query.details) {
+                    response.permissions.push(perm._source);
+                }
             }
         }
+
     } catch (e) {
         console.log(e);
     }
 
-    if(response.account_names.length > 0) {
+    if (response.account_names.length > 0) {
         response.account_names = [...(new Set(response.account_names))];
         return response;
     }
