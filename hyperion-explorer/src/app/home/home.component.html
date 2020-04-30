@@ -7,7 +7,7 @@
       <mat-form-field appearance="outline" class="home-search-input">
         <label>
           <input matInput formControlName="search_field" [matAutocomplete]="auto"
-                 placeholder="Search account name...">
+                 [placeholder]="searchPlaceholder">
         </label>
       </mat-form-field>
       <mat-autocomplete #auto="matAutocomplete" (optionSelected)="submit()">

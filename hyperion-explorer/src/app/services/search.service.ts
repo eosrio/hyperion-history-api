@@ -14,6 +14,11 @@ export class SearchService {
   }
 
   async filterAccountNames(value: string) {
+
+    if (value && value.length > 12) {
+      return [];
+    }
+
     const requestBody = {
       code: environment.systemContract,
       table: environment.userResourcesTable,
