@@ -14,21 +14,21 @@ import {AppComponent} from './app.component';
 import {HomeComponent} from './home/home.component';
 import {SearchResultsComponent} from './search-results/search-results.component';
 import {AccountComponent} from './search-results/account/account.component';
-import {MatCardModule} from "@angular/material/card";
+import {MatCardModule} from '@angular/material/card';
 import {FontAwesomeModule} from '@fortawesome/angular-fontawesome';
-import {MatButtonModule} from "@angular/material/button";
-import {FlexLayoutModule} from "@angular/flex-layout";
-import {MatProgressBarModule} from "@angular/material/progress-bar";
-import {MatTreeModule} from "@angular/material/tree";
-import {MatTableModule} from "@angular/material/table";
-import {MatSortModule} from "@angular/material/sort";
-import {MatPaginatorModule} from "@angular/material/paginator";
-import {CdkTableModule} from "@angular/cdk/table";
-import {MatTooltipModule} from "@angular/material/tooltip";
-import { TransactionComponent } from './search-results/transaction/transaction.component';
-import { BlockComponent } from './search-results/block/block.component';
-import {MatChipsModule} from "@angular/material/chips";
-import { KeyComponent } from './search-results/key/key.component';
+import {MatButtonModule} from '@angular/material/button';
+import {FlexLayoutModule} from '@angular/flex-layout';
+import {MatProgressBarModule} from '@angular/material/progress-bar';
+import {MatTreeModule} from '@angular/material/tree';
+import {MatTableModule} from '@angular/material/table';
+import {MatSortModule} from '@angular/material/sort';
+import {MatPaginatorModule} from '@angular/material/paginator';
+import {CdkTableModule} from '@angular/cdk/table';
+import {MatTooltipModule} from '@angular/material/tooltip';
+import {TransactionComponent} from './search-results/transaction/transaction.component';
+import {BlockComponent} from './search-results/block/block.component';
+import {MatChipsModule} from '@angular/material/chips';
+import {KeyComponent} from './search-results/key/key.component';
 
 const appRoutes: Routes = [
   {
