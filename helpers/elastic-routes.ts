@@ -140,14 +140,13 @@ export class ElasticRoutes {
                 } else {
                     channel.ackAll();
                 }
-                counter += messageMap.size;
-                resolve();
+                resolve(messageMap.size);
             }).catch((err) => {
                 try {
                     channel.nackAll();
                     hLog('NackAll', err);
                 } finally {
-                    resolve();
+                    resolve(0);
                 }
             });
         })
@@ -324,7 +323,8 @@ export class ElasticRoutes {
                     queue.push(this.createGenericBuilder(indexMap[idxKey], channel, counter, idxKey, bulkGenerator));
                 }
 
-                await Promise.all(queue);
+                const results = await Promise.all(queue);
+                results.forEach(value => counter += value);
                 cb(counter);
             } else {
 
