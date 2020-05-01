@@ -85,6 +85,7 @@ export class AccountComponent implements OnInit {
   treeFlattener: MatTreeFlattener<any, any>;
 
   dataSource: MatTreeFlatDataSource<any, any>;
+  detailedView = true;
 
   constructor(
     private activatedRoute: ActivatedRoute,
@@ -167,5 +168,9 @@ export class AccountComponent implements OnInit {
 
   isArray(value: any) {
     return typeof value === 'object' && value.length > 0;
+  }
+
+  getType(subitem: any) {
+    return typeof subitem;
   }
 }

@@ -84,8 +84,9 @@
              fxFlex.lt-md="0 0 calc((100% - 132px) / 3)"
              fxFlex.lt-sm="0 0 calc((100% - 132px) / 2)">
           <div class="token-cell">
-            <div class="faded monospace" style="cursor: pointer" [routerLink]="['/account', token.contract]">{{token.contract}}</div>
-            <div class="token-amount">{{token.amount | number :'1.0-' + token.precision}}
+            <div class="faded monospace" style="cursor: pointer"
+                 [routerLink]="['/account', token.contract]">{{token.contract}}</div>
+            <div class="token-amount">{{token.amount | number :'1.0-' + (token.precision || 4)}}
               <span class="token">{{token.symbol}}</span>
             </div>
           </div>
@@ -211,7 +212,7 @@
 
       <!-- TX Column -->
       <ng-container matColumnDef="trx_id">
-        <th mat-header-cell *matHeaderCellDef> TX</th>
+        <th mat-header-cell *matHeaderCellDef [ngStyle.gt-xs]="{'min-width': '100px'}"> TX</th>
         <td mat-cell *matCellDef="let action" data-label="TX">
           <fa-icon [icon]="faClock" class="accent" style="margin-right: 5px"></fa-icon>
           <a [routerLink]="['/transaction', action['trx_id']]">
@@ -222,14 +223,16 @@
 
       <!-- Action Column -->
       <ng-container matColumnDef="action">
-        <th mat-header-cell *matHeaderCellDef [ngStyle.gt-xs]="{'padding-left': '14px', 'padding-right':'14px'}">
+        <th mat-header-cell *matHeaderCellDef
+            [ngStyle.gt-xs]="{'padding-left': '14px', 'padding-right':'14px','min-width': '100px'}"
+            [ngStyle.gt-sm]="{'min-width': '240px'}">
           Action
         </th>
         <td mat-cell *matCellDef="let action" [ngStyle.gt-xs]="{'padding-left': '14px', 'padding-right':'14px'}"
             data-label="Action">
-          <span class="action-cell" [ngStyle.gt-xs]="{'min-width': '170px'}" [ngClass.gt-sm]="'action-border'">
-            <span class="accent w-500">{{action['act']['name']}}</span>
-            on <span class="w-500">{{action['act']['account']}}</span>
+          <span class="action-cell" [ngStyle.lt-md]="{'padding':'0'}" [ngClass.gt-sm]="'action-border'">
+            <span class="accent w-500">{{action['act']['name']}}</span> on <span
+            class="w-500">{{action['act']['account']}}</span>
           </span>
         </td>
       </ng-container>
@@ -238,31 +241,59 @@
       <ng-container matColumnDef="data">
         <th mat-header-cell *matHeaderCellDef> Data</th>
         <td mat-cell *matCellDef="let action" [ngStyle.gt-xs]="{'padding': '10px 10px 7px 0'}" data-label="Data">
-          <div *ngFor="let item of action['act']['data'] | keyvalue"
-               [ngClass]="{'data-item': objectKeyCount(action['act']['data']) > 1}">
-            <ng-container *ngIf="isArray(item.value)">
-              <span class="w-500">{{item.key}}</span>:
-              <div *ngFor="let subitem of item.value">
-                <div *ngFor="let elem of subitem | keyvalue"
-                     [ngClass]="{'data-item': objectKeyCount(subitem) > 1}">
-                  <span class="w-500" style="margin-left: 20px">{{elem.key}}</span>: <span
-                  class="break-word">{{elem.value}}</span>
+
+          <!-- DETAILED ACTION DATA VIEW-->
+          <ng-container *ngIf="detailedView">
+
+            <div *ngFor="let item of action['act']['data'] | keyvalue"
+                 [ngClass]="{'data-item': objectKeyCount(action['act']['data']) > 1}">
+              <ng-container *ngIf="isArray(item.value)">
+                <span class="w-500">{{item.key}} [{{item.value.length}}]</span>:
+
+                <div style="margin-top: 5px" *ngFor="let subitem of item.value">
+
+                  <ng-container *ngIf="getType(subitem) === 'string'">
+                    <span class="w-500" style="margin-left: 15px">- {{subitem}}</span>
+                  </ng-container>
+
+                  <ng-container *ngIf="getType(subitem) === 'object'">
+                    <div *ngFor="let elem of subitem | keyvalue" [ngClass]="{'data-item': objectKeyCount(subitem) > 1}">
+                    <span class="w-500" style="margin-left: 15px">
+                      {{elem.key}}</span>: <span class="break-word">{{elem.value}}</span>
+                    </div>
+                  </ng-container>
+
                 </div>
-              </div>
-            </ng-container>
-            <ng-container *ngIf="!isArray(item.value)">
-              <span class="w-500">{{item.key}}</span>: <span class="break-word">{{item.value}}</span>
-            </ng-container>
-          </div>
+
+              </ng-container>
+
+              <ng-container *ngIf="!isArray(item.value)">
+                <span class="w-500">{{item.key}}</span>:
+                <span *ngIf="item.value" class="break-word">{{item.value}}</span>
+                <span *ngIf="!item.value" class="break-word" style="font-style: italic">empty</span>
+              </ng-container>
+
+            </div>
+
+            <span *ngIf="getType(action['act']['data'])=== 'string'" class="break-word" style="font-style: italic">
+              {{action['act']['data']}}
+            </span>
+
+          </ng-container>
+
+          <ng-container *ngIf="!detailedView">
+
+          </ng-container>
         </td>
       </ng-container>
 
       <!-- Block & Date Column -->
       <ng-container matColumnDef="block_num">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>Block & Date</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header [ngStyle.gt-xs]="{'min-width': '70px'}">Block & Date</th>
         <td mat-cell *matCellDef="let action" data-label="Block & Date">
           <a [routerLink]="['/block', action['block_num']]">{{action['block_num']}}</a>
-          <span> ({{formatDate(action['@timestamp'])}})</span>
+          <br>
+          <span> {{formatDate(action['@timestamp'])}}</span>
         </td>
       </ng-container>
 
