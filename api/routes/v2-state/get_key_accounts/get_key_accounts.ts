@@ -21,7 +21,7 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
         try {
             publicKey = Numeric.convertLegacyPublicKey(public_Key);
         } catch (e) {
-            console.log(e);
+            console.log(e.message);
             invalidKey();
         }
     } else {
