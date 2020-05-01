@@ -111,21 +111,5 @@
       <tr mat-row *matRowDef="let myRowData; columns: columnsToDisplay"></tr>
     </table>
 
-
-    <!--  <div class="action-card" *ngFor="let action of accountService.actions">-->
-    <!--    <p>{{action['act']['account']}}::{{action['act']['name']}}-->
-    <!--      <a href="https://bloks.io/transaction/{{action['trx_id']}}" target="_blank">{{action['trx_id']}}</a>-->
-    <!--    </p>-->
-    <!--    <p>{{action['@timestamp']}} - {{action['block_num']}}</p>-->
-    <!--    <p>{{action['notified'].join(", ")}}</p>-->
-    <!--    <p>{{action['act']['authorization'][0]['actor']}}@{{action['act']['authorization'][0].permission}}</p>-->
-    <!--    <div *ngFor="let item of action['act']['data'] | keyvalue">-->
-    <!--      <b>{{item.key}}</b>: <b>{{item.value}}</b>-->
-    <!--    </div>-->
-    <!--  </div>-->
-
   </mat-card>
-
-
-  <ngx-json-viewer [json]="tx"></ngx-json-viewer>
 </div>
