@@ -59,7 +59,7 @@ export class SearchService {
     }
 
     // account search
-    if (searchText.length > 0 && searchText.length <= 12) {
+    if (searchText.length > 0 && searchText.length <= 12 && isNaN(searchText)) {
       await this.router.navigate(['/account', searchText]);
       return true;
     }
