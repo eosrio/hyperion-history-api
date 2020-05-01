@@ -4,8 +4,8 @@ import {Router} from '@angular/router';
 import {debounceTime} from 'rxjs/operators';
 import {SearchService} from '../services/search.service';
 import {AccountService} from '../services/account.service';
-import {faSearch} from "@fortawesome/free-solid-svg-icons/faSearch";
-import {ChainService} from "../services/chain.service";
+import {faSearch} from '@fortawesome/free-solid-svg-icons/faSearch';
+import {ChainService} from '../services/chain.service';
 
 @Component({
   selector: 'app-search-results',
@@ -16,6 +16,15 @@ export class SearchResultsComponent implements OnInit {
   searchForm: FormGroup;
   filteredAccounts: string[];
   faSearch = faSearch;
+  searchPlaceholder: string;
+  placeholders = [
+    'Search by account name...',
+    'Search by block number...',
+    'Search by transaction id...',
+    'Search by public key...'
+  ];
+  err = '';
+  private currentPlaceholder = 0;
 
   constructor(
     private formBuilder: FormBuilder,
@@ -28,6 +37,15 @@ export class SearchResultsComponent implements OnInit {
       search_field: ['', Validators.required]
     });
     this.filteredAccounts = [];
+
+    this.searchPlaceholder = this.placeholders[0];
+    setInterval(() => {
+      this.currentPlaceholder++;
+      if (!this.placeholders[this.currentPlaceholder]) {
+        this.currentPlaceholder = 0;
+      }
+      this.searchPlaceholder = this.placeholders[this.currentPlaceholder];
+    }, 3000);
   }
 
   ngOnInit() {
@@ -40,10 +58,12 @@ export class SearchResultsComponent implements OnInit {
     if (!this.searchForm.valid) {
       return;
     }
-
-    const accountName = this.searchForm.get('search_field').value;
+    const searchText = this.searchForm.get('search_field').value;
     this.searchForm.reset();
-    await this.router.navigate(['/account', accountName]);
+    const status = this.searchService.submitSearch(searchText, this.filteredAccounts);
+    if (!status) {
+      this.err = 'no results for ' + searchText;
+    }
   }
 
 }

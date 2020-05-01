@@ -23,7 +23,7 @@ export class HomeComponent implements OnInit {
     'Search by transaction id...',
     'Search by public key...'
   ];
-  err: string = '';
+  err = '';
   private currentPlaceholder = 0;
 
   constructor(
@@ -57,35 +57,11 @@ export class HomeComponent implements OnInit {
     if (!this.searchForm.valid) {
       return;
     }
-
     const searchText = this.searchForm.get('search_field').value;
     this.searchForm.reset();
-
-    // tx id
-    if (searchText.length === 64) {
-      await this.router.navigate(['/transaction', searchText]);
-      return;
+    const status = this.searchService.submitSearch(searchText, this.filteredAccounts);
+    if (!status) {
+      this.err = 'no results for ' + searchText;
     }
-
-    // account
-    if (this.filteredAccounts.length > 0 && searchText.length > 0 && searchText.length <= 12) {
-      await this.router.navigate(['/account', searchText]);
-      return;
-    }
-
-    // public key
-    if (searchText.startsWith('PUB_K1_') || searchText.startsWith('EOS')) {
-      await this.router.navigate(['/key', searchText]);
-      return;
-    }
-
-    // block number
-    let blockNum = searchText.replace(/[,.]/g, "");
-    if (parseInt(blockNum, 10) > 0) {
-      await this.router.navigate(['/block', blockNum]);
-      return;
-    }
-
-    this.err = 'no results for ' + searchText;
   }
 }
