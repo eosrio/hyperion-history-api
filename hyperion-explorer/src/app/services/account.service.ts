@@ -2,7 +2,7 @@ import {Injectable} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {environment} from '../../environments/environment';
 import {GetAccountResponse} from '../interfaces';
-import {MatTableDataSource} from "@angular/material/table";
+import {MatTableDataSource} from '@angular/material/table';
 
 @Injectable({
   providedIn: 'root'
@@ -38,7 +38,6 @@ export class AccountService {
   async loadAccountData(accountName: string) {
     try {
       this.jsonData = await this.httpClient.get(this.getAccountUrl + accountName).toPromise() as GetAccountResponse;
-
       if (this.jsonData.account) {
         this.account = this.jsonData.account;
       }
@@ -51,8 +50,11 @@ export class AccountService {
         this.actions = this.jsonData.actions;
         this.tableDataSource.data = this.actions;
       }
+      return true;
     } catch (error) {
       console.log(error);
+      this.jsonData = null;
+      return false;
     }
   }
 
@@ -68,7 +70,7 @@ export class AccountService {
   async loadBlockData(block_num: number) {
     try {
       return await this.httpClient.post(this.getBlockUrl, {
-        "block_num": block_num
+        'block_num': block_num
       }).toPromise();
     } catch (error) {
       console.log(error);

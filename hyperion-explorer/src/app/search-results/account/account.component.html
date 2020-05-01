@@ -22,7 +22,8 @@
       <div>
         <div><span class="title">RAM</span>
           <span
-            class="faded used">{{(accountService.account['ram_usage'] / accountService.account['ram_quota']) * 100 | number}}
+            class="faded used">{{(accountService.account['ram_usage'] / accountService.account['ram_quota']) *
+          100 | number}}
             % used</span>
         </div>
         <div class="values">{{accountService.account['ram_usage']}} bytes / {{accountService.account['ram_quota']}}
@@ -35,7 +36,8 @@
         <div>
           <span class="title">CPU</span>
           <span
-            class="faded used">{{(accountService.account['cpu_limit']['used'] / accountService.account['cpu_limit']['max']) * 100 | number}}
+            class="faded used">{{(accountService.account['cpu_limit']['used'] /
+            accountService.account['cpu_limit']['max']) * 100 | number}}
             % used</span>
         </div>
         <div class="values">{{accountService.account['cpu_limit']['used']}} µs
@@ -48,7 +50,8 @@
         <div>
           <span class="title">NET</span>
           <span
-            class="faded used">{{(accountService.account['net_limit']['used'] / accountService.account['net_limit']['max']) * 100 | number}}
+            class="faded used">{{(accountService.account['net_limit']['used'] /
+            accountService.account['net_limit']['max']) * 100 | number}}
             % used</span>
         </div>
         <div class="values">{{accountService.account['net_limit']['used']}} bytes
@@ -81,7 +84,7 @@
              fxFlex.lt-md="0 0 calc((100% - 132px) / 3)"
              fxFlex.lt-sm="0 0 calc((100% - 132px) / 2)">
           <div class="token-cell">
-            <div class="faded monospace">{{token.contract}}</div>
+            <div class="faded monospace" style="cursor: pointer" [routerLink]="['/account', token.contract]">{{token.contract}}</div>
             <div class="token-amount">{{token.amount | number :'1.0-' + token.precision}}
               <span class="token">{{token.symbol}}</span>
             </div>
@@ -102,6 +105,7 @@
 
       <mat-tree [dataSource]="dataSource" [treeControl]="treeControl">
         <!-- This is the tree node template for leaf nodes -->
+
         <mat-tree-node *matTreeNodeDef="let node" matTreeNodePadding>
           <!-- use a disabled button to provide padding for tree leaf -->
           <button mat-icon-button disabled></button>
@@ -120,15 +124,12 @@
             </ng-container>
             <ng-container *ngIf="node['required_auth']['accounts'].length > 0">
               <div *ngFor="let acc of node['required_auth']['accounts']">
-                <div *ngFor="let perm of acc['permission']">
-                  <strong class="space-right" matTooltip="weight / threshold" matTooltipClass="tooltip-bigger">
-                    {{acc.weight}}/{{node.required_auth.threshold}}
-                  </strong>
-                  <fa-icon [icon]="faUser"></fa-icon>
-                  <a [routerLink]="['/account', perm.actor]" class="m-left">
-                    {{perm.actor}}
-                  </a> @{{perm.permission}}
-                </div>
+                <strong class="space-right" matTooltip="weight / threshold" matTooltipClass="tooltip-bigger">
+                  {{acc.weight}}/{{node.required_auth.threshold}}
+                </strong>
+                <fa-icon [icon]="faUser"></fa-icon>
+                <a [routerLink]="['/account', acc.permission.actor]"
+                   class="m-left">{{acc.permission.actor}}</a>@{{acc['permission'].permission}}
               </div>
             </ng-container>
             <ng-container *ngIf="node['required_auth']['waits'].length > 0">
@@ -164,13 +165,12 @@
             </ng-container>
             <ng-container *ngIf="node['required_auth']['accounts'].length > 0">
               <div *ngFor="let acc of node['required_auth']['accounts']">
-                <div *ngFor="let perm of acc['permission']">
-                  <strong class="space-right" matTooltip="weight / threshold" matTooltipClass="tooltip-bigger">
-                    {{acc.weight}}/{{node.required_auth.threshold}}
-                  </strong>
-                  <fa-icon [icon]="faUser"></fa-icon>
-                  <a [routerLink]="['/account', perm.actor]" class="m-left">{{perm.actor}}</a> @{{perm.permission}}
-                </div>
+                <strong class="space-right" matTooltip="weight / threshold" matTooltipClass="tooltip-bigger">
+                  {{acc.weight}}/{{node.required_auth.threshold}}
+                </strong>
+                <fa-icon [icon]="faUser"></fa-icon>
+                <a [routerLink]="['/account', acc.permission.actor]"
+                   class="m-left">{{acc.permission.actor}}</a>@{{acc.permission.permission}}
               </div>
             </ng-container>
             <ng-container *ngIf="node['required_auth']['waits'].length > 0">
@@ -185,7 +185,6 @@
           </div>
         </mat-tree-node>
       </mat-tree>
-      <!--      <ngx-json-viewer [json]="accountService.account['permissions']"></ngx-json-viewer>-->
     </mat-card>
   </div>
 
@@ -241,7 +240,19 @@
         <td mat-cell *matCellDef="let action" [ngStyle.gt-xs]="{'padding': '10px 10px 7px 0'}" data-label="Data">
           <div *ngFor="let item of action['act']['data'] | keyvalue"
                [ngClass]="{'data-item': objectKeyCount(action['act']['data']) > 1}">
-            <span class="w-500">{{item.key}}</span>: <span class="break-word">{{action['act']['data'][item.key]}}</span>
+            <ng-container *ngIf="isArray(item.value)">
+              <span class="w-500">{{item.key}}</span>:
+              <div *ngFor="let subitem of item.value">
+                <div *ngFor="let elem of subitem | keyvalue"
+                     [ngClass]="{'data-item': objectKeyCount(subitem) > 1}">
+                  <span class="w-500" style="margin-left: 20px">{{elem.key}}</span>: <span
+                  class="break-word">{{elem.value}}</span>
+                </div>
+              </div>
+            </ng-container>
+            <ng-container *ngIf="!isArray(item.value)">
+              <span class="w-500">{{item.key}}</span>: <span class="break-word">{{item.value}}</span>
+            </ng-container>
           </div>
         </td>
       </ng-container>
@@ -261,19 +272,6 @@
       <!--suppress AngularUndefinedBinding -->
       <tr mat-row *matRowDef="let myRowData; columns: columnsToDisplay"></tr>
     </table>
-
-
-    <!--  <div class="action-card" *ngFor="let action of accountService.actions">-->
-    <!--    <p>{{action['act']['account']}}::{{action['act']['name']}}-->
-    <!--      <a href="https://bloks.io/transaction/{{action['trx_id']}}" target="_blank">{{action['trx_id']}}</a>-->
-    <!--    </p>-->
-    <!--    <p>{{action['@timestamp']}} - {{action['block_num']}}</p>-->
-    <!--    <p>{{action['notified'].join(", ")}}</p>-->
-    <!--    <p>{{action['act']['authorization'][0]['actor']}}@{{action['act']['authorization'][0].permission}}</p>-->
-    <!--    <div *ngFor="let item of action['act']['data'] | keyvalue">-->
-    <!--      <b>{{item.key}}</b>: <b>{{item.value}}</b>-->
-    <!--    </div>-->
-    <!--  </div>-->
 
   </mat-card>
 

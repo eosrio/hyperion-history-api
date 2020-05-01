@@ -46,14 +46,20 @@ export class SearchService {
 
   async submitSearch(searchText: any, filteredAccounts: string[]) {
 
+    // account direct
+    if (filteredAccounts.length > 0) {
+      await this.router.navigate(['/account', searchText]);
+      return true;
+    }
+
     // tx id
     if (searchText.length === 64) {
       await this.router.navigate(['/transaction', searchText]);
       return true;
     }
 
-    // account
-    if (filteredAccounts.length > 0 && searchText.length > 0 && searchText.length <= 12) {
+    // account search
+    if (searchText.length > 0 && searchText.length <= 12) {
       await this.router.navigate(['/account', searchText]);
       return true;
     }
