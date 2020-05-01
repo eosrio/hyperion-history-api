@@ -35,7 +35,9 @@ class HyperionApiServer {
 
         const logStream = createWriteStream('./logs/' + this.chain + '/api.access.log');
         this.fastify = Fastify({
-            ignoreTrailingSlash: false, trustProxy: true, logger: this.conf.api.access_log ? {
+            ignoreTrailingSlash: false,
+            trustProxy: true,
+            logger: this.conf.api.access_log ? {
                 stream: logStream,
                 redact: ['req.headers.authorization'],
                 level: 'info',
