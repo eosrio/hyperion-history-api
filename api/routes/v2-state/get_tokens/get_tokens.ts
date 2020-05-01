@@ -1,6 +1,7 @@
 import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
+import {type} from "os";
 
 
 async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
@@ -10,12 +11,19 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
     const stateResult = await fastify.elastic.search({
         "index": fastify.manager.chain + '-table-accounts-*',
         "body": {
-            query: {bool: {filter: [{term: {"scope": request.query.account}}]}}
+            query: {
+                bool: {
+                    filter: [{term: {"scope": request.query.account}}]
+                }
+            }
         }
     });
 
     for (const hit of stateResult.body.hits.hits) {
         const data = hit._source;
+        if (typeof data.present !== "undefined" && data.present === false) {
+            continue;
+        }
         let precision;
         const key = `${data.code}_${data.symbol}`;
         if (!fastify.tokenCache) {
@@ -26,7 +34,9 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
         } else {
             let token_data;
             try {
+                console.log(data.code, request.query.account, data.symbol);
                 token_data = await fastify.eosjs.rpc.get_currency_balance(data.code, request.query.account, data.symbol);
+                console.log(token_data);
                 if (token_data.length > 0) {
                     const [amount, symbol] = token_data[0].split(" ");
                     const amount_arr = amount.split(".");

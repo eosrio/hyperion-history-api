@@ -1154,12 +1154,15 @@ export default class MainDSWorker extends HyperionWorker {
             "code": data['code'],
             "scope": data['scope'],
             "primary_key": data['primary_key'],
-            "block_num": data['block_num']
+            "block_num": data['block_num'],
+            "present": data['present']
         };
+
         if (data['@accounts']) {
             accountDoc['amount'] = data['@accounts']['amount'];
             accountDoc['symbol'] = data['@accounts']['symbol'];
         }
+
         if (!this.conf.indexer.disable_indexing) {
             const q = this.chain + ":index_table_accounts:" + (this.tbl_acc_emit_idx);
             this.preIndexingQueue.push({

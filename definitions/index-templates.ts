@@ -375,6 +375,7 @@ export const tableProposals = {
     "mappings": {
         "properties": {
             "block_num": {"type": "long"},
+            "present": {"type": "boolean"},
             "proposal_name": {"type": "keyword"},
             "requested_approvals": {"type": "object"},
             "provided_approvals": {"type": "object"},
@@ -398,6 +399,7 @@ export const tableAccounts = {
     "mappings": {
         "properties": {
             "block_num": {"type": "long"},
+            "present": {"type": "boolean"},
             "code": {"type": "keyword"},
             "scope": {"type": "keyword"},
             "amount": {"type": "float"},
