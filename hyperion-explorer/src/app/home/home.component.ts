@@ -23,6 +23,7 @@ export class HomeComponent implements OnInit {
     'Search by transaction id...',
     'Search by public key...'
   ];
+  err: string = '';
   private currentPlaceholder = 0;
 
   constructor(
@@ -59,14 +60,32 @@ export class HomeComponent implements OnInit {
 
     const searchText = this.searchForm.get('search_field').value;
     this.searchForm.reset();
+
+    // tx id
     if (searchText.length === 64) {
       await this.router.navigate(['/transaction', searchText]);
-    } else if (this.filteredAccounts.length > 0 && searchText.length > 0 && searchText.length <= 12) {
-      await this.router.navigate(['/account', searchText]);
-    } else if (searchText.startsWith('PUB_K1_') || searchText.startsWith('EOS')) {
-      await this.router.navigate(['/key', searchText]);
-    } else if (parseInt(searchText, 10) > 0) {
-      await this.router.navigate(['/block', searchText]);
+      return;
     }
+
+    // account
+    if (this.filteredAccounts.length > 0 && searchText.length > 0 && searchText.length <= 12) {
+      await this.router.navigate(['/account', searchText]);
+      return;
+    }
+
+    // public key
+    if (searchText.startsWith('PUB_K1_') || searchText.startsWith('EOS')) {
+      await this.router.navigate(['/key', searchText]);
+      return;
+    }
+
+    // block number
+    let blockNum = searchText.replace(/[,.]/g, "");
+    if (parseInt(blockNum, 10) > 0) {
+      await this.router.navigate(['/block', blockNum]);
+      return;
+    }
+
+    this.err = 'no results for ' + searchText;
   }
 }

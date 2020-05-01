@@ -169,9 +169,7 @@
                     {{acc.weight}}/{{node.required_auth.threshold}}
                   </strong>
                   <fa-icon [icon]="faUser"></fa-icon>
-                  <a [routerLink]="['/account', perm.actor]" class="m-left">
-                    {{perm.actor}}
-                  </a> @{{perm.permission}}
+                  <a [routerLink]="['/account', perm.actor]" class="m-left">{{perm.actor}}</a> @{{perm.permission}}
                 </div>
               </div>
             </ng-container>

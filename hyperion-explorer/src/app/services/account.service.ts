@@ -11,6 +11,7 @@ export class AccountService {
   getAccountUrl: string;
   getTxUrl: string;
   getBlockUrl: string;
+  getKeyUrl: string;
   jsonData: any;
   account: any = {
     cpu_limit: {
@@ -30,6 +31,7 @@ export class AccountService {
     this.getAccountUrl = environment.hyperionApiUrl + '/v2/state/get_account?account=';
     this.getTxUrl = environment.hyperionApiUrl + '/v2/history/get_transaction?id=';
     this.getBlockUrl = environment.hyperionApiUrl + '/v1/trace_api/get_block';
+    this.getKeyUrl = environment.hyperionApiUrl + '/v2/state/get_key_accounts?public_key=';
     this.tableDataSource = new MatTableDataSource([]);
   }
 
@@ -68,6 +70,15 @@ export class AccountService {
       return await this.httpClient.post(this.getBlockUrl, {
         "block_num": block_num
       }).toPromise();
+    } catch (error) {
+      console.log(error);
+      return null;
+    }
+  }
+
+  async loadPubKey(key: string) {
+    try {
+      return await this.httpClient.get(this.getKeyUrl + key + '&details=true').toPromise();
     } catch (error) {
       console.log(error);
       return null;

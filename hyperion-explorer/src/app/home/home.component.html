@@ -9,6 +9,7 @@
           <input matInput formControlName="search_field" [matAutocomplete]="auto"
                  [placeholder]="searchPlaceholder">
         </label>
+        <mat-error *ngIf="err">{{err}}</mat-error>
       </mat-form-field>
       <mat-autocomplete #auto="matAutocomplete" (optionSelected)="submit()">
         <mat-option *ngFor="let account of filteredAccounts" [value]="account">{{account}}</mat-option>
