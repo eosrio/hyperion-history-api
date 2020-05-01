@@ -23,16 +23,8 @@
     <div>
       <h4 style="font-weight: 500">Associated accounts:</h4>
       <div *ngFor="let acc of key.permissions" class="account-cell">
-        <a [routerLink]="['/account', acc['owner']]">{{acc['owner']}}</a>@{{acc.name}}
-      </div>
-      <div *ngFor="let acc of key.permissions" class="account-cell">
-        <a [routerLink]="['/account', acc['owner']]">{{acc['owner']}}</a>@{{acc.name}}
-      </div>
-      <div *ngFor="let acc of key.permissions" class="account-cell">
-        <a [routerLink]="['/account', acc['owner']]">{{acc['owner']}}</a>@{{acc.name}}
-      </div>
-      <div *ngFor="let acc of key.permissions" class="account-cell">
-        <a [routerLink]="['/account', acc['owner']]">{{acc['owner']}}</a>@{{acc.name}}
+        <a [routerLink]="['/account', acc['owner']]">{{acc['owner']}}</a>
+        <span class="permission">{{acc.name}}</span>
       </div>
     </div>
   </mat-card>

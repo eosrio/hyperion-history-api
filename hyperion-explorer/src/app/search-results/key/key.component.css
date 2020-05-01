@@ -3,7 +3,18 @@
 }
 
 .account-cell {
-  padding: 10px 0 0 0;
+  padding: 20px 10px 10px;
   letter-spacing: 0.5px;
   font-size: 14px;
+  width: 160px;
+  border-bottom: 1px solid rgba(0,0,0,.12);
+  border-radius: 3px;
+}
+
+.permission {
+  color: rgba(0, 0, 0, 0.54);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+  float: right;
 }
