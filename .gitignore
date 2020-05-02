@@ -79,8 +79,6 @@ api/**/*.js
 api/**/*.js.map
 api/tests
 
-hyperion-explorer/
-
 hyperion-launcher.js
 hyperion-launcher.js.map
 

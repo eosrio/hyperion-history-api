@@ -73,14 +73,25 @@ export function registerRoutes(server: FastifyInstance) {
             prefix: '/v2/explore'
         });
 
-        server.get('/v2/explore/**/*',
-            {schema: {tags: ['internal']}},
+        server.get(
+            '/v2/explore/**/*',
+            {
+                schema: {
+                    tags: ['internal']
+                }
+            },
             (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
                 reply.sendFile('index.html', join(__dirname, '..', 'hyperion-explorer', 'dist'));
-            });
+            }
+        );
 
-        server.get('/v2/explorer_metadata',
-            {schema: {tags: ['internal']}},
+        server.get(
+            '/v2/explorer_metadata',
+            {
+                schema: {
+                    tags: ['internal']
+                }
+            },
             (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
                 reply.send({
                     logo: server.manager.config.api.chain_logo_url,

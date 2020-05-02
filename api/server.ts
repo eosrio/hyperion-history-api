@@ -9,8 +9,10 @@ import {registerPlugins} from "./plugins";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes";
 import {generateOpenApiConfig} from "./config/open_api";
-import {createWriteStream, existsSync, mkdirSync} from "fs";
+import {createWriteStream, existsSync, mkdirSync, writeFileSync} from "fs";
 import {SocketManager} from "./socketManager";
+import got from "got";
+import {join} from "path";
 
 class HyperionApiServer {
 
@@ -71,6 +73,8 @@ class HyperionApiServer {
 
         console.log(`Chain API URL: ${this.fastify.chain_api}`);
         console.log(`Push API URL: ${this.fastify.push_api}`);
+
+        this.fetchChainLogo().catch(console.log);
 
         const ioRedisClient = new Redis(this.manager.conn.redis);
         const api_rate_limit = {
@@ -156,6 +160,20 @@ class HyperionApiServer {
         } catch (err) {
             this.fastify.log.error(err);
             process.exit(1)
+        }
+    }
+
+    async fetchChainLogo() {
+        try {
+            if (this.conf.api.chain_logo_url && this.conf.api.enable_explorer) {
+                console.log(`Downloading chain logo from ${this.conf.api.chain_logo_url}...`);
+                const chainLogo = await got(this.conf.api.chain_logo_url);
+                const path = join(__dirname, '..', 'hyperion-explorer', 'dist', 'assets', this.chain + '_logo.png');
+                writeFileSync(path, chainLogo.rawBody);
+                this.conf.api.chain_logo_url = 'https://' + this.conf.api.server_name + '/v2/explore/assets/' + this.chain + '_logo.png';
+            }
+        } catch (e) {
+            console.log(e);
         }
     }
 }
