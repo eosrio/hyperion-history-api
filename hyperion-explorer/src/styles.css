@@ -70,3 +70,15 @@ body {
   word-break: break-word;
   white-space: normal;
 }
+
+.div-link {
+  cursor: pointer;
+  outline: none;
+}
+
+.link-gray {
+  color: gray;
+}
+.link-blue {
+  color: #00aee7;
+}
