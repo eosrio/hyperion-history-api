@@ -28,6 +28,8 @@ import {TransactionComponent} from './search-results/transaction/transaction.com
 import {BlockComponent} from './search-results/block/block.component';
 import {MatChipsModule} from '@angular/material/chips';
 import {KeyComponent} from './search-results/key/key.component';
+import {ServiceWorkerModule} from '@angular/service-worker';
+import {environment} from '../environments/environment';
 
 const appRoutes: Routes = [
   {
@@ -61,6 +63,9 @@ const appRoutes: Routes = [
   imports: [
     BrowserModule,
     BrowserAnimationsModule,
+    ServiceWorkerModule.register('./ngsw-worker.js', {
+      enabled: environment.production
+    }),
     RouterModule.forRoot(appRoutes),
     ReactiveFormsModule,
     HttpClientModule,
@@ -79,7 +84,8 @@ const appRoutes: Routes = [
     MatPaginatorModule,
     MatSortModule,
     MatTooltipModule,
-    MatChipsModule
+    MatChipsModule,
+    RouterModule
   ],
   providers: [],
   bootstrap: [AppComponent]
