@@ -36,7 +36,7 @@
       <h4 style="margin: 10px 0 12px 0;" class="break-word">{{tx.trx_id}}</h4>
     </div>
     <div fxLayout="column" fxLayoutAlign="start stretch" fxLayoutGap="15px">
-      <div>Block num: <a [routerLink]="['/block', tx.actions[0].block_num]">{{tx.actions[0].block_num}}</a></div>
+      <div>Block num: <a [routerLink]="['/block', tx.actions[0].block_num]" class="link-blue">{{tx.actions[0].block_num}}</a></div>
       <div>Block time: {{formatDate(tx.actions[0]['@timestamp'])}}</div>
       <div fxLayout="row" fxLayoutAlign="start center" fxLayoutGap="50px">
         <div>
@@ -71,7 +71,7 @@
       <ng-container matColumnDef="contract">
         <th mat-header-cell *matHeaderCellDef> Contract</th>
         <td mat-cell *matCellDef="let action" data-label="Contract">
-            {{action.act.account}}
+          <span [routerLink]="['/account', action.act.account]" class="div-link">{{action.act.account}}</span>
         </td>
       </ng-container>
 

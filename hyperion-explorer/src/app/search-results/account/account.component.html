@@ -84,7 +84,7 @@
              fxFlex.lt-md="0 0 calc((100% - 132px) / 3)"
              fxFlex.lt-sm="0 0 calc((100% - 132px) / 2)">
           <div class="token-cell">
-            <div class="faded monospace" style="cursor: pointer"
+            <div class="faded monospace div-link"
                  [routerLink]="['/account', token.contract]">{{token.contract}}</div>
             <div class="token-amount">{{token.amount | number :'1.0-' + (token.precision || 4)}}
               <span class="token">{{token.symbol}}</span>
@@ -111,7 +111,7 @@
           <!-- use a disabled button to provide padding for tree leaf -->
           <button mat-icon-button disabled></button>
           <div fxLayout="column" fxLayoutGap="7px" class="permission-cell">
-            <div><h3 class="primary" style="display: inline">{{node.perm_name}}</h3></div>
+            <div><h3 class="primary" style="display: inline; letter-spacing: 0.7px;">{{node.perm_name}}</h3></div>
             <ng-container *ngIf="node['required_auth']['keys'].length > 0">
               <div *ngFor="let key of node['required_auth']['keys']">
                 <div>
@@ -119,7 +119,8 @@
                     {{key.weight}}/{{node.required_auth.threshold}}
                   </strong>
                   <fa-icon [icon]="faKey"></fa-icon>
-                  <span class="monospace m-left break-word">{{key.key}}</span>
+                  <a [routerLink]="['/key', key.key]" class="monospace m-left break-word link-gray">{{key.key}}
+                  </a>
                 </div>
               </div>
             </ng-container>
@@ -130,7 +131,7 @@
                 </strong>
                 <fa-icon [icon]="faUser"></fa-icon>
                 <a [routerLink]="['/account', acc.permission.actor]"
-                   class="m-left">{{acc.permission.actor}}</a>@{{acc['permission'].permission}}
+                   class="m-left link-blue">{{acc.permission.actor}}</a>@{{acc['permission'].permission}}
               </div>
             </ng-container>
             <ng-container *ngIf="node['required_auth']['waits'].length > 0">
@@ -152,7 +153,7 @@
             <fa-icon [icon]="treeControl.isExpanded(node) ? faChevronDown : faChevronRight"></fa-icon>
           </button>
           <div fxLayout="column" fxLayoutGap="7px" class="permission-cell">
-            <div><h3 class="primary" style="display: inline">{{node.perm_name}}</h3></div>
+            <div><h3 class="primary" style="display: inline; letter-spacing: 0.7px;">{{node.perm_name}}</h3></div>
             <ng-container *ngIf="node['required_auth']['keys'].length > 0">
               <div *ngFor="let key of node['required_auth']['keys']">
                 <div>
@@ -160,7 +161,8 @@
                     {{key.weight}}/{{node.required_auth.threshold}}
                   </strong>
                   <fa-icon [icon]="faKey"></fa-icon>
-                  <span class="monospace m-left break-word">{{key.key}}</span>
+                  <a [routerLink]="['/key', key.key]" class="monospace m-left break-word link-gray">{{key.key}}
+                  </a>
                 </div>
               </div>
             </ng-container>
@@ -171,7 +173,7 @@
                 </strong>
                 <fa-icon [icon]="faUser"></fa-icon>
                 <a [routerLink]="['/account', acc.permission.actor]"
-                   class="m-left">{{acc.permission.actor}}</a>@{{acc.permission.permission}}
+                   class="m-left link-blue">{{acc.permission.actor}}</a>@{{acc.permission.permission}}
               </div>
             </ng-container>
             <ng-container *ngIf="node['required_auth']['waits'].length > 0">
@@ -215,7 +217,7 @@
         <th mat-header-cell *matHeaderCellDef [ngStyle.gt-xs]="{'min-width': '100px'}"> TX</th>
         <td mat-cell *matCellDef="let action" data-label="TX">
           <fa-icon [icon]="faClock" class="accent" style="margin-right: 5px"></fa-icon>
-          <a [routerLink]="['/transaction', action['trx_id']]">
+          <a [routerLink]="['/transaction', action['trx_id']]" class="link-blue">
             {{action['trx_id'].slice(0, 8)}}...
           </a>
         </td>
@@ -231,8 +233,10 @@
         <td mat-cell *matCellDef="let action" [ngStyle.gt-xs]="{'padding-left': '14px', 'padding-right':'14px'}"
             data-label="Action">
           <span class="action-cell" [ngStyle.lt-md]="{'padding':'0'}" [ngClass.gt-sm]="'action-border'">
-            <span class="accent w-500">{{action['act']['name']}}</span> on <span
-            class="w-500">{{action['act']['account']}}</span>
+            <span class="accent w-500">{{action['act']['name']}}</span> on
+            <span [routerLink]="['/account', action['act']['account']]" class="w-500 div-link">
+              {{action['act']['account']}}
+            </span>
           </span>
         </td>
       </ng-container>
@@ -291,7 +295,7 @@
       <ng-container matColumnDef="block_num">
         <th mat-header-cell *matHeaderCellDef mat-sort-header [ngStyle.gt-xs]="{'min-width': '70px'}">Block & Date</th>
         <td mat-cell *matCellDef="let action" data-label="Block & Date">
-          <a [routerLink]="['/block', action['block_num']]">{{action['block_num']}}</a>
+          <a [routerLink]="['/block', action['block_num']]" class="link-blue">{{action['block_num']}}</a>
           <br>
           <span> {{formatDate(action['@timestamp'])}}</span>
         </td>
