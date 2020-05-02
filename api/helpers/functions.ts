@@ -228,21 +228,23 @@ export async function handleChainApiRedirect(
             console.log(error);
             reply.status(500).send();
         }
-        try {
-            if (error.response) {
-                const error_msg = JSON.parse(error.response.body).error.details[0].message;
-                console.log(`endpoint: ${request.req.url} | status: ${error.response.statusCode} | error: ${error_msg}`);
-            } else {
-                console.log(error);
+        if(fastify.manager.config.api.chain_api_error_log) {
+            try {
+                if (error.response) {
+                    const error_msg = JSON.parse(error.response.body).error.details[0].message;
+                    console.log(`endpoint: ${request.req.url} | status: ${error.response.statusCode} | error: ${error_msg}`);
+                } else {
+                    console.log(error);
+                }
+                // if (request.req.url === '/v1/chain/push_transaction') {
+                //     const packedTrx = JSON.parse(opts['body']).packed_trx;
+                //     const trxBuffer = Buffer.from(packedTrx, 'hex');
+                //     const trxData = await fastify.eosjs.api.deserializeTransactionWithActions(trxBuffer);
+                //     console.log(trxData);
+                // }
+            } catch (e) {
+                console.log(e);
             }
-            // if (request.req.url === '/v1/chain/push_transaction') {
-            //     const packedTrx = JSON.parse(opts['body']).packed_trx;
-            //     const trxBuffer = Buffer.from(packedTrx, 'hex');
-            //     const trxData = await fastify.eosjs.api.deserializeTransactionWithActions(trxBuffer);
-            //     console.log(trxData);
-            // }
-        } catch (e) {
-            console.log(e);
         }
     }
 }
