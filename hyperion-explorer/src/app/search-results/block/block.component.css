@@ -156,7 +156,7 @@ tr.element-row:not(.expanded-row):active {
     display: grid;
     grid-template-columns: 50% 50%;
     padding: 0.5rem;
-    text-align: right;
+    text-align: left;
     word-break: break-word;
   }
 
