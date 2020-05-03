@@ -2,10 +2,9 @@ import * as fastify_static from "fastify-static";
 import {join} from "path";
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {ServerResponse} from "http";
-import {createReadStream, existsSync, readFileSync, unlinkSync, writeFileSync} from "fs";
+import {createReadStream, existsSync, readFileSync, unlinkSync} from "fs";
 import * as AutoLoad from "fastify-autoload";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
-import got from "got";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     server.route({
@@ -74,7 +73,6 @@ export function registerRoutes(server: FastifyInstance) {
             const _data = readFileSync(join(__dirname, '..', 'hyperion-explorer', 'src', 'manifest.webmanifest'));
             const tempPath = join(__dirname, '..', 'hyperion-explorer', 'dist', 'manifest.webmanifest');
             if (existsSync(tempPath)) {
-                console.log('Removing fixed manifest');
                 unlinkSync(tempPath);
             }
             const baseManifest = JSON.parse(_data.toString());
