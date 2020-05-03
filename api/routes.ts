@@ -2,9 +2,10 @@ import * as fastify_static from "fastify-static";
 import {join} from "path";
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {ServerResponse} from "http";
-import {createReadStream} from "fs";
+import {createReadStream, existsSync, readFileSync, unlinkSync, writeFileSync} from "fs";
 import * as AutoLoad from "fastify-autoload";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
+import got from "got";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     server.route({
@@ -66,11 +67,36 @@ export function registerRoutes(server: FastifyInstance) {
 
     // Serve integrated explorer
     if (server.manager.config.api.enable_explorer) {
+
+        server.register(require('fastify-compress'), {global: false});
+
+        try {
+            const _data = readFileSync(join(__dirname, '..', 'hyperion-explorer', 'src', 'manifest.webmanifest'));
+            const tempPath = join(__dirname, '..', 'hyperion-explorer', 'dist', 'manifest.webmanifest');
+            if (existsSync(tempPath)) {
+                console.log('Removing fixed manifest');
+                unlinkSync(tempPath);
+            }
+            const baseManifest = JSON.parse(_data.toString());
+            baseManifest.name = `Hyperion Explorer - ${server.manager.config.api.chain_name}`;
+            baseManifest.short_name = baseManifest.name;
+            server.get('/v2/explore/manifest.webmanifest', (request, reply) => {
+                reply.send(baseManifest);
+            });
+        } catch (e) {
+            console.log(e);
+        }
+
         server.register(fastify_static, {
             root: join(__dirname, '..', 'hyperion-explorer', 'dist'),
             redirect: true,
             wildcard: false,
-            prefix: '/v2/explore'
+            prefix: '/v2/explore',
+            setHeaders: (res: ServerResponse, path) => {
+                if (path.endsWith('/ngsw-worker.js')) {
+                    res.setHeader('Service-Worker-Allowed', '/');
+                }
+            }
         });
 
         server.get(

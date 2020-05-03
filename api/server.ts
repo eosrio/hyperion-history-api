@@ -74,8 +74,6 @@ class HyperionApiServer {
         console.log(`Chain API URL: ${this.fastify.chain_api}`);
         console.log(`Push API URL: ${this.fastify.push_api}`);
 
-        this.fetchChainLogo().catch(console.log);
-
         const ioRedisClient = new Redis(this.manager.conn.redis);
         const api_rate_limit = {
             max: 1000,
@@ -98,16 +96,7 @@ class HyperionApiServer {
             fastify_eosjs: this.manager,
         });
 
-        registerRoutes(this.fastify);
-
         this.addGenericTypeParsing();
-
-        this.fastify.ready().then(async () => {
-            await this.fastify.oas();
-            console.log(this.chain + ' api ready!');
-        }, (err) => {
-            console.log('an error happened', err)
-        });
     }
 
     activateStreaming() {
@@ -151,6 +140,18 @@ class HyperionApiServer {
     }
 
     async init() {
+
+        await this.fetchChainLogo();
+
+        registerRoutes(this.fastify);
+
+        this.fastify.ready().then(async () => {
+            await this.fastify.oas();
+            console.log(this.chain + ' api ready!');
+        }, (err) => {
+            console.log('an error happened', err)
+        });
+
         try {
             await this.fastify.listen({
                 host: this.conf.api.server_addr,
