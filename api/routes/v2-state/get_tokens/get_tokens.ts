@@ -1,7 +1,6 @@
 import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {type} from "os";
 
 
 async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
@@ -34,9 +33,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
         } else {
             let token_data;
             try {
-                console.log(data.code, request.query.account, data.symbol);
                 token_data = await fastify.eosjs.rpc.get_currency_balance(data.code, request.query.account, data.symbol);
-                console.log(token_data);
                 if (token_data.length > 0) {
                     const [amount, symbol] = token_data[0].split(" ");
                     const amount_arr = amount.split(".");
