@@ -64,9 +64,13 @@ const appRoutes: Routes = [
     BrowserModule,
     BrowserAnimationsModule,
     ServiceWorkerModule.register('./ngsw-worker.js', {
-      enabled: environment.production
+      enabled: environment.production,
+      scope: '/',
+      registrationStrategy: 'registerImmediately'
     }),
-    RouterModule.forRoot(appRoutes, {scrollPositionRestoration: 'enabled'}),
+    RouterModule.forRoot(appRoutes, {
+      scrollPositionRestoration: 'enabled'
+    }),
     ReactiveFormsModule,
     HttpClientModule,
     MatToolbarModule,
