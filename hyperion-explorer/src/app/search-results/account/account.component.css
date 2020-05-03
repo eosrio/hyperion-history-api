@@ -20,6 +20,11 @@
   margin-top: 10px;
 }
 
+.display-block {
+  display: block;
+  margin-left: 0;
+}
+
 .actions-table {
   width: 100%;
 }
@@ -29,7 +34,7 @@
 }
 
 .middle-card {
-  max-height: 646px;
+  max-height: 523px;
   overflow-y: auto;
 }
 
@@ -183,7 +188,8 @@
     display: grid;
     grid-template-columns: 50% 50%;
     padding: 0.5rem;
-    text-align: right;
+    text-align: left;
+    /*text-align: right;*/
     word-break: break-word;
   }
 
