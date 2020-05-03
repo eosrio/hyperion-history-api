@@ -9,8 +9,10 @@ import {registerPlugins} from "./plugins";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes";
 import {generateOpenApiConfig} from "./config/open_api";
-import {createWriteStream, existsSync, mkdirSync} from "fs";
+import {createWriteStream, existsSync, mkdirSync, writeFileSync} from "fs";
 import {SocketManager} from "./socketManager";
+import got from "got";
+import {join} from "path";
 
 class HyperionApiServer {
 
@@ -35,7 +37,9 @@ class HyperionApiServer {
 
         const logStream = createWriteStream('./logs/' + this.chain + '/api.access.log');
         this.fastify = Fastify({
-            ignoreTrailingSlash: false, trustProxy: true, logger: this.conf.api.access_log ? {
+            ignoreTrailingSlash: false,
+            trustProxy: true,
+            logger: this.conf.api.access_log ? {
                 stream: logStream,
                 redact: ['req.headers.authorization'],
                 level: 'info',
@@ -92,16 +96,7 @@ class HyperionApiServer {
             fastify_eosjs: this.manager,
         });
 
-        registerRoutes(this.fastify);
-
         this.addGenericTypeParsing();
-
-        this.fastify.ready().then(async () => {
-            await this.fastify.oas();
-            console.log(this.chain + ' api ready!');
-        }, (err) => {
-            console.log('an error happened', err)
-        });
     }
 
     activateStreaming() {
@@ -145,6 +140,18 @@ class HyperionApiServer {
     }
 
     async init() {
+
+        await this.fetchChainLogo();
+
+        registerRoutes(this.fastify);
+
+        this.fastify.ready().then(async () => {
+            await this.fastify.oas();
+            console.log(this.chain + ' api ready!');
+        }, (err) => {
+            console.log('an error happened', err)
+        });
+
         try {
             await this.fastify.listen({
                 host: this.conf.api.server_addr,
@@ -154,6 +161,20 @@ class HyperionApiServer {
         } catch (err) {
             this.fastify.log.error(err);
             process.exit(1)
+        }
+    }
+
+    async fetchChainLogo() {
+        try {
+            if (this.conf.api.chain_logo_url && this.conf.api.enable_explorer) {
+                console.log(`Downloading chain logo from ${this.conf.api.chain_logo_url}...`);
+                const chainLogo = await got(this.conf.api.chain_logo_url);
+                const path = join(__dirname, '..', 'hyperion-explorer', 'dist', 'assets', this.chain + '_logo.png');
+                writeFileSync(path, chainLogo.rawBody);
+                this.conf.api.chain_logo_url = 'https://' + this.conf.api.server_name + '/v2/explore/assets/' + this.chain + '_logo.png';
+            }
+        } catch (e) {
+            console.log(e);
         }
     }
 }

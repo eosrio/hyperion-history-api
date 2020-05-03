@@ -1,0 +1,24 @@
+@import '../node_modules/@angular/material/theming';
+
+$hyperion: (
+  primary: #00a6de,
+  accent: #fa7600,
+  contrast: (
+    primary: white,
+    accent: white,
+  )
+);
+
+$primary: mat-palette($hyperion, primary);
+$accent: mat-palette($hyperion, accent);
+$theme: mat-light-theme($primary, $accent);
+
+@include angular-material-theme($theme);
+
+.primary {
+  color: mat-color($hyperion, primary);
+}
+
+.accent {
+  color: mat-color($hyperion, accent);
+}

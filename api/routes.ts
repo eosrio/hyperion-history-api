@@ -2,9 +2,10 @@ import * as fastify_static from "fastify-static";
 import {join} from "path";
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {ServerResponse} from "http";
-import {createReadStream} from "fs";
+import {createReadStream, existsSync, readFileSync, unlinkSync, writeFileSync} from "fs";
 import * as AutoLoad from "fastify-autoload";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
+import got from "got";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     server.route({
@@ -66,32 +67,80 @@ export function registerRoutes(server: FastifyInstance) {
 
     // Serve integrated explorer
     if (server.manager.config.api.enable_explorer) {
+
+        server.register(require('fastify-compress'), {global: false});
+
+        try {
+            const _data = readFileSync(join(__dirname, '..', 'hyperion-explorer', 'src', 'manifest.webmanifest'));
+            const tempPath = join(__dirname, '..', 'hyperion-explorer', 'dist', 'manifest.webmanifest');
+            if (existsSync(tempPath)) {
+                console.log('Removing fixed manifest');
+                unlinkSync(tempPath);
+            }
+            const baseManifest = JSON.parse(_data.toString());
+            baseManifest.name = `Hyperion Explorer - ${server.manager.config.api.chain_name}`;
+            baseManifest.short_name = baseManifest.name;
+            server.get('/v2/explore/manifest.webmanifest', (request, reply) => {
+                reply.send(baseManifest);
+            });
+        } catch (e) {
+            console.log(e);
+        }
+
         server.register(fastify_static, {
             root: join(__dirname, '..', 'hyperion-explorer', 'dist'),
             redirect: true,
-            wildcard: true,
-            prefix: '/v2/explore'
+            wildcard: false,
+            prefix: '/v2/explore',
+            setHeaders: (res: ServerResponse, path) => {
+                if (path.endsWith('/ngsw-worker.js')) {
+                    res.setHeader('Service-Worker-Allowed', '/');
+                }
+            }
         });
+
+        server.get(
+            '/v2/explore/**/*',
+            {
+                schema: {
+                    tags: ['internal']
+                }
+            },
+            (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+                reply.sendFile('index.html', join(__dirname, '..', 'hyperion-explorer', 'dist'));
+            }
+        );
+
+        server.get(
+            '/v2/explorer_metadata',
+            {
+                schema: {
+                    tags: ['internal']
+                }
+            },
+            (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+                reply.send({
+                    logo: server.manager.config.api.chain_logo_url,
+                    provider: server.manager.config.api.provider_name,
+                    provider_url: server.manager.config.api.provider_url,
+                    chain_name: server.manager.config.api.chain_name,
+                    chain_id: server.manager.conn.chains[server.manager.chain].chain_id
+                });
+            });
     }
 
-    server.get('/v2/explorer_metadata', {schema: {tags: ['internal']}}, async (request, reply) => {
-        reply.send({
-            logo: server.manager.config.api.chain_logo_url,
-            provider: server.manager.config.api.provider_name,
-            provider_url: server.manager.config.api.provider_url,
-            chain_name: server.manager.config.api.chain_name,
-            chain_id: server.manager.conn.chains[server.manager.chain].chain_id
+    if (server.manager.config.features.streaming) {
+        // steam client lib
+        server.get('/stream-client.js', {schema: {tags: ['internal']}}, (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+            const stream = createReadStream('./client_bundle.js');
+            reply.type('application/javascript').send(stream);
         });
-    });
-
-    // steam client lib
-    server.get('/stream-client.js', {schema: {tags: ['internal']}}, (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
-        const stream = createReadStream('./client_bundle.js');
-        reply.type('application/javascript').send(stream);
-    });
+    }
 
     // Redirect routes to documentation
     addRedirect(server, '/v2', '/v2/docs');
     addRedirect(server, '/v2/history', '/v2/docs/index.html#/history');
     addRedirect(server, '/v2/state', '/v2/docs/index.html#/state');
+    addRedirect(server, '/v1/chain', '/v2/docs/index.html#/chain');
+    addRedirect(server, '/', '/v2/explore');
 }

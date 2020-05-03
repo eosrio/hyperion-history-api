@@ -1,7 +1,7 @@
 export const environment = {
   production: true,
-  eosioNodeUrl: 'https://',
-  hyperionApiUrl: 'https://',
+  eosioNodeUrl: '',
+  hyperionApiUrl: '',
   systemContract: 'eosio',
   userResourcesTable: 'userres'
 };

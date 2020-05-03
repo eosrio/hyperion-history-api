@@ -10,12 +10,19 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
     const stateResult = await fastify.elastic.search({
         "index": fastify.manager.chain + '-table-accounts-*',
         "body": {
-            query: {bool: {filter: [{term: {"scope": request.query.account}}]}}
+            query: {
+                bool: {
+                    filter: [{term: {"scope": request.query.account}}]
+                }
+            }
         }
     });
 
     for (const hit of stateResult.body.hits.hits) {
         const data = hit._source;
+        if (typeof data.present !== "undefined" && data.present === false) {
+            continue;
+        }
         let precision;
         const key = `${data.code}_${data.symbol}`;
         if (!fastify.tokenCache) {

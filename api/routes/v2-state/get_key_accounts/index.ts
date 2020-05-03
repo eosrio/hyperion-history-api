@@ -16,6 +16,10 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                     description: 'public key',
                     type: 'string'
                 },
+                "details": {
+                    description: 'include permission details',
+                    type: 'boolean'
+                },
             },
             required: ["public_key"]
         },
@@ -25,8 +29,21 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 properties: {
                     "account_names": {
                         type: "array",
+                        items: {type: "string"}
+                    },
+                    "permissions": {
+                        type: "array",
                         items: {
-                            type: "string"
+                            type: "object",
+                            properties: {
+                                owner: {type: 'string'},
+                                block_num: {type: 'integer'},
+                                parent: {type: 'string'},
+                                last_updated: {type: 'string'},
+                                auth: {},
+                                name: {type: 'string'},
+                                present: {type: 'boolean'}
+                            }
                         }
                     }
                 }

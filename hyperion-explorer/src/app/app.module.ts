@@ -2,7 +2,6 @@ import {NgModule} from '@angular/core';
 import {BrowserModule} from '@angular/platform-browser';
 import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
 import {RouterModule, Routes} from '@angular/router';
-import {NgxJsonViewerModule} from 'ngx-json-viewer';
 import {HttpClientModule} from '@angular/common/http';
 import {ReactiveFormsModule} from '@angular/forms';
 import {MatToolbarModule} from '@angular/material/toolbar';
@@ -14,6 +13,23 @@ import {AppComponent} from './app.component';
 import {HomeComponent} from './home/home.component';
 import {SearchResultsComponent} from './search-results/search-results.component';
 import {AccountComponent} from './search-results/account/account.component';
+import {MatCardModule} from '@angular/material/card';
+import {FontAwesomeModule} from '@fortawesome/angular-fontawesome';
+import {MatButtonModule} from '@angular/material/button';
+import {FlexLayoutModule} from '@angular/flex-layout';
+import {MatProgressBarModule} from '@angular/material/progress-bar';
+import {MatTreeModule} from '@angular/material/tree';
+import {MatTableModule} from '@angular/material/table';
+import {MatSortModule} from '@angular/material/sort';
+import {MatPaginatorModule} from '@angular/material/paginator';
+import {CdkTableModule} from '@angular/cdk/table';
+import {MatTooltipModule} from '@angular/material/tooltip';
+import {TransactionComponent} from './search-results/transaction/transaction.component';
+import {BlockComponent} from './search-results/block/block.component';
+import {MatChipsModule} from '@angular/material/chips';
+import {KeyComponent} from './search-results/key/key.component';
+import {ServiceWorkerModule} from '@angular/service-worker';
+import {environment} from '../environments/environment';
 
 const appRoutes: Routes = [
   {
@@ -23,8 +39,14 @@ const appRoutes: Routes = [
     path: '',
     component: SearchResultsComponent,
     children: [
-      {path: 'account/:account_name', component: AccountComponent}
-    ]
+      {path: 'account/:account_name', component: AccountComponent},
+      {path: 'transaction/:transaction_id', component: TransactionComponent},
+      {path: 'block/:block_num', component: BlockComponent},
+      {path: 'key/:key', component: KeyComponent}
+    ],
+  },
+  {
+    path: '**', component: HomeComponent
   }
 ];
 
@@ -33,19 +55,41 @@ const appRoutes: Routes = [
     AppComponent,
     HomeComponent,
     SearchResultsComponent,
-    AccountComponent
+    AccountComponent,
+    TransactionComponent,
+    BlockComponent,
+    KeyComponent
   ],
   imports: [
     BrowserModule,
     BrowserAnimationsModule,
-    RouterModule.forRoot(appRoutes),
-    NgxJsonViewerModule,
+    ServiceWorkerModule.register('./ngsw-worker.js', {
+      enabled: environment.production,
+      scope: '/',
+      registrationStrategy: 'registerImmediately'
+    }),
+    RouterModule.forRoot(appRoutes, {
+      scrollPositionRestoration: 'enabled'
+    }),
     ReactiveFormsModule,
     HttpClientModule,
     MatToolbarModule,
     MatFormFieldModule,
     MatInputModule,
-    MatAutocompleteModule
+    MatAutocompleteModule,
+    MatCardModule,
+    FontAwesomeModule,
+    MatButtonModule,
+    FlexLayoutModule,
+    MatProgressBarModule,
+    MatTreeModule,
+    CdkTableModule,
+    MatTableModule,
+    MatPaginatorModule,
+    MatSortModule,
+    MatTooltipModule,
+    MatChipsModule,
+    RouterModule
   ],
   providers: [],
   bootstrap: [AppComponent]
