@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#set -eo pipefail
+set -eo pipefail
 
 #terminal colors
 COLOR_NC=$(tput sgr0)
@@ -97,22 +97,17 @@ configure_npm() {
 install_keys_sources() {
   echo -e "\n\n${COLOR_BLUE}Configuring keys and sources...${COLOR_NC}\n\n"
 
-  #export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1
-
   PPA="https://artifacts.elastic.co/packages/7.x/apt stable main"
   if ! grep -q "^deb .*$PPA" /etc/apt/sources.list /etc/apt/sources.list.d/*; then
     wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
     echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
   fi
 
-  KEY=$(apt-key list 2>/dev/null | grep erlang)
-  if [[ ! $KEY ]]; then
-    wget -O- https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | sudo apt-key add -
-  fi
-
-  KEY=$(apt-key list 2>/dev/null | grep rabbitmq)
-  if [[ ! $KEY ]]; then
-    wget -O - "https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey" | sudo apt-key add -
+  PPA="http://dl.bintray.com/rabbitmq-erlang/debian bionic erlang"
+  if ! grep -q "^deb .*$PPA" /etc/apt/sources.list /etc/apt/sources.list.d/*; then
+    curl -fsSL https://github.com/rabbitmq/signing-keys/releases/download/2.0/rabbitmq-release-signing-key.asc | sudo apt-key add -
+    echo "deb http://dl.bintray.com/rabbitmq-erlang/debian bionic erlang" | sudo tee /etc/apt/sources.list.d/bintray.rabbitmq.list
+    curl -s https://packagecloud.io/install/repositories/rabbitmq/rabbitmq-server/script.deb.sh | sudo bash
   fi
 
   PPA="https://deb.nodesource.com/node_13.x bionic main"
@@ -123,10 +118,11 @@ install_keys_sources() {
   sudo apt update -y
 }
 
-#install_dep() {
-#  echo -e "\n\n${COLOR_BLUE}Installing build essentials...${COLOR_NC}\n\n"
-#  sudo apt install -y build-essential curl
-#}
+install_dep() {
+ echo -e "\n\n${COLOR_BLUE}Installing dependencies...${COLOR_NC}\n\n"
+ # sudo apt install -y build-essential curl
+ sudo apt install -y curl
+}
 
 install_node() {
   echo -e "\n\n${COLOR_BLUE}Installing nodejs...${COLOR_NC}\n\n"
@@ -161,10 +157,9 @@ install_redis() {
 
 install_erlang() {
   echo -e "\n\n${COLOR_BLUE}Installing erlang...${COLOR_NC}\n\n"
-  echo "deb https://packages.erlang-solutions.com/ubuntu bionic contrib" | sudo tee /etc/apt/sources.list.d/rabbitmq.list
-  sudo apt update
   sudo apt -y install erlang
 }
+
 #ask user for rabbit credentials
 rabbit_credentials() {
   read -p "Enter rabbitmq user [hyperion]: " RABBIT_USER
@@ -177,7 +172,6 @@ rabbit_credentials() {
 
 install_rabittmq() {
   echo -e "\n\n${COLOR_BLUE}Installing rabbit-mq...${COLOR_NC}\n\n"
-  curl -s "https://packagecloud.io/install/repositories/rabbitmq/rabbitmq-server/script.deb.sh" | sudo bash
   sudo apt install -y rabbitmq-server
   #enable web gui
   sudo rabbitmq-plugins enable rabbitmq_management
@@ -238,7 +232,7 @@ if [ "$RABBIT" = false ]; then
   rabbit_credentials
 fi
 
-# install_dep
+install_dep
 
 install_keys_sources
 if [ "$NODE" = false ]; then
@@ -250,7 +244,6 @@ install_pm2
 install_build_hyperion
 
 if [ "$RABBIT" = false ]; then
-  install_erlang
   install_rabittmq
 fi
 
@@ -276,4 +269,5 @@ echo -e "\n${COLOR_YELLOW}Please, check your installation: ${COLOR_NC}"
 echo -e "${COLOR_YELLOW}- Elastic: http://localhost:9200 ${COLOR_NC}"
 echo -e "${COLOR_YELLOW}- Kibana: http://localhost:5601 ${COLOR_NC}"
 echo -e "${COLOR_YELLOW}- RabbitMQ: http://localhost:15672 ${COLOR_NC}"
+echo -e "${COLOR_YELLOW}- Refer to the elastic_pas.txt file for the elasticsearch passwords. ${COLOR_NC}"
 echo -e "${COLOR_YELLOW}- Make pm2 auto-boot at server restart: \$ pm2 startup ${COLOR_NC}\n"
