@@ -18,13 +18,11 @@
       {{accountService.account['account_name']}}
     </h2>
     <p><strong>Liquid Balance: {{accountService.account['core_liquid_balance']}}</strong></p>
-    <div fxLayout="row" fxLayoutAlign="space-between center">
-      <div>
+    <div fxLayout="row" fxLayoutAlign="start center" fxLayoutGap.gt-xs="30px" fxLayoutGap.lt-sm="40px">
+      <div fxFlex="0 0 calc((100% - 132px) / 3)">
         <div><span class="title">RAM</span>
-          <span
-            class="faded used">{{(accountService.account['ram_usage'] / accountService.account['ram_quota']) *
-          100 | number}}
-            % used</span>
+          <span class="faded used" [ngClass.lt-sm]="'display-block'">{{(accountService.account['ram_usage'] / accountService.account['ram_quota']) *
+          100 | number}}% used</span>
         </div>
         <div class="values">{{accountService.account['ram_usage']}} bytes / {{accountService.account['ram_quota']}}
           bytes
@@ -32,13 +30,12 @@
         <mat-progress-bar class="progress-bar" mode="determinate"
                           [value]="(accountService.account['ram_usage'] / accountService.account['ram_quota']) * 100"></mat-progress-bar>
       </div>
-      <div>
+      <div fxFlex="0 0 calc((100% - 132px) / 3)">
         <div>
           <span class="title">CPU</span>
-          <span
+          <span [ngClass.lt-sm]="'display-block'"
             class="faded used">{{(accountService.account['cpu_limit']['used'] /
-            accountService.account['cpu_limit']['max']) * 100 | number}}
-            % used</span>
+            accountService.account['cpu_limit']['max']) * 100 | number}}% used</span>
         </div>
         <div class="values">{{accountService.account['cpu_limit']['used']}} µs
           / {{accountService.account['cpu_limit']['max']}} µs
@@ -46,13 +43,12 @@
         <mat-progress-bar class="progress-bar" mode="determinate"
                           [value]="(accountService.account['cpu_limit']['used'] / accountService.account['cpu_limit']['max']) * 100"></mat-progress-bar>
       </div>
-      <div>
+      <div fxFlex="0 0 calc((100% - 132px) / 3)">
         <div>
           <span class="title">NET</span>
-          <span
+          <span [ngClass.lt-sm]="'display-block'"
             class="faded used">{{(accountService.account['net_limit']['used'] /
-            accountService.account['net_limit']['max']) * 100 | number}}
-            % used</span>
+            accountService.account['net_limit']['max']) * 100 | number}}% used</span>
         </div>
         <div class="values">{{accountService.account['net_limit']['used']}} bytes
           / {{accountService.account['net_limit']['max']}} bytes
@@ -77,16 +73,16 @@
       </h3>
 
       <div fxLayout.lt-md="row wrap" fxLayoutAlign.lt-md="start stretch"
-           fxLayoutGap.lt-md="30px"
-           fxLayoutGap.lt-sm="20px">
+           fxLayoutGap.lt-md="43px"
+           fxLayoutGap.lt-sm="60px">
 
         <div *ngFor="let token of accountService.tokens"
-             fxFlex.lt-md="0 0 calc((100% - 132px) / 3)"
-             fxFlex.lt-sm="0 0 calc((100% - 132px) / 2)">
+             fxFlex.sm="0 0 calc((100% - 132px) / 3)"
+             fxFlex.xs="0 0 calc((100% - 132px) / 2)">
           <div class="token-cell">
             <div class="faded monospace div-link"
                  [routerLink]="['/account', token.contract]">{{token.contract}}</div>
-            <div class="token-amount">{{token.amount | number :'1.0-' + (token.precision || 4)}}
+            <div class="token-amount" [ngClass.lt-sm]="'break-word'">{{token.amount | number :'1.0-' + (token.precision || 4)}}
               <span class="token">{{token.symbol}}</span>
             </div>
           </div>
@@ -257,7 +253,7 @@
                 <div style="margin-top: 5px" *ngFor="let subitem of item.value">
 
                   <ng-container *ngIf="getType(subitem) === 'string'">
-                    <span class="w-500" style="margin-left: 15px">- {{subitem}}</span>
+                    <div style="margin-left: 15px"><span class="break-word" >• {{subitem}}</span></div>
                   </ng-container>
 
                   <ng-container *ngIf="getType(subitem) === 'object'">

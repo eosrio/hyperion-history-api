@@ -20,10 +20,12 @@ export class SearchService {
       return [];
     }
 
+    const sValue = value.toLowerCase();
+
     const requestBody = {
       code: environment.systemContract,
       table: environment.userResourcesTable,
-      lower_bound: value,
+      lower_bound: sValue,
       limit: 5
     };
 
@@ -32,7 +34,7 @@ export class SearchService {
 
       if (response.rows) {
         return response.rows.filter((tableData: TableData) => {
-          return tableData.scope.startsWith(value);
+          return tableData.scope.startsWith(sValue);
         }).map((tableData: TableData) => {
           return tableData.scope;
         });
@@ -46,21 +48,23 @@ export class SearchService {
 
   async submitSearch(searchText: any, filteredAccounts: string[]) {
 
+    const sValue = searchText.toLowerCase();
+
     // account direct
     if (filteredAccounts.length > 0) {
-      await this.router.navigate(['/account', searchText]);
+      await this.router.navigate(['/account', sValue]);
       return true;
     }
 
     // tx id
-    if (searchText.length === 64) {
-      await this.router.navigate(['/transaction', searchText]);
+    if (sValue.length === 64) {
+      await this.router.navigate(['/transaction', sValue]);
       return true;
     }
 
     // account search
-    if (searchText.length > 0 && searchText.length <= 12 && isNaN(searchText)) {
-      await this.router.navigate(['/account', searchText]);
+    if (sValue.length > 0 && sValue.length <= 12 && isNaN(sValue)) {
+      await this.router.navigate(['/account', sValue]);
       return true;
     }
 

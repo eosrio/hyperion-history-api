@@ -1,6 +1,6 @@
 {
   "configVersion": 1,
-  "timestamp": 1588471382545,
+  "timestamp": 1588482047689,
   "index": "/v2/explore/index.html",
   "assetGroups": [
     {
@@ -26,6 +26,7 @@
       "installMode": "lazy",
       "updateMode": "prefetch",
       "urls": [
+        "/v2/explore/assets/apple-touch-icon.png",
         "/v2/explore/assets/icons/icon-128x128.png",
         "/v2/explore/assets/icons/icon-144x144.png",
         "/v2/explore/assets/icons/icon-152x152.png",
@@ -42,6 +43,7 @@
   ],
   "dataGroups": [],
   "hashTable": {
+    "/v2/explore/assets/apple-touch-icon.png": "b5881c98bbb8f6a4746f707dd7bdd01f9133583f",
     "/v2/explore/assets/icons/icon-128x128.png": "cf7f8a2fe37721ea7f02e06d1255c77ec5dfd173",
     "/v2/explore/assets/icons/icon-144x144.png": "bb978fb652474e9434bed3a887685c3add59a480",
     "/v2/explore/assets/icons/icon-152x152.png": "753deb9dd9580a0b22b89282a83b73baa0df10d8",
@@ -53,9 +55,9 @@
     "/v2/explore/assets/logo.png": "c8bad3c7e14b32b5d2596cd635376d36671755fb",
     "/v2/explore/assets/logo_symbol.png": "153ee00fc2c8a63b5d008590085c8334722729be",
     "/v2/explore/favicon.ico": "55b57d8ac82191fb9a69e722fbfe81f86fba5c2e",
-    "/v2/explore/index.html": "1fc2ab47e2789031ba0f83584c5aedc41c6b6aee",
-    "/v2/explore/main-es2015.js": "4c0c2d11ae4967e1722777c0e7a9e6ad33ef0871",
-    "/v2/explore/main-es5.js": "d7103ecc1bc95f2889fec0972b55b9fe84888449",
+    "/v2/explore/index.html": "9dcff4eb13aad1cfd325eed4c64b8721ef2bbc3a",
+    "/v2/explore/main-es2015.js": "b763b1bc6257feb5b8b424b0879dd623b546667c",
+    "/v2/explore/main-es5.js": "450e536df0c1ad665c4ee68fe9db04075807eaaf",
     "/v2/explore/manifest.webmanifest": "af0f1801d02d2c5a473db956db2413ec23ff8125",
     "/v2/explore/polyfills-es2015.js": "72ad4ccc0a3916ae4598199447cdeadd6d380570",
     "/v2/explore/polyfills-es5.js": "89222a28dbabb780fc372d33834080e0cd3083d9",
