@@ -1,27 +1,22 @@
 #!/bin/sh
 
-TIMEOUT=90
-QUIET=0
-
-echoerr() {
-  if [ "$QUIET" -ne 1 ]; then printf "%s\n" "$*" 1>&2; fi
-}
+timeout=90
 
 usage() {
   exitcode="$1"
-  cat << USAGE >&2
-Usage:
-  $cmdname host:port [-t timeout] [-- command args]
-  -q | --quiet                        Do not output any status messages
-  -t TIMEOUT | --timeout=timeout      Timeout in seconds, zero for no timeout
-  -- COMMAND ARGS                     Execute command with args after the test finishes
-USAGE
+
+  echo "Usage:$cmdname host:port [OPTIONS]"
+  echo ""
+  echo "Options"
+  echo "  -t, --timeout number    Timeout in seconds, zero for no timeout"
+  echo "  -c, --cmd COMMAND ARGS  Execute command with args after waiting"
+
   exit "$exitcode"
 }
 
 wait_for() {
-  for i in `seq $TIMEOUT` ; do
-    nc -z "$HOST" "$PORT" > /dev/null 2>&1
+  for i in `seq $timeout` ; do
+    nc -z "$host" "$port" > /dev/null 2>&1
 
     result=$?
     if [ $result -eq 0 ] ; then
@@ -38,41 +33,34 @@ wait_for() {
 
 while [ $# -gt 0 ]
 do
-  case "$1" in
-    *:* )
-    HOST=$(printf "%s\n" "$1"| cut -d : -f 1)
-    PORT=$(printf "%s\n" "$1"| cut -d : -f 2)
-    shift 1
+  key="$1"
+
+  case $key in
+    *:*)
+    host=$(printf "%s\n" "$1"| cut -d : -f 1)
+    port=$(printf "%s\n" "$1"| cut -d : -f 2)
+    shift
     ;;
-    -q | --quiet)
-    QUIET=1
-    shift 1
-    ;;
-    -t)
-    TIMEOUT="$2"
-    if [ "$TIMEOUT" = "" ]; then break; fi
+    -t|--timeout)
+    timeout="$2"
+    if [ "$timeout" = "" ]; then break; fi
     shift 2
     ;;
-    --timeout=*)
-    TIMEOUT="${1#*=}"
-    shift 1
-    ;;
-    --)
+    -c|--cmd)
     shift
-    break
     ;;
-    --help)
+    -h|--help)
     usage 0
     ;;
     *)
-    echoerr "Unknown argument: $1"
+    echo "Unknown argument: $1"
     usage 1
     ;;
   esac
 done
 
-if [ "$HOST" = "" -o "$PORT" = "" ]; then
-  echoerr "Error: you need to provide a host and port to test."
+if [ "$host" = "" -o "$port" = "" ]; then
+  echo "Error: you need to provide host and port"
   usage 2
 fi
 
