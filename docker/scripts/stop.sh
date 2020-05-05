@@ -41,6 +41,6 @@ then
 else
   for i in "${services[@]}"
   do
-    sudo docker-compose stop ${services[$i]}
+    sudo docker-compose stop $i
   done
 fi

@@ -3,7 +3,7 @@
 usage() {
   exitcode="$1"
 
-  echo "Usage:$cmdname [OPTIONS]"
+  echo "Usage:$cmdname --chain string [OPTIONS]"
   echo ""
   echo "Options:"
   echo "  -s, --snapshot string  file path of chain snapshot"
@@ -22,6 +22,11 @@ do
   key="$1"
 
   case $key in
+    --chain)
+    chain="$2"
+    shift
+    shift
+    ;;
     -s|--snapshot)
     snapshot="$2"
     shift
@@ -36,6 +41,11 @@ do
     ;;
   esac
 done
+
+if [ "$chain" = "" ]; then
+  echo "Error: you need to provide chain identificator"
+  usage 2
+fi
 
 # Create docker containers
 sudo SCRIPT=true SNAPSHOT=$snapshot docker-compose up --no-start
@@ -78,6 +88,18 @@ if [ $? -ne 0 ]
 then
   echo "failed to wait for eosio-node"
   exit 1
+fi
+
+if [ "$snapshot" != "" ]
+then
+  file="$(sudo docker inspect --format='{{.LogPath}}' eosio-node)"
+  line="$(sudo grep -h 'Placing initial state in block' $file)"
+
+  if [ "$line" != "" ]
+  then
+    block_num="$(echo $line | sed 's/.*block //' | sed 's/n.*//g' | sed 's/[^0-9]*//g')"
+    sed -i "s/\"start_on\": 1/\"start_on\": $block_num/" hyperion/config/chains/$chain.config.json
+  fi
 fi
 
 sudo docker-compose start hyperion-indexer

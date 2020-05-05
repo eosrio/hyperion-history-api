@@ -69,7 +69,7 @@ services:
       - 8888:8888
     networks:
       - hyperion
-    command: bash -c "/root/scripts/run-nodeos.sh ${SCRIPT:-false} ${SNAPSHOT}"
+    command: bash -c "/root/scripts/run-nodeos.sh ${SCRIPT:-false} ${SNAPSHOT:-""}"
 
   hyperion-indexer:
     container_name: hyperion-indexer
