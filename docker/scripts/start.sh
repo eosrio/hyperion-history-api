@@ -38,7 +38,7 @@ do
 done
 
 # Create docker containers
-sudo SNAPSHOT=$snapshot docker-compose up --no-start
+sudo SCRIPT=true SNAPSHOT=$snapshot docker-compose up --no-start
 
 # Starting redis container
 sudo docker-compose start redis
@@ -69,10 +69,16 @@ fi
 sudo docker-compose start kibana
 
 # Starting eosio-node container
-wait_for_container kibana 5601
 sudo docker-compose start eosio-node
 
 # Starting hyperion containers
 wait_for_container eosio-node 8888
+
+if [ $? -ne 0 ]
+then
+  echo "failed to wait for eosio-node"
+  exit 1
+fi
+
 sudo docker-compose start hyperion-indexer
 sudo docker-compose start hyperion-api

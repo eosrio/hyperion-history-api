@@ -69,7 +69,7 @@ services:
       - 8888:8888
     networks:
       - hyperion
-    command: bash -c "/root/scripts/run-nodeos.sh $SNAPSHOT"
+    command: bash -c "/root/scripts/run-nodeos.sh ${SCRIPT:-false} ${SNAPSHOT}"
 
   hyperion-indexer:
     container_name: hyperion-indexer
@@ -87,7 +87,7 @@ services:
       - ./scripts/:/root/scripts/
     networks:
       - hyperion
-    command: bash -c "/root/scripts/run-hyperion.sh CHAIN-indexer"
+    command: bash -c "/root/scripts/run-hyperion.sh ${SCRIPT:-false} CHAIN-indexer"
 
   hyperion-api:
     container_name: hyperion-api
@@ -104,7 +104,7 @@ services:
       - ./scripts/:/root/scripts/
     networks:
       - hyperion
-    command: bash -c "/root/scripts/run-hyperion.sh CHAIN-api"
+    command: bash -c "/root/scripts/run-hyperion.sh ${SCRIPT:-false} CHAIN-api"
 
 networks:
   hyperion:

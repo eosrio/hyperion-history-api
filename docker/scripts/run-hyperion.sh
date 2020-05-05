@@ -7,13 +7,24 @@ _term() {
 
 trap _term SIGTERM
 
-/root/scripts/wait-for.sh rabbitmq:5672 
-/root/scripts/wait-for.sh elasticsearch:9200
+echo $1
+echo $2
 
-pm2 start --only $1 --update-env
+# Used when start.sh script is not used
+if [ "$1" != true ]
+then
+  /root/scripts/wait-for.sh eosio-node:8080
+  if [ $? -ne 0 ]
+  then
+    echo "failed to wait for eosio-node"
+    exit 1
+  fi
+fi
+
+pm2 start --only $2 --update-env
 pm2 logs --raw &
 
-app_name=$1
+app_name=$2
 
 child=$! 
 wait "$child"
