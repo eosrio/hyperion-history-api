@@ -60,8 +60,7 @@ services:
 
   eosio-node:
     container_name: eosio-node
-    build: eosio/.
-    image: eosio-node
+    image: eosrio/hyperion:eosio-2.0.5
     volumes:
       - ./eosio/data/:/root/eosio/data/
       - ./eosio/config/:/root/eosio/config/
@@ -70,12 +69,11 @@ services:
       - 8888:8888
     networks:
       - hyperion
-    command: bash -c "/root/scripts/run-nodeos.sh"
+    command: bash -c "/root/scripts/run-nodeos.sh $SNAPSHOT"
 
   hyperion-indexer:
     container_name: hyperion-indexer
-    build: hyperion/.
-    image: hyperion
+    image: eosrio/hyperion:hyperion-3.0
     restart: on-failure
     depends_on:
       - elasticsearch
@@ -93,7 +91,7 @@ services:
 
   hyperion-api:
     container_name: hyperion-api
-    image: hyperion
+    image: eosrio/hyperion:hyperion-3.0
     restart: on-failure
     ports:
       - 7000:7000

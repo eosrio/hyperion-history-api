@@ -38,7 +38,7 @@ do
 done
 
 # Create docker containers
-sudo docker-compose up --no-start
+sudo SNAPSHOT=$snapshot docker-compose up --no-start
 
 # Starting redis container
 sudo docker-compose start redis
