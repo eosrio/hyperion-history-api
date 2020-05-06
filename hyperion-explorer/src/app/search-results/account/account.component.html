@@ -21,7 +21,8 @@
     <div fxLayout="row" fxLayoutAlign="start center" fxLayoutGap.gt-xs="30px" fxLayoutGap.lt-sm="40px">
       <div fxFlex="0 0 calc((100% - 132px) / 3)">
         <div><span class="title">RAM</span>
-          <span class="faded used" [ngClass.lt-sm]="'display-block'">{{(accountService.account['ram_usage'] / accountService.account['ram_quota']) *
+          <span class="faded used" [ngClass.lt-sm]="'display-block'">{{(accountService.account['ram_usage'] /
+            accountService.account['ram_quota']) *
           100 | number}}% used</span>
         </div>
         <div class="values">{{accountService.account['ram_usage']}} bytes / {{accountService.account['ram_quota']}}
@@ -34,7 +35,7 @@
         <div>
           <span class="title">CPU</span>
           <span [ngClass.lt-sm]="'display-block'"
-            class="faded used">{{(accountService.account['cpu_limit']['used'] /
+                class="faded used">{{(accountService.account['cpu_limit']['used'] /
             accountService.account['cpu_limit']['max']) * 100 | number}}% used</span>
         </div>
         <div class="values">{{accountService.account['cpu_limit']['used']}} µs
@@ -47,7 +48,7 @@
         <div>
           <span class="title">NET</span>
           <span [ngClass.lt-sm]="'display-block'"
-            class="faded used">{{(accountService.account['net_limit']['used'] /
+                class="faded used">{{(accountService.account['net_limit']['used'] /
             accountService.account['net_limit']['max']) * 100 | number}}% used</span>
         </div>
         <div class="values">{{accountService.account['net_limit']['used']}} bytes
@@ -82,7 +83,8 @@
           <div class="token-cell">
             <div class="faded monospace div-link"
                  [routerLink]="['/account', token.contract]">{{token.contract}}</div>
-            <div class="token-amount" [ngClass.lt-sm]="'break-word'">{{token.amount | number :'1.0-' + (token.precision || 4)}}
+            <div class="token-amount" [ngClass.lt-sm]="'break-word'">{{token.amount | number :'1.0-' +
+            (token.precision || 4)}}
               <span class="token">{{token.symbol}}</span>
             </div>
           </div>
@@ -197,9 +199,10 @@
         Actions
       </h3>
 
-      <div class="livestream" matTooltip="click to turn on/off" matTooltipClass="tooltip-bigger">
-        <span class="dot pulse"></span>
-        action live stream on
+      <div (click)="accountService.toggleStreaming()" class="livestream" matTooltip="click to turn on/off"
+           matTooltipClass="tooltip-bigger">
+        <span class="dot" [ngClass]="{'pulse':accountService.streamClientStatus}"></span>
+        action live streaming {{accountService.streamClientStatus ? 'enabled' : 'disabled'}}
       </div>
     </div>
     <table mat-table [dataSource]="accountService.tableDataSource"
@@ -253,7 +256,7 @@
                 <div style="margin-top: 5px" *ngFor="let subitem of item.value">
 
                   <ng-container *ngIf="getType(subitem) === 'string'">
-                    <div style="margin-left: 15px"><span class="break-word" >• {{subitem}}</span></div>
+                    <div style="margin-left: 15px"><span class="break-word">• {{subitem}}</span></div>
                   </ng-container>
 
                   <ng-container *ngIf="getType(subitem) === 'object'">

@@ -1,4 +1,4 @@
-import {Component, OnInit, ViewChild} from '@angular/core';
+import {Component, OnDestroy, OnInit, ViewChild} from '@angular/core';
 import {ActivatedRoute} from '@angular/router';
 import {AccountService} from '../../services/account.service';
 import {MatSort} from '@angular/material/sort';
@@ -15,7 +15,9 @@ import {faChevronDown} from '@fortawesome/free-solid-svg-icons/faChevronDown';
 import {faKey} from '@fortawesome/free-solid-svg-icons/faKey';
 import {faUser} from '@fortawesome/free-solid-svg-icons/faUser';
 import {faSadTear} from '@fortawesome/free-solid-svg-icons/faSadTear';
-import {isArray} from 'util';
+import {HyperionSocketClient} from '@eosrio/hyperion-stream-client/lib/client/hyperion-socket-client';
+import {environment} from '../../../environments/environment';
+import {HttpClient} from '@angular/common/http';
 
 interface Permission {
   perm_name: string;
@@ -63,7 +65,7 @@ interface FlatNode {
   templateUrl: './account.component.html',
   styleUrls: ['./account.component.css']
 })
-export class AccountComponent implements OnInit {
+export class AccountComponent implements OnInit, OnDestroy {
 
   columnsToDisplay: string[] = ['trx_id', 'action', 'data', 'block_num'];
   @ViewChild(MatSort, {static: false}) sort: MatSort;
@@ -103,6 +105,11 @@ export class AccountComponent implements OnInit {
     this.dataSource = new MatTreeFlatDataSource(this.treeControl, this.treeFlattener);
   }
 
+  ngOnDestroy() {
+    console.log('ngOnDestroy');
+    this.accountService.disconnectStream();
+  }
+
   _transformer = (node: Permission, level: number) => {
     return {
       expandable: !!node.children && node.children.length > 0,
@@ -125,6 +132,11 @@ export class AccountComponent implements OnInit {
 
   ngOnInit() {
     this.activatedRoute.params.subscribe(async (routeParams) => {
+
+      if (this.accountService.streamClientStatus) {
+        this.accountService.disconnectStream();
+      }
+
       this.accountName = routeParams.account_name;
       if (await this.accountService.loadAccountData(routeParams.account_name)) {
         this.processPermissions();
@@ -155,7 +167,6 @@ export class AccountComponent implements OnInit {
       if (permissions) {
         try {
           this.dataSource.data = this.getChildren(permissions, '');
-          console.log(this.dataSource._data);
           this.treeControl.expand(this.treeControl.dataNodes[0]);
           this.treeControl.expand(this.treeControl.dataNodes[1]);
         } catch (e) {

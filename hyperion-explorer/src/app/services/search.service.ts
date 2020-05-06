@@ -16,20 +16,20 @@ export class SearchService {
 
   async filterAccountNames(value: string) {
 
-    if (value && value.length > 12) {
+    if ((value && value.length > 12) || !value) {
       return [];
     }
 
-    const sValue = value.toLowerCase();
-
-    const requestBody = {
-      code: environment.systemContract,
-      table: environment.userResourcesTable,
-      lower_bound: sValue,
-      limit: 5
-    };
-
     try {
+      const sValue = value.toLowerCase();
+
+      const requestBody = {
+        code: environment.systemContract,
+        table: environment.userResourcesTable,
+        lower_bound: sValue,
+        limit: 5
+      };
+
       const response = await this.httpClient.post(this.searchAccountUrl, requestBody).toPromise() as GetTableByScopeResponse;
 
       if (response.rows) {
