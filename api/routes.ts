@@ -11,7 +11,7 @@ function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
         url,
         method: 'GET',
         schema: {hide: true},
-        handler: async (request, reply) => {
+        handler: async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
             reply.redirect(redirectTo);
         }
     });
@@ -53,7 +53,7 @@ export function registerRoutes(server: FastifyInstance) {
     });
 
     server.addHook('onError', (request, reply, error, done) => {
-        console.log(`${request.req.url} failed with error: ${error.message}`);
+        console.log(`[${request.req.headers['x-real-ip']}] ${request.req.url} failed with error: ${error.message}`);
         done();
     });
 

@@ -220,7 +220,13 @@ export async function handleChainApiRedirect(
 
     try {
         const apiResponse = await got.post(reqUrl, opts);
-        reply.send(apiResponse.body);
+        reply.headers({"Content-Type": "application/json"});
+        if (request.req.method === 'HEAD') {
+            reply.headers({"Content-Length": apiResponse.body.length});
+            reply.send("");
+        } else {
+            reply.send(apiResponse.body);
+        }
     } catch (error) {
         if (error.response) {
             reply.status(error.response.statusCode).send(error.response.body);
@@ -228,7 +234,7 @@ export async function handleChainApiRedirect(
             console.log(error);
             reply.status(500).send();
         }
-        if(fastify.manager.config.api.chain_api_error_log) {
+        if (fastify.manager.config.api.chain_api_error_log) {
             try {
                 if (error.response) {
                     const error_msg = JSON.parse(error.response.body).error.details[0].message;
@@ -257,7 +263,7 @@ export function addChainApiRoute(fastify: FastifyInstance, routeName, descriptio
     };
     addApiRoute(
         fastify,
-        'GET',
+        ['GET', 'HEAD'],
         routeName,
         chainApiHandler,
         {

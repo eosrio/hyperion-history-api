@@ -186,6 +186,9 @@ export default class WSRouter extends HyperionWorker {
     addActionRequest(data, id) {
         const req = data.request;
         console.log(req);
+        if(typeof req.account !== 'string') {
+            return {status: 'FAIL', reason: 'invalid request'};
+        }
         if (greylist.indexOf(req.contract) !== -1) {
             if (req.account === '' || req.account === req.contract) {
                 return {
