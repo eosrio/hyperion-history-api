@@ -5,6 +5,7 @@ RUN apt-get upgrade
 RUN apt-get autoremove
 
 RUN apt-get install -y wget
+RUN apt-get install -y netcat
 
 WORKDIR /root
 

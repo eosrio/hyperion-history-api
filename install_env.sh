@@ -14,6 +14,7 @@ COLOR_BLUE=$(tput setaf 4)
 export COLOR_BLUE
 
 #variables
+INITIAL_PARAMS="$*"
 GLOBAL="y"
 RABBIT_USER="hyperion"
 RABBIT_PASSWORD="123456"
@@ -22,6 +23,30 @@ ELASTIC=false
 REDIS=false
 RABBIT=false
 RAM=0
+
+help_function() {
+    echo -e "\nAutomated shell script that installs all dependencies and then configure Hyperion."
+    echo -e "\nUsage: ./install.env <option>\n"
+    echo -e "Options:"
+    echo -e "  --help ==> Show this menu"
+    echo -e "  --version ==> Show Hyperion current version\n"
+    exit 0
+}
+
+version (){
+  echo -e "\nv3.0.0\n"
+  exit 0
+
+}
+
+arg_checker() {
+    if [ "${INITIAL_PARAMS}" == "--help" ]; then
+        help_function
+
+    elif [ "${INITIAL_PARAMS}" == "--version" ]; then
+        version
+    fi
+}
 
 check_ram() {
   RAM=$(free --giga | awk '/Mem/ {print $2}')
@@ -223,6 +248,11 @@ install_kibana() {
   sudo systemctl enable kibana
   sudo systemctl start kibana
 }
+
+#******************
+# End of functions
+#******************
+arg_checker
 
 echo -e "\n\n${COLOR_BLUE}*** STARTING HYPERION HISTORY API CONFIGURATION ***${COLOR_NC}\n\n"
 

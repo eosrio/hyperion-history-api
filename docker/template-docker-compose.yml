@@ -1,18 +1,27 @@
 version: '3.8'
 
 services:
-  eosio-node:
-    container_name: eosio-node
-    build: eosio/.
-    image: eosio-node
-    volumes:
-      - ./eosio/data/:/root/eosio/data/
-      - ./eosio/config/:/root/eosio/config/
-    ports:
-      - 8888:8888
+  redis:
+    container_name: redis
+    image: redis:5.0.9-alpine
+    restart: on-failure
     networks:
       - hyperion
-    command: nodeos --genesis-json /root/eosio/config/genesis.json --disable-replay-opts --data-dir /root/eosio/data --config-dir /root/eosio/config
+
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:3.8.3-management
+    restart: on-failure
+    environment:
+      - RABBITMQ_DEFAULT_USER=username
+      - RABBITMQ_DEFAULT_PASS=password
+      - RABBITMQ_DEFAULT_VHOST=/hyperion
+    volumes:
+      - ./rabbitmq/data:/var/lib/rabbitmq
+    ports:
+      - 15672:15672
+    networks:
+      - hyperion
 
   elasticsearch:
     container_name: elasticsearch
@@ -26,7 +35,7 @@ services:
       - xpack.security.enabled=true
       - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
       - ELASTIC_USERNAME=elastic
-      - ELASTIC_PASSWORD=elastic
+      - ELASTIC_PASSWORD=password
     volumes:
       - ./elasticsearch/data:/usr/share/elasticsearch/data
     ports:
@@ -41,7 +50,7 @@ services:
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - ELASTICSEARCH_USERNAME=elastic
-      - ELASTICSEARCH_PASSWORD=elastic
+      - ELASTICSEARCH_PASSWORD=password
     ports:
       - 5601:5601
     networks:
@@ -49,32 +58,22 @@ services:
     depends_on:
       - elasticsearch
 
-  redis:
-    container_name: redis
-    image: redis:5.0.9-alpine
-    restart: on-failure
-    networks:
-      - hyperion
-
-  rabbitmq:
-    container_name: rabbitmq
-    image: rabbitmq:3.8.3-management
-    restart: on-failure
-    environment:
-      - RABBITMQ_DEFAULT_USER=rabbitmq
-      - RABBITMQ_DEFAULT_PASS=rabbitmq
-      - RABBITMQ_DEFAULT_VHOST=/hyperion
+  eosio-node:
+    container_name: eosio-node
+    image: eosrio/hyperion:eosio-2.0.5
     volumes:
-      - ./rabbitmq/data:/var/lib/rabbitmq
+      - ./eosio/data/:/root/eosio/data/
+      - ./eosio/config/:/root/eosio/config/
+      - ./scripts/:/root/scripts/
     ports:
-      - 15672:15672
+      - 8888:8888
     networks:
       - hyperion
+    command: bash -c "/root/scripts/run-nodeos.sh ${SCRIPT:-false} ${SNAPSHOT:-""}"
 
   hyperion-indexer:
     container_name: hyperion-indexer
-    build: hyperion/.
-    image: hyperion
+    image: eosrio/hyperion:hyperion-3.0
     restart: on-failure
     depends_on:
       - elasticsearch
@@ -88,11 +87,11 @@ services:
       - ./scripts/:/root/scripts/
     networks:
       - hyperion
-    command: bash -c "/root/scripts/wait-for.sh rabbitmq:15672 && /root/scripts/wait-for.sh elasticsearch:9200 && pm2 start --only eos-indexer --update-env && pm2 logs --raw"
+    command: bash -c "/root/scripts/run-hyperion.sh ${SCRIPT:-false} CHAIN-indexer"
 
   hyperion-api:
     container_name: hyperion-api
-    image: hyperion
+    image: eosrio/hyperion:hyperion-3.0
     restart: on-failure
     ports:
       - 7000:7000
@@ -105,7 +104,7 @@ services:
       - ./scripts/:/root/scripts/
     networks:
       - hyperion
-    command: bash -c "/root/scripts/wait-for.sh rabbitmq:15672 && /root/scripts/wait-for.sh elasticsearch:9200 && pm2 start --only eos-api --update-env && pm2 logs --raw"
+    command: bash -c "/root/scripts/run-hyperion.sh ${SCRIPT:-false} CHAIN-api"
 
 networks:
   hyperion:
