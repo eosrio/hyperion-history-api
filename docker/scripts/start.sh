@@ -47,8 +47,13 @@ if [ "$chain" = "" ]; then
   usage 2
 fi
 
-# Create docker containers
-sudo SCRIPT=true SNAPSHOT=$snapshot docker-compose up --no-start
+created="$(sudo docker container ls -q --all)"
+
+if [ "$created" = "" ]
+then
+  # Create docker containers
+  sudo SCRIPT=true SNAPSHOT=$snapshot docker-compose up --no-start
+fi
 
 # Starting redis container
 sudo docker-compose start redis
