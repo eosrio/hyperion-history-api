@@ -18,6 +18,7 @@ import {faSadTear} from '@fortawesome/free-solid-svg-icons/faSadTear';
 import {HyperionSocketClient} from '@eosrio/hyperion-stream-client/lib/client/hyperion-socket-client';
 import {environment} from '../../../environments/environment';
 import {HttpClient} from '@angular/common/http';
+import {MatPaginator} from "@angular/material/paginator";
 
 interface Permission {
   perm_name: string;
@@ -69,6 +70,7 @@ export class AccountComponent implements OnInit, OnDestroy {
 
   columnsToDisplay: string[] = ['trx_id', 'action', 'data', 'block_num'];
   @ViewChild(MatSort, {static: false}) sort: MatSort;
+  @ViewChild(MatPaginator, {static: true}) paginator: MatPaginator;
   faClock = faClock;
   faUserCircle = faUserCircle;
   faCircle = faCircle;
@@ -142,6 +144,7 @@ export class AccountComponent implements OnInit, OnDestroy {
         this.processPermissions();
         setTimeout(() => {
           this.accountService.tableDataSource.sort = this.sort;
+          this.accountService.tableDataSource.paginator = this.paginator;
         }, 500);
       }
     });

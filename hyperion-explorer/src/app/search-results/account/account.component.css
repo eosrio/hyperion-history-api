@@ -96,7 +96,13 @@
   height: 12px;
   border-radius: 50%;
   display: inline-block;
-  margin-right: 7px;
+  margin-left: 10px;
+}
+
+.red-dot {
+  background: #de0000;
+  border-radius: 50%;
+  cursor: pointer;
 }
 
 .off {

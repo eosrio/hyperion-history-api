@@ -201,8 +201,8 @@
 
       <div (click)="accountService.toggleStreaming()" class="livestream" matTooltip="click to turn on/off"
            matTooltipClass="tooltip-bigger">
-        <span class="dot" [ngClass]="{'pulse':accountService.streamClientStatus}"></span>
-        action live streaming {{accountService.streamClientStatus ? 'enabled' : 'disabled'}}
+        action live streaming <span class="w-500">{{accountService.streamClientStatus ? 'enabled' : 'disabled'}}</span>
+        <span class="dot" [ngClass]="{'pulse': accountService.streamClientStatus, 'red-dot': !accountService.streamClientStatus}"></span>
       </div>
     </div>
     <table mat-table [dataSource]="accountService.tableDataSource"
@@ -306,6 +306,7 @@
       <!--suppress AngularUndefinedBinding -->
       <tr mat-row *matRowDef="let myRowData; columns: columnsToDisplay"></tr>
     </table>
+    <mat-paginator [pageSizeOptions]="[10, 5, 50]" [length]="accountService.tableDataSource.filteredData.length" showFirstLastButtons></mat-paginator>
 
   </mat-card>
 
