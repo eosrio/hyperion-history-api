@@ -30,6 +30,7 @@ export default class StateReader extends HyperionWorker {
     private drainCount = 0;
     private currentIdx = 1;
     private receivedFirstBlock = false;
+    private local_lib = 0;
 
     constructor() {
         super();
@@ -254,6 +255,7 @@ export default class StateReader extends HyperionWorker {
                     const res = deserialize('result', data, this.txEnc, this.txDec, this.types)[1];
                     if (res['this_block']) {
                         const blk_num = res['this_block']['block_num'];
+                        const lib = res['last_irreversible'];
 
                         if (res.block && res.traces && res.deltas) {
                             debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
@@ -277,6 +279,12 @@ export default class StateReader extends HyperionWorker {
                                 await this.handleFork(res);
                             } else {
                                 this.local_block_num = blk_num;
+                            }
+
+                            if (lib.block_num > this.local_lib) {
+                                this.local_lib = lib.block_num;
+                                // emit lib update event
+                                process.send({event: 'lib_update', data: lib});
                             }
 
                             this.stageOneDistQueue.push({num: blk_num, content: data});

@@ -130,6 +130,7 @@ export class HyperionMaster {
     private activeSchedule: any;
     private pendingSchedule: any;
     private proposedSchedule: any;
+    private wsRouterWorker: cluster.Worker;
 
 
     constructor() {
@@ -268,6 +269,12 @@ export class HyperionMaster {
                             }
                         }
                     }
+                }
+            },
+            'lib_update': (msg: any) => {
+                if (msg.data) {
+                    // hLog(`Live Reader reported LIB update: ${msg.data.block_num} | ${msg.data.block_id}`);
+                    this.wsRouterWorker.send(msg);
                 }
             }
         };
@@ -1271,7 +1278,7 @@ export class HyperionMaster {
     }
 
     private launchWorkers() {
-        this.workerMap.forEach((conf) => {
+        this.workerMap.forEach((conf: HyperionWorkerDef) => {
             if (!conf.wref) {
                 conf['wref'] = cluster.fork(conf);
                 conf['wref'].on('message', (msg) => {
@@ -1279,6 +1286,9 @@ export class HyperionMaster {
                 });
                 if (conf.worker_role === 'ds_pool_worker') {
                     this.dsPoolMap.set(conf.local_id, conf['wref']);
+                }
+                if (conf.worker_role === 'router') {
+                    this.wsRouterWorker = conf['wref'];
                 }
             }
         });

@@ -311,9 +311,11 @@ export class SocketManager {
 
     startRelay() {
         console.log(`starting relay - ${this.url}`);
+
         this.relay = IOClient(this.url, {
             path: '/router',
         });
+
         this.relay.on('connect', () => {
             console.log('Relay Connected!');
             if (this.relay_down) {
@@ -322,18 +324,27 @@ export class SocketManager {
                 this.io.emit('status', 'relay_restored');
             }
         });
+
         this.relay.on('disconnect', () => {
             console.log('Relay disconnected!');
             this.io.emit('status', 'relay_down');
             this.relay_down = true;
             this.relay_restored = false;
         });
+
         this.relay.on('delta', (traceData) => {
             this.emitToClient(traceData, 'delta_trace');
         });
+
         this.relay.on('trace', (traceData) => {
             this.emitToClient(traceData, 'action_trace');
         });
+
+        // Relay LIB info to clients;
+        this.relay.on('lib_update', (data) => {
+            this.io.emit('lib_update', data);
+        });
+
         setTimeout(() => {
             console.log(`Relay status: ${this.relay.connected}`);
         }, 2000);

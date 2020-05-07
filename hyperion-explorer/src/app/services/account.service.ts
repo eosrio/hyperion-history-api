@@ -4,6 +4,7 @@ import {environment} from '../../environments/environment';
 import {GetAccountResponse} from '../interfaces';
 import {MatTableDataSource} from '@angular/material/table';
 import {HyperionSocketClient} from '@eosrio/hyperion-stream-client/lib/client/hyperion-socket-client';
+import {IncomingData} from '@eosrio/hyperion-stream-client/lib';
 
 interface HealthResponse {
   features: {
@@ -39,8 +40,14 @@ export class AccountService {
   public tableDataSource: MatTableDataSource<any[]>;
   streamClient: HyperionSocketClient;
   public streamClientStatus = false;
+  public libNum: any;
+  private server: string;
+  private verificationLoop: any;
+  private predictionLoop: any;
+  private pendingSet = new Set();
 
   constructor(private httpClient: HttpClient) {
+    this.getServerUrl();
     this.getAccountUrl = environment.hyperionApiUrl + '/v2/state/get_account?account=';
     this.getTxUrl = environment.hyperionApiUrl + '/v2/history/get_transaction?id=';
     this.getBlockUrl = environment.hyperionApiUrl + '/v1/trace_api/get_block';
@@ -49,22 +56,96 @@ export class AccountService {
     this.initStreamClient().catch(console.log);
   }
 
-  async initStreamClient() {
+  async monitorLib() {
+    console.log('Starting LIB monitoring...');
+
+    if (!this.verificationLoop) {
+      this.verificationLoop = setInterval(async () => {
+        await this.updateLib();
+      }, 21 * 12 * 500);
+    }
+
+    if (!this.predictionLoop) {
+      this.predictionLoop = setInterval(() => {
+        this.libNum += 12;
+        if (this.pendingSet.size > 0) {
+          this.pendingSet.forEach(async (value) => {
+            if (value < this.libNum) {
+              console.log(`Block cleared ${value} < ${this.libNum}`);
+              this.pendingSet.delete(value);
+            }
+          });
+        } else {
+          console.log('No more pending actions, clearing loops');
+          this.clearLoops();
+        }
+      }, 12 * 500);
+    }
+
+  }
+
+  async checkIrreversibility() {
+    this.libNum = await this.checkLib();
+    if (this.libNum) {
+      let counter = 0;
+      for (const action of this.actions) {
+        if (action.block_num <= this.libNum) {
+          action.irreversible = true;
+        } else {
+          counter++;
+          this.pendingSet.add(action.block_num);
+        }
+      }
+      if (counter > 0) {
+        console.log('Pending actions: ' + counter);
+        this.monitorLib().catch(console.log);
+      }
+    }
+  }
+
+  getServerUrl() {
     let server = '';
     if (environment.production) {
       server = window.location.origin;
     } else {
       server = environment.hyperionApiUrl;
     }
+    this.server = server;
+  }
+
+  async updateLib() {
+    this.libNum = await this.checkLib();
+  }
+
+  async checkLib(): Promise<number> {
     try {
-      const health = await this.httpClient.get(server + '/v2/health').toPromise() as HealthResponse;
+      const info = await this.httpClient.get(this.server + '/v1/chain/get_info').toPromise() as any;
+      if (info) {
+        return info.last_irreversible_block_num;
+      } else {
+        return null;
+      }
+    } catch (e) {
+      console.log(e);
+      return null;
+    }
+  }
+
+  async initStreamClient() {
+    try {
+      const health = await this.httpClient.get(this.server + '/v2/health').toPromise() as HealthResponse;
       if (health.features.streaming.enable) {
-        this.streamClient = new HyperionSocketClient(server, {async: true});
+        this.streamClient = new HyperionSocketClient(this.server, {async: true});
+
         this.streamClient.onConnect = () => {
           this.streamClientStatus = this.streamClient.online;
         };
-        this.streamClient.onData = async (data: any, ack) => {
-          console.log(data.content.act);
+
+        this.streamClient.onLIB = (data) => {
+          this.libNum = data.block_num;
+        };
+
+        this.streamClient.onData = async (data: IncomingData, ack) => {
           if (data.type === 'action') {
             this.actions.unshift(data.content);
             if (this.actions.length > 20) {
@@ -81,6 +162,17 @@ export class AccountService {
   }
 
   setupRequests() {
+    // find latest block
+    let maxBlock = 0;
+    for (const action of this.actions) {
+      if (action.block_num > maxBlock) {
+        maxBlock = action.block_num;
+      }
+    }
+
+    console.log(maxBlock);
+
+    // setup request
     this.streamClient.onConnect = () => {
       this.streamClient.streamActions({
         account: this.account.account_name,
@@ -88,9 +180,8 @@ export class AccountService {
         contract: '*',
         filters: [],
         read_until: 0,
-        start_from: 0
+        start_from: maxBlock + 1
       });
-      console.log(this.streamClient);
       this.streamClientStatus = this.streamClient.online;
     };
   }
@@ -108,8 +199,10 @@ export class AccountService {
 
       if (this.jsonData.actions) {
         this.actions = this.jsonData.actions;
+        this.checkIrreversibility().catch(console.log);
         this.tableDataSource.data = this.actions;
       }
+
       return true;
     } catch (error) {
       console.log(error);
@@ -151,7 +244,9 @@ export class AccountService {
     if (this.streamClientStatus) {
       this.streamClient.disconnect();
       this.streamClientStatus = false;
+      this.checkIrreversibility().catch(console.log);
     } else {
+      this.clearLoops();
       this.setupRequests();
       this.streamClient.connect(() => {
         console.log('hyperion streaming client connected!');
@@ -159,9 +254,20 @@ export class AccountService {
     }
   }
 
+  clearLoops() {
+    if (this.predictionLoop) {
+      clearInterval(this.predictionLoop);
+    }
+    if (this.verificationLoop) {
+      clearInterval(this.verificationLoop);
+    }
+  }
+
   disconnectStream() {
-    this.streamClient.disconnect();
-    this.streamClient.online = false;
-    this.streamClientStatus = false;
+    if (this.streamClient && this.streamClientStatus) {
+      this.streamClient.disconnect();
+      this.streamClient.online = false;
+      this.streamClientStatus = false;
+    }
   }
 }

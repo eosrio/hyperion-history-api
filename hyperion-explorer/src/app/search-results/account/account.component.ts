@@ -15,10 +15,7 @@ import {faChevronDown} from '@fortawesome/free-solid-svg-icons/faChevronDown';
 import {faKey} from '@fortawesome/free-solid-svg-icons/faKey';
 import {faUser} from '@fortawesome/free-solid-svg-icons/faUser';
 import {faSadTear} from '@fortawesome/free-solid-svg-icons/faSadTear';
-import {HyperionSocketClient} from '@eosrio/hyperion-stream-client/lib/client/hyperion-socket-client';
-import {environment} from '../../../environments/environment';
-import {HttpClient} from '@angular/common/http';
-import {MatPaginator} from "@angular/material/paginator";
+import {MatPaginator} from '@angular/material/paginator';
 
 interface Permission {
   perm_name: string;
@@ -198,25 +195,25 @@ export class AccountComponent implements OnInit, OnDestroy {
     if (bytes > 1024) {
       return (bytes / (1024)).toFixed(2) + ' KB';
     }
-    return bytes + ' bytes'
+    return bytes + ' bytes';
   }
 
   convertMicroS(micros: number) {
     let int = 0;
     let remainder = 0;
     const calcSec = 1000 ** 2;
-    const calcMin = calcSec*60;
-    const calcHour = calcMin*60;
+    const calcMin = calcSec * 60;
+    const calcHour = calcMin * 60;
     if (micros > calcHour) {
       const min =
-      int = micros / calcHour;
+        int = micros / calcHour;
       remainder = micros % calcHour;
-      return int.toFixed(0) + ' h ' + (remainder/calcMin).toFixed(0) + 'min';
+      return int.toFixed(0) + ' h ' + (remainder / calcMin).toFixed(0) + 'min';
     }
     if (micros > calcMin) {
       int = micros / calcMin;
       remainder = micros % calcMin;
-      return int.toFixed(0) + ' min ' + (remainder/calcSec).toFixed(0) + 's';
+      return int.toFixed(0) + ' min ' + (remainder / calcSec).toFixed(0) + 's';
     }
     if (micros > calcSec) {
       return (micros / calcSec).toFixed(2) + ' s';
@@ -224,6 +221,6 @@ export class AccountComponent implements OnInit, OnDestroy {
     if (micros > 1000) {
       return (micros / (1000)).toFixed(2) + ' ms';
     }
-    return micros + ' µs'
+    return micros + ' µs';
   }
 }

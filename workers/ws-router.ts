@@ -35,7 +35,12 @@ export default class WSRouter extends HyperionWorker {
 
 
     onIpcMessage(msg: any): void {
-        // hLog(msg.event);
+        switch (msg.event) {
+            case 'lib_update': {
+                this.io.emit('lib_update', msg.data);
+                break;
+            }
+        }
     }
 
     async run(): Promise<void> {
@@ -186,7 +191,7 @@ export default class WSRouter extends HyperionWorker {
     addActionRequest(data, id) {
         const req = data.request;
         console.log(req);
-        if(typeof req.account !== 'string') {
+        if (typeof req.account !== 'string') {
             return {status: 'FAIL', reason: 'invalid request'};
         }
         if (greylist.indexOf(req.contract) !== -1) {
