@@ -15,9 +15,6 @@ import {faChevronDown} from '@fortawesome/free-solid-svg-icons/faChevronDown';
 import {faKey} from '@fortawesome/free-solid-svg-icons/faKey';
 import {faUser} from '@fortawesome/free-solid-svg-icons/faUser';
 import {faSadTear} from '@fortawesome/free-solid-svg-icons/faSadTear';
-import {HyperionSocketClient} from '@eosrio/hyperion-stream-client/lib/client/hyperion-socket-client';
-import {environment} from '../../../environments/environment';
-import {HttpClient} from '@angular/common/http';
 import {MatPaginator} from "@angular/material/paginator";
 
 interface Permission {
