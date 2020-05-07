@@ -209,14 +209,14 @@ export class AccountComponent implements OnInit, OnDestroy {
     const calcHour = calcMin*60;
     if (micros > calcHour) {
       const min =
-      int = micros / calcHour;
+      int = Math.floor(micros / calcHour);
       remainder = micros % calcHour;
-      return int.toFixed(0) + ' h ' + (remainder/calcMin).toFixed(0) + 'min';
+      return int + ' h ' + Math.round(remainder/calcMin) + 'min';
     }
     if (micros > calcMin) {
-      int = micros / calcMin;
+      int = Math.floor(micros / calcMin);
       remainder = micros % calcMin;
-      return int.toFixed(0) + ' min ' + (remainder/calcSec).toFixed(0) + 's';
+      return int + ' min ' + Math.round(remainder/calcSec) + 's';
     }
     if (micros > calcSec) {
       return (micros / calcSec).toFixed(2) + ' s';
