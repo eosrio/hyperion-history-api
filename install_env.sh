@@ -180,7 +180,7 @@ rabbit_credentials(){
 install_rabittmq(){
   echo -e "\n\n${COLOR_BLUE}Installing rabbit-mq...${COLOR_NC}\n\n"
   # sudo apt install -y rabbitmq-server
-  sudo docker run -d --name rabbitmq -p 15672:15672 -p 5672:5672 -e RABBITMQ_DEFAULT_USER=hyperion -e RABBITMQ_DEFAULT_PASS=123456 -e RABBITMQ_DEFAULT_VHOST=/hyperion rabbitmq:3.8.3-management
+  sudo docker run -d --name rabbitmq -p 15672:15672 -p 5672:5672 -e RABBITMQ_DEFAULT_USER=${RABBIT_USER} -e RABBITMQ_DEFAULT_PASS=${RABBIT_PASSWORD} -e RABBITMQ_DEFAULT_VHOST=/hyperion rabbitmq:3.8.3-management
   #enable web gui
   #sudo rabbitmq-plugins enable rabbitmq_management
   # sudo rabbitmqctl add_vhost /hyperion
