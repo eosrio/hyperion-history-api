@@ -99,10 +99,12 @@ install_keys_sources(){
     echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
   fi
 
-  KEY=$(apt-key list 2> /dev/null | grep erlang)
-  if [[ ! $KEY ]]; then
-    wget -O- https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | sudo apt-key add -
-  fi
+  # PPA="http://dl.bintray.com/rabbitmq-erlang/debian bionic erlang"
+  # if ! grep -q "^deb .*$PPA" /etc/apt/sources.list /etc/apt/sources.list.d/*; then
+  #   curl -fsSL https://github.com/rabbitmq/signing-keys/releases/download/2.0/rabbitmq-release-signing-key.asc | sudo apt-key add -
+  #   echo "deb http://dl.bintray.com/rabbitmq-erlang/debian bionic erlang" | sudo tee /etc/apt/sources.list.d/bintray.rabbitmq.list
+  #   curl -s https://packagecloud.io/install/repositories/rabbitmq/rabbitmq-server/script.deb.sh | sudo bash
+  # fi
 
   KEY=$(apt-key list 2> /dev/null | grep rabbitmq)
   if [[ ! $KEY ]]; then
@@ -117,9 +119,11 @@ install_keys_sources(){
   sudo apt update -y
 }
 
-install_dep(){
-  echo -e "\n\n${COLOR_BLUE}Installing build essentials...${COLOR_NC}\n\n"
-  sudo apt install -y build-essential curl
+install_dep() {
+ echo -e "\n\n${COLOR_BLUE}Installing dependencies...${COLOR_NC}\n\n"
+ sudo apt update
+ # sudo apt install -y build-essential curl
+ sudo apt install -y curl docker.io
 }
 
 install_node(){
@@ -158,12 +162,11 @@ install_redis(){
   sudo systemctl restart redis.service
 }
 
-install_earlang(){
-  echo -e "\n\n${COLOR_BLUE}Installing earlang...${COLOR_NC}\n\n"
-  echo "deb https://packages.erlang-solutions.com/ubuntu bionic contrib" | sudo tee /etc/apt/sources.list.d/rabbitmq.list
-  sudo apt update
-  sudo apt -y install erlang
-}
+# install_erlang() {
+#   echo -e "\n\n${COLOR_BLUE}Installing erlang...${COLOR_NC}\n\n"
+#   sudo apt -y install erlang
+# }
+
 #ask user for rabbit credentials
 rabbit_credentials(){
   read -p "Enter rabbitmq user [hyperion]: " RABBIT_USER
@@ -176,14 +179,14 @@ rabbit_credentials(){
 
 install_rabittmq(){
   echo -e "\n\n${COLOR_BLUE}Installing rabbit-mq...${COLOR_NC}\n\n"
-  curl -s "https://packagecloud.io/install/repositories/rabbitmq/rabbitmq-server/script.deb.sh" | sudo bash
-  sudo apt install -y rabbitmq-server
+  # sudo apt install -y rabbitmq-server
+  sudo docker run -d --name rabbitmq -p 15672:15672 -p 5672:5672 -e RABBITMQ_DEFAULT_USER=hyperion -e RABBITMQ_DEFAULT_PASS=123456 -e RABBITMQ_DEFAULT_VHOST=/hyperion rabbitmq:3.8.3-management
   #enable web gui
-  sudo rabbitmq-plugins enable rabbitmq_management
-  sudo rabbitmqctl add_vhost /hyperion
-  sudo rabbitmqctl add_user ${RABBIT_USER} ${RABBIT_PASSWORD}
-  sudo rabbitmqctl set_user_tags ${RABBIT_USER} administrator
-  sudo rabbitmqctl set_permissions -p /hyperion ${RABBIT_USER} ".*" ".*" ".*"
+  #sudo rabbitmq-plugins enable rabbitmq_management
+  # sudo rabbitmqctl add_vhost /hyperion
+  # sudo rabbitmqctl add_user ${RABBIT_USER} ${RABBIT_PASSWORD}
+  # sudo rabbitmqctl set_user_tags ${RABBIT_USER} administrator
+  # sudo rabbitmqctl set_permissions -p /hyperion ${RABBIT_USER} ".*" ".*" ".*"
 }
 
 install_elastic(){
