@@ -2,7 +2,8 @@
   <mat-card>
     <h1 class="faded">
       <fa-icon [icon]="faSadTear" style="margin-right: 5px"></fa-icon>
-      Block not found</h1>
+      Block not found
+    </h1>
     <div>We couldn't find block <strong>{{blockNum}}</strong></div>
   </mat-card>
 </div>
@@ -19,13 +20,13 @@
           <span class="faded">Block</span> {{block.number}}
         </h2>
         <mat-chip-list orientation="vertical">
-          <mat-chip selected *ngIf="block.status === 'irreversible'">
+          <mat-chip selected *ngIf="accountService.libNum > block['number']">
             <fa-icon [icon]="faLock" style="margin-right: 5px"></fa-icon>
             Irrevesible
           </mat-chip>
-          <mat-chip color="accent" selected *ngIf="block.status !== 'irreversible'">
+          <mat-chip color="accent" selected *ngIf="accountService.libNum < block['number']">
             <fa-icon [icon]="faHourglass" style="margin-right: 5px"></fa-icon>
-            Pending
+            Pending ({{countdownTimer}}s)
           </mat-chip>
         </mat-chip-list>
       </div>
@@ -72,7 +73,8 @@
         <td mat-cell *matCellDef="let transaction" data-label="Root Action">
           <span class="action-cell" [ngStyle.gt-xs]="{'min-width': '170px'}" [ngClass.gt-sm]="'action-border'">
             <span class="accent w-500">{{transaction.actions[0].action}}</span>
-            on <span class="w-500 div-link" [routerLink]="['/account', transaction.actions[0].account]">{{transaction.actions[0].account}}</span>
+            on <span class="w-500 div-link"
+                     [routerLink]="['/account', transaction.actions[0].account]">{{transaction.actions[0].account}}</span>
           </span>
         </td>
       </ng-container>
@@ -97,15 +99,17 @@
                 <td mat-cell *matCellDef="let action" [ngStyle.gt-xs]="{'padding-right': '14px'}" data-label="Action">
                   <span>
                     <span class="accent w-500">{{action.action}}</span>
-                    on <span class="w-500 div-link" [routerLink]="['/account', action.account]">{{action.account}}</span>
+                    on <span class="w-500 div-link"
+                             [routerLink]="['/account', action.account]">{{action.account}}</span>
                     </span>
                 </td>
               </ng-container>
 
               <!-- Data Column -->
               <ng-container matColumnDef="data">
-                <th mat-header-cell *matHeaderCellDef > Data</th>
-                <td mat-cell *matCellDef="let action" [ngStyle.gt-xs]="{'padding': '10px 14px 10px 0'}" data-label="Data">
+                <th mat-header-cell *matHeaderCellDef> Data</th>
+                <td mat-cell *matCellDef="let action" [ngStyle.gt-xs]="{'padding': '10px 14px 10px 0'}"
+                    data-label="Data">
                   <div *ngFor="let item of action['data'] | keyvalue"
                        [ngClass]="{'data-item': objectKeyCount(action['data']) > 1}">
                     <span class="w-500">{{item.key}}</span>: <span class="break-word">{{item.value}}</span>
@@ -116,7 +120,8 @@
               <!-- Authorization Column -->
               <ng-container matColumnDef="auth">
                 <th mat-header-cell *matHeaderCellDef>Authorization</th>
-                <td mat-cell *matCellDef="let action" [ngStyle.gt-xs]="{'padding': '10px 0 6px'}" data-label="Authorization">
+                <td mat-cell *matCellDef="let action" [ngStyle.gt-xs]="{'padding': '10px 0 6px'}"
+                    data-label="Authorization">
                   <div *ngFor="let auth of action['authorization'][0] | keyvalue" class="data-item">
                     <span class="w-500">{{auth.key}}</span>: <span>{{auth.value}}</span>
                   </div>
@@ -136,7 +141,7 @@
       <tr mat-header-row *matHeaderRowDef="columnsToDisplay; sticky: true"></tr>
 
       <!--suppress AngularUndefinedBinding -->
-      <tr mat-row *matRowDef="let myRowData; columns: columnsToDisplay"  class="element-row"
+      <tr mat-row *matRowDef="let myRowData; columns: columnsToDisplay" class="element-row"
           [class.expanded-row]="expandedElement === myRowData"
           (click)="expandedElement = expandedElement === myRowData ? null : myRowData">
       </tr>

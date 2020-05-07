@@ -32,7 +32,7 @@
           </mat-chip>
           <mat-chip *ngIf="accountService.libNum < tx.actions[0]['block_num']" color="accent" selected>
             <fa-icon [icon]="faHourglass" style="margin-right: 5px"></fa-icon>
-            Pending
+            Pending ({{countdownTimer}}s)
           </mat-chip>
         </mat-chip-list>
       </div>
