@@ -25,8 +25,7 @@
             accountService.account['ram_quota']) *
           100 | number}}% used</span>
         </div>
-        <div class="values">{{accountService.account['ram_usage']}} bytes / {{accountService.account['ram_quota']}}
-          bytes
+        <div class="values">{{convertBytes(accountService.account['ram_usage'])}} / {{convertBytes(accountService.account['ram_quota'])}}
         </div>
         <mat-progress-bar class="progress-bar" mode="determinate"
                           [value]="(accountService.account['ram_usage'] / accountService.account['ram_quota']) * 100"></mat-progress-bar>
@@ -38,8 +37,8 @@
                 class="faded used">{{(accountService.account['cpu_limit']['used'] /
             accountService.account['cpu_limit']['max']) * 100 | number}}% used</span>
         </div>
-        <div class="values">{{accountService.account['cpu_limit']['used']}} µs
-          / {{accountService.account['cpu_limit']['max']}} µs
+        <div class="values">{{convertMicroS(accountService.account['cpu_limit']['used'])}}
+          / {{convertMicroS(accountService.account['cpu_limit']['max'])}}
         </div>
         <mat-progress-bar class="progress-bar" mode="determinate"
                           [value]="(accountService.account['cpu_limit']['used'] / accountService.account['cpu_limit']['max']) * 100"></mat-progress-bar>
@@ -51,8 +50,8 @@
                 class="faded used">{{(accountService.account['net_limit']['used'] /
             accountService.account['net_limit']['max']) * 100 | number}}% used</span>
         </div>
-        <div class="values">{{accountService.account['net_limit']['used']}} bytes
-          / {{accountService.account['net_limit']['max']}} bytes
+        <div class="values">{{convertBytes(accountService.account['net_limit']['used'])}}
+          / {{convertBytes(accountService.account['net_limit']['max'])}}
         </div>
         <mat-progress-bar class="progress-bar" mode="determinate"
                           [value]="(accountService.account['net_limit']['used'] / accountService.account['net_limit']['max']) * 100"></mat-progress-bar>

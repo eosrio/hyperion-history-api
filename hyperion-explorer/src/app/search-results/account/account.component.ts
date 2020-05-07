@@ -187,4 +187,43 @@ export class AccountComponent implements OnInit, OnDestroy {
   getType(subitem: any) {
     return typeof subitem;
   }
+
+  convertBytes(bytes: number) {
+    if (bytes > (1024 ** 3)) {
+      return (bytes / (1024 ** 3)).toFixed(2) + ' GB';
+    }
+    if (bytes > (1024 ** 2)) {
+      return (bytes / (1024 ** 2)).toFixed(2) + ' MB';
+    }
+    if (bytes > 1024) {
+      return (bytes / (1024)).toFixed(2) + ' KB';
+    }
+    return bytes + ' bytes'
+  }
+
+  convertMicroS(micros: number) {
+    let int = 0;
+    let remainder = 0;
+    const calcSec = 1000 ** 2;
+    const calcMin = calcSec*60;
+    const calcHour = calcMin*60;
+    if (micros > calcHour) {
+      const min =
+      int = micros / calcHour;
+      remainder = micros % calcHour;
+      return int.toFixed(0) + ' h ' + (remainder/calcMin).toFixed(0) + 'min';
+    }
+    if (micros > calcMin) {
+      int = micros / calcMin;
+      remainder = micros % calcMin;
+      return int.toFixed(0) + ' min ' + (remainder/calcSec).toFixed(0) + 's';
+    }
+    if (micros > calcSec) {
+      return (micros / calcSec).toFixed(2) + ' s';
+    }
+    if (micros > 1000) {
+      return (micros / (1000)).toFixed(2) + ' ms';
+    }
+    return micros + ' µs'
+  }
 }
