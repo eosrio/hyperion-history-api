@@ -2,6 +2,24 @@
   margin-top: 112px;
 }
 
+.total-balance {
+  border-bottom: 1px solid rgba(0,0,0,.12);
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+.mb-5 {
+  margin-bottom: 5px;
+}
+
+.mt-7 {
+  margin-top: 7px;
+}
+
+.mt-30 {
+  margin-top: 30px;
+}
+
 .title {
   font-size: 21px;
   color: #00a6de;
@@ -18,6 +36,12 @@
 
 .progress-bar {
   margin-top: 10px;
+}
+
+.small-info {
+  font-size: 15px;
+  margin-top: 10px;
+  color: rgba(0,0,0,.45);
 }
 
 .display-block {
@@ -72,8 +96,24 @@
   margin-left: 7px;
 }
 
+.m-bottom {
+  margin-bottom: 3px;
+}
+
+.float-r {
+  float: right;
+}
+
 .space-right {
   margin-right: 4px;
+}
+
+.vote-card .mat-expansion-panel-header {
+  padding-left: 15px;
+}
+
+.vote-card-title {
+  font-size: 19px;
 }
 
 .action-cell {
@@ -234,4 +274,8 @@
   .mat-card .mat-expansion-panel .mat-table {
     border: 0.5rem solid #fafafa;
   }
+}
+
+.mat-expansion-panel-header[aria-disabled=true] {
+  color: rgba(0,0,0,.87);
 }

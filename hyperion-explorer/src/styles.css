@@ -55,6 +55,9 @@ body {
 }
 
 /*scroll bar end*/
+.width-100 {
+  width: 100%;
+}
 
 .w-500 {
   font-weight: 500;

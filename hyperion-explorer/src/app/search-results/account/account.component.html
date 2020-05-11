@@ -1,6 +1,6 @@
 <div *ngIf="!accountService.jsonData" class="container" fxLayout="column" fxLayoutAlign="start center"
      fxLayoutGap="15px" style="height: calc(100vh - 209px);">
-  <mat-card style="width: 100%;">
+  <mat-card class="width-100">
     <h1 class="faded">
       <fa-icon [icon]="faSadTear" style="margin-right: 5px"></fa-icon>
       Account not found
@@ -17,44 +17,82 @@
       <fa-icon [icon]="faUserCircle" style="margin-right: 5px"></fa-icon>
       {{accountService.account['account_name']}}
     </h2>
-    <p><strong>Liquid Balance: {{accountService.account['core_liquid_balance']}}</strong></p>
-    <div fxLayout="row" fxLayoutAlign="start center" fxLayoutGap.gt-xs="30px" fxLayoutGap.lt-sm="40px">
-      <div fxFlex="0 0 calc((100% - 132px) / 3)">
-        <div><span class="title">RAM</span>
-          <span class="faded used" [ngClass.lt-sm]="'display-block'">{{(accountService.account['ram_usage'] /
-            accountService.account['ram_quota']) *
-          100 | number}}% used</span>
+
+    <div fxLayout.gt-xs="row" fxLayoutAlign.gt-xs="space-between start" fxLayoutGap.gt-xs="30px"
+         fxLayout.lt-sm="column" fxLayoutAlign.lt-sm="start stretch" fxLayoutGap.lt-sm="20px">
+
+      <div fxLayout="column" fxLayoutAlign="start start" fxFlex.gt-xs="316px" class="mt-7">
+        <div class="total-balance width-100">
+          <strong>Total Balance: </strong>
+          <span class="float-r">{{totalBalance() | number: '1.0-' + systemPrecision}} WAX</span>
         </div>
-        <div class="values">{{convertBytes(accountService.account['ram_usage'])}} / {{convertBytes(accountService.account['ram_quota'])}}
+        <div class="mb-5 width-100">
+          <strong>Liquid Balance: </strong>
+          <span class="float-r">{{liquidBalance() | number: '1.0-' + systemPrecision}} WAX</span>
         </div>
-        <mat-progress-bar class="progress-bar" mode="determinate"
-                          [value]="(accountService.account['ram_usage'] / accountService.account['ram_quota']) * 100"></mat-progress-bar>
+        <div class="mb-5 width-100">
+          <strong>Staked Balance: </strong>
+          <span class="float-r">{{stakedBalance() | number: '1.0-' + systemPrecision}} WAX</span></div>
+        <div class="width-100">
+          <strong>Refunding: </strong>
+          <span class="float-r">{{refundBalance() | number: '1.0-' + systemPrecision}} WAX</span>
+        </div>
       </div>
-      <div fxFlex="0 0 calc((100% - 132px) / 3)">
-        <div>
-          <span class="title">CPU</span>
-          <span [ngClass.lt-sm]="'display-block'"
-                class="faded used">{{(accountService.account['cpu_limit']['used'] /
-            accountService.account['cpu_limit']['max']) * 100 | number}}% used</span>
+
+      <div fxLayout="row wrap" fxLayoutAlign="start start" fxFlex="grow">
+        <div fxFlex.gt-sm="287px" fxFlex.lt-md="100" ngStyle.gt-sm="margin-right: 40px">
+          <div>
+            <span class="title">CPU</span>
+            <span class="faded used">{{(accountService.account['cpu_limit']['used'] /
+              accountService.account['cpu_limit']['max']) * 100 | number}}% used</span>
+            <span class="values float-r">{{convertMicroS(accountService.account['cpu_limit']['used'])}}
+              / {{convertMicroS(accountService.account['cpu_limit']['max'])}}
+          </span>
+          </div>
+          <mat-progress-bar class="progress-bar" mode="determinate"
+                            [value]="(accountService.account['cpu_limit']['used'] / accountService.account['cpu_limit']['max']) * 100"></mat-progress-bar>
+          <div class="small-info">
+            <div class="m-bottom"><span>Self-staked:</span><span
+              class="float-r">{{myCpuBalance() | number: '1.0-' + systemPrecision}} WAX</span></div>
+            <div class="m-bottom"><span>Staked by others:</span><span
+              class="float-r">{{cpuByOthers() | number: '1.0-' + systemPrecision}} WAX</span></div>
+            <div><span>Total in CPU:</span><span class="float-r">{{cpuBalance() | number: '1.0-' + systemPrecision}}
+              WAX</span></div>
+          </div>
         </div>
-        <div class="values">{{convertMicroS(accountService.account['cpu_limit']['used'])}}
-          / {{convertMicroS(accountService.account['cpu_limit']['max'])}}
+        <div fxFlex.gt-sm="287px" fxFlex.lt-md="100" ngClass.lt-md="mt-30">
+          <div>
+            <span class="title">NET</span>
+            <span class="faded used">{{(accountService.account['net_limit']['used'] /
+              accountService.account['net_limit']['max']) * 100 | number}}% used</span>
+            <span class="values float-r">{{convertBytes(accountService.account['net_limit']['used'])}}
+              / {{convertBytes(accountService.account['net_limit']['max'])}}
+          </span>
+          </div>
+          <mat-progress-bar class="progress-bar" mode="determinate"
+                            [value]="(accountService.account['net_limit']['used'] / accountService.account['net_limit']['max']) * 100"></mat-progress-bar>
+          <div class="small-info">
+            <div class="m-bottom"><span>Self-staked:</span><span
+              class="float-r">{{myNetBalance() | number: '1.0-' + systemPrecision}} WAX</span></div>
+            <div class="m-bottom"><span>Staked by others:</span><span
+              class="float-r">{{netByOthers() | number: '1.0-' + systemPrecision}} WAX</span></div>
+            <div><span>Total in NET:</span><span class="float-r">{{netBalance() | number: '1.0-' + systemPrecision}}
+              WAX</span></div>
+          </div>
         </div>
-        <mat-progress-bar class="progress-bar" mode="determinate"
-                          [value]="(accountService.account['cpu_limit']['used'] / accountService.account['cpu_limit']['max']) * 100"></mat-progress-bar>
-      </div>
-      <div fxFlex="0 0 calc((100% - 132px) / 3)">
-        <div>
-          <span class="title">NET</span>
-          <span [ngClass.lt-sm]="'display-block'"
-                class="faded used">{{(accountService.account['net_limit']['used'] /
-            accountService.account['net_limit']['max']) * 100 | number}}% used</span>
+        <div fxFlex="100" class="mt-30">
+          <div><span class="title mt-6">RAM</span>
+            <span class="faded used">{{(accountService.account['ram_usage'] /
+              accountService.account['ram_quota']) *
+            100 | number}}% used</span>
+            <span class="values float-r">{{convertBytes(accountService.account['ram_usage'])}}
+              / {{convertBytes(accountService.account['ram_quota'])}}
+          </span>
+          </div>
+
+          <mat-progress-bar class="progress-bar" mode="determinate"
+                            [value]="(accountService.account['ram_usage'] / accountService.account['ram_quota']) * 100"></mat-progress-bar>
         </div>
-        <div class="values">{{convertBytes(accountService.account['net_limit']['used'])}}
-          / {{convertBytes(accountService.account['net_limit']['max'])}}
-        </div>
-        <mat-progress-bar class="progress-bar" mode="determinate"
-                          [value]="(accountService.account['net_limit']['used'] / accountService.account['net_limit']['max']) * 100"></mat-progress-bar>
       </div>
     </div>
   </mat-card>
@@ -188,6 +226,40 @@
     </mat-card>
   </div>
 
+  <mat-accordion class="width-100 vote-card"
+                 *ngIf="accountService.account['voter_info'] && (accountService.account['voter_info'].proxy || accountService.account['voter_info'].producers.length > 0)">
+    <mat-expansion-panel [disabled]="accountService.account['voter_info'].producers.length <= 0"
+                         [hideToggle]="accountService.account['voter_info'].producers.length <= 0">
+      <mat-expansion-panel-header>
+        <mat-panel-title>
+          <h3 class="vote-card-title">
+            <fa-layers [fixedWidth]="true" style="margin-right: 5px">
+              <fa-icon [icon]="faCircle" transform="grow-3"></fa-icon>
+              <fa-icon [icon]="faVote" [inverse]="true" transform="shrink-4"></fa-icon>
+            </fa-layers>
+            Votes
+          </h3>
+        </mat-panel-title>
+        <mat-panel-description style="margin-top: 22px;">
+          <div *ngIf="accountService.account['voter_info']">
+            user is voting in&nbsp;
+            <span *ngIf="accountService.account['voter_info'].proxy">proxy <a [routerLink]="['/account', accountService.account['voter_info'].proxy]" class="link-blue">{{accountService.account['voter_info'].proxy}}</a></span>
+            <span *ngIf="accountService.account['voter_info'].producers.length > 0">
+              {{accountService.account['voter_info'].producers.length}} producer<span *ngIf="accountService.account['voter_info'].producers.length > 1">s</span>
+            </span>
+          </div>
+        </mat-panel-description>
+      </mat-expansion-panel-header>
+
+      <div *ngIf="accountService.account['voter_info'].producers.length > 0">
+        <span *ngFor="let producer of accountService.account['voter_info'].producers; let last = last;">
+          <a [routerLink]="['/account', producer]" class="link-blue">{{producer}}</a><span *ngIf="!last">, </span>
+        </span>
+      </div>
+
+    </mat-expansion-panel>
+  </mat-accordion>
+
   <mat-card fxFlexFill fxFlex="100">
     <div fxLayout="row" fxLayoutAlign="space-between start">
       <h3 style="margin-top: 0;">
@@ -201,7 +273,8 @@
       <div (click)="accountService.toggleStreaming()" class="livestream" matTooltip="click to turn on/off"
            matTooltipClass="tooltip-bigger">
         action live streaming <span class="w-500">{{accountService.streamClientStatus ? 'enabled' : 'disabled'}}</span>
-        <span class="dot" [ngClass]="{'pulse': accountService.streamClientStatus, 'red-dot': !accountService.streamClientStatus}"></span>
+        <span class="dot"
+              [ngClass]="{'pulse': accountService.streamClientStatus, 'red-dot': !accountService.streamClientStatus}"></span>
       </div>
     </div>
     <table mat-table [dataSource]="accountService.tableDataSource"
@@ -214,7 +287,8 @@
       <ng-container matColumnDef="trx_id">
         <th mat-header-cell *matHeaderCellDef [ngStyle.gt-xs]="{'min-width': '100px'}"> TX</th>
         <td mat-cell *matCellDef="let action" data-label="TX">
-          <fa-icon *ngIf="accountService.libNum < action['block_num']" [icon]="faClock" class="accent" style="margin-right: 5px"></fa-icon>
+          <fa-icon *ngIf="accountService.libNum < action['block_num']" [icon]="faClock" class="accent"
+                   style="margin-right: 5px"></fa-icon>
           <a [routerLink]="['/transaction', action['trx_id']]" class="link-blue">
             {{action['trx_id'].slice(0, 8)}}...
           </a>
@@ -305,7 +379,8 @@
       <!--suppress AngularUndefinedBinding -->
       <tr mat-row *matRowDef="let myRowData; columns: columnsToDisplay"></tr>
     </table>
-    <mat-paginator [pageSizeOptions]="[10, 5, 50]" [length]="accountService.tableDataSource.filteredData.length" showFirstLastButtons></mat-paginator>
+    <mat-paginator [pageSizeOptions]="[10, 5, 50]" [length]="accountService.tableDataSource.filteredData.length"
+                   showFirstLastButtons></mat-paginator>
 
   </mat-card>
 

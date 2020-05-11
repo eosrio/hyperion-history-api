@@ -30,6 +30,7 @@ import {MatChipsModule} from '@angular/material/chips';
 import {KeyComponent} from './search-results/key/key.component';
 import {ServiceWorkerModule} from '@angular/service-worker';
 import {environment} from '../environments/environment';
+import {MatExpansionModule} from "@angular/material/expansion";
 
 const appRoutes: Routes = [
   {
@@ -89,6 +90,7 @@ const appRoutes: Routes = [
     MatSortModule,
     MatTooltipModule,
     MatChipsModule,
+    MatExpansionModule,
     RouterModule
   ],
   providers: [],

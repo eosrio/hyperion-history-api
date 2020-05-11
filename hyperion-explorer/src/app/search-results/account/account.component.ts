@@ -16,6 +16,7 @@ import {faKey} from '@fortawesome/free-solid-svg-icons/faKey';
 import {faUser} from '@fortawesome/free-solid-svg-icons/faUser';
 import {faSadTear} from '@fortawesome/free-solid-svg-icons/faSadTear';
 import {MatPaginator} from "@angular/material/paginator";
+import {faVoteYea} from "@fortawesome/free-solid-svg-icons/faVoteYea";
 
 interface Permission {
   perm_name: string;
@@ -79,6 +80,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   faSadTear = faSadTear;
   faKey = faKey;
   faUser = faUser;
+  faVote = faVoteYea;
   accountName: string;
 
   treeControl: FlatTreeControl<FlatNode>;
@@ -87,6 +89,8 @@ export class AccountComponent implements OnInit, OnDestroy {
 
   dataSource: MatTreeFlatDataSource<any, any>;
   detailedView = true;
+
+  systemPrecision = 4;
 
   constructor(
     private activatedRoute: ActivatedRoute,
@@ -138,6 +142,7 @@ export class AccountComponent implements OnInit, OnDestroy {
 
       this.accountName = routeParams.account_name;
       if (await this.accountService.loadAccountData(routeParams.account_name)) {
+        this.systemPrecision = this.getPrecision(this.accountService.account['core_liquid_balance']);
         this.processPermissions();
         setTimeout(() => {
           this.accountService.tableDataSource.sort = this.sort;
@@ -145,6 +150,96 @@ export class AccountComponent implements OnInit, OnDestroy {
         }, 500);
       }
     });
+  }
+
+  getPrecision(asset: string): number {
+    if (asset) {
+      try {
+        return asset.split(' ')[0].split('.')[1].length;
+      } catch (e) {
+        return 4;
+      }
+    } else {
+      return 4;
+    }
+  }
+
+  liquidBalance() {
+    if (this.accountService.account['core_liquid_balance']) {
+      return parseFloat(this.accountService.account['core_liquid_balance'].split(' ')[0]);
+    }
+    return 0;
+  }
+
+  myCpuBalance() {
+    if (this.accountService.account['self_delegated_bandwidth']) {
+      return parseFloat(this.accountService.account['self_delegated_bandwidth'].cpu_weight.split(' ')[0]);
+    }
+    return 0;
+  }
+
+  myNetBalance() {
+    if (this.accountService.account['self_delegated_bandwidth']) {
+      return parseFloat(this.accountService.account['self_delegated_bandwidth'].net_weight.split(' ')[0]);
+    }
+    return 0;
+  }
+
+  cpuBalance() {
+    if (this.accountService.account['total_resources']) {
+      return parseFloat(this.accountService.account['total_resources'].cpu_weight.split(' ')[0]);
+    }
+    return 0;
+  }
+
+  netBalance() {
+    if (this.accountService.account['total_resources']) {
+      return parseFloat(this.accountService.account['total_resources'].net_weight.split(' ')[0]);
+    }
+    return 0;
+  }
+
+  totalBalance() {
+    const liquid = this.liquidBalance();
+    const cpu = this.myCpuBalance();
+    const net = this.myNetBalance();
+    return liquid + cpu + net;
+  }
+
+  stakedBalance() {
+    const cpu = this.myCpuBalance();
+    const net = this.myNetBalance();
+    return cpu + net;
+  }
+
+  cpuByOthers() {
+    const cpu = this.cpuBalance();
+    const mycpu = this.myCpuBalance();
+    return cpu - mycpu;
+  }
+
+  netByOthers() {
+    const net = this.netBalance();
+    const mynet = this.myNetBalance();
+    return net - mynet;
+  }
+
+  stakedbyOthers() {
+    const cpu = this.cpuBalance();
+    const net = this.netBalance();
+    const mycpu = this.myCpuBalance();
+    const mynet = this.myNetBalance();
+    return (cpu + net) - (mycpu + mynet);
+  }
+
+  refundBalance() {
+    let cpuRefund = 0;
+    let netRefund = 0;
+    if (this.accountService.account['refund_request']) {
+      cpuRefund = parseFloat(this.accountService.account['refund_request'].cpu_amount.split(' ')[0]);
+      netRefund = parseFloat(this.accountService.account['refund_request'].net_amount.split(' ')[0]);
+    }
+    return cpuRefund + netRefund;
   }
 
   formatDate(date: string) {
@@ -202,25 +297,25 @@ export class AccountComponent implements OnInit, OnDestroy {
     let int = 0;
     let remainder = 0;
     const calcSec = 1000 ** 2;
-    const calcMin = calcSec*60;
-    const calcHour = calcMin*60;
+    const calcMin = calcSec * 60;
+    const calcHour = calcMin * 60;
     if (micros > calcHour) {
       const min =
-      int = Math.floor(micros / calcHour);
+        int = Math.floor(micros / calcHour);
       remainder = micros % calcHour;
-      return int + ' h ' + Math.round(remainder/calcMin) + 'min';
+      return int + 'h ' + Math.round(remainder / calcMin) + 'min';
     }
     if (micros > calcMin) {
       int = Math.floor(micros / calcMin);
       remainder = micros % calcMin;
-      return int + ' min ' + Math.round(remainder/calcSec) + 's';
+      return int + 'min ' + Math.round(remainder / calcSec) + 's';
     }
     if (micros > calcSec) {
-      return (micros / calcSec).toFixed(2) + ' s';
+      return (micros / calcSec).toFixed(2) + 's';
     }
     if (micros > 1000) {
-      return (micros / (1000)).toFixed(2) + ' ms';
+      return (micros / (1000)).toFixed(2) + 'ms';
     }
-    return micros + ' µs'
+    return micros + 'µs'
   }
 }
