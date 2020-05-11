@@ -44,7 +44,7 @@
           <div>
             <span class="title">CPU</span>
             <span class="faded used">{{(accountService.account['cpu_limit']['used'] /
-              accountService.account['cpu_limit']['max']) * 100 | number}}% used</span>
+              accountService.account['cpu_limit']['max']) * 100 | number: '1.0-2'}}% used</span>
             <span class="values float-r">{{convertMicroS(accountService.account['cpu_limit']['used'])}}
               / {{convertMicroS(accountService.account['cpu_limit']['max'])}}
           </span>
@@ -64,7 +64,7 @@
           <div>
             <span class="title">NET</span>
             <span class="faded used">{{(accountService.account['net_limit']['used'] /
-              accountService.account['net_limit']['max']) * 100 | number}}% used</span>
+              accountService.account['net_limit']['max']) * 100 | number: '1.0-2'}}% used</span>
             <span class="values float-r">{{convertBytes(accountService.account['net_limit']['used'])}}
               / {{convertBytes(accountService.account['net_limit']['max'])}}
           </span>
@@ -108,11 +108,13 @@
           <fa-icon [icon]="faStar" [inverse]="true" transform="shrink-5"></fa-icon>
         </fa-layers>
         Tokens
+        <fa-icon [icon]="faQuestionCircle" class="faded float-r pointer"
+                 matTooltip="Only liquid balances are displayed" matTooltipClass="tooltip-bigger"></fa-icon>
       </h3>
 
       <div fxLayout.lt-md="row wrap" fxLayoutAlign.lt-md="start stretch"
            fxLayoutGap.lt-md="43px"
-           fxLayoutGap.lt-sm="60px">
+           fxLayoutGap.lt-sm="60px" *ngIf="accountService.tokens.length > 0">
 
         <div *ngFor="let token of accountService.tokens"
              fxFlex.sm="0 0 calc((100% - 132px) / 3)"
@@ -127,6 +129,7 @@
           </div>
         </div>
       </div>
+      <div *ngIf="!accountService.tokens || !accountService.tokens.length ">No tokens to display</div>
     </mat-card>
 
     <mat-card fxFlex.gt-sm="75" ngClass.gt-sm="middle-card">

@@ -17,6 +17,7 @@ import {faUser} from '@fortawesome/free-solid-svg-icons/faUser';
 import {faSadTear} from '@fortawesome/free-solid-svg-icons/faSadTear';
 import {MatPaginator} from "@angular/material/paginator";
 import {faVoteYea} from "@fortawesome/free-solid-svg-icons/faVoteYea";
+import {faQuestionCircle} from "@fortawesome/free-regular-svg-icons/faQuestionCircle";
 
 interface Permission {
   perm_name: string;
@@ -81,6 +82,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   faKey = faKey;
   faUser = faUser;
   faVote = faVoteYea;
+  faQuestionCircle = faQuestionCircle;
   accountName: string;
 
   treeControl: FlatTreeControl<FlatNode>;
