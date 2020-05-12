@@ -423,8 +423,8 @@ export default class StateReader extends HyperionWorker {
     private async handleFork(data: any) {
         const this_block = data['this_block'];
         await this.logForkEvent(this_block['block_num'], this.local_block_num, this_block['block_id']);
-        console.log(`Handling fork event: new block ${this_block['block_num']} has id ${this_block['block_id']}`);
-        console.log(`Removing indexed data from ${this_block['block_num']} to ${this.local_block_num}`);
+        hLog(`Handling fork event: new block ${this_block['block_num']} has id ${this_block['block_id']}`);
+        hLog(`Removing indexed data from ${this_block['block_num']} to ${this.local_block_num}`);
         const searchBody = {
             query: {
                 bool: {
