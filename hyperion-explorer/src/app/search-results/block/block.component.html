@@ -65,7 +65,7 @@
       <ng-container matColumnDef="id">
         <th mat-header-cell *matHeaderCellDef>TX ID</th>
         <td mat-cell *matCellDef="let transaction" data-label="TX ID">
-          <a [routerLink]="['/transaction', transaction.id]" class="link-blue">{{transaction.id}}</a>
+          <a [routerLink]="['/transaction', transaction.id]" class="link-blue break-word">{{transaction.id}}</a>
         </td>
       </ng-container>
 
