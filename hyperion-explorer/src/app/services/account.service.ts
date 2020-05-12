@@ -215,7 +215,9 @@ export class AccountService {
 
   async loadTxData(txId: string) {
     try {
-      return await this.httpClient.get(this.getTxUrl + txId).toPromise();
+      const data = await this.httpClient.get(this.getTxUrl + txId).toPromise();
+      this.loaded = true;
+      return data;
     } catch (error) {
       console.log(error);
       return null;
@@ -224,9 +226,11 @@ export class AccountService {
 
   async loadBlockData(blockNum: number) {
     try {
-      return await this.httpClient.post(this.getBlockUrl, {
+      const data = await this.httpClient.post(this.getBlockUrl, {
         block_num: blockNum
       }).toPromise();
+      this.loaded = true;
+      return data;
     } catch (error) {
       console.log(error);
       return null;
@@ -235,7 +239,9 @@ export class AccountService {
 
   async loadPubKey(key: string) {
     try {
-      return await this.httpClient.get(this.getKeyUrl + key + '&details=true').toPromise();
+      const data = await this.httpClient.get(this.getKeyUrl + key + '&details=true').toPromise();
+      this.loaded = true;
+      return data;
     } catch (error) {
       console.log(error);
       return null;

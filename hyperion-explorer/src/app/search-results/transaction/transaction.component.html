@@ -1,8 +1,5 @@
-<div *ngIf="!tx.actions" fxLayout="column" style="text-align: center">
-  <div style="font-size: 50px" class="primary">
-    <fa-icon [icon]="faSpinner" [pulse]="true"></fa-icon>
-  </div>
-</div>
+<mat-progress-spinner [diameter]="45" *ngIf="!accountService.loaded" mode="indeterminate"></mat-progress-spinner>
+
 <div *ngIf="tx.actions && tx.actions.length === 0" class="container" fxLayout="column"
      style="height: calc(100vh - 209px);" fxLayoutAlign="start center">
   <mat-card style="width: 100%;">
@@ -13,7 +10,8 @@
     <div>We couldn't find the transaction <strong class="break-word">{{txID}}</strong></div>
   </mat-card>
 </div>
-<div *ngIf="tx.actions && tx.actions.length > 0" class="container" fxLayout="column" fxLayoutAlign="start center"
+
+<div *ngIf="tx.actions && tx.actions.length > 0 && accountService.loaded" class="container" fxLayout="column" fxLayoutAlign="start center"
      fxLayoutGap="15px">
   <mat-card fxFlex="100" fxFlexFill>
     <div style="border-bottom: 1px solid #e4e4e4; margin-bottom: 12px;">

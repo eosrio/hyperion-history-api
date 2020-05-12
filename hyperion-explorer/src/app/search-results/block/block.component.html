@@ -1,4 +1,6 @@
-<div *ngIf="!block" class="container" fxLayout="column" style="height: calc(100vh - 209px);">
+<mat-progress-spinner [diameter]="45" *ngIf="!accountService.loaded" mode="indeterminate"></mat-progress-spinner>
+
+<div *ngIf="!block && accountService.loaded" class="container" fxLayout="column" style="height: calc(100vh - 209px);">
   <mat-card>
     <h1 class="faded">
       <fa-icon [icon]="faSadTear" style="margin-right: 5px"></fa-icon>
@@ -8,7 +10,7 @@
   </mat-card>
 </div>
 
-<div *ngIf="block" class="container" fxLayout="column" fxLayoutGap="15px" fxLayoutAlign="start center">
+<div *ngIf="block && accountService.loaded" class="container" fxLayout="column" fxLayoutGap="15px" fxLayoutAlign="start center">
   <mat-card fxFlex="100" fxFlexFill>
     <div style="border-bottom: 1px solid #e4e4e4; margin-bottom: 12px;">
       <div fxLayout="row" fxLayoutAlign="start center" fxLayoutGap="10px">

@@ -1,4 +1,4 @@
-<mat-progress-spinner *ngIf="!accountService.loaded" mode="indeterminate"></mat-progress-spinner>
+<mat-progress-spinner [diameter]="45" *ngIf="!accountService.loaded" mode="indeterminate"></mat-progress-spinner>
 
 <div *ngIf="!accountService.jsonData && accountService.loaded" class="container" fxLayout="column" fxLayoutAlign="start center"
      fxLayoutGap="15px" style="height: calc(100vh - 209px);">
