@@ -1,4 +1,6 @@
-<div *ngIf="!accountService.jsonData" class="container" fxLayout="column" fxLayoutAlign="start center"
+<mat-progress-spinner *ngIf="!accountService.loaded" mode="indeterminate"></mat-progress-spinner>
+
+<div *ngIf="!accountService.jsonData && accountService.loaded" class="container" fxLayout="column" fxLayoutAlign="start center"
      fxLayoutGap="15px" style="height: calc(100vh - 209px);">
   <mat-card class="width-100">
     <h1 class="faded">
@@ -9,7 +11,7 @@
   </mat-card>
 </div>
 
-<div *ngIf="accountService.jsonData" class="container" fxLayout="column" fxLayoutAlign="start center"
+<div *ngIf="accountService.jsonData && accountService.loaded" class="container" fxLayout="column" fxLayoutAlign="start center"
      fxLayoutGap="15px">
 
   <mat-card fxFlex="100" fxFlexFill>
@@ -243,10 +245,10 @@
         </mat-panel-title>
         <mat-panel-description style="margin-top: 22px;">
           <div *ngIf="accountService.account['voter_info']">
-            user is voting in&nbsp;
+            {{accountService.account['account_name']}} is voting in
             <span *ngIf="accountService.account['voter_info'].proxy">proxy <a [routerLink]="['/account', accountService.account['voter_info'].proxy]" class="link-blue">{{accountService.account['voter_info'].proxy}}</a></span>
             <span *ngIf="accountService.account['voter_info'].producers.length > 0">
-              {{accountService.account['voter_info'].producers.length}} producer<span *ngIf="accountService.account['voter_info'].producers.length > 1">s</span>
+              <strong>{{accountService.account['voter_info'].producers.length}}</strong> producer<span *ngIf="accountService.account['voter_info'].producers.length > 1">s</span>
             </span>
           </div>
         </mat-panel-description>

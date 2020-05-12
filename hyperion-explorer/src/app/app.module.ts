@@ -31,6 +31,7 @@ import {KeyComponent} from './search-results/key/key.component';
 import {ServiceWorkerModule} from '@angular/service-worker';
 import {environment} from '../environments/environment';
 import {MatExpansionModule} from "@angular/material/expansion";
+import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
 
 const appRoutes: Routes = [
   {
@@ -61,38 +62,39 @@ const appRoutes: Routes = [
     BlockComponent,
     KeyComponent
   ],
-  imports: [
-    BrowserModule,
-    BrowserAnimationsModule,
-    ServiceWorkerModule.register('./ngsw-worker.js', {
-      enabled: environment.production,
-      scope: '/',
-      registrationStrategy: 'registerImmediately'
-    }),
-    RouterModule.forRoot(appRoutes, {
-      scrollPositionRestoration: 'enabled'
-    }),
-    ReactiveFormsModule,
-    HttpClientModule,
-    MatToolbarModule,
-    MatFormFieldModule,
-    MatInputModule,
-    MatAutocompleteModule,
-    MatCardModule,
-    FontAwesomeModule,
-    MatButtonModule,
-    FlexLayoutModule,
-    MatProgressBarModule,
-    MatTreeModule,
-    CdkTableModule,
-    MatTableModule,
-    MatPaginatorModule,
-    MatSortModule,
-    MatTooltipModule,
-    MatChipsModule,
-    MatExpansionModule,
-    RouterModule
-  ],
+    imports: [
+        BrowserModule,
+        BrowserAnimationsModule,
+        ServiceWorkerModule.register('./ngsw-worker.js', {
+            enabled: environment.production,
+            scope: '/',
+            registrationStrategy: 'registerImmediately'
+        }),
+        RouterModule.forRoot(appRoutes, {
+            scrollPositionRestoration: 'enabled'
+        }),
+        ReactiveFormsModule,
+        HttpClientModule,
+        MatToolbarModule,
+        MatFormFieldModule,
+        MatInputModule,
+        MatAutocompleteModule,
+        MatCardModule,
+        FontAwesomeModule,
+        MatButtonModule,
+        FlexLayoutModule,
+        MatProgressBarModule,
+        MatTreeModule,
+        CdkTableModule,
+        MatTableModule,
+        MatPaginatorModule,
+        MatSortModule,
+        MatTooltipModule,
+        MatChipsModule,
+        MatExpansionModule,
+        RouterModule,
+        MatProgressSpinnerModule
+    ],
   providers: [],
   bootstrap: [AppComponent]
 })

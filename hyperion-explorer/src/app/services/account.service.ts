@@ -45,6 +45,7 @@ export class AccountService {
   private verificationLoop: any;
   private predictionLoop: any;
   private pendingSet = new Set();
+  public loaded = false;
 
   constructor(private httpClient: HttpClient) {
     this.getServerUrl();
@@ -187,6 +188,7 @@ export class AccountService {
   }
 
   async loadAccountData(accountName: string) {
+    this.loaded = false;
     try {
       this.jsonData = await this.httpClient.get(this.getAccountUrl + accountName).toPromise() as GetAccountResponse;
       if (this.jsonData.account) {
@@ -202,7 +204,7 @@ export class AccountService {
         this.checkIrreversibility().catch(console.log);
         this.tableDataSource.data = this.actions;
       }
-
+      this.loaded = true;
       return true;
     } catch (error) {
       console.log(error);
