@@ -112,13 +112,11 @@
                  matTooltip="Only liquid balances are displayed" matTooltipClass="tooltip-bigger"></fa-icon>
       </h3>
 
-      <div fxLayout.lt-md="row wrap" fxLayoutAlign.lt-md="start stretch"
-           fxLayoutGap.lt-md="43px"
-           fxLayoutGap.lt-sm="60px" *ngIf="accountService.tokens.length > 0">
+      <div fxLayout.sm="row wrap" fxLayout.lt-sm="column" fxLayout.gt-sm="column"
+           fxLayoutGap.sm="43px" fxLayoutGap.lt-sm="10px" fxLayoutGap.gt-sm="10px" *ngIf="accountService.tokens.length > 0">
 
         <div *ngFor="let token of accountService.tokens"
-             fxFlex.sm="0 0 calc((100% - 132px) / 3)"
-             fxFlex.xs="0 0 calc((100% - 132px) / 2)">
+             fxFlex.sm="0 0 calc((100% - 132px) / 3)">
           <div class="token-cell">
             <div class="faded monospace div-link"
                  [routerLink]="['/account', token.contract]">{{token.contract}}</div>
