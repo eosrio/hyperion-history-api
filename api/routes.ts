@@ -53,7 +53,7 @@ export function registerRoutes(server: FastifyInstance) {
     });
 
     server.addHook('onError', (request, reply, error, done) => {
-        console.log(`[${request.req.headers['x-real-ip']}] ${request.req.url} failed with error: ${error.message}`);
+        console.log(`[${request.req.headers['x-real-ip']}] ${request.req.method} ${request.req.url} failed with error: ${error.message}`);
         done();
     });
 
@@ -140,5 +140,6 @@ export function registerRoutes(server: FastifyInstance) {
     addRedirect(server, '/v2/history', '/v2/docs/index.html#/history');
     addRedirect(server, '/v2/state', '/v2/docs/index.html#/state');
     addRedirect(server, '/v1/chain', '/v2/docs/index.html#/chain');
-    addRedirect(server, '/', '/v2/explore');
+    addRedirect(server, '/explorer', '/v2/explore');
+    addRedirect(server, '/explore', '/v2/explore');
 }
