@@ -2,6 +2,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
 import {Numeric} from "eosjs/dist";
+import {type} from "os";
 
 function invalidKey() {
     const err: any = new Error();
@@ -13,6 +14,10 @@ function invalidKey() {
 async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest) {
 
     let publicKey;
+    if (typeof request.body === 'string' && request.req.method === 'POST') {
+        request.body = JSON.parse(request.body);
+    }
+
     const public_Key = request.req.method === 'POST' ? request.body.public_key : request.query.public_key;
 
     if (public_Key.startsWith("PUB_")) {
@@ -113,13 +118,9 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
 
     if (response.account_names.length > 0) {
         response.account_names = [...(new Set(response.account_names))];
-        return response;
-    } else {
-        const err: any = new Error();
-        err.statusCode = 404;
-        err.message = 'no accounts associated with ' + public_Key;
-        throw err;
     }
+
+    return response;
 }
 
 export function getKeyAccountsHandler(fastify: FastifyInstance, route: string) {
