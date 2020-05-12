@@ -153,7 +153,7 @@ export class HyperionMaster {
                 } else {
                     // LIVE READER
                     this.liveConsumedBlocks++;
-                    if (this.conf.settings.bp_monitoring) {
+                    if (this.conf.settings.bp_monitoring && !this.conf.indexer.abi_scan_mode) {
                         this.onLiveBlock(msg);
                     }
                 }
