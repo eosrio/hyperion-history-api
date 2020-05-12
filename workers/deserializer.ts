@@ -961,17 +961,19 @@ export default class MainDSWorker extends HyperionWorker {
 
         // Account resource updates
         "resource_limits": async (resource_limits, block_num, block_ts) => {
-            const cpu = parseInt(resource_limits.cpu_weight);
-            const net = parseInt(resource_limits.net_weight);
-            this.pushToIndexQueue({
-                block_num: block_num,
-                '@timestamp': block_ts,
-                owner: resource_limits.owner,
-                ram_bytes: parseInt(resource_limits.ram_bytes),
-                cpu_weight: cpu,
-                net_weight: net,
-                total_weight: cpu + net
-            }, 'resource_limits');
+            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+                const cpu = parseInt(resource_limits.cpu_weight);
+                const net = parseInt(resource_limits.net_weight);
+                this.pushToIndexQueue({
+                    block_num: block_num,
+                    '@timestamp': block_ts,
+                    owner: resource_limits.owner,
+                    ram_bytes: parseInt(resource_limits.ram_bytes),
+                    cpu_weight: cpu,
+                    net_weight: net,
+                    total_weight: cpu + net
+                }, 'resource_limits');
+            }
         },
 
         // "resource_limits_config": async (resource_limits_config, block_num, block_ts, row) => {
@@ -983,34 +985,35 @@ export default class MainDSWorker extends HyperionWorker {
         // },
 
         "resource_usage": async (resource_usage, block_num, block_ts, row) => {
+            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+                const net_used = parseInt(resource_usage.net_usage[1].consumed);
+                const net_total = parseInt(resource_usage.net_usage[1].value_ex);
+                let net_pct = 0.0;
+                if (net_total > 0) {
+                    net_pct = net_used / net_total;
+                }
 
-            const net_used = parseInt(resource_usage.net_usage[1].consumed);
-            const net_total = parseInt(resource_usage.net_usage[1].value_ex);
-            let net_pct = 0.0;
-            if (net_total > 0) {
-                net_pct = net_used / net_total;
-            }
+                const cpu_used = parseInt(resource_usage.cpu_usage[1].consumed);
+                const cpu_total = parseInt(resource_usage.cpu_usage[1].value_ex);
+                let cpu_pct = 0.0;
+                if (cpu_total > 0) {
+                    cpu_pct = cpu_used / cpu_total;
+                }
 
-            const cpu_used = parseInt(resource_usage.cpu_usage[1].consumed);
-            const cpu_total = parseInt(resource_usage.cpu_usage[1].value_ex);
-            let cpu_pct = 0.0;
-            if (cpu_total > 0) {
-                cpu_pct = cpu_used / cpu_total;
+                const payload = {
+                    block_num: block_num,
+                    '@timestamp': block_ts,
+                    owner: resource_usage.owner,
+                    net_used: net_used,
+                    net_total: net_total,
+                    net_pct: net_pct,
+                    cpu_used: cpu_used,
+                    cpu_total: cpu_total,
+                    cpu_pct: cpu_pct,
+                    ram: parseInt(resource_usage.ram_usage[1])
+                }
+                this.pushToIndexQueue(payload, 'resource_usage');
             }
-
-            const payload = {
-                block_num: block_num,
-                '@timestamp': block_ts,
-                owner: resource_usage.owner,
-                net_used: net_used,
-                net_total: net_total,
-                net_pct: net_pct,
-                cpu_used: cpu_used,
-                cpu_total: cpu_total,
-                cpu_pct: cpu_pct,
-                ram: parseInt(resource_usage.ram_usage[1])
-            }
-            this.pushToIndexQueue(payload, 'resource_usage');
         },
 
         // Global Chain configuration update
