@@ -214,6 +214,7 @@ export class AccountService {
   }
 
   async loadTxData(txId: string) {
+    this.loaded = false;
     try {
       const data = await this.httpClient.get(this.getTxUrl + txId).toPromise();
       this.loaded = true;
@@ -225,6 +226,7 @@ export class AccountService {
   }
 
   async loadBlockData(blockNum: number) {
+    this.loaded = false;
     try {
       const data = await this.httpClient.post(this.getBlockUrl, {
         block_num: blockNum
@@ -238,6 +240,7 @@ export class AccountService {
   }
 
   async loadPubKey(key: string) {
+    this.loaded = false;
     try {
       const data = await this.httpClient.get(this.getKeyUrl + key + '&details=true').toPromise();
       this.loaded = true;
