@@ -272,7 +272,7 @@ export class HyperionMaster {
                 }
             },
             'lib_update': (msg: any) => {
-                if (msg.data) {
+                if (msg.data && this.conf.features.streaming.enable) {
                     // hLog(`Live Reader reported LIB update: ${msg.data.block_num} | ${msg.data.block_id}`);
                     this.wsRouterWorker.send(msg);
                 }
