@@ -1,6 +1,7 @@
 <mat-progress-spinner [diameter]="45" *ngIf="!accountService.loaded" mode="indeterminate"></mat-progress-spinner>
 
-<div *ngIf="!accountService.jsonData && accountService.loaded" class="container" fxLayout="column" fxLayoutAlign="start center"
+<div *ngIf="!accountService.jsonData && accountService.loaded" class="container" fxLayout="column"
+     fxLayoutAlign="start center"
      fxLayoutGap="15px" style="height: calc(100vh - 209px);">
   <mat-card class="width-100">
     <h1 class="faded">
@@ -11,7 +12,8 @@
   </mat-card>
 </div>
 
-<div *ngIf="accountService.jsonData && accountService.loaded" class="container" fxLayout="column" fxLayoutAlign="start center"
+<div *ngIf="accountService.jsonData && accountService.loaded" class="container" fxLayout="column"
+     fxLayoutAlign="start center"
      fxLayoutGap="15px">
 
   <mat-card fxFlex="100" fxFlexFill>
@@ -115,7 +117,8 @@
       </h3>
 
       <div fxLayout.sm="row wrap" fxLayout.lt-sm="column" fxLayout.gt-sm="column"
-           fxLayoutGap.sm="43px" fxLayoutGap.lt-sm="10px" fxLayoutGap.gt-sm="10px" *ngIf="accountService.tokens.length > 0">
+           fxLayoutGap.sm="43px" fxLayoutGap.lt-sm="10px" fxLayoutGap.gt-sm="10px"
+           *ngIf="accountService.tokens.length > 0">
 
         <div *ngFor="let token of accountService.tokens"
              fxFlex.sm="0 0 calc((100% - 132px) / 3)">
@@ -246,9 +249,12 @@
         <mat-panel-description style="margin-top: 22px;">
           <div *ngIf="accountService.account['voter_info']">
             {{accountService.account['account_name']}} is voting in
-            <span *ngIf="accountService.account['voter_info'].proxy">proxy <a [routerLink]="['/account', accountService.account['voter_info'].proxy]" class="link-blue">{{accountService.account['voter_info'].proxy}}</a></span>
+            <span *ngIf="accountService.account['voter_info'].proxy">proxy <a
+              [routerLink]="['/account', accountService.account['voter_info'].proxy]"
+              class="link-blue">{{accountService.account['voter_info'].proxy}}</a></span>
             <span *ngIf="accountService.account['voter_info'].producers.length > 0">
-              <strong>{{accountService.account['voter_info'].producers.length}}</strong> producer<span *ngIf="accountService.account['voter_info'].producers.length > 1">s</span>
+              <strong>{{accountService.account['voter_info'].producers.length}}</strong> producer<span
+              *ngIf="accountService.account['voter_info'].producers.length > 1">s</span>
             </span>
           </div>
         </mat-panel-description>
@@ -273,6 +279,8 @@
         Actions
       </h3>
 
+      <span>Last Irreversible Block: <strong>{{accountService.libNum}}</strong></span>
+
       <div (click)="accountService.toggleStreaming()" class="livestream" matTooltip="click to turn on/off"
            matTooltipClass="tooltip-bigger">
         action live streaming <span class="w-500">{{accountService.streamClientStatus ? 'enabled' : 'disabled'}}</span>
@@ -290,8 +298,10 @@
       <ng-container matColumnDef="trx_id">
         <th mat-header-cell *matHeaderCellDef [ngStyle.gt-xs]="{'min-width': '100px'}"> TX</th>
         <td mat-cell *matCellDef="let action" data-label="TX">
-          <fa-icon *ngIf="accountService.libNum < action['block_num']" [icon]="faClock" class="accent"
-                   style="margin-right: 5px"></fa-icon>
+          <ng-container *ngIf="accountService.libNum < action['block_num']">
+            <fa-icon [icon]="faClock" class="accent" style="margin-right: 5px"></fa-icon>
+            {{(action['block_num'] - accountService.libNum) / 2}}s
+          </ng-container>
           <a [routerLink]="['/transaction', action['trx_id']]" class="link-blue">
             {{action['trx_id'].slice(0, 8)}}...
           </a>
