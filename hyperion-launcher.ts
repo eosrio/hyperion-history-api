@@ -1,9 +1,7 @@
 import * as cluster from "cluster";
 import {ConfigurationModule} from "./modules/config";
 import {HyperionWorker} from "./workers/hyperionWorker";
-import {hLog, messageAllWorkers} from "./helpers/common_functions";
-import * as pm2io from "@pm2/io";
-import * as v8 from "v8";
+import {hLog} from "./helpers/common_functions";
 
 interface WorkerEnv {
     worker_role: string;
