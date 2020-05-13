@@ -18,6 +18,7 @@ import {faSadTear} from '@fortawesome/free-solid-svg-icons/faSadTear';
 import {MatPaginator} from '@angular/material/paginator';
 import {faVoteYea} from '@fortawesome/free-solid-svg-icons/faVoteYea';
 import {faQuestionCircle} from '@fortawesome/free-regular-svg-icons/faQuestionCircle';
+import {AccountCreationData} from '../../interfaces';
 
 interface Permission {
   perm_name: string;
@@ -93,7 +94,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   detailedView = true;
 
   systemPrecision = 4;
-  creationData: any = {
+  creationData: AccountCreationData = {
     creator: undefined,
     timestamp: undefined
   };
@@ -307,8 +308,7 @@ export class AccountComponent implements OnInit, OnDestroy {
     const calcMin = calcSec * 60;
     const calcHour = calcMin * 60;
     if (micros > calcHour) {
-      const min =
-        int = Math.floor(micros / calcHour);
+      int = Math.floor(micros / calcHour);
       remainder = micros % calcHour;
       return int + 'h ' + Math.round(remainder / calcMin) + 'min';
     }

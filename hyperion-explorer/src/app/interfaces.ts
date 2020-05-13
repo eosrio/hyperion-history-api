@@ -17,3 +17,8 @@ export interface GetTableByScopeResponse {
   rows: TableData[];
   more: string;
 }
+
+export interface AccountCreationData {
+  creator: string;
+  timestamp: string;
+}

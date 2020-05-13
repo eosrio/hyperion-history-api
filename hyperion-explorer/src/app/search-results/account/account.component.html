@@ -43,7 +43,7 @@
         </div>
         <div *ngIf="creationData && creationData.creator" class="mt-7 width-100">
           <strong>Created by: </strong>
-          <span [routerLink]="['/account', creationData.creator]" class="float-r">{{creationData.creator}}</span>
+          <span [routerLink]="['/account', creationData.creator]" class="float-r pointer">{{creationData.creator}}</span>
         </div>
         <div *ngIf="creationData && creationData.timestamp" class="mt-7 width-100">
           <strong>Created on: </strong>

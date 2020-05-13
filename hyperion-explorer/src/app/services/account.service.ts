@@ -1,7 +1,7 @@
 import {Injectable} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {environment} from '../../environments/environment';
-import {GetAccountResponse} from '../interfaces';
+import {AccountCreationData, GetAccountResponse} from '../interfaces';
 import {MatTableDataSource} from '@angular/material/table';
 import {HyperionSocketClient} from '@eosrio/hyperion-stream-client/lib/client/hyperion-socket-client';
 import {IncomingData} from '@eosrio/hyperion-stream-client/lib';
@@ -107,7 +107,7 @@ export class AccountService {
   }
 
   getServerUrl() {
-    let server = '';
+    let server;
     if (environment.production) {
       server = window.location.origin;
     } else {
@@ -253,9 +253,9 @@ export class AccountService {
     }
   }
 
-  async getCreator(accountName: string) {
+  async getCreator(accountName: string): Promise<AccountCreationData> {
     try {
-      return await this.httpClient.get(this.getCreatorUrl + accountName).toPromise();
+      return await this.httpClient.get(this.getCreatorUrl + accountName).toPromise() as AccountCreationData;
     } catch (error) {
       console.log(error);
       return null;
