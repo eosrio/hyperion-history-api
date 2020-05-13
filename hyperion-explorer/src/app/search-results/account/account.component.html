@@ -43,7 +43,8 @@
         </div>
         <div *ngIf="creationData && creationData.creator" class="mt-7 width-100">
           <strong>Created by: </strong>
-          <span [routerLink]="['/account', creationData.creator]" class="float-r pointer">{{creationData.creator}}</span>
+          <span [routerLink]="['/account', creationData.creator]"
+                class="float-r pointer">{{creationData.creator}}</span>
         </div>
         <div *ngIf="creationData && creationData.timestamp" class="mt-7 width-100">
           <strong>Created on: </strong>
@@ -400,8 +401,16 @@
       <!--suppress AngularUndefinedBinding -->
       <tr mat-row *matRowDef="let myRowData; columns: columnsToDisplay"></tr>
     </table>
-    <mat-paginator [pageSizeOptions]="[10, 5, 50]" [length]="accountService.tableDataSource.filteredData.length"
-                   showFirstLastButtons></mat-paginator>
+
+    <mat-paginator [pageSizeOptions]="[10, 20, 50, 100]"
+                   [length]="accountService.tableDataSource.filteredData.length"
+                   (page)="changePage($event)"
+                   showFirstLastButtons>
+    </mat-paginator>
+
+    <button mat-stroked-button color="primary" (click)="accountService.loadMoreActions(accountName)">
+      load more actions
+    </button>
 
   </mat-card>
 

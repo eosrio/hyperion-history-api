@@ -15,10 +15,11 @@ import {faChevronDown} from '@fortawesome/free-solid-svg-icons/faChevronDown';
 import {faKey} from '@fortawesome/free-solid-svg-icons/faKey';
 import {faUser} from '@fortawesome/free-solid-svg-icons/faUser';
 import {faSadTear} from '@fortawesome/free-solid-svg-icons/faSadTear';
-import {MatPaginator} from '@angular/material/paginator';
+import {MatPaginator, PageEvent} from '@angular/material/paginator';
 import {faVoteYea} from '@fortawesome/free-solid-svg-icons/faVoteYea';
 import {faQuestionCircle} from '@fortawesome/free-regular-svg-icons/faQuestionCircle';
 import {AccountCreationData} from '../../interfaces';
+import {max} from 'rxjs/operators';
 
 interface Permission {
   perm_name: string;
@@ -68,9 +69,10 @@ interface FlatNode {
 })
 export class AccountComponent implements OnInit, OnDestroy {
 
-  columnsToDisplay: string[] = ['trx_id', 'action', 'data', 'block_num'];
   @ViewChild(MatSort, {static: false}) sort: MatSort;
-  @ViewChild(MatPaginator, {static: true}) paginator: MatPaginator;
+  @ViewChild(MatPaginator, {static: false}) paginator: MatPaginator;
+
+  // FontAwesome Icons
   faClock = faClock;
   faUserCircle = faUserCircle;
   faCircle = faCircle;
@@ -84,7 +86,10 @@ export class AccountComponent implements OnInit, OnDestroy {
   faUser = faUser;
   faVote = faVoteYea;
   faQuestionCircle = faQuestionCircle;
+
   accountName: string;
+
+  columnsToDisplay: string[] = ['trx_id', 'action', 'data', 'block_num'];
 
   treeControl: FlatTreeControl<FlatNode>;
 
@@ -324,5 +329,24 @@ export class AccountComponent implements OnInit, OnDestroy {
       return (micros / (1000)).toFixed(2) + 'ms';
     }
     return micros + 'µs';
+  }
+
+  changePage(event: PageEvent) {
+
+    // disable streaming if enabled
+    if (this.accountService.streamClientStatus) {
+      this.accountService.toggleStreaming();
+    }
+
+    const maxPages = Math.floor(event.length / event.pageSize);
+    console.log(event);
+    console.log(`${event.pageIndex} / ${maxPages}`);
+    try {
+      if (event.pageIndex === maxPages - 1) {
+        this.accountService.loadMoreActions(this.accountName).catch(console.log);
+      }
+    } catch (e) {
+      console.log(e);
+    }
   }
 }
