@@ -15,9 +15,9 @@ import {faChevronDown} from '@fortawesome/free-solid-svg-icons/faChevronDown';
 import {faKey} from '@fortawesome/free-solid-svg-icons/faKey';
 import {faUser} from '@fortawesome/free-solid-svg-icons/faUser';
 import {faSadTear} from '@fortawesome/free-solid-svg-icons/faSadTear';
-import {MatPaginator} from "@angular/material/paginator";
-import {faVoteYea} from "@fortawesome/free-solid-svg-icons/faVoteYea";
-import {faQuestionCircle} from "@fortawesome/free-regular-svg-icons/faQuestionCircle";
+import {MatPaginator} from '@angular/material/paginator';
+import {faVoteYea} from '@fortawesome/free-solid-svg-icons/faVoteYea';
+import {faQuestionCircle} from '@fortawesome/free-regular-svg-icons/faQuestionCircle';
 
 interface Permission {
   perm_name: string;
@@ -93,6 +93,10 @@ export class AccountComponent implements OnInit, OnDestroy {
   detailedView = true;
 
   systemPrecision = 4;
+  creationData: any = {
+    creator: undefined,
+    timestamp: undefined
+  };
 
   constructor(
     private activatedRoute: ActivatedRoute,
@@ -144,12 +148,13 @@ export class AccountComponent implements OnInit, OnDestroy {
 
       this.accountName = routeParams.account_name;
       if (await this.accountService.loadAccountData(routeParams.account_name)) {
-        this.systemPrecision = this.getPrecision(this.accountService.account['core_liquid_balance']);
+        this.systemPrecision = this.getPrecision(this.accountService.account.core_liquid_balance);
         this.processPermissions();
         setTimeout(() => {
           this.accountService.tableDataSource.sort = this.sort;
           this.accountService.tableDataSource.paginator = this.paginator;
         }, 500);
+        this.creationData = await this.accountService.getCreator(routeParams.account_name);
       }
     });
   }
@@ -167,36 +172,36 @@ export class AccountComponent implements OnInit, OnDestroy {
   }
 
   liquidBalance() {
-    if (this.accountService.account['core_liquid_balance']) {
-      return parseFloat(this.accountService.account['core_liquid_balance'].split(' ')[0]);
+    if (this.accountService.account.core_liquid_balance) {
+      return parseFloat(this.accountService.account.core_liquid_balance.split(' ')[0]);
     }
     return 0;
   }
 
   myCpuBalance() {
-    if (this.accountService.account['self_delegated_bandwidth']) {
-      return parseFloat(this.accountService.account['self_delegated_bandwidth'].cpu_weight.split(' ')[0]);
+    if (this.accountService.account.self_delegated_bandwidth) {
+      return parseFloat(this.accountService.account.self_delegated_bandwidth.cpu_weight.split(' ')[0]);
     }
     return 0;
   }
 
   myNetBalance() {
-    if (this.accountService.account['self_delegated_bandwidth']) {
-      return parseFloat(this.accountService.account['self_delegated_bandwidth'].net_weight.split(' ')[0]);
+    if (this.accountService.account.self_delegated_bandwidth) {
+      return parseFloat(this.accountService.account.self_delegated_bandwidth.net_weight.split(' ')[0]);
     }
     return 0;
   }
 
   cpuBalance() {
-    if (this.accountService.account['total_resources']) {
-      return parseFloat(this.accountService.account['total_resources'].cpu_weight.split(' ')[0]);
+    if (this.accountService.account.total_resources) {
+      return parseFloat(this.accountService.account.total_resources.cpu_weight.split(' ')[0]);
     }
     return 0;
   }
 
   netBalance() {
-    if (this.accountService.account['total_resources']) {
-      return parseFloat(this.accountService.account['total_resources'].net_weight.split(' ')[0]);
+    if (this.accountService.account.total_resources) {
+      return parseFloat(this.accountService.account.total_resources.net_weight.split(' ')[0]);
     }
     return 0;
   }
@@ -237,9 +242,9 @@ export class AccountComponent implements OnInit, OnDestroy {
   refundBalance() {
     let cpuRefund = 0;
     let netRefund = 0;
-    if (this.accountService.account['refund_request']) {
-      cpuRefund = parseFloat(this.accountService.account['refund_request'].cpu_amount.split(' ')[0]);
-      netRefund = parseFloat(this.accountService.account['refund_request'].net_amount.split(' ')[0]);
+    if (this.accountService.account.refund_request) {
+      cpuRefund = parseFloat(this.accountService.account.refund_request.cpu_amount.split(' ')[0]);
+      netRefund = parseFloat(this.accountService.account.refund_request.net_amount.split(' ')[0]);
     }
     return cpuRefund + netRefund;
   }
@@ -292,7 +297,7 @@ export class AccountComponent implements OnInit, OnDestroy {
     if (bytes > 1024) {
       return (bytes / (1024)).toFixed(2) + ' KB';
     }
-    return bytes + ' bytes'
+    return bytes + ' bytes';
   }
 
   convertMicroS(micros: number) {
@@ -318,6 +323,6 @@ export class AccountComponent implements OnInit, OnDestroy {
     if (micros > 1000) {
       return (micros / (1000)).toFixed(2) + 'ms';
     }
-    return micros + 'µs'
+    return micros + 'µs';
   }
 }

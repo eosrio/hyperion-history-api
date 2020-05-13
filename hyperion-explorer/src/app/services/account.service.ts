@@ -21,6 +21,7 @@ interface HealthResponse {
 })
 export class AccountService {
   getAccountUrl: string;
+  getCreatorUrl: string;
   getTxUrl: string;
   getBlockUrl: string;
   getKeyUrl: string;
@@ -50,6 +51,7 @@ export class AccountService {
   constructor(private httpClient: HttpClient) {
     this.getServerUrl();
     this.getAccountUrl = environment.hyperionApiUrl + '/v2/state/get_account?account=';
+    this.getCreatorUrl = environment.hyperionApiUrl + '/v2/history/get_creator?account=';
     this.getTxUrl = environment.hyperionApiUrl + '/v2/history/get_transaction?id=';
     this.getBlockUrl = environment.hyperionApiUrl + '/v1/trace_api/get_block';
     this.getKeyUrl = environment.hyperionApiUrl + '/v2/state/get_key_accounts?public_key=';
@@ -245,6 +247,15 @@ export class AccountService {
       const data = await this.httpClient.get(this.getKeyUrl + key + '&details=true').toPromise();
       this.loaded = true;
       return data;
+    } catch (error) {
+      console.log(error);
+      return null;
+    }
+  }
+
+  async getCreator(accountName: string) {
+    try {
+      return await this.httpClient.get(this.getCreatorUrl + accountName).toPromise();
     } catch (error) {
       console.log(error);
       return null;

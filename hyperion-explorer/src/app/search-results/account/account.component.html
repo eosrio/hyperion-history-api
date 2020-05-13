@@ -41,6 +41,14 @@
           <strong>Refunding: </strong>
           <span class="float-r">{{refundBalance() | number: '1.0-' + systemPrecision}} WAX</span>
         </div>
+        <div *ngIf="creationData && creationData.creator" class="mt-7 width-100">
+          <strong>Created by: </strong>
+          <span [routerLink]="['/account', creationData.creator]" class="float-r">{{creationData.creator}}</span>
+        </div>
+        <div *ngIf="creationData && creationData.timestamp" class="mt-7 width-100">
+          <strong>Created on: </strong>
+          <span class="float-r">{{formatDate(creationData.timestamp)}}</span>
+        </div>
       </div>
 
       <div fxLayout="row wrap" fxLayoutAlign="start start" fxFlex="grow">
