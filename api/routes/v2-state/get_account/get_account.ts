@@ -8,6 +8,7 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     const response = {
         account: null,
         actions: null,
+        total_actions: 0,
         tokens: null,
         links: null
     };
@@ -27,7 +28,7 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     const getLinksApi = localApi + '/state/get_links';
 
     // fetch recent actions
-    reqQueue.push(got.get(`${getActionsApi}?account=${account}&limit=10&noBinary=true`).json());
+    reqQueue.push(got.get(`${getActionsApi}?account=${account}&limit=20&noBinary=true&track=true`).json());
 
     // fetch account tokens
     reqQueue.push(got.get(`${getTokensApi}?account=${account}`).json());
@@ -37,6 +38,7 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
 
     const results = await Promise.all(reqQueue);
     response.actions = results[0].actions;
+    response.total_actions = results[0].total.value;
     response.tokens = results[1].tokens;
     response.links = results[2].links;
     return response;

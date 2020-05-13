@@ -44,6 +44,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                     }
                 }
             },
+            "total_actions": {type: "number"},
             "actions": {
                 type: "array",
                 items: {
