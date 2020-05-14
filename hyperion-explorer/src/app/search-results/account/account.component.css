@@ -152,6 +152,7 @@
 .livestream {
   cursor: pointer;
   margin-bottom: 7px;
+  font-size: 15px;
 }
 
 .pulse {
@@ -278,4 +279,25 @@
 
 .mat-expansion-panel-header[aria-disabled=true] {
   color: rgba(0,0,0,.87);
+}
+
+@media (min-width: 960px) and (max-width: 1049px) {
+  .full-width {
+    flex: 1 1 100% !important;
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+    min-width: unset !important;
+    margin-right: 0  !important;
+  }
+
+  .mt-responsive {
+    margin-top: 30px;
+  }
+}
+
+.lib {
+  font-size: 15px;
+  margin-top: 1px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  padding-bottom: 13px;
 }

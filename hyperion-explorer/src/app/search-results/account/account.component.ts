@@ -99,6 +99,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   detailedView = true;
 
   systemPrecision = 4;
+  systemSymbol:string = '';
   creationData: AccountCreationData = {
     creator: undefined,
     timestamp: undefined
@@ -155,6 +156,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       this.accountName = routeParams.account_name;
       if (await this.accountService.loadAccountData(routeParams.account_name)) {
         this.systemPrecision = this.getPrecision(this.accountService.account.core_liquid_balance);
+        this.systemSymbol = this.accountService.account.core_liquid_balance.split(' ')[1];
         this.processPermissions();
         setTimeout(() => {
           this.accountService.tableDataSource.sort = this.sort;

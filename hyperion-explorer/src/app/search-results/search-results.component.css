@@ -46,9 +46,6 @@
 }
 
 @media screen and (max-width: 599px) {
-  .search-input {
-    width: 100%;
-  }
   .search-container {
     padding-right: 10px;
   }
@@ -56,6 +53,14 @@
 @media (min-width: 600px) {
   .search-input {
     width: 330px;
+  }
+}
+@media screen and (max-width: 1049px) {
+  .search-container {
+    padding-right: 10px;
+  }
+  .logo {
+    margin-left: 10px;
   }
 }
 

@@ -25,35 +25,37 @@
     <div fxLayout.gt-xs="row" fxLayoutAlign.gt-xs="space-between start" fxLayoutGap.gt-xs="30px"
          fxLayout.lt-sm="column" fxLayoutAlign.lt-sm="start stretch" fxLayoutGap.lt-sm="20px">
 
-      <div fxLayout="column" fxLayoutAlign="start start" fxFlex.gt-xs="316px" class="mt-7">
+      <div fxLayout="column" fxLayoutAlign="start start" fxFlex.gt-xs="316px" class="mt-7" style="height: 100%" fxFlexFill>
         <div class="total-balance width-100">
           <strong>Total Balance: </strong>
-          <span class="float-r">{{totalBalance() | number: '1.0-' + systemPrecision}} WAX</span>
+          <span class="float-r">{{totalBalance() | number: '1.0-' + systemPrecision}} {{systemSymbol}}</span>
         </div>
         <div class="mb-5 width-100">
           <strong>Liquid Balance: </strong>
-          <span class="float-r">{{liquidBalance() | number: '1.0-' + systemPrecision}} WAX</span>
+          <span class="float-r">{{liquidBalance() | number: '1.0-' + systemPrecision}} {{systemSymbol}}</span>
         </div>
         <div class="mb-5 width-100">
           <strong>Staked Balance: </strong>
-          <span class="float-r">{{stakedBalance() | number: '1.0-' + systemPrecision}} WAX</span></div>
+          <span class="float-r">{{stakedBalance() | number: '1.0-' + systemPrecision}} {{systemSymbol}}</span></div>
         <div class="width-100">
           <strong>Refunding: </strong>
-          <span class="float-r">{{refundBalance() | number: '1.0-' + systemPrecision}} WAX</span>
+          <span class="float-r">{{refundBalance() | number: '1.0-' + systemPrecision}} {{systemSymbol}}</span>
         </div>
+        <div class="width-100" style="margin-top: 12px">
         <div *ngIf="creationData && creationData.creator" class="mt-7 width-100">
           <strong>Created by: </strong>
-          <span [routerLink]="['/account', creationData.creator]"
-                class="float-r pointer">{{creationData.creator}}</span>
+          <a [routerLink]="['/account', creationData.creator]"
+                class="float-r link-gray">{{creationData.creator}}</a>
         </div>
         <div *ngIf="creationData && creationData.timestamp" class="mt-7 width-100">
           <strong>Created on: </strong>
           <span class="float-r">{{formatDate(creationData.timestamp)}}</span>
         </div>
+        </div>
       </div>
 
       <div fxLayout="row wrap" fxLayoutAlign="start start" fxFlex="grow">
-        <div fxFlex.gt-sm="287px" fxFlex.lt-md="100" ngStyle.gt-sm="margin-right: 40px">
+        <div fxFlex.gt-sm="287px" fxFlex.lt-md="100" ngStyle.gt-sm="margin-right: 40px" class="full-width">
           <div>
             <span class="title">CPU</span>
             <span class="faded used">{{(accountService.account['cpu_limit']['used'] /
@@ -66,14 +68,14 @@
                             [value]="(accountService.account['cpu_limit']['used'] / accountService.account['cpu_limit']['max']) * 100"></mat-progress-bar>
           <div class="small-info">
             <div class="m-bottom"><span>Self-staked:</span><span
-              class="float-r">{{myCpuBalance() | number: '1.0-' + systemPrecision}} WAX</span></div>
+              class="float-r">{{myCpuBalance() | number: '1.0-' + systemPrecision}} {{systemSymbol}}</span></div>
             <div class="m-bottom"><span>Staked by others:</span><span
-              class="float-r">{{cpuByOthers() | number: '1.0-' + systemPrecision}} WAX</span></div>
+              class="float-r">{{cpuByOthers() | number: '1.0-' + systemPrecision}} {{systemSymbol}}</span></div>
             <div><span>Total in CPU:</span><span class="float-r">{{cpuBalance() | number: '1.0-' + systemPrecision}}
-              WAX</span></div>
+              {{systemSymbol}}</span></div>
           </div>
         </div>
-        <div fxFlex.gt-sm="287px" fxFlex.lt-md="100" ngClass.lt-md="mt-30">
+        <div fxFlex.gt-sm="287px" fxFlex.lt-md="100" ngClass.lt-md="mt-30" class="full-width mt-responsive">
           <div>
             <span class="title">NET</span>
             <span class="faded used">{{(accountService.account['net_limit']['used'] /
@@ -86,11 +88,11 @@
                             [value]="(accountService.account['net_limit']['used'] / accountService.account['net_limit']['max']) * 100"></mat-progress-bar>
           <div class="small-info">
             <div class="m-bottom"><span>Self-staked:</span><span
-              class="float-r">{{myNetBalance() | number: '1.0-' + systemPrecision}} WAX</span></div>
+              class="float-r">{{myNetBalance() | number: '1.0-' + systemPrecision}} {{systemSymbol}}</span></div>
             <div class="m-bottom"><span>Staked by others:</span><span
-              class="float-r">{{netByOthers() | number: '1.0-' + systemPrecision}} WAX</span></div>
+              class="float-r">{{netByOthers() | number: '1.0-' + systemPrecision}} {{systemSymbol}}</span></div>
             <div><span>Total in NET:</span><span class="float-r">{{netBalance() | number: '1.0-' + systemPrecision}}
-              WAX</span></div>
+              {{systemSymbol}}</span></div>
           </div>
         </div>
         <div fxFlex="100" class="mt-30">
@@ -288,7 +290,7 @@
         Actions
       </h3>
 
-      <span>Last Irreversible Block: <strong>{{accountService.libNum}}</strong></span>
+      <span class="lib">Last Irreversible Block: <strong class="monospace">{{accountService.libNum}}</strong></span>
 
       <div (click)="accountService.toggleStreaming()" class="livestream" matTooltip="click to turn on/off"
            matTooltipClass="tooltip-bigger">
@@ -307,10 +309,11 @@
       <ng-container matColumnDef="trx_id">
         <th mat-header-cell *matHeaderCellDef [ngStyle.gt-xs]="{'min-width': '100px'}"> TX</th>
         <td mat-cell *matCellDef="let action" data-label="TX">
-          <ng-container *ngIf="accountService.libNum < action['block_num']">
-            <fa-icon [icon]="faClock" class="accent" style="margin-right: 5px"></fa-icon>
+          <span *ngIf="accountService.libNum < action['block_num']"
+                matTooltip="time until irreversible" matTooltipClass="tooltip-bigger">
+            <fa-icon [icon]="faClock" class="accent" style="margin-right: 1px"></fa-icon>
             {{(action['block_num'] - accountService.libNum) / 2}}s
-          </ng-container>
+          </span>
           <a [routerLink]="['/transaction', action['trx_id']]" class="link-blue">
             {{action['trx_id'].slice(0, 8)}}...
           </a>
@@ -408,7 +411,8 @@
                    showFirstLastButtons>
     </mat-paginator>
 
-    <button mat-stroked-button color="primary" (click)="accountService.loadMoreActions(accountName)">
+    <button mat-stroked-button color="primary" class="float-r" style="margin-right: 16px;"
+            (click)="accountService.loadMoreActions(accountName)">
       load more actions
     </button>
 
