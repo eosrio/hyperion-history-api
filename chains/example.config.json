@@ -19,7 +19,7 @@
     },
     "access_log": false,
     "enable_explorer": false,
-    "chain_api_error_log": false,
+    "chain_api_error_log": false
   },
   "settings": {
     "preview": false,
