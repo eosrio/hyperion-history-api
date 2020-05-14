@@ -7,6 +7,7 @@ interface AmqpConfig {
 }
 
 interface ESConfig {
+    protocol: string;
     host: string;
     ingest_nodes: string[];
     user: string;

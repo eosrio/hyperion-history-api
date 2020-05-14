@@ -77,9 +77,9 @@ export class ConnectionManager {
         let es_url;
         const _es = this.conn.elasticsearch;
         if (_es.user !== '') {
-            es_url = `http://${_es.user}:${_es.pass}@${_es.host}`;
+            es_url = `${_es.protocol}://${_es.user}:${_es.pass}@${_es.host}`;
         } else {
-            es_url = `http://${_es.host}`
+            es_url = `${_es.protocol}://${_es.host}`
         }
         this.esIngestClient = new Client({node: es_url});
     }
