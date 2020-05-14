@@ -81,8 +81,12 @@ export class ConnectionManager {
         } else {
             es_url = `${_es.protocol}://${_es.host}`
         }
-        console.log(es_url);
-        this.esIngestClient = new Client({node: es_url});
+        this.esIngestClient = new Client({
+            node: es_url,
+            ssl: {
+                rejectUnauthorized: false
+            }
+        });
     }
 
     get elasticsearchClient() {
