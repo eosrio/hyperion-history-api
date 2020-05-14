@@ -63,7 +63,7 @@ export class BlockComponent implements OnInit, OnDestroy {
         this.activatedRoute.params.subscribe(async (routeParams) => {
             this.blockNum = routeParams.block_num;
             this.block = await this.accountService.loadBlockData(routeParams.block_num);
-            if (this.block.status === 'pending') {
+            if (this.block && this.block.status === 'pending') {
                 await this.reloadCountdownTimer();
                 this.countdownLoop = setInterval(async () => {
                     this.countdownTimer--;

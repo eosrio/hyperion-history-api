@@ -99,7 +99,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   detailedView = true;
 
   systemPrecision = 4;
-  systemSymbol:string = '';
+  systemSymbol = '';
   creationData: AccountCreationData = {
     creator: undefined,
     timestamp: undefined
@@ -156,7 +156,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       this.accountName = routeParams.account_name;
       if (await this.accountService.loadAccountData(routeParams.account_name)) {
         this.systemPrecision = this.getPrecision(this.accountService.account.core_liquid_balance);
-        this.systemSymbol = this.accountService.account.core_liquid_balance.split(' ')[1];
+        this.systemSymbol = this.getSymbol(this.accountService.account.core_liquid_balance);
         this.processPermissions();
         setTimeout(() => {
           this.accountService.tableDataSource.sort = this.sort;
@@ -176,6 +176,18 @@ export class AccountComponent implements OnInit, OnDestroy {
       }
     } else {
       return 4;
+    }
+  }
+
+  getSymbol(asset: string): string {
+    if (asset) {
+      try {
+        return asset.split(' ')[1];
+      } catch (e) {
+        return 'SYS';
+      }
+    } else {
+      return 'SYS';
     }
   }
 

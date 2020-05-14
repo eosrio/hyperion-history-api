@@ -214,6 +214,7 @@ export class AccountService {
     } catch (error) {
       console.log(error);
       this.jsonData = null;
+      this.loaded = true;
       return false;
     }
   }
@@ -241,6 +242,7 @@ export class AccountService {
       return data;
     } catch (error) {
       console.log(error);
+      this.loaded = true;
       return null;
     }
   }
@@ -255,6 +257,7 @@ export class AccountService {
       return data;
     } catch (error) {
       console.log(error);
+      this.loaded = true;
       return null;
     }
   }
@@ -267,6 +270,7 @@ export class AccountService {
       return data;
     } catch (error) {
       console.log(error);
+      this.loaded = true;
       return null;
     }
   }
