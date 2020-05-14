@@ -18,7 +18,8 @@
       "get_deltas": 1000
     },
     "access_log": false,
-    "enable_explorer": false
+    "enable_explorer": false,
+    "chain_api_error_log": false,
   },
   "settings": {
     "preview": false,
@@ -58,7 +59,7 @@
     "start_on": 0,
     "stop_on": 0,
     "rewrite": false,
-    "purge_queues": true,
+    "purge_queues": false,
     "live_reader": false,
     "live_only_mode": false,
     "abi_scan_mode": true,
@@ -67,7 +68,7 @@
     "disable_reading": false,
     "disable_indexing": false,
     "process_deltas": true,
-    "max_inline": 20
+    "max_inline": 50
   },
   "features": {
     "streaming": {
