@@ -819,38 +819,36 @@ export default class MainDSWorker extends HyperionWorker {
     deltaStructHandlers = {
 
         "contract_row": async (payload, block_num, block_ts, row) => {
-            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+            if (this.conf.indexer.abi_scan_mode) {
+                return false;
+            }
+
+            if (this.conf.features.index_all_deltas ||
+                (payload.code === this.conf.settings.eosio_alias || payload.table === 'accounts')) {
+
                 payload['@timestamp'] = block_ts;
                 payload['present'] = row.present;
                 payload['block_num'] = block_num;
-                if (this.conf.features.index_all_deltas || (payload.code === this.conf.settings.eosio_alias || payload.table === 'accounts')) {
-                    try {
 
-                        // check delta blacklist chain::code::table
-                        if (this.checkDeltaBlacklist(payload)) {
-                            return false;
-                        }
+                // check delta blacklist chain::code::table
+                if (this.checkDeltaBlacklist(payload)) {
+                    return false;
+                }
 
-                        // check delta whitelist chain::code::table
-                        if (this.filters.delta_whitelist.size > 0) {
-                            if (!this.checkDeltaWhitelist(payload)) {
-                                return false;
-                            }
-                        }
+                // check delta whitelist chain::code::table
+                if (this.filters.delta_whitelist.size > 0) {
+                    if (!this.checkDeltaWhitelist(payload)) {
+                        return false;
+                    }
+                }
 
-                        const jsonRow = await this.processContractRowNative(payload, block_num);
-                        if (jsonRow) {
-                            if (await this.processTableDelta(jsonRow)) {
-                                if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {
-                                    const payload = Buffer.from(JSON.stringify(jsonRow));
-                                    this.pushToDeltaQueue(payload, block_num);
-                                    this.temp_delta_counter++;
-                                    this.pushToDeltaStreamingQueue(payload, jsonRow);
-                                }
-                            }
-                        }
-                    } catch (e) {
-                        hLog(`Contract row processing error: ${e.message}`);
+                const jsonRow = await this.processContractRowNative(payload, block_num);
+                if (jsonRow && await this.processTableDelta(jsonRow)) {
+                    if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {
+                        const payload = Buffer.from(JSON.stringify(jsonRow));
+                        this.pushToDeltaQueue(payload, block_num);
+                        this.temp_delta_counter++;
+                        this.pushToDeltaStreamingQueue(payload, jsonRow);
                     }
                 }
             }
