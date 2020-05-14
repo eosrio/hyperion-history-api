@@ -443,6 +443,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private async logForkEvent(starting_block, ending_block, new_id) {
+        process.send({event: 'fork_event', data: {starting_block, ending_block, new_id}});
         await this.client.index({
             index: this.chain + '-logs',
             body: {

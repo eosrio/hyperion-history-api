@@ -344,6 +344,14 @@ export class SocketManager {
             }
         });
 
+        // Relay LIB info to clients;
+        this.relay.on('fork_event', (data) => {
+            console.log(data);
+            if (this.server.manager.conn.chains[this.server.manager.chain].chain_id === data.chain_id) {
+                this.io.emit('fork_event', data);
+            }
+        });
+
         setTimeout(() => {
             console.log(`Relay status: ${this.relay.connected}`);
         }, 2000);

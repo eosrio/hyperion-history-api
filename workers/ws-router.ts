@@ -43,6 +43,13 @@ export default class WSRouter extends HyperionWorker {
                 });
                 break;
             }
+            case 'fork_event': {
+                this.io.emit('fork_event', {
+                    chain_id: this.manager.conn.chains[this.chain]?.chain_id,
+                    ...msg.data
+                });
+                break;
+            }
         }
     }
 
