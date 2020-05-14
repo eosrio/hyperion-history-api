@@ -162,6 +162,9 @@ export class HyperionMaster {
                     this.liveConsumedBlocks++;
                     if (this.conf.settings.bp_monitoring && !this.conf.indexer.abi_scan_mode) {
                         this.liveBlockQueue.push(msg);
+                        if (this.liveBlockQueue.length() > 1) {
+                            hLog("Live Block Queue:", this.liveBlockQueue.length(), 'blocks');
+                        }
                     }
                 }
             },
@@ -880,10 +883,16 @@ export class HyperionMaster {
             }
             this.lastProducedBlockNum = msg.block_num;
         } else {
-            this.blockMsgQueue.push(msg);
-            this.blockMsgQueue.sort((a, b) => a.block_num - b.block_num);
+            if (this.blockMsgQueue.length >= 12) {
+                this.blockMsgQueue = [msg];
+                this.lastProducedBlockNum = msg.block_num;
+            } else {
+                this.blockMsgQueue.push(msg);
+                this.blockMsgQueue.sort((a, b) => a.block_num - b.block_num);
+            }
             while (this.blockMsgQueue.length > 0) {
                 console.log('blockMsgQueue:', this.blockMsgQueue.length);
+                console.log(this.blockMsgQueue);
                 if (this.blockMsgQueue[0].block_num === this.lastProducedBlockNum + 1) {
                     this.onLiveBlock(this.blockMsgQueue.shift());
                 } else {
