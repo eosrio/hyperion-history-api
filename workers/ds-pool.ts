@@ -574,7 +574,7 @@ export default class DSPoolWorker extends HyperionWorker {
                     if (!this.conf.indexer.abi_scan_mode && !this.conf.indexer.live_reader) {
                         this.noActionCounter++;
                         if (this.noActionCounter > 60) {
-                            hLog(`No actions processed for ${this.noActionCounter} seconds!`);
+                            debugLog(`No actions processed for ${this.noActionCounter} seconds!`);
                         }
                     }
                 }
