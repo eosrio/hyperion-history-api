@@ -294,6 +294,8 @@ export default class MainDSWorker extends HyperionWorker {
                             this.routeToPool(trace[1], {block_num, producer, ts, inline_count, filtered});
                         } catch (e) {
                             hLog(e);
+                            hLog(block_num);
+                            hLog(trace[1]);
                         }
                     }
                 }
