@@ -1063,7 +1063,9 @@ export default class MainDSWorker extends HyperionWorker {
                 }
 
                 if (deltaStruct[key].length > 0) {
-                    const tRef = process.hrtime.bigint();
+
+                    // const tRef = process.hrtime.bigint();
+
                     for (const row of deltaStruct[key]) {
                         const data = this.deserializeNative(key, row.data);
                         try {
@@ -1074,11 +1076,10 @@ export default class MainDSWorker extends HyperionWorker {
                     }
 
                     // console.log(`${key} => ${deltaStruct[key].length} (${Number((process.hrtime.bigint() - tRef)) / 1000000}ms)`);
-
-                    const tPerRow = Number((process.hrtime.bigint() - tRef)) / 1000000 / deltaStruct[key].length;
-                    if (tPerRow > 25.0) {
-                        hLog(`[WARNING] ${key} processing took ${tPerRow.toFixed(2)} ms/row on block ${block_num} (total: ${deltaStruct[key].length} rows)`);
-                    }
+                    // const tPerRow = Number((process.hrtime.bigint() - tRef)) / 1000000 / deltaStruct[key].length;
+                    // if (tPerRow > 25.0) {
+                    //     hLog(`[WARNING] ${key} processing took ${tPerRow.toFixed(2)} ms/row on block ${block_num} (total: ${deltaStruct[key].length} rows)`);
+                    // }
                 }
             }
         }
