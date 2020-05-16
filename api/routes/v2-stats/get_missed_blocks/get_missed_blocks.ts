@@ -1,7 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions";
 import {ServerResponse} from "http";
-import {RequestParams} from "@elastic/elasticsearch";
+import {Search} from "@elastic/elasticsearch/api/requestParams";
 
 async function getMissedBlocks(fastify: FastifyInstance, request: FastifyRequest) {
     const response = {
@@ -10,7 +10,7 @@ async function getMissedBlocks(fastify: FastifyInstance, request: FastifyRequest
         },
         events: []
     };
-    const searchParams: RequestParams.Search = {
+    const searchParams: Search<any> = {
         track_total_hits: true,
         index: fastify.manager.chain + "-logs-*",
         size: 100,

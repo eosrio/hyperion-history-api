@@ -1,9 +1,9 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
-import {RequestParams} from "@elastic/elasticsearch";
 import {createHash} from "crypto";
 import {base58ToBinary, binaryToBase58} from "eosjs/dist/eosjs-numeric";
+import {Search} from "@elastic/elasticsearch/api/requestParams";
 
 function convertToLegacyKey(block_signing_key: string) {
     if (block_signing_key.startsWith("PUB_K1_")) {
@@ -26,7 +26,7 @@ async function getSchedule(fastify: FastifyInstance, request: FastifyRequest) {
     const response: any = {
         producers: []
     };
-    const searchParams: RequestParams.Search = {
+    const searchParams: Search<any> = {
         track_total_hits: true,
         index: fastify.manager.chain + "-block-*",
         size: 1,

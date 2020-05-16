@@ -503,7 +503,7 @@ export class HyperionMaster {
                 const new_index = `${queue_prefix}-${index.type}-${version}-000001`;
                 const exists = await this.client.indices.exists({index: new_index});
 
-                if (exists.body === false) {
+                if (!exists.body) {
 
                     // create index
                     try {
