@@ -290,7 +290,11 @@ export default class MainDSWorker extends HyperionWorker {
                             trace[1].action_traces = trace[1].action_traces.slice(0, this.conf.indexer.max_inline);
                             filtered = true;
                         }
-                        this.routeToPool(trace[1], {block_num, producer, ts, inline_count, filtered});
+                        try {
+                            this.routeToPool(trace[1], {block_num, producer, ts, inline_count, filtered});
+                        } catch (e) {
+                            hLog(e);
+                        }
                     }
                 }
             }
