@@ -76,6 +76,9 @@ export class ConnectionManager {
     prepareESClient() {
         let es_url;
         const _es = this.conn.elasticsearch;
+        if (!_es.protocol) {
+            _es.protocol = 'http';
+        }
         if (_es.user !== '') {
             es_url = `${_es.protocol}://${_es.user}:${_es.pass}@${_es.host}`;
         } else {
@@ -95,6 +98,9 @@ export class ConnectionManager {
 
     prepareIngestClients() {
         const _es = this.conn.elasticsearch;
+        if (!_es.protocol) {
+            _es.protocol = 'http';
+        }
         if (_es.ingest_nodes) {
             if (_es.ingest_nodes.length > 0) {
                 for (const node of _es.ingest_nodes) {
