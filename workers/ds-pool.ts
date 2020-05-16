@@ -548,9 +548,9 @@ export default class DSPoolWorker extends HyperionWorker {
         // delete cache contract on abieos context
         const status = AbiEOS.delete_contract(contract);
         if (!status) {
-            hLog('Contract not found on cache!');
+            debugLog('Contract not found on cache!');
         } else {
-            hLog(`🗑️ Contract Successfully removed from cache!`);
+            debugLog(`🗑️ Contract Successfully removed from cache!`);
         }
     }
 
@@ -620,7 +620,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 break;
             }
             case 'remove_contract': {
-                hLog(`[${process.env.local_id}] Delete contract: ${msg.contract}`);
+                // hLog(`[${process.env.local_id}] Delete contract: ${msg.contract}`);
                 this.deleteCache(msg.contract);
                 break;
             }
