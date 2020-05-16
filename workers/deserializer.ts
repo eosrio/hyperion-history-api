@@ -328,12 +328,12 @@ export default class MainDSWorker extends HyperionWorker {
     routeToPool(trace, headers) {
 
         let first_action;
-        if (trace['action_traces'][0].length === 2) {
+        if (trace['action_traces'][0] && trace['action_traces'][0].length === 2) {
             first_action = trace['action_traces'][0][1];
 
             // replace first action if the root is eosio.null::nonce
             if (first_action.act.account === this.conf.settings.eosio_alias + '.null' && first_action.act.name === 'nonce') {
-                if (trace['action_traces'][1].length === 2) {
+                if (trace['action_traces'][1] && trace['action_traces'][1].length === 2) {
                     first_action = trace['action_traces'][1][1];
                 }
             }
