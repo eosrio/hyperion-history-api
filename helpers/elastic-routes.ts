@@ -268,9 +268,14 @@ export class ElasticRoutes {
     }
 
     getIndexNameByBlock(block_num) {
+        if (!this.distributionMap) {
+            return null;
+        }
+
         const idx = this.distributionMap.find((value) => {
             return value.first_block <= block_num && value.last_block >= block_num;
         });
+
         if (idx) {
             return idx.index;
         } else {
