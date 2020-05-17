@@ -5,11 +5,12 @@ import {Serialize} from "../addons/eosjs-native";
 import {debugLog, hLog} from "../helpers/common_functions";
 import {Message} from "amqplib";
 import {parseDSPEvent} from "../modules/custom/dsp-parser";
-import {resolve, join} from "path";
-import {readdirSync, existsSync, readFileSync} from "fs";
+import {join, resolve} from "path";
+import {existsSync, readdirSync, readFileSync} from "fs";
 
 const abi_remapping = {
-    "_Bool": "bool"
+    "_Bool": "bool",
+    "account_name": "name",
 };
 
 interface CustomAbiDef {
@@ -313,13 +314,19 @@ export default class DSPoolWorker extends HyperionWorker {
                 }
             } else {
                 hLog(accountName, block_num);
-                hLog(e);
+                hLog(e.message);
             }
         }
+
+        if (!types) {
+            return null;
+        }
+
         const actions = new Map();
         for (const {name, type} of abi.actions) {
             actions.set(name, Serialize.getType(types, type));
         }
+
         const result = {types, actions, tables: abi.tables};
         if (check_action) {
             if (actions.has(check_action)) {
@@ -330,7 +337,7 @@ export default class DSPoolWorker extends HyperionWorker {
                         hLog(e);
                     }
                 } else {
-                    hLog('ignore reloading of current abi for', accountName);
+                    debugLog('ignore reloading of current abi for', accountName);
                 }
                 this.contracts.set(accountName, {
                     contract: result,

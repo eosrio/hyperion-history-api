@@ -188,8 +188,8 @@ export function hLog(input: any, ...extra: any[]) {
     console.log(role, input, ...extra);
 }
 
-export function debugLog(text) {
+export function debugLog(text: any, ...extra: any[]) {
     if (config.settings.debug) {
-        hLog(text);
+        hLog(text, ...extra);
     }
 }

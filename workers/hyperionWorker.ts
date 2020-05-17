@@ -8,7 +8,7 @@ import {Channel, ConfirmChannel} from "amqplib/callback_api";
 import {EventEmitter} from "events";
 import * as v8 from "v8";
 import {HeapInfo} from "v8";
-import {hLog} from "../helpers/common_functions";
+import {debugLog, hLog} from "../helpers/common_functions";
 import {StateHistorySocket} from "../connections/state-history";
 import * as AbiEOS from "@eosrio/node-abieos";
 
@@ -156,7 +156,7 @@ export abstract class HyperionWorker {
         let _status = false;
         if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract).has(block_num)) {
             _status = false;
-            hLog('ignore saved abi for', contract, block_num);
+            debugLog('ignore saved abi for', contract, block_num);
         } else {
             _status = AbiEOS.load_abi_hex(contract, abi_hex);
             if (!_status) {
@@ -184,7 +184,7 @@ export abstract class HyperionWorker {
         let _status = false;
         if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract).has(-1)) {
             _status = false;
-            hLog('ignore current abi for', contract);
+            debugLog('ignore current abi for', contract);
         } else {
             const currentAbi = await this.rpc.getRawAbi(contract);
             if (currentAbi.abi.byteLength > 0) {

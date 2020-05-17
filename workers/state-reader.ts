@@ -253,7 +253,9 @@ export default class StateReader extends HyperionWorker {
                 // NORMAL OPERATION MODE
                 if (process.env.worker_role) {
                     const res = deserialize('result', data, this.txEnc, this.txDec, this.types)[1];
+
                     if (res['this_block']) {
+
                         const blk_num = res['this_block']['block_num'];
                         const lib = res['last_irreversible'];
 
