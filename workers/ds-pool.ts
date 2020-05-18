@@ -47,10 +47,8 @@ export default class DSPoolWorker extends HyperionWorker {
         super();
 
         this.consumerQueue = cargo((payload: any[], cb) => {
-            this.processMessages(payload).then(() => {
-                cb();
-            }).catch((err) => {
-                hLog('NackAll:', err.message);
+            this.processMessages(payload).catch((err) => {
+                hLog('NackAll:', err);
                 if (this.ch_ready) {
                     try {
                         this.ch.nackAll();
@@ -58,6 +56,8 @@ export default class DSPoolWorker extends HyperionWorker {
                         hLog(e.message);
                     }
                 }
+            }).finally(() => {
+                cb();
             });
         }, this.conf.prefetch.block);
 

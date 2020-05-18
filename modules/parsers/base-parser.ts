@@ -4,6 +4,7 @@ import {Message} from "amqplib";
 import DSPoolWorker from "../../workers/ds-pool";
 import {TrxMetadata} from "../../interfaces/trx-metadata";
 import {ActionTrace} from "../../interfaces/action-trace";
+import {hLog} from "../../helpers/common_functions";
 
 export abstract class BaseParser {
 
@@ -69,7 +70,11 @@ export abstract class BaseParser {
         }
         if (ds_act) {
             action.act.data = ds_act;
-            worker.common.attachActionExtras(worker, action);
+            try {
+                worker.common.attachActionExtras(worker, action);
+            } catch (e) {
+                hLog(e);
+            }
         } else {
             action['act'] = original_act;
             if (typeof action.act.data !== 'string') {
