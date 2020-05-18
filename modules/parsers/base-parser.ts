@@ -73,7 +73,8 @@ export abstract class BaseParser {
             try {
                 worker.common.attachActionExtras(worker, action);
             } catch (e) {
-                hLog(e);
+                hLog(e.message);
+                hLog(action?.act?.data);
             }
         } else {
             action['act'] = original_act;
