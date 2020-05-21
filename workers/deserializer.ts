@@ -259,12 +259,16 @@ export default class MainDSWorker extends HyperionWorker {
                 // submit failed trx
                 if (failedTrx.length > 0) {
                     for (const tx of failedTrx) {
-                        this.pushToIndexQueue({
-                            "@timestamp": ts,
-                            "block_num": block_num,
-                            trx_id: tx.id,
-                            status: tx.status
-                        }, 'trx_error');
+                        if (typeof tx.id === 'string') {
+                            this.pushToIndexQueue({
+                                "@timestamp": ts,
+                                "block_num": block_num,
+                                trx_id: tx.id,
+                                status: tx.status
+                            }, 'trx_error');
+                        } else {
+                            hLog(tx);
+                        }
                     }
                 }
 
