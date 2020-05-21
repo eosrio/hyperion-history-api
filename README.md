@@ -6,6 +6,8 @@ Scalable Full History API Solution for EOSIO based blockchains
 
 Made with ♥ by [EOS Rio](https://eosrio.io/)
 
+Official documentation: https://hyperion.docs.eosrio.io/
+
 ### 1. Overview
 
 Hyperion is a full history solution for indexing, storing and retrieving EOSIO blockchain`s historical data. EOSIO protocol is highly scalable reaching up to tens of thousands of transactions per second demanding high performance indexing and optimized storage and querying solutions. Hyperion is developed to tackle those challenges providing open source software to be operated by block producers, infrastructure providers and dApp developers.
