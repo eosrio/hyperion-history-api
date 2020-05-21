@@ -3,7 +3,7 @@ import {ConfigurationModule} from "../modules/config";
 const shards = 2;
 const replicas = 0;
 const refresh = "1s";
-const defaultLifecyclePolicy = "10G30D";
+const defaultLifecyclePolicy = "20G30D";
 
 export * from './index-lifecycle-policies';
 
@@ -48,6 +48,7 @@ export const action = {
     mappings: {
         properties: {
             "@timestamp": {"type": "date"},
+            "ds_error": {"type": "boolean"},
             "global_sequence": {"type": "long"},
             "account_ram_deltas.delta": {"type": "integer"},
             "account_ram_deltas.account": {"type": "keyword"},
@@ -189,8 +190,9 @@ export const delta = {
     },
     "mappings": {
         "properties": {
-            "block_num": {"type": "long"},
             "@timestamp": {"type": "date"},
+            "ds_error": {"type": "boolean"},
+            "block_num": {"type": "long"},
             "data": {"enabled": false},
             "code": {"type": "keyword"},
             "present": {"type": "boolean"},
@@ -203,6 +205,10 @@ export const delta = {
             "@approvals.proposal_name": {"type": "keyword"},
             "@approvals.provided_approvals": {"type": "object"},
             "@approvals.requested_approvals": {"type": "object"},
+
+            // eosio.msig::proposal
+            "@proposal.proposal_name": {"type": "keyword"},
+            "@proposal.transaction": {"enabled": false},
 
             // *::accounts
             "@accounts.amount": {"type": "float"},
@@ -302,6 +308,35 @@ export const resourceLimits = {
             "net_weight": {"type": "long"},
             "cpu_weight": {"type": "long"},
             "ram_bytes": {"type": "long"}
+        }
+    }
+};
+
+export const generatedTransaction = {
+    "index_patterns": [chain + "-gentrx-*"],
+    "settings": defaultIndexSettings,
+    "mappings": {
+        "properties": {
+            "block_num": {"type": "long"},
+            "@timestamp": {"type": "date"},
+            "sender": {"type": "keyword"},
+            "sender_id": {"type": "keyword"},
+            "payer": {"type": "keyword"},
+            "trx_id": {"type": "keyword"},
+            "actions": {"enabled": false},
+            "packed_trx": {"enabled": false}
+        }
+    }
+};
+
+export const failedTransaction = {
+    "index_patterns": [chain + "-trxerr-*"],
+    "settings": defaultIndexSettings,
+    "mappings": {
+        "properties": {
+            "block_num": {"type": "long"},
+            "@timestamp": {"type": "date"},
+            "status": {"type": "short"}
         }
     }
 };

@@ -2,6 +2,7 @@ import {Channel, Message} from "amqplib/callback_api";
 import {ConnectionManager} from "../connections/manager.class";
 import * as _ from "lodash";
 import {hLog} from "./common_functions";
+import {createHash} from "crypto";
 
 function makeScriptedOp(id, body) {
     return [
@@ -105,6 +106,27 @@ function buildResUsageBulk(payloads, messageMap) {
     });
 }
 
+function buildGenTrxBulk(payloads, messageMap) {
+    return flatMap(payloads, (payload, body) => {
+        const hash = createHash('sha256')
+            .update(body.sender + body.sender_id + body.payer)
+            .digest()
+            .toString("hex");
+        const id = `${body.block_num}-${hash}`;
+        messageMap.set(id, _.omit(payload, ['content']));
+        return [{index: {_id: id}}, body];
+    });
+}
+
+function buildTrxErrBulk(payloads, messageMap) {
+    return flatMap(payloads, (payload, body) => {
+        const id = body.trx_id.toLowerCase();
+        delete body.trx_id;
+        messageMap.set(id, _.omit(payload, ['content']));
+        return [{index: {_id: id}}, body];
+    });
+}
+
 interface IndexDist {
     index: string;
     first_block: number;
@@ -166,19 +188,33 @@ export class ElasticRoutes {
         let counter = 0;
 
         if (collection['permission']) {
-            queue.push(this.createGenericBuilder(collection['permission'], channel, counter, this.chain + '-perm', buildPermBulk));
+            queue.push(this.createGenericBuilder(collection['permission'],
+                channel, counter, this.chain + '-perm', buildPermBulk));
         }
 
         if (collection['permission_link']) {
-            queue.push(this.createGenericBuilder(collection['permission_link'], channel, counter, this.chain + '-link', buildLinkBulk));
+            queue.push(this.createGenericBuilder(collection['permission_link'],
+                channel, counter, this.chain + '-link', buildLinkBulk));
         }
 
         if (collection['resource_limits']) {
-            queue.push(this.createGenericBuilder(collection['resource_limits'], channel, counter, this.chain + '-reslimits', buildResLimitBulk));
+            queue.push(this.createGenericBuilder(collection['resource_limits'],
+                channel, counter, this.chain + '-reslimits', buildResLimitBulk));
         }
 
         if (collection['resource_usage']) {
-            queue.push(this.createGenericBuilder(collection['resource_usage'], channel, counter, this.chain + '-userres', buildResUsageBulk));
+            queue.push(this.createGenericBuilder(collection['resource_usage'],
+                channel, counter, this.chain + '-userres', buildResUsageBulk));
+        }
+
+        if (collection['generated_transaction']) {
+            queue.push(this.createGenericBuilder(collection['generated_transaction'],
+                channel, counter, this.chain + '-gentrx', buildGenTrxBulk));
+        }
+
+        if (collection['trx_error']) {
+            queue.push(this.createGenericBuilder(collection['trx_error'],
+                channel, counter, this.chain + '-trxerr', buildTrxErrBulk));
         }
 
         await Promise.all(queue);

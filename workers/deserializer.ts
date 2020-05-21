@@ -6,6 +6,7 @@ import * as AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "../addons/eosjs-native";
 import {Type} from "../addons/eosjs-native/eosjs-serialize";
 import {debugLog, hLog} from "../helpers/common_functions";
+import {createHash} from "crypto";
 
 const index_queues = require('../definitions/index-queues').index_queues;
 const {AbiDefinitions} = require("../definitions/abi_def");
@@ -56,6 +57,8 @@ export default class MainDSWorker extends HyperionWorker {
     private monitoringLoop: NodeJS.Timeout;
 
     autoBlacklist: Map<string, any[]> = new Map();
+
+    lastSelectedWorker = 0;
 
     constructor() {
 
@@ -240,10 +243,30 @@ export default class MainDSWorker extends HyperionWorker {
                 let total_cpu = 0;
                 let total_net = 0;
 
+                const failedTrx = [];
+
                 block.transactions.forEach((trx) => {
                     total_cpu += trx['cpu_usage_us'];
                     total_net += trx['net_usage_words'];
+                    if (trx.status !== 0) {
+                        failedTrx.push({
+                            id: trx.trx[1],
+                            status: trx.status
+                        });
+                    }
                 });
+
+                // submit failed trx
+                if (failedTrx.length > 0) {
+                    for (const tx of failedTrx) {
+                        this.pushToIndexQueue({
+                            "@timestamp": ts,
+                            "block_num": block_num,
+                            trx_id: tx.id,
+                            status: tx.status
+                        }, 'trx_error');
+                    }
+                }
 
                 light_block = {
                     '@timestamp': block['timestamp'],
@@ -357,32 +380,46 @@ export default class MainDSWorker extends HyperionWorker {
 
         let selected_q = 0;
         const _code = first_action.act.account;
-        if (this.dsPoolMap[_code]) {
-            const workers = this.dsPoolMap[_code][2];
-            for (const w of workers) {
-                if (typeof this.ds_pool_counters[_code] === 'undefined') {
-                    selected_q = w;
-                    this.ds_pool_counters[_code] = w;
-                    break;
-                } else {
-                    if (this.ds_pool_counters[_code] === workers[workers.length - 1]) {
-                        this.ds_pool_counters[_code] = workers[0];
+        
+
+        // round robin option
+        if (this.conf.scaling.routing_mode === 'round_robin') {
+            if (this.lastSelectedWorker < this.conf.scaling.ds_pool_size) {
+                this.lastSelectedWorker++;
+            } else {
+                this.lastSelectedWorker = 0;
+            }
+            selected_q = this.lastSelectedWorker;
+        } else {
+            // heatmap option
+            if (this.dsPoolMap[_code]) {
+                const workers = this.dsPoolMap[_code][2];
+                for (const w of workers) {
+                    if (typeof this.ds_pool_counters[_code] === 'undefined') {
                         selected_q = w;
                         this.ds_pool_counters[_code] = w;
                         break;
                     } else {
-                        if (this.ds_pool_counters[_code] === w) {
-                            continue;
-                        }
-                        if (w > this.ds_pool_counters[_code]) {
+                        if (this.ds_pool_counters[_code] === workers[workers.length - 1]) {
+                            this.ds_pool_counters[_code] = workers[0];
                             selected_q = w;
                             this.ds_pool_counters[_code] = w;
                             break;
+                        } else {
+                            if (this.ds_pool_counters[_code] === w) {
+                                continue;
+                            }
+                            if (w > this.ds_pool_counters[_code]) {
+                                selected_q = w;
+                                this.ds_pool_counters[_code] = w;
+                                break;
+                            }
                         }
                     }
                 }
             }
         }
+
         const pool_queue = `${this.chain}:ds_pool:${selected_q}`;
         if (this.ch_ready) {
             this.ch.sendToQueue(pool_queue, Buffer.from(JSON.stringify(trace)), {headers});
@@ -717,6 +754,7 @@ export default class MainDSWorker extends HyperionWorker {
             hLog(e.message);
             error = e.message;
         }
+        row['ds_error'] = true;
         process.send({
             event: 'ds_error',
             data: {
@@ -942,27 +980,27 @@ export default class MainDSWorker extends HyperionWorker {
         // },
 
         // Deferred Transactions
-        // "generated_transaction": async (generated_transaction: any, block_num, block_ts, row) => {
-        //     if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
-        //         console.log(`----- generated_transaction -----`);
-        //         const unpackedTrx = this.api.deserializeTransaction(Buffer.from(generated_transaction.packed_trx, 'hex'));
-        //         for (const action of unpackedTrx.actions) {
-        //             const act_data = await this.deserializeActionAtBlockNative(action, block_num);
-        //             if (act_data) {
-        //                 action.data = act_data;
-        //             }
-        //         }
-        //         const genTrx = {
-        //             sender: generated_transaction.sender,
-        //             sender_id: generated_transaction.sender_id,
-        //             payer: generated_transaction.payer,
-        //             trx_id: generated_transaction.trx_id,
-        //             actions: unpackedTrx.actions
-        //         };
-        //         console.log(genTrx);
-        //         console.log(`---------------------------------`);
-        //     }
-        // },
+        "generated_transaction": async (generated_transaction: any, block_num, block_ts) => {
+            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+                const unpackedTrx = this.api.deserializeTransaction(Buffer.from(generated_transaction.packed_trx, 'hex'));
+                for (const action of unpackedTrx.actions) {
+                    const act_data = await this.deserializeActionAtBlockNative(action, block_num);
+                    if (act_data) {
+                        action.data = act_data;
+                    }
+                }
+                this.pushToIndexQueue({
+                    '@timestamp': block_ts,
+                    block_num: block_num,
+                    sender: generated_transaction.sender,
+                    sender_id: generated_transaction.sender_id,
+                    payer: generated_transaction.payer,
+                    trx_id: generated_transaction.trx_id.toLowerCase(),
+                    actions: unpackedTrx.actions,
+                    packed_trx: generated_transaction.packed_trx
+                }, 'generated_transaction');
+            }
+        },
 
 
         // Account resource updates
@@ -1112,7 +1150,7 @@ export default class MainDSWorker extends HyperionWorker {
             try {
                 return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
             } catch (e) {
-                hLog(`deserializeActionAtBlockNative: ${e.message}`);
+                debugLog(`deserializeActionAtBlockNative: ${e.message}`);
             }
         }
         return null;
@@ -1310,6 +1348,23 @@ export default class MainDSWorker extends HyperionWorker {
                 await this.storeProposal(delta);
             }
         };
+
+        this.tableHandlers['simpleassets:sassets'] = async (delta) => {
+            if (delta.data) {
+                if (delta.data.mdata) {
+                    delta['@sassets'] = {
+                        mdata_hash: createHash('sha256')
+                            .update(delta.data.mdata)
+                            .digest()
+                            .toString('hex'),
+                        author: delta.data.author,
+                        id: delta.data.id,
+                        category: delta.data.category
+                    }
+                    console.log(delta['@sassets']);
+                }
+            }
+        }
 
         this.tableHandlers['*:accounts'] = async (delta) => {
 

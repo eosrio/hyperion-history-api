@@ -1,4 +1,5 @@
 export interface ScalingConfigs {
+    routing_mode: string;
     batch_size: number;
     queue_limit: number;
     readers: number;

@@ -1015,58 +1015,99 @@ export class HyperionMaster {
     updateWorkerAssignments() {
         const pool_size = this.conf.scaling.ds_pool_size;
         const worker_max_pct = 1 / pool_size;
+
         const worker_shares = {};
         for (let i = 0; i < pool_size; i++) {
             worker_shares[i] = 0.0;
         }
+
+        const worker_counters = {};
+        for (let i = 0; i < pool_size; i++) {
+            worker_counters[i] = 0;
+        }
+
+        const propWorkerMap = {};
+
+        // phase 1 - calculate usage
         for (const code in this.globalUsageMap) {
-            if (this.globalUsageMap.hasOwnProperty(code)) {
-                const _pct = this.globalUsageMap[code][0] / this.totalContractHits;
-                let used_pct = 0;
-                const proposedWorkers = [];
-                for (let i = 0; i < pool_size; i++) {
-                    if (worker_shares[i] < worker_max_pct) {
-                        const rem_pct = (_pct - used_pct);
-                        if (rem_pct === 0) {
-                            break;
-                        }
-                        if (rem_pct > worker_max_pct) {
+            const _pct = this.globalUsageMap[code][0] / this.totalContractHits;
+            let used_pct = 0;
+            const proposedWorkers = [];
+            for (let i = 0; i < pool_size; i++) {
+                if (worker_shares[i] < worker_max_pct) {
+                    const rem_pct = (_pct - used_pct);
+                    if (rem_pct === 0) {
+                        break;
+                    }
+                    if (rem_pct > worker_max_pct) {
+                        used_pct += (worker_max_pct - worker_shares[i]);
+                        worker_shares[i] = worker_max_pct;
+                    } else {
+                        if (worker_shares[i] + rem_pct > worker_max_pct) {
                             used_pct += (worker_max_pct - worker_shares[i]);
                             worker_shares[i] = worker_max_pct;
                         } else {
-                            if (worker_shares[i] + rem_pct > worker_max_pct) {
-                                used_pct += (worker_max_pct - worker_shares[i]);
-                                worker_shares[i] = worker_max_pct;
-                            } else {
-                                used_pct += rem_pct;
-                                worker_shares[i] += rem_pct;
-                            }
+                            used_pct += rem_pct;
+                            worker_shares[i] += rem_pct;
                         }
-                        proposedWorkers.push(i);
+                    }
+                    proposedWorkers.push(i);
+                    worker_counters[i]++;
+                }
+            }
+            propWorkerMap[code] = proposedWorkers;
+            this.globalUsageMap[code][1] = _pct;
+        }
+
+        // phase 2 - re-balance
+        const totalContracts = Object.keys(this.globalUsageMap).length;
+        const desiredCodeCount = totalContracts / pool_size;
+        const ignoreList = [];
+        for (let i = 0; i < pool_size; i++) {
+            if (worker_counters[i] > desiredCodeCount * 1.1) {
+                ignoreList.push(i);
+            }
+        }
+
+        for (const code in propWorkerMap) {
+            if (propWorkerMap[code].length === 1) {
+                const oldVal = propWorkerMap[code][0];
+                if (ignoreList.includes(oldVal)) {
+                    for (let i = 0; i < pool_size; i++) {
+                        if (worker_counters[i] < desiredCodeCount) {
+                            propWorkerMap[code] = [i];
+                            worker_counters[i]++;
+                            worker_counters[oldVal]--;
+                            break;
+                        }
                     }
                 }
-                this.globalUsageMap[code][1] = _pct;
-                if (JSON.stringify(this.globalUsageMap[code][2]) !== JSON.stringify(proposedWorkers)) {
-                    // hLog(this.globalUsageMap[code][2], ">>", proposedWorkers);
-                    proposedWorkers.forEach(w => {
-                        const idx = this.globalUsageMap[code][2].indexOf(w);
-                        if (idx !== -1) {
-                            this.globalUsageMap[code][2].splice(idx, 1);
-                        } else {
-                            // hLog(`Worker ${w} assigned to ${code}`);
-                        }
-                    });
-                    this.globalUsageMap[code][2].forEach(w_id => {
-                        // hLog(`>>>> Worker ${this.globalUsageMap[code][2]} removed from ${code}!`);
-                        if (this.dsPoolMap.has(w_id)) {
-                            this.dsPoolMap.get(w_id).send({
-                                event: "remove_contract",
-                                contract: code
-                            });
-                        }
-                    });
-                    this.globalUsageMap[code][2] = proposedWorkers;
-                }
+            }
+        }
+
+
+        // phase 3 - assign
+        for (const code in this.globalUsageMap) {
+            if (JSON.stringify(this.globalUsageMap[code][2]) !== JSON.stringify(propWorkerMap[code])) {
+                // hLog(this.globalUsageMap[code][2], ">>", proposedWorkers);
+                propWorkerMap[code].forEach(w => {
+                    const idx = this.globalUsageMap[code][2].indexOf(w);
+                    if (idx !== -1) {
+                        this.globalUsageMap[code][2].splice(idx, 1);
+                    } else {
+                        // hLog(`Worker ${w} assigned to ${code}`);
+                    }
+                });
+                this.globalUsageMap[code][2].forEach(w_id => {
+                    // hLog(`>>>> Worker ${this.globalUsageMap[code][2]} removed from ${code}!`);
+                    if (this.dsPoolMap.has(w_id)) {
+                        this.dsPoolMap.get(w_id).send({
+                            event: "remove_contract",
+                            contract: code
+                        });
+                    }
+                });
+                this.globalUsageMap[code][2] = propWorkerMap[code];
             }
         }
     }
@@ -1375,6 +1416,8 @@ export class HyperionMaster {
             {name: 'permission', type: 'perm'},
             {name: 'resourceLimits', type: 'reslimits'},
             {name: 'resourceUsage', type: 'userres'},
+            {name: 'generatedTransaction', type: 'gentrx'},
+            {name: 'failedTransaction', type: 'trxerr'}
         ];
 
         this.addStateTables(indicesList, this.IndexingQueues);

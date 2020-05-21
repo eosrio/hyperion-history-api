@@ -396,6 +396,7 @@ export default class DSPoolWorker extends HyperionWorker {
     async processTraces(transaction_trace, extra) {
         const {cpu_usage_us, net_usage_words} = transaction_trace;
         const {block_num, producer, ts, inline_count, filtered} = extra;
+
         if (transaction_trace.status === 0) {
             let action_count = 0;
             const trx_id = transaction_trace['id'].toLowerCase();
@@ -502,6 +503,9 @@ export default class DSPoolWorker extends HyperionWorker {
                 this.pushToActionsQueue(payload, block_num);
                 this.pushToActionStreamingQueue(payload, uniqueAction);
             }
+        } else {
+            hLog('Non 0 status!');
+            hLog(transaction_trace);
         }
     }
 

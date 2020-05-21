@@ -44,4 +44,26 @@ export const ILPs: IlmPutLifecycle[] = [
             }
         }
     },
+    {
+        policy: "20G30D",
+        body: {
+            policy: {
+                phases: {
+                    hot: {
+                        min_age: "0ms",
+                        actions: {
+                            rollover: {
+                                max_age: "30d",
+                                max_size: "20gb",
+                                max_docs: 100000000
+                            },
+                            set_priority: {
+                                priority: 100
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 ];
