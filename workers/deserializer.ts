@@ -380,7 +380,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         let selected_q = 0;
         const _code = first_action.act.account;
-        
+
 
         // round robin option
         if (this.conf.scaling.routing_mode === 'round_robin') {

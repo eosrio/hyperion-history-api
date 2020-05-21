@@ -503,9 +503,6 @@ export default class DSPoolWorker extends HyperionWorker {
                 this.pushToActionsQueue(payload, block_num);
                 this.pushToActionStreamingQueue(payload, uniqueAction);
             }
-        } else {
-            hLog('Non 0 status!');
-            hLog(transaction_trace);
         }
     }
 
