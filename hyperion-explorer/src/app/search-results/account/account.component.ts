@@ -157,6 +157,16 @@ export class AccountComponent implements OnInit, OnDestroy {
       if (await this.accountService.loadAccountData(routeParams.account_name)) {
         this.systemPrecision = this.getPrecision(this.accountService.account.core_liquid_balance);
         this.systemSymbol = this.getSymbol(this.accountService.account.core_liquid_balance);
+        if (this.systemSymbol === null) {
+          try {
+            this.systemSymbol = this.getSymbol(this.accountService.account.total_resources.cpu_weight);
+            if (this.systemSymbol === null) {
+              this.systemSymbol = 'SYS';
+            }
+          } catch (e) {
+            this.systemSymbol = 'SYS';
+          }
+        }
         this.processPermissions();
         setTimeout(() => {
           this.accountService.tableDataSource.sort = this.sort;
@@ -184,10 +194,10 @@ export class AccountComponent implements OnInit, OnDestroy {
       try {
         return asset.split(' ')[1];
       } catch (e) {
-        return 'SYS';
+        return null;
       }
     } else {
-      return 'SYS';
+      return null;
     }
   }
 
