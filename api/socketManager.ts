@@ -309,9 +309,7 @@ export class SocketManager {
     startRelay() {
         console.log(`starting relay - ${this.url}`);
 
-        this.relay = IOClient(this.url, {
-            path: '/router',
-        });
+        this.relay = IOClient(this.url, {path: '/router'});
 
         this.relay.on('connect', () => {
             console.log('Relay Connected!');
@@ -351,10 +349,6 @@ export class SocketManager {
                 this.io.emit('fork_event', data);
             }
         });
-
-        setTimeout(() => {
-            console.log(`Relay status: ${this.relay.connected}`);
-        }, 2000);
     }
 
     emitToClient(traceData, type) {
