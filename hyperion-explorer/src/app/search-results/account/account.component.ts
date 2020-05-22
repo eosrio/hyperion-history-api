@@ -20,6 +20,7 @@ import {faVoteYea} from '@fortawesome/free-solid-svg-icons/faVoteYea';
 import {faQuestionCircle} from '@fortawesome/free-regular-svg-icons/faQuestionCircle';
 import {AccountCreationData} from '../../interfaces';
 import {max} from 'rxjs/operators';
+import {ChainService} from '../../services/chain.service';
 
 interface Permission {
   perm_name: string;
@@ -104,10 +105,12 @@ export class AccountComponent implements OnInit, OnDestroy {
     creator: undefined,
     timestamp: undefined
   };
+  systemTokenContract = 'eosio.token';
 
   constructor(
     private activatedRoute: ActivatedRoute,
-    public accountService: AccountService
+    public accountService: AccountService,
+    public chainData: ChainService
   ) {
 
     this.treeControl = new FlatTreeControl<FlatNode>(
@@ -155,8 +158,22 @@ export class AccountComponent implements OnInit, OnDestroy {
 
       this.accountName = routeParams.account_name;
       if (await this.accountService.loadAccountData(routeParams.account_name)) {
+
+        if (this.chainData.chainInfoData.custom_core_token !== '') {
+          const parts = this.chainData.chainInfoData.custom_core_token.split('::');
+          this.systemSymbol = parts[1];
+          this.systemTokenContract = parts[0];
+          const coreBalance = this.accountService.jsonData.tokens.find((v) => {
+            return v.symbol === this.systemSymbol && v.contract === this.systemTokenContract;
+          });
+          if (coreBalance) {
+            this.accountService.account.core_liquid_balance = coreBalance.amount + ' ' + this.systemSymbol;
+          }
+        } else {
+          this.systemSymbol = this.getSymbol(this.accountService.account.core_liquid_balance);
+        }
+
         this.systemPrecision = this.getPrecision(this.accountService.account.core_liquid_balance);
-        this.systemSymbol = this.getSymbol(this.accountService.account.core_liquid_balance);
         if (this.systemSymbol === null) {
           try {
             this.systemSymbol = this.getSymbol(this.accountService.account.total_resources.cpu_weight);

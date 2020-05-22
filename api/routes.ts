@@ -123,7 +123,8 @@ export function registerRoutes(server: FastifyInstance) {
                     provider: server.manager.config.api.provider_name,
                     provider_url: server.manager.config.api.provider_url,
                     chain_name: server.manager.config.api.chain_name,
-                    chain_id: server.manager.conn.chains[server.manager.chain].chain_id
+                    chain_id: server.manager.conn.chains[server.manager.chain].chain_id,
+                    custom_core_token: server.manager.config.api.custom_core_token
                 });
             });
     }
