@@ -166,7 +166,8 @@ export class AccountComponent implements OnInit, OnDestroy {
           this.title.setTitle(`${this.accountName} • ${this.chainData.chainInfoData.chain_name} Hyperion Explorer`);
         }
 
-        if (this.chainData.chainInfoData.custom_core_token !== '') {
+        const customCoreToken = this.chainData.chainInfoData.custom_core_token;
+        if (customCoreToken && customCoreToken !== '') {
           const parts = this.chainData.chainInfoData.custom_core_token.split('::');
           this.systemSymbol = parts[1];
           this.systemTokenContract = parts[0];
