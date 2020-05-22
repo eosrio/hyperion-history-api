@@ -5,6 +5,8 @@ import {faCircle} from "@fortawesome/free-solid-svg-icons/faCircle";
 import {faKey} from "@fortawesome/free-solid-svg-icons/faKey";
 import {faSadTear} from "@fortawesome/free-solid-svg-icons/faSadTear";
 import {faSpinner} from "@fortawesome/free-solid-svg-icons/faSpinner";
+import {ChainService} from '../../services/chain.service';
+import {Title} from '@angular/platform-browser';
 
 interface KeyResponse {
   account_names: string[];
@@ -28,13 +30,22 @@ export class KeyComponent implements OnInit {
   faSpinner = faSpinner;
 
   constructor(private activatedRoute: ActivatedRoute,
-              public accountService: AccountService) {
+              public accountService: AccountService,
+              public chainData: ChainService,
+              private title: Title) {
   }
 
   ngOnInit(): void {
     this.activatedRoute.params.subscribe(async (routeParams) => {
       this.pubKey = routeParams.key;
       this.key = await this.accountService.loadPubKey(routeParams.key) as KeyResponse;
+
+      if (!this.chainData.chainInfoData.chain_name) {
+        this.title.setTitle(`🔑 ${routeParams.key.slice(0, 12)} • Hyperion Explorer`);
+      } else {
+        this.title.setTitle(`🔑 ${routeParams.key.slice(0, 12)} • ${this.chainData.chainInfoData.chain_name} Hyperion Explorer`);
+      }
+
     });
   }
 

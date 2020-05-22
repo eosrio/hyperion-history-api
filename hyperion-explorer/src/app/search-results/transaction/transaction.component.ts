@@ -8,6 +8,8 @@ import {faHourglassStart} from '@fortawesome/free-solid-svg-icons/faHourglassSta
 import {faHistory} from '@fortawesome/free-solid-svg-icons/faHistory';
 import {faSadTear} from '@fortawesome/free-solid-svg-icons/faSadTear';
 import {faSpinner} from '@fortawesome/free-solid-svg-icons/faSpinner';
+import {ChainService} from '../../services/chain.service';
+import {Title} from '@angular/platform-browser';
 
 @Component({
   selector: 'app-transaction',
@@ -38,13 +40,23 @@ export class TransactionComponent implements OnInit, OnDestroy {
     }
   }
 
-  constructor(private activatedRoute: ActivatedRoute, public accountService: AccountService) {
+  constructor(private activatedRoute: ActivatedRoute,
+              public accountService: AccountService,
+              public chainData: ChainService,
+              private title: Title) {
   }
 
   ngOnInit() {
     this.activatedRoute.params.subscribe(async (routeParams) => {
       this.txID = routeParams.transaction_id;
       this.tx = await this.accountService.loadTxData(routeParams.transaction_id);
+
+      if (!this.chainData.chainInfoData.chain_name) {
+        this.title.setTitle(`TX ${routeParams.transaction_id.slice(0, 8)} • Hyperion Explorer`);
+      } else {
+        this.title.setTitle(`TX ${routeParams.transaction_id.slice(0, 8)} • ${this.chainData.chainInfoData.chain_name} Hyperion Explorer`);
+      }
+
       this.accountService.libNum = this.tx.lib;
       if (this.tx.actions[0].block_num > this.tx.lib) {
         await this.reloadCountdownTimer();

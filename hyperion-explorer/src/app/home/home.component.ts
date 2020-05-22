@@ -6,6 +6,8 @@ import {SearchService} from '../services/search.service';
 import {AccountService} from '../services/account.service';
 import {faSearch} from '@fortawesome/free-solid-svg-icons/faSearch';
 import {ChainService} from '../services/chain.service';
+import {HttpClient} from '@angular/common/http';
+import {Title} from '@angular/platform-browser';
 
 @Component({
   selector: 'app-home',
@@ -31,7 +33,8 @@ export class HomeComponent implements OnInit {
     private router: Router,
     private accountService: AccountService,
     private searchService: SearchService,
-    public chainData: ChainService
+    public chainData: ChainService,
+    private title: Title
   ) {
     this.searchForm = this.formBuilder.group({
       search_field: ['', Validators.required]
@@ -51,6 +54,9 @@ export class HomeComponent implements OnInit {
     this.searchForm.get('search_field').valueChanges.pipe(debounceTime(300)).subscribe(async (result) => {
       this.filteredAccounts = await this.searchService.filterAccountNames(result);
     });
+    if (this.chainData.chainInfoData.chain_name) {
+      this.title.setTitle(`${this.chainData.chainInfoData.chain_name} Hyperion Explorer`);
+    }
   }
 
   async submit() {

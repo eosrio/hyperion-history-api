@@ -19,8 +19,8 @@ import {MatPaginator, PageEvent} from '@angular/material/paginator';
 import {faVoteYea} from '@fortawesome/free-solid-svg-icons/faVoteYea';
 import {faQuestionCircle} from '@fortawesome/free-regular-svg-icons/faQuestionCircle';
 import {AccountCreationData} from '../../interfaces';
-import {max} from 'rxjs/operators';
 import {ChainService} from '../../services/chain.service';
+import {Title} from '@angular/platform-browser';
 
 interface Permission {
   perm_name: string;
@@ -110,7 +110,8 @@ export class AccountComponent implements OnInit, OnDestroy {
   constructor(
     private activatedRoute: ActivatedRoute,
     public accountService: AccountService,
-    public chainData: ChainService
+    public chainData: ChainService,
+    private title: Title
   ) {
 
     this.treeControl = new FlatTreeControl<FlatNode>(
@@ -158,6 +159,12 @@ export class AccountComponent implements OnInit, OnDestroy {
 
       this.accountName = routeParams.account_name;
       if (await this.accountService.loadAccountData(routeParams.account_name)) {
+
+        if (!this.chainData.chainInfoData.chain_name) {
+          this.title.setTitle(`${this.accountName} • Hyperion Explorer`);
+        } else {
+          this.title.setTitle(`${this.accountName} • ${this.chainData.chainInfoData.chain_name} Hyperion Explorer`);
+        }
 
         if (this.chainData.chainInfoData.custom_core_token !== '') {
           const parts = this.chainData.chainInfoData.custom_core_token.split('::');
