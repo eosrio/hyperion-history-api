@@ -24,7 +24,7 @@
         <mat-chip-list orientation="vertical">
           <mat-chip selected *ngIf="accountService.libNum > block['number']">
             <fa-icon [icon]="faLock" style="margin-right: 5px"></fa-icon>
-            Irrevesible
+            Irreversible
           </mat-chip>
           <mat-chip color="accent" selected *ngIf="accountService.libNum < block['number']">
             <fa-icon [icon]="faHourglass" style="margin-right: 5px"></fa-icon>
