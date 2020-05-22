@@ -266,8 +266,6 @@ export default class MainDSWorker extends HyperionWorker {
                                 trx_id: tx.id,
                                 status: tx.status
                             }, 'trx_error');
-                        } else {
-                            hLog(tx);
                         }
                     }
                 }
@@ -809,12 +807,6 @@ export default class MainDSWorker extends HyperionWorker {
             }
 
             return allowIndex;
-        }
-    }
-
-    async processDynamicTokenParsers(data) {
-        if (data.code === 'simpleassets') {
-            console.log(data);
         }
     }
 
@@ -1365,7 +1357,6 @@ export default class MainDSWorker extends HyperionWorker {
                         id: delta.data.id,
                         category: delta.data.category
                     }
-                    console.log(delta['@sassets']);
                 }
             }
         }
@@ -1376,7 +1367,7 @@ export default class MainDSWorker extends HyperionWorker {
                 // attempt forced deserialization
                 if (delta.value.length === 32) {
                     try {
-                        hLog(`Attempting forced deserialization for ${delta['code']}::accounts`);
+                        debugLog(`Attempting forced deserialization for ${delta['code']}::accounts`);
                         const sb = new Serialize.SerialBuffer({
                             textDecoder: new TextDecoder(),
                             textEncoder: new TextEncoder(),
