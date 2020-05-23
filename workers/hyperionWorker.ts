@@ -67,7 +67,8 @@ export abstract class HyperionWorker {
                     event: 'v8_heap_report',
                     id: process.env.worker_role + ':' + process.env.worker_id,
                     data: {
-                        heap_usage: (used_pct * 100).toFixed(2) + "%"
+                        heap_usage: (used_pct * 100).toFixed(2) + "%",
+                        ...report
                     }
                 });
                 return;
