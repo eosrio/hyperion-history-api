@@ -253,15 +253,21 @@ export default class MainDSWorker extends HyperionWorker {
                             case 1: {
                                 failedTrx.push({
                                     id: trx.trx[1],
-                                    status: trx.status
+                                    status: trx.status,
+                                    cpu: trx.cpu_usage_us,
+                                    net: trx.net_usage_words
                                 });
                                 break;
                             }
 
                             // hard_fail: objectively failed and error handler objectively failed thus no state change
                             case 2: {
-                                hLog('hard_fail', block_num);
-                                console.log(trx);
+                                failedTrx.push({
+                                    id: trx.trx[1],
+                                    status: trx.status,
+                                    cpu: trx.cpu_usage_us,
+                                    net: trx.net_usage_words
+                                });
                                 break;
                             }
 
