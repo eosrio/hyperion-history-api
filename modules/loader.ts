@@ -18,6 +18,10 @@ export class HyperionModuleLoader {
     constructor(private cm: ConfigurationModule) {
         this.conn = cm.connections;
         this.config = cm.config;
+        if (!this.conn.chains[this.config.settings.chain]) {
+            console.log('Chain  ' + this.config.settings.chain + ' not defined on connections.json!');
+            process.exit(0);
+        }
         this.chainID = this.conn.chains[this.config.settings.chain].chain_id;
         this.loadActionHandlers();
         this.loadParser().catch((err) => {

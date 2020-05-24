@@ -10,4 +10,4 @@ echo -e "\n-->> Starting $1..."
 echo -e "\n-->> Saving pm2 state..."
 (set -x; pm2 save)
 echo -e "\n-->> Reading $1 logs..."
-(set -x; pm2 logs --raw --lines 0 "$@")
+(set -x; pm2 logs --raw --lines 10 "$@")

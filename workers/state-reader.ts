@@ -31,6 +31,8 @@ export default class StateReader extends HyperionWorker {
     private currentIdx = 1;
     private receivedFirstBlock = false;
     private local_lib = 0;
+    private delay_block_processing = false;
+    private block_processing_delay = 100;
 
     constructor() {
         super();
@@ -43,9 +45,15 @@ export default class StateReader extends HyperionWorker {
             this.distribute(tasks, callback);
         }, this.conf.prefetch.read);
 
-        this.blockReadingQueue = cargo((tasks, callback) => {
+        this.blockReadingQueue = cargo((tasks, next) => {
             this.processIncomingBlocks(tasks).then(() => {
-                callback();
+                if (this.delay_block_processing) {
+                    setTimeout(() => {
+                        next();
+                    }, this.block_processing_delay);
+                } else {
+                    next();
+                }
             }).catch((err) => {
                 console.log('FATAL ERROR READING BLOCKS', err);
                 process.exit(1);
@@ -174,6 +182,22 @@ export default class StateReader extends HyperionWorker {
                         this.pendingRequest = [msg.data.first_block, msg.data.last_block];
                     }
                 }
+                break;
+            }
+            case 'pause': {
+                this.allowRequests = false;
+                break;
+            }
+            case 'resume': {
+                this.allowRequests = true;
+                if (this.pendingRequest) {
+                    this.processPending();
+                }
+                break;
+            }
+            case 'set_delay': {
+                this.delay_block_processing = msg.data.state;
+                this.block_processing_delay = msg.data.delay;
                 break;
             }
             case 'stop': {
@@ -471,7 +495,7 @@ export default class StateReader extends HyperionWorker {
                 checkArr.push(this.manager.checkQueueSize(q));
             }
             Promise.all(checkArr).then(data => {
-                if (data.some(el => el > this.conf.scaling.queue_limit)) {
+                if (data.some(el => el > this.conf.scaling.block_queue_limit)) {
                     this.allowRequests = false;
                 } else {
                     this.allowRequests = true;

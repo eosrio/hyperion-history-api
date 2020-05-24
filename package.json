@@ -1,6 +1,6 @@
 {
   "name": "hyperion-history",
-  "version": "3.0.0-beta.4",
+  "version": "3.0.1-beta.1",
   "description": "Scalable Full History API Solution for EOSIO based blockchains",
   "main": "launcher.js",
   "scripts": {
@@ -55,11 +55,11 @@
     "socket.io-redis": "5.2.0",
     "ws": "7.3.0",
     "yargs": "15.3.1",
-    "typescript": "3.9.2"
+    "typescript": "3.9.3"
   },
   "devDependencies": {
     "@types/ioredis": "4.16.2",
-    "@types/lodash": "4.14.151",
+    "@types/lodash": "4.14.152",
     "@types/amqplib": "0.5.13",
     "@types/async": "3.2.3",
     "@types/got": "9.6.11",

@@ -1,4 +1,8 @@
 export interface ScalingConfigs {
+    polling_interval: number;
+    resume_trigger: number;
+    max_queue_limit: number;
+    block_queue_limit: number;
     routing_mode: string;
     batch_size: number;
     queue_limit: number;
@@ -110,7 +114,11 @@ export interface HyperionConfig {
         },
         index_deltas: boolean,
         index_transfer_memo: boolean,
-        index_all_deltas: boolean
+        index_all_deltas: boolean,
+        deferred_trx: boolean,
+        failed_trx: boolean,
+        resource_usage: boolean,
+        resource_limits: boolean,
     };
 
     prefetch: {

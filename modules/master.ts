@@ -34,10 +34,10 @@ import * as cluster from "cluster";
 import {Worker} from "cluster";
 import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
-import moment = require("moment");
-import Timeout = NodeJS.Timeout;
 
 import {AsyncQueue, queue} from "async";
+import moment = require("moment");
+import Timeout = NodeJS.Timeout;
 
 export class HyperionMaster {
 
@@ -86,7 +86,6 @@ export class HyperionMaster {
     private lastProducer: string = null;
     private handoffCounter: number = 0;
     private missedRounds: object = {};
-    private blockMsgQueue: any[] = [];
 
     // IPC Messaging
     private totalMessages = 0;
@@ -134,6 +133,7 @@ export class HyperionMaster {
     private proposedSchedule: any;
     private wsRouterWorker: cluster.Worker;
     private liveBlockQueue: AsyncQueue<any>;
+    private readingPaused = false;
 
 
     constructor() {
@@ -1140,17 +1140,65 @@ export class HyperionMaster {
         }, 5000);
     }
 
-    private monitorIndexingQueues() {
-        const limit = this.conf.scaling.auto_scale_trigger;
-        const autoscaleConsumers = {};
-        setInterval(async () => {
-            const testedQueues = new Set();
-            for (const worker of this.workerMap) {
-                if (worker.worker_role === 'ingestor') {
-                    const queue = worker.queue;
-                    if (!testedQueues.has(queue)) {
-                        testedQueues.add(queue);
-                        const size = await this.manager.checkQueueSize(queue);
+    private async checkQueues(autoscaleConsumers, limit) {
+        const testedQueues = new Set();
+        for (const worker of this.workerMap) {
+            let queue = worker.queue;
+
+            if (worker.worker_role === 'ds_pool_worker') {
+                queue = `${this.chain}:ds_pool:${worker.local_id}`;
+            }
+
+            if (queue) {
+                if (!testedQueues.has(queue)) {
+                    testedQueues.add(queue);
+                    const size = await this.manager.checkQueueSize(queue);
+
+
+                    // pause readers if queues are above the max_limit
+                    if (size >= this.conf.scaling.max_queue_limit) {
+                        this.readingPaused = true;
+                        for (const worker of this.workerMap) {
+                            if (worker.worker_role === 'reader') {
+                                worker.wref.send({event: 'pause'});
+                            }
+                        }
+                    }
+
+                    // resume readers if the queues are below the trigger point
+                    if ((this.readingPaused && size <= this.conf.scaling.resume_trigger)) {
+                        this.readingPaused = false;
+                        for (const worker of this.workerMap) {
+                            if (worker.worker_role === 'reader') {
+                                worker.wref.send({event: 'pause'});
+                                worker.wref.send({
+                                    event: 'set_delay',
+                                    data: {
+                                        state: false,
+                                        delay: 0
+                                    }
+                                });
+                            }
+                        }
+                    }
+
+                    // apply block processing delay if 20% below max
+                    if (size >= this.conf.scaling.max_queue_limit * 0.8) {
+                        for (const worker of this.workerMap) {
+                            if (worker.worker_role === 'reader') {
+                                worker.wref.send({
+                                    event: 'set_delay',
+                                    data: {
+                                        state: true,
+                                        delay: 500
+                                    }
+                                });
+                            }
+                        }
+                    }
+
+
+                    if (worker.worker_role === 'ingestor') {
                         if (size > limit) {
                             if (!autoscaleConsumers[queue]) {
                                 autoscaleConsumers[queue] = 0;
@@ -1164,14 +1212,24 @@ export class HyperionMaster {
                                 });
                                 this.launchWorkers();
                                 autoscaleConsumers[queue]++;
-                            } else {
-                                // hLog(`WARN: Max consumer limit reached on ${queue}!`);
                             }
                         }
                     }
                 }
             }
-        }, 20000);
+        }
+    }
+
+    private monitorIndexingQueues() {
+        const limit = this.conf.scaling.auto_scale_trigger;
+        const autoscaleConsumers = {};
+        this.checkQueues(autoscaleConsumers, limit).catch(console.log);
+        if (!this.conf.scaling.polling_interval) {
+            this.conf.scaling.polling_interval = 20000;
+        }
+        setInterval(async () => {
+            await this.checkQueues(autoscaleConsumers, limit);
+        }, this.conf.scaling.polling_interval);
     }
 
     private onPm2Stop() {
@@ -1350,6 +1408,22 @@ export class HyperionMaster {
 
     async runMaster() {
 
+        // config checks
+        if (!this.conf.scaling.max_queue_limit) {
+            hLog(`scaling.max_queue_limit is not defined!`);
+            process.exit(1);
+        }
+
+        if (!this.conf.scaling.resume_trigger) {
+            hLog(`scaling.resume_trigger is not defined!`);
+            process.exit(1);
+        }
+
+        if (!this.conf.scaling.block_queue_limit) {
+            hLog(`scaling.block_queue_limit is not defined!`);
+            process.exit(1);
+        }
+
         this.printMode();
 
         // Preview mode - prints only the proposed worker map
@@ -1365,7 +1439,7 @@ export class HyperionMaster {
             this.printActiveProds();
         }
 
-        // ELasticsearch
+        // Elasticsearch
         this.client = this.manager.elasticsearchClient;
         try {
             const esInfo = await this.client.info();

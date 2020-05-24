@@ -93,6 +93,7 @@ export default class MainDSWorker extends HyperionWorker {
         });
 
         this.populateTableHandlers();
+
     }
 
     async run(): Promise<void> {
@@ -130,11 +131,6 @@ export default class MainDSWorker extends HyperionWorker {
             case 'update_pool_map': {
                 this.dsPoolMap = msg.data;
                 break;
-            }
-            default: {
-                hLog('-----------> IPC Message <--------------');
-                hLog(msg);
-                hLog('----------------------------------------');
             }
         }
     }
@@ -246,13 +242,47 @@ export default class MainDSWorker extends HyperionWorker {
                 const failedTrx = [];
 
                 block.transactions.forEach((trx) => {
+
                     total_cpu += trx['cpu_usage_us'];
                     total_net += trx['net_usage_words'];
-                    if (trx.status !== 0) {
-                        failedTrx.push({
-                            id: trx.trx[1],
-                            status: trx.status
-                        });
+
+                    if (this.conf.features.failed_trx) {
+                        switch (trx.status) {
+
+                            // soft_fail: objectively failed (not executed), error handler executed
+                            case 1: {
+                                failedTrx.push({
+                                    id: trx.trx[1],
+                                    status: trx.status
+                                });
+                                break;
+                            }
+
+                            // hard_fail: objectively failed and error handler objectively failed thus no state change
+                            case 2: {
+                                hLog('hard_fail', block_num);
+                                console.log(trx);
+                                break;
+                            }
+
+                            // delayed: transaction delayed/deferred/scheduled for future execution
+                            // case 3: {
+                            //     hLog('delayed', block_num);
+                            //     console.log(trx);
+                            //     const unpackedTrx = this.api.deserializeTransaction(Buffer.from(trx.trx[1].packed_trx, 'hex'));
+                            //     console.log(unpackedTrx);
+                            //     break;
+                            // }
+
+                            // expired: transaction expired and storage space refunded to user
+                            case 4: {
+                                failedTrx.push({
+                                    id: trx.trx[1],
+                                    status: trx.status
+                                });
+                                break;
+                            }
+                        }
                     }
                 });
 
@@ -260,12 +290,13 @@ export default class MainDSWorker extends HyperionWorker {
                 if (failedTrx.length > 0) {
                     for (const tx of failedTrx) {
                         if (typeof tx.id === 'string') {
-                            this.pushToIndexQueue({
+                            const payload = {
                                 "@timestamp": ts,
                                 "block_num": block_num,
                                 trx_id: tx.id,
                                 status: tx.status
-                            }, 'trx_error');
+                            };
+                            this.pushToIndexQueue(payload, 'trx_error');
                         }
                     }
                 }
@@ -849,6 +880,22 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
+    private anyFromSender(gen_trx: any) {
+        return this.chain + '::' + gen_trx.sender + '::*';
+    }
+
+    checkDeltaBlacklistForGenTrx(gen_trx) {
+        if (this.filters.delta_blacklist.has(this.anyFromSender(gen_trx))) {
+            return true;
+        }
+    }
+
+    checkDeltaWhitelistForGenTrx(gen_trx) {
+        if (this.filters.delta_whitelist.has(this.anyFromSender(gen_trx))) {
+            return true;
+        }
+    }
+
     deltaStructHandlers = {
 
         "contract_row": async (payload, block_num, block_ts, row) => {
@@ -976,7 +1023,20 @@ export default class MainDSWorker extends HyperionWorker {
 
         // Deferred Transactions
         "generated_transaction": async (generated_transaction: any, block_num, block_ts) => {
-            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.deferred_trx) {
+
+                // check delta blacklist chain::code::table
+                if (this.checkDeltaBlacklistForGenTrx(generated_transaction)) {
+                    return false;
+                }
+
+                // check delta whitelist chain::code::table
+                if (this.filters.delta_whitelist.size > 0) {
+                    if (!this.checkDeltaWhitelistForGenTrx(generated_transaction)) {
+                        return false;
+                    }
+                }
+
                 const unpackedTrx = this.api.deserializeTransaction(Buffer.from(generated_transaction.packed_trx, 'hex'));
                 for (const action of unpackedTrx.actions) {
                     const act_data = await this.deserializeActionAtBlockNative(action, block_num);
@@ -984,7 +1044,8 @@ export default class MainDSWorker extends HyperionWorker {
                         action.data = act_data;
                     }
                 }
-                this.pushToIndexQueue({
+
+                const genTxPayload = {
                     '@timestamp': block_ts,
                     block_num: block_num,
                     sender: generated_transaction.sender,
@@ -993,14 +1054,16 @@ export default class MainDSWorker extends HyperionWorker {
                     trx_id: generated_transaction.trx_id.toLowerCase(),
                     actions: unpackedTrx.actions,
                     packed_trx: generated_transaction.packed_trx
-                }, 'generated_transaction');
+                };
+
+                this.pushToIndexQueue(genTxPayload, 'generated_transaction');
             }
         },
 
 
         // Account resource updates
         "resource_limits": async (resource_limits, block_num, block_ts) => {
-            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.resource_limits) {
                 const cpu = parseInt(resource_limits.cpu_weight);
                 const net = parseInt(resource_limits.net_weight);
                 this.pushToIndexQueue({
@@ -1024,7 +1087,7 @@ export default class MainDSWorker extends HyperionWorker {
         // },
 
         "resource_usage": async (resource_usage, block_num, block_ts, row) => {
-            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+            if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.resource_usage) {
                 const net_used = parseInt(resource_usage.net_usage[1].consumed);
                 const net_total = parseInt(resource_usage.net_usage[1].value_ex);
                 let net_pct = 0.0;
@@ -1106,11 +1169,32 @@ export default class MainDSWorker extends HyperionWorker {
                     // const tRef = process.hrtime.bigint();
 
                     for (const row of deltaStruct[key]) {
-                        const data = this.deserializeNative(key, row.data);
-                        try {
-                            await this.deltaStructHandlers[key](data[1], block_num, block_ts, row);
-                        } catch (e) {
-                            hLog(`Delta struct deserialization error: ${e.message}`);
+                        let data = this.deserializeNative(key, row.data);
+
+                        if (!data) {
+                            try {
+                                data = this.types.get(key).deserialize(
+                                    new Serialize.SerialBuffer({
+                                        textEncoder: this.txEnc,
+                                        textDecoder: this.txDec,
+                                        array: Buffer.from(row.data, 'hex')
+                                    }),
+                                    new Serialize.SerializerState({
+                                        bytesAsUint8Array: true
+                                    }));
+                            } catch (e) {
+                                hLog(`Delta struct [${key}] deserialization error: ${e.message}`);
+                                hLog(row.data);
+                            }
+                        }
+
+                        if (data) {
+                            try {
+                                await this.deltaStructHandlers[key](data[1], block_num, block_ts, row);
+                            } catch (e) {
+                                hLog(`Delta struct [${key}] processing error: ${e.message}`);
+                                hLog(data);
+                            }
                         }
                     }
 

@@ -45,17 +45,20 @@
     "deltas": []
   },
   "scaling": {
-    "batch_size": 10000,
-    "queue_limit": 50000,
-    "readers": 1,
-    "ds_queues": 1,
-    "ds_threads": 1,
-    "ds_pool_size": 1,
-    "indexing_queues": 1,
-    "ad_idx_queues": 1,
-    "max_autoscale": 4,
+    "readers":            1,
+    "ds_queues":          1,
+    "ds_threads":         1,
+    "ds_pool_size":       1,
+    "indexing_queues":    1,
+    "ad_idx_queues":      1,
+    "max_autoscale":      4,
+    "batch_size":         5000,
+    "resume_trigger":     5000,
     "auto_scale_trigger": 20000,
-    "routing_mode": "heatmap"
+    "block_queue_limit":  10000,
+    "max_queue_limit":    100000,
+    "routing_mode":       "heatmap",
+    "polling_interval":   10000
   },
   "indexer": {
     "start_on": 0,
@@ -84,8 +87,12 @@
       "voters": true
     },
     "index_deltas": true,
-    "index_transfer_memo": true,
-    "index_all_deltas": true
+    "index_transfer_memo": false,
+    "index_all_deltas": true,
+    "deferred_trx": false,
+    "failed_trx": true,
+    "resource_limits": false,
+    "resource_usage": false
   },
   "prefetch": {
     "read": 50,
