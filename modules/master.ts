@@ -1190,7 +1190,7 @@ export class HyperionMaster {
                                     event: 'set_delay',
                                     data: {
                                         state: true,
-                                        delay: 500
+                                        delay: 250
                                     }
                                 });
                             }

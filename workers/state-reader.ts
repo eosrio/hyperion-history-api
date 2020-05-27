@@ -34,6 +34,8 @@ export default class StateReader extends HyperionWorker {
     private delay_block_processing = false;
     private block_processing_delay = 100;
 
+    // private tempBlockSizeSum = 0;
+
     constructor() {
         super();
 
@@ -60,14 +62,29 @@ export default class StateReader extends HyperionWorker {
             })
         }, this.conf.prefetch.read);
 
+        if (this.conf.indexer.abi_scan_mode) {
+            this.conf.indexer.fetch_deltas = true;
+        }
+
+        if (typeof this.conf.indexer.fetch_deltas === 'undefined') {
+            this.conf.indexer.fetch_deltas = true;
+        }
+
         this.baseRequest = {
             max_messages_in_flight: this.conf.prefetch.read,
             have_positions: [],
             irreversible_only: false,
             fetch_block: this.conf.indexer.fetch_block,
             fetch_traces: this.conf.indexer.fetch_traces,
-            fetch_deltas: true
+            fetch_deltas: this.conf.indexer.fetch_deltas
         };
+
+        // setInterval(() => {
+        //     if (this.tempBlockSizeSum > 0) {
+        //         hLog(`Block reading rate: ${((this.tempBlockSizeSum / 10) / 1000000).toFixed(2)} MB/s`);
+        //         this.tempBlockSizeSum = 0;
+        //     }
+        // }, 10000);
     }
 
     distribute(data, cb) {
@@ -269,6 +286,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private async onMessage(data: any) {
+        // this.tempBlockSizeSum += data.length;
         if (this.abi) {
 
             // NORMAL OPERATION MODE WITH ABI PRESENT

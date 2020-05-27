@@ -42,6 +42,7 @@ export interface IndexerConfigs {
     abi_scan_mode: boolean;
     fetch_block: boolean;
     fetch_traces: boolean;
+    fetch_deltas: boolean;
     disable_reading: boolean;
     disable_indexing: boolean;
     process_deltas: boolean;
