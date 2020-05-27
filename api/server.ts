@@ -159,7 +159,7 @@ class HyperionApiServer {
             });
             console.log(`server listening on ${(this.fastify.server.address() as AddressInfo).port}`);
         } catch (err) {
-            this.fastify.log.error(err);
+            console.log(err);
             process.exit(1)
         }
     }
