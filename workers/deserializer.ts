@@ -338,26 +338,31 @@ export default class MainDSWorker extends HyperionWorker {
             }
 
             // Process Action Traces
-            let _traces = traces;
-            if (traces["valueForKeyPath"]) {
-                _traces = traces['valueForKeyPath'](".");
-            }
+            let _traces = [];
+            if (traces && this.conf.indexer.fetch_traces) {
 
-            if (_traces.length > 0 && this.conf.indexer.fetch_traces) {
-                for (const trace of _traces) {
-                    if (trace[1] && trace[1].action_traces.length > 0) {
-                        const inline_count = trace[1].action_traces.length;
-                        let filtered = false;
-                        if (this.conf.indexer.max_inline && inline_count > this.conf.indexer.max_inline) {
-                            trace[1].action_traces = trace[1].action_traces.slice(0, this.conf.indexer.max_inline);
-                            filtered = true;
-                        }
-                        try {
-                            this.routeToPool(trace[1], {block_num, producer, ts, inline_count, filtered});
-                        } catch (e) {
-                            hLog(e);
-                            hLog(block_num);
-                            hLog(trace[1]);
+                if (traces["valueForKeyPath"]) {
+                    _traces = traces['valueForKeyPath'](".");
+                } else {
+                    _traces = traces;
+                }
+
+                if (_traces.length > 0 && this.conf.indexer.fetch_traces) {
+                    for (const trace of _traces) {
+                        if (trace[1] && trace[1].action_traces.length > 0) {
+                            const inline_count = trace[1].action_traces.length;
+                            let filtered = false;
+                            if (this.conf.indexer.max_inline && inline_count > this.conf.indexer.max_inline) {
+                                trace[1].action_traces = trace[1].action_traces.slice(0, this.conf.indexer.max_inline);
+                                filtered = true;
+                            }
+                            try {
+                                this.routeToPool(trace[1], {block_num, producer, ts, inline_count, filtered});
+                            } catch (e) {
+                                hLog(e);
+                                hLog(block_num);
+                                hLog(trace[1]);
+                            }
                         }
                     }
                 }
@@ -367,7 +372,10 @@ export default class MainDSWorker extends HyperionWorker {
             if (this.conf.indexer.fetch_block) {
                 this.pushToBlocksQueue(light_block);
             }
-            return {block_num: res['this_block']['block_num'], size: traces.length};
+            return {
+                block_num: res['this_block']['block_num'],
+                size: _traces.length
+            };
         }
     }
 
