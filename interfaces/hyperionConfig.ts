@@ -77,13 +77,21 @@ interface ApiConfigs {
     server_name: string;
     provider_name: string;
     provider_url: string;
+    provider_logo: string;
     chain_logo_url: string;
     enable_caching: boolean,
     cache_life: number;
     limits: ApiLimits
 }
 
+interface HyperionHubConfigs {
+    production: boolean;
+    publisher_key: string;
+    inform_url: string;
+}
+
 export interface HyperionConfig {
+    hub: HyperionHubConfigs;
     settings: MainSettings;
     scaling: ScalingConfigs;
     indexer: IndexerConfigs;

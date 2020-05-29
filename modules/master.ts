@@ -32,6 +32,7 @@ import {
 import * as path from "path";
 import * as cluster from "cluster";
 import {Worker} from "cluster";
+import * as io from 'socket.io-client';
 import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 
@@ -134,6 +135,7 @@ export class HyperionMaster {
     private wsRouterWorker: cluster.Worker;
     private liveBlockQueue: AsyncQueue<any>;
     private readingPaused = false;
+    private hub: SocketIOClient.Socket;
 
 
     constructor() {
@@ -282,9 +284,17 @@ export class HyperionMaster {
                 }
             },
             'lib_update': (msg: any) => {
-                if (msg.data && this.conf.features.streaming.enable) {
-                    debugLog(`Live Reader reported LIB update: ${msg.data.block_num} | ${msg.data.block_id}`);
-                    this.wsRouterWorker.send(msg);
+                // publish LIB to hub
+                if (msg.data) {
+
+                    if (this.conf.hub.inform_url) {
+                        this.hub.emit('hyp_ev', {e: 'lib', d: msg.data});
+                    }
+
+                    if (this.conf.features.streaming.enable) {
+                        debugLog(`Live Reader reported LIB update: ${msg.data.block_num} | ${msg.data.block_id}`);
+                        this.wsRouterWorker.send(msg);
+                    }
                 }
             },
             'fork_event': (msg: any) => {
@@ -1283,9 +1293,16 @@ export class HyperionMaster {
             }
             const log_msg = [];
             log_msg.push(`W:${_workers}`);
-            log_msg.push(`R:${(this.pushedBlocks + this.livePushedBlocks) / tScale}`);
-            log_msg.push(`C:${(this.liveConsumedBlocks + this.consumedBlocks) / tScale}`);
-            log_msg.push(`A:${(this.deserializedActions) / tScale}`);
+
+            const _r = (this.pushedBlocks + this.livePushedBlocks) / tScale;
+            log_msg.push(`R:${_r}`);
+
+            const _c = (this.liveConsumedBlocks + this.consumedBlocks) / tScale;
+            log_msg.push(`C:${_c}`);
+
+            const _a = (this.deserializedActions) / tScale;
+            log_msg.push(`A:${_a}`);
+
             log_msg.push(`D:${(this.deserializedDeltas) / tScale}`);
             log_msg.push(`I:${this.indexedObjects / tScale}`);
 
@@ -1314,6 +1331,14 @@ export class HyperionMaster {
                 if (!this.conf.indexer.live_reader) {
                     process.exit();
                 }
+            }
+
+            // publish log to hub
+            if (this.conf.hub.inform_url) {
+                this.hub.emit('hyp_ev', {
+                    e: 'rates',
+                    d: {r: _r, c: _c, a: _a}
+                });
             }
 
             // print monitoring log
@@ -1404,6 +1429,31 @@ export class HyperionMaster {
             const div = '──────────────────';
             console.log(`\n ⛏  Active Producers\n┌${div}┐\n${arr.join('\n')}\n└${div}┘`);
         }
+    }
+
+    startHyperionHub() {
+        const url = this.conf.hub.inform_url;
+        hLog(`Connecting to Hyperion Hub...`);
+        this.hub = io(url, {
+            query: {
+                key: this.conf.hub.publisher_key,
+                client_mode: false
+            }
+        });
+        this.hub.on('connect', () => {
+            hLog(`Hyperion Hub connected!`);
+            this.hub.emit('hyp_info', {
+                production: this.conf.hub.production,
+                chainId: this.chain_data.chain_id,
+                providerName: this.conf.api.provider_name,
+                providerUrl: this.conf.api.provider_url,
+                providerLogo: this.conf.api.provider_logo,
+                chainCodename: this.chain,
+                chainName: this.conf.api.chain_name,
+                endpoint: this.conf.api.server_name,
+                features: this.conf.features
+            });
+        });
     }
 
     async runMaster() {
@@ -1593,6 +1643,14 @@ export class HyperionMaster {
         this.startContractMonitoring();
         this.monitorIndexingQueues();
         this.onPm2Stop();
+
+        if (this.conf.hub) {
+            try {
+                this.startHyperionHub();
+            } catch (e) {
+                hLog(e);
+            }
+        }
 
         pm2io.action('get_usage_map', (reply) => {
             reply(this.globalUsageMap);
