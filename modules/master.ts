@@ -287,7 +287,7 @@ export class HyperionMaster {
                 // publish LIB to hub
                 if (msg.data) {
 
-                    if (this.conf.hub.inform_url) {
+                    if (this.conf.hub && this.conf.hub.inform_url) {
                         this.hub.emit('hyp_ev', {e: 'lib', d: msg.data});
                     }
 
@@ -1334,7 +1334,7 @@ export class HyperionMaster {
             }
 
             // publish log to hub
-            if (this.conf.hub.inform_url) {
+            if (this.conf.hub && this.conf.hub.inform_url) {
                 this.hub.emit('hyp_ev', {
                     e: 'rates',
                     d: {r: _r, c: _c, a: _a}
@@ -1432,28 +1432,30 @@ export class HyperionMaster {
     }
 
     startHyperionHub() {
-        const url = this.conf.hub.inform_url;
-        hLog(`Connecting to Hyperion Hub...`);
-        this.hub = io(url, {
-            query: {
-                key: this.conf.hub.publisher_key,
-                client_mode: false
-            }
-        });
-        this.hub.on('connect', () => {
-            hLog(`Hyperion Hub connected!`);
-            this.hub.emit('hyp_info', {
-                production: this.conf.hub.production,
-                chainId: this.chain_data.chain_id,
-                providerName: this.conf.api.provider_name,
-                providerUrl: this.conf.api.provider_url,
-                providerLogo: this.conf.api.provider_logo,
-                chainCodename: this.chain,
-                chainName: this.conf.api.chain_name,
-                endpoint: this.conf.api.server_name,
-                features: this.conf.features
+        if (this.conf.hub) {
+            const url = this.conf.hub.inform_url;
+            hLog(`Connecting to Hyperion Hub...`);
+            this.hub = io(url, {
+                query: {
+                    key: this.conf.hub.publisher_key,
+                    client_mode: false
+                }
             });
-        });
+            this.hub.on('connect', () => {
+                hLog(`Hyperion Hub connected!`);
+                this.hub.emit('hyp_info', {
+                    production: this.conf.hub.production,
+                    chainId: this.chain_data.chain_id,
+                    providerName: this.conf.api.provider_name,
+                    providerUrl: this.conf.api.provider_url,
+                    providerLogo: this.conf.api.provider_logo,
+                    chainCodename: this.chain,
+                    chainName: this.conf.api.chain_name,
+                    endpoint: this.conf.api.server_name,
+                    features: this.conf.features
+                });
+            });
+        }
     }
 
     async runMaster() {
