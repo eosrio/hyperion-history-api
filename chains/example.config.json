@@ -30,11 +30,11 @@
     "auto_stop": 300,
     "index_version": "v1",
     "debug": false,
-    "rate_monitoring": true,
     "bp_logs": false,
     "bp_monitoring": false,
     "ipc_debug_rate": 60000,
-    "allow_custom_abi": false
+    "allow_custom_abi": false,
+    "rate_monitoring": true
   },
   "blacklists": {
     "actions": [],

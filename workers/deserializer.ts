@@ -357,7 +357,14 @@ export default class MainDSWorker extends HyperionWorker {
                                 filtered = true;
                             }
                             try {
-                                this.routeToPool(trace[1], {block_num, producer, ts, inline_count, filtered});
+                                this.routeToPool(trace[1], {
+                                    block_num,
+                                    producer,
+                                    ts,
+                                    inline_count,
+                                    filtered,
+                                    live: process.env['live_mode']
+                                });
                             } catch (e) {
                                 hLog(e);
                                 hLog(block_num);
@@ -816,6 +823,10 @@ export default class MainDSWorker extends HyperionWorker {
         return row;
     }
 
+    isAsync(fun) {
+        return fun.constructor.name === 'AsyncFunction';
+    }
+
     async processTableDelta(data) {
 
         if (data['table']) {
@@ -823,22 +834,36 @@ export default class MainDSWorker extends HyperionWorker {
             let allowIndex;
             let handled = false;
             const key = `${data.code}:${data.table}`;
+            const key2 = `${data.code}:*`;
+            const key3 = `*:${data.table}`;
 
             // strict code::table handlers
             if (this.tableHandlers[key]) {
-                await this.tableHandlers[key](data);
+                if (this.isAsync(this.tableHandlers[key])) {
+                    await this.tableHandlers[key](data);
+                } else {
+                    this.tableHandlers[key](data);
+                }
                 handled = true;
             }
 
             // generic code handlers
-            if (this.tableHandlers[`${data.code}:*`]) {
-                await this.tableHandlers[`${data.code}:*`](data);
+            if (this.tableHandlers[key2]) {
+                if (this.isAsync(this.tableHandlers[key2])) {
+                    await this.tableHandlers[key2](data);
+                } else {
+                    this.tableHandlers[key2](data);
+                }
                 handled = true;
             }
 
             // generic table handlers
-            if (this.tableHandlers[`*:${data.table}`]) {
-                await this.tableHandlers[`*:${data.table}`](data);
+            if (this.tableHandlers[key3]) {
+                if (this.isAsync(this.tableHandlers[key3])) {
+                    await this.tableHandlers[key3](data);
+                } else {
+                    this.tableHandlers[key3](data);
+                }
                 handled = true;
             }
 
@@ -942,7 +967,9 @@ export default class MainDSWorker extends HyperionWorker {
                         const payload = Buffer.from(JSON.stringify(jsonRow));
                         this.pushToDeltaQueue(payload, block_num);
                         this.temp_delta_counter++;
-                        this.pushToDeltaStreamingQueue(payload, jsonRow);
+                        if (process.env['live_mode'] === 'true') {
+                            this.pushToDeltaStreamingQueue(payload, jsonRow);
+                        }
                     }
                 }
             }
@@ -1249,7 +1276,7 @@ export default class MainDSWorker extends HyperionWorker {
         return null;
     }
 
-    async storeProposal(data) {
+    storeProposal(data) {
         const proposalDoc = {
             proposer: data['scope'],
             proposal_name: data['@approvals']['proposal_name'],
@@ -1272,7 +1299,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async storeVoter(data) {
+    storeVoter(data) {
         if (data['@voters']) {
             const voterDoc: any = {
                 "voter": data['payer'],
@@ -1303,7 +1330,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async storeAccount(data) {
+    storeAccount(data) {
         const accountDoc = {
             "code": data['code'],
             "scope": data['scope'],
@@ -1333,7 +1360,7 @@ export default class MainDSWorker extends HyperionWorker {
     private populateTableHandlers() {
 
         const EOSIO_ALIAS = this.conf.settings.eosio_alias;
-        this.tableHandlers[EOSIO_ALIAS + ':voters'] = async (delta) => {
+        this.tableHandlers[EOSIO_ALIAS + ':voters'] = (delta) => {
             delta['@voters'] = {};
             delta['@voters']['is_proxy'] = delta.data['is_proxy'];
             delete delta.data['is_proxy'];
@@ -1353,16 +1380,16 @@ export default class MainDSWorker extends HyperionWorker {
             delta['@voters']['staked'] = parseInt(delta.data['staked'], 10) / 10000;
             delete delta.data['staked'];
             if (this.conf.features.tables.voters) {
-                await this.storeVoter(delta);
+                this.storeVoter(delta);
             }
         };
 
-        this.tableHandlers[EOSIO_ALIAS + ':global'] = async (delta) => {
+        this.tableHandlers[EOSIO_ALIAS + ':global'] = (delta) => {
             delta['@global'] = delta['data'];
             delete delta['data'];
         };
 
-        this.tableHandlers[EOSIO_ALIAS + ':producers'] = async (delta) => {
+        this.tableHandlers[EOSIO_ALIAS + ':producers'] = (delta) => {
             const data = delta['data'];
             delta['@producers'] = {
                 total_votes: parseFloat(data['total_votes']),
@@ -1372,7 +1399,7 @@ export default class MainDSWorker extends HyperionWorker {
             delete delta['data'];
         };
 
-        this.tableHandlers[EOSIO_ALIAS + ':userres'] = async (delta) => {
+        this.tableHandlers[EOSIO_ALIAS + ':userres'] = (delta) => {
             const data = delta['data'];
             const net = parseFloat(data['net_weight'].split(" ")[0]);
             const cpu = parseFloat(data['cpu_weight'].split(" ")[0]);
@@ -1386,7 +1413,7 @@ export default class MainDSWorker extends HyperionWorker {
             delete delta['data'];
         };
 
-        this.tableHandlers[EOSIO_ALIAS + ':delband'] = async (delta) => {
+        this.tableHandlers[EOSIO_ALIAS + ':delband'] = (delta) => {
             const data = delta['data'];
             const net = parseFloat(data['net_weight'].split(" ")[0]);
             const cpu = parseFloat(data['cpu_weight'].split(" ")[0]);
@@ -1415,7 +1442,7 @@ export default class MainDSWorker extends HyperionWorker {
             delete delta['data'];
         };
 
-        this.tableHandlers[EOSIO_ALIAS + '.msig:approvals'] = async (delta) => {
+        this.tableHandlers[EOSIO_ALIAS + '.msig:approvals'] = (delta) => {
             delta['@approvals'] = {
                 proposal_name: delta['data']['proposal_name'],
                 requested_approvals: delta['data']['requested_approvals'],
@@ -1423,11 +1450,11 @@ export default class MainDSWorker extends HyperionWorker {
             };
             delete delta['data'];
             if (this.conf.features.tables.proposals) {
-                await this.storeProposal(delta);
+                this.storeProposal(delta);
             }
         };
 
-        this.tableHandlers[EOSIO_ALIAS + '.msig:approvals2'] = async (delta) => {
+        this.tableHandlers[EOSIO_ALIAS + '.msig:approvals2'] = (delta) => {
             delta['@approvals'] = {
                 proposal_name: delta['data']['proposal_name'],
                 requested_approvals: delta['data']['requested_approvals'].map((item) => {
@@ -1438,11 +1465,11 @@ export default class MainDSWorker extends HyperionWorker {
                 })
             };
             if (this.conf.features.tables.proposals) {
-                await this.storeProposal(delta);
+                this.storeProposal(delta);
             }
         };
 
-        this.tableHandlers['simpleassets:sassets'] = async (delta) => {
+        this.tableHandlers['simpleassets:sassets'] = (delta) => {
             if (delta.data) {
                 if (delta.data.mdata) {
                     delta['@sassets'] = {
@@ -1458,7 +1485,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         }
 
-        this.tableHandlers['*:accounts'] = async (delta) => {
+        this.tableHandlers['*:accounts'] = (delta) => {
 
             if (!delta.data) {
                 // attempt forced deserialization
@@ -1495,7 +1522,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
 
             if (this.conf.features.tables.accounts) {
-                await this.storeAccount(delta);
+                this.storeAccount(delta);
             }
         };
     }
