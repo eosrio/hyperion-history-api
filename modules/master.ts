@@ -955,12 +955,14 @@ export class HyperionMaster {
                 ws_router: ''
             });
 
-            // live deserializer
-            this.addWorker({
-                worker_role: 'deserializer',
-                worker_queue: this.chain + ':live_blocks',
-                live_mode: 'true'
-            });
+            // live deserializers
+            for (let j = 0; j < this.conf.scaling.ds_threads; j++) {
+                this.addWorker({
+                    worker_role: 'deserializer',
+                    worker_queue: this.chain + ':live_blocks',
+                    live_mode: 'true'
+                });
+            }
         }
     }
 
