@@ -1452,7 +1452,11 @@ export class HyperionMaster {
                     chainCodename: this.chain,
                     chainName: this.conf.api.chain_name,
                     endpoint: this.conf.api.server_name,
-                    features: this.conf.features
+                    features: this.conf.features,
+                    filters: {
+                        blacklists: this.conf.blacklists,
+                        whitelists: this.conf.whitelists
+                    }
                 });
             });
         }

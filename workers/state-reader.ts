@@ -320,7 +320,12 @@ export default class StateReader extends HyperionWorker {
                             // LIVE READER MODE
                             if (blk_num !== this.local_block_num + 1) {
                                 hLog(`Expected: ${this.local_block_num + 1}, received: ${blk_num}`);
-                                await this.handleFork(res);
+                                try {
+                                    await this.handleFork(res);
+                                } catch (e) {
+                                    hLog('Failed to handle fork during live reading!');
+                                    hLog(e.message);
+                                }
                             } else {
                                 this.local_block_num = blk_num;
                             }
@@ -477,13 +482,12 @@ export default class StateReader extends HyperionWorker {
             }
         };
         const indexName = this.chain + '-delta-' + this.conf.settings.index_version + '-*';
-        const {body} = await this.client.deleteByQuery({
+        await this.client.deleteByQuery({
             index: indexName,
             refresh: true,
             body: searchBody
         });
-        console.log(body);
-        console.log(`Live reading resumed!`);
+        hLog(`Live reading resumed!`);
     }
 
     private async logForkEvent(starting_block, ending_block, new_id) {

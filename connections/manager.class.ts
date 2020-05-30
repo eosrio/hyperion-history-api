@@ -139,7 +139,7 @@ export class ConnectionManager {
     }
 
     get shipClient(): StateHistorySocket {
-        return new StateHistorySocket(this.conn.chains[this.config.settings.chain]['ship']);
+        return new StateHistorySocket(this.conn.chains[this.config.settings.chain]['ship'], this.config.settings.max_ws_payload_kb);
     }
 
     get ampqUrl() {

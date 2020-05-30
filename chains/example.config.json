@@ -34,7 +34,8 @@
     "bp_monitoring": false,
     "ipc_debug_rate": 60000,
     "allow_custom_abi": false,
-    "rate_monitoring": true
+    "rate_monitoring": true,
+    "max_ws_payload_kb": 256
   },
   "blacklists": {
     "actions": [],

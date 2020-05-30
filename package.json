@@ -45,7 +45,7 @@
     "fastify-static": "2.7.0",
     "fastify-websocket": "1.1.2",
     "got": "11.1.4",
-    "ioredis": "4.17.1",
+    "ioredis": "4.17.3",
     "lodash": "4.17.15",
     "moment": "2.26.0",
     "portfinder": "^1.0.26",
@@ -58,12 +58,12 @@
     "typescript": "3.9.3"
   },
   "devDependencies": {
-    "@types/ioredis": "4.16.2",
-    "@types/lodash": "4.14.152",
+    "@types/ioredis": "4.16.3",
+    "@types/lodash": "4.14.153",
     "@types/amqplib": "0.5.13",
     "@types/async": "3.2.3",
     "@types/got": "9.6.11",
-    "@types/node": "14.0.5",
+    "@types/node": "14.0.6",
     "@types/socket.io": "2.1.8",
     "@types/socket.io-client": "1.4.33",
     "@types/ws": "7.2.4"
