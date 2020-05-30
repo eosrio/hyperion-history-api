@@ -2,6 +2,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions";
 import {ServerResponse} from "http";
 import {Search} from "@elastic/elasticsearch/api/requestParams";
+import {applyTimeFilter} from "../../v2-history/get_actions/functions";
 
 async function getMissedBlocks(fastify: FastifyInstance, request: FastifyRequest) {
     const response = {
@@ -21,6 +22,9 @@ async function getMissedBlocks(fastify: FastifyInstance, request: FastifyRequest
                         {term: {"type": "missed_blocks"}}
                     ]
                 }
+            },
+            sort: {
+                "@timestamp": "desc"
             }
         }
     };
@@ -30,6 +34,12 @@ async function getMissedBlocks(fastify: FastifyInstance, request: FastifyRequest
         minBlocks = parseInt(request.query.min_blocks);
         searchParams.body.query.bool.must.push({range: {"missed_blocks.size": {gte: minBlocks}}})
     }
+
+    if (request.query.producer) {
+        searchParams.body.query.bool.must.push({term: {"missed_blocks.producer": request.query.producer}});
+    }
+
+    applyTimeFilter(request.query, searchParams.body.query);
 
     const apiResponse = await fastify.elastic.search(searchParams);
     apiResponse.body.hits.hits.forEach(v => {
