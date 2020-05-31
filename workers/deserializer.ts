@@ -355,9 +355,9 @@ export default class MainDSWorker extends HyperionWorker {
                         if (trace[1] && trace[1].action_traces.length > 0) {
                             const inline_count = trace[1].action_traces.length;
 
-                            if (trace[1].failed_dtrx_trace) {
-                                console.log(trace);
-                            }
+                            // if (trace[1].failed_dtrx_trace) {
+                            //     console.log(trace[1].failed_dtrx_trace[1]);
+                            // }
 
                             let signatures;
                             try {
