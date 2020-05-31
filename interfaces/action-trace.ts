@@ -1,6 +1,7 @@
 import {HyperionAction} from "./hyperion-action";
 
 export interface ActionTrace {
+    signatures: string[];
     '@timestamp': string;
     act: HyperionAction
     block_num: number;

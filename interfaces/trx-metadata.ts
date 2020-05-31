@@ -1,4 +1,5 @@
 export interface TrxMetadata {
+    signatures: string[];
     trx_id: string;
     block_num: number;
     producer: string;

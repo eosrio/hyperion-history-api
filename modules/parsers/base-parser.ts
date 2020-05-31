@@ -51,6 +51,7 @@ export abstract class BaseParser {
     protected extendFirstAction(worker: DSPoolWorker, action: ActionTrace, trx_data: TrxMetadata, full_trace: any, usageIncluded) {
         action.cpu_usage_us = trx_data.cpu_usage_us;
         action.net_usage_words = trx_data.net_usage_words;
+        action.signatures = trx_data.signatures;
         if (full_trace.action_traces.length > 1) {
             action.inline_count = trx_data.inline_count - 1;
             action.inline_filtered = trx_data.filtered;
@@ -71,7 +72,7 @@ export abstract class BaseParser {
         });
     }
 
-    protected async addCustomHandlers() {
+    protected addCustomHandlers() {
         // simple assets
         this.actionReinterpretMap.set('*::saecreate', (act) => {
             const _sb = this.createSerialBuffer(act.data);
