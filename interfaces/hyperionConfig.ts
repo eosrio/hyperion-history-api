@@ -17,6 +17,7 @@ export interface ScalingConfigs {
 }
 
 export interface MainSettings {
+    ds_profiling: boolean;
     max_ws_payload_kb: number;
     ipc_debug_rate?: number;
     bp_monitoring?: boolean;

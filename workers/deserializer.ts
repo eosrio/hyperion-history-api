@@ -94,6 +94,8 @@ export default class MainDSWorker extends HyperionWorker {
 
         this.populateTableHandlers();
 
+        hLog('deserializer on')
+
     }
 
     async run(): Promise<void> {
@@ -351,6 +353,18 @@ export default class MainDSWorker extends HyperionWorker {
                     for (const trace of _traces) {
                         if (trace[1] && trace[1].action_traces.length > 0) {
                             const inline_count = trace[1].action_traces.length;
+
+                            if (trace[1].failed_dtrx_trace) {
+                                console.log(trace);
+                            }
+
+                            let signatures;
+                            try {
+                                signatures = trace[1].partial[1].signatures;
+                            } catch (e) {
+                                signatures = [];
+                            }
+
                             let filtered = false;
                             if (this.conf.indexer.max_inline && inline_count > this.conf.indexer.max_inline) {
                                 trace[1].action_traces = trace[1].action_traces.slice(0, this.conf.indexer.max_inline);
@@ -363,7 +377,8 @@ export default class MainDSWorker extends HyperionWorker {
                                     ts,
                                     inline_count,
                                     filtered,
-                                    live: process.env['live_mode']
+                                    live: process.env['live_mode'],
+                                    signatures
                                 });
                             } catch (e) {
                                 hLog(e);

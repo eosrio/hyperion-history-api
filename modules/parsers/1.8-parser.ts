@@ -5,6 +5,7 @@ import DSPoolWorker from "../../workers/ds-pool";
 import {TrxMetadata} from "../../interfaces/trx-metadata";
 import {ActionTrace} from "../../interfaces/action-trace";
 import {hLog} from "../../helpers/common_functions";
+import {all} from "async";
 
 export default class HyperionParser extends BaseParser {
 
@@ -55,32 +56,76 @@ export default class HyperionParser extends BaseParser {
 
     public async parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void> {
         for (const message of messages) {
+
+            // profile deserialization
+            const ds_times = {};
+
+            let allowProcessing = true;
+
+            const t0_result = process.hrtime.bigint();
             const ds_msg = worker.deserializeNative('result', message.content);
+            ds_times['result'] = process.hrtime.bigint() - t0_result;
+
             if (!ds_msg) {
                 if (worker.ch_ready) {
                     worker.ch.nack(message);
                     throw new Error('failed to deserialize datatype=result');
                 }
             }
+
             const res = ds_msg[1];
             let block, traces = [], deltas = [];
             if (res.block && res.block.length) {
+
+                const t0_signed_block = process.hrtime.bigint();
                 block = worker.deserializeNative('signed_block', res.block);
+                ds_times['signed_block'] = process.hrtime.bigint() - t0_signed_block;
+
                 if (block === null) {
                     console.log(res);
                     process.exit(1);
                 }
+
+                // verify for whitelisted contracts
+                const t0_packed_trx = process.hrtime.bigint();
+                if (worker.conf.whitelists && (worker.conf.whitelists.actions.length > 0 || worker.conf.whitelists.deltas.length > 0)) {
+                    allowProcessing = false;
+                    for (const transaction of block.transactions) {
+                        if (transaction.status === 0 && transaction.trx[1] && transaction.trx[1].packed_trx) {
+                            const unpacked_trx = worker.api.deserializeTransaction(Buffer.from(transaction.trx[1].packed_trx, 'hex'));
+                            for (const act of unpacked_trx.actions) {
+                                if (this.checkWhitelist(act)) {
+                                    allowProcessing = true;
+                                    break;
+                                }
+                            }
+                            if (allowProcessing) break;
+                        }
+                    }
+                }
+                ds_times['packed_trx'] = process.hrtime.bigint() - t0_packed_trx;
             }
-            if (res['traces'] && res['traces'].length) {
+
+            if (allowProcessing && res['traces'] && res['traces'].length) {
                 try {
+                    const t0_transaction_trace = process.hrtime.bigint();
                     traces = worker.deserializeNative('transaction_trace[]', res['traces']);
+                    ds_times['transaction_trace'] = process.hrtime.bigint() - t0_transaction_trace;
                 } catch (e) {
                     console.log(e);
                 }
             }
-            if (res['deltas'] && res['deltas'].length) {
+
+            if (allowProcessing && res['deltas'] && res['deltas'].length) {
+                const t0_table_delta = process.hrtime.bigint();
                 deltas = worker.deserializeNative('table_delta[]', res['deltas']);
+                ds_times['table_delta'] = process.hrtime.bigint() - t0_table_delta;
             }
+
+            if (worker.conf.settings.ds_profiling) {
+                hLog(ds_times);
+            }
+
             let result;
             try {
                 result = await worker.processBlock(res, block, traces, deltas);
