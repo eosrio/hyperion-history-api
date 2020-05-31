@@ -69,7 +69,7 @@ export async function checkQueueSize(q_name, config) {
         })).body);
         return result.messages;
     } catch (e) {
-        console.log('Checking queue size failed, HTTP API is not ready!');
-        return 10000000;
+        hLog('[WARNING] Checking queue size failed, HTTP API is not ready!');
+        return 0;
     }
 }

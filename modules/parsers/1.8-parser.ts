@@ -62,9 +62,9 @@ export default class HyperionParser extends BaseParser {
 
             let allowProcessing = true;
 
-            const t0_result = process.hrtime.bigint();
+            if (worker.conf.settings.ds_profiling) ds_times['result'] = process.hrtime.bigint();
             const ds_msg = worker.deserializeNative('result', message.content);
-            ds_times['result'] = process.hrtime.bigint() - t0_result;
+            if (worker.conf.settings.ds_profiling) ds_times['result'] = process.hrtime.bigint() - ds_times['result'];
 
             if (!ds_msg) {
                 if (worker.ch_ready) {
@@ -77,9 +77,10 @@ export default class HyperionParser extends BaseParser {
             let block, traces = [], deltas = [];
             if (res.block && res.block.length) {
 
-                const t0_signed_block = process.hrtime.bigint();
+                if (worker.conf.settings.ds_profiling) ds_times['signed_block'] = process.hrtime.bigint();
                 block = worker.deserializeNative('signed_block', res.block);
-                ds_times['signed_block'] = process.hrtime.bigint() - t0_signed_block;
+                if (worker.conf.settings.ds_profiling) ds_times['signed_block'] = process.hrtime.bigint() - ds_times['signed_block'];
+
 
                 if (block === null) {
                     console.log(res);
@@ -87,39 +88,44 @@ export default class HyperionParser extends BaseParser {
                 }
 
                 // verify for whitelisted contracts
-                const t0_packed_trx = process.hrtime.bigint();
-                if (worker.conf.whitelists && (worker.conf.whitelists.actions.length > 0 || worker.conf.whitelists.deltas.length > 0)) {
-                    allowProcessing = false;
-                    for (const transaction of block.transactions) {
-                        if (transaction.status === 0 && transaction.trx[1] && transaction.trx[1].packed_trx) {
-                            const unpacked_trx = worker.api.deserializeTransaction(Buffer.from(transaction.trx[1].packed_trx, 'hex'));
-                            for (const act of unpacked_trx.actions) {
-                                if (this.checkWhitelist(act)) {
-                                    allowProcessing = true;
-                                    break;
+                try {
+                    if (worker.conf.settings.ds_profiling) ds_times['packed_trx'] = process.hrtime.bigint();
+                    if (worker.conf.whitelists && (worker.conf.whitelists.actions.length > 0 || worker.conf.whitelists.deltas.length > 0)) {
+                        allowProcessing = false;
+                        for (const transaction of block.transactions) {
+                            if (transaction.status === 0 && transaction.trx[1] && transaction.trx[1].packed_trx) {
+                                const unpacked_trx = worker.api.deserializeTransaction(Buffer.from(transaction.trx[1].packed_trx, 'hex'));
+                                for (const act of unpacked_trx.actions) {
+                                    if (this.checkWhitelist(act)) {
+                                        allowProcessing = true;
+                                        break;
+                                    }
                                 }
+                                if (allowProcessing) break;
                             }
-                            if (allowProcessing) break;
                         }
                     }
+                    if (worker.conf.settings.ds_profiling) ds_times['packed_trx'] = process.hrtime.bigint() - ds_times['packed_trx'];
+                } catch (e) {
+                    console.log(e);
+                    allowProcessing = true;
                 }
-                ds_times['packed_trx'] = process.hrtime.bigint() - t0_packed_trx;
             }
 
             if (allowProcessing && res['traces'] && res['traces'].length) {
                 try {
-                    const t0_transaction_trace = process.hrtime.bigint();
+                    if (worker.conf.settings.ds_profiling) ds_times['transaction_trace'] = process.hrtime.bigint();
                     traces = worker.deserializeNative('transaction_trace[]', res['traces']);
-                    ds_times['transaction_trace'] = process.hrtime.bigint() - t0_transaction_trace;
+                    if (worker.conf.settings.ds_profiling) ds_times['transaction_trace'] = process.hrtime.bigint() - ds_times['transaction_trace'];
                 } catch (e) {
                     console.log(e);
                 }
             }
 
             if (allowProcessing && res['deltas'] && res['deltas'].length) {
-                const t0_table_delta = process.hrtime.bigint();
+                if (worker.conf.settings.ds_profiling) ds_times['table_delta'] = process.hrtime.bigint();
                 deltas = worker.deserializeNative('table_delta[]', res['deltas']);
-                ds_times['table_delta'] = process.hrtime.bigint() - t0_table_delta;
+                if (worker.conf.settings.ds_profiling) ds_times['table_delta'] = process.hrtime.bigint() - ds_times['table_delta'];
             }
 
             if (worker.conf.settings.ds_profiling) {

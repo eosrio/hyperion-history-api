@@ -43,10 +43,11 @@ function buildAbiBulk(payloads, messageMap) {
 }
 
 function buildDeltaBulk(payloads, messageMap) {
-    return flatMap(payloads, (payload, body) => {
-        const id = `${body.block_num}-${body.code}-${body.scope}-${body.table}-${body.payer}`;
+    return flatMap(payloads, (payload, b) => {
+        const _p = b.present ? 1 : 0;
+        const id = `${b.block_num}-${b.code}-${b.scope}-${b.table}-${_p}-${b.primary_key}`;
         messageMap.set(id, _.omit(payload, ['content']));
-        return [{index: {_id: id}}, body];
+        return [{index: {_id: id}}, b];
     });
 }
 
