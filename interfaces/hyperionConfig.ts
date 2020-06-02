@@ -35,6 +35,7 @@ export interface MainSettings {
 }
 
 export interface IndexerConfigs {
+    fill_state: boolean;
     start_on: number;
     stop_on: number;
     rewrite: boolean;

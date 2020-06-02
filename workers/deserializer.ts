@@ -180,10 +180,6 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    attachActionExtras(self, action) {
-        self.mLoader.processActionData(action);
-    }
-
     sendDsCounterReport() {
         // send ds counters
         if (this.temp_delta_counter > 0) {
@@ -1008,7 +1004,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         },
 
-        "account": async (account, block_num, block_ts, row, block_id) => {
+        "account": async (account, block_num, block_ts) => {
             if (account['abi'] !== '') {
                 try {
                     const abiHex = account['abi'];
@@ -1063,7 +1059,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         },
 
-        "permission_link": async (link, block_num, block_ts, row, block_id) => {
+        "permission_link": async (link, block_num, block_ts, row) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
                 this.pushToIndexQueue({
                     "@timestamp": block_ts,
@@ -1077,8 +1073,21 @@ export default class MainDSWorker extends HyperionWorker {
             }
         },
 
-        "permission": async (perm, block_num, block_ts, row, block_id) => {
+        "permission": async (perm, block_num, block_ts, row) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
+
+                if (perm.auth.accounts.length === 0) {
+                    delete perm.auth.accounts;
+                }
+
+                if (perm.auth.keys.length === 0) {
+                    delete perm.auth.keys;
+                }
+
+                if (perm.auth.waits.length === 0) {
+                    delete perm.auth.waits;
+                }
+
                 this.pushToIndexQueue({
                     block_num: block_num,
                     present: row.present,
@@ -1096,7 +1105,7 @@ export default class MainDSWorker extends HyperionWorker {
         // },
 
         // Deferred Transactions
-        "generated_transaction": async (generated_transaction: any, block_num, block_ts, row, block_id) => {
+        "generated_transaction": async (generated_transaction: any, block_num, block_ts) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.deferred_trx) {
 
                 // check delta blacklist chain::code::table
@@ -1136,7 +1145,7 @@ export default class MainDSWorker extends HyperionWorker {
 
 
         // Account resource updates
-        "resource_limits": async (resource_limits, block_num, block_ts, row, block_id) => {
+        "resource_limits": async (resource_limits, block_num, block_ts) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.resource_limits) {
                 const cpu = parseInt(resource_limits.cpu_weight);
                 const net = parseInt(resource_limits.net_weight);
@@ -1160,7 +1169,7 @@ export default class MainDSWorker extends HyperionWorker {
         //     hLog(block_num, resource_limits_state);
         // },
 
-        "resource_usage": async (resource_usage, block_num, block_ts, row, block_id) => {
+        "resource_usage": async (resource_usage, block_num, block_ts) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.resource_usage) {
                 const net_used = parseInt(resource_usage.net_usage[1].consumed);
                 const net_total = parseInt(resource_usage.net_usage[1].value_ex);
@@ -1351,7 +1360,6 @@ export default class MainDSWorker extends HyperionWorker {
         const accountDoc = {
             "code": data['code'],
             "scope": data['scope'],
-            "primary_key": data['primary_key'],
             "block_num": data['block_num'],
             "present": data['present']
         };
@@ -1394,7 +1402,7 @@ export default class MainDSWorker extends HyperionWorker {
             delete delta.data['last_vote_weight'];
             delta['@voters']['proxied_vote_weight'] = parseFloat(delta.data['proxied_vote_weight']);
             delete delta.data['proxied_vote_weight'];
-            delta['@voters']['staked'] = parseInt(delta.data['staked'], 10) / 10000;
+            delta['@voters']['staked'] = parseFloat(delta.data['staked']);
             delete delta.data['staked'];
             if (this.conf.features.tables.voters) {
                 this.storeVoter(delta);

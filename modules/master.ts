@@ -39,6 +39,7 @@ import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {AsyncQueue, queue} from "async";
 import moment = require("moment");
 import Timeout = NodeJS.Timeout;
+import {convertLegacyPublicKey} from "eosjs/dist/eosjs-numeric";
 
 export class HyperionMaster {
 
@@ -1571,6 +1572,11 @@ export class HyperionMaster {
         await this.updateIndexTemplates(indicesList, indexConfig);
         await this.createIndices(indicesList);
 
+
+        if (this.conf.indexer.fill_state) {
+            await this.fillCurrentStateTables();
+        }
+
         // Prepare Workers
         this.workerMap = [];
         this.worker_index = 0;
@@ -1813,6 +1819,166 @@ export class HyperionMaster {
         const t0 = Date.now();
         await this.collectBlockHistogram();
         hLog(`Block index analysis completed in ${(Date.now() - t0) / 1000} seconds`);
+    }
+
+    async processAccount(accountName: string) {
+        const acc = await this.manager.nodeosJsonRPC.get_account(accountName);
+
+        // table-accounts
+        if (acc.core_liquid_balance) {
+            const arr = acc.core_liquid_balance.split(' ');
+            const payload = {
+                block_num: acc.head_block_num,
+                symbol: arr[1],
+                amount: parseFloat(arr[0]),
+                code: this.conf.settings.eosio_alias + '.token',
+                scope: accountName,
+                present: true
+            };
+            try {
+                await this.manager.elasticsearchClient.index({
+                    index: this.chain + '-table-accounts',
+                    id: `${payload.code}-${payload.scope}-${payload.symbol}`,
+                    type: '_doc',
+                    body: payload
+                });
+                // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
+            } catch (e) {
+                console.log(`Failed to index account: ${payload.code}-${payload.scope}-${payload.symbol}`);
+                console.log(e);
+            }
+        }
+
+        // table-voters
+        if (acc.voter_info) {
+            const payload = {
+                block_num: acc.head_block_num,
+                last_vote_weight: parseFloat(acc.voter_info.last_vote_weight),
+                proxied_vote_weight: parseFloat(acc.voter_info.proxied_vote_weight),
+                staked: parseFloat(acc.voter_info.staked),
+                voter: acc.voter_info.owner,
+                is_proxy: acc.voter_info.is_proxy === 1,
+                proxy: acc.voter_info.proxy,
+                producers: acc.voter_info.producers
+            }
+
+            if (payload.producers.length === 0) {
+                delete payload.producers;
+            }
+
+            if (payload.proxy === '') {
+                delete payload.proxy;
+            }
+
+            try {
+                await this.manager.elasticsearchClient.index({
+                    index: this.chain + '-table-voters',
+                    id: `${payload.voter}`,
+                    type: '_doc',
+                    body: payload
+                });
+                // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
+            } catch (e) {
+                console.log(`Failed to index voter: ${payload.voter}`);
+                console.log(e);
+            }
+        }
+
+
+        if (acc.permissions) {
+            for (const perm of acc.permissions) {
+                const payload = {
+                    owner: accountName,
+                    block_num: acc.head_block_num,
+                    parent: perm.parent,
+                    name: perm.perm_name,
+                    auth: perm.required_auth,
+                    present: true
+                };
+
+                if (payload.auth.accounts.length === 0) {
+                    delete payload.auth.accounts;
+                }
+
+                if (payload.auth.keys.length === 0) {
+                    delete payload.auth.keys;
+                } else {
+                    for (const key of payload.auth.keys) {
+                        key.key = convertLegacyPublicKey(key.key);
+                    }
+                }
+
+                if (payload.auth.waits.length === 0) {
+                    delete payload.auth.waits;
+                }
+
+                try {
+                    await this.manager.elasticsearchClient.index({
+                        index: this.chain + '-perm',
+                        id: `${payload.owner}-${payload.name}`,
+                        type: '_doc',
+                        body: payload
+                    });
+                    // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
+                } catch (e) {
+                    console.log(`Failed to index permission: ${payload.owner}-${payload.name}`);
+                    console.log(e);
+                }
+            }
+        }
+    }
+
+    async getRows(start_at?) {
+        const data = await this.manager.nodeosJsonRPC.get_table_rows({
+            code: this.conf.settings.eosio_alias,
+            table: 'voters',
+            scope: this.conf.settings.eosio_alias,
+            key_type: "name",
+            lower_bound: start_at,
+            upper_bound: "",
+            limit: 10,
+            json: true
+        });
+        return data.rows;
+    }
+
+    async fillCurrentStateTables() {
+        hLog(`Filling system state tables with current data...`);
+        const tRef = Date.now();
+
+        let processedAccounts = 0;
+        let totalAccounts = 0;
+        let lastAccount = null;
+
+        setInterval(() => {
+            if (processedAccounts > 0) {
+                hLog(`[Account Filler] processing ${processedAccounts} accounts/s | ${lastAccount} | ${totalAccounts}`);
+                processedAccounts = 0;
+            }
+        }, 1000);
+
+        const queue = [];
+        const rows = await this.getRows(null);
+        if (rows.length > 0) {
+            lastAccount = rows[rows.length - 1].owner
+        }
+        queue.push(...rows);
+        while (queue.length > 0) {
+            const acc = queue.shift();
+            await this.processAccount(acc.owner);
+            processedAccounts++;
+            totalAccounts++;
+            if (queue.length === 0) {
+                const nextBatch = await this.getRows(acc.owner);
+                if (nextBatch.length > 1) {
+                    lastAccount = (nextBatch.shift()).owner;
+                    queue.push(...nextBatch);
+                }
+            }
+        }
+
+        hLog(`Filling took ${Date.now() - tRef}ms | ${totalAccounts} accounts`);
+        process.exit();
     }
 }
 
