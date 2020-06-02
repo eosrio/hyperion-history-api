@@ -45,6 +45,7 @@
   "whitelists": {
     "actions": [],
     "deltas": [],
+    "max_depth": 10,
     "root_only": false
   },
   "scaling": {

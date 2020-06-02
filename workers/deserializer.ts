@@ -443,7 +443,23 @@ export default class MainDSWorker extends HyperionWorker {
         }
 
         if (this.filters.action_whitelist.size > 0) {
-            if (!this.checkWhitelist(first_action.act)) {
+            let allow = false;
+            let depth = 0;
+            for (const action of trace['action_traces']) {
+                if (this.checkWhitelist(action[1].act)) {
+                    allow = true;
+                    // hLog(`Code: ${action[1].act.account} | Action: ${action[1].act.name} | Depth: ${depth}`);
+                    break;
+                }
+                if (this.conf.whitelists.max_depth) {
+                    if (depth >= this.conf.whitelists.max_depth) {
+                        // hLog(`Max depth reached: ${depth} | Total: ${trace['action_traces'].length} actions`);
+                        break;
+                    }
+                    depth++;
+                }
+            }
+            if (!allow) {
                 return false;
             }
         }
