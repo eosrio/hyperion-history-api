@@ -106,6 +106,7 @@ export interface HyperionConfig {
     };
 
     whitelists: {
+        root_only: boolean,
         actions: string[],
         deltas: string[]
     };
