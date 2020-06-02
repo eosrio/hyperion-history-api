@@ -933,7 +933,7 @@ export default class MainDSWorker extends HyperionWorker {
             headers: {block_num}
         });
         this.delta_emit_idx++;
-        if (this.delta_emit_idx > (this.conf.scaling.indexing_queues * this.conf.scaling.ad_idx_queues)) {
+        if (this.delta_emit_idx > this.conf.scaling.ad_idx_queues) {
             this.delta_emit_idx = 1;
         }
     }
