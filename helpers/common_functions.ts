@@ -53,6 +53,25 @@ export async function getLastIndexedBlock(es_client: Client, chain: string) {
     return getLastResult(results);
 }
 
+export async function getLastIndexedBlockWithTotalBlocks(es_client: Client, chain: string): Promise<[number, number]> {
+    const results: ApiResponse = await es_client.search({
+        index: chain + '-block-*',
+        size: 1,
+        body: {
+            query: {bool: {filter: {match_all: {}}}},
+            sort: [{block_num: {order: "desc"}}],
+            track_total_hits: true,
+            size: 1
+        }
+    });
+
+    let lastBlock = getLastResult(results);
+    let totalBlocks = results.body.hits.total.value || 1;
+
+    return [lastBlock, totalBlocks];
+}
+
+
 export async function getLastIndexedABI(es_client: Client, chain: string) {
     const results: ApiResponse = await es_client.search({
         index: chain + '-abi-*',

@@ -2,7 +2,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {ServerResponse} from "http";
 import {connect} from "amqplib";
 import {timedQuery} from "../../../helpers/functions";
-import {getLastIndexedBlock} from "../../../../helpers/common_functions";
+import {getLastIndexedBlockWithTotalBlocks} from "../../../../helpers/common_functions";
 
 async function checkRabbit(fastify: FastifyInstance) {
     try {
@@ -39,9 +39,10 @@ async function checkNodeos(fastify: FastifyInstance) {
 async function checkElastic(fastify: FastifyInstance) {
     try {
         let esStatus = await fastify.elastic.cat.health({format: 'json', v: true});
-        let lastIndexedBlock = await getLastIndexedBlock(fastify.elastic, fastify.manager.chain);
+        let indexedBlocks = await getLastIndexedBlockWithTotalBlocks(fastify.elastic, fastify.manager.chain);
         const data = {
-            last_indexed_block: lastIndexedBlock,
+            last_indexed_block: indexedBlocks[0],
+            total_indexed_blocks: indexedBlocks[1],
             active_shards: esStatus.body[0]['active_shards_percent']
         };
         let stat = 'OK';
