@@ -441,8 +441,7 @@ export const tableAccounts = {
             "code": {"type": "keyword"},
             "scope": {"type": "keyword"},
             "amount": {"type": "float"},
-            "symbol": {"type": "keyword"},
-            "primary_key": {"type": "keyword"}
+            "symbol": {"type": "keyword"}
         }
     }
 };
@@ -466,8 +465,7 @@ export const tableDelBand = {
             "to": {"type": "keyword"},
             "total_weight": {"type": "float"},
             "net_weight": {"type": "float"},
-            "cpu_weight": {"type": "float"},
-            "primary_key": {"type": "keyword"}
+            "cpu_weight": {"type": "float"}
         }
     }
 };
@@ -493,8 +491,7 @@ export const tableVoters = {
             "is_proxy": {"type": "boolean"},
             "proxied_vote_weight": {"type": "double"},
             "staked": {"type": "double"},
-            "proxy": {"type": "keyword"},
-            "primary_key": {"type": "keyword"}
+            "proxy": {"type": "keyword"}
         }
     }
 };
