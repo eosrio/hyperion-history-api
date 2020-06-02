@@ -61,7 +61,7 @@ function buildTableProposalsBulk(payloads, messageMap) {
 
 function buildTableAccountsBulk(payloads, messageMap) {
     return flatMap(payloads, (payload, body) => {
-        const id = `${body.code}-${body.scope}-${body.primary_key}`;
+        const id = `${body.code}-${body.scope}`;
         messageMap.set(id, _.omit(payload, ['content']));
         return makeScriptedOp(id, body);
     });
@@ -69,7 +69,7 @@ function buildTableAccountsBulk(payloads, messageMap) {
 
 function buildTableVotersBulk(payloads, messageMap) {
     return flatMap(payloads, (payload, body) => {
-        const id = `${body.primary_key}`;
+        const id = `${body.voter}`;
         messageMap.set(id, _.omit(payload, ['content']));
         return makeScriptedOp(id, body);
     });
