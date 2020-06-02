@@ -61,7 +61,7 @@ function buildTableProposalsBulk(payloads, messageMap) {
 
 function buildTableAccountsBulk(payloads, messageMap) {
     return flatMap(payloads, (payload, body) => {
-        const id = `${body.code}-${body.scope}-${body.primary_key}`;
+        const id = `${body.code}-${body.scope}-${body.symbol}`;
         messageMap.set(id, _.omit(payload, ['content']));
         return makeScriptedOp(id, body);
     });
