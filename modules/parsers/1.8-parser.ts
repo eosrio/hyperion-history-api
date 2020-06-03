@@ -75,12 +75,12 @@ export default class HyperionParser extends BaseParser {
 
             const res = ds_msg[1];
             let block, traces = [], deltas = [];
+
             if (res.block && res.block.length) {
 
                 if (worker.conf.settings.ds_profiling) ds_times['signed_block'] = process.hrtime.bigint();
                 block = worker.deserializeNative('signed_block', res.block);
                 if (worker.conf.settings.ds_profiling) ds_times['signed_block'] = process.hrtime.bigint() - ds_times['signed_block'];
-
 
                 if (block === null) {
                     console.log(res);
@@ -125,12 +125,11 @@ export default class HyperionParser extends BaseParser {
             }
 
             if (allowProcessing && res['traces'] && res['traces'].length) {
-                try {
-                    if (worker.conf.settings.ds_profiling) ds_times['transaction_trace'] = process.hrtime.bigint();
-                    traces = worker.deserializeNative('transaction_trace[]', res['traces']);
-                    if (worker.conf.settings.ds_profiling) ds_times['transaction_trace'] = process.hrtime.bigint() - ds_times['transaction_trace'];
-                } catch (e) {
-                    console.log(e);
+                if (worker.conf.settings.ds_profiling) ds_times['transaction_trace'] = process.hrtime.bigint();
+                traces = worker.deserializeNative('transaction_trace[]', res['traces']);
+                if (worker.conf.settings.ds_profiling) ds_times['transaction_trace'] = process.hrtime.bigint() - ds_times['transaction_trace'];
+                if (!traces) {
+                    hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res['this_block']['block_num']}`);
                 }
             }
 
@@ -138,6 +137,9 @@ export default class HyperionParser extends BaseParser {
                 if (worker.conf.settings.ds_profiling) ds_times['table_delta'] = process.hrtime.bigint();
                 deltas = worker.deserializeNative('table_delta[]', res['deltas']);
                 if (worker.conf.settings.ds_profiling) ds_times['table_delta'] = process.hrtime.bigint() - ds_times['table_delta'];
+                if (!deltas) {
+                    hLog(`[WARNING] table_delta[] deserialization failed on block ${res['this_block']['block_num']}`);
+                }
             }
 
             if (worker.conf.settings.ds_profiling) {
