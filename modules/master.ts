@@ -114,6 +114,7 @@ export class HyperionMaster {
     private total_blocks = 0;
     private total_actions = 0;
     private total_deltas = 0;
+    private total_abis = 0;
     private consume_rates: number[] = [];
     private total_range = 0;
     private range_completed = false;
@@ -197,6 +198,7 @@ export class HyperionMaster {
                 });
             },
             'save_abi': (msg: any) => {
+                this.total_abis++;
                 if (msg.live_mode === 'true') {
                     hLog(`deserializer ${msg.worker_id} received new abi! propagating changes to other workers...`);
                     for (const worker of this.workerMap) {
@@ -1341,6 +1343,7 @@ export class HyperionMaster {
         | Blocks: ${this.total_range}
         | Actions: ${this.total_actions}
         | Deltas: ${this.total_deltas}
+        | ABIs: ${this.total_abis}
         --------------------------------------------\n`);
                 this.range_completed = true;
                 if (!this.conf.indexer.live_reader) {
