@@ -1025,6 +1025,10 @@ export default class MainDSWorker extends HyperionWorker {
                         actions: abi_actions,
                         tables: abi_tables
                     };
+
+                    // TODO: remove before commit
+                    // console.log(new_abi_object);
+
                     debugLog(`[Worker ${process.env.worker_id}] read ${account['name']} ABI at block ${block_num}`);
                     const q = this.chain + ":index_abis:1";
                     this.preIndexingQueue.push({
@@ -1097,10 +1101,9 @@ export default class MainDSWorker extends HyperionWorker {
         },
 
         // "account_metadata": async (account_metadata, block_num, block_ts, row, block_id) => {
-        //     if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
-        //         if (account_metadata.code) {
-        //             hLog(`new code hash ${account_metadata.code.code_hash} on ${account_metadata.name}`);
-        //         }
+        //     console.log(account_metadata);
+        //     if (account_metadata.code) {
+        //         hLog(`new code hash ${account_metadata.code.code_hash} on ${account_metadata.name}`);
         //     }
         // },
 
@@ -1243,7 +1246,6 @@ export default class MainDSWorker extends HyperionWorker {
                 if (deltaStruct[key].length > 0) {
                     for (const row of deltaStruct[key]) {
                         let data = this.deserializeNative(key, row.data);
-
                         if (!data) {
                             try {
                                 data = this.types.get(key).deserialize(
@@ -1284,7 +1286,7 @@ export default class MainDSWorker extends HyperionWorker {
                     return AbiEOS.bin_to_json("0", datatype, array);
                 }
             } catch (e) {
-                hLog(e.message);
+                hLog('deserializeNative >>', datatype,'>>', e.message);
             }
             return null;
         }
