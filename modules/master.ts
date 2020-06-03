@@ -104,7 +104,6 @@ export class HyperionMaster {
     private readonly log_interval = 5000;
     private consumedBlocks = 0;
     private deserializedActions = 0;
-    private total_indexed_blocks = 0;
     private indexedObjects = 0;
     private deserializedDeltas = 0;
     private liveConsumedBlocks = 0;
@@ -145,11 +144,15 @@ export class HyperionMaster {
     private queueMonitoringInterval: Timeout;
     private shutdownTimer: Timeout;
 
+    private mode_transition = false;
+
+    private readonly cm: ConfigurationModule;
+
     constructor() {
-        const cm = new ConfigurationModule();
-        this.conf = cm.config;
-        this.manager = new ConnectionManager(cm);
-        this.mLoader = new HyperionModuleLoader(cm);
+        this.cm = new ConfigurationModule();
+        this.conf = this.cm.config;
+        this.manager = new ConnectionManager(this.cm);
+        this.mLoader = new HyperionModuleLoader(this.cm);
         this.chain = this.conf.settings.chain;
         this.initHandlerMap();
         this.liveBlockQueue = queue((task, callback) => {
@@ -1152,10 +1155,12 @@ export class HyperionMaster {
                 // update on deserializers
                 for (const w of this.workerMap) {
                     if (w.worker_role === 'deserializer') {
-                        w.wref.send({
-                            event: 'update_pool_map',
-                            data: this.globalUsageMap
-                        });
+                        if (w.wref && w.wref.isConnected()) {
+                            w.wref.send({
+                                event: 'update_pool_map',
+                                data: this.globalUsageMap
+                            });
+                        }
                     }
                 }
 
@@ -1270,11 +1275,9 @@ export class HyperionMaster {
             reply({ack: true});
             setInterval(() => {
                 if (this.allowShutdown) {
-
-                    // TODO: check last indexed block, print to console and save on a temporary file
-                    getLastIndexedBlockFromRange(this.client, this.chain, this.starting_block, this.head).then((lastblock) => {
-                        hLog(`Last Indexed Block: ${lastblock}`);
-                        writeFileSync(`./chains/.${this.chain}_lastblock.txt`, lastblock.toString());
+                    getLastIndexedBlockFromRange(this.client, this.chain, this.starting_block, this.head).then((value: number) => {
+                        hLog(`Last Indexed Block: ${value}`);
+                        writeFileSync(`./chains/.${this.chain}_lastblock.txt`, value.toString());
                         hLog('Shutting down master...');
                         process.exit(1);
                     });
@@ -1285,7 +1288,7 @@ export class HyperionMaster {
     }
 
     private startIndexMonitoring() {
-        const reference_time = Date.now();
+        let reference_time = Date.now();
         setInterval(() => {
             const _workers = Object.keys(cluster.workers).length;
             const tScale = (this.log_interval / 1000);
@@ -1293,7 +1296,6 @@ export class HyperionMaster {
             this.total_blocks += this.consumedBlocks;
             this.total_actions += this.deserializedActions;
             this.total_deltas += this.deserializedDeltas;
-            this.total_indexed_blocks += this.indexedObjects;
             const consume_rate = this.consumedBlocks / tScale;
             this.consume_rates.push(consume_rate);
             if (this.consume_rates.length > 20) {
@@ -1333,24 +1335,6 @@ export class HyperionMaster {
                 log_msg.push(`syncs ${time_string} (${pct_parsed}% ${pct_read}%)`);
             }
 
-            // Report completed range (parallel reading)
-            if (this.total_blocks === this.total_range && !this.range_completed) {
-                const ttime = (Date.now() - reference_time) / 1000;
-                hLog(`\n
-        -------- BLOCK RANGE COMPLETED -------------
-        | Range: ${this.starting_block} >> ${this.head}
-        | Total time: ${ttime} seconds
-        | Blocks: ${this.total_range}
-        | Actions: ${this.total_actions}
-        | Deltas: ${this.total_deltas}
-        | ABIs: ${this.total_abis}
-        --------------------------------------------\n`);
-                this.range_completed = true;
-                if (!this.conf.indexer.live_reader) {
-                    process.exit();
-                }
-            }
-
             // publish log to hub
             if (this.conf.hub && this.conf.hub.inform_url) {
                 this.hub.emit('hyp_ev', {
@@ -1360,26 +1344,54 @@ export class HyperionMaster {
             }
 
             // print monitoring log
-            if (this.conf.settings.rate_monitoring) {
+            if (this.conf.settings.rate_monitoring && !this.mode_transition) {
                 hLog(log_msg.join(' | '));
             }
 
-            if (this.indexedObjects === 0 && this.deserializedActions === 0 && this.consumedBlocks === 0) {
+            if (this.indexedObjects === 0 && this.deserializedActions === 0 && this.consumedBlocks === 0 && !this.mode_transition) {
 
-                // Allow 10s threshold before shutting down the process
-                this.shutdownTimer = setTimeout(() => {
-                    this.allowShutdown = true;
-                }, 10000);
-
-                // Auto-Stop
-                if (this.pushedBlocks === 0) {
-                    this.idle_count++;
-                    if (this.auto_stop > 0 && (tScale * this.idle_count) >= this.auto_stop) {
-                        hLog("Reached limit for no blocks processed, stopping now...");
-                        process.exit(1);
-                    } else {
-                        hLog(`No blocks processed! Indexer will stop in ${this.auto_stop - (tScale * this.idle_count)} seconds!`);
+                // Report completed range (parallel reading)
+                if (this.total_blocks === this.total_range && !this.range_completed) {
+                    const ttime = (Date.now() - reference_time) / 1000;
+                    hLog(`\n
+        -------- BLOCK RANGE COMPLETED -------------
+        | Range: ${this.starting_block} >> ${this.head}
+        | Total time: ${ttime} seconds
+        | Blocks: ${this.total_range}
+        | Actions: ${this.total_actions}
+        | Deltas: ${this.total_deltas}
+        | ABIs: ${this.total_abis}
+        --------------------------------------------\n`);
+                    this.range_completed = true;
+                    if (this.conf.indexer.abi_scan_mode) {
+                        if (this.conf.settings.auto_mode_switch) {
+                            this.mode_transition = true;
+                            hLog('Auto switching to full indexing mode in 10 seconds...');
+                            setTimeout(() => {
+                                reference_time = Date.now();
+                                this.startFullIndexing().catch(console.log);
+                            });
+                        }
                     }
+                }
+                if (!this.mode_transition) {
+
+                    // Allow 10s threshold before shutting down the process
+                    this.shutdownTimer = setTimeout(() => {
+                        this.allowShutdown = true;
+                    }, 10000);
+
+                    // Auto-Stop
+                    if (this.pushedBlocks === 0) {
+                        this.idle_count++;
+                        if (this.auto_stop > 0 && (tScale * this.idle_count) >= this.auto_stop) {
+                            hLog("Reached limit for no blocks processed, stopping now...");
+                            process.exit(1);
+                        } else {
+                            hLog(`No blocks processed! Indexer will stop in ${this.auto_stop - (tScale * this.idle_count)} seconds!`);
+                        }
+                    }
+
                 }
             } else {
                 if (this.idle_count > 1) {
@@ -1396,7 +1408,7 @@ export class HyperionMaster {
             this.resetMonitoringCounters();
 
 
-            if (_workers === 0) {
+            if (_workers === 0 && !this.mode_transition) {
                 hLog('FATAL ERROR - All Workers have stopped!');
                 process.exit(1);
             }
@@ -1422,17 +1434,17 @@ export class HyperionMaster {
     }
 
     private launchWorkers() {
-        this.workerMap.forEach((conf: HyperionWorkerDef) => {
-            if (!conf.wref) {
-                conf['wref'] = cluster.fork(conf);
-                conf['wref'].on('message', (msg) => {
+        this.workerMap.forEach((wrk: HyperionWorkerDef) => {
+            if (!wrk.wref) {
+                wrk.wref = cluster.fork(wrk);
+                wrk.wref.on('message', (msg) => {
                     this.handleMessage(msg);
                 });
-                if (conf.worker_role === 'ds_pool_worker') {
-                    this.dsPoolMap.set(conf.local_id, conf['wref']);
+                if (wrk.worker_role === 'ds_pool_worker') {
+                    this.dsPoolMap.set(wrk.local_id, wrk.wref);
                 }
-                if (conf.worker_role === 'router') {
-                    this.wsRouterWorker = conf['wref'];
+                if (wrk.worker_role === 'router') {
+                    this.wsRouterWorker = wrk.wref;
                 }
             }
         });
@@ -1502,7 +1514,6 @@ export class HyperionMaster {
 
         // Preview mode - prints only the proposed worker map
         let preview = this.conf.settings.preview;
-        const queue_prefix = this.conf.settings.chain;
 
         await this.purgeQueues();
 
@@ -1585,50 +1596,10 @@ export class HyperionMaster {
         this.worker_index = 0;
         this.maxBatchSize = this.conf.scaling.batch_size;
 
-        // Auto-stop
-        if (this.conf.settings.auto_stop) {
-            this.auto_stop = this.conf.settings.auto_stop;
-        }
+        await this.findRange();
 
-        // Find last indexed block
-        let lastIndexedBlock;
-        if (this.conf.features.index_deltas) {
-            lastIndexedBlock = await getLastIndexedBlockByDelta(this.client, queue_prefix);
-            hLog(`Last indexed block (deltas): ${lastIndexedBlock}`);
-        } else {
-            lastIndexedBlock = await getLastIndexedBlock(this.client, queue_prefix);
-            hLog(`Last indexed block (blocks): ${lastIndexedBlock}`);
-        }
 
-        // Start from the last indexed block
-        this.starting_block = 1;
-
-        // Fecth chain lib
-        try {
-            this.chain_data = await this.rpc.get_info();
-        } catch (e) {
-            console.log(e.message);
-            console.error('failed to connect to chain api');
-            process.exit(1);
-        }
-        this.head = this.chain_data.head_block_num;
-
-        if (lastIndexedBlock > 0) {
-            this.starting_block = lastIndexedBlock;
-        }
-
-        if (this.conf.indexer.stop_on !== 0) {
-            this.head = this.conf.indexer.stop_on;
-        }
-
-        this.lastIndexedABI = await getLastIndexedABI(this.client, queue_prefix);
-        await this.defineBlockRange();
-        this.total_range = this.head - this.starting_block;
-        await this.setupReaders();
-        await this.setupDeserializers();
-        await this.setupIndexers();
-        await this.setupStreaming();
-        await this.setupDSPool();
+        await this.setupWorkers();
 
         if (this.conf.indexer.repair_mode) {
             await this.startRepairMode();
@@ -1647,7 +1618,9 @@ export class HyperionMaster {
         this.startIndexMonitoring();
 
         cluster.on('disconnect', (worker) => {
-            hLog(`The worker #${worker.id} has disconnected`);
+            if (!this.mode_transition) {
+                hLog(`The worker #${worker.id} has disconnected`);
+            }
         });
 
         // Launch all workers
@@ -1982,6 +1955,114 @@ export class HyperionMaster {
 
         hLog(`Filling took ${Date.now() - tRef}ms | ${totalAccounts} accounts`);
         process.exit();
+    }
+
+    async startFullIndexing() {
+
+        // emit kill signal
+        hLog(`Killing ${this.workerMap.length} workers`);
+        let disconnect_counter = 0;
+        for (const w of this.workerMap) {
+            if (w.wref && w.wref.isConnected()) {
+                w.wref.on("disconnect", () => {
+                    disconnect_counter++;
+                });
+                w.wref.kill();
+            }
+        }
+
+        // wait for all disconnect events
+        await new Promise((resolve) => {
+            let _loop = setInterval(() => {
+                if (disconnect_counter === this.workerMap.length) {
+                    clearInterval(_loop);
+                    resolve();
+                }
+            }, 100);
+            setTimeout(() => {
+                if (_loop) {
+                    clearInterval(_loop);
+                    resolve();
+                }
+            }, 10000);
+        });
+
+        // clear worker references
+        this.workerMap = [];
+
+        // disable abi scan mode and rewrite config file
+        this.cm.setAbiScanMode(false);
+        hLog('indexer.abi_scan_mode set to false');
+        this.conf.indexer.abi_scan_mode = false;
+
+        // reset global counters
+        this.total_abis = 0;
+        this.total_actions = 0;
+        this.total_blocks = 0;
+        this.total_deltas = 0;
+        this.total_read = 0;
+        this.range_completed = false;
+        this.lastProcessedBlockNum = 0;
+        this.cachedInitABI = null;
+
+
+        await this.findRange();
+        await this.setupWorkers();
+
+        // launch new workers
+        this.launchWorkers();
+
+        // exit transition
+        this.mode_transition = false;
+    }
+
+    private async setupWorkers() {
+        this.lastIndexedABI = await getLastIndexedABI(this.client, this.chain);
+        await this.defineBlockRange();
+        this.total_range = this.head - this.starting_block;
+        await this.setupReaders();
+        await this.setupDeserializers();
+        await this.setupIndexers();
+        await this.setupStreaming();
+        await this.setupDSPool();
+    }
+
+    private async findRange() {
+        // Auto-stop
+        if (this.conf.settings.auto_stop) {
+            this.auto_stop = this.conf.settings.auto_stop;
+        }
+
+        // Find last indexed block
+        let lastIndexedBlock;
+        if (this.conf.features.index_deltas) {
+            lastIndexedBlock = await getLastIndexedBlockByDelta(this.client, this.chain);
+            hLog(`Last indexed block (deltas): ${lastIndexedBlock}`);
+        } else {
+            lastIndexedBlock = await getLastIndexedBlock(this.client, this.chain);
+            hLog(`Last indexed block (blocks): ${lastIndexedBlock}`);
+        }
+
+        // Start from the last indexed block
+        this.starting_block = 1;
+
+        // Fecth chain lib
+        try {
+            this.chain_data = await this.rpc.get_info();
+        } catch (e) {
+            console.log(e.message);
+            console.error('failed to connect to chain api');
+            process.exit(1);
+        }
+        this.head = this.chain_data.head_block_num;
+
+        if (lastIndexedBlock > 0) {
+            this.starting_block = lastIndexedBlock;
+        }
+
+        if (this.conf.indexer.stop_on !== 0) {
+            this.head = this.conf.indexer.stop_on;
+        }
     }
 }
 

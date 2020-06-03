@@ -93,9 +93,6 @@ export default class MainDSWorker extends HyperionWorker {
         });
 
         this.populateTableHandlers();
-
-        hLog('deserializer on')
-
     }
 
     async run(): Promise<void> {
@@ -1286,7 +1283,7 @@ export default class MainDSWorker extends HyperionWorker {
                     return AbiEOS.bin_to_json("0", datatype, array);
                 }
             } catch (e) {
-                hLog('deserializeNative >>', datatype,'>>', e.message);
+                hLog('deserializeNative >>', datatype, '>>', e.message);
             }
             return null;
         }

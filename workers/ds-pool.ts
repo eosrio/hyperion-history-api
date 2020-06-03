@@ -559,7 +559,7 @@ export default class DSPoolWorker extends HyperionWorker {
             }, {}, (err, ok) => {
                 hLog(err, ok);
             });
-            hLog(`started consuming from ${this.local_queue}`);
+            debugLog(`started consuming from ${this.local_queue}`);
         }
     }
 
@@ -605,7 +605,7 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     initializeShipAbi(data) {
-        hLog(`state history abi ready on ds_worker ${process.env.local_id}`);
+        debugLog(`state history abi ready on ds_worker ${process.env.local_id}`);
         this.abi = JSON.parse(data);
         AbiEOS.load_abi("0", data);
         const initialTypes = Serialize.createInitialTypes();
@@ -658,6 +658,6 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     async run(): Promise<void> {
-        hLog(`Standalone deserializer launched with id: ${process.env.local_id}`);
+        debugLog(`Standalone deserializer launched with id: ${process.env.local_id}`);
     }
 }

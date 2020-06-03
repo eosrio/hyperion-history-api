@@ -1,4 +1,4 @@
-import {hLog} from "../helpers/common_functions";
+import {debugLog, hLog} from "../helpers/common_functions";
 
 const WebSocket = require('ws');
 
@@ -17,7 +17,7 @@ export class StateHistorySocket {
     }
 
     connect(onMessage, onDisconnect, onError, onConnected) {
-        hLog(`Connecting to ${this.shipUrl}...`);
+        debugLog(`Connecting to ${this.shipUrl}...`);
         this.ws = new WebSocket(this.shipUrl, null, {
             perMessageDeflate: false,
             maxPayload: this.max_payload_kb * 1024 * 1024,

@@ -17,6 +17,7 @@ export interface ScalingConfigs {
 }
 
 export interface MainSettings {
+    auto_mode_switch: boolean;
     ds_profiling: boolean;
     max_ws_payload_kb: number;
     ipc_debug_rate?: number;

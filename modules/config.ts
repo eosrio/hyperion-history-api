@@ -1,4 +1,4 @@
-import {existsSync, readFileSync} from "fs";
+import {existsSync, readFileSync, writeFileSync} from "fs";
 import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 
@@ -97,6 +97,14 @@ export class ConfigurationModule {
             console.error('Configuration file not specified!');
             process.exit(1);
         }
+    }
+
+    setAbiScanMode(value: boolean) {
+        const data = readFileSync(process.env.CONFIG_JSON).toString();
+        const tempConfig: HyperionConfig = JSON.parse(data);
+        tempConfig.indexer.abi_scan_mode = value;
+        writeFileSync(process.env.CONFIG_JSON, JSON.stringify(tempConfig, null, 2));
+        this.config.indexer.abi_scan_mode = value;
     }
 
     loadConnectionsJson() {

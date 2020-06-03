@@ -36,7 +36,8 @@
     "allow_custom_abi": false,
     "rate_monitoring": true,
     "max_ws_payload_kb": 256,
-    "ds_profiling": false
+    "ds_profiling": false,
+    "auto_mode_switch": false
   },
   "blacklists": {
     "actions": [],
