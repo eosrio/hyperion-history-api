@@ -5,7 +5,6 @@ import DSPoolWorker from "../../workers/ds-pool";
 import {TrxMetadata} from "../../interfaces/trx-metadata";
 import {ActionTrace} from "../../interfaces/action-trace";
 import {hLog} from "../../helpers/common_functions";
-import {all} from "async";
 
 export default class HyperionParser extends BaseParser {
 
