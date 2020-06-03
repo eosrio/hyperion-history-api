@@ -33,8 +33,7 @@ export async function getLastIndexedBlockByDelta(es_client: Client, chain: strin
         size: 1,
         body: {
             query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "desc"}}],
-            size: 1
+            sort: [{block_num: {order: "desc"}}]
         }
     });
     return getLastResult(results);
@@ -46,8 +45,7 @@ export async function getLastIndexedBlock(es_client: Client, chain: string) {
         size: 1,
         body: {
             query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "desc"}}],
-            size: 1
+            sort: [{block_num: {order: "desc"}}]
         }
     });
     return getLastResult(results);
@@ -60,14 +58,11 @@ export async function getLastIndexedBlockWithTotalBlocks(es_client: Client, chai
         body: {
             query: {bool: {filter: {match_all: {}}}},
             sort: [{block_num: {order: "desc"}}],
-            track_total_hits: true,
-            size: 1
+            track_total_hits: true
         }
     });
-
     let lastBlock = getLastResult(results);
     let totalBlocks = results.body.hits.total.value || 1;
-
     return [lastBlock, totalBlocks];
 }
 
@@ -80,8 +75,7 @@ export async function getLastIndexedABI(es_client: Client, chain: string) {
             query: {
                 match_all: {}
             },
-            sort: [{block: {order: "desc"}}],
-            size: 1
+            sort: [{block: {order: "desc"}}]
         }
     });
     return getLastResult(results);
@@ -101,8 +95,7 @@ export async function getLastIndexedBlockByDeltaFromRange(es_client: Client, cha
                     }
                 }
             },
-            sort: [{block_num: {order: "desc"}}],
-            size: 1
+            sort: [{block_num: {order: "desc"}}]
         }
     });
     return getLastResult(results);
@@ -122,8 +115,7 @@ export async function getLastIndexedBlockFromRange(es_client: Client, chain: str
                     }
                 }
             },
-            sort: [{block_num: {order: "desc"}}],
-            size: 1
+            sort: [{block_num: {order: "desc"}}]
         }
     });
     return getLastResult(results);
