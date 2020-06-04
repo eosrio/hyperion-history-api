@@ -12,7 +12,7 @@ usage() {
 }
 
 wait_for_container() {
-  container_ip=`sudo docker inspect --format='{{json .NetworkSettings.Networks.docker_hyperion.IPAddress}}' $1`
+  container_ip=`docker inspect --format='{{json .NetworkSettings.Networks.docker_hyperion.IPAddress}}' $1`
 
   ./scripts/wait-for.sh "${container_ip//\"}:$2"
 }
@@ -47,19 +47,19 @@ if [ "$chain" = "" ]; then
   usage 2
 fi
 
-created="$(sudo docker container ls -q --all)"
+created="$(docker container ls -q --all)"
 
 if [ "$created" = "" ]
 then
   # Create docker containers
-  sudo SCRIPT=true SNAPSHOT=$snapshot docker-compose up --no-start
+  SCRIPT=true SNAPSHOT=$snapshot docker-compose up --no-start
 fi
 
 # Starting redis container
-sudo docker-compose start redis
+docker-compose start redis
 
 # Starting rabbitmq container
-sudo docker-compose start rabbitmq
+docker-compose start rabbitmq
 
 # Starting elasticsearch container
 wait_for_container rabbitmq 5672
@@ -70,7 +70,7 @@ then
   exit 1
 fi
 
-sudo docker-compose start elasticsearch
+docker-compose start elasticsearch
 
 # Starting kibana container
 wait_for_container elasticsearch 9200
@@ -81,10 +81,10 @@ then
   exit 1
 fi
 
-sudo docker-compose start kibana
+docker-compose start kibana
 
 # Starting eosio-node container
-sudo docker-compose start eosio-node
+docker-compose start eosio-node
 
 # Starting hyperion containers
 wait_for_container eosio-node 8888
@@ -97,7 +97,7 @@ fi
 
 if [ "$snapshot" != "" ]
 then
-  file="$(sudo docker inspect --format='{{.LogPath}}' eosio-node)"
+  file="$(docker inspect --format='{{.LogPath}}' eosio-node)"
   line="$(sudo grep -h 'Placing initial state in block' $file)"
 
   if [ "$line" != "" ]
@@ -107,5 +107,5 @@ then
   fi
 fi
 
-sudo docker-compose start hyperion-indexer
-sudo docker-compose start hyperion-api
+docker-compose start hyperion-indexer
+docker-compose start hyperion-api

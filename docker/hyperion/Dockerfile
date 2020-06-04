@@ -1,24 +1,15 @@
 FROM ubuntu:18.04
 
-RUN apt-get update
-RUN apt-get upgrade
-RUN apt-get autoremove
-
-RUN apt-get install -y build-essential
-RUN apt-get install -y git
-RUN apt-get install -y curl
-RUN apt-get install -y netcat
-
-WORKDIR /root
+RUN apt-get update && apt-get upgrade -y && apt-get autoremove && apt-get install -y build-essential git curl netcat
 
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
-RUN apt-get install -y nodejs
+RUN apt-get install -y nodejs && npm install pm2 -g && git clone https://github.com/eosrio/hyperion-history-api.git
 
-RUN git clone https://github.com/eosrio/hyperion-history-api.git
+RUN useradd -m -s /bin/bash hyperion && chown -R hyperion:hyperion /hyperion-history-api
+USER hyperion
+WORKDIR /hyperion-history-api
 
-WORKDIR /root/hyperion-history-api
-
-RUN npm install pm2 -g
-RUN npm install --unsafe-perm
+RUN npm install
 
 EXPOSE 7001
+

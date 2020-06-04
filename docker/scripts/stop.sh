@@ -34,13 +34,13 @@ done
 
 if [ $down ]
 then
-  sudo docker-compose down
+  docker-compose down
 elif [ ${#services[@]} -eq 0 ]
 then
-  sudo docker-compose stop
+  docker-compose stop
 else
   for i in "${services[@]}"
   do
-    sudo docker-compose stop $i
+    docker-compose stop $i
   done
 fi

@@ -25,7 +25,7 @@ services:
 
   elasticsearch:
     container_name: elasticsearch
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.6.2
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.7.1
     restart: on-failure
     environment:
       - discovery.type=single-node
@@ -45,7 +45,7 @@ services:
 
   kibana:
     container_name: kibana
-    image: docker.elastic.co/kibana/kibana:7.6.2
+    image: docker.elastic.co/kibana/kibana:7.7.1
     restart: on-failure
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
@@ -62,18 +62,18 @@ services:
     container_name: eosio-node
     image: eosrio/hyperion:eosio-2.0.5
     volumes:
-      - ./eosio/data/:/root/eosio/data/
-      - ./eosio/config/:/root/eosio/config/
-      - ./scripts/:/root/scripts/
+      - ./eosio/data/:/home/eosio/data/
+      - ./eosio/config/:/home/eosio/config/
+      - ./scripts/:/home/eosio/scripts/
     ports:
       - 8888:8888
     networks:
       - hyperion
-    command: bash -c "/root/scripts/run-nodeos.sh ${SCRIPT:-false} ${SNAPSHOT:-""}"
+    command: bash -c "/home/eosio/scripts/run-nodeos.sh ${SCRIPT:-false} ${SNAPSHOT:-""}"
 
   hyperion-indexer:
     container_name: hyperion-indexer
-    image: eosrio/hyperion:hyperion-3.0
+    image: eosrio/hyperion:hyperion-3.1.0-beta.3
     restart: on-failure
     depends_on:
       - elasticsearch
@@ -81,13 +81,13 @@ services:
       - rabbitmq
       - eosio-node
     volumes:
-      - ./hyperion/config/connections.json:/root/hyperion-history-api/connections.json
-      - ./hyperion/config/ecosystem.config.js:/root/hyperion-history-api/ecosystem.config.js
-      - ./hyperion/config/chains/:/root/hyperion-history-api/chains/
-      - ./scripts/:/root/scripts/
+      - ./hyperion/config/connections.json:/hyperion-history-api/connections.json
+      - ./hyperion/config/ecosystem.config.js:/hyperion-history-api/ecosystem.config.js
+      - ./hyperion/config/chains/:/hyperion-history-api/chains/
+      - ./scripts/:/home/hyperion/scripts/
     networks:
       - hyperion
-    command: bash -c "/root/scripts/run-hyperion.sh ${SCRIPT:-false} CHAIN-indexer"
+    command: bash -c "/home/hyperion/scripts/run-hyperion.sh ${SCRIPT:-false} eos-indexer"
 
   hyperion-api:
     container_name: hyperion-api
@@ -98,13 +98,13 @@ services:
     depends_on:
       - hyperion-indexer
     volumes:
-      - ./hyperion/config/connections.json:/root/hyperion-history-api/connections.json
-      - ./hyperion/config/ecosystem.config.js:/root/hyperion-history-api/ecosystem.config.js
-      - ./hyperion/config/chains/:/root/hyperion-history-api/chains/
-      - ./scripts/:/root/scripts/
+      - ./hyperion/config/connections.json:/hyperion-history-api/connections.json
+      - ./hyperion/config/ecosystem.config.js:/hyperion-history-api/ecosystem.config.js
+      - ./hyperion/config/chains/:/hyperion-history-api/chains/
+      - ./scripts/:/home/hyperion/scripts/
     networks:
       - hyperion
-    command: bash -c "/root/scripts/run-hyperion.sh ${SCRIPT:-false} CHAIN-api"
+    command: bash -c "/home/hyperion/scripts/run-hyperion.sh ${SCRIPT:-false} eos-api"
 
 networks:
   hyperion:
