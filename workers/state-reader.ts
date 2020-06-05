@@ -305,13 +305,13 @@ export default class StateReader extends HyperionWorker {
                             debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
                         } else {
                             if (!res.traces) {
-                                debugLog('missing traces');
+                                debugLog('missing traces field');
                             }
                             if (!res.deltas) {
-                                debugLog('missing deltas');
+                                debugLog('missing deltas field');
                             }
                             if (!res.block) {
-                                debugLog('missing block');
+                                debugLog('missing block field');
                             }
                         }
 

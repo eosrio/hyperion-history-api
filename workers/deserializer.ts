@@ -605,7 +605,7 @@ export default class MainDSWorker extends HyperionWorker {
                     valid_from = savedAbi.block;
                 }
 
-                if (savedAbi[field + 's'].includes(type)) {
+                if (savedAbi[field + 's'] && savedAbi[field + 's'].includes(type)) {
                     if (savedAbi.abi_hex) {
                         _status = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
                     }

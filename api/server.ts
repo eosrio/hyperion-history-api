@@ -13,6 +13,7 @@ import {createWriteStream, existsSync, mkdirSync, writeFileSync} from "fs";
 import {SocketManager} from "./socketManager";
 import got from "got";
 import {join} from "path";
+import * as io from 'socket.io-client';
 
 class HyperionApiServer {
 
@@ -21,6 +22,8 @@ class HyperionApiServer {
     private readonly fastify: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>;
     private readonly chain: string;
     socketManager: SocketManager;
+
+    private hub: SocketIOClient.Socket;
 
     constructor() {
         const cm = new ConfigurationModule();
@@ -158,6 +161,7 @@ class HyperionApiServer {
                 port: this.conf.api.server_port
             });
             console.log(`server listening on ${(this.fastify.server.address() as AddressInfo).port}`);
+            this.startHyperionHub();
         } catch (err) {
             console.log(err);
             process.exit(1)
@@ -176,6 +180,48 @@ class HyperionApiServer {
         } catch (e) {
             console.log(e);
         }
+    }
+
+    startHyperionHub() {
+        if (this.conf.hub) {
+            const url = this.conf.hub.inform_url;
+            hLog(`Connecting API to Hyperion Hub`);
+            this.hub = io(url, {
+                query: {
+                    key: this.conf.hub.publisher_key,
+                    client_mode: false
+                }
+            });
+            this.hub.on('connect', () => {
+                hLog(`Hyperion Hub connected!`);
+                this.emitHubApiUpdate();
+            });
+            // this.hub.on('reconnect', () => {
+            //     hLog(`Reconnecting...`);
+            //     this.emitHubApiUpdate();
+            // });
+        }
+    }
+
+    private emitHubApiUpdate() {
+        this.hub.emit('hyp_info', {
+            type: 'api',
+            production: this.conf.hub.production,
+            location: this.conf.hub.location,
+            chainId: this.manager.conn.chains[this.chain].chain_id,
+            providerName: this.conf.api.provider_name,
+            explorerEnabled: this.conf.api.enable_explorer,
+            providerUrl: this.conf.api.provider_url,
+            providerLogo: this.conf.api.provider_logo,
+            chainCodename: this.chain,
+            chainName: this.conf.api.chain_name,
+            endpoint: this.conf.api.server_name,
+            features: this.conf.features,
+            filters: {
+                blacklists: this.conf.blacklists,
+                whitelists: this.conf.whitelists
+            }
+        });
     }
 }
 

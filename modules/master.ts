@@ -1461,6 +1461,27 @@ export class HyperionMaster {
         }
     }
 
+    private emitHubUpdate() {
+        this.hub.emit('hyp_info', {
+            type: 'indexer',
+            production: this.conf.hub.production,
+            location: this.conf.hub.location,
+            chainId: this.chain_data.chain_id,
+            providerName: this.conf.api.provider_name,
+            providerUrl: this.conf.api.provider_url,
+            providerLogo: this.conf.api.provider_logo,
+            explorerEnabled: this.conf.api.enable_explorer,
+            chainCodename: this.chain,
+            chainName: this.conf.api.chain_name,
+            endpoint: this.conf.api.server_name,
+            features: this.conf.features,
+            filters: {
+                blacklists: this.conf.blacklists,
+                whitelists: this.conf.whitelists
+            }
+        });
+    }
+
     startHyperionHub() {
         if (this.conf.hub) {
             const url = this.conf.hub.inform_url;
@@ -1473,22 +1494,11 @@ export class HyperionMaster {
             });
             this.hub.on('connect', () => {
                 hLog(`Hyperion Hub connected!`);
-                this.hub.emit('hyp_info', {
-                    production: this.conf.hub.production,
-                    chainId: this.chain_data.chain_id,
-                    providerName: this.conf.api.provider_name,
-                    providerUrl: this.conf.api.provider_url,
-                    providerLogo: this.conf.api.provider_logo,
-                    chainCodename: this.chain,
-                    chainName: this.conf.api.chain_name,
-                    endpoint: this.conf.api.server_name,
-                    features: this.conf.features,
-                    filters: {
-                        blacklists: this.conf.blacklists,
-                        whitelists: this.conf.whitelists
-                    }
-                });
+                this.emitHubUpdate();
             });
+            // this.hub.on('reconnect', () => {
+            //     this.emitHubUpdate();
+            // });
         }
     }
 

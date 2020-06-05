@@ -88,7 +88,15 @@ interface ApiConfigs {
     limits: ApiLimits
 }
 
+interface HubLocation {
+    city: string,
+    country: string,
+    lat: number,
+    lon: number
+}
+
 interface HyperionHubConfigs {
+    location: HubLocation;
     production: boolean;
     publisher_key: string;
     inform_url: string;

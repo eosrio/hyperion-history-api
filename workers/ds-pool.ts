@@ -199,7 +199,7 @@ export default class DSPoolWorker extends HyperionWorker {
             if (!_status) {
                 const savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
                 if (savedAbi) {
-                    if (savedAbi[field + 's'].includes(type)) {
+                    if (savedAbi[field + 's'] && savedAbi[field + 's'].includes(type)) {
                         if (savedAbi.abi_hex) {
                             _status = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
                         }
