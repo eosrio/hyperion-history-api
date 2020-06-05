@@ -213,6 +213,7 @@ class HyperionApiServer {
             explorerEnabled: this.conf.api.enable_explorer,
             providerUrl: this.conf.api.provider_url,
             providerLogo: this.conf.api.provider_logo,
+            chainLogo: this.conf.api.chain_logo_url,
             chainCodename: this.chain,
             chainName: this.conf.api.chain_name,
             endpoint: this.conf.api.server_name,

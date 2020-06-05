@@ -1467,6 +1467,7 @@ export class HyperionMaster {
             production: this.conf.hub.production,
             location: this.conf.hub.location,
             chainId: this.chain_data.chain_id,
+            chainLogo: this.conf.api.chain_logo_url,
             providerName: this.conf.api.provider_name,
             providerUrl: this.conf.api.provider_url,
             providerLogo: this.conf.api.provider_logo,
