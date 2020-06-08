@@ -135,6 +135,7 @@ export class HyperionMaster {
     private wsRouterWorker: cluster.Worker;
     private liveBlockQueue: AsyncQueue<any>;
     private readingPaused = false;
+    private readingLimited = false;
 
     // Hyperion Hub Socket
     private hub: SocketIOClient.Socket;
@@ -1178,74 +1179,80 @@ export class HyperionMaster {
                 queue = `${this.chain}:ds_pool:${worker.local_id}`;
             }
 
-            if (queue) {
-                if (!testedQueues.has(queue)) {
-                    testedQueues.add(queue);
+            if (queue && !testedQueues.has(queue)) {
 
-                    const size = await this.manager.checkQueueSize(queue);
+                const size = await this.manager.checkQueueSize(queue);
 
+                // pause readers if queues are above the max_limit
+                if (size >= this.conf.scaling.max_queue_limit) {
+                    this.readingPaused = true;
+                    for (const worker of this.workerMap) {
+                        if (worker.worker_role === 'reader') {
+                            worker.wref.send({event: 'pause'});
+                        }
+                    }
+                }
 
-                    // pause readers if queues are above the max_limit
-                    if (size >= this.conf.scaling.max_queue_limit) {
-                        this.readingPaused = true;
+                // resume readers if the queues are below the trigger point
+                if (size <= this.conf.scaling.resume_trigger) {
+
+                    // remove flow limiter
+                    if (this.readingLimited) {
+                        this.readingLimited = false;
                         for (const worker of this.workerMap) {
                             if (worker.worker_role === 'reader') {
-                                worker.wref.send({event: 'pause'});
+                                worker.wref.send({event: 'set_delay', data: {state: false, delay: 0}});
                             }
                         }
                     }
 
-                    // resume readers if the queues are below the trigger point
-                    if ((this.readingPaused && size <= this.conf.scaling.resume_trigger)) {
+                    // fully unpause
+                    if (this.readingPaused) {
                         this.readingPaused = false;
                         for (const worker of this.workerMap) {
                             if (worker.worker_role === 'reader') {
                                 worker.wref.send({event: 'pause'});
-                                worker.wref.send({
-                                    event: 'set_delay',
-                                    data: {
-                                        state: false,
-                                        delay: 0
-                                    }
-                                });
-                            }
-                        }
-                    }
-
-                    // apply block processing delay if 20% below max
-                    if (size >= this.conf.scaling.max_queue_limit * 0.8) {
-                        for (const worker of this.workerMap) {
-                            if (worker.worker_role === 'reader') {
-                                worker.wref.send({
-                                    event: 'set_delay',
-                                    data: {
-                                        state: true,
-                                        delay: 250
-                                    }
-                                });
-                            }
-                        }
-                    }
-
-
-                    if (worker.worker_role === 'ingestor') {
-                        if (size > limit) {
-                            if (!autoscaleConsumers[queue]) {
-                                autoscaleConsumers[queue] = 0;
-                            }
-                            if (autoscaleConsumers[queue] < this.conf.scaling.max_autoscale) {
-                                hLog(`${queue} is above the limit (${size}/${limit}). Launching consumer...`);
-                                this.addWorker({
-                                    queue: queue,
-                                    type: worker.type,
-                                    worker_role: 'ingestor'
-                                });
-                                this.launchWorkers();
-                                autoscaleConsumers[queue]++;
                             }
                         }
                     }
                 }
+
+                // apply block processing delay on 80% usage
+                if (size >= this.conf.scaling.max_queue_limit * 0.8) {
+                    this.readingLimited = true;
+                    for (const worker of this.workerMap) {
+                        if (worker.worker_role === 'reader') {
+                            worker.wref.send({
+                                event: 'set_delay',
+                                data: {
+                                    state: true,
+                                    delay: 250
+                                }
+                            });
+                        }
+                    }
+                }
+
+
+                if (worker.worker_role === 'ingestor') {
+                    if (size > limit) {
+                        if (!autoscaleConsumers[queue]) {
+                            autoscaleConsumers[queue] = 0;
+                        }
+                        if (autoscaleConsumers[queue] < this.conf.scaling.max_autoscale) {
+                            hLog(`${queue} is above the limit (${size}/${limit}). Launching consumer...`);
+                            this.addWorker({
+                                queue: queue,
+                                type: worker.type,
+                                worker_role: 'ingestor'
+                            });
+                            this.launchWorkers();
+                            autoscaleConsumers[queue]++;
+                        }
+                    }
+                }
+
+                testedQueues.add(queue);
             }
         }
     }

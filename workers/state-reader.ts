@@ -31,7 +31,7 @@ export default class StateReader extends HyperionWorker {
     private currentIdx = 1;
     private receivedFirstBlock = false;
     private local_lib = 0;
-    private delay_block_processing = false;
+    private delay_active = false;
     private block_processing_delay = 100;
 
     // private tempBlockSizeSum = 0;
@@ -49,13 +49,7 @@ export default class StateReader extends HyperionWorker {
 
         this.blockReadingQueue = cargo((tasks, next) => {
             this.processIncomingBlocks(tasks).then(() => {
-                if (this.delay_block_processing) {
-                    setTimeout(() => {
-                        next();
-                    }, this.block_processing_delay);
-                } else {
-                    next();
-                }
+                next();
             }).catch((err) => {
                 console.log('FATAL ERROR READING BLOCKS', err);
                 process.exit(1);
@@ -213,7 +207,7 @@ export default class StateReader extends HyperionWorker {
                 break;
             }
             case 'set_delay': {
-                this.delay_block_processing = msg.data.state;
+                this.delay_active = msg.data.state;
                 this.block_processing_delay = msg.data.delay;
                 break;
             }
@@ -281,6 +275,9 @@ export default class StateReader extends HyperionWorker {
             this.ackBlockRange(block_array.length);
         } else {
             await this.onMessage(block_array[0]);
+        }
+        if (this.delay_active) {
+            await new Promise(resolve => setTimeout(resolve, this.block_processing_delay));
         }
         return true;
     }
