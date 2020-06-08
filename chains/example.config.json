@@ -77,8 +77,7 @@
     "fetch_traces": true,
     "disable_reading": false,
     "disable_indexing": false,
-    "process_deltas": true,
-    "max_inline": 50
+    "process_deltas": true
   },
   "features": {
     "streaming": {
