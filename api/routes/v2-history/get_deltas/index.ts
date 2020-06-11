@@ -39,6 +39,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                         "payer": {type: 'string'},
                         "present": {type: 'boolean'},
                         "block_num": {type: 'number'},
+                        "block_id": {type: 'string'},
                         "data": {
                             type: 'object',
                             additionalProperties: true

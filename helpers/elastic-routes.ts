@@ -308,16 +308,13 @@ export class ElasticRoutes {
         if (!this.distributionMap) {
             return null;
         }
-
-        const idx = this.distributionMap.find((value) => {
-            return value.first_block <= block_num && value.last_block >= block_num;
-        });
-
-        if (idx) {
-            return idx.index;
-        } else {
-            return null;
+        for (let i = this.distributionMap.length - 1; i >= 0; i--) {
+            const test = this.distributionMap[i].first_block <= block_num && this.distributionMap[i].last_block >= block_num;
+            if (test) {
+                return this.distributionMap[i].index;
+            }
         }
+        return null;
     }
 
     addToIndexMap(map, idx, payload) {
@@ -346,11 +343,8 @@ export class ElasticRoutes {
                             pIdx = this.getIndexNameByBlock(blk);
                             this.addToIndexMap(indexMap, pIdx, payload);
                         } else {
-                            this.addToIndexMap(
-                                indexMap,
-                                payloadBlock === blk ? pIdx : this.getIndexNameByBlock(blk),
-                                payload
-                            );
+                            const _idx = payloadBlock === blk ? pIdx : this.getIndexNameByBlock(blk);
+                            this.addToIndexMap(indexMap, _idx, payload);
                         }
                     }
                 }
@@ -372,7 +366,7 @@ export class ElasticRoutes {
                 cb(counter);
             } else {
 
-                // write to alias
+                // write to alias index
                 const messageMap = new Map();
                 this.bulkAction({
                     index: _index,

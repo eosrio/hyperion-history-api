@@ -186,7 +186,9 @@ export const delta = {
             "codec": compression,
             "number_of_shards": shards * 2,
             "refresh_interval": refresh,
-            "number_of_replicas": replicas
+            "number_of_replicas": replicas,
+            "sort.field": ["block_num", "scope", "primary_key"],
+            "sort.order": ["desc", "asc", "asc"]
         }
     },
     "mappings": {
