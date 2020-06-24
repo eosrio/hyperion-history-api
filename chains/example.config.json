@@ -94,7 +94,7 @@
     "index_transfer_memo": false,
     "index_all_deltas": true,
     "deferred_trx": false,
-    "failed_trx": true,
+    "failed_trx": false,
     "resource_limits": false,
     "resource_usage": false
   },
