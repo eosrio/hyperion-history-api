@@ -46,7 +46,7 @@
     "fastify-websocket": "1.1.2",
     "got": "11.2.0",
     "ioredis": "4.17.3",
-    "lodash": "4.17.15",
+    "lodash": "4.17.19",
     "moment": "2.26.0",
     "portfinder": "^1.0.26",
     "redis": "3.0.2",
