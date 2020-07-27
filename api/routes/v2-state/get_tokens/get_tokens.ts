@@ -1,14 +1,20 @@
 import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
+import {getSkipLimit} from "../../v2-history/get_actions/functions";
 
 
 async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 
     const response = {'account': request.query.account, 'tokens': []};
 
+    const {skip, limit} = getSkipLimit(request.query);
+    const maxDocs = fastify.manager.config.api.limits.get_tokens ?? 100;
+
     const stateResult = await fastify.elastic.search({
         "index": fastify.manager.chain + '-table-accounts-*',
+        "size": (limit > maxDocs ? maxDocs : limit) || 10,
+        "from": skip || 0,
         "body": {
             query: {
                 bool: {
