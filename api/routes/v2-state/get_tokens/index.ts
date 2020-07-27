@@ -4,8 +4,8 @@ import {getTokensHandler} from "./get_tokens";
 
 export default function (fastify: FastifyInstance, opts: any, next) {
     const schema = {
-        description: 'get account data',
-        summary: 'get account summary',
+        description: 'get tokens from an account',
+        summary: 'get all tokens',
         tags: ['accounts'],
         querystring: extendQueryStringSchema({
             "account": {
