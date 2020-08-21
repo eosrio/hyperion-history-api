@@ -1,6 +1,6 @@
 import {FastifyInstance} from "fastify";
 import {getKeyAccountsHandler} from "./get_key_accounts";
-import {addApiRoute, getRouteName} from "../../../helpers/functions";
+import {addApiRoute, extendQueryStringSchema, getRouteName} from "../../../helpers/functions";
 
 export default function (fastify: FastifyInstance, opts: any, next) {
 
@@ -9,20 +9,16 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         description: 'get accounts by public key',
         summary: 'get accounts by public key',
         tags: ['accounts'],
-        querystring: {
-            type: 'object',
-            properties: {
-                "public_key": {
-                    description: 'public key',
-                    type: 'string'
-                },
-                "details": {
-                    description: 'include permission details',
-                    type: 'boolean'
-                },
+        querystring: extendQueryStringSchema({
+            "public_key": {
+                description: 'public key',
+                type: 'string'
             },
-            required: ["public_key"]
-        },
+            "details": {
+                description: 'include permission details',
+                type: 'boolean'
+            },
+        }, ["public_key"]),
         response: {
             200: {
                 type: 'object',

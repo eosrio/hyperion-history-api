@@ -2,7 +2,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
 import {Numeric} from "eosjs/dist";
-import {type} from "os";
+import {getSkipLimit} from "../../v2-history/get_actions/functions";
 
 function invalidKey() {
     const err: any = new Error();
@@ -17,6 +17,9 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
     if (typeof request.body === 'string' && request.req.method === 'POST') {
         request.body = JSON.parse(request.body);
     }
+
+    const {skip, limit} = getSkipLimit(request.query);
+    const maxDocs = fastify.manager.config.api.limits.get_key_accounts ?? 100;
 
     const public_Key = request.req.method === 'POST' ? request.body.public_key : request.query.public_key;
 
@@ -45,6 +48,8 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
 
         const permTableResults = await fastify.elastic.search({
             index: fastify.manager.chain + '-perm-*',
+            size: (limit > maxDocs ? maxDocs : limit) || 10,
+            from: skip || 0,
             body: {
                 query: {
                     bool: {
@@ -95,6 +100,8 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
 
     const results = await fastify.elastic.search({
         index: fastify.manager.chain + '-action-*',
+        size: (limit > maxDocs ? maxDocs : limit) || 10,
+        from: skip || 0,
         body: _body
     });
 
