@@ -19,7 +19,7 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
     }
 
     const {skip, limit} = getSkipLimit(request.query);
-    const maxDocs = fastify.manager.config.api.limits.get_key_accounts ?? 100;
+    const maxDocs = fastify.manager.config.api.limits.get_key_accounts ?? 1000;
 
     const public_Key = request.req.method === 'POST' ? request.body.public_key : request.query.public_key;
 
@@ -48,7 +48,7 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
 
         const permTableResults = await fastify.elastic.search({
             index: fastify.manager.chain + '-perm-*',
-            size: (limit > maxDocs ? maxDocs : limit) || 10,
+            size: (limit > maxDocs ? maxDocs : limit) || 100,
             from: skip || 0,
             body: {
                 query: {
@@ -100,7 +100,7 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
 
     const results = await fastify.elastic.search({
         index: fastify.manager.chain + '-action-*',
-        size: (limit > maxDocs ? maxDocs : limit) || 10,
+        size: (limit > maxDocs ? maxDocs : limit) || 100,
         from: skip || 0,
         body: _body
     });
