@@ -20,7 +20,7 @@ async function checkNodeos(fastify: FastifyInstance) {
     try {
         const results = await rpc.get_info();
         if (results) {
-            const diff = (new Date().getTime()) - (new Date(results.head_block_time).getTime());
+            const diff = (new Date().getTime()) - (new Date(results.head_block_time + '+00:00').getTime());
             return createHealth('NodeosRPC', 'OK', {
                 head_block_num: results.head_block_num,
                 head_block_time: results.head_block_time,
