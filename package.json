@@ -32,7 +32,7 @@
     "eosjs-ecc": "4.0.7",
     "fast-json-parse": "1.0.3",
     "fast-proxy": "^1.6.2",
-    "fastify": "2.14.1",
+    "fastify": "2.15.1",
     "fastify-autoload": "1.2.2",
     "fastify-compress": "2.0.1",
     "fastify-cors": "3.0.3",
