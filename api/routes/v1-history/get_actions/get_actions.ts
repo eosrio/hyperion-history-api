@@ -1,6 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {ServerResponse} from "http";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
+import * as flatstr from 'flatstr';
 
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
@@ -18,7 +19,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         tObj.term[entry] = reqBody.account_name;
         should_array.push(tObj);
     }
-    let code, method, pos, offset, parent;
+    let code, method, pos, offset;
     let sort_direction = 'desc';
     let filterObj = [];
     if (reqBody.filter) {
@@ -174,7 +175,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             };
             mergeActionMeta(action);
             act.action_trace.act = action.act;
-            act.action_trace.act.hex_data = Buffer.from(JSON.stringify(action.act.data)).toString('hex');
+            act.action_trace.act.hex_data = Buffer.from(flatstr(JSON.stringify(action.act.data))).toString('hex');
             if (action.act.account_ram_deltas) {
                 act.action_trace.account_ram_deltas = action.account_ram_deltas
             }
