@@ -31,6 +31,9 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
         queryStruct.bool.must.push({'term': {'permissions': permissions}});
     }
 
+    // only present deltas
+    queryStruct.bool.must.push({'term': {'present': true}});
+
     // Prepare query body
     const query_body = {
         track_total_hits: getTrackTotalHits(query),
@@ -42,7 +45,7 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
     const results: ApiResponse = await fastify.elastic.search({
         index: fastify.manager.chain + '-link-*',
         from: skip || 0,
-        size: (limit > maxLinks ? maxLinks : limit) || 10,
+        size: (limit > maxLinks ? maxLinks : limit) || 50,
         body: query_body
     });
     const hits = results.body.hits.hits;
@@ -51,6 +54,7 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
         total: results.body.hits.total,
         links: []
     };
+
     for (const hit of hits) {
         const link = hit._source;
         link.timestamp = link['@timestamp'];
