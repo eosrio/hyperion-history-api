@@ -13,7 +13,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 
     const stateResult = await fastify.elastic.search({
         "index": fastify.manager.chain + '-table-accounts-*',
-        "size": (limit > maxDocs ? maxDocs : limit) || 10,
+        "size": (limit > maxDocs ? maxDocs : limit) || 50,
         "from": skip || 0,
         "body": {
             query: {
