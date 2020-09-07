@@ -6,7 +6,7 @@ import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {amqpConnect, checkQueueSize, getAmpqUrl} from "./amqp";
 import {StateHistorySocket} from "./state-history";
-import fetch from 'cross-fetch'
+import fetch from 'node-fetch';
 import {exec} from "child_process";
 import {hLog} from "../helpers/common_functions";
 
@@ -32,6 +32,7 @@ export class ConnectionManager {
     }
 
     get nodeosJsonRPC() {
+        // @ts-ignore
         return new JsonRpc(this.conn.chains[this.chain].http, {fetch});
     }
 
