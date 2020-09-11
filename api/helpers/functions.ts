@@ -159,7 +159,11 @@ export async function timedQuery(
     const t0 = process.hrtime.bigint();
 
     // check for cached data, return the response hash if caching is enabled
-    const [cachedResponse, hash] = await getCachedResponse(fastify, route, request.query);
+    const [cachedResponse, hash] = await getCachedResponse(
+        fastify,
+        route,
+        request.req.method === 'POST' ? request.body : request.query
+    );
 
     if (cachedResponse) {
         // add cached query time
