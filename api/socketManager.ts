@@ -273,24 +273,28 @@ export class SocketManager {
             }
 
             socket.on('delta_stream_request', async (data: StreamDeltasRequest, callback) => {
-                try {
-                    if (data.start_from) {
-                        await streamPastDeltas(this.server, socket, data);
+                if (typeof callback === 'function' && data) {
+                    try {
+                        if (data.start_from) {
+                            await streamPastDeltas(this.server, socket, data);
+                        }
+                        this.emitToRelay(data, 'delta_request', socket, callback);
+                    } catch (e) {
+                        console.log(e);
                     }
-                    this.emitToRelay(data, 'delta_request', socket, callback);
-                } catch (e) {
-                    console.log(e);
                 }
             });
 
             socket.on('action_stream_request', async (data: StreamActionsRequest, callback) => {
-                try {
-                    if (data.start_from) {
-                        await streamPastActions(this.server, socket, data);
+                if (typeof callback === 'function' && data) {
+                    try {
+                        if (data.start_from) {
+                            await streamPastActions(this.server, socket, data);
+                        }
+                        this.emitToRelay(data, 'action_request', socket, callback);
+                    } catch (e) {
+                        console.log(e);
                     }
-                    this.emitToRelay(data, 'action_request', socket, callback);
-                } catch (e) {
-                    console.log(e);
                 }
             });
 
