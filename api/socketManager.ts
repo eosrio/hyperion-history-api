@@ -110,7 +110,7 @@ async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
     const init_response = await fastify.elastic.search({
         index: fastify.manager.chain + '-delta-*',
         scroll: '30s',
-        size: 100,
+        size: 20,
         body: search_body,
     });
     responseQueue.push(init_response);
@@ -190,9 +190,11 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
     const init_response = await fastify.elastic.search({
         index: fastify.manager.chain + '-action-*',
         scroll: '30s',
-        size: 100,
+        size: 20,
         body: search_body,
     });
+
+    console.log(init_response);
 
     responseQueue.push(init_response);
 
