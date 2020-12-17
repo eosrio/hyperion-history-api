@@ -193,16 +193,11 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
         size: 20,
         body: search_body,
     });
-
-    console.log(init_response);
-
     responseQueue.push(init_response);
-
     while (responseQueue.length) {
         const {body} = responseQueue.shift();
         const enqueuedMessages = [];
         counter += body['hits']['hits'].length;
-
         for (const doc of body['hits']['hits']) {
             let allow = false;
             if (onDemandFilters.length > 0) {
@@ -216,31 +211,25 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
                 enqueuedMessages.push(doc._source);
             }
         }
-
         if (socket.connected) {
-            socket.emit('message', {
-                type: 'action_trace',
-                mode: 'history',
-                messages: enqueuedMessages,
-            });
+            socket.emit('message', {type: 'action_trace', mode: 'history', messages: enqueuedMessages});
         } else {
             console.log('LOST CLIENT');
             break;
         }
-
         if (body['hits'].total.value === counter) {
             console.log(`${counter} past actions streamed to ${socket.id}`);
             break;
         }
-
-        const next_response = await fastify.elastic.scroll({
-            body: {
-                scroll_id: body['_scroll_id'],
-                scroll: '30s'
-            }
-        });
-
-        responseQueue.push(next_response);
+        if (init_response.body.hits.total.value < 1000) {
+            const next_response = await fastify.elastic.scroll({
+                body: {scroll_id: body['_scroll_id'], scroll: '30s'}
+            });
+            responseQueue.push(next_response);
+        } else {
+            console.log('Request too large!');
+            socket.emit('message', {type: 'action_trace', mode: 'history', messages: []});
+        }
     }
 }
 
