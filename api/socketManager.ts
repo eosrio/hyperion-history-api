@@ -188,7 +188,7 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
     const init_response = await fastify.elastic.search({
         index: fastify.manager.chain + '-action-*',
         scroll: '30s',
-        size: 20,
+        size: 100,
         body: search_body,
     });
 
@@ -229,6 +229,7 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
             break;
         }
 
+        console.log(body['_scroll_id']);
         const next_response = await fastify.elastic.scroll({
             scroll_id: body['_scroll_id'],
             scroll: '30s',
