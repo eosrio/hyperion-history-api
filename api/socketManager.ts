@@ -131,10 +131,12 @@ async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
             console.log(`${counter} past deltas streamed to ${socket.id}`);
             break;
         }
-        console.log(body['_scroll_id']);
+
         const next_response = await fastify.elastic.scroll({
-            scroll_id: body['_scroll_id'],
-            scroll: '30s',
+            body: {
+                scroll_id: body['_scroll_id'],
+                scroll: '30s'
+            }
         });
         responseQueue.push(next_response);
     }
@@ -229,11 +231,11 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
             break;
         }
 
-        console.log(body['_scroll_id']);
         const next_response = await fastify.elastic.scroll({
-            scroll_id: body['_scroll_id'],
-            scroll: '30s',
-            method: "POST"
+            body: {
+                scroll_id: body['_scroll_id'],
+                scroll: '30s'
+            }
         });
 
         responseQueue.push(next_response);
