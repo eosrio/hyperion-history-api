@@ -233,6 +233,7 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
         const next_response = await fastify.elastic.scroll({
             scroll_id: body['_scroll_id'],
             scroll: '30s',
+            method: "POST"
         });
 
         responseQueue.push(next_response);
