@@ -23,5 +23,6 @@ export const primaryTerms = [
     "creator_action_ordinal",
     "action_ordinal",
     "cpu_usage_us",
-    "net_usage_words"
+    "net_usage_words",
+    "trx_id"
 ];
