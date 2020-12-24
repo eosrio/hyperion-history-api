@@ -78,6 +78,10 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 description: 'simplified output mode',
                 type: 'boolean'
             },
+            "hot_only": {
+                description: 'search only the latest hot index',
+                type: 'boolean'
+            },
             "noBinary": {
                 description: "exclude large binary data",
                 type: 'boolean'

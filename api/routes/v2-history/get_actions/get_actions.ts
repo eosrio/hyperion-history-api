@@ -41,8 +41,14 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
     // Perform search
     const maxActions = fastify.manager.config.api.limits.get_actions;
+
+    let indexPattern = fastify.manager.chain + '-action-*';
+    if (query.hot_only) {
+        indexPattern = fastify.manager.chain + '-action';
+    }
+
     const esResults = await fastify.elastic.search({
-        "index": fastify.manager.chain + '-action-*',
+        "index": indexPattern,
         "from": skip || 0,
         "size": (limit > maxActions ? maxActions : limit) || 10,
         "body": query_body
@@ -54,6 +60,10 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         lib: 0,
         total: results['total']
     };
+
+    if (query.hot_only) {
+        response.hot_only = true;
+    }
 
     if (query.checkLib) {
         response.lib = (await fastify.eosjs.rpc.get_info()).last_irreversible_block_num;

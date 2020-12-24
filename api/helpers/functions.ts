@@ -8,6 +8,7 @@ export function extendResponseSchema(responseProps: any) {
     const props = {
         query_time_ms: {type: "number"},
         cached: {type: "boolean"},
+        hot_only: {type: "boolean"},
         lib: {type: "number"},
         total: {
             type: "object",
@@ -182,6 +183,11 @@ export async function timedQuery(
     // add normal query time
     if (response) {
         response['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
+        // if(response['query_time_ms'] > 1000) {
+        //     console.log(response['query_time_ms']);
+        //     console.log(request.req.url);
+        //     console.log(request.req.method === 'POST' ? request.body : request.query);
+        // }
         return response;
     } else {
         return {};
