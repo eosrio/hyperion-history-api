@@ -4,10 +4,16 @@ import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
     const _size = fastify.manager.config.api.limits.get_trx_actions || 100;
+
+    let indexPattern = fastify.manager.chain + '-action-*';
+    if (request.query.hot_only) {
+        indexPattern = fastify.manager.chain + '-action';
+    }
+
     const pResults = await Promise.all([
         fastify.eosjs.rpc.get_info(),
         fastify.elastic.search({
-            index: fastify.manager.chain + '-action-*',
+            index: indexPattern,
             size: _size,
             body: {
                 query: {
@@ -42,11 +48,16 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 
     const response = {
         "executed": false,
+        "hot_only": false,
         "trx_id": request.query.id,
         "lib": pResults[0].last_irreversible_block_num,
         "actions": [],
         "generated": undefined
     };
+
+    if (request.query.hot_only) {
+        response.hot_only = true;
+    }
 
     const hits = results['body']['hits']['hits'];
 
