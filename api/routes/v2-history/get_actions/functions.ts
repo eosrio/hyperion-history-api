@@ -188,6 +188,8 @@ export function getSkipLimit(query) {
     limit = parseInt(query.limit, 10);
     if (limit < 1) {
         throw new Error('invalid limit parameter');
+    } else if(limit > 500) {
+        throw new Error('limit too big');
     }
     return {skip, limit};
 }
