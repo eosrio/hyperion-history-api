@@ -2,6 +2,41 @@ import {IlmPutLifecycle} from "@elastic/elasticsearch/api/requestParams";
 
 export const ILPs: IlmPutLifecycle[] = [
     {
+        policy: "hyperion-rollover",
+        body: {
+            "policy": {
+                "phases": {
+                    "hot": {
+                        "min_age": "0ms",
+                        "actions": {
+                            "rollover": {
+                                "max_size": "50gb",
+                                "max_age": "30d",
+                                "max_docs": 100000000
+                            },
+                            "set_priority": {
+                                "priority": 50
+                            }
+                        }
+                    },
+                    "warm": {
+                        "min_age": "2d",
+                        "actions": {
+                            "allocate": {
+                                "exclude": {
+                                    "data": "hot"
+                                }
+                            },
+                            "set_priority": {
+                                "priority": 25
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
         policy: "50G30D",
         body: {
             policy: {

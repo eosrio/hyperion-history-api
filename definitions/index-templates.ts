@@ -3,7 +3,7 @@ import {ConfigurationModule} from "../modules/config";
 const shards = 2;
 const replicas = 0;
 const refresh = "1s";
-const defaultLifecyclePolicy = "20G30D";
+let defaultLifecyclePolicy = "20G30D";
 
 export * from './index-lifecycle-policies';
 
@@ -15,6 +15,10 @@ const compression = "best_compression";
 const cm = new ConfigurationModule();
 const chain = cm.config.settings.chain;
 
+if (cm.config.settings.hot_warm_policy) {
+    defaultLifecyclePolicy = "hyperion-rollover";
+}
+
 const defaultIndexSettings = {
     "index": {
         "number_of_shards": shards,
@@ -24,27 +28,33 @@ const defaultIndexSettings = {
     }
 };
 
+const actionSettings = {
+    index: {
+        lifecycle: {
+            "name": defaultLifecyclePolicy,
+            "rollover_alias": chain + "-action"
+        },
+        codec: compression,
+        refresh_interval: refresh,
+        number_of_shards: shards * 2,
+        number_of_replicas: replicas,
+        sort: {
+            field: "global_sequence",
+            order: "desc"
+        }
+    }
+};
+
+if (cm.config.settings.hot_warm_policy) {
+    actionSettings["routing"] = {"allocation": {"exclude": {"data": "warm"}}};
+}
+
 export const action = {
     order: 0,
     index_patterns: [
         chain + "-action-*"
     ],
-    settings: {
-        index: {
-            lifecycle: {
-                "name": defaultLifecyclePolicy,
-                "rollover_alias": chain + "-action"
-            },
-            codec: compression,
-            refresh_interval: refresh,
-            number_of_shards: shards * 2,
-            number_of_replicas: replicas,
-            sort: {
-                field: "global_sequence",
-                order: "desc"
-            }
-        }
-    },
+    settings: actionSettings,
     mappings: {
         properties: {
             "@timestamp": {"type": "date"},
@@ -175,36 +185,44 @@ export const action = {
     }
 };
 
+const deltaSettings = {
+    "index": {
+        "lifecycle": {
+            "name": defaultLifecyclePolicy,
+            "rollover_alias": chain + "-delta"
+        },
+        "codec": compression,
+        "number_of_shards": shards * 2,
+        "refresh_interval": refresh,
+        "number_of_replicas": replicas,
+        "sort.field": ["block_num", "scope", "primary_key"],
+        "sort.order": ["desc", "asc", "asc"]
+    }
+};
+
+if (cm.config.settings.hot_warm_policy) {
+    deltaSettings["routing"] = {"allocation": {"exclude": {"data": "warm"}}};
+}
+
 export const delta = {
     "index_patterns": [chain + "-delta-*"],
-    "settings": {
-        "index": {
-            "lifecycle": {
-                "name": defaultLifecyclePolicy,
-                "rollover_alias": chain + "-delta"
-            },
-            "codec": compression,
-            "number_of_shards": shards * 2,
-            "refresh_interval": refresh,
-            "number_of_replicas": replicas,
-            "sort.field": ["block_num", "scope", "primary_key"],
-            "sort.order": ["desc", "asc", "asc"]
-        }
-    },
+    "settings": deltaSettings,
     "mappings": {
         "properties": {
+
+            // base fields
             "@timestamp": {"type": "date"},
             "ds_error": {"type": "boolean"},
-            "block_num": {"type": "long"},
             "block_id": {"type": "keyword"},
-            "data": {"enabled": false},
-            "value": {"enabled": false},
+            "block_num": {"type": "long"},
+            "deleted_at": {"type": "long"},
             "code": {"type": "keyword"},
-            "present": {"type": "boolean"},
             "scope": {"type": "keyword"},
             "table": {"type": "keyword"},
             "payer": {"type": "keyword"},
             "primary_key": {"type": "keyword"},
+            "data": {"enabled": false},
+            "value": {"enabled": false},
 
             // eosio.msig::approvals
             "@approvals.proposal_name": {"type": "keyword"},

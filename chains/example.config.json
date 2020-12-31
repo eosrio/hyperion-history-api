@@ -38,7 +38,8 @@
     "rate_monitoring": true,
     "max_ws_payload_kb": 256,
     "ds_profiling": false,
-    "auto_mode_switch": false
+    "auto_mode_switch": false,
+    "hot_warm_policy": false
   },
   "blacklists": {
     "actions": [],
