@@ -17,6 +17,7 @@ export interface ScalingConfigs {
 }
 
 export interface MainSettings {
+    hot_warm_policy: boolean;
     auto_mode_switch: boolean;
     ds_profiling: boolean;
     max_ws_payload_kb: number;
