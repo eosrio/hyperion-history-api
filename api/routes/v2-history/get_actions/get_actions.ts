@@ -13,6 +13,7 @@ import {
 
 async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     const query = request.query;
+    const maxActions = fastify.manager.config.api.limits.get_actions;
     const queryStruct = {
         "bool": {
             must: [],
@@ -21,7 +22,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         }
     };
 
-    const {skip, limit} = getSkipLimit(query);
+    const {skip, limit} = getSkipLimit(query, maxActions);
     const sort_direction = getSortDir(query);
     applyAccountFilters(query, queryStruct);
     applyGenericFilters(query, queryStruct);
@@ -40,7 +41,6 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     addSortedBy(query, query_body, sort_direction);
 
     // Perform search
-    const maxActions = fastify.manager.config.api.limits.get_actions;
 
     let indexPattern = fastify.manager.chain + '-action-*';
     if (query.hot_only) {

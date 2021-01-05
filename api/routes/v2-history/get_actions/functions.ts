@@ -179,7 +179,7 @@ export function applyCodeActionFilters(query, queryStruct) {
     }
 }
 
-export function getSkipLimit(query) {
+export function getSkipLimit(query, max?: number) {
     let skip, limit;
     skip = parseInt(query.skip, 10);
     if (skip < 0) {
@@ -188,8 +188,8 @@ export function getSkipLimit(query) {
     limit = parseInt(query.limit, 10);
     if (limit < 1) {
         throw new Error('invalid limit parameter');
-    } else if(limit > 500) {
-        throw new Error('limit too big');
+    } else if (limit > max) {
+        throw new Error(`limit too big, maximum: ${max}`);
     }
     return {skip, limit};
 }
