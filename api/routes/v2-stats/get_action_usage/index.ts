@@ -18,6 +18,10 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 "end_date": {
                     description: 'final date',
                     type: 'string'
+                },
+                "unique_actors": {
+                    description: 'compute unique actors',
+                    type: 'boolean'
                 }
             }
         }
