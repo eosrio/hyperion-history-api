@@ -46,7 +46,7 @@
     "fastify-static": "2.7.0",
     "fastify-websocket": "1.1.2",
     "flatstr": "1.0.12",
-    "got": "11.6.0",
+    "got": "^11.8.1",
     "ioredis": "4.17.3",
     "lodash": "4.17.20",
     "moment": "2.27.0",
@@ -60,11 +60,11 @@
     "yargs": "15.4.1"
   },
   "devDependencies": {
-    "@types/ioredis": "4.16.6",
-    "@types/lodash": "4.14.155",
     "@types/amqplib": "0.5.13",
     "@types/async": "3.2.3",
     "@types/got": "9.6.11",
+    "@types/ioredis": "4.16.6",
+    "@types/lodash": "4.14.155",
     "@types/node": "14.0.13",
     "@types/socket.io": "2.1.8",
     "@types/socket.io-client": "1.4.33",
