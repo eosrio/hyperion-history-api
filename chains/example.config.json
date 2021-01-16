@@ -21,7 +21,8 @@
     "access_log": false,
     "enable_explorer": false,
     "chain_api_error_log": false,
-    "custom_core_token": ""
+    "custom_core_token": "",
+    "enable_export_action": false
   },
   "settings": {
     "preview": false,
@@ -39,7 +40,8 @@
     "max_ws_payload_kb": 256,
     "ds_profiling": false,
     "auto_mode_switch": false,
-    "hot_warm_policy": false
+    "hot_warm_policy": false,
+    "bypass_index_map": false
   },
   "blacklists": {
     "actions": [],
