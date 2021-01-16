@@ -11,4 +11,7 @@ export interface HyperionWorkerDef {
     live_mode?: string;
     type?: string;
     wref?: cluster.Worker;
+    distribution?: any;
+    first_block?: number;
+    last_block?: number;
 }

@@ -17,6 +17,7 @@ export interface ScalingConfigs {
 }
 
 export interface MainSettings {
+    bypass_index_map: boolean;
     hot_warm_policy: boolean;
     auto_mode_switch: boolean;
     ds_profiling: boolean;
