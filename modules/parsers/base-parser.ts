@@ -27,7 +27,11 @@ export abstract class BaseParser {
     }
 
     private anyFromCode(act) {
-        return this.chain + '::' + act['account'] + '::*'
+        return this.chain + '::' + act['account'] + '::*';
+    }
+
+    private anyFromName(act) {
+        return this.chain + '::*::' + act['name'];
     }
 
     private codeActionPair(act) {
@@ -35,17 +39,35 @@ export abstract class BaseParser {
     }
 
     protected checkBlacklist(act) {
-        if (this.filters.action_blacklist
-            .has(this.anyFromCode(act))) {
+
+        // test action blacklist for chain::code::*
+        if (this.filters.action_blacklist.has(this.anyFromCode(act))) {
             return true;
-        } else return this.filters.action_blacklist
-            .has(this.codeActionPair(act));
+        }
+
+        // test action blacklist for chain::*::name
+        if (this.filters.action_blacklist.has(this.anyFromName(act))) {
+            return true;
+        }
+
+        // test action blacklist for chain::code::name
+        return this.filters.action_blacklist.has(this.codeActionPair(act));
     }
 
     protected checkWhitelist(act) {
+
+        // test action whitelist for chain::code::*
         if (this.filters.action_whitelist.has(this.anyFromCode(act))) {
             return true;
-        } else return this.filters.action_whitelist.has(this.codeActionPair(act));
+        }
+
+        // test action whitelist for chain::*::name
+        if (this.filters.action_whitelist.has(this.anyFromName(act))) {
+            return true;
+        }
+
+        // test action whitelist for chain::code::name
+        return this.filters.action_whitelist.has(this.codeActionPair(act));
     }
 
     protected extendFirstAction(worker: DSPoolWorker, action: ActionTrace, trx_data: TrxMetadata, full_trace: any, usageIncluded) {
@@ -182,9 +204,9 @@ export abstract class BaseParser {
         }
     }
 
-    abstract async parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace, usageIncluded: { status: boolean }): Promise<boolean>
+    abstract parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace, usageIncluded: { status: boolean }): Promise<boolean>
 
-    abstract async parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void>
+    abstract parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void>
 
-    abstract async flattenInlineActions(action_traces: any[], level?: number, trace_counter?: any, parent_index?: number): Promise<any[]>
+    abstract flattenInlineActions(action_traces: any[], level?: number, trace_counter?: any, parent_index?: number): Promise<any[]>
 }

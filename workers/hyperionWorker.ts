@@ -112,6 +112,10 @@ export abstract class HyperionWorker {
         return this.chain + '::' + act.account + '::*'
     }
 
+    private anyFromName(act: any) {
+        return this.chain + '::*::' + act.name;
+    }
+
     private codeActionPair(act: any) {
         return this.chain + '::' + act.account + '::' + act.name;
     }
@@ -120,34 +124,76 @@ export abstract class HyperionWorker {
         return this.chain + '::' + delta.code + '::*'
     }
 
+    private anyFromDeltaTable(delta: any) {
+        return this.chain + '::*::' + delta.table;
+    }
+
     private codeDeltaPair(delta: any) {
         return this.chain + '::' + delta.code + '::' + delta.table;
     }
 
     protected checkBlacklist(act) {
-        if (this.filters.action_blacklist
-            .has(this.anyFromCode(act))) {
+
+        // test for chain::code::*
+        if (this.filters.action_blacklist.has(this.anyFromCode(act))) {
             return true;
-        } else return this.filters.action_blacklist
-            .has(this.codeActionPair(act));
+        }
+
+        // test for chain::*::name
+        if (this.filters.action_blacklist.has(this.anyFromName(act))) {
+            return true;
+        }
+
+        // test for chain::code::name
+        return this.filters.action_blacklist.has(this.codeActionPair(act));
     }
 
     protected checkWhitelist(act) {
+
+        // test for chain::code::*
         if (this.filters.action_whitelist.has(this.anyFromCode(act))) {
             return true;
-        } else return this.filters.action_whitelist.has(this.codeActionPair(act));
+        }
+
+        // test for chain::*::name
+        if (this.filters.action_whitelist.has(this.anyFromName(act))) {
+            return true;
+        }
+
+        // test for chain::code::name
+        return this.filters.action_whitelist.has(this.codeActionPair(act));
     }
 
     protected checkDeltaBlacklist(delta) {
+
+        // test blacklist for chain::code::*
         if (this.filters.delta_blacklist.has(this.anyFromDeltaCode(delta))) {
             return true;
-        } else return this.filters.delta_blacklist.has(this.codeDeltaPair(delta));
+        }
+
+        // test blacklist for chain::*::table
+        if (this.filters.delta_blacklist.has(this.anyFromDeltaTable(delta))) {
+            return true;
+        }
+
+        // test blacklist for chain::code::table
+        return this.filters.delta_blacklist.has(this.codeDeltaPair(delta));
     }
 
     protected checkDeltaWhitelist(delta) {
+
+        // test whitelist for chain::code::*
         if (this.filters.delta_whitelist.has(this.anyFromDeltaCode(delta))) {
             return true;
-        } else return this.filters.delta_whitelist.has(this.codeDeltaPair(delta));
+        }
+
+        // test whitelist for chain::*::table
+        if (this.filters.delta_whitelist.has(this.anyFromDeltaTable(delta))) {
+            return true;
+        }
+
+        // test whitelist for chain::code::table
+        return this.filters.delta_whitelist.has(this.codeDeltaPair(delta));
     }
 
     loadAbiHex(contract, block_num, abi_hex) {
@@ -206,7 +252,7 @@ export abstract class HyperionWorker {
         return _status;
     }
 
-    abstract async run(): Promise<void>
+    abstract run(): Promise<void>
 
     abstract assertQueues(): void
 
