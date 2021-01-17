@@ -397,7 +397,7 @@ export default class WSRouter extends HyperionWorker {
             } else {
                 allow = true;
             }
-            if (link.filters.length > 0) {
+            if (link.filters?.length > 0) {
                 // check filters
                 const _parsedMsg = JSON.parse(msg);
                 allow = link.filters.every(filter => {
@@ -420,7 +420,7 @@ export default class WSRouter extends HyperionWorker {
             } else {
                 allow = true;
             }
-            // if (link.filters.length > 0) {
+            // if (link.filters?.length > 0) {
             //     // check filters
             //     const _parsedMsg = JSON.parse(msg);
             //     allow = link.filters.every(filter => {
