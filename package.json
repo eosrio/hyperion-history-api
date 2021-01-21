@@ -53,7 +53,7 @@
     "node-fetch": "3.0.0-beta.8",
     "portfinder": "^1.0.26",
     "redis": "3.0.2",
-    "socket.io": "2.3.0",
+    "socket.io": "2.4.0",
     "socket.io-client": "2.3.0",
     "typescript": "3.9.5",
     "ws": "7.3.1",
