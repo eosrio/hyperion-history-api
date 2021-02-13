@@ -42,6 +42,7 @@ class HyperionApiServer {
         this.fastify = Fastify({
             ignoreTrailingSlash: false,
             trustProxy: true,
+            pluginTimeout: 5000,
             logger: this.conf.api.access_log ? {
                 stream: logStream,
                 redact: ['req.headers.authorization'],
