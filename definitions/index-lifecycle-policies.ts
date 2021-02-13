@@ -10,8 +10,8 @@ export const ILPs: IlmPutLifecycle[] = [
                         "min_age": "0ms",
                         "actions": {
                             "rollover": {
-                                "max_size": "50gb",
-                                "max_age": "30d",
+                                "max_size": "200gb",
+                                "max_age": "60d",
                                 "max_docs": 100000000
                             },
                             "set_priority": {
@@ -80,7 +80,7 @@ export const ILPs: IlmPutLifecycle[] = [
         }
     },
     {
-        policy: "20G30D",
+        policy: "200G",
         body: {
             policy: {
                 phases: {
@@ -88,9 +88,7 @@ export const ILPs: IlmPutLifecycle[] = [
                         min_age: "0ms",
                         actions: {
                             rollover: {
-                                max_age: "30d",
-                                max_size: "20gb",
-                                max_docs: 100000000
+                                max_size: "200gb",
                             },
                             set_priority: {
                                 priority: 100

@@ -3,7 +3,7 @@ import {ConfigurationModule} from "../modules/config";
 const shards = 2;
 const replicas = 0;
 const refresh = "1s";
-let defaultLifecyclePolicy = "20G30D";
+let defaultLifecyclePolicy = "200G";
 
 export * from './index-lifecycle-policies';
 
