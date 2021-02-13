@@ -88,7 +88,7 @@ export const ILPs: IlmPutLifecycle[] = [
                         min_age: "0ms",
                         actions: {
                             rollover: {
-                                max_size: "200gb",
+                                max_size: "200gb"
                             },
                             set_priority: {
                                 priority: 100
