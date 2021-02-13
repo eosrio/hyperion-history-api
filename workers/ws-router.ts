@@ -151,7 +151,7 @@ export default class WSRouter extends HyperionWorker {
     startRoutingRateMonitor() {
         setInterval(() => {
             if (this.totalRoutedMessages > 0) {
-                console.log('[Router] Routing rate: ' + (this.totalRoutedMessages / 20) + ' msg/s');
+                hLog('[Router] Routing rate: ' + (this.totalRoutedMessages / 20) + ' msg/s');
                 this.totalRoutedMessages = 0;
             }
         }, 20000);
@@ -167,7 +167,7 @@ export default class WSRouter extends HyperionWorker {
             }
         }
         this.totalClients = total;
-        console.log('Total WS clients:', this.totalClients);
+        hLog('Total WS clients:', this.totalClients);
     }
 
     appendToL1Map(target, primary, link) {
@@ -200,7 +200,6 @@ export default class WSRouter extends HyperionWorker {
 
     addActionRequest(data, id) {
         const req = data.request;
-        console.log(req);
         if (typeof req.account !== 'string') {
             return {status: 'FAIL', reason: 'invalid request'};
         }
@@ -239,12 +238,12 @@ export default class WSRouter extends HyperionWorker {
         // register client on index
         if (this.clientIndex.has(data.client_socket)) {
             this.clientIndex.get(data.client_socket).set(id, path);
-            console.log('new relay added to existing client');
+            // console.log('new relay added to existing client');
         } else {
             const list = new Map();
             list.set(id, path);
             this.clientIndex.set(data.client_socket, list);
-            console.log('new client added to index');
+            // console.log('new client added to index');
         }
     }
 
@@ -298,7 +297,7 @@ export default class WSRouter extends HyperionWorker {
     }
 
     removeLinks(id) {
-        console.log(`Removing links for ${id}...`);
+        // console.log(`Removing links for ${id}...`);
         if (this.clientIndex.has(id)) {
             const links = this.clientIndex.get(id);
             links.forEach((path, key) => {
