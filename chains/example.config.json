@@ -41,6 +41,7 @@
     "ds_profiling": false,
     "auto_mode_switch": false,
     "hot_warm_policy": false,
+    "custom_policy": "",
     "bypass_index_map": false
   },
   "blacklists": {

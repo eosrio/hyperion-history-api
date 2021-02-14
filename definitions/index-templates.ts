@@ -19,6 +19,10 @@ if (cm.config.settings.hot_warm_policy) {
     defaultLifecyclePolicy = "hyperion-rollover";
 }
 
+if(cm.config.settings.custom_policy) {
+    defaultLifecyclePolicy = cm.config.settings.custom_policy;
+}
+
 const defaultIndexSettings = {
     "index": {
         "number_of_shards": shards,
