@@ -5,6 +5,8 @@ services:
     container_name: redis
     image: redis:5.0.9-alpine
     restart: on-failure
+    ports:
+      - 6379:6379
     networks:
       - hyperion
 
@@ -19,6 +21,7 @@ services:
     volumes:
       - ./rabbitmq/data:/var/lib/rabbitmq
     ports:
+      - 5672:5672
       - 15672:15672
     networks:
       - hyperion
