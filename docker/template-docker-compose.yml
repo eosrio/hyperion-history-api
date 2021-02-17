@@ -5,6 +5,8 @@ services:
     container_name: redis
     image: redis:5.0.9-alpine
     restart: on-failure
+     volumes:
+      - ./redis/data:/data
     ports:
       - 6379:6379
     networks:
