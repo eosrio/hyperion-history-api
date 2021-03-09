@@ -326,9 +326,7 @@ export default class DSPoolWorker extends HyperionWorker {
 		for (const {name, type} of abi.actions) {
 			try {
 				actions.set(name, Serialize.getType(types, type));
-			} catch (e) {
-				hLog(`Serialize.getType failed on ${accountName}: ${e.message}`);
-			}
+			} catch {}
 		}
 
 		const result = {types, actions, tables: abi.tables};
