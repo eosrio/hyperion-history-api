@@ -83,10 +83,10 @@ export class HyperionMaster {
     private totalContractHits = 0;
 
     // producer monitoring
-    private producedBlocks: object = {};
     private lastProducedBlockNum = 0;
-    private lastProducer: string = null;
     private handoffCounter: number = 0;
+    private lastProducer: string = null;
+    private producedBlocks: object = {};
     private missedRounds: object = {};
 
     // IPC Messaging
@@ -200,6 +200,9 @@ export class HyperionMaster {
                 messageAllWorkers(cluster, {
                     event: 'connect_ws'
                 });
+            },
+            'ingestor_block_report': (data) => {
+                // console.log(data);
             },
             'save_abi': (msg: any) => {
                 this.total_abis++;
@@ -363,22 +366,31 @@ export class HyperionMaster {
         const queue_prefix = this.conf.settings.chain;
         const index_queue_prefix = queue_prefix + ':index';
         const table_feats = this.conf.features.tables;
+
         if (table_feats.proposals) {
             indicesList.push({name: 'tableProposals', type: 'table-proposals'});
             index_queues.push({type: 'table-proposals', name: index_queue_prefix + "_table_proposals"});
         }
+
         if (table_feats.accounts) {
             indicesList.push({name: 'tableAccounts', type: 'table-accounts'});
             index_queues.push({type: 'table-accounts', name: index_queue_prefix + "_table_accounts"});
         }
+
         if (table_feats.voters) {
             indicesList.push({name: 'tableVoters', type: 'table-voters'});
             index_queues.push({type: 'table-voters', name: index_queue_prefix + "_table_voters"});
         }
+
         if (table_feats.delband) {
             indicesList.push({name: 'tableDelband', type: 'table-delband'});
             index_queues.push({type: 'table-delband', name: index_queue_prefix + "_table_delband"});
         }
+
+        // special dynamic table mapper
+        // indicesList.push({name: 'dynamicTable', type: 'dynamic-table'});
+        // index_queues.push({type: 'dynamic-table', name: index_queue_prefix + "_dynamic"});
+
     }
 
     private async getCurrentSchedule() {
@@ -714,34 +726,46 @@ export class HyperionMaster {
             delta: []
         };
 
-        const getIndicesResponse = await this.manager.elasticsearchClient.indices.get({
-            index: this.chain + "-*"
-        });
+        hLog(`Loading indices...`);
 
-        if (getIndicesResponse) {
-            const indices = getIndicesResponse.body;
-            const actionIndices = Object.keys(indices).filter(k => k.startsWith(this.chain + "-action"));
-            for (const actionIndex of actionIndices) {
-                const last_block = await this.getLastBlock(actionIndex);
-                const first_block = await this.getFirstBlock(actionIndex);
-                indexDist.action.push({
-                    index: actionIndex,
-                    first_block,
-                    last_block
-                });
-            }
+        if(!this.conf.settings.bypass_index_map) {
+            const getIndicesResponse = await this.manager.elasticsearchClient.cat.indices({
+                index: this.chain + "-*",
+                format: 'json'
+            });
 
-            const deltaIndices = Object.keys(indices).filter(k => k.startsWith(this.chain + "-delta"));
-            for (const deltaIndex of deltaIndices) {
-                const last_block = await this.getLastBlock(deltaIndex);
-                const first_block = await this.getFirstBlock(deltaIndex);
-                indexDist.delta.push({
-                    index: deltaIndex,
-                    first_block,
-                    last_block
-                });
+            if (getIndicesResponse && getIndicesResponse.statusCode === 200 && getIndicesResponse.body) {
+                const indices = getIndicesResponse.body;
+                const actionIndices = indices.filter(k => k.index.startsWith(this.chain + "-action"));
+                for (const actionIndex of actionIndices) {
+                    const last_block = await this.getLastBlock(actionIndex.index);
+                    const first_block = await this.getFirstBlock(actionIndex.index);
+                    hLog(`ActionIndex: ${actionIndex.index} | First: ${first_block} | Last: ${last_block}`);
+                    indexDist.action.push({
+                        index: actionIndex.index,
+                        first_block,
+                        last_block
+                    });
+                }
+
+                const deltaIndices = indices.filter(k => k.index.startsWith(this.chain + "-delta"));
+                for (const deltaIndex of deltaIndices) {
+                    const last_block = await this.getLastBlock(deltaIndex.index);
+                    const first_block = await this.getFirstBlock(deltaIndex.index);
+                    hLog(`DeltaIndex: ${deltaIndex.index} | First: ${first_block} | Last: ${last_block}`);
+                    indexDist.delta.push({
+                        index: deltaIndex.index,
+                        first_block,
+                        last_block
+                    });
+                }
+            } else {
+                console.log(JSON.stringify(getIndicesResponse, null, 2));
+                hLog(`Failed to load all indices!`);
+                process.exit();
             }
         }
+
 
         if (this.conf.indexer.rewrite || this.conf.settings.preview) {
             hLog(`Indexer rewrite enabled (${this.conf.indexer.start_on} - ${this.conf.indexer.stop_on})`);
@@ -786,7 +810,7 @@ export class HyperionMaster {
         }
     }
 
-    private addWorker(def: any) {
+    private addWorker(def: HyperionWorkerDef) {
         this.worker_index++;
         def.worker_id = this.worker_index;
         this.workerMap.push(def);
@@ -1296,7 +1320,12 @@ export class HyperionMaster {
 
     private startIndexMonitoring() {
         let reference_time = Date.now();
+
         setInterval(() => {
+
+            // console.log(this.producedBlocks);
+            // console.log(this.missedRounds);
+
             const _workers = Object.keys(cluster.workers).length;
             const tScale = (this.log_interval / 1000);
             this.total_read += this.pushedBlocks;
@@ -1615,7 +1644,6 @@ export class HyperionMaster {
         this.maxBatchSize = this.conf.scaling.batch_size;
 
         await this.findRange();
-
 
         await this.setupWorkers();
 
@@ -1990,7 +2018,7 @@ export class HyperionMaster {
         }
 
         // wait for all disconnect events
-        await new Promise((resolve) => {
+        await new Promise<void>((resolve) => {
             let _loop = setInterval(() => {
                 if (disconnect_counter === this.workerMap.length) {
                     clearInterval(_loop);
@@ -2043,6 +2071,9 @@ export class HyperionMaster {
         await this.setupIndexers();
         await this.setupStreaming();
         await this.setupDSPool();
+        this.addWorker({
+            worker_role: "delta_updater"
+        });
     }
 
     private async findRange() {
