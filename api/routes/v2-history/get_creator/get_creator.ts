@@ -45,7 +45,50 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 		response.timestamp = result['@timestamp'];
 		return response;
 	} else {
-		throw new Error("account creation not found");
+		let accountInfo;
+		try {
+			accountInfo = await fastify.eosjs.rpc.get_account(request.query.account);
+		} catch (e) {
+			throw new Error("account not found");
+		}
+		if (accountInfo) {
+			try {
+				response.timestamp = accountInfo.created;
+				const blockHeader = await fastify.elastic.search({
+					"index": fastify.manager.chain + '-block-*',
+					"body": {
+						size: 1,
+						query: {
+							bool: {
+								must: [{term: {"@timestamp": response.timestamp}}]
+							}
+						}
+					}
+				});
+				const blockId = blockHeader['body']['hits']['hits'][0]._source.block_id;
+				const blockData = await fastify.eosjs.rpc.get_block(blockId);
+				response.block_num = blockData.block_num;
+				for (const transaction of blockData["transactions"]) {
+					if (typeof transaction.trx !== 'string') {
+						const actions = transaction.trx.transaction.actions;
+						for (const act of actions) {
+							if (act.name === 'newaccount') {
+								if (act.data.name === request.query.account) {
+									response.creator = act.data.creator;
+									response.trx_id = transaction.id;
+									return response;
+								}
+							}
+						}
+					}
+				}
+				return response;
+			} catch (e) {
+				throw new Error("account creation not found");
+			}
+		} else {
+			throw new Error("account creation not found");
+		}
 	}
 }
 
