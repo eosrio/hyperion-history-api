@@ -158,7 +158,8 @@ function bigint2Milliseconds(input: bigint) {
 }
 
 const defaultRouteCacheMap = {
-	get_resource_usage: 60
+	get_resource_usage: 3600,
+	get_creator: 3600 * 24
 }
 
 export async function timedQuery(
@@ -190,7 +191,6 @@ export async function timedQuery(
 		if(defaultRouteCacheMap[route]) {
 			EX = defaultRouteCacheMap[route];
 		}
-		console.log(route);
 		setCacheByHash(fastify, hash, response, EX);
 	}
 
