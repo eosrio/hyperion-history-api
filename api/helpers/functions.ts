@@ -120,8 +120,7 @@ export async function getCachedResponse(server: FastifyInstance, route: string, 
 	const chain = server.manager.chain;
 	let resp, hash;
 	if (server.manager.config.api.enable_caching) {
-		const keystring = JSON.stringify(key);
-		[resp, hash] = await getCacheByHash(server.redis, route + keystring, chain);
+		[resp, hash] = await getCacheByHash(server.redis, route + JSON.stringify(key), chain);
 		if (resp) {
 			resp = JSON.parse(resp);
 			resp['cached'] = true;
@@ -176,7 +175,7 @@ export async function timedQuery(
 		request.req.method === 'POST' ? request.body : request.query
 	);
 
-	if (cachedResponse) {
+	if (cachedResponse && !request.query.ignoreCache) {
 		// add cached query time
 		cachedResponse['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
 		return cachedResponse;
@@ -188,7 +187,7 @@ export async function timedQuery(
 	// save response to cash
 	if (hash) {
 		let EX = null;
-		if(defaultRouteCacheMap[route]) {
+		if (defaultRouteCacheMap[route]) {
 			EX = defaultRouteCacheMap[route];
 		}
 		setCacheByHash(fastify, hash, response, EX);
