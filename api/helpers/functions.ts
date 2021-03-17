@@ -157,6 +157,10 @@ function bigint2Milliseconds(input: bigint) {
 	return parseFloat((parseInt(input.toString()) / 1000000).toFixed(3));
 }
 
+const defaultRouteCacheMap = {
+	get_resource_usage: 60
+}
+
 export async function timedQuery(
 	queryFunction: (fastify: FastifyInstance, request: FastifyRequest) => Promise<any>,
 	fastify: FastifyInstance, request: FastifyRequest, route: string): Promise<any> {
@@ -183,9 +187,10 @@ export async function timedQuery(
 	// save response to cash
 	if (hash) {
 		let EX = null;
-		if (route === 'get_resource_usage') {
-			EX = 60;
+		if(defaultRouteCacheMap[route]) {
+			EX = defaultRouteCacheMap[route];
 		}
+		console.log(route);
 		setCacheByHash(fastify, hash, response, EX);
 	}
 
