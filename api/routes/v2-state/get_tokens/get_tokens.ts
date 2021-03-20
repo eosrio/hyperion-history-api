@@ -46,7 +46,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
                     if (amount_arr.length === 2) {
                         precision = amount_arr[1].length;
                         fastify.tokenCache.set(key, {precision});
-                        console.log('Caching token precision -', key, precision);
+                        // console.log('Caching token precision -', key, precision);
                     }
                 }
             } catch (e) {
