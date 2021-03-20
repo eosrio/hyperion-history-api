@@ -23,6 +23,14 @@ export default function (fastify: FastifyInstance, opts: any, next) {
             "payer": {
                 description: 'payer account',
                 type: 'string'
+            },
+            "after": {
+                description: 'filter after specified date (ISO8601)',
+                type: 'string'
+            },
+            "before": {
+                description: 'filter before specified date (ISO8601)',
+                type: 'string'
             }
         }),
         response: extendResponseSchema({
