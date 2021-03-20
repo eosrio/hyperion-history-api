@@ -21,16 +21,19 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
         }
     };
 
-    // Filter by account
+    // Filter by accounts
     if (request.query.account) {
-        queryStruct.bool.must.push({
-            "bool": {
-                "should": [
-                    {"term": {"requested_approvals.actor": request.query.account}},
-                    {"term": {"provided_approvals.actor": request.query.account}}
-                ]
-            }
-        });
+        const accounts = request.query.account.split(',');
+        for(const acc of accounts) {
+            queryStruct.bool.must.push({
+                "bool": {
+                    "should": [
+                        {"term": {"requested_approvals.actor": acc}},
+                        {"term": {"provided_approvals.actor": acc}}
+                    ]
+                }
+            });
+        }
     }
 
     // Filter by proposer account
