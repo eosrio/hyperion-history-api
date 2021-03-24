@@ -105,3 +105,5 @@ modules/**/*.js.map
 
 addons/**/*.js
 addons/**/*.js.map
+
+plugins/repos
