@@ -36,7 +36,7 @@
     "fastify-autoload": "^3.6.0",
     "fastify-compress": "^3.4.2",
     "fastify-cors": "^5.2.0",
-    "fastify-elasticsearch": "^2.0.0",
+    "fastify-elasticsearch": "2.0.0",
     "fastify-formbody": "^5.0.0",
     "fastify-plugin": "^3.0.0",
     "fastify-rate-limit": "^5.5.0",
