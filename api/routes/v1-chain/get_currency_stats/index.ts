@@ -7,12 +7,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         getRouteName(__filename),
         'Retrieves currency stats',
         {
-            "code": {
-                description: 'contract name',
-                type: 'string',
-                minLength: 1,
-                maxLength: 12
-            },
+            "code": {$ref: 'AccountName#'},
             "symbol": {
                 description: 'token symbol',
                 type: 'string',

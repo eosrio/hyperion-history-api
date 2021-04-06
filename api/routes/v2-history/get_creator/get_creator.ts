@@ -1,18 +1,19 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
 
 async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 
+	const query: any = request.query;
+
 	const response = {
-		account: request.query.account,
+		account: query.account,
 		creator: '',
 		timestamp: '',
 		block_num: 0,
 		trx_id: '',
 	};
 
-	if (request.query.account === fastify.manager.config.settings.eosio_alias) {
+	if (query.account === fastify.manager.config.settings.eosio_alias) {
 		const genesisBlock = await fastify.eosjs.rpc.get_block(1);
 		if (genesisBlock) {
 			response.creator = '__self__';
@@ -31,7 +32,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 			size: 1,
 			query: {
 				bool: {
-					must: [{term: {"@newaccount.newact": request.query.account}}]
+					must: [{term: {"@newaccount.newact": query.account}}]
 				}
 			}
 		}
@@ -47,7 +48,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 	} else {
 		let accountInfo;
 		try {
-			accountInfo = await fastify.eosjs.rpc.get_account(request.query.account);
+			accountInfo = await fastify.eosjs.rpc.get_account(query.account);
 		} catch (e) {
 			throw new Error("account not found");
 		}
@@ -73,7 +74,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 						const actions = transaction.trx.transaction.actions;
 						for (const act of actions) {
 							if (act.name === 'newaccount') {
-								if (act.data.name === request.query.account) {
+								if (act.data.name === query.account) {
 									response.creator = act.data.creator;
 									response.trx_id = transaction.id;
 									return response;
@@ -93,7 +94,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 }
 
 export function getCreatorHandler(fastify: FastifyInstance, route: string) {
-	return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+	return async (request: FastifyRequest, reply: FastifyReply) => {
 		reply.send(await timedQuery(getCreator, fastify, request, route));
 	}
 }

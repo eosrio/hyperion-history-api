@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-
 if [ $# -eq 0 ]; then
   echo 'Please inform the app name. ex: "./run.sh indexer"'
   exit 1
 fi
-
 echo -e "\n-->> Starting $1..."
 (set -x; pm2 start --only "$@" --update-env --silent)
 echo -e "\n-->> Saving pm2 state..."

@@ -15,6 +15,7 @@
   "exclude": [
     "node_modules",
     "hyperion-explorer",
-    "build"
+    "build",
+    "plugins/repos"
   ]
 }

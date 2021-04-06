@@ -1,7 +1,6 @@
 import {createHash} from "crypto";
 import * as _ from "lodash";
-import {FastifyInstance, FastifyReply, FastifyRequest, HTTPMethod, RouteSchema} from "fastify";
-import {ServerResponse} from "http";
+import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethods} from "fastify";
 import got from "got";
 
 export function extendResponseSchema(responseProps: any) {
@@ -105,9 +104,11 @@ export function getRouteName(filename: string) {
 
 export function addApiRoute(
 	fastifyInstance: FastifyInstance,
-	method: HTTPMethod | HTTPMethod[],
+	method: HTTPMethods | HTTPMethods[],
 	routeName: string,
-	routeBuilder: (fastify: FastifyInstance, route: string) => (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => Promise<void>, schema: RouteSchema) {
+	routeBuilder: (fastify: FastifyInstance, route: string) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>,
+	schema: FastifySchema
+) {
 	fastifyInstance.route({
 		url: '/' + routeName,
 		method,
@@ -172,10 +173,10 @@ export async function timedQuery(
 	const [cachedResponse, hash] = await getCachedResponse(
 		fastify,
 		route,
-		request.req.method === 'POST' ? request.body : request.query
+		request.method === 'POST' ? request.body : request.query
 	);
 
-	if (cachedResponse && !request.query.ignoreCache) {
+	if (cachedResponse && !request.query["ignoreCache"]) {
 		// add cached query time
 		cachedResponse['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
 		return cachedResponse;
@@ -203,17 +204,17 @@ export async function timedQuery(
 }
 
 export function chainApiHandler(fastify: FastifyInstance) {
-	return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+	return async (request: FastifyRequest, reply: FastifyReply) => {
 		await handleChainApiRedirect(request, reply, fastify);
 	}
 }
 
 export async function handleChainApiRedirect(
 	request: FastifyRequest,
-	reply: FastifyReply<ServerResponse>,
+	reply: FastifyReply,
 	fastify: FastifyInstance
 ) {
-	const urlParts = request.req.url.split("?");
+	const urlParts = request.url.split("?");
 	let reqUrl = fastify.chain_api + urlParts[0];
 
 	if (urlParts[0] === '/v1/chain/push_transaction' && fastify.push_api && fastify.push_api !== "") {
@@ -222,7 +223,7 @@ export async function handleChainApiRedirect(
 
 	const opts = {};
 
-	if (request.req.method === 'POST') {
+	if (request.method === 'POST') {
 		if (request.body) {
 			if (typeof request.body === 'string') {
 				opts['body'] = request.body;
@@ -232,14 +233,14 @@ export async function handleChainApiRedirect(
 		} else {
 			opts['body'] = "";
 		}
-	} else if (request.req.method === 'GET') {
+	} else if (request.method === 'GET') {
 		opts['json'] = request.query;
 	}
 
 	try {
 		const apiResponse = await got.post(reqUrl, opts);
 		reply.headers({"Content-Type": "application/json"});
-		if (request.req.method === 'HEAD') {
+		if (request.method === 'HEAD') {
 			reply.headers({"Content-Length": apiResponse.body.length});
 			reply.send("");
 		} else {
@@ -256,7 +257,7 @@ export async function handleChainApiRedirect(
 			try {
 				if (error.response) {
 					const error_msg = JSON.parse(error.response.body).error.details[0].message;
-					console.log(`endpoint: ${request.req.url} | status: ${error.response.statusCode} | error: ${error_msg}`);
+					console.log(`endpoint: ${request.raw.url} | status: ${error.response.statusCode} | error: ${error_msg}`);
 				} else {
 					console.log(error);
 				}
@@ -312,7 +313,8 @@ export function addChainApiRoute(fastify: FastifyInstance, routeName, descriptio
 export function addSharedSchemas(fastify: FastifyInstance) {
 	fastify.addSchema({
 		$id: "WholeNumber",
-		description: "A whole number",
+		title: "Integer",
+		description: "Integer or String",
 		anyOf: [
 			{
 				type: "string",
@@ -342,6 +344,7 @@ export function addSharedSchemas(fastify: FastifyInstance) {
 
 	fastify.addSchema({
 		$id: "AccountName",
+		description: "String representation of an EOSIO compatible account name",
 		"anyOf": [
 			{
 				"type": "string",
@@ -383,7 +386,10 @@ export function addSharedSchemas(fastify: FastifyInstance) {
 		$id: "BlockExtensions",
 		"type": "array",
 		"items": {
-			"anyOf": [{"type": "integer"}, {"type": "string"}]
+			"anyOf": [
+				{"type": "integer"},
+				{"type": "string"}
+			]
 		},
 		"title": "Extension"
 	})
@@ -401,8 +407,8 @@ export function addSharedSchemas(fastify: FastifyInstance) {
 			"hex_data"
 		],
 		"properties": {
-			"account": 'AccountName#',
-			"name": 'AccountName#',
+			"account": {$ref: 'AccountName#'},
+			"name": {$ref: 'AccountName#'},
 			"authorization": {
 				"type": "array",
 				"items": {
@@ -414,8 +420,8 @@ export function addSharedSchemas(fastify: FastifyInstance) {
 						"permission"
 					],
 					"properties": {
-						"actor": 'AccountName#',
-						"permission": 'AccountName#'
+						"actor": {$ref: 'AccountName#'},
+						"permission": {$ref: 'AccountName#'}
 					},
 					"title": "Authority"
 				}

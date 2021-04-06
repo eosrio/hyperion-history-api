@@ -173,6 +173,7 @@ export default class DSPoolWorker extends HyperionWorker {
 		}
 	}
 
+	// noinspection JSUnusedGlobalSymbols
 	async verifyLocalType(contract, type, block_num, field) {
 		let _status;
 		let resultType;

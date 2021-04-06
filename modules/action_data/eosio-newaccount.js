@@ -3,8 +3,8 @@ const hyperionModule = {
     contract: 'eosio',
     action: 'newaccount',
     parser_version: ['1.8','1.7'],
+    defineQueryPrefix: 'newaccount',
     handler: (action) => {
-        // attach action extras here
         let name = null;
         const data = action['act']['data'];
         if (data['newact']) {

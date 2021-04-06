@@ -1,10 +1,16 @@
+// max js heap in MB for each indexer subprocess
+const idx_js_heap = 4096;
+
+// max js heap in MB for each api process
+const api_js_heap = 1024;
+
 function addIndexer(chainName) {
   return {
     script: './launcher.js',
     name: chainName + '-indexer',
     namespace: chainName,
     interpreter: 'node',
-    interpreter_args: ['--max-old-space-size=4096', '--trace-deprecation'],
+    interpreter_args: ['--max-old-space-size=' + idx_js_heap, '--trace-deprecation', '--trace-warnings'],
     autorestart: false,
     kill_timeout: 3600,
     watch: false,
@@ -21,7 +27,7 @@ function addApiServer(chainName, threads) {
     script: './api/server.js',
     name: chainName + '-api',
     namespace: chainName,
-    node_args: ['--trace-deprecation'],
+    node_args: ['--max-old-space-size=' + api_js_heap, '--trace-deprecation', '--trace-warnings'],
     exec_mode: 'cluster',
     merge_logs: true,
     instances: threads,

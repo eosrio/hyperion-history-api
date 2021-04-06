@@ -3,8 +3,8 @@ const hyperionModule = {
     contract: 'eosio',
     action: 'unstaketorex',
     parser_version: ['1.8','1.7'],
+    defineQueryPrefix: 'unstaketorex',
     handler: (action) => {
-        // attach action extras here
         const data = action['act']['data'];
         let cpu_qtd = null;
         let net_qtd = null;

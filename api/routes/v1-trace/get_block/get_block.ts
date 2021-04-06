@@ -1,5 +1,4 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
 import * as _ from "lodash";
 
@@ -19,7 +18,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
         request.body = JSON.parse(request.body);
     }
 
-    const reqBody = request.body;
+    const reqBody: any = request.body;
     const targetBlock = parseInt(reqBody.block_num);
     let searchBody;
 
@@ -121,7 +120,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
 }
 
 export function getBlockTraceHandler(fastify: FastifyInstance, route: string) {
-    return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
         reply.send(await timedQuery(getBlockTrace, fastify, request, route));
     }
 }

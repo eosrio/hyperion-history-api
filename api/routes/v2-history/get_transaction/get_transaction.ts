@@ -1,12 +1,14 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
+
+    const query: any = request.query;
+
     const _size = fastify.manager.config.api.limits.get_trx_actions || 100;
 
     let indexPattern = fastify.manager.chain + '-action-*';
-    if (request.query.hot_only) {
+    if (query.hot_only) {
         indexPattern = fastify.manager.chain + '-action';
     }
 
@@ -19,7 +21,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
                 query: {
                     bool: {
                         must: [
-                            {term: {trx_id: request.query.id.toLowerCase()}}
+                            {term: {trx_id: query.id.toLowerCase()}}
                         ]
                     }
                 },
@@ -35,7 +37,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
                 query: {
                     bool: {
                         must: [
-                            {term: {trx_id: request.query.id.toLowerCase()}}
+                            {term: {trx_id: query.id.toLowerCase()}}
                         ]
                     }
                 }
@@ -49,13 +51,13 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
     const response = {
         "executed": false,
         "hot_only": false,
-        "trx_id": request.query.id,
+        "trx_id": query.id,
         "lib": pResults[0].last_irreversible_block_num,
         "actions": [],
         "generated": undefined
     };
 
-    if (request.query.hot_only) {
+    if (query.hot_only) {
         response.hot_only = true;
     }
 
@@ -84,7 +86,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 }
 
 export function getTransactionHandler(fastify: FastifyInstance, route: string) {
-    return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
         reply.send(await timedQuery(getTransaction, fastify, request, route));
     }
 }

@@ -14,7 +14,8 @@ const hyperionWorkers = {
     deserializer: 'deserializer',
     continuous_reader: 'state-reader',
     ingestor: 'indexer',
-    router: 'ws-router'
+    router: 'ws-router',
+    delta_updater: 'delta-updater'
 };
 
 export async function launch() {

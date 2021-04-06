@@ -1,4 +1,4 @@
-import {extendedActions, primaryTerms, terms} from "./definitions";
+import {primaryTerms, terms} from "./definitions";
 
 export function addSortedBy(query, queryBody, sort_direction) {
     if (query['sortedBy']) {
@@ -98,14 +98,14 @@ export function applyTimeFilter(query, queryStruct) {
     }
 }
 
-export function applyGenericFilters(query, queryStruct) {
+export function applyGenericFilters(query, queryStruct, allowedExtraParams: Set<string>) {
     for (const prop in query) {
         if (Object.prototype.hasOwnProperty.call(query, prop)) {
             const pair = prop.split(".");
             if (pair.length > 1 || primaryTerms.includes(pair[0])) {
                 let pkey;
-                if (pair.length > 1) {
-                    pkey = extendedActions.has(pair[0]) ? "@" + prop : prop;
+                if (pair.length > 1 && allowedExtraParams) {
+                    pkey = allowedExtraParams.has(pair[0]) ? "@" + prop : prop;
                 } else {
                     pkey = prop;
                 }

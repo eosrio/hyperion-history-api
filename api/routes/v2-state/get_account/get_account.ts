@@ -1,9 +1,11 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import got from "got";
 import {timedQuery} from "../../../helpers/functions";
 
 async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
+
+
+    const query: any = request.query;
 
     const response = {
         account: null,
@@ -13,7 +15,7 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
         links: null
     };
 
-    const account = request.query.account;
+    const account = query.account;
     const reqQueue = [];
 
     try {
@@ -45,7 +47,7 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
 }
 
 export function getAccountHandler(fastify: FastifyInstance, route: string) {
-    return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
         reply.send(await timedQuery(getAccount, fastify, request, route));
     }
 }

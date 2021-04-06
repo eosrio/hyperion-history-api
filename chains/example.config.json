@@ -107,5 +107,6 @@
     "read": 50,
     "block": 100,
     "index": 500
-  }
+  },
+  "plugins": {}
 }

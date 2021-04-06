@@ -1,14 +1,13 @@
 import {HyperionWorker} from "./hyperionWorker";
-import {AsyncCargo, cargo} from "async";
+import {cargo, QueueObject} from "async";
 import {ElasticRoutes} from '../helpers/elastic-routes';
 
-import * as pm2io from '@pm2/io';
 import {hLog} from "../helpers/common_functions";
 import {Message} from "amqplib";
 
 export default class IndexerWorker extends HyperionWorker {
 
-    private indexQueue: AsyncCargo;
+    private indexQueue: QueueObject<any>;
     private temp_indexed_count = 0;
 
     esRoutes: ElasticRoutes;
@@ -84,12 +83,5 @@ export default class IndexerWorker extends HyperionWorker {
 
     async run(): Promise<void> {
         this.startMonitoring();
-        pm2io.action('stop', (reply) => {
-            this.ch.close(() => {
-                reply({
-                    event: 'index_channel_closed'
-                });
-            });
-        });
     }
 }

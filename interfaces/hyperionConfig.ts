@@ -154,4 +154,6 @@ export interface HyperionConfig {
     };
 
     experimental: any;
+
+    plugins: any;
 }

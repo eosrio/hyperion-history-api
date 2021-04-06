@@ -3,6 +3,7 @@ const hyperionModule = {
     contract: 'eosio',
     action: 'voteproducer',
     parser_version: ['1.8', '1.7'],
+    defineQueryPrefix: 'voteproducer',
     mappings: {
         action: {
             "@voteproducer": {
@@ -14,7 +15,6 @@ const hyperionModule = {
         }
     },
     handler: (action) => {
-        // attach action extras here
         const data = action['act']['data'];
         action['@voteproducer'] = {
             proxy: data['proxy'],

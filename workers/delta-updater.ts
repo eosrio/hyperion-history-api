@@ -13,6 +13,7 @@ interface HyperionDelta {
     data: any;
 }
 
+// noinspection JSUnusedGlobalSymbols
 export default class MainDSWorker extends HyperionWorker {
     constructor() {
         super();

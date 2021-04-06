@@ -2,229 +2,229 @@ import {hLog} from "../helpers/common_functions";
 import {ConfigurationModule} from "../modules/config";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
-import {IncomingMessage, Server, ServerResponse} from "http";
-import * as Fastify from 'fastify';
 import * as Redis from 'ioredis';
+import fastify from 'fastify'
 import {registerPlugins} from "./plugins";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes";
 import {generateOpenApiConfig} from "./config/open_api";
-import {createWriteStream, existsSync, mkdirSync, writeFileSync} from "fs";
+import {createWriteStream, existsSync, mkdirSync} from "fs";
 import {SocketManager} from "./socketManager";
-import got from "got";
-import {join} from "path";
-import * as io from 'socket.io-client';
+import {HyperionModuleLoader} from "../modules/loader";
+import {extendedActions} from "./routes/v2-history/get_actions/definitions";
+import {Socket, io} from "socket.io-client";
 
 class HyperionApiServer {
 
-    private conf: HyperionConfig;
-    private readonly manager: ConnectionManager;
-    private readonly fastify: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>;
-    private readonly chain: string;
-    socketManager: SocketManager;
+	private conf: HyperionConfig;
+	private readonly manager: ConnectionManager;
+	mLoader: HyperionModuleLoader;
+	private readonly fastify;
+	private readonly chain: string;
+	socketManager: SocketManager;
 
-    private hub: SocketIOClient.Socket;
+	private hub: Socket;
 
-    constructor() {
-        const cm = new ConfigurationModule();
-        this.conf = cm.config;
-        this.chain = this.conf.settings.chain;
-        process.title = `hyp-${this.chain}-api`;
-        this.manager = new ConnectionManager(cm);
-        this.manager.calculateServerHash();
-        this.manager.getHyperionVersion();
+	constructor() {
+		const cm = new ConfigurationModule();
+		this.conf = cm.config;
+		this.chain = this.conf.settings.chain;
+		process.title = `hyp-${this.chain}-api`;
+		this.manager = new ConnectionManager(cm);
+		this.manager.calculateServerHash();
+		this.mLoader = new HyperionModuleLoader(cm);
 
-        if (!existsSync('./logs/' + this.chain)) {
-            mkdirSync('./logs/' + this.chain, {recursive: true});
-        }
+		if (!existsSync('./logs/' + this.chain)) {
+			mkdirSync('./logs/' + this.chain, {recursive: true});
+		}
 
-        const logStream = createWriteStream('./logs/' + this.chain + '/api.access.log');
-        this.fastify = Fastify({
-            ignoreTrailingSlash: false,
-            trustProxy: true,
-            pluginTimeout: 5000,
-            logger: this.conf.api.access_log ? {
-                stream: logStream,
-                redact: ['req.headers.authorization'],
-                level: 'info',
-                serializers: {
-                    res: (res) => {
-                        return {
-                            status: res.statusCode
-                        };
-                    },
-                    req: (req) => {
-                        return {
-                            method: req.method,
-                            url: req.url,
-                            ip: req.headers['x-real-ip']
-                        }
-                    }
-                }
-            } : false
-        });
-        this.fastify.decorate('manager', this.manager);
+		const logStream = createWriteStream('./logs/' + this.chain + '/api.access.log');
 
-        if (this.conf.api.chain_api && this.conf.api.chain_api !== "") {
-            this.fastify.decorate('chain_api', this.conf.api.chain_api);
-        } else {
-            this.fastify.decorate('chain_api', this.manager.conn.chains[this.chain].http);
-        }
+		const loggerOpts = {
+			stream: logStream,
+			redact: ['req.headers.authorization'],
+			level: 'info',
+			prettyPrint: true,
+			serializers: {
+				res: (reply) => {
+					return {
+						statusCode: reply.statusCode
+					};
+				},
+				req: (request) => {
+					return {
+						method: request.method,
+						url: request.url,
+						ip: request.headers['x-real-ip']
+					}
+				}
+			}
+		};
 
-        if (this.conf.api.push_api && this.conf.api.push_api !== "") {
-            this.fastify.decorate('push_api', this.conf.api.push_api);
-        }
+		this.fastify = fastify({
+			ignoreTrailingSlash: false,
+			trustProxy: true,
+			pluginTimeout: 5000,
+			logger: this.conf.api.access_log ? loggerOpts : false
+		});
 
-        console.log(`Chain API URL: ${this.fastify.chain_api}`);
-        console.log(`Push API URL: ${this.fastify.push_api}`);
+		this.fastify.decorate('manager', this.manager);
 
-        const ioRedisClient = new Redis(this.manager.conn.redis);
-        const api_rate_limit = {
-            max: 1000,
-            whitelist: ['127.0.0.1'],
-            timeWindow: '1 minute',
-            redis: ioRedisClient
-        };
+		// import get_actions query params from custom modules
+		const extendedActionsSet: Set<string> = new Set([...extendedActions]);
+		for (const qPrefix of this.mLoader.extendedActions) {
+			extendedActionsSet.add(qPrefix);
+		}
+		this.fastify.decorate('allowedActionQueryParamSet', extendedActionsSet);
 
-        if (this.conf.features.streaming.enable) {
-            this.activateStreaming();
-        }
+		// define chain api url for /v1/chain/ redirects
+		let chainApiUrl: string = this.conf.api.push_api;
+		if (chainApiUrl === null || chainApiUrl === "") {
+			chainApiUrl = this.manager.conn.chains[this.chain].http;
+		}
+		this.fastify.decorate('chain_api', chainApiUrl);
 
-        registerPlugins(this.fastify, {
-            fastify_elasticsearch: {
-                client: this.manager.elasticsearchClient
-            },
-            fastify_oas: generateOpenApiConfig(this.manager.config),
-            fastify_rate_limit: api_rate_limit,
-            fastify_redis: this.manager.conn.redis,
-            fastify_eosjs: this.manager,
-        });
+		// define optional push api url for /v1/chain/push_transaction
+		if (this.conf.api.push_api) {
+			this.fastify.decorate('push_api', this.conf.api.push_api);
+		}
 
-        this.addGenericTypeParsing();
-    }
+		hLog(`Chain API URL: "${this.fastify.chain_api}" | Push API URL: "${this.fastify.push_api}"`);
 
-    activateStreaming() {
-        console.log('Importing stream module');
-        import('./socketManager').then((mod) => {
-            const connOpts = this.manager.conn.chains[this.chain];
+		const ioRedisClient = new Redis(this.manager.conn.redis);
+		const api_rate_limit = {
+			max: 1000,
+			whitelist: ['127.0.0.1'],
+			timeWindow: '1 minute',
+			redis: ioRedisClient
+		};
 
-            let _port = 57200;
-            if (connOpts.WS_ROUTER_PORT) {
-                _port = connOpts.WS_ROUTER_PORT;
-            }
+		if (this.conf.features.streaming.enable) {
+			this.activateStreaming();
+		}
 
-            let _host = "127.0.0.1";
-            if (connOpts.WS_ROUTER_HOST) {
-                _host = connOpts.WS_ROUTER_HOST;
-            }
+		registerPlugins(this.fastify, {
+			fastify_elasticsearch: {client: this.manager.elasticsearchClient},
+			fastify_swagger: generateOpenApiConfig(this.manager.config),
+			fastify_rate_limit: api_rate_limit,
+			fastify_redis: this.manager.conn.redis,
+			fastify_eosjs: this.manager,
+		});
 
-            this.socketManager = new mod.SocketManager(
-                this.fastify,
-                `http://${_host}:${_port}`,
-                this.manager.conn.redis
-            );
-            this.socketManager.startRelay();
-        });
-    }
+		this.addGenericTypeParsing();
+	}
 
-    private addGenericTypeParsing() {
-        this.fastify.addContentTypeParser('*', (req, done) => {
-            let data = '';
-            req.on('data', chunk => {
-                data += chunk;
-            });
-            req.on('end', () => {
-                done(null, data);
-            });
-            req.on('error', (err) => {
-                console.log('---- Content Parsing Error -----');
-                console.log(err);
-            });
-        });
-    }
+	activateStreaming() {
+		console.log('Importing stream module');
+		import('./socketManager').then((mod) => {
+			const connOpts = this.manager.conn.chains[this.chain];
 
-    async init() {
+			let _port = 57200;
+			if (connOpts.WS_ROUTER_PORT) {
+				_port = connOpts.WS_ROUTER_PORT;
+			}
 
-        await this.fetchChainLogo();
+			let _host = "127.0.0.1";
+			if (connOpts.WS_ROUTER_HOST) {
+				_host = connOpts.WS_ROUTER_HOST;
+			}
 
-        registerRoutes(this.fastify);
+			this.socketManager = new mod.SocketManager(
+				this.fastify,
+				`http://${_host}:${_port}`,
+				this.manager.conn.redis
+			);
+			this.socketManager.startRelay();
+		});
+	}
 
-        this.fastify.ready().then(async () => {
-            await this.fastify.oas();
-            console.log(this.chain + ' api ready!');
-        }, (err) => {
-            console.log('an error happened', err)
-        });
+	private addGenericTypeParsing() {
+		this.fastify.addContentTypeParser('*', (request, payload, done) => {
+			let data = '';
+			payload.on('data', chunk => {
+				data += chunk;
+			});
+			payload.on('end', () => {
+				done(null, data);
+			});
+			payload.on('error', (err) => {
+				console.log('---- Content Parsing Error -----');
+				console.log(err);
+			});
+		});
+	}
 
-        try {
-            await this.fastify.listen({
-                host: this.conf.api.server_addr,
-                port: this.conf.api.server_port
-            });
-            console.log(`server listening on ${(this.fastify.server.address() as AddressInfo).port}`);
-            this.startHyperionHub();
-        } catch (err) {
-            console.log(err);
-            process.exit(1)
-        }
-    }
+	async init() {
 
-    async fetchChainLogo() {
-        try {
-            if (this.conf.api.chain_logo_url && this.conf.api.enable_explorer) {
-                console.log(`Downloading chain logo from ${this.conf.api.chain_logo_url}...`);
-                const chainLogo = await got(this.conf.api.chain_logo_url);
-                const path = join(__dirname, '..', 'hyperion-explorer', 'dist', 'assets', this.chain + '_logo.png');
-                writeFileSync(path, chainLogo.rawBody);
-                this.conf.api.chain_logo_url = 'https://' + this.conf.api.server_name + '/v2/explore/assets/' + this.chain + '_logo.png';
-            }
-        } catch (e) {
-            console.log(e);
-        }
-    }
+		await this.mLoader.init();
 
-    startHyperionHub() {
-        if (this.conf.hub) {
-            const url = this.conf.hub.inform_url;
-            hLog(`Connecting API to Hyperion Hub`);
-            this.hub = io(url, {
-                query: {
-                    key: this.conf.hub.publisher_key,
-                    client_mode: false
-                }
-            });
-            this.hub.on('connect', () => {
-                hLog(`Hyperion Hub connected!`);
-                this.emitHubApiUpdate();
-            });
-            // this.hub.on('reconnect', () => {
-            //     hLog(`Reconnecting...`);
-            //     this.emitHubApiUpdate();
-            // });
-        }
-    }
+		// add custom plugin routes
+		for (const plugin of this.mLoader.plugins) {
+			if (plugin.hasApiRoutes) {
+				plugin.addRoutes(this.fastify);
+				plugin.chainName = this.chain;
+			}
+		}
 
-    private emitHubApiUpdate() {
-        this.hub.emit('hyp_info', {
-            type: 'api',
-            production: this.conf.hub.production,
-            location: this.conf.hub.location,
-            chainId: this.manager.conn.chains[this.chain].chain_id,
-            providerName: this.conf.api.provider_name,
-            explorerEnabled: this.conf.api.enable_explorer,
-            providerUrl: this.conf.api.provider_url,
-            providerLogo: this.conf.api.provider_logo,
-            chainLogo: this.conf.api.chain_logo_url,
-            chainCodename: this.chain,
-            chainName: this.conf.api.chain_name,
-            endpoint: this.conf.api.server_name,
-            features: this.conf.features,
-            filters: {
-                blacklists: this.conf.blacklists,
-                whitelists: this.conf.whitelists
-            }
-        });
-    }
+		registerRoutes(this.fastify);
+
+		this.fastify.ready().then(async () => {
+			await this.fastify.swagger();
+		}, (err) => {
+			hLog('an error happened', err)
+		});
+
+		try {
+			await this.fastify.listen({
+				host: this.conf.api.server_addr,
+				port: this.conf.api.server_port
+			});
+			hLog(`${this.chain} hyperion api ready and listening on port ${(this.fastify.server.address() as AddressInfo).port}`);
+			this.startHyperionHub();
+		} catch (err) {
+			hLog(err);
+			process.exit(1)
+		}
+	}
+
+	startHyperionHub() {
+		if (this.conf.hub) {
+			const url = this.conf.hub.inform_url;
+			hLog(`Connecting API to Hyperion Hub`);
+			this.hub = io(url, {
+				query: {
+					key: this.conf.hub.publisher_key,
+					client_mode: 'false'
+				}
+			});
+			this.hub.on('connect', () => {
+				hLog(`Hyperion Hub connected!`);
+				this.emitHubApiUpdate();
+			});
+		}
+	}
+
+	private emitHubApiUpdate() {
+		this.hub.emit('hyp_info', {
+			type: 'api',
+			production: this.conf.hub.production,
+			location: this.conf.hub.location,
+			chainId: this.manager.conn.chains[this.chain].chain_id,
+			providerName: this.conf.api.provider_name,
+			explorerEnabled: this.conf.api.enable_explorer,
+			providerUrl: this.conf.api.provider_url,
+			providerLogo: this.conf.api.provider_logo,
+			chainLogo: this.conf.api.chain_logo_url,
+			chainCodename: this.chain,
+			chainName: this.conf.api.chain_name,
+			endpoint: this.conf.api.server_name,
+			features: this.conf.features,
+			filters: {
+				blacklists: this.conf.blacklists,
+				whitelists: this.conf.whitelists
+			}
+		});
+	}
 }
 
 const server = new HyperionApiServer();

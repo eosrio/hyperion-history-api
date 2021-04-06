@@ -9,8 +9,8 @@ export async function createConnection(config): Promise<Connection> {
 		debugLog("[AMQP] connection established");
 		return conn;
 	} catch (e) {
-		console.log("[AMQP] failed to connect!");
-		console.log(e.message);
+		hLog("[AMQP] failed to connect!");
+		hLog(e.message);
 		await new Promise(resolve => setTimeout(resolve, 5000));
 		return await createConnection(config);
 	}
@@ -30,8 +30,8 @@ async function createChannels(connection) {
 		const confirmChannel = await connection.createConfirmChannel();
 		return [channel, confirmChannel];
 	} catch (e) {
-		console.log("[AMQP] failed to create channels");
-		console.error(e);
+		hLog("[AMQP] failed to create channels");
+		hLog(e);
 		return null;
 	}
 }
@@ -78,7 +78,7 @@ export async function checkQueueSize(q_name, config) {
 		if (e instanceof HTTPError) {
 			hLog(e.response);
 		} else {
-			hLog(JSON.stringify(e, null, 2));
+			hLog(JSON.stringify(e.response.body, null, 2));
 		}
 		return 0;
 	}

@@ -1,6 +1,6 @@
 # Hyperion History API
 
-<img height="64" src="https://eosrio.io/hyperion.png">
+<img alt="hyperion logo" height="64" src="https://eosrio.io/hyperion.png">
 <br/>
 Scalable Full History API Solution for EOSIO based blockchains
 
@@ -21,30 +21,30 @@ no blocks or transaction data is stored, all information can be reconstructed fr
 
 ### 2. Architecture
 The following components are required in order to have a fully functional Hyperion API deployment, 
-for small use cases its fine to run all components on a single machine. But for larger chains and 
+for small use cases its absolutely fine to run all components on a single machine. For larger chains and 
 production environments we recommend setting them up into different servers under a high-speed local network.
 
-#### 2.1 - Elasticsearch Cluster
+#### 2.1 Elasticsearch Cluster
 The ES cluster is responsible for storing all indexed data.
 Direct access to the Hyperion API and Indexer must be provided. We recommend nodes in the 
-cluster to have at least 32GB of RAM and 8 cpu cores. SSD/NVME drives are recommended for 
+cluster to have at least 32 GB of RAM and 8 cpu cores. SSD/NVME drives are recommended for 
 maximum indexing throughput. For production environments a multi-node cluster is highly recommended.
 
-#### 2.2 - Hyperion Indexer
+#### 2.2 Hyperion Indexer
 The Indexer is a Node.js based app that process data from the state history plugin and allows it to be indexed.
 The PM2 process manager is used to launch and operate the indexer. The configuration flexibility is very extensive, 
 so system recommendations will depend on the use case and data load. It will require access to at least one ES node, 
 RabbitMQ and the state history node.
 
-#### 2.3 - Hyperion API
+#### 2.3 Hyperion API
 Parallelizable API server that provides the V2 and V1 (legacy history plugin) endpoints.
 It is launched by PM2 and can also operate in cluster mode. It requires direct access to 
 at least one ES node for the queries and all other services for full healthcheck
 
-#### 2.4 - RabbitMQ
+#### 2.4 RabbitMQ
 Use as messaging queue and data transport between the indexer stages
 
-#### 2.5 - EOSIO State History
+#### 2.5 EOSIO State History
 Nodeos plugin used to collect action traces and state deltas. Provides data via websocket to the indexer
 
 ### 3. How to use

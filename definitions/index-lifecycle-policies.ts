@@ -1,5 +1,6 @@
 import {IlmPutLifecycle} from "@elastic/elasticsearch/api/requestParams";
 
+// noinspection JSUnusedGlobalSymbols
 export const ILPs: IlmPutLifecycle[] = [
     {
         policy: "hyperion-rollover",

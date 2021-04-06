@@ -1,5 +1,4 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
 import {createHash} from "crypto";
 import * as flatstr from 'flatstr';
@@ -8,13 +7,14 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 	if (typeof request.body === 'string') {
 		request.body = JSON.parse(request.body)
 	}
+	const body: any = request.body;
 	const pResults = await Promise.all([fastify.eosjs.rpc.get_info(), fastify.elastic['search']({
 		"index": fastify.manager.chain + '-action-*',
 		"body": {
 			"query": {
 				"bool": {
 					must: [
-						{term: {"trx_id": request.body.id.toLowerCase()}}
+						{term: {"trx_id": body.id.toLowerCase()}}
 					]
 				}
 			},
@@ -25,7 +25,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 	})]);
 	const results = pResults[1];
 	const response: any = {
-		"id": request.body.id,
+		"id": body.id,
 		"trx": {
 			"receipt": {
 				"status": "executed",
@@ -98,7 +98,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 				except: null,
 				inline_traces: [],
 				producer_block_id: "",
-				trx_id: request.body.id,
+				trx_id: body.id,
 				notified: action.notified
 			};
 			let hash = createHash('sha256');
@@ -157,7 +157,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 						except: null,
 						inline_traces: [],
 						producer_block_id: "",
-						trx_id: request.body.id,
+						trx_id: body.id,
 					};
 					traces[action.global_sequence].inline_traces.unshift(trace);
 					response.traces.push(trace);
@@ -166,7 +166,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 			}
 		});
 	} else {
-		const errmsg = "Transaction " + request.body.id.toLowerCase() + " not found in history and no block hint was given";
+		const errmsg = "Transaction " + body.id.toLowerCase() + " not found in history and no block hint was given";
 		return {
 			code: 500,
 			message: "Internal Service Error",
@@ -189,7 +189,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 }
 
 export function getTransactionHandler(fastify: FastifyInstance, route: string) {
-	return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+	return async (request: FastifyRequest, reply: FastifyReply) => {
 		reply.send(await timedQuery(getTransaction, fastify, request, route));
 	}
 }

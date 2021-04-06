@@ -1,5 +1,4 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
 
 async function getAbiSnapshot(fastify: FastifyInstance, request: FastifyRequest) {
@@ -8,9 +7,11 @@ async function getAbiSnapshot(fastify: FastifyInstance, request: FastifyRequest)
         block_num: null
     };
 
-    const code = request.query.contract;
-    const block = request.query.block;
-    const should_fetch = request.query.fetch;
+    const query: any = request.query;
+
+    const code = query.contract;
+    const block = query.block;
+    const should_fetch = query.fetch;
 
     const mustArray = [];
 
@@ -44,7 +45,7 @@ async function getAbiSnapshot(fastify: FastifyInstance, request: FastifyRequest)
 }
 
 export function getAbiSnapshotHandler(fastify: FastifyInstance, route: string) {
-    return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
         reply.send(await timedQuery(getAbiSnapshot, fastify, request, route));
     }
 }
