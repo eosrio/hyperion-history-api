@@ -311,14 +311,9 @@ export default class StateReader extends HyperionWorker {
 
 					if (res['this_block']) {
 
-						// const tref3 = process.hrtime.bigint();
-
 						const blk_num = res['this_block']['block_num'];
 						const lib = res['last_irreversible'];
 						const task_payload = {num: blk_num, content: data};
-
-						// const d3 = process.hrtime.bigint() - tref3;
-						// hLog(`task_payload generation with size ${data.length} >> ${Number(d3) / 1000}us`);
 
 						if (res.block && res.traces && res.deltas) {
 							debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
@@ -340,6 +335,7 @@ export default class StateReader extends HyperionWorker {
 							if (blk_num !== this.local_block_num + 1) {
 								hLog(`Expected: ${this.local_block_num + 1}, received: ${blk_num}`);
 								try {
+									// delete all prevously stored data for the forked blocks
 									await this.handleFork(res);
 								} catch (e) {
 									hLog(`Failed to handle fork during live reading! - Error: ${e.message}`);
@@ -492,7 +488,6 @@ export default class StateReader extends HyperionWorker {
 		const this_block = data['this_block'];
 		await this.logForkEvent(this_block['block_num'], this.local_block_num, this_block['block_id']);
 		hLog(`Handling fork event: new block ${this_block['block_num']} has id ${this_block['block_id']}`);
-		hLog(`Removing indexed data from ${this_block['block_num']} to ${this.local_block_num}`);
 		const rangeStruct = {
 			block_num: {
 				gte: this_block['block_num'],
@@ -502,15 +497,17 @@ export default class StateReader extends HyperionWorker {
 		const searchBody = {
 			query: {bool: {must: [{range: rangeStruct}]}}
 		};
+		const tRef = Date.now();
 		const dbqResult = await this.client.deleteByQuery({
 			index: this.chain + '-delta-' + this.conf.settings.index_version + '-*',
 			refresh: true,
 			body: searchBody
 		});
 		if (dbqResult.body && dbqResult.statusCode === 200) {
-			hLog(`${dbqResult.body.deleted} deltas removed!`);
+			hLog(`${dbqResult.body.deleted} deltas removed from ${this_block['block_num']} to ${this.local_block_num} in ${Date.now() - tRef} ms`);
+		} else {
+			hLog('Operation failed');
 		}
-		hLog(`Live reading resumed!`);
 	}
 
 	private async logForkEvent(starting_block, ending_block, new_id) {

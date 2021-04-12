@@ -319,6 +319,7 @@ export default class MainDSWorker extends HyperionWorker {
 
 				block.transactions.forEach((trx) => {
 
+
 					total_cpu += trx['cpu_usage_us'];
 					total_net += trx['net_usage_words'];
 
@@ -435,6 +436,15 @@ export default class MainDSWorker extends HyperionWorker {
 							let signatures;
 							try {
 								signatures = trace[1].partial[1].signatures;
+								if (process.env['live_mode'] === 'true') {
+									process.send({
+										event: 'included_trx',
+										block_num: light_block.block_num,
+										trx_id: trace[1].id.toLowerCase(),
+										signatures: signatures,
+										root_act: trace[1].action_traces[0][1].act
+									});
+								}
 							} catch (e) {
 								signatures = [];
 							}
