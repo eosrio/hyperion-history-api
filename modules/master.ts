@@ -40,6 +40,9 @@ import {queue, QueueObject} from "async";
 import {convertLegacyPublicKey} from "eosjs/dist/eosjs-numeric";
 import moment = require("moment");
 import Timeout = NodeJS.Timeout;
+import AlertsManager from "./alertsManager";
+import * as Redis from 'ioredis';
+import IORedis from "ioredis";
 
 export class HyperionMaster {
 
@@ -148,14 +151,18 @@ export class HyperionMaster {
 	private mode_transition = false;
 
 	private readonly cm: ConfigurationModule;
+	private alerts: AlertsManager;
+	private ioRedisClient: IORedis.Redis;
 
 	constructor() {
 		this.cm = new ConfigurationModule();
 		this.conf = this.cm.config;
+		this.alerts = new AlertsManager(this.conf.alerts);
 		this.manager = new ConnectionManager(this.cm);
 		this.mLoader = new HyperionModuleLoader(this.cm);
 		this.mLoader.init().then(() => {
 			this.chain = this.conf.settings.chain;
+			this.alerts.chainName = this.chain;
 			this.initHandlerMap();
 			this.liveBlockQueue = queue((task, callback) => {
 				this.onLiveBlock(task);
@@ -318,10 +325,22 @@ export class HyperionMaster {
 					}
 				}
 			},
+			'included_trx': (msg: any) => {
+				if (this.ioRedisClient) {
+					this.ioRedisClient.set(msg.trx_id, JSON.stringify({
+						b: msg.block_num,
+						s: msg.signatures,
+						a: msg.root_act
+					}), "EX", 600).catch(console.log);
+				}
+			},
 			'fork_event': (msg: any) => {
+				this.alerts.emitAlert({
+					process: process.title,
+					type: 'fork',
+					content: msg
+				});
 				if (msg.data && this.conf.features.streaming.enable) {
-					hLog(`Live Reader reported a fork!`);
-					hLog(msg.data);
 					this.wsRouterWorker.send(msg);
 				}
 			}
@@ -1432,17 +1451,39 @@ export class HyperionMaster {
 					// Auto-Stop
 					if (this.pushedBlocks === 0) {
 						this.idle_count++;
-						if (this.auto_stop > 0 && (tScale * this.idle_count) >= this.auto_stop) {
-							hLog("Reached limit for no blocks processed, stopping now...");
-							process.exit(1);
+						if (this.auto_stop > 0) {
+							if ((tScale * this.idle_count) >= this.auto_stop) {
+								hLog("Reached limit for no blocks processed, stopping now...");
+								process.exit(1);
+							} else {
+								const idleMsg = `No blocks processed! Indexer will stop in ${this.auto_stop - (tScale * this.idle_count)} seconds!`;
+								if (this.idle_count === 1) {
+									this.alerts.emitAlert({
+										type: 'warning',
+										content: idleMsg
+									});
+								}
+								hLog(idleMsg);
+							}
 						} else {
-							hLog(`No blocks processed! Indexer will stop in ${this.auto_stop - (tScale * this.idle_count)} seconds!`);
+							const idleMsg = 'No blocks are being processed, please check your state-history node!';
+							if (this.idle_count === 1) {
+								this.alerts.emitAlert({
+									type: 'warning',
+									content: idleMsg
+								});
+							}
+							hLog(idleMsg);
 						}
 					}
 
 				}
 			} else {
 				if (this.idle_count > 1) {
+					this.alerts.emitAlert({
+						type: 'info',
+						content: '✅ Data processing resumed!'
+					});
 					hLog('Processing resumed!');
 				}
 				this.idle_count = 0;
@@ -1583,11 +1624,19 @@ export class HyperionMaster {
 			this.printActiveProds();
 		}
 
+		// Redis
+		this.ioRedisClient = new Redis(this.manager.conn.redis);
+
 		// Elasticsearch
 		this.client = this.manager.elasticsearchClient;
 		try {
 			const esInfo = await this.client.info();
 			hLog(`Elasticsearch: ${esInfo.body.version.number} | Lucene: ${esInfo.body.version.lucene_version}`);
+			this.alerts.emitAlert({
+				type: 'info',
+				process: process.title,
+				content: `${this.chain} indexer started using ES: ${esInfo.body.version.number}`
+			});
 		} catch (e) {
 			hLog('Failed to check elasticsearch version!');
 			process.exit();
