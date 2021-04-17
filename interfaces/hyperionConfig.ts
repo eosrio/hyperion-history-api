@@ -74,7 +74,9 @@ interface ApiLimits {
 }
 
 interface ApiConfigs {
-	custom_core_token: string;
+	rate_limit_rpm?: number;
+	rate_limit_allow?: string[];
+	custom_core_token?: string;
 	chain_api_error_log?: boolean;
 	chain_api?: string;
 	push_api?: string;

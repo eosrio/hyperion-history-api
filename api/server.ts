@@ -92,9 +92,22 @@ class HyperionApiServer {
 		hLog(`Chain API URL: "${this.fastify.chain_api}" | Push API URL: "${this.fastify.push_api}"`);
 
 		const ioRedisClient = new Redis(this.manager.conn.redis);
+
+		let rateLimiterWhitelist = ['127.0.0.1'];
+
+		if (this.conf.api.rate_limit_allow && this.conf.api.rate_limit_allow.length > 0) {
+			const tempSet = new Set<string>(['127.0.0.1', ...this.conf.api.rate_limit_allow]);
+			rateLimiterWhitelist = [...tempSet];
+		}
+
+		let rateLimiterRPM = 1000;
+		if (this.conf.api.rate_limit_rpm) {
+			rateLimiterRPM = this.conf.api.rate_limit_rpm;
+		}
+
 		const api_rate_limit = {
-			max: 1000,
-			whitelist: ['127.0.0.1'],
+			max: rateLimiterRPM,
+			allowList: rateLimiterWhitelist,
 			timeWindow: '1 minute',
 			redis: ioRedisClient
 		};
