@@ -1,5 +1,5 @@
 import {FastifyInstance} from "fastify";
-import {addApiRoute, getRouteName} from "../../../helpers/functions";
+import {addApiRoute, extendResponseSchema, getRouteName} from "../../../helpers/functions";
 import {checkTransactionHandler} from "./check_transaction";
 
 export default function (fastify: FastifyInstance, opts: any, next) {
@@ -12,11 +12,37 @@ export default function (fastify: FastifyInstance, opts: any, next) {
 			properties: {
 				"id": {
 					description: 'transaction id',
-					type: 'string'
+					type: 'string',
+					minLength: 64,
+					maxLength: 64
 				}
 			},
 			required: ["id"]
-		}
+		},
+		response: extendResponseSchema({
+			"id": {type: "string"},
+			"status": {type: "string"},
+			"block_num": {type: "number"},
+			"root_action": {
+				type: "object",
+				properties: {
+					"account": {type: "string"},
+					"name": {type: "string"},
+					"authorization": {
+						type: "array",
+						items: {
+							type: 'object',
+							properties: {
+								"actor": {type: "string"},
+								"permission": {type: "string"}
+							}
+						}
+					},
+					"data": {type: "string"}
+				}
+			},
+			"signatures": {type: "array", items: {type: 'string'}}
+		})
 	};
 	addApiRoute(
 		fastify,

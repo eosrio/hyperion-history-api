@@ -416,6 +416,7 @@ export default class MainDSWorker extends HyperionWorker {
 
 			// Process Action Traces
 			let _traces = [];
+			const onBlockTransactions = [];
 			if (traces && this.conf.indexer.fetch_traces) {
 
 				if (traces["valueForKeyPath"]) {
@@ -437,10 +438,12 @@ export default class MainDSWorker extends HyperionWorker {
 							try {
 								signatures = trace[1].partial[1].signatures;
 								if (process.env['live_mode'] === 'true') {
+									const trxId = trace[1].id.toLowerCase();
+									onBlockTransactions.push(trxId);
 									process.send({
 										event: 'included_trx',
 										block_num: light_block.block_num,
-										trx_id: trace[1].id.toLowerCase(),
+										trx_id: trxId,
 										signatures: signatures,
 										root_act: trace[1].action_traces[0][1].act
 									});
@@ -481,6 +484,8 @@ export default class MainDSWorker extends HyperionWorker {
 			}
 			return {
 				block_num: res['this_block']['block_num'],
+				block_id: res['this_block']['block_id'],
+				trx_ids: onBlockTransactions,
 				size: _traces.length
 			};
 		}

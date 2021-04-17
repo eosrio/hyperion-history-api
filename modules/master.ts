@@ -44,6 +44,12 @@ import AlertsManager from "./alertsManager";
 import * as Redis from 'ioredis';
 import IORedis from "ioredis";
 
+interface RevBlock {
+	num: number;
+	id: string;
+	tx: string[];
+}
+
 export class HyperionMaster {
 
 	// global configuration
@@ -154,6 +160,9 @@ export class HyperionMaster {
 	private alerts: AlertsManager;
 	private ioRedisClient: IORedis.Redis;
 
+	// Reversible Blocks
+	private revBlockArray: RevBlock[] = [];
+
 	constructor() {
 		this.cm = new ConfigurationModule();
 		this.conf = this.cm.config;
@@ -182,6 +191,20 @@ export class HyperionMaster {
 				} else {
 					// LIVE READER
 					this.liveConsumedBlocks++;
+
+					if (this.revBlockArray.length > 0) {
+						if (this.revBlockArray[this.revBlockArray.length - 1].num === msg.block_num) {
+							console.log('WARNING, same block number detected!');
+							console.log(this.revBlockArray[this.revBlockArray.length - 1].num, msg.block_num);
+						}
+					}
+
+					this.revBlockArray.push({
+						num: msg.block_num,
+						id: msg.block_id,
+						tx: msg.trx_ids
+					});
+
 					if (this.conf.settings.bp_monitoring && !this.conf.indexer.abi_scan_mode) {
 						this.liveBlockQueue.push(msg).catch(reason => {
 							hLog('Error handling consumed_block:', reason);
@@ -315,6 +338,9 @@ export class HyperionMaster {
 				// publish LIB to hub
 				if (msg.data) {
 
+					this.revBlockArray = this.revBlockArray.filter(item => item.num > msg.data.block_num);
+					console.log('revBlockArray', this.revBlockArray.length);
+
 					if (this.conf.hub && this.conf.hub.inform_url) {
 						this.hub.emit('hyp_ev', {e: 'lib', d: msg.data});
 					}
@@ -328,13 +354,29 @@ export class HyperionMaster {
 			'included_trx': (msg: any) => {
 				if (this.ioRedisClient) {
 					this.ioRedisClient.set(msg.trx_id, JSON.stringify({
+						status: 'executed',
 						b: msg.block_num,
 						s: msg.signatures,
 						a: msg.root_act
 					}), "EX", 600).catch(console.log);
 				}
 			},
-			'fork_event': (msg: any) => {
+			'fork_event': async (msg: any) => {
+				const forkedBlocks = this.revBlockArray.filter(item => item.num >= msg.data.starting_block && item.id !== msg.data.new_id);
+				console.log('Forked Blocks:', forkedBlocks);
+				this.revBlockArray = this.revBlockArray.filter(item => item.num < msg.data.starting_block);
+				console.log('revBlockArray (fork removed):', this.revBlockArray.length);
+
+				if (this.ioRedisClient) {
+					for (const block of forkedBlocks) {
+						if (block.tx.length > 0) {
+							for (const trxId of block.tx) {
+								await this.ioRedisClient.set(trxId, JSON.stringify({status: 'forked'}), "EX", 600);
+							}
+						}
+					}
+				}
+
 				this.alerts.emitAlert({
 					process: process.title,
 					type: 'fork',

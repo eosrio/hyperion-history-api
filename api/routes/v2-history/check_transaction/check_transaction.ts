@@ -3,11 +3,26 @@ import {timedQuery} from "../../../helpers/functions";
 
 async function checkTransaction(fastify: FastifyInstance, request: FastifyRequest) {
 	const query: any = request.query;
-	const data = await fastify.redis.get(query.id.toLowerCase())
+	const txId = query.id.toLowerCase();
+	const data = await fastify.redis.get(txId) as any;
 	if (data) {
-		return JSON.parse(data);
+		const jsonObj = JSON.parse(data);
+		const response = {
+			id: txId,
+			status: jsonObj.status,
+			block_num: jsonObj.b,
+			root_action: jsonObj.a,
+			signatures: null,
+		};
+		if (jsonObj.s && jsonObj.s.length > 0) {
+			response.signatures = jsonObj.s;
+		}
+		return response;
 	} else {
-		return {};
+		return {
+			id: txId,
+			status: 'unknown'
+		};
 	}
 }
 
