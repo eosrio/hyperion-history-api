@@ -337,14 +337,10 @@ export class HyperionMaster {
 			'lib_update': (msg: any) => {
 				// publish LIB to hub
 				if (msg.data) {
-
 					this.revBlockArray = this.revBlockArray.filter(item => item.num > msg.data.block_num);
-					console.log('revBlockArray', this.revBlockArray.length);
-
 					if (this.conf.hub && this.conf.hub.inform_url) {
 						this.hub.emit('hyp_ev', {e: 'lib', d: msg.data});
 					}
-
 					if (this.conf.features.streaming.enable) {
 						debugLog(`Live Reader reported LIB update: ${msg.data.block_num} | ${msg.data.block_id}`);
 						this.wsRouterWorker.send(msg);
@@ -363,10 +359,7 @@ export class HyperionMaster {
 			},
 			'fork_event': async (msg: any) => {
 				const forkedBlocks = this.revBlockArray.filter(item => item.num >= msg.data.starting_block && item.id !== msg.data.new_id);
-				console.log('Forked Blocks:', forkedBlocks);
 				this.revBlockArray = this.revBlockArray.filter(item => item.num < msg.data.starting_block);
-				console.log('revBlockArray (fork removed):', this.revBlockArray.length);
-
 				if (this.ioRedisClient) {
 					for (const block of forkedBlocks) {
 						if (block.tx.length > 0) {
@@ -376,13 +369,9 @@ export class HyperionMaster {
 						}
 					}
 				}
-
-				this.alerts.emitAlert({
-					process: process.title,
-					type: 'fork',
-					content: msg
-				});
+				this.alerts.emitAlert({process: process.title, type: 'fork', content: msg});
 				if (msg.data && this.conf.features.streaming.enable) {
+					msg.data.forkedBlocks = forkedBlocks;
 					this.wsRouterWorker.send(msg);
 				}
 			}
