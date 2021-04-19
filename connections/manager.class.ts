@@ -1,5 +1,5 @@
 import {ConfigurationModule} from "../modules/config";
-import {JsonRpc} from "eosjs/dist";
+import {JsonRpc} from "eosjs";
 import got from "got";
 import {Client} from '@elastic/elasticsearch'
 import {HyperionConnections} from "../interfaces/hyperionConnections";
@@ -39,7 +39,8 @@ export class ConnectionManager {
 	async purgeQueues() {
 		hLog(`Purging all ${this.chain} queues!`);
 		const apiUrl = `http://${this.conn.amqp.api}`;
-		const getAllQueuesFromVHost = apiUrl + `/api/queues/%2F${this.conn.amqp.vhost}`;
+		const vHost = encodeURIComponent(this.conn.amqp.vhost);
+		const getAllQueuesFromVHost = apiUrl + `/api/queues/${vHost}`;
 		const opts = {
 			username: this.conn.amqp.user,
 			password: this.conn.amqp.pass
@@ -61,7 +62,7 @@ export class ConnectionManager {
 					const msg_count = parseInt(queue.messages);
 					if (msg_count > 0) {
 						try {
-							await got.delete(apiUrl + `/api/queues/%2F${this.conn.amqp.vhost}/${queue.name}/contents`, opts);
+							await got.delete(apiUrl + `/api/queues/${vHost}/${queue.name}/contents`, opts);
 							hLog(`${queue.messages} messages deleted on queue ${queue.name}`);
 						} catch (e) {
 							console.log(e.message);
@@ -150,7 +151,8 @@ export class ConnectionManager {
 	calculateServerHash() {
 		exec('git rev-parse HEAD', (err, stdout) => {
 			if (err) {
-				hLog(`\n ${err.message}\n >>> Failed to check last commit hash. Version hash will be "custom"`);
+				// hLog(`\n ${err.message}\n >>> Failed to check last commit hash. Version hash will be "custom"`);
+				hLog(`Failed to check last commit hash. Version hash will be "custom"`);
 				this.last_commit_hash = 'custom';
 			} else {
 				hLog('Last commit hash on this branch is:', stdout);

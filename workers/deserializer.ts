@@ -8,6 +8,7 @@ import {Type} from "../addons/eosjs-native/eosjs-serialize";
 import {debugLog, hLog} from "../helpers/common_functions";
 import {createHash} from "crypto";
 import * as flatstr from 'flatstr';
+import {type} from "os";
 
 const FJS = require('fast-json-stringify');
 
@@ -1018,7 +1019,18 @@ export default class MainDSWorker extends HyperionWorker {
 	addTablePrefix(table: string, data: any) {
 		const prefixedOutput = {};
 		Object.keys(data).forEach(value => {
-			prefixedOutput[`${table}.${value}`] = data[value];
+			let _val = data[value];
+
+			// check and convert variant types
+			if (Array.isArray(data[value]) && data[value].length === 2) {
+				if (typeof data[value][0] === 'string' && typeof data[value][1] === 'object') {
+					_val = data[value][1];
+					_val['@type'] = data[value][0];
+				}
+			}
+
+			
+			prefixedOutput[`${table}.${value}`] = _val;
 		});
 		return prefixedOutput;
 	}
@@ -1036,7 +1048,7 @@ export default class MainDSWorker extends HyperionWorker {
 				fields: this.addTablePrefix(jsonRow.table, jsonRow.data)
 			};
 			this.preIndexingQueue.push({
-				queue: this.chain + ":index_dynamic:" + (this.emit_idx),
+				queue: this.chain + ":index_dynamic:" + (this.dyn_emit_idx),
 				content: bufferFromJson(doc),
 				headers: {
 					id: `${jsonRow.table}-${jsonRow.scope}-${jsonRow.primary_key}`,
@@ -1046,7 +1058,7 @@ export default class MainDSWorker extends HyperionWorker {
 				}
 			}).catch(console.log);
 			this.dyn_emit_idx++;
-			if (this.dyn_emit_idx > this.conf.scaling.indexing_queues) {
+			if (this.dyn_emit_idx > this.conf.scaling.dyn_idx_queues) {
 				this.dyn_emit_idx = 1;
 			}
 		}

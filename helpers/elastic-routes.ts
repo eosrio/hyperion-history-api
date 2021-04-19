@@ -268,6 +268,9 @@ export class ElasticRoutes {
 			} else if (item['update']) {
 				id = item.update._id;
 				itemBody = item.update;
+			} else if (item['delete']) {
+				id = item.delete._id;
+				itemBody = item.delete;
 			} else {
 				console.log(item);
 				throw new Error('FATAL ERROR - CANNOT EXTRACT ID');
@@ -275,15 +278,29 @@ export class ElasticRoutes {
 			const message = messageMap.get(id);
 			const status = itemBody.status;
 			if (message) {
-				if (status === 409) {
-					console.log(item);
-					channel.nack(message);
-				} else if (status !== 201 && status !== 200) {
-					channel.nack(message);
-					console.log(item);
-					console.info(`nack id: ${id} - status: ${status}`);
-				} else {
-					channel.ack(message);
+				switch (status) {
+					case 200: {
+						channel.ack(message);
+						break;
+					}
+					case 201: {
+						channel.ack(message);
+						break;
+					}
+					case 404: {
+						channel.ack(message);
+						break;
+					}
+					case 409: {
+						console.log(item);
+						channel.nack(message);
+						break;
+					}
+					default: {
+						console.log(item, message.fields.deliveryTag);
+						console.info(`nack id: ${id} - status: ${status}`);
+						channel.nack(message);
+					}
 				}
 			} else {
 				console.log(item);
@@ -441,7 +458,9 @@ export class ElasticRoutes {
 					id: headers.id,
 					block_num: headers.block_num,
 					present: headers.present,
-					content: payload.content
+					content: payload.content,
+					fields: payload.fields,
+					properties: payload.properties
 				};
 				if (contractMap.has(headers.code)) {
 					contractMap.get(headers.code).push(item);

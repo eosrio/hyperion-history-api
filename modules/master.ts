@@ -442,7 +442,7 @@ export class HyperionMaster {
 		}
 
 		// special dynamic table mapper
-		indicesList.push({name: 'dynamicTable', type: 'dynamic-table'});
+		// indicesList.push({name: 'dynamicTable', type: 'dynamic-table'});
 		index_queues.push({type: 'dynamic-table', name: index_queue_prefix + "_dynamic"});
 
 	}
@@ -836,25 +836,24 @@ export class HyperionMaster {
 
 		let qIdx = 0;
 		this.IndexingQueues.forEach((q) => {
+			console.log(q);
 			let n = this.conf.scaling.indexing_queues;
-			if (q.type === 'abi') {
+			qIdx = 0;
+			if (q.type === 'action' || q.type === 'delta') {
+				n = this.conf.scaling.ad_idx_queues;
+			} else if (q.type === 'dynamic-table') {
+				n = this.conf.scaling.dyn_idx_queues;
+			} else if (q.type === 'abi') {
 				n = 1;
 			}
-			qIdx = 0;
 			for (let i = 0; i < n; i++) {
-				let m = 1;
-				if (q.type === 'action' || q.type === 'delta') {
-					m = this.conf.scaling.ad_idx_queues;
-				}
-				for (let j = 0; j < m; j++) {
-					this.addWorker({
-						worker_role: 'ingestor',
-						queue: q.name + ":" + (qIdx + 1),
-						type: q.type,
-						distribution: JSON.stringify(indexDist[q.type])
-					});
-					qIdx++;
-				}
+				this.addWorker({
+					worker_role: 'ingestor',
+					queue: q.name + ":" + (qIdx + 1),
+					type: q.type,
+					distribution: JSON.stringify(indexDist[q.type])
+				});
+				qIdx++;
 			}
 		});
 	}
@@ -1347,7 +1346,9 @@ export class HyperionMaster {
 		if (!this.queueMonitoringInterval) {
 			const limit = this.conf.scaling.auto_scale_trigger;
 			const autoscaleConsumers = {};
-			this.checkQueues(autoscaleConsumers, limit).catch(console.log);
+			setTimeout(() => {
+				this.checkQueues(autoscaleConsumers, limit).catch(console.log);
+			}, 3000);
 			if (!this.conf.scaling.polling_interval) {
 				this.conf.scaling.polling_interval = 20000;
 			}

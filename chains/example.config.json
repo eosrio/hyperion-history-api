@@ -63,6 +63,7 @@
     "ds_pool_size":       1,
     "indexing_queues":    1,
     "ad_idx_queues":      1,
+    "dyn_idx_queues":     1,
     "max_autoscale":      4,
     "batch_size":         5000,
     "resume_trigger":     5000,
