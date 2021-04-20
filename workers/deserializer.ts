@@ -1029,7 +1029,7 @@ export default class MainDSWorker extends HyperionWorker {
 				}
 			}
 
-			
+
 			prefixedOutput[`${table}.${value}`] = _val;
 		});
 		return prefixedOutput;

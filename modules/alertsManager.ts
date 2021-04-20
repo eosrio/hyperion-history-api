@@ -44,6 +44,7 @@ export default class AlertsManager {
 	telegramBot: Telegraf;
 	smptTransport: Mail;
 	chainName: string;
+	private ready = false;
 
 	constructor(options: AlertManagerOptions) {
 		this.opts = options;
@@ -53,6 +54,7 @@ export default class AlertsManager {
 	}
 
 	init() {
+		this.ready = true;
 		if (this.opts.telegram && this.opts.telegram.enabled) {
 			this.telegramBot = new Telegraf(this.opts.telegram.botToken);
 		}
@@ -71,22 +73,24 @@ export default class AlertsManager {
 	}
 
 	emitAlert(input: AlertOptions) {
-		switch (input.type) {
-			case 'fork': {
-				if (this.opts.cases?.alertOnFork) {
-					let msg = 'New fork detected on ${this.chainName}!\n';
-					msg += `From block ${input.content.data.starting_block} to ${input.content.data.starting_block}\n`;
-					msg += `New block id: ${input.content.data.new_id}`;
-					this.sendTelegramMessage(msg).catch(console.log);
+		if (this.ready) {
+			switch (input.type) {
+				case 'fork': {
+					if (this.opts.cases?.alertOnFork) {
+						let msg = 'New fork detected on ${this.chainName}!\n';
+						msg += `From block ${input.content.data.starting_block} to ${input.content.data.starting_block}\n`;
+						msg += `New block id: ${input.content.data.new_id}`;
+						this.sendTelegramMessage(msg).catch(console.log);
+					}
+					break;
 				}
-				break;
-			}
-			case 'error': {
-				break;
-			}
-			default: {
-				console.log(input);
-				this.sendTelegramMessage(input.content).catch(console.log);
+				case 'error': {
+					break;
+				}
+				default: {
+					console.log(input);
+					this.sendTelegramMessage(input.content).catch(console.log);
+				}
 			}
 		}
 	}
@@ -96,7 +100,7 @@ export default class AlertsManager {
 			const message = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
 			for (const chatId of this.opts.telegram.destinationIds) {
 				try {
-					await this.telegramBot.telegram.sendMessage(chatId, message);
+					await this.telegramBot.telegram.sendMessage(chatId, '[' + this.chainName + '] ' + message);
 				} catch (e) {
 					hLog('Failed to send telegram message!');
 					hLog(e.message);

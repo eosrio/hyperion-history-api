@@ -162,6 +162,7 @@ export class HyperionMaster {
 
 	// Reversible Blocks
 	private revBlockArray: RevBlock[] = [];
+	private shutdownStarted = false;
 
 	constructor() {
 		this.cm = new ConfigurationModule();
@@ -369,7 +370,7 @@ export class HyperionMaster {
 						}
 					}
 				}
-				this.alerts.emitAlert({process: process.title, type: 'fork', content: msg});
+				this.emitAlert('fork', msg);
 				if (msg.data && this.conf.features.streaming.enable) {
 					msg.data.forkedBlocks = forkedBlocks;
 					this.wsRouterWorker.send(msg);
@@ -1360,9 +1361,11 @@ export class HyperionMaster {
 
 	private onPm2Stop() {
 		pm2io.action('stop', (reply) => {
+			this.shutdownStarted = true;
 			this.allowMoreReaders = false;
-			console.info('Stop signal received. Shutting down readers immediately!');
-			hLog('Waiting for queues...');
+			const stopMsg = 'Stop signal received. Shutting down readers immediately!';
+			hLog(stopMsg);
+			this.emitAlert('warning', stopMsg);
 			messageAllWorkers(cluster, {
 				event: 'stop'
 			});
@@ -1490,32 +1493,25 @@ export class HyperionMaster {
 							} else {
 								const idleMsg = `No blocks processed! Indexer will stop in ${this.auto_stop - (tScale * this.idle_count)} seconds!`;
 								if (this.idle_count === 1) {
-									this.alerts.emitAlert({
-										type: 'warning',
-										content: idleMsg
-									});
+									this.emitAlert('warning', idleMsg);
 								}
 								hLog(idleMsg);
 							}
 						} else {
-							const idleMsg = 'No blocks are being processed, please check your state-history node!';
-							if (this.idle_count === 1) {
-								this.alerts.emitAlert({
-									type: 'warning',
-									content: idleMsg
-								});
+							if (!this.shutdownStarted) {
+								const idleMsg = 'No blocks are being processed, please check your state-history node!';
+								if (this.idle_count === 2) {
+									this.emitAlert('warning', idleMsg);
+								}
+								hLog(idleMsg);
 							}
-							hLog(idleMsg);
 						}
 					}
 
 				}
 			} else {
 				if (this.idle_count > 1) {
-					this.alerts.emitAlert({
-						type: 'info',
-						content: '✅ Data processing resumed!'
-					});
+					this.emitAlert('info', '✅ Data processing resumed!');
 					hLog('Processing resumed!');
 				}
 				this.idle_count = 0;
@@ -1664,11 +1660,7 @@ export class HyperionMaster {
 		try {
 			const esInfo = await this.client.info();
 			hLog(`Elasticsearch: ${esInfo.body.version.number} | Lucene: ${esInfo.body.version.lucene_version}`);
-			this.alerts.emitAlert({
-				type: 'info',
-				process: process.title,
-				content: `${this.chain} indexer started using ES: ${esInfo.body.version.number}`
-			});
+			this.emitAlert('info', `Indexer started using ES v${esInfo.body.version.number}`);
 		} catch (e) {
 			hLog('Failed to check elasticsearch version!');
 			process.exit();
@@ -1737,6 +1729,12 @@ export class HyperionMaster {
 		this.maxBatchSize = this.conf.scaling.batch_size;
 
 		await this.findRange();
+
+		this.emitAlert(
+			'info',
+			`Range defined from ${this.starting_block} to ${this.head}` +
+			(this.conf.indexer.live_reader ? ' with ' : ' without ') +
+			'live reading active');
 
 		await this.setupWorkers();
 
@@ -2205,6 +2203,10 @@ export class HyperionMaster {
 		if (this.conf.indexer.stop_on !== 0) {
 			this.head = this.conf.indexer.stop_on;
 		}
+	}
+
+	private emitAlert(msgType: string, msgContent: string) {
+		this.alerts.emitAlert({type: msgType, process: process.title, content: msgContent});
 	}
 }
 
