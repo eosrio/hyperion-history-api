@@ -92,14 +92,14 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 
         let highestBlockNum = 0;
         for (let action of hits) {
-            action = action._source;
-            if (action.block_num > highestBlockNum) {
-                highestBlockNum = action.block_num;
+            if (action._source.block_num > highestBlockNum) {
+                highestBlockNum = action._source.block_num;
             }
         }
 
         for (let action of hits) {
-            if (action.block_num === highestBlockNum) {
+            if (action._source.block_num === highestBlockNum) {
+                action = action._source;
                 mergeActionMeta(action);
                 response.actions.push(action);
             }
