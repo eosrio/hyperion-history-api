@@ -64,11 +64,49 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
     const hits = results['body']['hits']['hits'];
 
     if (hits.length > 0) {
+
+        // const producers = {};
+        // for (let hit of hits) {
+        // 	if (hit._source.producer) {
+        // 		if (producers[hit._source.producer]) {
+        // 			producers[hit._source.producer]++;
+        // 		} else {
+        // 			producers[hit._source.producer] = 1;
+        // 		}
+        // 	}
+        // }
+        // let useBlocknumber;
+        // if (Object.keys(producers).length > 1) {
+        // 	// multiple producers of the same tx id, forked actions are present, attempt to cleanup
+        // 	let trueProd = '';
+        // 	let highestActCount = 0;
+        // 	for (const prod in producers) {
+        // 		if (producers.hasOwnProperty(prod)) {
+        // 			if(producers[prod] === highestActCount) {
+        // 				useBlocknumber = true;
+        // 			} else if (producers[prod] > highestActCount) {
+        // 				highestActCount = producers[prod];
+        // 				trueProd = prod;
+        // 			}
+        // 		}
+        // 	}
+        // }
+
+        let highestBlockNum = 0;
         for (let action of hits) {
             action = action._source;
-            mergeActionMeta(action);
-            response.actions.push(action);
+            if (action.block_num > highestBlockNum) {
+                highestBlockNum = action.block_num;
+            }
         }
+
+        for (let action of hits) {
+            if (action.block_num === highestBlockNum) {
+                mergeActionMeta(action);
+                response.actions.push(action);
+            }
+        }
+
         response.executed = true;
     }
 
