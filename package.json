@@ -48,7 +48,7 @@
     "flatstr": "1.0.12",
     "got": "^11.8.1",
     "ioredis": "4.17.3",
-    "lodash": "4.17.20",
+    "lodash": "4.17.21",
     "moment": "2.27.0",
     "node-fetch": "3.0.0-beta.8",
     "portfinder": "^1.0.26",
