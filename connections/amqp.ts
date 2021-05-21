@@ -17,10 +17,14 @@ export async function createConnection(config): Promise<Connection> {
 }
 
 export function getAmpqUrl(config): string {
+	let frameMaxValue = '0x10000';
+	if (config.frameMax) {
+		frameMaxValue = config.frameMax;
+	}
 	const u = encodeURIComponent(config.user);
 	const p = encodeURIComponent(config.pass);
 	const v = encodeURIComponent(config.vhost)
-	return `amqp://${u}:${p}@${config.host}/${v}`;
+	return `amqp://${u}:${p}@${config.host}/${v}?frameMax=${frameMaxValue}`;
 }
 
 

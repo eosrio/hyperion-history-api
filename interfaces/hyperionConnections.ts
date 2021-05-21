@@ -1,37 +1,38 @@
 interface AmqpConfig {
-    host: string;
-    api: string;
-    user: string;
-    pass: string;
-    vhost: string;
+	host: string;
+	api: string;
+	user: string;
+	pass: string;
+	vhost: string;
+	frameMax: string;
 }
 
 interface ESConfig {
-    protocol: string;
-    host: string;
-    ingest_nodes: string[];
-    user: string;
-    pass: string;
+	protocol: string;
+	host: string;
+	ingest_nodes: string[];
+	user: string;
+	pass: string;
 }
 
 interface HyperionChainData {
-    name: string;
-    chain_id: string;
-    http: string;
-    WS_ROUTER_PORT: number;
-    WS_ROUTER_HOST: string;
+	name: string;
+	chain_id: string;
+	http: string;
+	WS_ROUTER_PORT: number;
+	WS_ROUTER_HOST: string;
 }
 
 interface RedisConfig {
-    host: string;
-    port: number;
+	host: string;
+	port: number;
 }
 
 export interface HyperionConnections {
-    amqp: AmqpConfig;
-    elasticsearch: ESConfig;
-    redis: RedisConfig;
-    chains: {
-        [key: string]: HyperionChainData
-    }
+	amqp: AmqpConfig;
+	elasticsearch: ESConfig;
+	redis: RedisConfig;
+	chains: {
+		[key: string]: HyperionChainData
+	}
 }
