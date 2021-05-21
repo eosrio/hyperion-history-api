@@ -65,6 +65,6 @@
     "@types/lodash": "^4.14.170",
     "@types/node": "^15.6.0",
     "@types/nodemailer": "6.4.1",
-    "@types/ws": "^7.4.1"
+    "@types/ws": "^7.4.4"
   }
 }
