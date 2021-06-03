@@ -80,7 +80,9 @@ export async function checkQueueSize(q_name, config) {
 	} catch (e) {
 		hLog('[WARNING] Checking queue size failed, HTTP API is not ready!');
 		if (e instanceof HTTPError) {
-			hLog(e.response);
+			if(e.response.body) {
+				hLog(e.response.body);
+			}
 		} else {
 			hLog(JSON.stringify(e, null, 2));
 		}
