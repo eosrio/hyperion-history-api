@@ -34,8 +34,10 @@ export default class StateReader extends HyperionWorker {
 	private local_lib = 0;
 	private delay_active = false;
 	private block_processing_delay = 100;
+	private shipRev = 'v0';
 
 	// private tempBlockSizeSum = 0;
+	private shipInitStatus: any;
 
 	constructor() {
 		super();
@@ -65,6 +67,10 @@ export default class StateReader extends HyperionWorker {
 			this.conf.indexer.fetch_deltas = true;
 		}
 
+		if (this.conf.settings.ship_request_rev) {
+			this.shipRev = this.conf.settings.ship_request_rev;
+		}
+
 		this.baseRequest = {
 			max_messages_in_flight: this.conf.prefetch.read,
 			have_positions: [],
@@ -73,6 +79,10 @@ export default class StateReader extends HyperionWorker {
 			fetch_traces: this.conf.indexer.fetch_traces,
 			fetch_deltas: this.conf.indexer.fetch_deltas
 		};
+
+		if (this.shipRev === 'v1') {
+			this.baseRequest.fetch_block_header = true;
+		}
 
 		// setInterval(() => {
 		//     if (this.tempBlockSizeSum > 0) {
@@ -276,6 +286,7 @@ export default class StateReader extends HyperionWorker {
 			this.ackBlockRange(block_array.length);
 		} else {
 			await this.onMessage(block_array[0]);
+			this.ackBlockRange(block_array.length);
 		}
 		if (this.delay_active) {
 			await new Promise(resolve => setTimeout(resolve, this.block_processing_delay));
@@ -285,155 +296,176 @@ export default class StateReader extends HyperionWorker {
 
 	private async onMessage(data: any) {
 		// this.tempBlockSizeSum += data.length;
-		if (this.abi) {
 
-			// NORMAL OPERATION MODE WITH ABI PRESENT
-			if (!this.recovery) {
+		if (!this.abi) {
+			this.processFirstABI(data);
+			return 1;
+		}
 
-				// NORMAL OPERATION MODE
-				if (process.env.worker_role) {
+		if (!process.env.worker_role) {
+			console.log("[FATAL ERROR] undefined role! Exiting now!");
+			this.ship.close();
+			process.exit(1);
+			return;
+		}
 
-					// const tref = process.hrtime.bigint();
-
-					const res = deserialize('result', data, this.txEnc, this.txDec, this.types)[1];
-
-					// const d1 = process.hrtime.bigint() - tref;
-
-					// const tref2 = process.hrtime.bigint();
-					// const res2 = AbiEOS.bin_to_json("0", "result", data)[1];
-					// const d2 = process.hrtime.bigint() - tref2;
-					//
-					// hLog(`ship result (${(Number(d1) / Number(d2)).toFixed(2)}x) (size=${data.length}) >> eosjs: ${Number(d1) / 1000}us | node-abieos: ${Number(d2) / 1000}us`);
-					//
-					// if (data.length > 2000) {
-					//     appendFileSync('ds_benchmark.csv', `${data.length},${d1},${d2}\n`);
-					// }
-
-					if (res['this_block']) {
-
-						const blk_num = res['this_block']['block_num'];
-						const lib = res['last_irreversible'];
-						const task_payload = {num: blk_num, content: data};
-
-						if (res.block && res.traces && res.deltas) {
-							debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
-						} else {
-							if (!res.traces) {
-								debugLog('missing traces field');
-							}
-							if (!res.deltas) {
-								debugLog('missing deltas field');
-							}
-							if (!res.block) {
-								debugLog('missing block field');
-							}
-						}
-
-						if (this.isLiveReader) {
-
-							// LIVE READER MODE
-							if (blk_num !== this.local_block_num + 1) {
-								hLog(`Expected: ${this.local_block_num + 1}, received: ${blk_num}`);
-								try {
-									// delete all prevously stored data for the forked blocks
-									await this.handleFork(res);
-								} catch (e) {
-									hLog(`Failed to handle fork during live reading! - Error: ${e.message}`);
-								}
-							} else {
-								this.local_block_num = blk_num;
-							}
-
-							if (lib.block_num > this.local_lib) {
-								this.local_lib = lib.block_num;
-								// emit lib update event
-								process.send({event: 'lib_update', data: lib});
-							}
-
-							await this.stageOneDistQueue.push(task_payload);
-							return 1;
-						} else {
-
-							// Detect skipped first block
-							if (!this.receivedFirstBlock) {
-								if (blk_num !== this.local_block_num + 1) {
-									hLog(`WARNING: First block received was #${blk_num}, but #${this.local_block_num + 1} was expected!`);
-									hLog(`Make sure the block.log file contains the requested range, check with "eosio-blocklog --smoke-test"`);
-									this.local_block_num = blk_num - 1;
-								}
-								this.receivedFirstBlock = true;
-							}
-
-							// BACKLOG MODE
-							if (this.future_block !== 0 && this.future_block === blk_num) {
-								console.log('Missing block ' + blk_num + ' received!');
-							} else {
-								this.future_block = 0;
-							}
-
-							if (blk_num === this.local_block_num + 1) {
-								this.local_block_num = blk_num;
-								if (res['block'] || res['traces'] || res['deltas']) {
-									await this.stageOneDistQueue.push(task_payload);
-									return 1;
+		// NORMAL OPERATION MODE
+		if (!this.recovery) {
+			const result = deserialize('result', data, this.txEnc, this.txDec, this.types);
+			if (result[0] === 'get_status_result_v0') {
+				this.shipInitStatus = result[1];
+				hLog(this.shipInitStatus);
+				const chain_state_begin_block = this.shipInitStatus['chain_state_begin_block'];
+				if (!this.conf.indexer.disable_reading) {
+					switch (process.env['worker_role']) {
+						case 'reader': {
+							if (chain_state_begin_block > process.env.first_block) {
+								hLog(`First saved block is ahead of requested range! - Req: ${process.env.first_block} | First: ${chain_state_begin_block}`);
+								hLog('Requesting a single block');
+								if (this.conf.settings.ignore_snapshot) {
+									this.local_block_num = chain_state_begin_block;
+									process.send({event: 'update_init_block', block_num: chain_state_begin_block + 2});
+									this.requestBlocks(chain_state_begin_block + 1);
 								} else {
-									if (blk_num === 1) {
-										await this.stageOneDistQueue.push(task_payload);
-										return 1;
-									} else {
-										return 0;
-									}
+									process.send({event: 'update_init_block', block_num: chain_state_begin_block + 1});
+									this.requestBlockRange(chain_state_begin_block, chain_state_begin_block + 1);
 								}
 							} else {
-								console.log(`[${process.env['worker_role']}] missing block: ${(this.local_block_num + 1)} current block: ${blk_num}`);
-								this.future_block = blk_num + 1;
-								return 0;
+								this.requestBlocks(0);
 							}
+							break;
 						}
-					} else {
-						return 0;
+						case 'continuous_reader': {
+							this.requestBlocks(parseInt(process.env['worker_last_processed_block'], 10));
+							break;
+						}
 					}
 				} else {
-					console.log("[FATAL ERROR] undefined role! Exiting now!");
 					this.ship.close();
 					process.exit(1);
 				}
-
 			} else {
+				const res = result[1];
 
-				// RECOVERY MODE
-				if (this.isLiveReader) {
-					console.log(`Resuming live stream from block ${this.local_block_num}...`);
-					this.requestBlocks(this.local_block_num + 1);
-					this.recovery = false;
-				} else {
-					if (!this.completionSignaled) {
-						let first = this.local_block_num;
-						let last = this.local_last_block;
-						if (last === 0) {
-							last = parseInt(process.env.last_block, 10);
-						}
-						last = last - 1;
-						if (first === 0) {
-							first = parseInt(process.env.first_block, 10);
-						}
-						console.log(`Resuming stream from block ${first} to ${last}...`);
-						if (last - first > 0) {
-							this.requestBlockRange(first, last);
-							this.recovery = false;
-						} else {
-							console.log('Invalid range!');
-						}
+				if (res['this_block']) {
+					const blk_num = res['this_block']['block_num'];
+					const lib = res['last_irreversible'];
+					const task_payload = {num: blk_num, content: data};
+
+					if (res.block && res.traces && res.deltas) {
+						debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
 					} else {
-						console.log('Reader already finished, no need to restart.');
-						this.recovery = false;
+						if (!res.traces) {
+							debugLog('missing traces field');
+						}
+						if (!res.deltas) {
+							debugLog('missing deltas field');
+						}
+						if (!res.block) {
+							debugLog('missing block field');
+						}
 					}
-				}
 
+					if (this.isLiveReader) {
+
+						// LIVE READER MODE
+						if (blk_num !== this.local_block_num + 1) {
+							hLog(`Expected: ${this.local_block_num + 1}, received: ${blk_num}`);
+							try {
+								// delete all prevously stored data for the forked blocks
+								await this.handleFork(res);
+							} catch (e) {
+								hLog(`Failed to handle fork during live reading! - Error: ${e.message}`);
+							}
+						} else {
+							this.local_block_num = blk_num;
+						}
+
+						if (lib.block_num > this.local_lib) {
+							this.local_lib = lib.block_num;
+							// emit lib update event
+							process.send({event: 'lib_update', data: lib});
+						}
+
+						await this.stageOneDistQueue.push(task_payload);
+						return 1;
+					} else {
+
+						// Detect skipped first block
+						if (!this.receivedFirstBlock) {
+							if (blk_num !== this.local_block_num + 1) {
+								hLog(`WARNING: First block received was #${blk_num}, but #${this.local_block_num + 1} was expected!`);
+								hLog(`Make sure the block.log file contains the requested range, check with "eosio-blocklog --smoke-test"`);
+								this.local_block_num = blk_num - 1;
+							}
+							this.receivedFirstBlock = true;
+						}
+
+						// BACKLOG MODE
+						if (this.future_block !== 0 && this.future_block === blk_num) {
+							console.log('Missing block ' + blk_num + ' received!');
+						} else {
+							this.future_block = 0;
+						}
+
+						if (blk_num === this.local_block_num + 1) {
+							this.local_block_num = blk_num;
+							if (res['block'] || res['traces'] || res['deltas']) {
+								await this.stageOneDistQueue.push(task_payload);
+								return 1;
+							} else {
+								if (blk_num === 1) {
+									await this.stageOneDistQueue.push(task_payload);
+									return 1;
+								} else {
+									return 0;
+								}
+							}
+						} else {
+							hLog(`Missing block: ${(this.local_block_num + 1)} current block: ${blk_num}`)
+							this.future_block = blk_num + 1;
+							return 0;
+						}
+					}
+				} else {
+					return 0;
+				}
 			}
+
 		} else {
-			this.processFirstABI(data);
-			return 1;
+
+			// RECOVERY MODE
+			if (this.isLiveReader) {
+				hLog(`Resuming live stream from block ${this.local_block_num}...`);
+				this.requestBlocks(this.local_block_num + 1);
+				this.recovery = false;
+			} else {
+				if (!this.completionSignaled) {
+					let first = this.local_block_num;
+					let last = this.local_last_block;
+					if (last === 0) {
+						last = parseInt(process.env.last_block, 10);
+					}
+					last = last - 1;
+					if (first === 0) {
+						first = parseInt(process.env.first_block, 10);
+					}
+					if (first > last) {
+						last = first + 1;
+					}
+					hLog(`Resuming stream from block ${first} to ${last}...`);
+					if (last - first > 0) {
+						this.requestBlockRange(first, last);
+						this.recovery = false;
+					} else {
+						hLog('Invalid range!');
+					}
+				} else {
+					hLog('Reader already finished, no need to restart.');
+					this.recovery = false;
+				}
+			}
+
 		}
 	}
 
@@ -442,23 +474,10 @@ export default class StateReader extends HyperionWorker {
 		this.abi = JSON.parse(data);
 		this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
 		this.abi.tables.map(table => this.tables.set(table.name, table.type));
+		// notify master about first abi
 		process.send({event: 'init_abi', data: data});
-		// console.log('state reader sent first abi!');
-		if (!this.conf.indexer.disable_reading) {
-			switch (process.env['worker_role']) {
-				case 'reader': {
-					this.requestBlocks(0);
-					break;
-				}
-				case 'continuous_reader': {
-					this.requestBlocks(parseInt(process.env['worker_last_processed_block'], 10));
-					break;
-				}
-			}
-		} else {
-			this.ship.close();
-			process.exit(1);
-		}
+		// request status
+		this.send(['get_status_request_v0', {}]);
 	}
 
 	private requestBlocks(start: number) {
@@ -467,8 +486,9 @@ export default class StateReader extends HyperionWorker {
 		const request = this.baseRequest;
 		request.start_block_num = parseInt(first_block > 0 ? first_block.toString() : '1', 10);
 		request.end_block_num = parseInt(last_block.toString(), 10);
-		debugLog(`Reader ${process.env.worker_id} requestBlocks from: ${request.start_block_num} to: ${request.end_block_num}`);
-		this.send(['get_blocks_request_v0', request]);
+		const reqType = 'get_blocks_request_' + this.shipRev;
+		debugLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
+		this.send([reqType, request]);
 	}
 
 	private send(req_data: (string | any)[]) {
@@ -480,8 +500,9 @@ export default class StateReader extends HyperionWorker {
 		request.start_block_num = parseInt(first, 10);
 		this.local_block_num = request.start_block_num - 1;
 		request.end_block_num = parseInt(last, 10);
-		debugLog(`Reader ${process.env.worker_id} requestBlockRange from: ${request.start_block_num} to: ${request.end_block_num}`);
-		this.send(['get_blocks_request_v0', request]);
+		const reqType = 'get_blocks_request_' + this.shipRev;
+		debugLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
+		this.send([reqType, request]);
 	}
 
 	private async handleFork(data: any) {
@@ -495,7 +516,15 @@ export default class StateReader extends HyperionWorker {
 			}
 		};
 		const searchBody = {
-			query: {bool: {must: [{range: rangeStruct}]}}
+			query: {
+				bool: {
+					must: [
+						{
+							range: rangeStruct
+						}
+					]
+				}
+			}
 		};
 		const tRef = Date.now();
 		const dbqResult = await this.client.deleteByQuery({
@@ -550,11 +579,13 @@ export default class StateReader extends HyperionWorker {
 	}
 
 	private processPending() {
+		console.log(this.pendingRequest);
 		this.requestBlockRange(this.pendingRequest[0], this.pendingRequest[1]);
 		this.pendingRequest = null;
 	}
 
 	private startWS() {
+		console.log('>>>>>>>>> startWS');
 		this.ship.connect(
 			this.blockReadingQueue.push,
 			this.handleLostConnection.bind(this),

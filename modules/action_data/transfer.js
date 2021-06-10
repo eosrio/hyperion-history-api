@@ -4,7 +4,7 @@ const hyperionModule = {
   chain: '*',
   contract: '*',
   action: 'transfer',
-  parser_version: ['1.8', '1.7'],
+  parser_version: ['2.1','1.8', '1.7'],
   defineQueryPrefix: 'transfer',
   handler: (action) => {
     let qtd = null;

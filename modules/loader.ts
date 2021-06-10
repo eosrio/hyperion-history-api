@@ -40,10 +40,10 @@ export class HyperionModuleLoader {
 
 	processActionData(action) {
 		const wildcard = this.handledActions.get('*');
-		if (wildcard.has(action.act.name)) {
+		if (wildcard && wildcard.has(action.act.name)) {
 			wildcard.get(action.act.name)(action);
 		}
-		if (this.handledActions.has(action.act.account)) {
+		if (this.handledActions && this.handledActions.has(action.act.account)) {
 			const _c = this.handledActions.get(action.act.account);
 			if (_c.has(action.act.name)) {
 				_c.get(action.act.name)(action);

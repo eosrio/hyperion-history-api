@@ -20,6 +20,9 @@ export interface ScalingConfigs {
 }
 
 export interface MainSettings {
+	index_partition_size: number;
+	ignore_snapshot?: boolean;
+	ship_request_rev: string;
 	custom_policy: string;
 	bypass_index_map: boolean;
 	hot_warm_policy: boolean;

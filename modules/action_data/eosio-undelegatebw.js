@@ -2,7 +2,7 @@ const hyperionModule = {
     chain: "*",
     contract: 'eosio',
     action: 'undelegatebw',
-    parser_version: ['1.8','1.7'],
+    parser_version: ['2.1','1.8','1.7'],
     defineQueryPrefix: 'undelegatebw',
     handler: (action) => {
         const data = action['act']['data'];

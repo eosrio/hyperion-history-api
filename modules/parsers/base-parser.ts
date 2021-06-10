@@ -189,7 +189,7 @@ export abstract class BaseParser {
 			try {
 				worker.common.attachActionExtras(worker, action);
 			} catch (e) {
-				hLog(e.message);
+				console.log(e);
 				hLog(action?.act?.data);
 			}
 		} else {

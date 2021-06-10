@@ -58,7 +58,7 @@ interface QueuePayload {
 function extractDeltaStruct(deltas) {
 	const deltaStruct = {};
 	for (const table_delta of deltas) {
-		if (table_delta[0] === "table_delta_v0") {
+		if (table_delta[0] === "table_delta_v0" || table_delta[0] === "table_delta_v1") {
 			deltaStruct[table_delta[1].name] = table_delta[1].rows;
 		}
 	}
@@ -120,7 +120,7 @@ export default class MainDSWorker extends HyperionWorker {
 
 	autoBlacklist: Map<string, any[]> = new Map();
 
-	lastSelectedWorker = -1;
+	lastSelectedWorker = 0;
 	deltaRemovalQueue: string;
 
 	allowedDynamicContracts: Set<string> = new Set<string>();
@@ -319,7 +319,6 @@ export default class MainDSWorker extends HyperionWorker {
 				const failedTrx = [];
 
 				block.transactions.forEach((trx) => {
-
 
 					total_cpu += trx['cpu_usage_us'];
 					total_net += trx['net_usage_words'];
@@ -588,8 +587,8 @@ export default class MainDSWorker extends HyperionWorker {
 			}
 			case "round_robin": {
 				this.lastSelectedWorker++;
-				if (this.lastSelectedWorker === this.conf.scaling.ds_pool_size) {
-					this.lastSelectedWorker = 0;
+				if (this.lastSelectedWorker === this.conf.scaling.ds_pool_size + 1) {
+					this.lastSelectedWorker = 1;
 				}
 				selected_q = this.lastSelectedWorker;
 				break;
@@ -1449,7 +1448,7 @@ export default class MainDSWorker extends HyperionWorker {
 							try {
 								await this.deltaStructHandlers[key](data[1], block_num, block_ts, row, block_id);
 							} catch (e) {
-								// hLog(`Delta struct [${key}] processing error: ${e.message}`);
+								hLog(`Delta struct [${key}] processing error: ${e.message}`);
 								// hLog(data);
 							}
 						}
@@ -1464,6 +1463,7 @@ export default class MainDSWorker extends HyperionWorker {
 			try {
 				return AbiEOS[typeof array === 'string' ? "hex_to_json" : "bin_to_json"]("0", datatype, array);
 			} catch (e) {
+				hLog(e);
 				hLog('deserializeNative >>', datatype, '>>', e.message);
 			}
 			return null;

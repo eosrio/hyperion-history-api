@@ -253,7 +253,14 @@ export class HyperionMaster {
 					}
 				}
 			},
+			'update_init_block': (msg: any) => {
+				if (msg.block_num) {
+					this.lastAssignedBlock = msg.block_num;
+					this.total_range = this.head - msg.block_num;
+				}
+			},
 			'completed': (msg: any) => {
+				console.log('completed', msg);
 				if (msg.id === this.doctorId.toString()) {
 					hLog('repair worker completed', msg);
 					hLog('queue size [before]:', this.missingRanges.length);
@@ -667,6 +674,9 @@ export class HyperionMaster {
 				}
 			}
 		} else {
+			if (this.conf.indexer.rewrite) {
+				this.starting_block = 0;
+			}
 			// Auto Mode
 			if (this.conf.indexer.abi_scan_mode) {
 				hLog(`Last indexed ABI: ${this.lastIndexedABI}`);
@@ -875,6 +885,7 @@ export class HyperionMaster {
 	private addWorker(def: HyperionWorkerDef) {
 		this.worker_index++;
 		def.worker_id = this.worker_index;
+		def.failures = 0;
 		this.workerMap.push(def);
 	}
 
@@ -882,7 +893,7 @@ export class HyperionMaster {
 		for (let i = 0; i < this.conf.scaling.ds_pool_size; i++) {
 			this.addWorker({
 				worker_role: 'ds_pool_worker',
-				local_id: i
+				local_id: i + 1
 			});
 		}
 	}
@@ -1026,6 +1037,7 @@ export class HyperionMaster {
 
 		// Setup parallel readers unless explicitly disabled
 		if (!this.conf.indexer.live_only_mode) {
+			console.log(this.activeReadersCount, this.max_readers, this.lastAssignedBlock, this.head)
 			while (this.activeReadersCount < this.max_readers && this.lastAssignedBlock < this.head) {
 				const start = this.lastAssignedBlock;
 				let end = this.lastAssignedBlock + this.maxBatchSize;
@@ -1361,26 +1373,29 @@ export class HyperionMaster {
 
 	private onPm2Stop() {
 		pm2io.action('stop', (reply) => {
-			this.shutdownStarted = true;
-			this.allowMoreReaders = false;
-			const stopMsg = 'Stop signal received. Shutting down readers immediately!';
-			hLog(stopMsg);
-			this.emitAlert('warning', stopMsg);
-			messageAllWorkers(cluster, {
-				event: 'stop'
-			});
-			reply({ack: true});
-			setInterval(() => {
-				if (this.allowShutdown) {
-					getLastIndexedBlockFromRange(this.client, this.chain, this.starting_block, this.head).then((value: number) => {
-						hLog(`Last Indexed Block: ${value}`);
-						writeFileSync(`./chains/.${this.chain}_lastblock.txt`, value.toString());
-						hLog('Shutting down master...');
-						process.exit(1);
-					});
-
-				}
-			}, 500);
+			try {
+				this.shutdownStarted = true;
+				this.allowMoreReaders = false;
+				const stopMsg = 'Stop signal received. Shutting down readers immediately!';
+				hLog(stopMsg);
+				this.emitAlert('warning', stopMsg);
+				messageAllWorkers(cluster, {
+					event: 'stop'
+				});
+				setInterval(() => {
+					if (this.allowShutdown) {
+						getLastIndexedBlockFromRange(this.client, this.chain, this.starting_block, this.head).then((value: number) => {
+							hLog(`Last Indexed Block: ${value}`);
+							writeFileSync(`./chains/.${this.chain}_lastblock.txt`, value.toString());
+							hLog('Shutting down master...');
+							reply({ack: true});
+							process.exit(1);
+						});
+					}
+				}, 100);
+			} catch (e) {
+				reply({ack: false, error: e.message});
+			}
 		});
 	}
 
@@ -1551,9 +1566,11 @@ export class HyperionMaster {
 	}
 
 	private launchWorkers() {
+		let launchedCount = 0;
 		this.workerMap.forEach((wrk: HyperionWorkerDef) => {
 			if (!wrk.wref) {
 				wrk.wref = cluster.fork(wrk);
+				wrk.wref.id = wrk.worker_id;
 				wrk.wref.on('message', (msg) => {
 					this.handleMessage(msg);
 				});
@@ -1563,8 +1580,10 @@ export class HyperionMaster {
 				if (wrk.worker_role === 'router') {
 					this.wsRouterWorker = wrk.wref;
 				}
+				launchedCount++;
 			}
 		});
+		hLog(`${launchedCount} workers launched`);
 	}
 
 	printActiveProds() {
@@ -1635,6 +1654,11 @@ export class HyperionMaster {
 
 		if (!this.conf.scaling.block_queue_limit) {
 			hLog(`scaling.block_queue_limit is not defined!`);
+			process.exit(1);
+		}
+
+		if (!this.conf.settings.index_partition_size) {
+			hLog(`[FATAL ERROR] settings.index_partition_size is not defined!`);
 			process.exit(1);
 		}
 
@@ -1716,8 +1740,8 @@ export class HyperionMaster {
 		await this.addLifecyclePolicies(indexConfig);
 		await this.appendExtraMappings(indexConfig);
 		await this.updateIndexTemplates(indicesList, indexConfig);
-		await this.createIndices(indicesList);
 
+		// await this.createIndices(indicesList);
 
 		if (this.conf.indexer.fill_state) {
 			await this.fillCurrentStateTables();
@@ -1755,8 +1779,19 @@ export class HyperionMaster {
 		this.startIndexMonitoring();
 
 		cluster.on('disconnect', (worker) => {
-			if (!this.mode_transition) {
-				hLog(`The worker #${worker.id} has disconnected`);
+			if (!this.mode_transition && !this.shutdownStarted) {
+				hLog(`The worker #${worker.id} has disconnected, attempting to re-launch in 5 seconds...`);
+				const workerReference = this.workerMap.find(value => value.worker_id === worker.id);
+				if (workerReference) {
+					workerReference.wref = null;
+					workerReference.failures++;
+					hLog(workerReference);
+					setTimeout(() => {
+						this.launchWorkers();
+					}, 5000);
+				} else {
+					console.log(`Worker #${worker.id} not found in map!`);
+				}
 			}
 		});
 
