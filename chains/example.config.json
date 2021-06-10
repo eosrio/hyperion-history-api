@@ -39,7 +39,7 @@
     "ipc_debug_rate": 60000,
     "allow_custom_abi": false,
     "rate_monitoring": true,
-    "max_ws_payload_kb": 256,
+    "max_ws_payload_mb": 256,
     "ds_profiling": false,
     "auto_mode_switch": false,
     "hot_warm_policy": false,

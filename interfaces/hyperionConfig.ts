@@ -28,7 +28,7 @@ export interface MainSettings {
 	hot_warm_policy: boolean;
 	auto_mode_switch: boolean;
 	ds_profiling: boolean;
-	max_ws_payload_kb: number;
+	max_ws_payload_mb: number;
 	ipc_debug_rate?: number;
 	bp_monitoring?: boolean;
 	preview: boolean;
