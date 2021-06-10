@@ -314,7 +314,7 @@ export default class StateReader extends HyperionWorker {
 			const result = deserialize('result', data, this.txEnc, this.txDec, this.types);
 			if (result[0] === 'get_status_result_v0') {
 				this.shipInitStatus = result[1];
-				hLog(this.shipInitStatus);
+				hLog(`\n| SHIP Status Report\n| Init block: ${this.shipInitStatus['chain_state_begin_block']}\n| Head block: ${this.shipInitStatus['chain_state_end_block']}`);
 				const chain_state_begin_block = this.shipInitStatus['chain_state_begin_block'];
 				if (!this.conf.indexer.disable_reading) {
 					switch (process.env['worker_role']) {
@@ -585,7 +585,6 @@ export default class StateReader extends HyperionWorker {
 	}
 
 	private startWS() {
-		console.log('>>>>>>>>> startWS');
 		this.ship.connect(
 			this.blockReadingQueue.push,
 			this.handleLostConnection.bind(this),

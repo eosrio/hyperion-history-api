@@ -195,8 +195,8 @@ export class HyperionMaster {
 
 					if (this.revBlockArray.length > 0) {
 						if (this.revBlockArray[this.revBlockArray.length - 1].num === msg.block_num) {
-							console.log('WARNING, same block number detected!');
-							console.log(this.revBlockArray[this.revBlockArray.length - 1].num, msg.block_num);
+							hLog('WARNING, same block number detected!');
+							hLog(this.revBlockArray[this.revBlockArray.length - 1].num, msg.block_num);
 						}
 					}
 
@@ -260,7 +260,6 @@ export class HyperionMaster {
 				}
 			},
 			'completed': (msg: any) => {
-				console.log('completed', msg);
 				if (msg.id === this.doctorId.toString()) {
 					hLog('repair worker completed', msg);
 					hLog('queue size [before]:', this.missingRanges.length);
@@ -847,7 +846,6 @@ export class HyperionMaster {
 
 		let qIdx = 0;
 		this.IndexingQueues.forEach((q) => {
-			console.log(q);
 			let n = this.conf.scaling.indexing_queues;
 			qIdx = 0;
 			if (q.type === 'action' || q.type === 'delta') {
@@ -929,7 +927,7 @@ export class HyperionMaster {
 		if (existsSync(symbolicLink)) unlinkSync(symbolicLink);
 		symlinkSync(dsLogFileName, symbolicLink);
 		this.dsErrorStream = createWriteStream(dsErrorsLog, {flags: 'a'});
-		hLog(`📣️  Deserialization errors are being logged in:\n ${symbolicLink}`);
+		hLog(`📣️  Deserialization errors are being logged in:\n[${symbolicLink}]`);
 		this.dsErrorStream.write(`begin ${this.chain} error logs\n`);
 	}
 
@@ -1037,7 +1035,7 @@ export class HyperionMaster {
 
 		// Setup parallel readers unless explicitly disabled
 		if (!this.conf.indexer.live_only_mode) {
-			console.log(this.activeReadersCount, this.max_readers, this.lastAssignedBlock, this.head)
+			// console.log(this.activeReadersCount, this.max_readers, this.lastAssignedBlock, this.head)
 			while (this.activeReadersCount < this.max_readers && this.lastAssignedBlock < this.head) {
 				const start = this.lastAssignedBlock;
 				let end = this.lastAssignedBlock + this.maxBatchSize;
@@ -1339,6 +1337,7 @@ export class HyperionMaster {
 						}
 						if (autoscaleConsumers[queue] < this.conf.scaling.max_autoscale) {
 							hLog(`${queue} is above the limit (${size}/${limit}). Launching consumer...`);
+							// TODO: scale down automatically
 							this.addWorker({
 								queue: queue,
 								type: worker.type,
