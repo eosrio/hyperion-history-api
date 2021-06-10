@@ -5,6 +5,7 @@ export interface ActionTrace {
 	'@timestamp': string;
 	act: HyperionActionAct
 	block_num: number;
+	block_id: string;
 	global_sequence: number;
 	producer: string;
 	trx_id: string;

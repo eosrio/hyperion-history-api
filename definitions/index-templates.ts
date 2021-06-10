@@ -73,6 +73,7 @@ export const action = {
 			"act.name": {"type": "keyword"},
 			"act.data": {"enabled": false},
 			"block_num": {"type": "long"},
+			"block_id": {"type": "keyword"},
 			"action_ordinal": {"type": "long"},
 			"creator_action_ordinal": {"type": "long"},
 			"cpu_usage_us": {"type": "integer"},

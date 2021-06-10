@@ -461,6 +461,7 @@ export default class MainDSWorker extends HyperionWorker {
 							try {
 								this.routeToPool(trace[1], {
 									block_num,
+									block_id,
 									producer,
 									ts,
 									inline_count,

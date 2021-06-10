@@ -399,7 +399,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
 	async processTraces(transaction_trace, extra) {
 		const {cpu_usage_us, net_usage_words} = transaction_trace;
-		const {block_num, producer, ts, inline_count, filtered, live, signatures} = extra;
+		const {block_num, block_id, producer, ts, inline_count, filtered, live, signatures} = extra;
 
 		if (transaction_trace.status === 0) {
 			let action_count = 0;
@@ -410,6 +410,7 @@ export default class DSPoolWorker extends HyperionWorker {
 			const trx_data = {
 				trx_id,
 				block_num,
+				block_id,
 				producer,
 				cpu_usage_us,
 				net_usage_words,
@@ -583,7 +584,7 @@ export default class DSPoolWorker extends HyperionWorker {
 		if (!status) {
 			debugLog('Contract not found on cache!');
 		} else {
-			debugLog(`🗑️ Contract Successfully removed from cache!`);
+			debugLog(`🗑️ Contract successfully removed from cache!`);
 		}
 	}
 

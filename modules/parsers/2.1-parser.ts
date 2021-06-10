@@ -33,6 +33,7 @@ export default class HyperionParser extends BaseParser {
 
 		action["@timestamp"] = ts;
 		action.block_num = trx_data.block_num;
+		action.block_id = trx_data.block_id;
 		action.producer = trx_data.producer;
 		action.trx_id = trx_data.trx_id;
 
