@@ -187,9 +187,12 @@ export abstract class BaseParser {
 			// save serialized data
 			action.act.data = ds_act;
 			try {
+				if (action.act.account === 'eosio' && action.act.name === 'buyram') {
+					hLog(action?.act);
+				}
 				worker.common.attachActionExtras(worker, action);
 			} catch (e) {
-				console.log(e);
+				hLog('Failed to call attachActionExtras:', e.message);
 				hLog(action?.act?.data);
 			}
 		} else {

@@ -236,19 +236,20 @@ export default class MainDSWorker extends HyperionWorker {
 		}
 
 		let qIdx = 0;
+
 		index_queues.forEach((q) => {
-			let n = this.conf.scaling.indexing_queues;
-			if (q.type === 'abi') n = 1;
 			qIdx = 0;
+			let n = this.conf.scaling.indexing_queues;
+			if (q.type === 'action' || q.type === 'delta') {
+				n = this.conf.scaling.ad_idx_queues;
+			} else if (q.type === 'dynamic-table') {
+				n = this.conf.scaling.dyn_idx_queues;
+			} else if (q.type === 'abi') {
+				n = 1;
+			}
 			for (let i = 0; i < n; i++) {
-				let m = 1;
-				if (q.type === 'action' || q.type === 'delta') {
-					m = this.conf.scaling.ad_idx_queues;
-				}
-				for (let j = 0; j < m; j++) {
-					this.ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: true});
-					qIdx++;
-				}
+				this.ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: true});
+				qIdx++;
 			}
 		});
 
