@@ -565,6 +565,7 @@ export default class StateReader extends HyperionWorker {
 					if (value > this.conf.scaling.block_queue_limit) {
 						this.allowRequests = false;
 					} else {
+						this.allowRequests = true;
 						if (this.pendingRequest) {
 							this.processPending();
 						}
