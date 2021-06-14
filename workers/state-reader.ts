@@ -318,7 +318,7 @@ export default class StateReader extends HyperionWorker {
 								if (this.conf.settings.ignore_snapshot) {
 									this.local_block_num = chain_state_begin_block;
 									process.send({event: 'update_init_block', block_num: chain_state_begin_block + 2});
-									this.requestBlocks(chain_state_begin_block + 1);
+									this.requestBlockRange(chain_state_begin_block + 1, chain_state_begin_block + this.conf.scaling.batch_size);
 								} else {
 									process.send({event: 'update_init_block', block_num: chain_state_begin_block + 1});
 									this.requestBlockRange(chain_state_begin_block, chain_state_begin_block + 1);
