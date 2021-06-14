@@ -490,7 +490,7 @@ export default class StateReader extends HyperionWorker {
 		request.start_block_num = parseInt(first_block > 0 ? first_block.toString() : '1', 10);
 		request.end_block_num = parseInt(last_block.toString(), 10);
 		const reqType = 'get_blocks_request_' + this.shipRev;
-		hLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
+		debugLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
 		this.send([reqType, request]);
 	}
 
@@ -504,7 +504,7 @@ export default class StateReader extends HyperionWorker {
 		this.local_block_num = request.start_block_num - 1;
 		request.end_block_num = parseInt(last, 10);
 		const reqType = 'get_blocks_request_' + this.shipRev;
-		hLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
+		debugLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
 		this.send([reqType, request]);
 	}
 

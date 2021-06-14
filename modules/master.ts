@@ -1272,7 +1272,6 @@ export class HyperionMaster {
 
 	private pauseReaders() {
 		if (!this.readingPaused) {
-			hLog('sending PAUSE command to readers...');
 			this.sendToRole('reader', {event: 'pause'});
 			this.readingPaused = true;
 		}
@@ -1280,7 +1279,6 @@ export class HyperionMaster {
 
 	private resumeReaders() {
 		if (this.readingPaused) {
-			hLog('sending RESUME command to readers...');
 			this.sendToRole('reader', {event: 'resume'});
 			this.readingPaused = false;
 		}
@@ -1308,9 +1306,9 @@ export class HyperionMaster {
 					qlimit = this.conf.scaling.block_queue_limit;
 				}
 
-				if (size / qlimit > 0.5) {
-					hLog(queue, size, ((size / qlimit) * 100).toFixed(2) + "%");
-				}
+				// if (size / qlimit > 0.5) {
+				// 	hLog(queue, size, ((size / qlimit) * 100).toFixed(2) + "%");
+				// }
 
 				// pause readers if queues are above the max_limit
 				if (size >= qlimit) {
