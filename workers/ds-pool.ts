@@ -510,18 +510,7 @@ export default class DSPoolWorker extends HyperionWorker {
 			}
 
 			// Submit Actions after deduplication
-			// hLog(_finalTraces.length);
 			for (const uniqueAction of _finalTraces) {
-
-				// let tref = process.hrtime.bigint();
-				// const buf2 = Buffer.from(JSON.stringify(uniqueAction));
-				// const t1 = Number(process.hrtime.bigint() - tref) / 1000;
-				//
-				// tref = process.hrtime.bigint();
-				// const payload = Buffer.from(flatstr(JSON.stringify(uniqueAction)));
-				// const t2 = Number(process.hrtime.bigint() - tref) / 1000;
-				// console.log(`flatstr improvement (uniqueAction): ${(((t1 / t2) * 100) - 100).toFixed(2)}% | size: ${payload.length}`);
-
 				const payload = Buffer.from(flatstr(JSON.stringify(uniqueAction)));
 				this.actionDsCounter++;
 				this.pushToActionsQueue(payload, block_num);

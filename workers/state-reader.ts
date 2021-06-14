@@ -560,26 +560,40 @@ export default class StateReader extends HyperionWorker {
 
 	private startQueueWatcher() {
 		setInterval(() => {
-			let checkArr = [];
-			for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-				const q = this.chain + ":blocks:" + (i + 1);
-				checkArr.push(this.manager.checkQueueSize(q));
-			}
-			Promise.all(checkArr).then(data => {
-				if (data.some(el => el > this.conf.scaling.block_queue_limit)) {
-					this.allowRequests = false;
-				} else {
-					this.allowRequests = true;
-					if (this.pendingRequest) {
-						this.processPending();
+			if (this.isLiveReader) {
+				this.manager.checkQueueSize(this.chain + ":live_blocks").then(value => {
+					if (value > this.conf.scaling.block_queue_limit) {
+						this.allowRequests = false;
+					} else {
+						if (this.pendingRequest) {
+							this.processPending();
+						}
 					}
+				});
+			} else {
+				let checkArr = [];
+				for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
+					const q = this.chain + ":blocks:" + (i + 1);
+					checkArr.push(this.manager.checkQueueSize(q));
 				}
-			});
+				Promise.all(checkArr).then(data => {
+					if (data.some(el => el > this.conf.scaling.block_queue_limit)) {
+						if (this.allowRequests) {
+							hLog('ship reader paused!', data);
+						}
+						this.allowRequests = false;
+					} else {
+						this.allowRequests = true;
+						if (this.pendingRequest) {
+							this.processPending();
+						}
+					}
+				});
+			}
 		}, this.queueSizeCheckInterval);
 	}
 
 	private processPending() {
-		console.log(this.pendingRequest);
 		this.requestBlockRange(this.pendingRequest[0], this.pendingRequest[1]);
 		this.pendingRequest = null;
 	}

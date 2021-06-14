@@ -1270,6 +1270,9 @@ export class HyperionMaster {
 		const testedQueues = new Set();
 		for (const worker of this.workerMap) {
 			let queue = worker.queue;
+			if (!queue) {
+				queue = worker.worker_queue;
+			}
 
 			if (worker.worker_role === 'ds_pool_worker') {
 				queue = `${this.chain}:ds_pool:${worker.local_id}`;
@@ -1282,6 +1285,7 @@ export class HyperionMaster {
 				// pause readers if queues are above the max_limit
 				if (size >= this.conf.scaling.max_queue_limit) {
 					this.readingPaused = true;
+					hLog('pausing readers');
 					for (const worker of this.workerMap) {
 						if (worker.worker_role === 'reader') {
 							worker.wref.send({event: 'pause'});
@@ -1295,6 +1299,7 @@ export class HyperionMaster {
 					// remove flow limiter
 					if (this.readingLimited) {
 						this.readingLimited = false;
+						hLog('removing flow limiters');
 						for (const worker of this.workerMap) {
 							if (worker.worker_role === 'reader') {
 								worker.wref.send({event: 'set_delay', data: {state: false, delay: 0}});
@@ -1305,6 +1310,7 @@ export class HyperionMaster {
 					// fully unpause
 					if (this.readingPaused) {
 						this.readingPaused = false;
+						hLog('resuming readers');
 						for (const worker of this.workerMap) {
 							if (worker.worker_role === 'reader') {
 								worker.wref.send({event: 'pause'});
@@ -1316,6 +1322,7 @@ export class HyperionMaster {
 				// apply block processing delay on 80% usage
 				if (size >= this.conf.scaling.max_queue_limit * 0.8) {
 					this.readingLimited = true;
+					hLog('applying flow limiters');
 					for (const worker of this.workerMap) {
 						if (worker.worker_role === 'reader') {
 							worker.wref.send({
