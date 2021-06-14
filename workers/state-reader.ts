@@ -178,23 +178,27 @@ export default class StateReader extends HyperionWorker {
 		}
 	}
 
+	newRange(data: any) {
+		debugLog(`new_range [${data.first_block},${data.last_block}]`);
+		this.local_distributed_count = 0;
+		clearInterval(this.completionMonitoring);
+		this.completionMonitoring = null;
+		this.completionSignaled = false;
+		this.local_last_block = data.last_block;
+		this.range_size = parseInt(data.last_block) - parseInt(data.first_block);
+		if (this.allowRequests) {
+			this.requestBlockRange(data.first_block, data.last_block);
+			this.pendingRequest = null;
+		} else {
+			this.pendingRequest = [data.first_block, data.last_block];
+		}
+	}
+
 	onIpcMessage(msg: any): void {
 		switch (msg.event) {
 			case 'new_range': {
 				if (msg.target === process.env.worker_id) {
-					debugLog(`new_range [${msg.data.first_block},${msg.data.last_block}]`);
-					this.local_distributed_count = 0;
-					clearInterval(this.completionMonitoring);
-					this.completionMonitoring = null;
-					this.completionSignaled = false;
-					this.local_last_block = msg.data.last_block;
-					this.range_size = parseInt(msg.data.last_block) - parseInt(msg.data.first_block);
-					if (this.allowRequests) {
-						this.requestBlockRange(msg.data.first_block, msg.data.last_block);
-						this.pendingRequest = null;
-					} else {
-						this.pendingRequest = [msg.data.first_block, msg.data.last_block];
-					}
+					this.newRange(msg.data);
 				}
 				break;
 			}
@@ -317,11 +321,17 @@ export default class StateReader extends HyperionWorker {
 								hLog('Requesting a single block');
 								if (this.conf.settings.ignore_snapshot) {
 									this.local_block_num = chain_state_begin_block;
-									process.send({event: 'update_init_block', block_num: chain_state_begin_block + 2});
-									this.requestBlockRange(chain_state_begin_block + 1, chain_state_begin_block + this.conf.scaling.batch_size);
+									process.send({event: 'update_init_block', block_num: chain_state_begin_block + 2,});
+									this.newRange({
+										first_block: chain_state_begin_block + 1,
+										last_block: chain_state_begin_block + this.conf.scaling.batch_size
+									});
 								} else {
 									process.send({event: 'update_init_block', block_num: chain_state_begin_block + 1});
-									this.requestBlockRange(chain_state_begin_block, chain_state_begin_block + 1);
+									this.newRange({
+										first_block: chain_state_begin_block,
+										last_block: chain_state_begin_block + 1
+									});
 								}
 							} else {
 								this.requestBlocks(0);
