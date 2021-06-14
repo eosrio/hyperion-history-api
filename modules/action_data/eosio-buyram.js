@@ -5,7 +5,6 @@ const hyperionModule = {
   defineQueryPrefix: 'buyram',
   parser_version: ['2.1', '1.8', '1.7'],
   handler: (action) => {
-    console.log('eosio::buyram', action);
     const data = action['act']['data'];
     action['@buyram'] = {
       payer: data['payer'],
