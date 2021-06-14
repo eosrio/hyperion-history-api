@@ -1266,8 +1266,30 @@ export class HyperionMaster {
 		}
 	}
 
+	private sendToRole(role: string, payload: any) {
+		this.workerMap.filter(value => value.worker_role === role).forEach(value => value.wref.send(payload));
+	}
+
+	private pauseReaders() {
+		if (!this.readingPaused) {
+			hLog('sending PAUSE command to readers...');
+			this.sendToRole('reader', {event: 'pause'});
+			this.readingPaused = true;
+		}
+	}
+
+	private resumeReaders() {
+		if (this.readingPaused) {
+			hLog('sending RESUME command to readers...');
+			this.sendToRole('reader', {event: 'resume'});
+			this.readingPaused = false;
+		}
+	}
+
 	private async checkQueues(autoscaleConsumers, limit) {
 		const testedQueues = new Set();
+		let aboveLimit = false;
+		let canResume = true;
 		for (const worker of this.workerMap) {
 			let queue = worker.queue;
 			if (!queue) {
@@ -1281,62 +1303,26 @@ export class HyperionMaster {
 			if (queue && !testedQueues.has(queue)) {
 
 				const size = await this.manager.checkQueueSize(queue);
+				let qlimit = this.conf.scaling.max_queue_limit;
+				if (worker.worker_role === 'deserializer') {
+					qlimit = this.conf.scaling.block_queue_limit;
+				}
+
+				if (size / qlimit > 0.5) {
+					hLog(queue, size, ((size / qlimit) * 100).toFixed(2) + "%");
+				}
 
 				// pause readers if queues are above the max_limit
-				if (size >= this.conf.scaling.max_queue_limit) {
-					this.readingPaused = true;
-					hLog('pausing readers');
-					for (const worker of this.workerMap) {
-						if (worker.worker_role === 'reader') {
-							worker.wref.send({event: 'pause'});
-						}
-					}
+				if (size >= qlimit) {
+					aboveLimit = true;
 				}
 
-				// resume readers if the queues are below the trigger point
-				if (size <= this.conf.scaling.resume_trigger) {
-
-					// remove flow limiter
-					if (this.readingLimited) {
-						this.readingLimited = false;
-						hLog('removing flow limiters');
-						for (const worker of this.workerMap) {
-							if (worker.worker_role === 'reader') {
-								worker.wref.send({event: 'set_delay', data: {state: false, delay: 0}});
-							}
-						}
-					}
-
-					// fully unpause
-					if (this.readingPaused) {
-						this.readingPaused = false;
-						hLog('resuming readers');
-						for (const worker of this.workerMap) {
-							if (worker.worker_role === 'reader') {
-								worker.wref.send({event: 'pause'});
-							}
-						}
-					}
+				// check if any queue is above resume point
+				if (size >= this.conf.scaling.resume_trigger) {
+					canResume = false;
 				}
 
-				// apply block processing delay on 80% usage
-				if (size >= this.conf.scaling.max_queue_limit * 0.8) {
-					this.readingLimited = true;
-					hLog('applying flow limiters');
-					for (const worker of this.workerMap) {
-						if (worker.worker_role === 'reader') {
-							worker.wref.send({
-								event: 'set_delay',
-								data: {
-									state: true,
-									delay: 250
-								}
-							});
-						}
-					}
-				}
-
-
+				// check indexing queues
 				if (worker.worker_role === 'ingestor') {
 					if (size > limit) {
 						if (!autoscaleConsumers[queue]) {
@@ -1345,18 +1331,59 @@ export class HyperionMaster {
 						if (autoscaleConsumers[queue] < this.conf.scaling.max_autoscale) {
 							hLog(`${queue} is above the limit (${size}/${limit}). Launching consumer...`);
 							// TODO: scale down automatically
-							this.addWorker({
-								queue: queue,
-								type: worker.type,
-								worker_role: 'ingestor'
-							});
+							this.addWorker({queue: queue, type: worker.type, worker_role: 'ingestor'});
 							this.launchWorkers();
 							autoscaleConsumers[queue]++;
 						}
 					}
 				}
 
+				// // resume readers if the queues are below the trigger point
+				// if (size <= this.conf.scaling.resume_trigger) {
+				//
+				// 	// remove flow limiter
+				// 	if (this.readingLimited) {
+				// 		this.readingLimited = false;
+				// 		hLog('removing flow limiters');
+				// 		for (const worker of this.workerMap) {
+				// 			if (worker.worker_role === 'reader') {
+				// 				worker.wref.send({event: 'set_delay', data: {state: false, delay: 0}});
+				// 			}
+				// 		}
+				// 	}
+				//
+				// 	// fully unpause
+				// 	if (this.readingPaused) {
+				// 		canResume = true;
+				// 		this.readingPaused = false;
+				// 		hLog('resuming readers');
+				// 		for (const worker of this.workerMap) {
+				// 			if (worker.worker_role === 'reader') {
+				// 				worker.wref.send({event: 'pause'});
+				// 			}
+				// 		}
+				// 	}
+				// }
+				//
+				// // apply block processing delay on 80% usage
+				// if (size >= this.conf.scaling.max_queue_limit * 0.8) {
+				// 	this.readingLimited = true;
+				// 	hLog('applying flow limiters');
+				// 	for (const worker of this.workerMap) {
+				// 		if (worker.worker_role === 'reader') {
+				// 			worker.wref.send({event: 'set_delay', data: {state: true, delay: 250}});
+				// 		}
+				// 	}
+				// }
+
 				testedQueues.add(queue);
+			}
+		}
+		if (aboveLimit) {
+			this.pauseReaders();
+		} else {
+			if (canResume) {
+				this.resumeReaders();
 			}
 		}
 	}

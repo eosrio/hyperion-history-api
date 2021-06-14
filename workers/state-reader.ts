@@ -156,22 +156,14 @@ export default class StateReader extends HyperionWorker {
 	assertQueues(): void {
 		if (this.isLiveReader) {
 			const live_queue = this.chain + ':live_blocks';
-			this.ch.assertQueue(live_queue, {
-				durable: true
-			});
+			this.ch.assertQueue(live_queue, {durable: true});
 			this.ch.on('drain', () => {
-				console.log('drain...');
 				this.qStatusMap[live_queue] = true;
 			});
 		} else {
 			for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-				// console.log(`Asserting queue ${this.chain + ":blocks:" + (i + 1)}`);
-				this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {
-					durable: true
-				});
-
+				this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {durable: true});
 				this.ch.on('drain', () => {
-					console.log('drain...');
 					this.qStatusMap[this.chain + ":blocks:" + (i + 1)] = true;
 				});
 			}
@@ -218,6 +210,7 @@ export default class StateReader extends HyperionWorker {
 				break;
 			}
 			case 'set_delay': {
+				console.log('received new delay action from master')
 				this.delay_active = msg.data.state;
 				this.block_processing_delay = msg.data.delay;
 				break;
@@ -236,7 +229,7 @@ export default class StateReader extends HyperionWorker {
 	}
 
 	async run(): Promise<void> {
-		this.startQueueWatcher();
+		// this.startQueueWatcher();
 		this.events.once('ready', () => {
 			this.startWS();
 		});
