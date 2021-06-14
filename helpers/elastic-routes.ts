@@ -82,10 +82,10 @@ function buildDeltaBulk(payloads, messageMap: MMap, maxBlockCb: MaxBlockCb, rout
 function buildDynamicTableBulk(payloads, messageMap: MMap) {
 	return flatMap(payloads, (payload, body) => {
 		messageMap.set(payload.id, _.omit(payload, ['content']));
-		if (payload.present) {
-			return makeScriptedOp(payload.id, body);
-		} else {
+		if (payload.present === 0) {
 			return makeDelOp(payload.id);
+		} else {
+			return makeScriptedOp(payload.id, body);
 		}
 	});
 }

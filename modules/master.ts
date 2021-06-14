@@ -1784,9 +1784,17 @@ export class HyperionMaster {
 				if (workerReference) {
 					workerReference.wref = null;
 					workerReference.failures++;
-					hLog(workerReference);
+					hLog(`New worker defined: ${workerReference.worker_role} for ${workerReference.worker_queue}`);
 					setTimeout(() => {
 						this.launchWorkers();
+						setTimeout(() => {
+							if (workerReference.worker_role === 'deserializer' && workerReference.wref) {
+								workerReference.wref.send({
+									event: 'initialize_abi',
+									data: this.cachedInitABI
+								});
+							}
+						}, 1000);
 					}, 5000);
 				} else {
 					console.log(`Worker #${worker.id} not found in map!`);
@@ -1980,7 +1988,7 @@ export class HyperionMaster {
 				amount: parseFloat(arr[0]),
 				code: this.conf.settings.eosio_alias + '.token',
 				scope: accountName,
-				present: true
+				present: 2
 			};
 			try {
 				await this.manager.elasticsearchClient.index({
@@ -2040,7 +2048,7 @@ export class HyperionMaster {
 					parent: perm.parent,
 					name: perm.perm_name,
 					auth: perm.required_auth,
-					present: true
+					present: 2
 				};
 
 				if (payload.auth.accounts.length === 0) {

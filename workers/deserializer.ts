@@ -1447,6 +1447,12 @@ export default class MainDSWorker extends HyperionWorker {
 
 						if (data) {
 							try {
+								// convert present boolean to byte (for pre-2.1 compatibility)
+								if (row.present === true) {
+									row.present = 1;
+								} else if (row.present === false) {
+									row.present = 0;
+								}
 								await this.deltaStructHandlers[key](data[1], block_num, block_ts, row, block_id);
 							} catch (e) {
 								hLog(`Delta struct [${key}] processing error: ${e.message}`);
@@ -1464,7 +1470,6 @@ export default class MainDSWorker extends HyperionWorker {
 			try {
 				return AbiEOS[typeof array === 'string' ? "hex_to_json" : "bin_to_json"]("0", datatype, array);
 			} catch (e) {
-				hLog(e);
 				hLog('deserializeNative >>', datatype, '>>', e.message);
 			}
 			return null;

@@ -45,7 +45,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
 						"table": {type: 'string'},
 						"primary_key": {type: 'string'},
 						"payer": {type: 'string'},
-						"present": {type: 'boolean'},
+						"present": {type: 'number'},
 						"block_num": {type: 'number'},
 						"block_id": {type: 'string'},
 						"data": {

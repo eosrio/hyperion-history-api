@@ -5,7 +5,7 @@ export interface HyperionDelta {
 	table: string;
 	primary_key: string;
 	payer: string;
-	present: boolean;
+	present: boolean | number;
 	block_num: number;
 	block_id: string;
 	data: any;

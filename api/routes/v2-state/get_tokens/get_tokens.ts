@@ -27,7 +27,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 
 	for (const hit of stateResult.body.hits.hits) {
 		const data = hit._source;
-		if (typeof data.present !== "undefined" && data.present === false) {
+		if (typeof data.present !== "undefined" && data.present === 0) {
 			continue;
 		}
 		let precision;

@@ -47,7 +47,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                         "timestamp": {type: 'string'},
                         "block_num": {type: 'number'},
                         "block_id": {type: 'string'},
-                        "present": {type: 'boolean'},
+                        "present": {type: 'number'},
                         "data": {
                             type: 'object',
                             additionalProperties: true

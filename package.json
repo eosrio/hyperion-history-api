@@ -1,6 +1,6 @@
 {
   "name": "hyperion-history",
-  "version": "3.3.4-rc1",
+  "version": "3.3.4-rc2",
   "description": "Scalable Full History API Solution for EOSIO based blockchains",
   "main": "launcher.js",
   "scripts": {
@@ -45,7 +45,7 @@
     "fastify-swagger": "^4.7.0",
     "flatstr": "^1.0.12",
     "got": "11.8.2",
-    "ioredis": "^4.27.5",
+    "ioredis": "^4.27.6",
     "lodash": "^4.17.21",
     "moment": "^2.29.1",
     "nodemailer": "^6.6.1",

@@ -10,7 +10,8 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
 
 	const queryStruct = {
 		"bool": {
-			must: []
+			must: [],
+			must_not: []
 		}
 	};
 
@@ -31,7 +32,7 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
 	}
 
 	// only present deltas
-	queryStruct.bool.must.push({'term': {'present': true}});
+	queryStruct.bool.must_not.push({'term': {'present': 0}});
 
 	// Prepare query body
 	const query_body = {
