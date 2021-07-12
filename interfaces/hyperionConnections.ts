@@ -4,6 +4,7 @@ interface AmqpConfig {
     user: string;
     pass: string;
     vhost: string;
+    frameMax: string;
 }
 
 interface ESConfig {
