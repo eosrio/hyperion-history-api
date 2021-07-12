@@ -1,6 +1,7 @@
 interface AmqpConfig {
     host: string;
     api: string;
+    protocol: string;
     user: string;
     pass: string;
     vhost: string;

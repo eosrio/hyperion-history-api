@@ -70,7 +70,7 @@ export async function amqpConnect(onReconnect, config, onClose) {
 export async function checkQueueSize(q_name, config) {
 	try {
 		const v = encodeURIComponent(config.vhost);
-		const apiUrl = `http://${config.api}/api/queues/${v}/${encodeURIComponent(q_name)}`;
+		const apiUrl = `${config.protocol}://${config.api}/api/queues/${v}/${encodeURIComponent(q_name)}`;
 		const opts = {
 			username: config.user,
 			password: config.pass
@@ -78,11 +78,13 @@ export async function checkQueueSize(q_name, config) {
 		const data = await got.get(apiUrl, opts).json() as any;
 		return data.messages;
 	} catch (e) {
-		hLog('[WARNING] Checking queue size failed, HTTP API is not ready!');
-		if (e instanceof HTTPError) {
-			hLog(e.response.body);
-		} else {
-			hLog(JSON.stringify(e.response.body, null, 2));
+		hLog(`[WARNING] Checking queue size failed! - ${e.message}`);
+		if (e.response && e.response.body) {
+			if (e instanceof HTTPError) {
+				hLog(e.response.body);
+			} else {
+				hLog(JSON.stringify(e.response.body, null, 2));
+			}
 		}
 		return 0;
 	}

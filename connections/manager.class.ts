@@ -25,6 +25,9 @@ export class ConnectionManager {
 	constructor(private cm: ConfigurationModule) {
 		this.config = cm.config;
 		this.conn = cm.connections;
+		if (!this.conn.amqp.protocol) {
+			this.conn.amqp.protocol = 'http';
+		}
 		this.chain = this.config.settings.chain;
 		this.esIngestClients = [];
 		this.prepareESClient();
