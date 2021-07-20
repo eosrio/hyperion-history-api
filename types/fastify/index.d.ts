@@ -16,5 +16,6 @@ declare module 'fastify' {
 		push_api: string;
 		tokenCache: Map<string, any>;
 		allowedActionQueryParamSet: Set<string>;
+		routeSet: Set<string>;
 	}
 }
