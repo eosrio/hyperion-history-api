@@ -19,6 +19,7 @@ declare module 'fastify' {
         },
         chain_api: string,
         push_api: string,
-        tokenCache: Map<string, any>
+        tokenCache: Map<string, any>,
+        routeSet: Set<string>
     }
 }
