@@ -36,11 +36,11 @@ export function registerRoutes(server: FastifyInstance) {
         '/v2/history',
         '/v2/state',
         '/v1/chain/*',
-        '/v1/chain'
+        '/v1/chain',
     ];
     server.addHook('onRoute', opts => {
         if (!ignoreList.includes(opts.url)) {
-            if (opts.url.startsWith('/v')) {
+            if (opts.url.startsWith('/v') && !opts.url.startsWith('/v2/explore') && !opts.url.startsWith('/v2/docs')) {
                 routeSet.add(opts.url);
             }
         }
