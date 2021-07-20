@@ -3,6 +3,7 @@ import {FastifyError, FastifyInstance, FastifyReply, FastifyRequest} from "fasti
 import {createReadStream} from "fs";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
 import autoLoad from 'fastify-autoload';
+import got from "got";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
 	server.route({
@@ -28,6 +29,24 @@ function addRoute(server: FastifyInstance, handlersPath: string, prefix: string)
 
 export function registerRoutes(server: FastifyInstance) {
 
+	// build internal map of routes
+	const routeSet = new Set<string>();
+	server.decorate('routeSet', routeSet);
+	const ignoreList = [
+		'/v2',
+		'/v2/history',
+		'/v2/state',
+		'/v1/chain/*',
+		'/v1/chain'
+	];
+	server.addHook('onRoute', opts => {
+		if (!ignoreList.includes(opts.url)) {
+			if (opts.url.startsWith('/v')) {
+				routeSet.add(opts.url);
+			}
+		}
+	});
+
 	// Register fastify api routes
 	addRoute(server, 'v2', '/v2');
 	addRoute(server, 'v2-history', '/v2/history');
@@ -51,6 +70,26 @@ export function registerRoutes(server: FastifyInstance) {
 		},
 		handler: async (request: FastifyRequest, reply: FastifyReply) => {
 			await handleChainApiRedirect(request, reply, server);
+		}
+	});
+
+	// /v1/node/get_supported_apis
+	server.route({
+		url: '/v1/node/get_supported_apis',
+		method: ["GET"],
+		schema: {
+			summary: "Get list of supported APIs",
+			tags: ["node"]
+		},
+		handler: async (request: FastifyRequest, reply: FastifyReply) => {
+			const data = await got.get(`${server.chain_api}/v1/node/get_supported_apis`).json() as any;
+			if (data.apis && data.apis.length > 0) {
+				const apiSet = new Set(server.routeSet);
+				data.apis.forEach((a) => apiSet.add(a));
+				reply.send({apis: [...apiSet]});
+			} else {
+				reply.send({apis: [...server.routeSet], error: 'nodeos did not send any data'});
+			}
 		}
 	});
 
