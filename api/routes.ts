@@ -80,7 +80,7 @@ export function registerRoutes(server: FastifyInstance) {
             summary: "Get list of supported APIs",
             tags: ["node"]
         },
-        handler: async (request: FastifyRequest, reply: FastifyReply) => {
+        handler: async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
             const data = await got.get(`${server.chain_api}/v1/node/get_supported_apis`).json() as any;
             if (data.apis && data.apis.length > 0) {
                 const apiSet = new Set(server.routeSet);
