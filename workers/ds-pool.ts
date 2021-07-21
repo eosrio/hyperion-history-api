@@ -8,6 +8,7 @@ import {parseDSPEvent} from "../modules/custom/dsp-parser";
 import {join, resolve} from "path";
 import {existsSync, readdirSync, readFileSync} from "fs";
 import * as flatstr from 'flatstr';
+import IORedis from "ioredis";
 
 const abi_remapping = {
 	"_Bool": "bool",
@@ -43,9 +44,12 @@ export default class DSPoolWorker extends HyperionWorker {
 
 	customAbiMap: Map<string, CustomAbiDef[]> = new Map();
 	private noActionCounter = 0;
+	private ioRedisClient: IORedis.Redis;
 
 	constructor() {
 		super();
+
+		this.ioRedisClient = new IORedis(this.manager.conn.redis);
 
 		this.consumerQueue = cargo((payload: any[], cb) => {
 			this.processMessages(payload).catch((err) => {
@@ -326,7 +330,8 @@ export default class DSPoolWorker extends HyperionWorker {
 		for (const {name, type} of abi.actions) {
 			try {
 				actions.set(name, Serialize.getType(types, type));
-			} catch {}
+			} catch {
+			}
 		}
 
 		const result = {types, actions, tables: abi.tables};
@@ -508,6 +513,9 @@ export default class DSPoolWorker extends HyperionWorker {
 
 			// Submit Actions after deduplication
 			// hLog(_finalTraces.length);
+
+			const redisPayload = new Map<string, IORedis.ValueType>();
+
 			for (const uniqueAction of _finalTraces) {
 
 				// let tref = process.hrtime.bigint();
@@ -520,12 +528,25 @@ export default class DSPoolWorker extends HyperionWorker {
 				// console.log(`flatstr improvement (uniqueAction): ${(((t1 / t2) * 100) - 100).toFixed(2)}% | size: ${payload.length}`);
 
 				const payload = Buffer.from(flatstr(JSON.stringify(uniqueAction)));
+				redisPayload.set(uniqueAction.global_sequence, payload);
+
 				this.actionDsCounter++;
 				this.pushToActionsQueue(payload, block_num);
 				if (live === 'true') {
 					this.pushToActionStreamingQueue(payload, uniqueAction);
 				}
 			}
+
+			// save payload to redis
+			if (this.ioRedisClient) {
+				await this.ioRedisClient.hset(trx_data.trx_id, redisPayload);
+				let expires_in = 3600; // 1 hour by default
+				if (this.conf.api.tx_cache_expiration_sec) {
+					expires_in = this.conf.api.tx_cache_expiration_sec
+				}
+				await this.ioRedisClient.expire(trx_data.trx_id, expires_in);
+			}
+
 		}
 	}
 
