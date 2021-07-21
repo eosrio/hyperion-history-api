@@ -10,7 +10,7 @@
     "fix-permissions": "chmod u+x run.sh stop.sh install_env.sh",
     "tsc": "tsc",
     "build": "tsc",
-    "postinstall": "npm run tsc"
+    "postinstall": "npm run tsc && npm run fix-permissions"
   },
   "author": {
     "name": "EOS Rio",
