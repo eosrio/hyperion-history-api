@@ -1,7 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
 import {createHash} from "crypto";
-import * as flatstr from 'flatstr';
+import flatstr from 'flatstr';
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
 	if (typeof request.body === 'string') {

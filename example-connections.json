@@ -2,6 +2,7 @@
   "amqp": {
     "host": "127.0.0.1:5672",
     "api": "127.0.0.1:15672",
+    "protocol": "http",
     "user": "username",
     "pass": "password",
     "vhost": "hyperion",
@@ -10,7 +11,9 @@
   "elasticsearch": {
     "protocol": "http",
     "host": "127.0.0.1:9200",
-    "ingest_nodes": ["127.0.0.1:9200"],
+    "ingest_nodes": [
+      "127.0.0.1:9200"
+    ],
     "user": "elastic",
     "pass": "password"
   },

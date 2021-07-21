@@ -2,7 +2,7 @@ import {hLog} from "../helpers/common_functions";
 import {ConfigurationModule} from "../modules/config";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
-import * as Redis from 'ioredis';
+import IORedis from 'ioredis';
 import fastify from 'fastify'
 import {registerPlugins} from "./plugins";
 import {AddressInfo} from "net";
@@ -91,7 +91,7 @@ class HyperionApiServer {
 
 		hLog(`Chain API URL: "${this.fastify.chain_api}" | Push API URL: "${this.fastify.push_api}"`);
 
-		const ioRedisClient = new Redis(this.manager.conn.redis);
+		const ioRedisClient = new IORedis(this.manager.conn.redis);
 
 		let rateLimiterWhitelist = ['127.0.0.1'];
 
@@ -116,9 +116,13 @@ class HyperionApiServer {
 			this.activateStreaming();
 		}
 
+		const docsConfig = generateOpenApiConfig(this.manager.config);
+
+		console.log(docsConfig);
+
 		registerPlugins(this.fastify, {
 			fastify_elasticsearch: {client: this.manager.elasticsearchClient},
-			fastify_swagger: generateOpenApiConfig(this.manager.config),
+			fastify_swagger: docsConfig,
 			fastify_rate_limit: api_rate_limit,
 			fastify_redis: this.manager.conn.redis,
 			fastify_eosjs: this.manager,
@@ -181,6 +185,7 @@ class HyperionApiServer {
 
 		registerRoutes(this.fastify);
 
+		// register documentation when ready
 		this.fastify.ready().then(async () => {
 			await this.fastify.swagger();
 		}, (err) => {

@@ -61,22 +61,44 @@ export abstract class HyperionWorker {
 			}).catch(console.log);
 		});
 
+		const bytesToString = (bytes: number) => {
+			const e = Math.log(bytes) / Math.log(1024) | 0;
+			const n = (bytes / Math.pow(1024, e)).toFixed(2);
+			return n + ' ' + (e == 0 ? 'bytes' : (['KB', 'MB', 'GB', 'TB'])[e - 1]);
+		};
+
+
 		// handle ipc messages
 		process.on('message', (msg: any) => {
-			if (msg.event === 'request_v8_heap_stats') {
-				const report: HeapInfo = v8.getHeapStatistics();
-				const used_pct = report.used_heap_size / report.heap_size_limit;
-				process.send({
-					event: 'v8_heap_report',
-					id: process.env.worker_role + ':' + process.env.worker_id,
-					data: {
-						heap_usage: (used_pct * 100).toFixed(2) + "%",
-						...report
-					}
-				});
-				return;
+			switch (msg.event) {
+				case 'request_v8_heap_stats': {
+					const report: HeapInfo = v8.getHeapStatistics();
+					const used_pct = report.used_heap_size / report.heap_size_limit;
+					process.send({
+						event: 'v8_heap_report',
+						id: process.env.worker_role + ':' + process.env.worker_id,
+						data: {
+							heap_usage: (used_pct * 100).toFixed(2) + "%",
+							...report
+						}
+					});
+					break;
+				}
+				case 'request_memory_usage': {
+					const report = process.memoryUsage();
+					process.send({
+						event: 'memory_report',
+						id: process.env.worker_role + ':' + process.env.worker_id,
+						data: {
+							resident: bytesToString(report.rss),
+						}
+					});
+					break;
+				}
+				default: {
+					this.onIpcMessage(msg);
+				}
 			}
-			this.onIpcMessage(msg);
 		});
 	}
 

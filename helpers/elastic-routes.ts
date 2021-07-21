@@ -1,6 +1,6 @@
 import {Channel, Message} from "amqplib/callback_api";
 import {ConnectionManager} from "../connections/manager.class";
-import * as _ from "lodash";
+import _ from "lodash";
 import {hLog} from "./common_functions";
 import {createHash} from "crypto";
 

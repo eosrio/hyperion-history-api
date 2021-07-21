@@ -1,5 +1,5 @@
 import DSPoolWorker from "../../workers/ds-pool";
-import * as flatstr from 'flatstr';
+import flatstr from 'flatstr';
 
 export async function parseDSPEvent(worker: DSPoolWorker, data: any) {
     const parsedEvents = [];

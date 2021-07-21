@@ -1,6 +1,6 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
-import * as flatstr from 'flatstr';
+import flatstr from 'flatstr';
 
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);

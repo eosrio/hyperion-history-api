@@ -7,8 +7,8 @@ import {Serialize} from "../addons/eosjs-native";
 import {Type} from "../addons/eosjs-native/eosjs-serialize";
 import {debugLog, hLog} from "../helpers/common_functions";
 import {createHash} from "crypto";
-import * as flatstr from 'flatstr';
-import {type} from "os";
+import flatstr from 'flatstr';
+import {propertyOf} from "lodash";
 
 const FJS = require('fast-json-stringify');
 
@@ -1172,14 +1172,16 @@ export default class MainDSWorker extends HyperionWorker {
 						if (process.env['live_mode'] === 'true') {
 							this.pushToDeltaStreamingQueue(buff, jsonRow);
 						}
-						if (row.present) {
-							await this.pushToDeltaQueue(buff, block_num);
-						} else {
-							// if (this.ch_ready) {
-							//     this.ch.sendToQueue(this.deltaRemovalQueue, buff);
-							// } else {
-							//     hLog('Channel is not ready!');
-							// }
+						if (typeof row.present !== "undefined") {
+							if (row.present === 0) {
+								if (this.ch_ready) {
+									this.ch.sendToQueue(this.deltaRemovalQueue, buff);
+								} else {
+									hLog('Channel is not ready!');
+								}
+							} else {
+								await this.pushToDeltaQueue(buff, block_num);
+							}
 						}
 						this.temp_delta_counter++;
 					}

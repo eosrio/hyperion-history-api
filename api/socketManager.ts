@@ -3,7 +3,7 @@ import {Server, Socket} from 'socket.io';
 import {createAdapter} from 'socket.io-redis';
 import {io} from 'socket.io-client';
 import {FastifyInstance} from "fastify";
-import * as Redis from "ioredis";
+import IORedis from "ioredis";
 
 export interface StreamDeltasRequest {
 	code: string;
@@ -253,7 +253,7 @@ export class SocketManager {
 			transports: ['websocket', 'polling'],
 		});
 
-		const pubClient = new Redis(redisOptions);
+		const pubClient = new IORedis(redisOptions);
 		const subClient = pubClient.duplicate();
 		this.io.adapter(createAdapter({pubClient, subClient}));
 

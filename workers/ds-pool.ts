@@ -7,7 +7,7 @@ import {Message} from "amqplib";
 import {parseDSPEvent} from "../modules/custom/dsp-parser";
 import {join, resolve} from "path";
 import {existsSync, readdirSync, readFileSync} from "fs";
-import * as flatstr from 'flatstr';
+import flatstr from 'flatstr';
 
 const abi_remapping = {
 	"_Bool": "bool",
