@@ -51,7 +51,7 @@
     "ioredis": "^4.27.6",
     "lodash": "^4.17.21",
     "moment": "2.27.0",
-    "node-fetch": "^3.0.0-beta.10",
+    "node-fetch": "^3.0.0-beta.8",
     "portfinder": "^1.0.26",
     "redis": "^3.1.2",
     "socket.io": "2.4.1",
