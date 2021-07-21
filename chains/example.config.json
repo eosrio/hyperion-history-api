@@ -22,7 +22,8 @@
     "enable_explorer": false,
     "chain_api_error_log": false,
     "custom_core_token": "",
-    "enable_export_action": false
+    "enable_export_action": false,
+    "tx_cache_expiration_sec": 3600
   },
   "settings": {
     "preview": false,
