@@ -13,6 +13,9 @@
     "fix-permissions": "node scripts/fix-permissions.js",
     "plugin-manager": "node plugins/hyperion-plugin-manager.js"
   },
+  "engines": {
+    "node": "^16"
+  },
   "author": {
     "name": "EOS Rio",
     "url": "https://eosrio.io"
