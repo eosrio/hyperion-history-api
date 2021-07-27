@@ -75,6 +75,11 @@ modules/**/*.js.map
 addons/**/*.js
 addons/**/*.js.map
 
-
 plugins/repos
 .gitmodules
+
+docker/redis/data
+docker/elasticsearch/data
+docker/rabbitmq/data
+docker/eosio/data
+
