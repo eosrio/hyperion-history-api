@@ -43,8 +43,6 @@ export async function launch() {
             const mod = (await import(`./workers/${hyperionWorkers[env.worker_role]}`)).default;
             const instance = new mod() as HyperionWorker;
             await instance.run();
-        } else {
-            console.log(`FATAL: Unlisted Worker: ${env.worker_role}`);
         }
     }
 }
