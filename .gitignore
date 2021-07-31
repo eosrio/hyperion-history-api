@@ -107,3 +107,8 @@ addons/**/*.js
 addons/**/*.js.map
 
 plugins/repos
+
+docker/redis/data
+docker/elasticsearch/data
+docker/eosio/data
+docker/rabbitmq/data
