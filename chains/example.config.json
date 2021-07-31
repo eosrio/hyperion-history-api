@@ -23,6 +23,7 @@
     "chain_api_error_log": false,
     "custom_core_token": "",
     "enable_export_action": false,
+    "disable_tx_cache": false,
     "tx_cache_expiration_sec": 3600
   },
   "settings": {
@@ -56,20 +57,20 @@
     "root_only": false
   },
   "scaling": {
-    "readers":            1,
-    "ds_queues":          1,
-    "ds_threads":         1,
-    "ds_pool_size":       1,
-    "indexing_queues":    1,
-    "ad_idx_queues":      1,
-    "max_autoscale":      4,
-    "batch_size":         5000,
-    "resume_trigger":     5000,
+    "readers": 1,
+    "ds_queues": 1,
+    "ds_threads": 1,
+    "ds_pool_size": 1,
+    "indexing_queues": 1,
+    "ad_idx_queues": 1,
+    "max_autoscale": 4,
+    "batch_size": 5000,
+    "resume_trigger": 5000,
     "auto_scale_trigger": 20000,
-    "block_queue_limit":  10000,
-    "max_queue_limit":    100000,
-    "routing_mode":       "heatmap",
-    "polling_interval":   10000
+    "block_queue_limit": 10000,
+    "max_queue_limit": 100000,
+    "routing_mode": "heatmap",
+    "polling_interval": 10000
   },
   "indexer": {
     "start_on": 0,

@@ -72,7 +72,8 @@ interface ApiLimits {
 }
 
 interface ApiConfigs {
-	tx_cache_expiration_sec?: number;
+    disable_tx_cache?: boolean;
+	tx_cache_expiration_sec?: number | string;
     custom_core_token: string;
     chain_api_error_log?: boolean;
     chain_api?: string;
