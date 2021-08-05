@@ -291,7 +291,7 @@ export default class StateReader extends HyperionWorker {
 		return true;
 	}
 
-	private async onMessage(data: any) {
+	private async onMessage(data: Buffer) {
 		// this.tempBlockSizeSum += data.length;
 
 		if (!this.abi) {
@@ -472,13 +472,14 @@ export default class StateReader extends HyperionWorker {
 		}
 	}
 
-	private processFirstABI(data: any) {
-		AbiEOS.load_abi("0", data);
-		this.abi = JSON.parse(data);
+	private processFirstABI(data: Buffer) {
+		const abiString = data.toString();
+		AbiEOS.load_abi("0", abiString);
+		this.abi = JSON.parse(abiString);
 		this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
 		this.abi.tables.map(table => this.tables.set(table.name, table.type));
 		// notify master about first abi
-		process.send({event: 'init_abi', data: data});
+		process.send({event: 'init_abi', data: abiString});
 		// request status
 		this.send(['get_status_request_v0', {}]);
 	}

@@ -20,6 +20,7 @@ export interface ScalingConfigs {
 }
 
 export interface MainSettings {
+	process_prefix?: string;
 	index_partition_size: number;
 	ignore_snapshot?: boolean;
 	ship_request_rev: string;
@@ -61,6 +62,7 @@ export interface IndexerConfigs {
 	process_deltas: boolean;
 	repair_mode: boolean;
 	max_inline: number;
+	disable_delta_rm?: boolean;
 }
 
 interface ApiLimits {

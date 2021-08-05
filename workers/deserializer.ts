@@ -1173,7 +1173,7 @@ export default class MainDSWorker extends HyperionWorker {
 							this.pushToDeltaStreamingQueue(buff, jsonRow);
 						}
 						if (typeof row.present !== "undefined") {
-							if (row.present === 0) {
+							if (row.present === 0 && !this.conf.indexer.disable_delta_rm) {
 								if (this.ch_ready) {
 									this.ch.sendToQueue(this.deltaRemovalQueue, buff);
 								} else {

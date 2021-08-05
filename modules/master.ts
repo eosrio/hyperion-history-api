@@ -134,7 +134,7 @@ export class HyperionMaster {
 	// IPC Messages Handling
 	private msgHandlerMap: any;
 
-	private cachedInitABI = false;
+	private cachedInitABI = null;
 	private activeReadersCount = 0;
 	private lastAssignedBlock: number;
 	private lastIndexedABI: number;

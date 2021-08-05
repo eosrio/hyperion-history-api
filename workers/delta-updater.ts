@@ -2,7 +2,6 @@ import {HyperionWorker} from "./hyperionWorker";
 import {hLog} from "../helpers/common_functions";
 import {Message} from "amqplib";
 import {createHash} from "crypto";
-import {has} from "lodash";
 
 interface HyperionDelta {
 	"@timestamp": string;

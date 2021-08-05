@@ -86,7 +86,8 @@
     "fetch_traces": true,
     "disable_reading": false,
     "disable_indexing": false,
-    "process_deltas": true
+    "process_deltas": true,
+    "disable_delta_rm": true
   },
   "features": {
     "streaming": {
