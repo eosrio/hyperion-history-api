@@ -118,8 +118,6 @@ class HyperionApiServer {
 
 		const docsConfig = generateOpenApiConfig(this.manager.config);
 
-		console.log(docsConfig);
-
 		registerPlugins(this.fastify, {
 			fastify_elasticsearch: {client: this.manager.elasticsearchClient},
 			fastify_swagger: docsConfig,
