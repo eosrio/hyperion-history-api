@@ -158,7 +158,6 @@ export function applyGenericFilters(query, queryStruct, allowedExtraParams: Set<
 			}
 		}
 	}
-	console.log(JSON.stringify(queryStruct, null, 2));
 }
 
 export function makeShouldArray(query) {
