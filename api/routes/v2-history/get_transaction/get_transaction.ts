@@ -3,128 +3,92 @@ import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
 
-    const query: any = request.query;
+	const query: any = request.query;
+	const txId = query.id.toLowerCase();
+	const blockHint = parseInt(query.block_hint, 10);
+	let indexPartition = '';
+	if (blockHint) {
+		indexPartition = Math.ceil(blockHint / fastify.manager.config.settings.index_partition_size).toString().padStart(6, '0');
+	}
+	const _size = fastify.manager.config.api.limits.get_trx_actions || 100;
 
-    const _size = fastify.manager.config.api.limits.get_trx_actions || 100;
+	let indexPattern = fastify.manager.chain + '-action-*';
+	if (indexPartition) {
+		indexPattern = fastify.manager.chain + `-action-${fastify.manager.config.settings.index_version}-${indexPartition}`;
+	}
 
-    let indexPattern = fastify.manager.chain + '-action-*';
-    if (query.hot_only) {
-        indexPattern = fastify.manager.chain + '-action';
-    }
+	const response = {
+		executed: false,
+		trx_id: query.id,
+		lib: undefined,
+		cached_lib: false,
+		actions: undefined,
+		generated: undefined,
+		error: undefined
+	};
 
-    const pResults = await Promise.all([
-        fastify.eosjs.rpc.get_info(),
-        fastify.elastic.search({
-            index: indexPattern,
-            size: _size,
-            body: {
-                query: {
-                    bool: {
-                        must: [
-                            {term: {trx_id: query.id.toLowerCase()}}
-                        ]
-                    }
-                },
-                sort: {
-                    global_sequence: "asc"
-                }
-            }
-        }),
-        fastify.elastic.search({
-            index: fastify.manager.chain + '-gentrx-*',
-            size: _size,
-            body: {
-                query: {
-                    bool: {
-                        must: [
-                            {term: {trx_id: query.id.toLowerCase()}}
-                        ]
-                    }
-                }
-            }
-        })
-    ]);
-
-    const results = pResults[1];
-    const genTrxRes = pResults[2];
-
-    const response = {
-        "executed": false,
-        "hot_only": false,
-        "trx_id": query.id,
-        "lib": pResults[0].last_irreversible_block_num,
-        "actions": [],
-        "generated": undefined
-    };
-
-    if (query.hot_only) {
-        response.hot_only = true;
-    }
-
-    const hits = results['body']['hits']['hits'];
-
-    if (hits.length > 0) {
-
-        // const producers = {};
-        // for (let hit of hits) {
-        // 	if (hit._source.producer) {
-        // 		if (producers[hit._source.producer]) {
-        // 			producers[hit._source.producer]++;
-        // 		} else {
-        // 			producers[hit._source.producer] = 1;
-        // 		}
-        // 	}
-        // }
-        // let useBlocknumber;
-        // if (Object.keys(producers).length > 1) {
-        // 	// multiple producers of the same tx id, forked actions are present, attempt to cleanup
-        // 	let trueProd = '';
-        // 	let highestActCount = 0;
-        // 	for (const prod in producers) {
-        // 		if (producers.hasOwnProperty(prod)) {
-        // 			if(producers[prod] === highestActCount) {
-        // 				useBlocknumber = true;
-        // 			} else if (producers[prod] > highestActCount) {
-        // 				highestActCount = producers[prod];
-        // 				trueProd = prod;
-        // 			}
-        // 		}
-        // 	}
-        // }
-
-        let highestBlockNum = 0;
-        for (let action of hits) {
-            action = action._source;
-            if (action.block_num > highestBlockNum) {
-                highestBlockNum = action.block_num;
-            }
-        }
-
-        for (let action of hits) {
-            if (action.block_num === highestBlockNum) {
-                mergeActionMeta(action);
-                response.actions.push(action);
-            }
-        }
-
-        response.executed = true;
-    }
-
-    const hits2 = genTrxRes['body']['hits']['hits'];
-
-    if (hits2 && hits2.length > 0) {
-        if (hits2[0]._source['@timestamp']) {
-            hits2[0]._source['timestamp'] = hits2[0]._source['@timestamp'];
-            delete hits2[0]._source['@timestamp'];
-        }
-        response.generated = hits2[0]._source;
-    }
-
-    return response;
+	let pResults;
+	try {
+		pResults = await Promise.all([
+			new Promise(resolve => {
+				const key = `${fastify.manager.chain}_get_info`;
+				fastify.redis.get(key).then(value => {
+					if (value) {
+						response.cached_lib = true;
+						resolve(JSON.parse(value));
+					} else {
+						fastify.eosjs.rpc.get_info().then(value1 => {
+							fastify.redis.set(key, JSON.stringify(value1), 'EX', 6);
+							response.cached_lib = false;
+							resolve(value1);
+						}).catch((reason) => {
+							console.log(reason);
+							response.error = 'failed to get last_irreversible_block_num'
+							resolve(null);
+						});
+					}
+				});
+			}),
+			fastify.elastic.search({
+				index: indexPattern,
+				size: _size,
+				body: {
+					query: {bool: {must: [{term: {trx_id: txId}}]}},
+					sort: {global_sequence: "asc"}
+				}
+			})
+		]);
+	} catch (e) {
+		console.log(e.message);
+		if (e.meta.statusCode === 404) {
+			response.error = 'no data near block_hint'
+			return response;
+		}
+	}
+	const results = pResults[1];
+	response.lib = pResults[0].last_irreversible_block_num;
+	const hits = results['body']['hits']['hits'];
+	if (hits.length > 0) {
+		let highestBlockNum = 0;
+		for (let action of hits) {
+			if (action._source.block_num > highestBlockNum) {
+				highestBlockNum = action._source.block_num;
+			}
+		}
+		response.actions = [];
+		for (let action of hits) {
+			if (action._source.block_num === highestBlockNum) {
+				mergeActionMeta(action._source);
+				response.actions.push(action._source);
+			}
+		}
+		response.executed = true;
+	}
+	return response;
 }
 
 export function getTransactionHandler(fastify: FastifyInstance, route: string) {
-    return async (request: FastifyRequest, reply: FastifyReply) => {
-        reply.send(await timedQuery(getTransaction, fastify, request, route));
-    }
+	return async (request: FastifyRequest, reply: FastifyReply) => {
+		reply.send(await timedQuery(getTransaction, fastify, request, route));
+	}
 }

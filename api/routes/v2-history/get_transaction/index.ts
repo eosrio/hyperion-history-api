@@ -10,9 +10,13 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         querystring: {
             type: 'object',
             properties: {
-                "id": {
+                id: {
                     description: 'transaction id',
                     type: 'string'
+                },
+                block_hint: {
+                    description: 'block hint to speed up tx recovery',
+                    type: 'integer'
                 }
             },
             required: ["id"]
