@@ -7,10 +7,10 @@
     "logs": "pm2 logs Indexer",
     "start:api": "pm2 start --only API --update-env",
     "start:indexer": "pm2 start --only Indexer --update-env",
-    "fix-permissions": "chmod u+x run.sh stop.sh install_env.sh",
     "tsc": "tsc",
     "build": "tsc",
-    "postinstall": "npm run tsc && npm run fix-permissions"
+    "postinstall": "npm run build && npm run fix-permissions",
+    "fix-permissions": "node scripts/fix-permissions.js"
   },
   "author": {
     "name": "EOS Rio",
@@ -48,8 +48,8 @@
     "fastify-static": "2.7.0",
     "fastify-websocket": "1.1.2",
     "flatstr": "1.0.12",
-    "got": "^11.8.1",
-    "ioredis": "^4.27.6",
+    "got": "^11.8.2",
+    "ioredis": "^4.27.7",
     "lodash": "^4.17.21",
     "moment": "2.27.0",
     "portfinder": "^1.0.26",
