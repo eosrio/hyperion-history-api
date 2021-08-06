@@ -365,7 +365,7 @@ export class HyperionMaster {
 						b: msg.block_num,
 						s: msg.signatures,
 						a: msg.root_act
-					}), "EX", 600).catch(console.log);
+					}), "EX", 3600).catch(console.log);
 				}
 			},
 			'fork_event': async (msg: any) => {

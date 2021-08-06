@@ -12,7 +12,7 @@ async function checkTransaction(fastify: FastifyInstance, request: FastifyReques
 			status: jsonObj.status,
 			block_num: jsonObj.b,
 			root_action: jsonObj.a,
-			signatures: null,
+			signatures: [],
 		};
 		if (jsonObj.s && jsonObj.s.length > 0) {
 			response.signatures = jsonObj.s;

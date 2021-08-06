@@ -435,9 +435,15 @@ export default class MainDSWorker extends HyperionWorker {
 							//     console.log(trace[1].failed_dtrx_trace[1]);
 							// }
 
-							let signatures;
+							let signatures = [];
 							try {
-								signatures = trace[1].partial[1].signatures;
+								if (trace[1].partial[1].signatures) {
+									signatures = trace[1].partial[1].signatures;
+								} else if (trace[1].partial[1].prunable_data) {
+									if (trace[1].partial[1].prunable_data.prunable_data[1].signatures) {
+										signatures = trace[1].partial[1].prunable_data.prunable_data[1].signatures;
+									}
+								}
 								if (process.env['live_mode'] === 'true') {
 									const trxId = trace[1].id.toLowerCase();
 									onBlockTransactions.push(trxId);

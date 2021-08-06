@@ -24,7 +24,9 @@
     "custom_core_token": "",
     "enable_export_action": false,
     "rate_limit_rpm": 1000,
-    "rate_limit_allow": []
+    "rate_limit_allow": [],
+    "disable_tx_cache": false,
+    "tx_cache_expiration_sec": 3600
   },
   "settings": {
     "preview": false,

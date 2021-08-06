@@ -8,6 +8,8 @@ import {parseDSPEvent} from "../modules/custom/dsp-parser";
 import {join, resolve} from "path";
 import {existsSync, readdirSync, readFileSync} from "fs";
 import flatstr from 'flatstr';
+import IORedis from "ioredis";
+import {type} from "os";
 
 const abi_remapping = {
 	"_Bool": "bool",
@@ -44,8 +46,21 @@ export default class DSPoolWorker extends HyperionWorker {
 	customAbiMap: Map<string, CustomAbiDef[]> = new Map();
 	private noActionCounter = 0;
 
+	// tx caching layer
+	private readonly ioRedisClient: IORedis.Redis;
+	txCacheExpiration = 3600;
+
 	constructor() {
 		super();
+
+		this.ioRedisClient = new IORedis(this.manager.conn.redis);
+		if (this.conf.api.tx_cache_expiration_sec) {
+			if (typeof this.conf.api.tx_cache_expiration_sec === 'string') {
+				this.txCacheExpiration = parseInt(this.conf.api.tx_cache_expiration_sec, 10);
+			} else {
+				this.txCacheExpiration = this.conf.api.tx_cache_expiration_sec;
+			}
+		}
 
 		this.consumerQueue = cargo((payload: any[], cb) => {
 			this.processMessages(payload).catch((err) => {
@@ -510,12 +525,26 @@ export default class DSPoolWorker extends HyperionWorker {
 			}
 
 			// Submit Actions after deduplication
+
+			const redisPayload = new Map<string, IORedis.ValueType>();
+
 			for (const uniqueAction of _finalTraces) {
 				const payload = Buffer.from(flatstr(JSON.stringify(uniqueAction)));
+				redisPayload.set(uniqueAction.global_sequence.toString(), payload);
 				this.actionDsCounter++;
 				this.pushToActionsQueue(payload, block_num);
 				if (live === 'true') {
 					this.pushToActionStreamingQueue(payload, uniqueAction);
+				}
+			}
+
+			// save payload to redis
+			if (this.ioRedisClient && !this.conf.api.disable_tx_cache) {
+				try {
+					await this.ioRedisClient.hset('trx_' + trx_data.trx_id, redisPayload);
+					await this.ioRedisClient.expire('trx_' + trx_data.trx_id, this.txCacheExpiration);
+				} catch (e) {
+					hLog(e);
 				}
 			}
 		}

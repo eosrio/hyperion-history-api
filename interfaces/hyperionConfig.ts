@@ -80,6 +80,8 @@ interface ApiLimits {
 }
 
 interface ApiConfigs {
+	disable_tx_cache?: boolean;
+	tx_cache_expiration_sec?: number | string;
 	rate_limit_rpm?: number;
 	rate_limit_allow?: string[];
 	custom_core_token?: string;

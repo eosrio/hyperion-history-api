@@ -1,24 +1,18 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
+import {GetInfoResult} from "eosjs/dist/eosjs-rpc-interfaces";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
-
+	const redis = fastify.redis;
 	const query: any = request.query;
-	const txId = query.id.toLowerCase();
-	const blockHint = parseInt(query.block_hint, 10);
-	let indexPartition = '';
-	if (blockHint) {
-		indexPartition = Math.ceil(blockHint / fastify.manager.config.settings.index_partition_size).toString().padStart(6, '0');
-	}
-	const _size = fastify.manager.config.api.limits.get_trx_actions || 100;
-
-	let indexPattern = fastify.manager.chain + '-action-*';
-	if (indexPartition) {
-		indexPattern = fastify.manager.chain + `-action-${fastify.manager.config.settings.index_version}-${indexPartition}`;
-	}
-
+	const trxId = query.id.toLowerCase();
+	const conf = fastify.manager.config;
+	const cachedData = await redis.hgetall('trx_' + trxId);
 	const response = {
+		query_time_ms: undefined,
 		executed: false,
+		cached: undefined,
+		cache_expires_in: undefined,
 		trx_id: query.id,
 		lib: undefined,
 		cached_lib: false,
@@ -26,48 +20,88 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 		generated: undefined,
 		error: undefined
 	};
+	let hits;
 
-	let pResults;
-	try {
-		pResults = await Promise.all([
-			new Promise(resolve => {
-				const key = `${fastify.manager.chain}_get_info`;
-				fastify.redis.get(key).then(value => {
-					if (value) {
-						response.cached_lib = true;
-						resolve(JSON.parse(value));
-					} else {
-						fastify.eosjs.rpc.get_info().then(value1 => {
-							fastify.redis.set(key, JSON.stringify(value1), 'EX', 6);
-							response.cached_lib = false;
-							resolve(value1);
-						}).catch((reason) => {
-							console.log(reason);
-							response.error = 'failed to get last_irreversible_block_num'
-							resolve(null);
-						});
-					}
+	// build get_info request with caching
+	const $getInfo = new Promise<GetInfoResult>(resolve => {
+		const key = `${fastify.manager.chain}_get_info`;
+		fastify.redis.get(key).then(value => {
+			if (value) {
+				response.cached_lib = true;
+				resolve(JSON.parse(value));
+			} else {
+				fastify.eosjs.rpc.get_info().then(value1 => {
+					fastify.redis.set(key, JSON.stringify(value1), 'EX', 6);
+					response.cached_lib = false;
+					resolve(value1);
+				}).catch((reason) => {
+					console.log(reason);
+					response.error = 'failed to get last_irreversible_block_num'
+					resolve(null);
 				});
-			}),
-			fastify.elastic.search({
+			}
+		});
+	});
+
+	// reconstruct hits from cached data
+	if (cachedData && Object.keys(cachedData).length > 0) {
+		const gsArr = [];
+		for (let cachedDataKey in cachedData) {
+			gsArr.push(cachedData[cachedDataKey]);
+		}
+		gsArr.sort((a, b) => {
+			return a.global_sequence - b.global_sequence;
+		});
+		hits = gsArr.map(value => {
+			return {
+				_source: JSON.parse(value)
+			};
+		});
+		const promiseResults = await Promise.all([
+			redis.ttl('trx_' + trxId),
+			$getInfo
+		]);
+		response.cache_expires_in = promiseResults[0];
+		response.lib = promiseResults[1].last_irreversible_block_num;
+	}
+
+	// search on ES if cache is not present
+	if (!hits) {
+		const _size = conf.api.limits.get_trx_actions || 100;
+		const blockHint = parseInt(query.block_hint, 10);
+		let indexPattern = '';
+		if (blockHint) {
+			const idxPart = Math.ceil(blockHint / conf.settings.index_partition_size).toString().padStart(6, '0');
+			indexPattern = fastify.manager.chain + `-action-${conf.settings.index_version}-${idxPart}`;
+		} else {
+			indexPattern = fastify.manager.chain + '-action-*';
+		}
+		let pResults;
+		try {
+
+			// build search request
+			const $search = fastify.elastic.search({
 				index: indexPattern,
 				size: _size,
 				body: {
-					query: {bool: {must: [{term: {trx_id: txId}}]}},
+					query: {bool: {must: [{term: {trx_id: trxId}}]}},
 					sort: {global_sequence: "asc"}
 				}
-			})
-		]);
-	} catch (e) {
-		console.log(e.message);
-		if (e.meta.statusCode === 404) {
-			response.error = 'no data near block_hint'
-			return response;
+			});
+
+			// execute in parallel
+			pResults = await Promise.all([$getInfo, $search]);
+		} catch (e) {
+			console.log(e.message);
+			if (e.meta.statusCode === 404) {
+				response.error = 'no data near block_hint'
+				return response;
+			}
 		}
+		hits = pResults[1]['body']['hits']['hits'];
+		response.lib = pResults[0].last_irreversible_block_num;
 	}
-	const results = pResults[1];
-	response.lib = pResults[0].last_irreversible_block_num;
-	const hits = results['body']['hits']['hits'];
+
 	if (hits.length > 0) {
 		let highestBlockNum = 0;
 		for (let action of hits) {
