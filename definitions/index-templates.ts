@@ -221,6 +221,7 @@ export const delta = {
 
 			// base fields
 			"@timestamp": {"type": "date"},
+			"present": {"type": "byte"},
 			"ds_error": {"type": "boolean"},
 			"block_id": {"type": "keyword"},
 			"block_num": {"type": "long"},
