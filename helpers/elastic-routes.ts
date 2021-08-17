@@ -345,6 +345,9 @@ export class ElasticRoutes {
         try {
             channel.nackAll();
             hLog('NackAll', err);
+            if (err.meta.body) {
+                console.log(err.meta.body);
+            }
         } finally {
             callback();
         }
@@ -366,7 +369,7 @@ export class ElasticRoutes {
             });
         }
         this.ingestNodeCounters[minIdx].docs += bulkData.body.length;
-        if (this.ingestNodeCounters[minIdx].docs > 1000) {
+        if (this.ingestNodeCounters[minIdx].docs > 10000) {
             this.resetCounters();
         }
         return this.cm.ingestClients[minIdx]['bulk'](bulkData);
