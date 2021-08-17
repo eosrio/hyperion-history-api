@@ -373,7 +373,8 @@ export class ElasticRoutes {
         if (this.ingestNodeCounters[minIdx].docs > 10000) {
             this.resetCounters();
         }
-        console.log(JSON.stringify(bulkData, null, 2));
+        // print full request
+        // console.log(JSON.stringify(bulkData));
         return this.cm.ingestClients[minIdx]['bulk'](bulkData);
     }
 
