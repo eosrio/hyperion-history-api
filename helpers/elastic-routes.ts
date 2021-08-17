@@ -413,7 +413,6 @@ export class ElasticRoutes {
             let maxBlockNum;
             this.bulkAction({
                 index: _index,
-                type: '_doc',
                 body: bulkGenerator(payloads, messageMap, (maxBlock) => {
                     maxBlockNum = maxBlock;
                 }, routerFunction, _index)
