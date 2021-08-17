@@ -344,9 +344,10 @@ export class ElasticRoutes {
     onError(err, channel: Channel, callback) {
         try {
             channel.nackAll();
-            hLog('NackAll', err);
             if (err.meta.body) {
-                console.log(err.meta.body);
+                hLog('NackAll:', JSON.stringify(err.meta.body.error, null, 2));
+            } else {
+                hLog('NackAll:', err);
             }
         } finally {
             callback();
