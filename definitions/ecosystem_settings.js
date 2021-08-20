@@ -8,7 +8,7 @@ function addIndexer(chainName) {
     autorestart: false,
     kill_timeout: 3600,
     watch: false,
-    time: true, // include timestamps in pm2 logs
+    time: true,
     env: {
       CONFIG_JSON: 'chains/' + chainName + '.config.json',
       TRACE_LOGS: 'false',
@@ -28,7 +28,7 @@ function addApiServer(chainName, threads) {
     autorestart: true,
     exp_backoff_restart_delay: 100,
     watch: false,
-    time: true, // include timestamps in pm2 logs
+    time: true,
     env: {
       CONFIG_JSON: 'chains/' + chainName + '.config.json',
     },
