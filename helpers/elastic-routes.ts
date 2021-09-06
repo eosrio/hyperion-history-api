@@ -370,9 +370,11 @@ export class ElasticRoutes {
             });
         }
         this.ingestNodeCounters[minIdx].docs += bulkData.body.length;
-        if (this.ingestNodeCounters[minIdx].docs > 1000) {
+        if (this.ingestNodeCounters[minIdx].docs > 10000) {
             this.resetCounters();
         }
+        // print full request
+        // console.log(JSON.stringify(bulkData));
         return this.cm.ingestClients[minIdx]['bulk'](bulkData);
     }
 

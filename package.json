@@ -26,7 +26,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@elastic/elasticsearch": "^7.13.0",
+    "@elastic/elasticsearch": "^7.14.0",
     "@eosrio/node-abieos": "^2.1.1",
     "@pm2/io": "^5.0.0",
     "amqplib": "^0.8.0",
@@ -35,7 +35,7 @@
     "cross-fetch": "^3.1.4",
     "eosjs": "^22.1.0",
     "fast-json-stringify": "^2.7.8",
-    "fastify": "^3.20.1",
+    "fastify": "^3.20.2",
     "fastify-autoload": "^3.8.0",
     "fastify-compress": "^3.6.0",
     "fastify-cors": "^6.0.2",
@@ -58,15 +58,15 @@
     "socket.io-redis": "^6.1.1",
     "telegraf": "^4.4.1",
     "typescript": "^4.3.5",
-    "ws": "^8.0.0",
-    "yargs": "^17.1.0"
+    "ws": "^8.1.0",
+    "yargs": "^17.1.1"
   },
   "devDependencies": {
     "@types/amqplib": "^0.8.1",
     "@types/async": "^3.2.7",
-    "@types/ioredis": "^4.26.6",
+    "@types/ioredis": "^4.26.7",
     "@types/lodash": "^4.14.172",
-    "@types/node": "^16.4.12",
+    "@types/node": "^16.6.1",
     "@types/nodemailer": "^6.4.4",
     "@types/ws": "^7.4.7"
   },
