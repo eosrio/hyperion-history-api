@@ -344,7 +344,11 @@ export class ElasticRoutes {
     onError(err, channel: Channel, callback) {
         try {
             channel.nackAll();
-            hLog('NackAll', err);
+            if (err.meta.body) {
+                hLog('NackAll:', JSON.stringify(err.meta.body.error, null, 2));
+            } else {
+                hLog('NackAll:', err);
+            }
         } finally {
             callback();
         }
@@ -408,7 +412,6 @@ export class ElasticRoutes {
             let maxBlockNum;
             this.bulkAction({
                 index: _index,
-                type: '_doc',
                 body: bulkGenerator(payloads, messageMap, (maxBlock) => {
                     maxBlockNum = maxBlock;
                 }, routerFunction, _index)
