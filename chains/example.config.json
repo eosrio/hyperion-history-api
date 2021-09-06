@@ -23,6 +23,7 @@
     "chain_api_error_log": false,
     "custom_core_token": "",
     "enable_export_action": false,
+    "disable_rate_limit": false,
     "rate_limit_rpm": 1000,
     "rate_limit_allow": [],
     "disable_tx_cache": false,

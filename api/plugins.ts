@@ -13,11 +13,21 @@ import fastifyRateLimit from 'fastify-rate-limit';
 import fastify_eosjs from "./plugins/fastify-eosjs";
 
 export function registerPlugins(server: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>, params: any) {
-	server.register(fastifyElasticsearch, params.fastify_elasticsearch);
-	server.register(fastifySwagger, params.fastify_swagger);
-	server.register(fastifyCors);
-	server.register(fastifyFormbody);
-	server.register(fastifyRedis, params.fastify_redis);
-	server.register(fastifyRateLimit, params.fastify_rate_limit);
-	server.register(fastify_eosjs, params.fastify_eosjs);
+    server.register(fastifyElasticsearch, params.fastify_elasticsearch);
+
+    if (params.fastify_swagger) {
+        server.register(fastifySwagger, params.fastify_swagger);
+    }
+
+    server.register(fastifyCors);
+
+    server.register(fastifyFormbody);
+
+    server.register(fastifyRedis, params.fastify_redis);
+
+    if (params.fastify_rate_limit) {
+        server.register(fastifyRateLimit, params.fastify_rate_limit);
+    }
+
+    server.register(fastify_eosjs, params.fastify_eosjs);
 }

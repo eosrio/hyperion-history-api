@@ -12,7 +12,7 @@ import {createWriteStream, existsSync, mkdirSync} from "fs";
 import {SocketManager} from "./socketManager";
 import {HyperionModuleLoader} from "../modules/loader";
 import {extendedActions} from "./routes/v2-history/get_actions/definitions";
-import {Socket, io} from "socket.io-client";
+import {io, Socket} from "socket.io-client";
 
 class HyperionApiServer {
 
@@ -93,38 +93,42 @@ class HyperionApiServer {
 
 		const ioRedisClient = new IORedis(this.manager.conn.redis);
 
-		let rateLimiterWhitelist = ['127.0.0.1'];
+		const pluginParams = {
+			fastify_elasticsearch: {
+				client: this.manager.elasticsearchClient
+			},
+			fastify_redis: this.manager.conn.redis,
+			fastify_eosjs: this.manager,
+		} as any;
 
-		if (this.conf.api.rate_limit_allow && this.conf.api.rate_limit_allow.length > 0) {
-			const tempSet = new Set<string>(['127.0.0.1', ...this.conf.api.rate_limit_allow]);
-			rateLimiterWhitelist = [...tempSet];
+		if(!this.conf.api.disable_rate_limit) {
+			let rateLimiterWhitelist = ['127.0.0.1'];
+			if (this.conf.api.rate_limit_allow && this.conf.api.rate_limit_allow.length > 0) {
+				const tempSet = new Set<string>(['127.0.0.1', ...this.conf.api.rate_limit_allow]);
+				rateLimiterWhitelist = [...tempSet];
+			}
+			let rateLimiterRPM = 1000;
+			if (this.conf.api.rate_limit_rpm) {
+				rateLimiterRPM = this.conf.api.rate_limit_rpm;
+			}
+			pluginParams.fastify_rate_limit = {
+				max: rateLimiterRPM,
+				allowList: rateLimiterWhitelist,
+				timeWindow: '1 minute',
+				redis: ioRedisClient
+			}
 		}
-
-		let rateLimiterRPM = 1000;
-		if (this.conf.api.rate_limit_rpm) {
-			rateLimiterRPM = this.conf.api.rate_limit_rpm;
-		}
-
-		const api_rate_limit = {
-			max: rateLimiterRPM,
-			allowList: rateLimiterWhitelist,
-			timeWindow: '1 minute',
-			redis: ioRedisClient
-		};
 
 		if (this.conf.features.streaming.enable) {
 			this.activateStreaming();
 		}
 
 		const docsConfig = generateOpenApiConfig(this.manager.config);
+		if(docsConfig) {
+			pluginParams.fastify_swagger = docsConfig;
+		}
 
-		registerPlugins(this.fastify, {
-			fastify_elasticsearch: {client: this.manager.elasticsearchClient},
-			fastify_swagger: docsConfig,
-			fastify_rate_limit: api_rate_limit,
-			fastify_redis: this.manager.conn.redis,
-			fastify_eosjs: this.manager,
-		});
+		registerPlugins(this.fastify, pluginParams);
 
 		this.addGenericTypeParsing();
 	}
