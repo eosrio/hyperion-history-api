@@ -73,15 +73,17 @@ export function applyTimeFilter(query, queryStruct) {
 		let _lte = "now";
 		let _gte = "0";
 		if (query['before']) {
-			_lte = query['before'];
-			if (!_lte.endsWith("Z")) {
-				_lte += "Z";
+			try {
+				_lte = new Date(query['before']).toISOString();
+			} catch (e) {
+				throw new Error(e.message + ' [before]');
 			}
 		}
 		if (query['after']) {
-			_gte = query['after'];
-			if (!_gte.endsWith("Z")) {
-				_gte += "Z";
+			try {
+				_gte = new Date(query['after']).toISOString();
+			} catch (e) {
+				throw new Error(e.message + ' [after]');
 			}
 		}
 		if (!queryStruct.bool['filter']) {

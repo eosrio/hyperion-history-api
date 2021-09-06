@@ -94,7 +94,7 @@ export function registerRoutes(server: FastifyInstance) {
 	});
 
 	server.addHook('onError', (request: FastifyRequest, reply: FastifyReply, error: FastifyError, done) => {
-		console.log(`[${request.headers['x-real-ip']}] ${request.method} ${request.url} failed with error: ${error.message}`);
+		console.log(`[${request.headers['x-real-ip'] || request.ip}] ${request.method} ${request.url} failed >> ${error.message}`);
 		done();
 	});
 
