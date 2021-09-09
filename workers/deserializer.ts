@@ -562,7 +562,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         }
 
-        let selected_q = 0;
+        let selected_q = 1;
         const _code = first_action.act.account;
 
         switch (this.conf.scaling.routing_mode) {
@@ -593,6 +593,7 @@ export default class MainDSWorker extends HyperionWorker {
                         }
                     }
                 }
+                selected_q += 1;
                 break;
             }
             case "round_robin": {
@@ -611,6 +612,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         const pool_queue = `${this.chain}:ds_pool:${selected_q}`;
         if (this.ch_ready) {
+            // console.log('selected_q', pool_queue);
             this.ch.sendToQueue(pool_queue, bufferFromJson(trace, true), {headers});
             return true;
         } else {
