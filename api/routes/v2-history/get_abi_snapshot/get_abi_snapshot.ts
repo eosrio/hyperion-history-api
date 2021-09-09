@@ -22,7 +22,7 @@ async function getAbiSnapshot(fastify: FastifyInstance, request: FastifyRequest)
     }
 
     const results = await fastify.elastic.search({
-        index: fastify.manager.chain + '-abi',
+        index: fastify.manager.chain + '-abi-*',
         size: 1,
         body: {
             query: {bool: {must: mustArray}},
