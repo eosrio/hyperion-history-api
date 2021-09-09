@@ -1120,6 +1120,7 @@ export default class MainDSWorker extends HyperionWorker {
     deltaStructHandlers = {
 
         "contract_row": async (payload, block_num, block_ts, row, block_id) => {
+
             if (this.conf.indexer.abi_scan_mode) {
                 return false;
             }
@@ -1182,6 +1183,7 @@ export default class MainDSWorker extends HyperionWorker {
                         if (process.env['live_mode'] === 'true') {
                             this.pushToDeltaStreamingQueue(buff, jsonRow);
                         }
+
                         if (typeof row.present !== "undefined") {
                             if (row.present === 0 && !this.conf.indexer.disable_delta_rm) {
                                 if (this.ch_ready) {

@@ -108,10 +108,8 @@ export default class HyperionParser extends BaseParser {
             }
 
             const res = ds_msg[1];
-            let block = null;
-            let traces = [];
-            let deltas = [];
 
+            let block = null;
             if (res.block && res.block.length) {
 
                 if (typeof res.block === 'object' && res.block.length === 2) {
@@ -180,6 +178,8 @@ export default class HyperionParser extends BaseParser {
                 }
             }
 
+            // unpack traces
+            let traces = null;
             if (allowProcessing && res.traces && res.traces.length) {
 
                 // deserialize transaction_trace using abieos (faster)
@@ -208,12 +208,14 @@ export default class HyperionParser extends BaseParser {
                 }
             }
 
+            // unpack deltas
+            let deltas = null;
             if (allowProcessing && res.deltas && res.deltas.length) {
 
                 // deserialize table_delta using abieos
                 try {
                     ds_times.abieos.table_delta = timedFunction(dsProfiling, () => {
-                        worker.deserializeNative('table_delta[]', res.deltas);
+                        deltas = worker.deserializeNative('table_delta[]', res.deltas);
                     });
                 } catch (e) {
                     hLog('table_delta[] deserialization failed with abieos!');
