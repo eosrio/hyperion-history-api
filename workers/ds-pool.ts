@@ -586,7 +586,6 @@ export default class DSPoolWorker extends HyperionWorker {
     initConsumer() {
         if (this.ch_ready) {
             this.ch.prefetch(this.conf.prefetch.block);
-            console.log(this.local_queue);
             this.ch.consume(this.local_queue, (data) => {
                 this.consumerQueue.push(data);
             }, {}, (err, ok) => {
