@@ -41,7 +41,7 @@ async function checkElastic(fastify: FastifyInstance) {
 		let indexedBlocks = await getLastIndexedBlockWithTotalBlocks(fastify.elastic, fastify.manager.chain);
 		const data = {
 			last_indexed_block: indexedBlocks[0],
-			total_indexed_blocks: indexedBlocks[1],
+			total_indexed_blocks: indexedBlocks[1] + 1,
 			active_shards: esStatus.body[0]['active_shards_percent']
 		};
 		let stat = 'OK';
