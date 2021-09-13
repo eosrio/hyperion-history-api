@@ -1,5 +1,7 @@
 {
   "api": {
+    "enabled": true,
+    "pm2_scaling": 1,
     "chain_name": "EXAMPLE Chain",
     "server_addr": "127.0.0.1",
     "server_port": 7000,
@@ -29,11 +31,27 @@
     "disable_tx_cache": false,
     "tx_cache_expiration_sec": 3600
   },
+  "indexer": {
+    "enabled": true,
+    "start_on": 0,
+    "stop_on": 0,
+    "rewrite": false,
+    "purge_queues": false,
+    "live_reader": false,
+    "live_only_mode": false,
+    "abi_scan_mode": true,
+    "fetch_block": true,
+    "fetch_traces": true,
+    "disable_reading": false,
+    "disable_indexing": false,
+    "process_deltas": true,
+    "disable_delta_rm": true
+  },
   "settings": {
     "preview": false,
     "chain": "eos",
     "eosio_alias": "eosio",
-    "parser": "1.8",
+    "parser": "2.1",
     "auto_stop": 0,
     "index_version": "v1",
     "debug": false,
@@ -76,21 +94,6 @@
     "max_queue_limit":    100000,
     "routing_mode":       "round_robin",
     "polling_interval":   10000
-  },
-  "indexer": {
-    "start_on": 0,
-    "stop_on": 0,
-    "rewrite": false,
-    "purge_queues": false,
-    "live_reader": false,
-    "live_only_mode": false,
-    "abi_scan_mode": true,
-    "fetch_block": true,
-    "fetch_traces": true,
-    "disable_reading": false,
-    "disable_indexing": false,
-    "process_deltas": true,
-    "disable_delta_rm": true
   },
   "features": {
     "streaming": {
