@@ -77,6 +77,7 @@ addons/**/*.js.map
 
 plugins/.state.json
 plugins/repos
+plugins/*.js
 .gitmodules
 
 docker/redis/data
