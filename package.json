@@ -10,8 +10,7 @@
     "tsc": "tsc",
     "build": "tsc",
     "postinstall": "npm run build && npm run fix-permissions",
-    "fix-permissions": "node scripts/fix-permissions.js",
-    "plugin-manager": "node plugins/hyperion-plugin-manager.js"
+    "fix-permissions": "node scripts/fix-permissions.js"
   },
   "engines": {
     "node": "^16"
