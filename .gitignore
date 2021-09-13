@@ -75,6 +75,7 @@ modules/**/*.js.map
 addons/**/*.js
 addons/**/*.js.map
 
+plugins/.state.json
 plugins/repos
 .gitmodules
 
