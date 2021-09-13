@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.HyperionPlugin = void 0;
 class HyperionPlugin {
     constructor(config) {
+        this.internalPluginName = '';
         this.actionHandlers = [];
         this.deltaHandlers = [];
         this.dynamicContracts = [];

@@ -20,6 +20,7 @@ interface HyperionChainData {
     name: string;
     chain_id: string;
     http: string;
+    ship: string;
     WS_ROUTER_PORT: number;
     WS_ROUTER_HOST: string;
 }

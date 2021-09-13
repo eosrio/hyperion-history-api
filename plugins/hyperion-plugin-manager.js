@@ -72,7 +72,6 @@ async function verifyInstallation(data) {
       process.exit(0);
     }
   }
-
 }
 
 function startInstallation(data) {
