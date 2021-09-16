@@ -2,6 +2,7 @@
   "api": {
     "enabled": true,
     "pm2_scaling": 1,
+    "node_max_old_space_size": 1024,
     "chain_name": "EXAMPLE Chain",
     "server_addr": "127.0.0.1",
     "server_port": 7000,
@@ -21,7 +22,6 @@
       "get_trx_actions": 200
     },
     "access_log": false,
-    "enable_explorer": false,
     "chain_api_error_log": false,
     "custom_core_token": "",
     "enable_export_action": false,
@@ -29,10 +29,15 @@
     "rate_limit_rpm": 1000,
     "rate_limit_allow": [],
     "disable_tx_cache": false,
-    "tx_cache_expiration_sec": 3600
+    "tx_cache_expiration_sec": 3600,
+    "v1_chain_cache": [
+      {"path": "get_block", "ttl": 3000},
+      {"path": "get_info", "ttl": 500}
+    ]
   },
   "indexer": {
     "enabled": true,
+    "node_max_old_space_size": 4096,
     "start_on": 0,
     "stop_on": 0,
     "rewrite": false,
@@ -79,21 +84,21 @@
     "root_only": false
   },
   "scaling": {
-    "readers":            1,
-    "ds_queues":          1,
-    "ds_threads":         1,
-    "ds_pool_size":       1,
-    "indexing_queues":    1,
-    "ad_idx_queues":      1,
-    "dyn_idx_queues":     1,
-    "max_autoscale":      4,
-    "batch_size":         5000,
-    "resume_trigger":     5000,
+    "readers": 1,
+    "ds_queues": 1,
+    "ds_threads": 1,
+    "ds_pool_size": 1,
+    "indexing_queues": 1,
+    "ad_idx_queues": 1,
+    "dyn_idx_queues": 1,
+    "max_autoscale": 4,
+    "batch_size": 5000,
+    "resume_trigger": 5000,
     "auto_scale_trigger": 20000,
-    "block_queue_limit":  10000,
-    "max_queue_limit":    100000,
-    "routing_mode":       "round_robin",
-    "polling_interval":   10000
+    "block_queue_limit": 10000,
+    "max_queue_limit": 100000,
+    "routing_mode": "round_robin",
+    "polling_interval": 10000
   },
   "features": {
     "streaming": {

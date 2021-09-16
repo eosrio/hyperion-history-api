@@ -46,6 +46,8 @@ export interface MainSettings {
 }
 
 export interface IndexerConfigs {
+    enabled?: boolean;
+    node_max_old_space_size?: number;
     fill_state: boolean;
     start_on: number;
     stop_on: number;
@@ -79,8 +81,15 @@ interface ApiLimits {
     get_trx_actions?: number;
 }
 
+interface CachedRouteConfig {
+    path: string;
+    ttl: number
+}
+
 interface ApiConfigs {
+    enabled?: boolean;
     pm2_scaling?: number;
+    node_max_old_space_size?: number;
     disable_rate_limit?: boolean;
     disable_tx_cache?: boolean;
     tx_cache_expiration_sec?: number | string;
@@ -90,7 +99,6 @@ interface ApiConfigs {
     chain_api_error_log?: boolean;
     chain_api?: string;
     push_api?: string;
-    enable_explorer?: boolean;
     access_log: boolean;
     chain_name: string;
     server_port: number;
@@ -102,7 +110,8 @@ interface ApiConfigs {
     chain_logo_url: string;
     enable_caching: boolean,
     cache_life: number;
-    limits: ApiLimits
+    limits: ApiLimits,
+    v1_chain_cache?: CachedRouteConfig[]
 }
 
 interface HubLocation {
@@ -171,7 +180,9 @@ export interface HyperionConfig {
 
     experimental: any;
 
-    plugins: any;
+    plugins: {
+        [key: string]: any;
+    };
 
     alerts: AlertManagerOptions;
 }

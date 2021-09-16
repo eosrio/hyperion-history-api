@@ -36,7 +36,8 @@ export default function (fastify: FastifyInstance, opts: any, next) {
             "lower_bound": {
                 "type": "string"
             }
-        }
+        },
+        ["code", "table", "scope"]
     );
     next();
 }

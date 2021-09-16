@@ -1,7 +1,7 @@
 import {Command, InvalidArgumentError} from 'commander';
 import path from 'path'
 import {readdir, rm} from "fs/promises";
-import fs, {existsSync, readFileSync, writeFileSync} from "fs";
+import fs, {existsSync, readdirSync, readFileSync, writeFileSync} from "fs";
 import {execSync, spawn} from "child_process";
 import crypto from "crypto";
 
@@ -40,6 +40,22 @@ function getCurrentBranch(dir): string {
 
 function checkoutBranch(dir, branchName): string {
     const gitCmd = `(cd ${dir} && git checkout ${branchName})`;
+    if (debug) {
+        console.log(` >> ${gitCmd}`);
+    }
+    return execSync(gitCmd).toString();
+}
+
+function gitPull(dir): string {
+    const gitCmd = `(cd ${dir} && git pull)`;
+    if (debug) {
+        console.log(` >> ${gitCmd}`);
+    }
+    return execSync(gitCmd).toString();
+}
+
+function gitReset(dir): string {
+    const gitCmd = `(cd ${dir} && git reset --hard)`;
     if (debug) {
         console.log(` >> ${gitCmd}`);
     }
@@ -246,10 +262,12 @@ async function installPlugin(plugin: string, options: any) {
     await clonePluginRepo(plugin, options);
 
     // checkout branch
-    const dir = path.join(pluginDirAbsolutePath, plugin);
-    const results = checkoutBranch(dir, options.branch);
-    stateJson.plugins[plugin].branch = options.branch;
-    console.log(results);
+    if (options.branch) {
+        const dir = path.join(pluginDirAbsolutePath, plugin);
+        const results = checkoutBranch(dir, options.branch);
+        stateJson.plugins[plugin].branch = options.branch;
+        console.log(results);
+    }
 
     // build plugin
     await buildPlugin(plugin, {
@@ -344,6 +362,22 @@ function printState() {
     console.log(JSON.stringify(stateJson, null, 2));
 }
 
+async function buildAllPlugins(flags) {
+    const names = readdirSync(pluginDirAbsolutePath);
+    for (const name of names) {
+        await buildPlugin(name, flags)
+    }
+}
+
+async function updatePlugin(name: string) {
+    const pluginDir = path.join(pluginDirAbsolutePath, name);
+    const resetStatus = gitReset(pluginDir);
+    console.log(resetStatus);
+    const pullStatus = gitPull(pluginDir);
+    console.log(pullStatus);
+    await buildPlugin(name, {});
+}
+
 (() => {
 
     init();
@@ -373,12 +407,21 @@ function printState() {
         .description('list installed plugins')
         .action(listPlugins);
 
-    program.command('build <plugin>')
+    program.command('build <plugin>').alias('b')
         .description('build a single plugin')
         .option('-s, --skip-install', 'skip "npm install" step')
         .action(buildPlugin);
 
-    program.command('uninstall <plugin>').alias('u')
+    program.command('update <plugin>')
+        .description('update a single plugin')
+        .action(updatePlugin);
+
+    program.command('build-all')
+        .description('build all plugins')
+        .option('-s, --skip-install', 'skip "npm install" step')
+        .action(buildAllPlugins);
+
+    program.command('uninstall <plugin>').alias('rm')
         .description('uninstall plugin')
         .action(uninstall);
 

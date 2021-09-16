@@ -278,5 +278,6 @@ async function rmChain(shortName) {
     remove.command('chain <shortName>')
         .description('backup and delete chain configuration')
         .action(rmChain);
+
     program.parse(process.argv);
 })();

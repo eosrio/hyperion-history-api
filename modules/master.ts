@@ -1622,7 +1622,7 @@ export class HyperionMaster {
             providerName: this.conf.api.provider_name,
             providerUrl: this.conf.api.provider_url,
             providerLogo: this.conf.api.provider_logo,
-            explorerEnabled: this.conf.api.enable_explorer,
+            explorerEnabled: this.conf.plugins.explorer?.enabled,
             chainCodename: this.chain,
             chainName: this.conf.api.chain_name,
             endpoint: this.conf.api.server_name,

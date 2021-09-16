@@ -19,6 +19,8 @@ interface HyperionDeltaHandler {
 
 export abstract class HyperionPlugin {
     internalPluginName: string = '';
+    indexerPlugin: boolean;
+    apiPlugin: boolean;
     actionHandlers: HyperionActionHandler[] = [];
     deltaHandlers: HyperionDeltaHandler[] = [];
     dynamicContracts: string[] = [];

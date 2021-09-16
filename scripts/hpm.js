@@ -62,6 +62,20 @@ function checkoutBranch(dir, branchName) {
     }
     return (0, child_process_1.execSync)(gitCmd).toString();
 }
+function gitPull(dir) {
+    const gitCmd = `(cd ${dir} && git pull)`;
+    if (debug) {
+        console.log(` >> ${gitCmd}`);
+    }
+    return (0, child_process_1.execSync)(gitCmd).toString();
+}
+function gitReset(dir) {
+    const gitCmd = `(cd ${dir} && git reset --hard)`;
+    if (debug) {
+        console.log(` >> ${gitCmd}`);
+    }
+    return (0, child_process_1.execSync)(gitCmd).toString();
+}
 async function buildPlugin(name, flags) {
     const pluginDir = path_1.default.join(pluginDirAbsolutePath, name);
     if (!(0, fs_1.existsSync)(pluginDir)) {
@@ -244,10 +258,12 @@ async function installPlugin(plugin, options) {
     // clone repository
     await clonePluginRepo(plugin, options);
     // checkout branch
-    const dir = path_1.default.join(pluginDirAbsolutePath, plugin);
-    const results = checkoutBranch(dir, options.branch);
-    stateJson.plugins[plugin].branch = options.branch;
-    console.log(results);
+    if (options.branch) {
+        const dir = path_1.default.join(pluginDirAbsolutePath, plugin);
+        const results = checkoutBranch(dir, options.branch);
+        stateJson.plugins[plugin].branch = options.branch;
+        console.log(results);
+    }
     // build plugin
     await buildPlugin(plugin, {
         skipInstall: false
@@ -333,6 +349,20 @@ function disablePlugin(pluginName) {
 function printState() {
     console.log(JSON.stringify(stateJson, null, 2));
 }
+async function buildAllPlugins(flags) {
+    const names = (0, fs_1.readdirSync)(pluginDirAbsolutePath);
+    for (const name of names) {
+        await buildPlugin(name, flags);
+    }
+}
+async function updatePlugin(name) {
+    const pluginDir = path_1.default.join(pluginDirAbsolutePath, name);
+    const resetStatus = gitReset(pluginDir);
+    console.log(resetStatus);
+    const pullStatus = gitPull(pluginDir);
+    console.log(pullStatus);
+    await buildPlugin(name, {});
+}
 (() => {
     init();
     program.description('Command-line utility to manage Hyperion plugins\nMade with ♥  by EOS Rio');
@@ -354,11 +384,18 @@ function printState() {
     program.command('list').alias('ls')
         .description('list installed plugins')
         .action(listPlugins);
-    program.command('build <plugin>')
+    program.command('build <plugin>').alias('b')
         .description('build a single plugin')
         .option('-s, --skip-install', 'skip "npm install" step')
         .action(buildPlugin);
-    program.command('uninstall <plugin>').alias('u')
+    program.command('update <plugin>')
+        .description('update a single plugin')
+        .action(updatePlugin);
+    program.command('build-all')
+        .description('build all plugins')
+        .option('-s, --skip-install', 'skip "npm install" step')
+        .action(buildAllPlugins);
+    program.command('uninstall <plugin>').alias('rm')
         .description('uninstall plugin')
         .action(uninstall);
     program.parse();
