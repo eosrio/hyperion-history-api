@@ -95,11 +95,11 @@ async function listChains(flags) {
         }
     }
 
-    console.log(' >>>> Fully Configured Chains')
+    console.log(' >>>> Fully Configured Chains');
     console.table(configuredTable);
 
     if (!flags.valid) {
-        console.log(' >>>> Pending Connection Configuration')
+        console.log(' >>>> Pending Configuration Chains');
         console.table(pendingTable);
     }
 }
