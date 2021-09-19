@@ -74,6 +74,12 @@ modules/**/*.js.map
 addons/**/*.js
 addons/**/*.js.map
 
+scripts/hpm.js
+scripts/hpm.js.map
+
+scripts/hyp-config.js
+scripts/hyp-config.js.map
+
 plugins/.state.json
 plugins/repos
 plugins/*.js

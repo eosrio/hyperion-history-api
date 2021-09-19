@@ -47,7 +47,7 @@ export class CacheManager {
         }, 5000);
     }
 
-    hashUrl(input: string): string {
+    hashPayload(input: string): string {
         return createHash('sha256').update(input).digest().toString('hex');
     }
 
@@ -64,16 +64,22 @@ export class CacheManager {
         const urlParts = request.url.split("?");
         const pathComponents = urlParts[0].split('/');
         const path = pathComponents.at(-1);
-        const urlHash = this.hashUrl(request.url);
+        let payload = '';
+        if (request.method === 'POST') {
+            payload = JSON.stringify(request.body);
+        } else if (request.method === 'GET') {
+            payload = request.url;
+        }
+        const hashedString = this.hashPayload(payload);
         if (this.v1Caches.has(path)) {
-            const entry = this.v1Caches.get(path).get(urlHash);
+            const entry = this.v1Caches.get(path).get(hashedString);
             if (entry && entry.exp > Date.now()) {
-                return [entry.data, urlHash, path];
+                return [entry.data, hashedString, path];
             } else {
-                return [null, urlHash, path];
+                return [null, hashedString, path];
             }
         } else {
-            return [null, urlHash, path];
+            return [null, hashedString, path];
         }
     }
 
