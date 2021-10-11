@@ -1001,6 +1001,7 @@ export default class MainDSWorker extends HyperionWorker {
                     this.tableHandlers[key3](data);
                 }
                 handled = true;
+                console.log(data);
             }
 
             if (!handled && this.conf.features.index_all_deltas) {
@@ -1615,7 +1616,6 @@ export default class MainDSWorker extends HyperionWorker {
         };
 
         this.tableHandlers[EOSIO_ALIAS + ':producers'] = (delta) => {
-            console.log(delta);
             const data = delta['data'];
             delta['@producers'] = {
                 total_votes: parseFloat(data['total_votes']),
