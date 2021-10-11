@@ -1001,7 +1001,6 @@ export default class MainDSWorker extends HyperionWorker {
                     this.tableHandlers[key3](data);
                 }
                 handled = true;
-                console.log(data);
             }
 
             if (!handled && this.conf.features.index_all_deltas) {
@@ -1146,21 +1145,8 @@ export default class MainDSWorker extends HyperionWorker {
                     }
                 }
 
-                let jsonRow;
-                // forced deserialization
-                try {
-                    if (payload.code === 'm.federation' && payload.table === 'leaders') {
-                        payload['data'] = {};
-                        jsonRow = payload;
-                    }
-                } catch (e) {
-                    console.log(e);
-                }
-
                 // decode contract data
-                if (!jsonRow) {
-                    jsonRow = await this.processContractRowNative(payload, block_num);
-                }
+                let jsonRow = await this.processContractRowNative(payload, block_num);
 
                 if (jsonRow?.value && !jsonRow['_blacklisted']) {
                     debugLog('Delta DS failed ->>', jsonRow);
@@ -1472,7 +1458,6 @@ export default class MainDSWorker extends HyperionWorker {
                                 await this.deltaStructHandlers[key](data[1], block_num, block_ts, row, block_id);
                             } catch (e) {
                                 hLog(`Delta struct [${key}] processing error: ${e.message}`);
-                                hLog(row);
                             }
                         }
                     }

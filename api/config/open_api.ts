@@ -13,7 +13,7 @@ export function generateOpenApiConfig(config: HyperionConfig) {
 #### Provided by [${config.api.provider_name}](${config.api.provider_url})
 #### Health API: <a target="_blank" href="${health_link}">${health_link}</a>
 `;
-    if(config.plugins.explorer.enabled) {
+    if(config.plugins && config.plugins.explorer && config.plugins.explorer.enabled) {
         description += `#### Integrated Explorer: <a target="_blank" href="${explorer_link}">${explorer_link}</a>`
     }
     return {
