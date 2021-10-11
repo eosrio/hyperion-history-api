@@ -1471,7 +1471,7 @@ export default class MainDSWorker extends HyperionWorker {
                                 await this.deltaStructHandlers[key](data[1], block_num, block_ts, row, block_id);
                             } catch (e) {
                                 hLog(`Delta struct [${key}] processing error: ${e.message}`);
-                                hLog(data);
+                                hLog(row);
                             }
                         }
                     }
@@ -1615,6 +1615,7 @@ export default class MainDSWorker extends HyperionWorker {
         };
 
         this.tableHandlers[EOSIO_ALIAS + ':producers'] = (delta) => {
+            console.log(delta);
             const data = delta['data'];
             delta['@producers'] = {
                 total_votes: parseFloat(data['total_votes']),
