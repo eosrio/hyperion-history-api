@@ -36,7 +36,8 @@ export const getActionResponseSchema = {
 	"producer": {type: "string"},
 	"parent": {type: "number"},
 	"action_ordinal": {type: 'number'},
-	"creator_action_ordinal": {type: 'number'}
+	"creator_action_ordinal": {type: 'number'},
+	"signatures": {type: "array", items: {type: 'string'}}
 };
 
 export default function (fastify: FastifyInstance, opts: any, next) {
