@@ -177,6 +177,7 @@ export class HyperionMaster {
         this.mLoader.init().then(() => {
 
             this.mLoader.plugins.forEach(value => {
+                value.initOnce();
                 hLog(`Plugin loaded: ${value.internalPluginName}`);
             })
 

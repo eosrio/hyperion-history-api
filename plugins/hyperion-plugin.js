@@ -14,6 +14,10 @@ class HyperionPlugin {
             this.baseConfig = config;
         }
     }
+    // abstract processActionData(input: any): Promise<any>;
+    initOnce() {
+        // called only once
+    }
 }
 exports.HyperionPlugin = HyperionPlugin;
 //# sourceMappingURL=hyperion-plugin.js.map
