@@ -37,7 +37,7 @@ let stateJson;
 const ignoredDirsForHash = ['.git', 'node_modules'];
 program.version(package_json.version);
 function checkUrl(value) {
-    if (value.startsWith('https://')) {
+    if (value.startsWith('https://') || value.startsWith('git@')) {
         return value;
     }
     else {
