@@ -17,12 +17,26 @@ interface HyperionDeltaHandler {
     handler: (delta: HyperionDelta) => Promise<void>;
 }
 
+interface HyperionStreamEvent {
+
+}
+
+export interface HyperionStreamHandler {
+    event: string;
+    code?: string;
+    account?: string;
+    name?: string;
+    table?: string;
+    handler: (streamEvent: any) => Promise<void>;
+}
+
 export abstract class HyperionPlugin {
     internalPluginName: string = '';
     indexerPlugin: boolean;
     apiPlugin: boolean;
     actionHandlers: HyperionActionHandler[] = [];
     deltaHandlers: HyperionDeltaHandler[] = [];
+    streamHandlers: HyperionStreamHandler[] = [];
     dynamicContracts: string[] = [];
     hasApiRoutes: boolean = false;
     baseConfig: any;

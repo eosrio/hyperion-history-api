@@ -6,6 +6,7 @@ class HyperionPlugin {
         this.internalPluginName = '';
         this.actionHandlers = [];
         this.deltaHandlers = [];
+        this.streamHandlers = [];
         this.dynamicContracts = [];
         this.hasApiRoutes = false;
         this.chainName = '';

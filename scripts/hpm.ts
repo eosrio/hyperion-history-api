@@ -247,7 +247,10 @@ function init() {
 async function installPlugin(plugin: string, options: any) {
     console.log(`Plugin Name: ${plugin}`);
     console.log(`Repository Url: ${options.repository}`);
-    console.log(`Branch Name: ${options.branch}`);
+
+    if (options.branch) {
+        console.log(`Branch Name: ${options.branch}`);
+    }
 
     // check installation
     await verifyInstalledPlugin(plugin, options);

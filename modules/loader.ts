@@ -5,12 +5,14 @@ import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {BaseParser} from "./parsers/base-parser";
 import {hLog} from "../helpers/common_functions";
-import {HyperionPlugin} from "../plugins/hyperion-plugin";
+import {HyperionPlugin, HyperionStreamHandler} from "../plugins/hyperion-plugin";
 
 export class HyperionModuleLoader {
 
     private handledActions = new Map();
     private handledDeltas = new Map();
+    private streamHandlers: HyperionStreamHandler[] = [];
+
     chainMappings = new Map();
     extendedActions: Set<string> = new Set();
     extraMappings = [];
@@ -59,6 +61,7 @@ export class HyperionModuleLoader {
             }
         }
     }
+
 
     includeActionModule(_module) {
         if (this.handledActions.has(_module.contract)) {
@@ -159,6 +162,9 @@ export class HyperionModuleLoader {
                         if (pl.deltaHandlers) {
                             this.loadPluginDeltaHandlers(pl.deltaHandlers);
                         }
+                        if (pl.streamHandlers) {
+                            this.loadPluginStreamHandlers(pl.streamHandlers);
+                        }
                         this.plugins.push(pl);
                     } catch (e) {
                         hLog(`Plugin "${key}" failed to load: ${e.message}`);
@@ -180,6 +186,7 @@ export class HyperionModuleLoader {
         }
     }
 
+
     private loadPluginActionHandlers(actionHandlers: any) {
         for (const handler of actionHandlers) {
             this.includeActionModule(handler);
@@ -192,4 +199,23 @@ export class HyperionModuleLoader {
         }
     }
 
+    private loadPluginStreamHandlers(streamHandlers: any) {
+        for (const handler of streamHandlers) {
+            this.includeStreamModule(handler);
+        }
+    }
+
+    includeStreamModule(_module) {
+        this.streamHandlers.push(_module);
+    }
+
+    processStreamEvent(msg) {
+        if (this.streamHandlers.length > 0) {
+            this.streamHandlers.forEach(sth => {
+                sth.handler(msg).catch(reason => {
+                    hLog(`Stream processing failed:`, reason);
+                });
+            });
+        }
+    }
 }
