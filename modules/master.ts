@@ -184,6 +184,20 @@ export class HyperionMaster {
             this.chain = this.conf.settings.chain;
             this.alerts.chainName = this.chain;
             this.initHandlerMap();
+
+            this.mLoader.plugins.forEach(value => {
+                const pluginHandlerMap = value.initHandlerMap();
+                hLog(`Plugin IPC handlers loaded: ${Object.keys(pluginHandlerMap)}`);
+                for (const handler in pluginHandlerMap) {
+                    if (Object.keys(this.msgHandlerMap).includes(handler)) {
+                        hLog(`Handler already mapped, cannot load ${handler} from plugin ${value.internalPluginName}`);
+                        return;
+                    }
+
+                    this.msgHandlerMap[handler] = pluginHandlerMap[handler];
+                }
+            })
+
             this.liveBlockQueue = queue((task, callback) => {
                 this.onLiveBlock(task);
                 callback();

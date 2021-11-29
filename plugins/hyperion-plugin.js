@@ -18,6 +18,9 @@ class HyperionPlugin {
     initOnce() {
         // called only once
     }
+    initHandlerMap() {
+        return {};
+    }
 }
 exports.HyperionPlugin = HyperionPlugin;
 //# sourceMappingURL=hyperion-plugin.js.map

@@ -54,4 +54,8 @@ export abstract class HyperionPlugin {
     initOnce() {
         // called only once
     }
+
+    initHandlerMap(): any {
+        return {};
+    }
 }
