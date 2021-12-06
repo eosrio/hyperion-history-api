@@ -9,7 +9,7 @@
 
 ```
 pip3 install sh
-pip3 install elasticsearch
+pip3 install elasticsearch==7.15.2
 python3 fix-missing-blocks.py http://elasticusername:elasticpasswordD@127.0.0.1
 ```
 
