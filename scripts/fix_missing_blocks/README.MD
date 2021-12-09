@@ -5,11 +5,25 @@
 - Python script that connects to elastichsearch and identifies any missing blocks within indexes, and performs a re-indexing of those ranges to include any missing blocks.
 - Once the script completes, it will automatically re-start the indexer on live mode with re-write disabled.
 
-### Install & Run
+### Install
 
 ```
 pip3 install sh
-pip3 install elasticsearch
+pip3 install elasticsearch==7.15.2
+```
+
+### Update config files accordingly in python file
+
+```
+filepath="chains/wax.config.json"
+indexer_stop = ["pm2", "trigger", "wax-indexer", "stop"]
+indexer_start = ["./run.sh", "wax-indexer"]
+indexer_log_file = "/home/charles/.pm2/logs/wax-indexer-out.log"
+```
+
+### RUN
+
+```
 python3 fix-missing-blocks.py http://elasticusername:elasticpasswordD@127.0.0.1
 ```
 
