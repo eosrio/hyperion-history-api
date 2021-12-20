@@ -29,7 +29,7 @@ function getLastResult(results: ApiResponse) {
 
 export async function getLastIndexedBlockByDelta(es_client: Client, chain: string) {
     const results: ApiResponse = await es_client.search({
-        index: chain + '-delta-*',
+        index: chain + '-delta',
         size: 1,
         body: {
             query: {bool: {filter: {match_all: {}}}},
