@@ -36,6 +36,7 @@ export async function getLastIndexedBlockByDelta(es_client: Client, chain: strin
             sort: [{block_num: {order: "desc"}}]
         }
     });
+    debugLog(results);
     return getLastResult(results);
 }
 
