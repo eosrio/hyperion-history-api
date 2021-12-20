@@ -2087,9 +2087,11 @@ export class HyperionMaster {
         // Find last indexed block
         let lastIndexedBlock;
         if (this.conf.features.index_deltas) {
+            hLog('Fetching last indexed block using the delta index...');
             lastIndexedBlock = await getLastIndexedBlockByDelta(this.client, this.chain);
             hLog(`Last indexed block (deltas): ${lastIndexedBlock}`);
         } else {
+            hLog('Fetching last indexed block using the block index...');
             lastIndexedBlock = await getLastIndexedBlock(this.client, this.chain);
             hLog(`Last indexed block (blocks): ${lastIndexedBlock}`);
         }
