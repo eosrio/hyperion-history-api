@@ -539,6 +539,8 @@ export class HyperionMaster {
                 const new_index = `${queue_prefix}-${index.type}-${version}-000001`;
                 const exists = await this.client.indices.exists({index: new_index});
 
+                hLog(exists);
+
                 if (!exists.body) {
 
                     // create index
@@ -728,7 +730,7 @@ export class HyperionMaster {
 
         hLog(`Loading indices...`);
 
-        if(!this.conf.settings.bypass_index_map) {
+        if (!this.conf.settings.bypass_index_map) {
             const getIndicesResponse = await this.manager.elasticsearchClient.cat.indices({
                 index: this.chain + "-*",
                 format: 'json'
@@ -1632,6 +1634,8 @@ export class HyperionMaster {
         await this.appendExtraMappings(indexConfig);
         await this.updateIndexTemplates(indicesList, indexConfig);
         await this.createIndices(indicesList);
+
+        hLog('Finished creating indices!');
 
 
         if (this.conf.indexer.fill_state) {
