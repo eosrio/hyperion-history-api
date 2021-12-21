@@ -22,7 +22,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@elastic/elasticsearch": "^7.16.0",
+    "@elastic/elasticsearch": "7.16.0",
     "@eosrio/node-abieos": "^2.1.1",
     "@pm2/io": "^5.0.0",
     "amqplib": "^0.8.0",
@@ -39,7 +39,7 @@
     "fastify-autoload": "1.2.2",
     "fastify-compress": "2.0.1",
     "fastify-cors": "3.0.3",
-    "fastify-elasticsearch": "1.1.0",
+    "fastify-elasticsearch": "^2.0.0",
     "fastify-formbody": "3.2.0",
     "fastify-oas": "2.7.0",
     "fastify-plugin": "1.6.1",
@@ -56,7 +56,7 @@
     "redis": "^3.1.2",
     "socket.io": "2.4.1",
     "socket.io-client": "^2.4.0",
-    "typescript": "3.9.5",
+    "typescript": "^4.5.4",
     "ws": "^7.5.3",
     "yargs": "15.4.1"
   },
