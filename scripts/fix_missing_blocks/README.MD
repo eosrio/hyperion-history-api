@@ -2,7 +2,7 @@
 
 ## Fix Missing Blocks
 
-- Python script that connects to elastichsearch and identifies any missing blocks within indexes, and performs a re-indexing of those ranges to include any missing blocks.
+- Python script that connects to elasticsearch and identifies any missing blocks within indexes, and performs a re-indexing of those ranges to include any missing blocks.
 - Once the script completes, it will automatically re-start the indexer on live mode with re-write disabled.
 
 ### Install
