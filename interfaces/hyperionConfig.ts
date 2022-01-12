@@ -21,7 +21,6 @@ export interface ScalingConfigs {
 
 export interface MainSettings {
     process_prefix?: string;
-    index_partition_size: number;
     ignore_snapshot?: boolean;
     ship_request_rev: string;
     custom_policy: string;
@@ -43,6 +42,8 @@ export interface MainSettings {
     bp_logs: boolean;
     dsp_parser: boolean;
     allow_custom_abi: boolean;
+    index_partition_size: number;
+    es_replicas: number;
 }
 
 export interface IndexerConfigs {

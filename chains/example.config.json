@@ -31,8 +31,14 @@
     "disable_tx_cache": false,
     "tx_cache_expiration_sec": 3600,
     "v1_chain_cache": [
-      {"path": "get_block", "ttl": 3000},
-      {"path": "get_info", "ttl": 500}
+      {
+        "path": "get_block",
+        "ttl": 3000
+      },
+      {
+        "path": "get_info",
+        "ttl": 500
+      }
     ]
   },
   "indexer": {
@@ -71,7 +77,8 @@
     "hot_warm_policy": false,
     "custom_policy": "",
     "bypass_index_map": false,
-    "index_partition_size": 10000000
+    "index_partition_size": 10000000,
+    "es_replicas": 0
   },
   "blacklists": {
     "actions": [],
