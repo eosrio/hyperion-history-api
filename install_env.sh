@@ -165,9 +165,9 @@ sudo apt-get install rabbitmq-server -y --fix-missing
 
 
 
-  PPA="https://deb.nodesource.com/node_13.x bionic main"
+  PPA="https://deb.nodesource.com/node_16.x bionic main"
   if ! grep -q "^deb .*$PPA" /etc/apt/sources.list /etc/apt/sources.list.d/*; then
-    curl -sL "https://deb.nodesource.com/setup_13.x" | sudo -E bash -
+    curl -sL "https://deb.nodesource.com/setup_16.x" | sudo -E bash -
   fi
 
   sudo apt update -y
