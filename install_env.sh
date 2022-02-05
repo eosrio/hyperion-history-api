@@ -128,16 +128,46 @@ install_keys_sources() {
     echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
   fi
 
-  PPA="http://dl.bintray.com/rabbitmq-erlang/debian bionic erlang"
-  if ! grep -q "^deb .*$PPA" /etc/apt/sources.list /etc/apt/sources.list.d/*; then
-    curl -fsSL https://github.com/rabbitmq/signing-keys/releases/download/2.0/rabbitmq-release-signing-key.asc | sudo apt-key add -
-    echo "deb http://dl.bintray.com/rabbitmq-erlang/debian bionic erlang" | sudo tee /etc/apt/sources.list.d/bintray.rabbitmq.list
-    curl -s https://packagecloud.io/install/repositories/rabbitmq/rabbitmq-server/script.deb.sh | sudo bash
-  fi
+  sudo apt-get install curl gnupg apt-transport-https -y
 
-  PPA="https://deb.nodesource.com/node_13.x bionic main"
+  ## Team RabbitMQ's main signing key
+  curl -1sLf "https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA" | sudo gpg --dearmor | sudo tee /usr/share/keyrings/com.rabbitmq.team.gpg > /dev/null
+  ## Cloudsmith: modern Erlang repository
+  curl -1sLf https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-erlang/gpg.E495BB49CC4BBE5B.key | sudo gpg --dearmor | sudo tee /usr/share/keyrings/io.cloudsmith.rabbitmq.E495BB49CC4BBE5B.gpg > /dev/null
+  ## Cloudsmith: RabbitMQ repository
+  curl -1sLf https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-server/gpg.9F4587F226208342.key | sudo gpg --dearmor | sudo tee /usr/share/keyrings/io.cloudsmith.rabbitmq.9F4587F226208342.gpg > /dev/null
+
+  ## Add apt repositories maintained by Team RabbitMQ
+  sudo tee /etc/apt/sources.list.d/rabbitmq.list <<EOF
+  ## Provides modern Erlang/OTP releases
+  ##
+  deb [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.E495BB49CC4BBE5B.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-erlang/deb/ubuntu bionic main
+  deb-src [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.E495BB49CC4BBE5B.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-erlang/deb/ubuntu bionic main
+
+  ## Provides RabbitMQ
+  ##
+  deb [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.9F4587F226208342.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-server/deb/ubuntu bionic main
+  deb-src [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.9F4587F226208342.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-server/deb/ubuntu bionic main
+EOF
+
+## Update package indices
+sudo apt-get update -y
+
+## Install Erlang packages
+sudo apt-get install -y erlang-base \
+                        erlang-asn1 erlang-crypto erlang-eldap erlang-ftp erlang-inets \
+                        erlang-mnesia erlang-os-mon erlang-parsetools erlang-public-key \
+                        erlang-runtime-tools erlang-snmp erlang-ssl \
+                        erlang-syntax-tools erlang-tftp erlang-tools erlang-xmerl
+
+## Install rabbitmq-server and its dependencies
+sudo apt-get install rabbitmq-server -y --fix-missing
+
+
+
+  PPA="https://deb.nodesource.com/node_16.x bionic main"
   if ! grep -q "^deb .*$PPA" /etc/apt/sources.list /etc/apt/sources.list.d/*; then
-    curl -sL "https://deb.nodesource.com/setup_13.x" | sudo -E bash -
+    curl -sL "https://deb.nodesource.com/setup_16.x" | sudo -E bash -
   fi
 
   sudo apt update -y
@@ -243,7 +273,7 @@ install_kibana() {
 
   KIBANA_PASSWORD=$(awk <elastic_pass.txt '/PASSWORD kibana =/ {print $4}')
 
-  sudo sed -ie 's/#elasticsearch.password: "pass"/elasticsearch.password: '"$KIBANA_PASSWORD"'/; s/#elasticsearch.username: "kibana"/elasticsearch.username: "kibana"/' /etc/kibana/kibana.yml
+  sudo sed -ie 's/#elasticsearch.password: "pass"/elasticsearch.password: '"$KIBANA_PASSWORD"'/; s/elasticsearch.username: "kibana"/elasticsearch.username: "kibana"/' /etc/kibana/kibana.yml
 
   sudo systemctl enable kibana
   sudo systemctl start kibana
