@@ -248,9 +248,11 @@ install_elastic() {
   check_ram
   if [ "$RAM" -lt 32 ]; then
     (( RAM=RAM/2 ))
-    sudo sed -ie 's/-Xms1g/-Xms'"$RAM"'g/; s/-Xmx1g/-Xmx'"$RAM"'g/' /etc/elasticsearch/jvm.options
+    sudo bash -c 'echo -e "-Xms'"$RAM"'g\n-Xmx'"$RAM"'g\n" > /etc/elasticsearch/jvm.options.d/ram.options'
+  #  sudo sed -ie 's/-Xms1g/-Xms'"$RAM"'g/; s/-Xmx1g/-Xmx'"$RAM"'g/' /etc/elasticsearch/jvm.options
   else
-    sudo sed -ie 's/-Xms1g/-Xms16g/; s/-Xmx1g/-Xmx16g/' /etc/elasticsearch/jvm.options
+    sudo bash -c 'echo -e "-Xms16g\n-Xmx16g\n" > /etc/elasticsearch/jvm.options.d/ram.options'
+  #  sudo sed -ie 's/-Xms1g/-Xms16g/; s/-Xmx1g/-Xmx16g/' /etc/elasticsearch/jvm.options
   fi
 
   sudo bash -c 'echo "xpack.security.enabled: true" >> /etc/elasticsearch/elasticsearch.yml'
