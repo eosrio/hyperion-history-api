@@ -139,31 +139,16 @@ install_keys_sources() {
 
   ## Add apt repositories maintained by Team RabbitMQ
   sudo tee /etc/apt/sources.list.d/rabbitmq.list <<EOF
-  ## Provides modern Erlang/OTP releases
-  ##
-  deb [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.E495BB49CC4BBE5B.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-erlang/deb/ubuntu bionic main
-  deb-src [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.E495BB49CC4BBE5B.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-erlang/deb/ubuntu bionic main
+## Provides modern Erlang/OTP releases
+##
+deb [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.E495BB49CC4BBE5B.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-erlang/deb/ubuntu bionic main
+deb-src [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.E495BB49CC4BBE5B.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-erlang/deb/ubuntu bionic main
 
-  ## Provides RabbitMQ
-  ##
-  deb [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.9F4587F226208342.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-server/deb/ubuntu bionic main
-  deb-src [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.9F4587F226208342.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-server/deb/ubuntu bionic main
+## Provides RabbitMQ
+##
+deb [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.9F4587F226208342.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-server/deb/ubuntu bionic main
+deb-src [signed-by=/usr/share/keyrings/io.cloudsmith.rabbitmq.9F4587F226208342.gpg] https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-server/deb/ubuntu bionic main
 EOF
-
-## Update package indices
-sudo apt-get update -y
-
-## Install Erlang packages
-sudo apt-get install -y erlang-base \
-                        erlang-asn1 erlang-crypto erlang-eldap erlang-ftp erlang-inets \
-                        erlang-mnesia erlang-os-mon erlang-parsetools erlang-public-key \
-                        erlang-runtime-tools erlang-snmp erlang-ssl \
-                        erlang-syntax-tools erlang-tftp erlang-tools erlang-xmerl
-
-## Install rabbitmq-server and its dependencies
-sudo apt-get install rabbitmq-server -y --fix-missing
-
-
 
   PPA="https://deb.nodesource.com/node_16.x bionic main"
   if ! grep -q "^deb .*$PPA" /etc/apt/sources.list /etc/apt/sources.list.d/*; then
@@ -227,7 +212,17 @@ rabbit_credentials() {
 
 install_rabittmq() {
   echo -e "\n\n${COLOR_BLUE}Installing rabbit-mq...${COLOR_NC}\n\n"
-  sudo apt install -y rabbitmq-server
+
+  ## Install Erlang packages
+  sudo apt-get install -y erlang-base \
+                          erlang-asn1 erlang-crypto erlang-eldap erlang-ftp erlang-inets \
+                          erlang-mnesia erlang-os-mon erlang-parsetools erlang-public-key \
+                          erlang-runtime-tools erlang-snmp erlang-ssl \
+                          erlang-syntax-tools erlang-tftp erlang-tools erlang-xmerl
+
+  ## Install rabbitmq-server and its dependencies
+  sudo apt-get install rabbitmq-server -y --fix-missing
+
   #enable web gui
   sudo rabbitmq-plugins enable rabbitmq_management
   sudo rabbitmqctl add_vhost /hyperion
