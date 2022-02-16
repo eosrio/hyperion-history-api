@@ -1,0 +1,53 @@
+{{- if .Values.services }}
+{{- $root := . }}
+{{- range $name, $svc := .Values.services }}
+{{- if not $svc.disabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+{{- if $svc.annotations }}
+  annotations:
+{{ toYaml $svc.annotations | indent 4 }}
+{{- end }}
+  labels:
+{{- if $svc.customLabels }}
+{{ toYaml $svc.customLabels | indent 4 }}
+{{- else }}
+{{ include "voice-chart.labels" $root | indent 4 }}
+{{- if $svc.app }}
+    app: "{{ $svc.app }}"
+{{- else }}
+    app: {{ $name }}
+{{- end }}
+{{- end }}
+spec:
+  sessionAffinity: {{ $svc.sessionAffinityType }}
+  type: {{ $svc.type }}
+{{- if $svc.ports }}
+  ports:
+{{ toYaml $svc.ports | indent 2 }}
+{{- end }}
+{{- if $svc.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ $svc.externalTrafficPolicy }}
+{{- end }}
+{{- if $svc.healthCheckNodePort }}
+  healthCheckNodePort: {{ $svc.healthCheckNodePort }}
+{{- end }}
+{{- if $svc.extraSpecs }}
+{{ toYaml $svc.extraSpecs | indent 2 }}
+{{- end }}
+  selector:
+{{- if $svc.customSelectors }}
+{{ toYaml $svc.customSelectors | indent 4 }}
+{{- else }}
+{{- if $svc.app }}
+    app: "{{ $svc.app }}"
+{{- else }}
+    app: {{ $name }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
