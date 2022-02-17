@@ -1,0 +1,47 @@
+{
+    "name": "hyperion-history-api",
+    "services": [
+      {
+        "name": "hyperion-history-api",
+        "chartPath": "helm/",
+        "upgradeOnChange": true,
+        "createNamespace": true,
+        "namespace": "hyperion-history-api-testing",
+        "valuesFiles": ["helm/values/local.yaml"],
+        "artifactOverrides": {
+          "deployments": {
+            "voice-eos-hyperion-api" : {
+              "containers": {
+                "voice-eos-hyperion-api": {
+                  "image": "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion"
+                }
+              }
+            }
+          }
+        },
+        "artifacts": [
+          {
+            "image": "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion",
+            "context": ".",
+            "docker": {
+              "dockerfile": "Dockerfile",
+              "buildArgs": {
+                "NPM_AUTH_TOKEN": "{{.NPM_AUTH_TOKEN}}"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "helm": {
+      "flags": {
+        "install": [
+          "--timeout=1200s"
+        ],
+        "upgrade": [
+          "--timeout=1200s"
+        ]
+      }
+    }
+  }
+  

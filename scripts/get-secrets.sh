@@ -1,0 +1,1 @@
+jq '.indexer.start_on = 0 | .indexer.abi_scan_mode = true | .indexer.auto_stop = 0' chains/voice.config.json > chains/temp 
