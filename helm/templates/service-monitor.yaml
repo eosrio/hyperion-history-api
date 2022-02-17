@@ -1,0 +1,41 @@
+{{- if .Values.serviceMonitors }}
+{{- $root := . }}
+{{- range $name, $sm := .Values.serviceMonitors }}
+{{- if not $sm.disabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $name }}
+  labels:
+{{- if $sm.customLabels }}
+{{ toYaml $sm.customLabels | indent 4 }}
+{{- else }}
+{{ include "voice-chart.labels" $root | indent 4 }}
+{{- end }}
+{{- with $sm.annotations }}
+  annotations:
+{{ toYaml $sm.annotations | indent 4 }}
+{{- end }}
+spec:
+{{- with $sm.endpoints }}
+  endpoints:
+{{ toYaml $sm.endpoints | indent 4 }}
+{{- end }}
+  selector:
+    matchLabels:
+{{- if $sm.customSelectors }}
+{{ toYaml $sm.customSelectors | indent 6 }}
+{{- else }}
+{{- if $sm.app }}
+      app: "{{ $sm.app }}"
+{{- else }}
+      app: {{ $name }}
+{{- end }}
+{{- end }}
+  namespaceSelector:
+    matchNames:
+      - {{ $.Release.Namespace }}
+{{- end }}
+{{- end }}
+{{- end }}
