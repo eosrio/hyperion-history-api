@@ -5,7 +5,6 @@ hash=$(git rev-parse HEAD)
 /usr/local/bin/docker tag hyperion:$hash gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:$hash
 /usr/local/bin/docker rmi hyperion:$hash
 
-hash=$(git rev-parse HEAD)
 /usr/local/bin/docker push gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:$hash
 /usr/local/bin/docker tag gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:$hash gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:latest
 /usr/local/bin/docker push gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:latest

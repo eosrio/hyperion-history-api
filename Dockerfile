@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
 # WORKDIR /opt
-ARG env=dev
+ARG NPM_AUTH_TOKEN
 RUN apt-get update \
         && apt-get upgrade -y \
         && apt-get autoremove \
@@ -12,11 +12,12 @@ RUN apt-get update \
 
 WORKDIR /hyperion-history-api
 COPY . .
+COPY .npmrc.template .npmrc 
 # COPY config/$env/start.sh ./
 RUN npm install  && \
-         ./hpm install -r https://github.com/eosrio/hyperion-explorer-plugin.git explorer && \
-        ./hpm enable explorer && \
-        pm2 startup
+      ./hpm install -r https://github.com/eosrio/hyperion-explorer-plugin.git explorer && \
+      ./hpm enable explorer && \
+      pm2 startup
 
 RUN adduser --system --group voice && chown -R voice:voice /hyperion-history-api
 USER voice

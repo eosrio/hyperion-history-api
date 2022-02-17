@@ -4,6 +4,7 @@ logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
 # Runtime data
 pids
 *.pid
@@ -90,7 +91,11 @@ docker/rabbitmq/data
 docker/eosio/data
 
 configuration_backups
+
+helm-chart
+
+skaffold*
+
 rabbitmq/data
 eosio
 elasticsearch
-skaffold.yaml
