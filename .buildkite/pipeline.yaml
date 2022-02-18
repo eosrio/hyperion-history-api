@@ -47,19 +47,19 @@ steps:
   #   artifact_paths:
   #     - "schemaDiff.txt"
   #     - "actualSchema.graphql"
-  #   if: build.branch != 'master' && build.tag == null
+  #   if: build.branch != 'v3.3.5' && build.tag == null
 
   - command: "yarn && yarn generate-types"
     label: ":typescript: Checking to see if there are pending changes to ${BUILDKITE_PIPELINE_SLUG} generated graphql types"
     agents:
       queue: voice-app-builder-v2
-    if: build.branch != 'master' && build.tag == null
+    if: build.branch != 'v3.3.5' && build.tag == null
 
   # - command: "./scripts/validate-subgraph.sh -e dev"
   #   label: ":graphql: Validating subgraph with supergraph"
   #   agents:
   #     queue: voice-infra-devel-v2
-  #   if: build.branch != 'master' && build.tag == null
+  #   if: build.branch != 'v3.3.5' && build.tag == null
 
   - wait
 
@@ -84,7 +84,7 @@ steps:
   #     queue: voice-app-builder-v2
   #   artifact_paths:
   #     - "generated-types/dist/*"
-  #   if: build.branch == 'master' && build.pull_request.id == null
+  #   if: build.branch == 'v3.3.5' && build.pull_request.id == null
 
   # - wait
 
@@ -94,7 +94,7 @@ steps:
       buildkite-agent pipeline upload .buildkite/branches.yaml
     agents:
       queue: voice-infra-devel-v2
-    if: build.tag == null && build.pull_request.base_branch == "master" && build.pull_request.id != null
+    if: build.tag == null && build.pull_request.base_branch == "v3.3.5" && build.pull_request.id != null
 
 # dev deploy
   - label: ":buildkite: Upload dev deploy pipeline"
@@ -103,7 +103,7 @@ steps:
       buildkite-agent pipeline upload .buildkite/dev.yaml
     agents:
       queue: voice-infra-devel-v2
-    if: build.tag == null && build.branch == "master" && build.pull_request.id == null
+    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
     retry:
       manual:
         permit_on_passed: true
@@ -127,10 +127,10 @@ steps:
       ./scripts/nuke-branch.sh --namespace $${K8S_NAMESPACE}
     agents:
       queue: voice-infra-devel-v2
-    if: build.tag == null && build.branch == "master" && build.pull_request.id == null && build.message =~ /^Merge pull request \#/
+    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null && build.message =~ /^Merge pull request \#/
 
   - block: ":rocket: Release!"
-    if: build.tag == null && build.branch == "master" && build.pull_request.id == null
+    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
 
   - wait
 
@@ -138,7 +138,7 @@ steps:
     label: ":graphql: Validating subgraph with supergraph"
     agents:
       queue: voice-infra-prod-v2
-    if: build.tag == null && build.branch == "master" && build.pull_request.id == null
+    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
 
   - wait
 
@@ -152,7 +152,7 @@ steps:
       BUILDKITE_AGENT: voice-app-builder-v2
     agents: *default-agents
     plugins: *default-plugins
-    if: build.tag == null && build.branch == "master" && build.pull_request.id == null
+    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
 
   - wait
 
@@ -162,7 +162,7 @@ steps:
       buildkite-agent pipeline upload .buildkite/prod.yaml
     agents:
       queue: voice-infra-prod-v2
-    if: build.tag == null && build.branch == "master" && build.pull_request.id == null
+    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
     retry:
       manual:
         permit_on_passed: true
