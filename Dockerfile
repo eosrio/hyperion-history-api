@@ -13,7 +13,6 @@ RUN apt-get update \
 WORKDIR /hyperion-history-api
 COPY . .
 COPY .npmrc.template .npmrc 
-# COPY config/$env/start.sh ./
 RUN npm install  && \
       ./hpm install -r https://github.com/eosrio/hyperion-explorer-plugin.git explorer && \
       ./hpm enable explorer && \

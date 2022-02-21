@@ -7,7 +7,8 @@ services:
     restart: on-failure
     networks:
       - hyperion
-
+    depends_on:
+      - kibana
   rabbitmq:
     container_name: rabbitmq
     image: rabbitmq:3.8.3-management
@@ -23,10 +24,12 @@ services:
       - 15672:15672
     networks:
       - hyperion
+    depends_on:
+      - elasticsearch
 
   elasticsearch:
     container_name: elasticsearch
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.7.1
+    image: elasticsearch:7.17.0
     restart: on-failure
     environment:
       - discovery.type=single-node
@@ -46,7 +49,7 @@ services:
 
   kibana:
     container_name: kibana
-    image: docker.elastic.co/kibana/kibana:7.7.1
+    image: kibana:7.17.0
     restart: on-failure
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
@@ -74,7 +77,10 @@ services:
 
   hyperion-indexer:
     container_name: hyperion-indexer
-    build: .
+    build:
+      context: .
+      args: 
+        - NPM_AUTH_TOKEN=${NPM_AUTH_TOKEN}    
     restart: on-failure
     depends_on:
       - elasticsearch
@@ -86,14 +92,20 @@ services:
       - ./chains/voice.config.json:/hyperion-history-api/chains/voice.config.json
     networks:
       - hyperion
-    command: bash -c "pm2 start --only voice-indexer --update-env -s && pm2 save && pm2 logs"
+    command:
+      - bash
+      - run.sh
+      - voice-indexer
 
   hyperion-api:
     container_name: hyperion-api
-    build: .
+    build: 
+      context: .
+      args: 
+        - NPM_AUTH_TOKEN=${NPM_AUTH_TOKEN}
     restart: on-failure
     ports:
-      - 7000:7000
+      - 7001:7000
     depends_on:
       - hyperion-indexer
     volumes:
@@ -101,7 +113,10 @@ services:
       - ./chains/voice.config.json:/hyperion-history-api/chains/voice.config.json
     networks:
       - hyperion
-    command: bash -c "pm2 start --only voice-api --update-env -s && pm2 save && pm2 logs"
+    command:
+      - bash
+      - run.sh
+      - voice-api
 
 networks:
   hyperion:

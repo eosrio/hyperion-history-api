@@ -40,6 +40,7 @@ api/explorer
 .ecosystem.config.js.swp
 
 chains/*
+!chains/voice.config.json
 !chains/example.config.json
 
 api/**/*.js
@@ -83,6 +84,7 @@ plugins/.state.json
 plugins/repos
 plugins/*.js
 .gitmodules
+eosio/data
 
 docker/redis/data
 docker/elasticsearch/data
