@@ -33,12 +33,3 @@ steps:
     concurrency_group: "${BUILDKITE_PIPELINE_SLUG}/prod"
     agents: *default-agents
     plugins: *default-plugins
-  # - wait
-
-  # - command: |
-  #     ./scripts/publish-subgraph.sh -e prod -n voice-payments-graphql
-  #   label: ":graphql: Publishing subgraph for voice-payments-graphql"
-  #   agents:
-  #     queue: voice-infra-prod-v2
-  #   concurrency: 1
-  #   concurrency_group: "${BUILDKITE_PIPELINE_SLUG}/publish-prod"
