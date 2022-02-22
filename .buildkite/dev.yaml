@@ -33,21 +33,3 @@ steps:
     concurrency_group: "${BUILDKITE_PIPELINE_SLUG}/dev"
     agents: *default-agents
     plugins: *default-plugins
-
-  # - wait
-
-  # - command: |
-  #     ./scripts/publish-subgraph.sh -e dev -n voice-payments-graphql
-  #   label: ":graphql: Publishing subgraph for voice-payments-graphql"
-  #   agents:
-  #     queue: voice-infra-devel-v2
-  #   concurrency: 1
-  #   concurrency_group: "${BUILDKITE_PIPELINE_SLUG}/pubish-dev"
-
-  # - wait
-
-  # - trigger: voice-api-gateway-generated-types
-  #   label: ":typescript: Generate Supergraph Types"
-  #   build:
-  #     env:
-  #       TRIGGER_API: "${BUILDKITE_PIPELINE_SLUG}"
