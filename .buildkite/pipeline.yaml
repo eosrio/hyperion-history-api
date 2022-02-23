@@ -27,7 +27,7 @@ steps:
       buildkite-agent pipeline upload .buildkite/branches.yaml
     agents:
       queue: voice-infra-devel-v2
-    if: build.tag == null && build.pull_request.base_branch == "v3.3.5" && build.pull_request.id != null
+    if: build.tag == null && build.pull_request.base_branch == "v3.3.5." && build.pull_request.id != null
 
 # dev deploy
   - label: ":buildkite: Upload dev deploy pipeline"
@@ -36,7 +36,7 @@ steps:
       buildkite-agent pipeline upload .buildkite/dev.yaml
     agents:
       queue: voice-infra-devel-v2
-    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
+    if: build.tag == null && build.branch == "v3.3.5." && build.pull_request.id == null
     retry:
       manual:
         permit_on_passed: true
@@ -60,10 +60,10 @@ steps:
       ./scripts/nuke-branch.sh --namespace $${K8S_NAMESPACE}
     agents:
       queue: voice-infra-devel-v2
-    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null && build.message =~ /^Merge pull request \#/
+    if: build.tag == null && build.branch == "v3.3.5." && build.pull_request.id == null && build.message =~ /^Merge pull request \#/
 
   - block: ":rocket: Release!"
-    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
+    if: build.tag == null && build.branch == "v3.3.5." && build.pull_request.id == null
 
   - wait
 
@@ -78,7 +78,7 @@ steps:
       BUILDKITE_AGENT: voice-app-builder-v2
     agents: *default-agents
     plugins: *default-plugins
-    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
+    if: build.tag == null && build.branch == "v3.3.5." && build.pull_request.id == null
 
   - wait
 
@@ -88,7 +88,7 @@ steps:
       buildkite-agent pipeline upload .buildkite/prod.yaml
     agents:
       queue: voice-infra-prod-v2
-    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
+    if: build.tag == null && build.branch == "v3.3.5." && build.pull_request.id == null
     retry:
       manual:
         permit_on_passed: true
