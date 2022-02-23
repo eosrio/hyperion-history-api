@@ -14,7 +14,7 @@ WORKDIR /hyperion-history-api
 COPY . .
 COPY .npmrc.template .npmrc 
 RUN npm install  && \
-      ./hpm install -r https://github.com/eosrio/hyperion-explorer-plugin.git explorer && \
+      ./hpm install -r https://github.com/voice-social/hyperion-history-api.git explorer && \
       ./hpm enable explorer && \
       pm2 startup
 
