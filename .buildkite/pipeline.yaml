@@ -6,7 +6,7 @@ defaults:
         repository: https://github.com/voice-social/voice-buildkite-template.git
 
 steps:
-  
+
 # build docker images
   - label: ":docker: trigger docker build hyperion-history-api"
     command:
@@ -21,8 +21,6 @@ steps:
     if: build.tag == null
 
   - wait
-
-
 # branches deploy
   - label: ":buildkite: Upload branches deploy pipeline"
     command: |
@@ -68,6 +66,7 @@ steps:
     if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
 
   - wait
+
 
 # promote image
   - label: ":docker: trigger docker promote image"

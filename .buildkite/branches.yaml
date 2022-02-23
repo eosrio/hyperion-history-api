@@ -40,4 +40,4 @@ steps:
         --branch ${BUILDKITE_BRANCH} \
         --branch-deploy
     agents:
-      queue: "voice-main-dev-deployer"
+      queue: "voice-infra-devel-v2"

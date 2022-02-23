@@ -12,7 +12,7 @@
       "frameMax": "0x10000"
     },
     "elasticsearch": {
-      "protocol": "https",
+      "protocol": "{{ .Values.elasticsearch.protocol }}",
       "host": "{{ .Values.elasticsearch.host }}",
       "ingest_nodes": [
           "{{ .Values.elasticsearch.ingest_nodes }}"
@@ -21,7 +21,11 @@
       "pass": "{{ .Values.elasticsearch.pass }}"
     },
     "redis": {
+{{- if .Values.redis.branch  }}    
+      "host": "{{ .Values.redis.host }}.{{ .Namespace  }}.svc.cluster.local",
+      {{- else}}  
       "host": "{{ .Values.redis.host }}",
+{{- end }} 
       "port": "{{ .Values.redis.port }}"
     },
     "chains": {

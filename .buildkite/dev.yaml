@@ -9,7 +9,7 @@ steps:
 # helm deploy to dev
   - label: ":helm: Trigger Helm Deploy"
     command: |
-              export NO_PROXY="\${KUBERNETES_SERVICE_HOST}"
+      export NO_PROXY="\${KUBERNETES_SERVICE_HOST}"
       echo "--- :helm: Helm dry-run"
       if helm upgrade -i ${HELM_RELEASE} helm/ -f ${HELM_VALUE_FILE} -n ${HELM_RELEASE_NAMESPACE} --set release.tag=${HELM_RELEASE_TAG} --dry-run > /dev/null; then
         echo "dry-run completed OK."

@@ -20,7 +20,22 @@ services:
         targetPort: 7000
         protocol: TCP
         name: hyperion-api
-        nodePort: 30035
+        nodePort: 30032
+  voice-redis:
+    customLabels:
+      app.kubernetes.io/name: voice
+      app.kubernetes.io/instance: "voice-redis"
+      app.kubernetes.io/branch: "master"
+      app.kubernetes.io/authority: "voice-eos-redis"
+      app.kubernetes.io/component: "voice-hyperion-redis"
+    type: ClusterIP
+    customSelectors: 
+      app: "voice-redis"
+    ports:
+      - port: 6379
+        targetPort: 6379
+        protocol: TCP
+        name: voice-redis
 
   voice-hyperion-rabbit-mq:
     customLabels:
@@ -51,15 +66,13 @@ services:
 statefulsets:
   voice-hyperion-rabbit-mq:
     serviceName: rabbit-mq-headless
-    affinity:
-      nodeAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          nodeSelectorTerms:
-          - matchExpressions:
-            - key: cat
-              operator: In
-              values:
-              - data
+    tolerations:
+      - key: cloud.google.com/gke-preemptible
+        operator: Equal
+        effect: NoSchedule
+        value: "true"
+    nodeSelector:
+      cloud.google.com/gke-preemptible: "true"  
     customLabels:
       service: "voice-hyperion-rabbit-mq"
       app.kubernetes.io/name: voice
@@ -101,18 +114,41 @@ statefulsets:
           RABBITMQ_DEFAULT_PASS: voice
 
 deployments:
-  voice-eos-hyperion-api:
+  voice-redis:
     replicaCount: 1
     terminationGracePeriodSeconds: 60
-    affinity:
-      nodeAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          nodeSelectorTerms:
-          - matchExpressions:
-            - key: cat
-              operator: In
-              values:
-              - api
+    tolerations:
+      - key: cloud.google.com/gke-preemptible
+        operator: Equal
+        effect: NoSchedule
+        value: "true"
+    nodeSelector:
+      cloud.google.com/gke-preemptible: "true"        
+    containers:
+      voice-redis:
+        containerPorts:
+          - containerPort: 6379
+            protocol: TCP
+            name: voice-redis
+        image: "redis:5.0.9-alpine"
+        imagePullPolicy: IfNotPresent
+        extraVars:
+          http_proxy: http://proxy.service:3128
+          https_proxy: http://proxy.service:3128 
+          GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128 
+          GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128 
+          no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
+          GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
+
+  voice-eos-hyperion-api:
+    replicaCount: 1
+    tolerations:
+      - key: cloud.google.com/gke-preemptible
+        operator: Equal
+        effect: NoSchedule
+        value: "true"
+    nodeSelector:
+      cloud.google.com/gke-preemptible: "true"  
     volumes: 
     - name: eos-hyperion-api-config
       configMap:
@@ -152,8 +188,11 @@ deployments:
         command: ["bash", "run.sh","voice-api"]
         extraVars:
           http_proxy: http://proxy.service:3128
-          https_proxy: http://proxy.service:3128
-          no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal
+          https_proxy: http://proxy.service:3128 
+          GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128 
+          GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128 
+          no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
+          GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
         lifecycle:
           prestop:
             exec:
@@ -183,12 +222,14 @@ configmaps:
   connections:
     eos-hyperion-connections:
       elasticsearch:
-        host: elastic.service
-        ingest_nodes: elastic.service
+        protocol: http
+        host: elastic.service.us-west1-dev.vops.int
+        ingest_nodes: elastic.service.us-west1-dev.vops.int
         user: ""
         pass: ""     
       redis:
-        host: "172.31.32.12"
+        branch: true
+        host: "voice-redis"
         port: "6379"
       chains:
         name: "voice dev chain"

@@ -46,13 +46,17 @@
   "indexer": {
     "enabled":  {{ .Values.indexer }},
     "node_max_old_space_size": 4096,
+{{- if .Values.abi_scan  }}    
     "start_on": 0,
+{{- else}}  
+    "start_on": 1,
+{{- end }} 
     "stop_on": 0,
     "rewrite": false,
     "purge_queues": false,
 {{- if .Values.abi_scan  }}    
      "live_reader": false,
-    {{- else}}    
+{{- else}}    
     "live_reader": false,
 {{- end }} 
     "live_only_mode": false,
