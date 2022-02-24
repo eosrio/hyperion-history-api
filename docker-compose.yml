@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  redis:
+    container_name: redis
+    image: redis:5.0.9-alpine
+    restart: on-failure
+    networks:
+      - hyperion
+    depends_on:
+      - kibana
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:3.8.3-management
+    restart: on-failure
+    environment:
+      - RABBITMQ_DEFAULT_USER=username
+      - RABBITMQ_DEFAULT_PASS=password
+      - RABBITMQ_DEFAULT_VHOST=/hyperion
+    volumes:
+      - ./rabbitmq/data:/var/lib/rabbitmq
+    ports:
+      - 5672:5672
+      - 15672:15672
+    networks:
+      - hyperion
+    depends_on:
+      - elasticsearch
+
+  elasticsearch:
+    container_name: elasticsearch
+    image: elasticsearch:7.17.0
+    restart: on-failure
+    environment:
+      - discovery.type=single-node
+      - cluster.name=es-cluster
+      - node.name=es01
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - ELASTIC_USERNAME=elastic
+      - ELASTIC_PASSWORD=password
+    volumes:
+      - ./elasticsearch/data:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    networks:
+      - hyperion
+
+  kibana:
+    container_name: kibana
+    image: kibana:7.17.0
+    restart: on-failure
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=password
+    ports:
+      - 5601:5601
+    networks:
+      - hyperion
+    depends_on:
+      - elasticsearch
+
+  eosio-node:
+    container_name: eosio-node
+    image: eosrio/hyperion:eosio-2.0.5
+    volumes:
+      - ./eosio/data/:/home/eosio/data/
+      - ./eosio/config/:/home/eosio/config/
+      - ./docker/scripts/:/home/eosio/scripts/
+    ports:
+      - 8888:8888
+    networks:
+      - hyperion
+    command: bash -c "/home/eosio/scripts/run-nodeos.sh ${SCRIPT:-false} ${SNAPSHOT:-""}"
+
+  hyperion-indexer:
+    container_name: hyperion-indexer
+    build:
+      context: .
+      args: 
+        - NPM_AUTH_TOKEN=${NPM_AUTH_TOKEN}    
+    restart: on-failure
+    depends_on:
+      - elasticsearch
+      - redis
+      - rabbitmq
+      - eosio-node
+    volumes:
+      - ./connections.json:/hyperion-history-api/connections.json
+      - ./chains/voice.config.json:/hyperion-history-api/chains/voice.config.json
+    networks:
+      - hyperion
+    command:
+      - bash
+      - run.sh
+      - voice-indexer
+
+  hyperion-api:
+    container_name: hyperion-api
+    build: 
+      context: .
+      args: 
+        - NPM_AUTH_TOKEN=${NPM_AUTH_TOKEN}
+    restart: on-failure
+    ports:
+      - 7001:7000
+    depends_on:
+      - hyperion-indexer
+    volumes:
+      - ./connections.json:/hyperion-history-api/connections.json
+      - ./chains/voice.config.json:/hyperion-history-api/chains/voice.config.json
+    networks:
+      - hyperion
+    command:
+      - bash
+      - run.sh
+      - voice-api
+
+networks:
+  hyperion:
+    driver: bridge

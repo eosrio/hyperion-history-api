@@ -1,17 +1,19 @@
+{{/* Common connections.json */}}
+{{- define "hyperion.config" }}
 {
   "api": {
-    "enabled": true,
+    "enabled": {{ .Values.api }},
     "pm2_scaling": 1,
     "node_max_old_space_size": 1024,
-    "chain_name": "EXAMPLE Chain",
-    "server_addr": "127.0.0.1",
+    "chain_name": "voice",
+    "server_addr": "0.0.0.0",
     "server_port": 7000,
-    "server_name": "127.0.0.1:7000",
-    "provider_name": "Example Provider",
-    "provider_url": "https://example.com",
+    "server_name": "{{ .conf.serverName }}",
+    "provider_name": "{{ .conf.provider_name }}",
+    "provider_url": "{{ .conf.provider_url }}",
     "chain_api": "",
     "push_api": "",
-    "chain_logo_url": "",
+    "chain_logo_url": "{{ .conf.chain_logo_url }}",
     "enable_caching": true,
     "cache_life": 1,
     "limits": {
@@ -22,7 +24,7 @@
       "get_trx_actions": 200
     },
     "access_log": false,
-    "chain_api_error_log": false,
+    "chain_api_error_log": true,
     "custom_core_token": "",
     "enable_export_action": false,
     "disable_rate_limit": false,
@@ -32,25 +34,37 @@
     "tx_cache_expiration_sec": 3600,
     "v1_chain_cache": [
       {
-        "path": "get_block",
+        "path": "get_block", 
         "ttl": 3000
-      },
+        },
       {
         "path": "get_info",
-        "ttl": 500
+         "ttl": 500
       }
     ]
   },
   "indexer": {
-    "enabled": true,
+    "enabled":  {{ .Values.indexer }},
     "node_max_old_space_size": 4096,
+{{- if .Values.abi_scan  }}    
     "start_on": 0,
+{{- else}}  
+    "start_on": 1,
+{{- end }} 
     "stop_on": 0,
     "rewrite": false,
     "purge_queues": false,
+{{- if .Values.abi_scan  }}    
+     "live_reader": false,
+{{- else}}    
     "live_reader": false,
+{{- end }} 
     "live_only_mode": false,
+{{- if .Values.abi_scan  }}    
     "abi_scan_mode": true,
+{{- else}}    
+    "abi_scan_mode": false,
+{{- end }} 
     "fetch_block": true,
     "fetch_traces": true,
     "disable_reading": false,
@@ -59,13 +73,17 @@
     "disable_delta_rm": true
   },
   "settings": {
-    "preview": true,
-    "chain": "eos",
+    "preview": false,
+    "chain": "voice",
     "eosio_alias": "eosio",
-    "parser": "2.1",
+    "parser": "1.8",
+{{- if .Values.abi_scan  }}
+    "auto_stop": 100,
+{{- else}}    
     "auto_stop": 0,
+{{- end }}
     "index_version": "v1",
-    "debug": false,
+    "debug": true,
     "bp_logs": false,
     "bp_monitoring": false,
     "ipc_debug_rate": 60000,
@@ -78,7 +96,7 @@
     "custom_policy": "",
     "bypass_index_map": false,
     "index_partition_size": 10000000,
-    "es_replicas": 0
+    "es_replicas": {{ .conf.es_replicas }}
   },
   "blacklists": {
     "actions": [],
@@ -104,7 +122,7 @@
     "auto_scale_trigger": 20000,
     "block_queue_limit": 10000,
     "max_queue_limit": 100000,
-    "routing_mode": "round_robin",
+    "routing_mode": "heatmap",
     "polling_interval": 10000
   },
   "features": {
@@ -131,5 +149,12 @@
     "block": 100,
     "index": 500
   },
-  "plugins": {}
+  "plugins": {
+    "explorer": {
+      "enabled": true,
+      "chain_logo_url": "{{ .conf.chain_logo_url }}",
+      "server_name": "{{ .conf.serverName }}"
+    }
+  } 
 }
+{{- end }}

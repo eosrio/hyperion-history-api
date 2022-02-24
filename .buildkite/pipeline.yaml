@@ -1,0 +1,94 @@
+defaults:
+  agents: &default-agents
+    queue: voice-app-builder-v2
+  plugins: &default-plugins
+    - first-aml/git-clone:
+        repository: https://github.com/voice-social/voice-buildkite-template.git
+
+steps:
+
+# build docker images
+  - label: ":docker: trigger docker build hyperion-history-api"
+    command:
+      - "buildkite-agent pipeline upload voice-buildkite-template/docker/build/template.yaml"
+    env:
+      IMAGE: gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion
+      TAG: ${BUILDKITE_COMMIT}
+      DOCKERFILE: Dockerfile
+      BUILDKITE_AGENT: voice-app-builder-v2
+    agents: *default-agents
+    plugins: *default-plugins
+    if: build.tag == null
+
+  - wait
+# branches deploy
+  - label: ":buildkite: Upload branches deploy pipeline"
+    command: |
+      buildkite-agent pipeline upload .buildkite/branches.yaml
+    agents:
+      queue: voice-infra-devel-v2
+    if: build.tag == null && build.pull_request.base_branch == "v3.3.5" && build.pull_request.id != null
+
+# dev deploy
+  - label: ":buildkite: Upload dev deploy pipeline"
+    command: |
+      buildkite-agent meta-data set K8S_NAMESPACE "dev"
+      buildkite-agent pipeline upload .buildkite/dev.yaml
+    agents:
+      queue: voice-infra-devel-v2
+    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
+    retry:
+      manual:
+        permit_on_passed: true
+
+  - wait
+
+
+# delete branches namespace
+  - label: ":k8s: :bomb: Deleting branches env"
+    command: |
+      echo "--- :gear: Get branches namespace name"
+      # get full name and replace any slash(/), colon(:) and underscore(_) with dash(-)
+      K8S_NAMESPACE_FULL=$$(echo $BUILDKITE_PIPELINE_SLUG-$$(echo "$${BUILDKITE_MESSAGE}" | head -n 1 | cut -d\/ -f2-;) | tr /:_ -)
+      # cut it to 60 char and if it ends with "-" then cut it to 59 char
+      if echo $${BRANCH_NAMESPACE_FULL:0:60}-- | grep -- ---; then
+        K8S_NAMESPACE=$${K8S_NAMESPACE_FULL:0:59}
+      else
+        K8S_NAMESPACE=$${K8S_NAMESPACE_FULL:0:60}
+      fi
+      echo "--- :k8s: Remove branches namespace"
+      ./scripts/nuke-branch.sh --namespace $${K8S_NAMESPACE}
+    agents:
+      queue: voice-infra-devel-v2
+    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null && build.message =~ /^Merge pull request \#/
+
+  - block: ":rocket: Release!"
+    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
+
+  - wait
+
+
+# promote image
+  - label: ":docker: trigger docker promote image"
+    command:
+      - "buildkite-agent pipeline upload voice-buildkite-template/docker/promote/template.yaml"
+    env:
+      BASE_IMAGE: gcr.io/voice-ops-dev/voice/voice-payments-graphql:${BUILDKITE_COMMIT}
+      TARGET_IMAGE: gcr.io/voice-ops-prod/voice/voice-payments-graphql:${BUILDKITE_COMMIT}
+      BUILDKITE_AGENT: voice-app-builder-v2
+    agents: *default-agents
+    plugins: *default-plugins
+    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
+
+  - wait
+
+# prod deploy
+  - label: ":buildkite: Upload prod deploy pipeline"
+    command: |
+      buildkite-agent pipeline upload .buildkite/prod.yaml
+    agents:
+      queue: voice-infra-prod-v2
+    if: build.tag == null && build.branch == "v3.3.5" && build.pull_request.id == null
+    retry:
+      manual:
+        permit_on_passed: true

@@ -1,0 +1,43 @@
+defaults:
+  agents: &default-agents
+    queue: voice-app-builder-v2
+  plugins: &default-plugins
+    - first-aml/git-clone:
+        repository: https://github.com/voice-social/voice-buildkite-template.git
+
+steps:
+  - label: ":nerd_face: Trigger branches namespace name generation"
+    command:
+      - "buildkite-agent pipeline upload voice-buildkite-template/adhoc/branches-namespace/template.yaml"
+    agents: *default-agents
+    plugins: *default-plugins
+
+  - wait
+
+# delete k8s jobs
+  - label: ":k8s: Delete k8s Jobs"
+    command: |
+      echo "--- :bomb: Delete k8s jobs"
+      echo "Namespace: $(buildkite-agent meta-data get "K8S_NAMESPACE")"
+      export NO_PROXY="$${KUBERNETES_SERVICE_HOST}"
+      kubectl delete job --all --ignore-not-found=true -n $(buildkite-agent meta-data get "K8S_NAMESPACE")
+    agents:
+      queue: voice-infra-devel-v2
+
+  - wait
+
+  - label: ":helm: :kubernetes: Deploying branches"
+    command: |
+      echo "--- :gear: Get namespace from a meta-data"
+      BRANCH_NAMESPACE=$$(buildkite-agent meta-data get "K8S_NAMESPACE")
+      echo "Namespace: $(buildkite-agent meta-data get "K8S_NAMESPACE")"
+      echo "--- :k8s: Deploy branches"
+      ./scripts/deploy-skaffold.sh \
+        --namespace $${BRANCH_NAMESPACE} \
+        --authority ${BUILDKITE_PIPELINE_SLUG} \
+        --instance "branches" \
+        --image-tag ${BUILDKITE_COMMIT} \
+        --branch ${BUILDKITE_BRANCH} \
+        --branch-deploy
+    agents:
+      queue: "voice-infra-devel-v2"

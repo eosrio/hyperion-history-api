@@ -4,7 +4,6 @@ logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
 # Runtime data
 pids
 *.pid
@@ -41,6 +40,7 @@ api/explorer
 .ecosystem.config.js.swp
 
 chains/*
+!chains/voice.config.json
 !chains/example.config.json
 
 api/**/*.js
@@ -84,6 +84,7 @@ plugins/.state.json
 plugins/repos
 plugins/*.js
 .gitmodules
+eosio/data
 
 docker/redis/data
 docker/elasticsearch/data
@@ -91,3 +92,7 @@ docker/rabbitmq/data
 docker/eosio/data
 
 configuration_backups
+rabbitmq/data
+eosio
+elasticsearch
+skaffold.yaml

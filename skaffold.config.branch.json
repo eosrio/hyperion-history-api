@@ -1,0 +1,26 @@
+{
+  "name": "hyperion-history-api",
+  "services": [
+    {
+      "name": "hyperion-history-api",
+      "chartPath": "helm/",
+      "upgradeOnChange": true,
+      "createNamespace": true,
+      "wait": false,
+      "valuesFiles": ["helm/values/branches.yaml"],
+      "setValueTemplates": {
+        "tag": "{{ .IMAGE_TAG }}"
+      }
+    }
+  ],
+  "helm": {
+    "flags": {
+      "install": [
+        "--timeout=1200s"
+      ],
+      "upgrade": [
+        "--timeout=1200s"
+      ]
+    }
+  }
+}
