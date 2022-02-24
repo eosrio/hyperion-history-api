@@ -15,7 +15,8 @@ steps:
         exit 1;
       fi
       echo "--- :helm: Helm deploy"
-      helm upgrade -i $${HELM_RELEASE} helm -f $${HELM_VALUE_FILE} -n $${HELM_RELEASE_NAMESPACE} --set tag=$${HELM_RELEASE_TAG})
+      helm upgrade -i $${HELM_RELEASE} helm -f $${HELM_VALUE_FILE} -n $${HELM_RELEASE_NAMESPACE} --set tag=$${HELM_RELEASE_TAG}
+      
     env:
       HELM_RELEASE: voice-eos-hyperion
       HELM_RELEASE_NAMESPACE: dev
