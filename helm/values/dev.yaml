@@ -132,7 +132,7 @@ deployments:
     lifecycle:
           prestop:
             exec:
-              command: ["bash","scripts/get-secrets.sh",voice-indexer""]
+              command: ["bash","stop.sh",voice-indexer""]
     containers:
       voice-eos-hyperion-indexer:
         containerPorts:
@@ -141,7 +141,7 @@ deployments:
             name: hyperion-api
         image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
         imagePullPolicy: Always
-        command: ["bash", "run.sh","voice-indexer"]
+        command: ["bash", "scripts/get-secrets.sh","voice-indexer"]
         extraVars:
           http_proxy: http://proxy.service:3128
           https_proxy: http://proxy.service:3128 
@@ -222,7 +222,7 @@ deployments:
         resources:
           requests:
             cpu: "250m"
-            memory: "256Mi"
+            memory: "256Mi" 
           limits:
             cpu: "250m"
             memory: "256Mi"
