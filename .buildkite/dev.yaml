@@ -1,16 +1,21 @@
+defaults:
+  agents: &default-agents
+    queue: voice-main-dev-deployer
+ 
+
 steps:
 # helm deploy to dev
   - label: ":helm: Trigger Helm Deploy"
     command: |
       export NO_PROXY="\${KUBERNETES_SERVICE_HOST}"
       echo "--- :helm: Helm dry-run"
-      if helm upgrade -i  helm/ -f ${HELM_VALUE_FILE} -n ${HELM_RELEASE_NAMESPACE} --set tag=${HELM_RELEASE_TAG} --dry-run > /dev/null; then
+      if helm upgrade -i $${HELM_RELEASE} helm -f $${HELM_VALUE_FILE} -n $${HELM_RELEASE_NAMESPACE} --set tag=$${HELM_RELEASE_TAG} --dry-run > /dev/null; then
         echo "dry-run completed OK."
       else
         exit 1;
       fi
       echo "--- :helm: Helm deploy"
-      helm upgrade -i helm/ -f ${HELM_VALUE_FILE} -n ${HELM_RELEASE_NAMESPACE} --set tag=${HELM_RELEASE_TAG}
+      helm upgrade -i $${HELM_RELEASE} helm -f $${HELM_VALUE_FILE} -n $${HELM_RELEASE_NAMESPACE} --set tag=$${HELM_RELEASE_TAG}
       echo "--- :helm: Clean up voice helm repo"
       helm repo remove voice-helm-repo
       echo "--- :codeclimate: Upload Deployment to codeclimate"
@@ -24,5 +29,4 @@ steps:
       BUILDKITE_AGENT: voice-main-dev-deployer
     concurrency: 1
     concurrency_group: "${BUILDKITE_PIPELINE_SLUG}/dev"
-    agents:
-        queue: voice-main-dev-deployer
+    agents: *default-agents
