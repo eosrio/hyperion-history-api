@@ -1,6 +1,6 @@
 defaults:
   agents: &default-agents
-    queue: voice-app-builder-v2
+    queue: voice-main-dev-deployer
   plugins: &default-plugins
     - first-aml/git-clone:
         repository: https://github.com/voice-social/voice-buildkite-template.git
