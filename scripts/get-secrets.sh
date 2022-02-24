@@ -1,1 +1,3 @@
-jq '.indexer.start_on = 0 | .indexer.abi_scan_mode = true | .indexer.auto_stop = 0' chains/voice.config.json > chains/temp 
+jq --arg elastic_user $elastic_user --arg  elastic_pass $elastic_pass '.elasticsearch.user = $elastic_user | .elasticsearch.pass =  $elastic_pass ' connections.json >> connections.json
+
+# ./run.sh $@
