@@ -15,10 +15,7 @@ steps:
         exit 1;
       fi
       echo "--- :helm: Helm deploy"
-      helm upgrade -i $${HELM_RELEASE} helm -f $${HELM_VALUE_FILE} -n $${HELM_RELEASE_NAMESPACE} --set tag=$${HELM_RELEASE_TAG}
-      echo "--- :codeclimate: Upload Deployment to codeclimate"
-      VELOCITY_DEPLOYMENT_TOKEN=$$(cat /root/.codeclimate/token)
-      curl -d "token=$${VELOCITY_DEPLOYMENT_TOKEN}" -d "revision=$${BUILDKITE_COMMIT}" -d "repository_url=$${BUILDKITE_REPO}" -d "branch=$${BUILDKITE_BRANCH}" -d "environment=${HELM_RELEASE_NAMESPACE}" -d "version=$${BUILDKITE_COMMIT}" https://velocity.codeclimate.com/deploys
+      helm upgrade -i $${HELM_RELEASE} helm -f $${HELM_VALUE_FILE} -n $${HELM_RELEASE_NAMESPACE} --set tag=$${HELM_RELEASE_TAG})
     env:
       HELM_RELEASE: voice-eos-hyperion
       HELM_RELEASE_NAMESPACE: dev
