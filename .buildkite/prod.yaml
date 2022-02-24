@@ -1,9 +1,6 @@
 defaults:
   agents: &default-agents
     queue: voice-app-builder-v2
-  plugins: &default-plugins
-    - first-aml/git-clone:
-        repository: https://github.com/voice-social/voice-buildkite-template.git
 
 steps:
 # helm deploy to prod
@@ -11,18 +8,13 @@ steps:
     command: |
       export NO_PROXY="\${KUBERNETES_SERVICE_HOST}"
       echo "--- :helm: Helm dry-run"
-      if helm upgrade -i ${HELM_RELEASE} helm/ -f ${HELM_VALUE_FILE} -n ${HELM_RELEASE_NAMESPACE} --set release.tag=${HELM_RELEASE_TAG} --dry-run > /dev/null; then
+      if helm upgrade -i $${HELM_RELEASE} helm/ -f $${HELM_VALUE_FILE} -n $${HELM_RELEASE_NAMESPACE} --set release.tag=$${HELM_RELEASE_TAG} --dry-run > /dev/null; then
         echo "dry-run completed OK."
       else
         exit 1;
       fi
       echo "--- :helm: Helm deploy"
-      helm upgrade -i ${HELM_RELEASE} helm/ -f ${HELM_VALUE_FILE} -n ${HELM_RELEASE_NAMESPACE} --set release.tag=${HELM_RELEASE_TAG}
-      echo "--- :helm: Clean up voice helm repo"
-      helm repo remove voice-helm-repo
-      echo "--- :codeclimate: Upload Deployment to codeclimate"
-      VELOCITY_DEPLOYMENT_TOKEN=$$(cat /root/.codeclimate/token)
-      curl -d "token=$${VELOCITY_DEPLOYMENT_TOKEN}" -d "revision=$${BUILDKITE_COMMIT}" -d "repository_url=$${BUILDKITE_REPO}" -d "branch=$${BUILDKITE_BRANCH}" -d "environment=${HELM_RELEASE_NAMESPACE}" -d "version=$${BUILDKITE_COMMIT}" https://velocity.codeclimate.com/deploys    
+      helm upgrade -i ${HELM_RELEASE} helm/ -f ${HELM_VALUE_FILE} -n ${HELM_RELEASE_NAMESPACE} --set release.tag=${HELM_RELEASE_TAG} 
     env:
       HELM_RELEASE: voice-payments-graphql
       HELM_RELEASE_NAMESPACE: prod
@@ -32,4 +24,3 @@ steps:
     concurrency: 1
     concurrency_group: "${BUILDKITE_PIPELINE_SLUG}/prod"
     agents: *default-agents
-    plugins: *default-plugins

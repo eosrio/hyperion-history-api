@@ -57,7 +57,7 @@
 {{- if .Values.abi_scan  }}    
      "live_reader": false,
 {{- else}}    
-    "live_reader": false,
+    "live_reader": true,
 {{- end }} 
     "live_only_mode": false,
 {{- if .Values.abi_scan  }}    
