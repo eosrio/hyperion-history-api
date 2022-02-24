@@ -14,6 +14,9 @@ import {HyperionModuleLoader} from "../modules/loader";
 import {extendedActions} from "./routes/v2-history/get_actions/definitions";
 import {io, Socket} from "socket.io-client";
 import {CacheManager} from "./helpers/cacheManager";
+import * as LaunchDarkly from 'launchdarkly-node-server-sdk';
+import { launchDarklyConfig } from "../settings";
+import { LaunchDarklyClient } from "./shared/featureFlag/LaunchDarklyClient";
 
 import {bootstrap} from 'global-agent';
 bootstrap();
@@ -145,6 +148,15 @@ class HyperionApiServer {
         this.addGenericTypeParsing();
     }
 
+    private initLaunchDarkly(): LaunchDarklyClient {
+        console.log('Initializing LaunchDarkly client')
+
+        const launchDarkly = LaunchDarkly.init(launchDarklyConfig.sdkKey.trim())
+        const featureFlagClient = new LaunchDarklyClient(launchDarkly)
+
+        return featureFlagClient
+    }
+
     activateStreaming() {
         console.log('Importing stream module');
         import('./socketManager').then((mod) => {
@@ -198,7 +210,9 @@ class HyperionApiServer {
             }
         }
 
-        registerRoutes(this.fastify);
+        const featureFlagClient = this.initLaunchDarkly()
+
+        registerRoutes(this.fastify, featureFlagClient);
 
         // register documentation when ready
         this.fastify.ready().then(async () => {

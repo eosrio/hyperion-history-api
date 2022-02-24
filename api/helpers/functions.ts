@@ -2,6 +2,7 @@ import {createHash} from "crypto";
 import * as _ from "lodash";
 import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethods} from "fastify";
 import got from "got";
+import { FeatureFlagClient } from "../shared/featureFlag/FeatureFlagClient";
 
 export function extendResponseSchema(responseProps: any) {
     const props = {
@@ -117,6 +118,22 @@ export function addApiRoute(
     });
 }
 
+export function addFeatureFlaggedApiRoute(
+	fastifyInstance: FastifyInstance,
+	method: HTTPMethods | HTTPMethods[],
+	routeName: string,
+	featureFlagClient: FeatureFlagClient,
+	routeBuilder: (fastify: FastifyInstance, route: string, featureFlagClient: FeatureFlagClient) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>,
+    schema: FastifySchema
+) {
+	fastifyInstance.route({
+		url: '/' + routeName,
+		method,
+		handler: routeBuilder(fastifyInstance, routeName, featureFlagClient),
+		schema
+	});
+}
+
 export async function getCachedResponse(server: FastifyInstance, route: string, key: any) {
     const chain = server.manager.chain;
     let resp, hash;
@@ -163,8 +180,12 @@ const defaultRouteCacheMap = {
 }
 
 export async function timedQuery(
-    queryFunction: (fastify: FastifyInstance, request: FastifyRequest) => Promise<any>,
-    fastify: FastifyInstance, request: FastifyRequest, route: string): Promise<any> {
+    queryFunction: (fastify: FastifyInstance, request: FastifyRequest, featureFlagClient?: FeatureFlagClient) => Promise<any>,
+    fastify: FastifyInstance,
+    request: FastifyRequest,
+    route: string,
+    featureFlagClient?: FeatureFlagClient,
+): Promise<any> {
 
     // get reference time in nanoseconds
     const t0 = process.hrtime.bigint();
@@ -183,7 +204,7 @@ export async function timedQuery(
     }
 
     // call query function
-    const response = await queryFunction(fastify, request);
+    const response = await queryFunction(fastify, request, featureFlagClient);
 
     // save response to cash
     if (hash) {
