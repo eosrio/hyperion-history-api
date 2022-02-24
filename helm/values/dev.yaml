@@ -132,7 +132,7 @@ deployments:
     lifecycle:
           prestop:
             exec:
-              command: ["bash","stop.sh",voice-indexer""]
+              command: ["bash","stop.sh","voice-indexer"]
     containers:
       voice-eos-hyperion-indexer:
         containerPorts:
