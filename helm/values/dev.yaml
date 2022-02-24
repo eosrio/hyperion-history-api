@@ -150,7 +150,7 @@ deployments:
           no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
           GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
           elastic_user: elastic
-          elastic_pass: vault:secret/devops/elastic/#ELASTIC_PASSWORD
+          elastic_pass: vault:secret/devops/elasticsearch/#ELASTIC_PASSWORD
         resources:
           requests:
             cpu: "1500m"
@@ -214,7 +214,7 @@ deployments:
           no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
           GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
           elastic_user: elastic
-          elastic_pass: vault:secret/devops/elastic/#ELASTIC_PASSWORD
+          elastic_pass: vault:secret/devops/elasticsearch/#ELASTIC_PASSWORD
         lifecycle:
           prestop:
             exec:
