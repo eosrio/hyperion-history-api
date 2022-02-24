@@ -1,6 +1,8 @@
 import {timedQuery} from "../../../helpers/functions";
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {getSkipLimit} from "../../v2-history/get_actions/functions";
+import { FeatureFlagClient } from "../../../shared/featureFlag/FeatureFlagClient";
+import { FeatureFlagName } from "../../../featureFlags";
 
 
 async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
@@ -73,8 +75,27 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
     return response;
 }
 
-export function getTokensHandler(fastify: FastifyInstance, route: string) {
+export function getTokensHandler(fastify: FastifyInstance, route: string, featureFlagClient: FeatureFlagClient) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-        reply.send(await timedQuery(getTokens, fastify, request, route));
+        const isQueryingTokenValueEnabled = await featureFlagClient.variation(FeatureFlagName.IsQueryingTokenValueEnabled)
+
+        if (!isQueryingTokenValueEnabled) {
+            const query: any = request.query;
+            const response = {
+                'account': query.account,
+                'tokens': [
+                {
+                    symbol: null,
+                    precision: null,
+                    amount: null,
+                    contract: null
+                }],
+                'error': 'Accessing this route is forbidden'
+            }
+
+            reply.status(200).send(response)
+        } else {
+            reply.send(await timedQuery(getTokens, fastify, request, route));
+        }
     }
 }

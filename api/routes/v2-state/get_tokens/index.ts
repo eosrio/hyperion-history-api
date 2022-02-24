@@ -1,5 +1,5 @@
 import {FastifyInstance} from "fastify";
-import {addApiRoute, extendQueryStringSchema, getRouteName} from "../../../helpers/functions";
+import {addFeatureFlaggedApiRoute, extendQueryStringSchema, getRouteName} from "../../../helpers/functions";
 import {getTokensHandler} from "./get_tokens";
 
 export default function (fastify: FastifyInstance, opts: any, next) {
@@ -16,10 +16,11 @@ export default function (fastify: FastifyInstance, opts: any, next) {
             }
         }, ["account"])
     };
-    addApiRoute(
+    addFeatureFlaggedApiRoute(
         fastify,
         'GET',
         getRouteName(__filename),
+        opts.featureFlagClient,
         getTokensHandler,
         schema
     );

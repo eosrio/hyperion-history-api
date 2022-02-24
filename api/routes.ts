@@ -54,7 +54,7 @@ export function registerRoutes(server: FastifyInstance, featureFlagClient?: Feat
     // Register fastify api routes
     addRoute(server, 'v2', '/v2');
     addRoute(server, 'v2-history', '/v2/history');
-    addRoute(server, 'v2-state', '/v2/state');
+    addRoute(server, 'v2-state', '/v2/state', featureFlagClient);
     addRoute(server, 'v2-stats', '/v2/stats');
 
     // legacy routes
