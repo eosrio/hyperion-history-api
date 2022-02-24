@@ -224,6 +224,8 @@ deployments:
           elastic_pass: {{ .Values.config.elastic_pass}}
           elastic_host: {{ .Values.config.elastic_host}}
           server_name: {{ .Values.config.server_name}}
+          # LaunchDarkly Config
+          LAUNCHDARKLY_SDK_KEY: "vault:secret/data/applications/devel#LAUNCHDARKLY_SDK_KEY"
         lifecycle:
           preStop:
             exec:
