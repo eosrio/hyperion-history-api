@@ -51,6 +51,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 			accountInfo = await fastify.eosjs.rpc.get_account(query.account);
 		} catch (e) {
 			throw new Error("account not found");
+			console.log(e)
 		}
 		if (accountInfo) {
 			try {

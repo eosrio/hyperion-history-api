@@ -42,7 +42,7 @@ api/explorer
 chains/*
 !chains/voice.config.json
 !chains/example.config.json
-
+skaffold-build
 api/**/*.js
 api/**/*.js.map
 api/tests
