@@ -3,7 +3,7 @@
 {
   "api": {
     "enabled": {{ .Values.api }},
-    "pm2_scaling": 1,
+    "pm2_scaling": 1, 
     "node_max_old_space_size": 1024,
     "chain_name": "voice",
     "server_addr": "172.0.0.1",
