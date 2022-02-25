@@ -131,11 +131,6 @@ deployments:
             name: voice-redis
         image: "redis:5.0.9-alpine"
         imagePullPolicy: IfNotPresent
-        extraVars:
-          http_proxy: http://proxy.service:3128
-          https_proxy: http://proxy.service:3128 
-          no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
-
   voice-eos-hyperion-api:
     replicaCount: 1
     tolerations:
