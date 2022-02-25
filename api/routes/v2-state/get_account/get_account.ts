@@ -22,7 +22,6 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
         response.account = await fastify.eosjs.rpc.get_account(account);
     } catch (e) {
         throw new Error("Account not found!");
-        console.log(e)
     }
 
     const localApi = `http://${fastify.manager.config.api.server_addr}:${fastify.manager.config.api.server_port}/v2`;
