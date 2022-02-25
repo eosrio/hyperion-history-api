@@ -6,7 +6,7 @@
     "pm2_scaling": 1,
     "node_max_old_space_size": 1024,
     "chain_name": "voice",
-    "server_addr": "0.0.0.0",
+    "server_addr": "172.0.0.1",
     "server_port": 7000,
     "server_name": "{{ .conf.serverName }}",
     "provider_name": "{{ .conf.provider_name }}",
