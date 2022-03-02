@@ -5,14 +5,14 @@ config:
   provider_name: "voice"
   ## this only take the image form URL
   chain_logo_url: "https://storage.googleapis.com/voice_logo/logo.ico"
-  es_replicas: 1 
+  es_replicas: 1
 
 services:
   voice-eos-hyperion:
     customLabels:
       app: "voice-eos-hyperion-api"
       app.kubernetes.io/instance: "voice-eos-hyperion-api"
-    customSelectors: 
+    customSelectors:
       app: "voice-eos-hyperion-api"
     type: NodePort
     ports:
@@ -31,7 +31,7 @@ services:
       app.kubernetes.io/authority: "voice-eos-hyperion"
       app.kubernetes.io/component: "voice-hyperion-rabbit-mq"
     type: ClusterIP
-    customSelectors: 
+    customSelectors:
       service: "voice-hyperion-rabbit-mq"
     ports:
       - port: 5672
@@ -113,7 +113,7 @@ deployments:
               operator: In
               values:
               - hyperion-indexer
-    volumes: 
+    volumes:
     - name: eos-hyperion-indexer-config
       configMap:
         name:  eos-hyperion-indexer-config
@@ -144,9 +144,9 @@ deployments:
         command: ["bash", "scripts/get-secrets.sh","voice-indexer"]
         extraVars:
           http_proxy: http://proxy.service:3128
-          https_proxy: http://proxy.service:3128 
-          GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128 
-          GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128 
+          https_proxy: http://proxy.service:3128
+          GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128
+          GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128
           no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
           GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
           elastic_user: elastic
@@ -162,7 +162,7 @@ deployments:
           - name: eos-hyperion-indexer-config
             mountPath: hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
-  
+
   voice-eos-hyperion-api:
     replicaCount: 1
     terminationGracePeriodSeconds: 60
@@ -175,13 +175,13 @@ deployments:
               operator: In
               values:
               - api
-    volumes: 
+    volumes:
     - name: eos-hyperion-api-config
       configMap:
         name: eos-hyperion-api-config
     - name: eos-hyperion-connections
       configMap:
-        name:  eos-hyperion-connections        
+        name:  eos-hyperion-connections
     initContainers:
       check-hyperion-rabbit-mq-health:
         extraVars:
@@ -208,13 +208,13 @@ deployments:
         command: ["bash", "scripts/get-secrets.sh","voice-api"]
         extraVars:
           http_proxy: http://proxy.service:3128
-          https_proxy: http://proxy.service:3128 
-          GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128 
-          GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128 
+          https_proxy: http://proxy.service:3128
+          GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128
+          GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128
           no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
           GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
           elastic_user: elastic
-          elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD 
+          elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
         lifecycle:
           prestop:
             exec:
@@ -222,7 +222,7 @@ deployments:
         resources:
           requests:
             cpu: "250m"
-            memory: "256Mi" 
+            memory: "256Mi"
           limits:
             cpu: "250m"
             memory: "256Mi"
@@ -237,39 +237,288 @@ deployments:
             readOnly: false
 hpas:
   voice-eos-hyperion-api:
-    minReplicas: 1 
+    minReplicas: 1
     maxReplicas: 3
     targetCPUUtilizationPercentage: 80
+
 configmaps:
-  config:
-    eos-hyperion-indexer-config:
-## turn the abi true only on the 1st run or if the elastic data has been wiped 
-      abi_scan: false
-      indexer: true
-      api: false
-    eos-hyperion-api-config:
-      indexer: false
-      api: true
-  connections:
-    eos-hyperion-connections:
-      elasticsearch:
-        protocol: https
-        host: e5c2cc213555467384fd009fce583f3d.psc.us-west1.gcp.cloud.es.io:9243
-        ingest_nodes: e5c2cc213555467384fd009fce583f3d.psc.us-west1.gcp.cloud.es.io:9243
-        user: ""
-        pass: ""     
-      redis:
-        host: "172.31.32.12"
-        port: "6379"
-      chains:
-        name: "voice dev chain"
-        chain_id: "53b1b94e5159791c1431eda07f2e6a3679bf5207e4039cf3e3f87a36e16bae2d"
-        http: "http://chain-api-lb-dev.service.b-oma-devel.vops.int:8888"
-        ship: "ws://ship-lb-dev.service.b-oma-devel.vops.int:8080"
-        WS_ROUTER_PORT: 7001
-        WS_ROUTER_HOST: "127.0.0.1"
-      amqp: 
-        service: voice-hyperion-rabbit-mq
-        user: "voice"
-        pass: "voice"
-        vhost: "voice"
+  eos-hyperion-config-abi:
+    toJson: true
+    data:
+      voice.config.json:
+        api:
+          enabled: true
+          pm2_scaling: 1
+          node_max_old_space_size: 1024
+          chain_name: voice
+          server_addr: 0.0.0.0
+          server_port: 7000
+          server_name: "{{ .Values.config.serverName }}"
+          provider_name: "{{ .Values.config.provider_name }}"
+          provider_url:  "{{ .Values.config.provider_url }}"
+          chain_api: ''
+          push_api: ''
+          chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
+          enable_caching: true
+          cache_life: 1
+          limits:
+            get_actions: 1000
+            get_voters: 100
+            get_links: 1000
+            get_deltas: 1000
+            get_trx_actions: 200
+          access_log: false
+          chain_api_error_log: true
+          custom_core_token: ''
+          enable_export_action: false
+          disable_rate_limit: false
+          rate_limit_rpm: 1000
+          rate_limit_allow: []
+          disable_tx_cache: false
+          tx_cache_expiration_sec: 3600
+          v1_chain_cache:
+          - path: get_block
+            ttl: 3000
+          - path: get_info
+            ttl: 500
+        indexer:
+          enabled: true
+          node_max_old_space_size: 4096
+          start_on: 1
+          stop_on: 0
+          rewrite: false
+          purge_queues: false
+          live_reader: true
+          live_only_mode: false
+          abi_scan_mode: false
+          fetch_block: true
+          fetch_traces: true
+          disable_reading: false
+          disable_indexing: false
+          process_deltas: true
+          disable_delta_rm: true
+        settings:
+          preview: false
+          chain: voice
+          eosio_alias: eosio
+          parser: '1.8'
+          auto_stop: 0
+          index_version: v1
+          debug: true
+          bp_logs: false
+          bp_monitoring: false
+          ipc_debug_rate: 60000
+          allow_custom_abi: false
+          rate_monitoring: true
+          max_ws_payload_mb: 256
+          ds_profiling: false
+          auto_mode_switch: false
+          hot_warm_policy: false
+          custom_policy: ''
+          bypass_index_map: false
+          index_partition_size: 10000000
+          es_replicas: 1
+        blacklists:
+          actions: []
+          deltas: []
+        whitelists:
+          actions: []
+          deltas: []
+          max_depth: 10
+          root_only: false
+        scaling:
+          readers: 1
+          ds_queues: 1
+          ds_threads: 1
+          ds_pool_size: 1
+          indexing_queues: 1
+          ad_idx_queues: 1
+          dyn_idx_queues: 1
+          max_autoscale: 4
+          batch_size: 5000
+          resume_trigger: 5000
+          auto_scale_trigger: 20000
+          block_queue_limit: 10000
+          max_queue_limit: 100000
+          routing_mode: round_robin
+          polling_interval: 10000
+        features:
+          streaming:
+            enable: false
+            traces: false
+            deltas: false
+          tables:
+            proposals: true
+            accounts: true
+            voters: true
+          index_deltas: true
+          index_transfer_memo: false
+          index_all_deltas: true
+          deferred_trx: false
+          failed_trx: false
+          resource_limits: false
+          resource_usage: false
+        prefetch:
+          read: 50
+          block: 100
+          index: 500
+        plugins:
+          explorer:
+            enabled: true
+            chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
+            server_name: explorer.dev.vops.co
+  eos-hyperion-config:
+    toJson: true
+    data:
+      voice.config.json:
+        api:
+          enabled: true
+          pm2_scaling: 1
+          node_max_old_space_size: 1024
+          chain_name: voice
+          server_addr: 0.0.0.0
+          server_port: 7000
+          server_name: "{{ .Values.config.serverName }}"
+          provider_name: " {{ .Values.config.provider_name }}"
+          provider_url:  "{{ .Values.config.provider_url }}"
+          chain_api: ''
+          push_api: ''
+          chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
+          enable_caching: true
+          cache_life: 1
+          limits:
+            get_actions: 1000
+            get_voters: 100
+            get_links: 1000
+            get_deltas: 1000
+            get_trx_actions: 200
+          access_log: false
+          chain_api_error_log: true
+          custom_core_token: ''
+          enable_export_action: false
+          disable_rate_limit: false
+          rate_limit_rpm: 1000
+          rate_limit_allow: []
+          disable_tx_cache: false
+          tx_cache_expiration_sec: 3600
+          v1_chain_cache:
+          - path: get_block
+            ttl: 3000
+          - path: get_info
+            ttl: 500
+        indexer:
+          enabled: true
+          node_max_old_space_size: 4096
+          start_on: 1
+          stop_on: 0
+          rewrite: false
+          purge_queues: false
+          live_reader: true
+          live_only_mode: false
+          abi_scan_mode: false
+          fetch_block: true
+          fetch_traces: true
+          disable_reading: false
+          disable_indexing: false
+          process_deltas: true
+          disable_delta_rm: true
+        settings:
+          preview: false
+          chain: voice
+          eosio_alias: eosio
+          parser: '1.8'
+          auto_stop: 0
+          index_version: v1
+          debug: true
+          bp_logs: false
+          bp_monitoring: false
+          ipc_debug_rate: 60000
+          allow_custom_abi: false
+          rate_monitoring: true
+          max_ws_payload_mb: 256
+          ds_profiling: false
+          auto_mode_switch: false
+          hot_warm_policy: false
+          custom_policy: ''
+          bypass_index_map: false
+          index_partition_size: 10000000
+          es_replicas: 1
+        blacklists:
+          actions: []
+          deltas: []
+        whitelists:
+          actions: []
+          deltas: []
+          max_depth: 10
+          root_only: false
+        scaling:
+          readers: 1
+          ds_queues: 1
+          ds_threads: 1
+          ds_pool_size: 1
+          indexing_queues: 1
+          ad_idx_queues: 1
+          dyn_idx_queues: 1
+          max_autoscale: 4
+          batch_size: 5000
+          resume_trigger: 5000
+          auto_scale_trigger: 20000
+          block_queue_limit: 10000
+          max_queue_limit: 100000
+          routing_mode: round_robin
+          polling_interval: 10000
+        features:
+          streaming:
+            enable: false
+            traces: false
+            deltas: false
+          tables:
+            proposals: true
+            accounts: true
+            voters: true
+          index_deltas: true
+          index_transfer_memo: false
+          index_all_deltas: true
+          deferred_trx: false
+          failed_trx: false
+          resource_limits: false
+          resource_usage: false
+        prefetch:
+          read: 50
+          block: 100
+          index: 500
+        plugins:
+            explorer:
+              enabled: true
+              chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
+              server_name: explorer.dev.vops.co
+  connection:
+    toJson: true
+    data:
+      connection.json:
+        amqp:
+          host: voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local:5672
+          api: voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local:15672
+          protocol: http
+          user: voice
+          pass: voice
+          vhost: voice
+          frameMax: '0x10000'
+        elasticsearch:
+          protocol: https
+          host: e5c2cc213555467384fd009fce583f3d.psc.us-west1.gcp.cloud.es.io:9243
+          ingest_nodes:
+          - e5c2cc213555467384fd009fce583f3d.psc.us-west1.gcp.cloud.es.io:9243
+          user:
+          pass:
+        redis:
+          host: "172.31.32.12"
+          port: '6379'
+        chains:
+          voice:
+            name: "voice dev chain"
+            chain_id: "53b1b94e5159791c1431eda07f2e6a3679bf5207e4039cf3e3f87a36e16bae2d"
+            http: "http://chain-api-lb-dev.service.b-oma-devel.vops.int:8888"
+            ship: "ws://ship-lb-dev.service.b-oma-devel.vops.int:8080"
+            WS_ROUTER_PORT: 7001
+            WS_ROUTER_HOST: "127.0.0.1"

@@ -3,7 +3,7 @@
   "services": [
     {
       "name": "hyperion-history-api",
-      "chartPath": "helm/",
+      "remoteChart": "voice-helm-repo/voice-chart",
       "upgradeOnChange": true,
       "createNamespace": true,
       "wait": false,
