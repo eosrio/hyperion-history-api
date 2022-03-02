@@ -1,0 +1,7 @@
+helm/
+skaffold-build/
+smart-contract-deployer/
+orm-deployer/
+node_modules/
+elasticsearch/
+skaffold*

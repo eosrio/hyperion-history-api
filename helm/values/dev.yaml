@@ -115,9 +115,9 @@ deployments:
               values:
               - hyperion-indexer
     volumes:
-    - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+    - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
       configMap:
-        name:  "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+        name:  "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
     - name: eos-hyperion-connections
       configMap:
         name:  eos-hyperion-connections
@@ -131,7 +131,7 @@ deployments:
         imagePullPolicy: Always
         command: ['bash','check-rabbit-mq-health.sh','voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local']
     lifecycle:
-          prestop:
+          preStop:
             exec:
               command: ["bash","stop.sh","voice-indexer"]
     containers:
@@ -160,7 +160,7 @@ deployments:
           - name: eos-hyperion-connections
             mountPath: /tmp/connections.json
             subPath: connections.json
-          - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+          - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
             mountPath: hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
 
@@ -177,9 +177,9 @@ deployments:
               values:
               - api
     volumes:
-    - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+    - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
       configMap:
-        name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+        name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
     - name: eos-hyperion-connections
       configMap:
         name:  eos-hyperion-connections
@@ -217,9 +217,9 @@ deployments:
           elastic_user: elastic
           elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
         lifecycle:
-          prestop:
+          preStop:
             exec:
-              command: ["bash","stop.sh",voice-api""]
+              command: ["bash","stop.sh","voice-api"]
         resources:
           requests:
             cpu: "250m"
@@ -232,7 +232,7 @@ deployments:
             mountPath: /tmp/connections.json
             subPath: connections.json
             readOnly: false
-          - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+          - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
             mountPath: /hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
             readOnly: false

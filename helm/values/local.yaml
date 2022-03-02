@@ -22,8 +22,27 @@ services:
         targetPort: 7000
         protocol: TCP
         name: hyperion-api
-        nodePort: 30035
-
+  voice-redis:
+    customLabels:
+      app.kubernetes.io/name: voice
+      app.kubernetes.io/instance: "voice-redis"
+      app.kubernetes.io/branch: "master"
+      app.kubernetes.io/authority: "voice-eos-redis"
+      app.kubernetes.io/component: "voice-hyperion-redis"
+    type: ClusterIP
+    customSelectors:
+      app: "voice-redis"
+    ports:
+      - port: 6379
+        targetPort: 6379
+        protocol: TCP
+        name: voice-redis
+  voice-elasticsearch:
+    type: ClusterIP
+    customSelectors:
+      service: voice-elasticsearch
+    ports:
+      - port: 9200
   voice-hyperion-rabbit-mq:
     customLabels:
       # serviceMonitors: "voice-hyperion-rabbit-mq"
@@ -49,19 +68,9 @@ services:
         protocol: TCP
         name: monitoring
 
-
 statefulsets:
   voice-hyperion-rabbit-mq:
     serviceName: rabbit-mq-headless
-    affinity:
-      nodeAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          nodeSelectorTerms:
-          - matchExpressions:
-            - key: cat
-              operator: In
-              values:
-              - data
     customLabels:
       service: "voice-hyperion-rabbit-mq"
       app.kubernetes.io/name: voice
@@ -87,12 +96,12 @@ statefulsets:
             app.kubernetes.io/component: "voice-eos-hyperion"
             app.kubernetes.io/chain: "voice-hyperion-rabbit-mq"
         spec:
-          storageClassName: standard
+          storageClassName: hostpath
           accessModes:
             - ReadWriteOnce
           resources:
             requests:
-              storage: 256Gi
+              storage: 1Gi
     containers:
       voice-hyperion-rabbit-mq:
         image:  rabbitmq:3.9.11-management-alpine
@@ -102,8 +111,64 @@ statefulsets:
           RABBITMQ_DEFAULT_USER: voice
           RABBITMQ_DEFAULT_PASS: voice
 
+  voice-elasticsearch:
+    serviceName: voice-elasticsearch
+    customLabels:
+      service: "voice-elasticsearch"
+      app.kubernetes.io/name: voice
+      app.kubernetes.io/instance: "voice-elasticsearch"
+      app.kubernetes.io/branch: "master"
+      app.kubernetes.io/authority: "voice-eos-hyperion"
+      app.kubernetes.io/component: "voice-elasticsearch"
+    replicaCount: 1
+    customSelectors:
+      service : voice-elasticsearch
+    updateStrategy:
+      type: RollingUpdate
+    volumeClaimTemplates:
+    - metadata:
+          name: voice-elasticsearch
+          labels:
+            app.kubernetes.io/name: voice
+            app.kubernetes.io/instance: "voice-elasticsearch"
+            app.kubernetes.io/branch: "master"
+            app.kubernetes.io/authority: "voice-eos-hyperion"
+            app.kubernetes.io/component: "voice-eos-hyperion"
+            app.kubernetes.io/chain: "voice-elasticsearch"
+      spec:
+        storageClassName: :
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+    containers:
+      voice-elasticsearch:
+        image:  rabbitmq:3.9.11-management-alpine
+        imagePullPolicy: IfNotPresent
+        extraVars:
+          discovery.type: single-node
+          cluster.name: es-cluster
+          node.name: es01
+          bootstrap.memory_lock: "true"
+          xpack.security.enabled: "true"
+          ES_JAVA_OPTS: "-Xms2g -Xmx2g"
+          ELASTIC_USERNAME: elastic
+          ELASTIC_PASSWORD: password
+
 deployments:
-  voice-eos-hyperion-api:
+  voice-redis:
+    replicaCount: 1
+    terminationGracePeriodSeconds: 60
+    containers:
+      voice-redis:
+        containerPorts:
+          - containerPort: 6379
+            protocol: TCP
+            name: voice-redis
+        image: "redis:5.0.9-alpine"
+        imagePullPolicy: IfNotPresent
+  voice-eos-hyperion-indexer:
     replicaCount: 1
     terminationGracePeriodSeconds: 60
     affinity:
@@ -114,11 +179,64 @@ deployments:
             - key: cat
               operator: In
               values:
-              - api
+              - hyperion-indexer
     volumes:
-    - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+    - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
       configMap:
-        name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+        name:  "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
+    - name: eos-hyperion-connections
+      configMap:
+        name:  eos-hyperion-connections
+    initContainers:
+      check-hyperion-rabbit-mq-health:
+        extraVars:
+          user: voice
+          pass: voice
+          vhost: voice
+        image: "gcr.io/voice-dev-infra-services/auto-init-container/auto-init-container:latest"
+        imagePullPolicy: Always
+        command: ['bash','check-rabbit-mq-health.sh','voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local']
+    lifecycle:
+          preStop:
+            exec:
+              command: ["bash","stop.sh","voice-indexer"]
+    containers:
+      voice-eos-hyperion-indexer:
+        containerPorts:
+          - containerPort: 7000
+            protocol: TCP
+            name: hyperion-api
+        image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
+        imagePullPolicy: Always
+        command: ["bash", "scripts/get-secrets.sh","voice-indexer"]
+        extraVars:
+          http_proxy: http://proxy.service:3128
+          https_proxy: http://proxy.service:3128
+          GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128
+          GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128
+          no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
+          GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
+          elastic_user: elastic
+          elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
+        resources:
+          requests:
+            cpu: "1500m"
+            memory: "1024Mi"
+        volumeMounts:
+          - name: eos-hyperion-connections
+            mountPath: /tmp/connections.json
+            subPath: connections.json
+          - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
+            mountPath: hyperion-history-api/chains/voice.config.json
+            subPath: voice.config.json
+  voice-eos-hyperion-api:
+    replicaCount: 1
+
+
+    volumes:
+    - name:  "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
+      configMap:
+        name:  "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
     - name: eos-hyperion-connections
       configMap:
         name:  eos-hyperion-connections
@@ -152,14 +270,11 @@ deployments:
         image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
         imagePullPolicy: Always
         command: ["bash", "run.sh","voice-api"]
-        extraVars:
-          http_proxy: http://proxy.service:3128
-          https_proxy: http://proxy.service:3128
-          no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal
+
         lifecycle:
-          prestop:
+          preStop:
             exec:
-              command: ["bash","stop.sh",voice-api""]
+              command: ["bash","stop.sh","voice-api"]
         resources:
           requests:
             cpu: "250m"
@@ -172,11 +287,10 @@ deployments:
             mountPath: hyperion-history-api/connections.json
             subPath: connections.json
             readOnly: false
-          - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+          - name:  "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
             mountPath: hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
             readOnly: false
-
 
 configmaps:
   eos-hyperion-config-abi:

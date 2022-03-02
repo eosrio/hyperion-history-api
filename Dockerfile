@@ -10,9 +10,11 @@ RUN apt-get update \
 
 WORKDIR /hyperion-history-api
 COPY . .
-COPY .npmrc.template .npmrc 
+COPY .npmrc.template .npmrc
 RUN npm install  && \
-      ./hpm install -r https://github.com/voice-social/hyperion-explorer-plugin explorer && \
+       git clone https://github.com/voice-social/hyperion-explorer-plugin /hyperion-history-api/plugins/repos/explorer  && \
+      cp /hyperion-history-api/plugins/repos/explorer/.npmrc.template  /hyperion-history-api/plugins/repos/explorer/.npmrc &&\
+      ./hpm build-all && \
       ./hpm enable explorer && \
       pm2 startup
 

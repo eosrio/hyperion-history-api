@@ -99,3 +99,4 @@ skaffold.yaml
 skaffold-build/
 smart-contract-deployer/
 orm-deployer
+helm/templates/

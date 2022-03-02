@@ -149,9 +149,9 @@ deployments:
     nodeSelector:
       cloud.google.com/gke-preemptible: "true"
     volumes:
-    - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+    - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
       configMap:
-        name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+        name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
     - name: eos-hyperion-connections
       configMap:
         name:  eos-hyperion-connections
@@ -193,9 +193,9 @@ deployments:
           no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
           GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
         lifecycle:
-          prestop:
+          preStop:
             exec:
-              command: ["bash","stop.sh",voice-api""]
+              command: ["bash","stop.sh","voice-api"]
         resources:
           requests:
             cpu: "250m"
@@ -208,7 +208,7 @@ deployments:
             mountPath: hyperion-history-api/connections.json
             subPath: connections.json
             readOnly: false
-          - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
+          - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
             mountPath: hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
             readOnly: false
