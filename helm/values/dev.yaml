@@ -1,4 +1,5 @@
-tag: latest
+release:
+  tag: latest
 config:
   serverName: "explorer.dev.vops.co"
   provider_url: https://voice.com
