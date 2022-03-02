@@ -171,15 +171,6 @@ deployments:
   voice-eos-hyperion-indexer:
     replicaCount: 1
     terminationGracePeriodSeconds: 60
-    affinity:
-      nodeAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          nodeSelectorTerms:
-          - matchExpressions:
-            - key: cat
-              operator: In
-              values:
-              - hyperion-indexer
     volumes:
     - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
       configMap:
@@ -218,21 +209,15 @@ deployments:
           GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
           elastic_user: elastic
           elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
-        resources:
-          requests:
-            cpu: "1500m"
-            memory: "1024Mi"
         volumeMounts:
           - name: eos-hyperion-connections
             mountPath: /tmp/connections.json
             subPath: connections.json
           - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
-            mountPath: hyperion-history-api/chains/voice.config.json
+            mountPath: /hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
   voice-eos-hyperion-api:
     replicaCount: 1
-
-
     volumes:
     - name:  "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
       configMap:
@@ -251,18 +236,6 @@ deployments:
         command: ['bash','check-rabbit-mq-health.sh','voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local']
     containers:
       voice-eos-hyperion-api:
-        livenessProbe:
-          httpGet:
-            path: /v2/health
-            port: 7000
-          periodSeconds: 10
-          initialDelaySeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /v2/health
-            port: 7000
-          initialDelaySeconds: 10
-          periodSeconds: 10
         containerPorts:
           - containerPort: 7000
             protocol: TCP
@@ -270,25 +243,17 @@ deployments:
         image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
         imagePullPolicy: Always
         command: ["bash", "run.sh","voice-api"]
-
         lifecycle:
           preStop:
             exec:
               command: ["bash","stop.sh","voice-api"]
-        resources:
-          requests:
-            cpu: "250m"
-            memory: "256Mi"
-          limits:
-            cpu: "250m"
-            memory: "256Mi"
         volumeMounts:
           - name: eos-hyperion-connections
-            mountPath: hyperion-history-api/connections.json
+            mountPath: /hyperion-history-api/connections.json
             subPath: connections.json
             readOnly: false
           - name:  "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
-            mountPath: hyperion-history-api/chains/voice.config.json
+            mountPath: /hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
             readOnly: false
 
@@ -546,7 +511,7 @@ configmaps:
   eos-hyperion-connections:
     toJson: true
     data:
-      connection.json:
+      connections.json:
         amqp:
           host: voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local:5672
           api: voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local:15672
@@ -557,9 +522,9 @@ configmaps:
           frameMax: '0x10000'
         elasticsearch:
           protocol: https
-          host: elastic.service
+          host: voice-elasticsearch.{{ .Release.Namespace }}.svc.cluster.local:9200
           ingest_nodes:
-          - elastic.service
+          - voice-elasticsearch.{{ .Release.Namespace }}.svc.cluster.local:9200
           user:
           pass:
         redis:
@@ -568,8 +533,8 @@ configmaps:
         chains:
           voice:
             name: "voice production chain"
-            chain_id: "8fb2215338190e08e3ec6c2b012d5d2a4adc2bbce11c9e8746ddfe7dec199fe5"
-            http: "http://chain-api-lb-prod.service.b-oma-prod.vops.int:8888"
-            ship: "ws://ship-lb-prod.service.b-oma-prod.vops.int:8080"
+            chain_id: "6a2f1d83a0375271b7018cc9190098f2af0dc49ca4d809cfa83d41612864f324"
+            http: "chain-preducer.{{ .Release.Namespace }}.svc.cluster.local:8888"
+            ship: "chain-preducer.{{ .Release.Namespace }}.svc.cluster.local:8080"
             WS_ROUTER_PORT: 7001
             WS_ROUTER_HOST: "127.0.0.1"

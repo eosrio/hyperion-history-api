@@ -496,7 +496,7 @@ configmaps:
   eos-hyperion-connections:
     toJson: true
     data:
-      connection.json:
+      connections.json:
         amqp:
           host: voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local:5672
           api: voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local:15672

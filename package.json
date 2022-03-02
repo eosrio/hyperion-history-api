@@ -17,7 +17,8 @@
     "stop-skaffold": "voice-stop-skaffold",
     "start-skaffold": "voice-start-skaffold",
     "clean-skaffold": "voice-clean-skaffold",
-    "setup-skaffold-build": "voice-setup-skaffold-build"
+    "setup-skaffold-build": "voice-setup-skaffold-build",
+    "setup-deployer": "voice-setup-deployer"
   },
   "engines": {
     "node": "^16"

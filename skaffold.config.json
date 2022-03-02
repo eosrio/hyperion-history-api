@@ -38,6 +38,9 @@
           }
         }
       },
+      "setValueTemplates": {
+        "release.tag": "{{ .IMAGE_TAG }}"
+      },
       "artifacts": [
         {
           "image": "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion",
