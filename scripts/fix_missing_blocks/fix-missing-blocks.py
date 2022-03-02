@@ -45,11 +45,13 @@ offline = r'.*(offline or unexistent)'
 lastblock_indexed = r'.*Last Indexed Block:.* (\d*)'  #group the last block indexed for reference.
 
 
-# Config 
-filepath="chains/wax.config.json"
-indexer_stop = ["pm2", "trigger", "wax-indexer", "stop"]
-indexer_start = ["./run.sh", "wax-indexer"]
+# Config
+hyperionfolder="/home/charles/hyperion-history-api/"
 indexer_log_file = "/home/charles/.pm2/logs/wax-indexer-out.log"
+
+filepath=hyperionfolder+"chains/wax.config.json"
+indexer_stop = ["pm2", "trigger", "wax-indexer", "stop"]
+indexer_start = [hyperionfolder+"./run.sh", "wax-indexer"]
 tail_indexer_logs = ["tail","-f", indexer_log_file]
 hyperion_version = '3.3'  #'3.1' or '3.3'
 
