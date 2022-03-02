@@ -7,7 +7,7 @@ config:
   ## this only take the image form URL
   chain_logo_url: "https://storage.googleapis.com/voice_logo/logo.ico"
   es_replicas: 1
-
+  abi_scan: false
 services:
   voice-eos-hyperion:
     customLabels:
@@ -115,9 +115,9 @@ deployments:
               values:
               - hyperion-indexer
     volumes:
-    - name: eos-hyperion-indexer-config
+    - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
       configMap:
-        name:  eos-hyperion-indexer-config
+        name:  "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
     - name: eos-hyperion-connections
       configMap:
         name:  eos-hyperion-connections
@@ -155,7 +155,7 @@ deployments:
           - name: eos-hyperion-connections
             mountPath: /hyperion-history-api/connections.json
             subPath: connections.json
-          - name: eos-hyperion-indexer-config
+          - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
             mountPath: hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
 
@@ -172,9 +172,9 @@ deployments:
               values:
               - api
     volumes:
-    - name: eos-hyperion-api-config
+    - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
       configMap:
-        name: eos-hyperion-api-config
+        name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
     - name: eos-hyperion-connections
       configMap:
         name:  eos-hyperion-connections
@@ -228,7 +228,7 @@ deployments:
             mountPath: hyperion-history-api/connections.json
             subPath: connections.json
             readOnly: false
-          - name: eos-hyperion-api-config
+          - name: "{{ if .Values.config.abi_scan }} eos-hyperion-config-abi {{ elase }} eos-hyperion-config {{ end }}"
             mountPath: hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
             readOnly: false
@@ -522,7 +522,7 @@ configmaps:
               enabled: true
               chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
               server_name: explorer.dev.vops.co
-  connection:
+  eos-hyperion-connections:
     toJson: true
     data:
       connection.json:
