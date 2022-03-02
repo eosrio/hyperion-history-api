@@ -143,7 +143,13 @@ deployments:
         image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
         imagePullPolicy: Always
         command: ["bash", "scripts/get-secrets.sh","voice-indexer"]
-
+        extraVars:
+          http_proxy: http://proxy.service:3128
+          https_proxy: http://proxy.service:3128
+          GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128
+          GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128
+          no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
+          GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
           elastic_user: elastic
           elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
         resources:
@@ -201,7 +207,13 @@ deployments:
         image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
         imagePullPolicy: Always
         command: ["bash", "scripts/get-secrets.sh","voice-api"]
-
+        extraVars:
+          http_proxy: http://proxy.service:3128
+          https_proxy: http://proxy.service:3128
+          GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128
+          GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128
+          no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
+          GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
           elastic_user: elastic
           elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
         lifecycle:

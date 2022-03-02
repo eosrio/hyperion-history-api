@@ -200,9 +200,6 @@ deployments:
         image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
         imagePullPolicy: Always
         command: ["bash", "scripts/get-secrets.sh","voice-indexer"]
-
-          elastic_user: elastic
-          elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
         volumeMounts:
           - name: eos-hyperion-connections
             mountPath: /tmp/connections.json
