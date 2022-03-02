@@ -136,7 +136,7 @@ statefulsets:
             app.kubernetes.io/component: "voice-eos-hyperion"
             app.kubernetes.io/chain: "voice-elasticsearch"
       spec:
-        storageClassName: :
+        storageClassName: hostpath
         accessModes:
           - ReadWriteOnce
         resources:

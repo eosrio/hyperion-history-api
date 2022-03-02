@@ -17,7 +17,7 @@
   },
     {
       "name": "hyperion-history-api",
-      "chartPath": "helm/",
+      "remoteChart": "voice-helm-repo/voice-chart",
       "upgradeOnChange": true,
       "valuesFiles": ["helm/values/local.yaml"],
       "artifactOverrides": {
