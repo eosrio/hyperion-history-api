@@ -1,5 +1,6 @@
 release:
   tag: latest
+
 config:
   serverName: "explorer.dev.vops.co"
   provider_url: https://voice.com
@@ -22,6 +23,7 @@ services:
         targetPort: 7000
         protocol: TCP
         name: hyperion-api
+
   voice-redis:
     customLabels:
       app.kubernetes.io/name: voice
@@ -37,12 +39,23 @@ services:
         targetPort: 6379
         protocol: TCP
         name: voice-redis
+
   voice-elasticsearch:
     type: ClusterIP
     customSelectors:
       service: voice-elasticsearch
+    customLabels:
+      service: "voice-elasticsearch"
+      app.kubernetes.io/name: voice
+      app.kubernetes.io/instance: "voice-elasticsearch"
+      app.kubernetes.io/branch: "master"
+      app.kubernetes.io/authority: "voice-eos-hyperion"
+      app.kubernetes.io/component: "voice-elasticsearch"
     ports:
       - port: 9200
+        protocol: TCP
+        name: elastic-search
+
   voice-hyperion-rabbit-mq:
     customLabels:
       # serviceMonitors: "voice-hyperion-rabbit-mq"
@@ -144,7 +157,7 @@ statefulsets:
             storage: 1Gi
     containers:
       voice-elasticsearch:
-        image:  rabbitmq:3.9.11-management-alpine
+        image:  elasticsearch:7.17.0
         imagePullPolicy: IfNotPresent
         extraVars:
           discovery.type: single-node
@@ -168,6 +181,7 @@ deployments:
             name: voice-redis
         image: "redis:5.0.9-alpine"
         imagePullPolicy: IfNotPresent
+
   voice-eos-hyperion-indexer:
     replicaCount: 1
     terminationGracePeriodSeconds: 60
@@ -185,7 +199,7 @@ deployments:
           pass: voice
           vhost: voice
         image: "gcr.io/voice-dev-infra-services/auto-init-container/auto-init-container:latest"
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         command: ['bash','check-rabbit-mq-health.sh','voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local']
     lifecycle:
           preStop:
@@ -198,15 +212,16 @@ deployments:
             protocol: TCP
             name: hyperion-api
         image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         command: ["bash", "scripts/get-secrets.sh","voice-indexer"]
         volumeMounts:
           - name: eos-hyperion-connections
-            mountPath: /tmp/connections.json
+            mountPath: /hyperion-history-api/connections.json
             subPath: connections.json
           - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
             mountPath: /hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
+
   voice-eos-hyperion-api:
     replicaCount: 1
     volumes:
@@ -223,7 +238,7 @@ deployments:
           pass: voice
           vhost: voice
         image: "gcr.io/voice-dev-infra-services/auto-init-container/auto-init-container:latest"
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         command: ['bash','check-rabbit-mq-health.sh','voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local']
     containers:
       voice-eos-hyperion-api:
@@ -232,7 +247,7 @@ deployments:
             protocol: TCP
             name: hyperion-api
         image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         command: ["bash", "run.sh","voice-api"]
         lifecycle:
           preStop:
@@ -374,6 +389,7 @@ configmaps:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
             server_name: explorer.dev.vops.co
+
   eos-hyperion-config:
     toJson: true
     data:
@@ -499,6 +515,7 @@ configmaps:
               enabled: true
               chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
               server_name: explorer.dev.vops.co
+
   eos-hyperion-connections:
     toJson: true
     data:
@@ -512,14 +529,14 @@ configmaps:
           vhost: voice
           frameMax: '0x10000'
         elasticsearch:
-          protocol: https
+          protocol: http
           host: voice-elasticsearch.{{ .Release.Namespace }}.svc.cluster.local:9200
           ingest_nodes:
           - voice-elasticsearch.{{ .Release.Namespace }}.svc.cluster.local:9200
-          user:
-          pass:
+          user: elastic
+          pass: password
         redis:
-          host: "172.31.40.4"
+          host: "voice-redis.{{ .Release.Namespace }}.svc.cluster.local"
           port: '6379'
         chains:
           voice:
