@@ -2,13 +2,6 @@
   "name": "hyperion-history-api",
   "services": [
     {
-      "name": "voice-local-postgres",
-      "chartPath": "skaffold-build/voice-local-postgres/helm-chart",
-      "valuesFiles": [
-        "skaffold-build/voice-local-postgres/helm-chart/values/local.yaml"
-      ]
-    },
-    {
     "name": "voice-blockchain-deployer",
     "chartPath": "skaffold-build/voice-blockchain-deployer/helm-chart",
     "valuesFiles": [
