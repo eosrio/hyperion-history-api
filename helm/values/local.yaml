@@ -194,21 +194,18 @@ deployments:
         name:  eos-hyperion-connections
     initContainers:
       check-elastic:
-        image: "gcr.io/voice-dev-infra-services/auto-init-container/auto-init-container:latest"
+        image: "gcr.io/voice-ops-dev/auto-init-container/auto-init-container:latest"
         imagePullPolicy: IfNotPresent
         command:
-          - 'bash'
-          - '-C' ,
-          - 'until curl -s -f -o /dev/null "elastic:password@voice-elasticsearch.default.svc.cluster.local:9200"
-              do
-                sleep 5
-              done'
+          - '/bin/sh'
+          - '-c'
+          - 'until curl -s -f -o /dev/null "elastic:password@voice-elasticsearch.default.svc.cluster.local:9200";  do   echo "waiting for elastic" && sleep 5; done; echo "connected"'
       check-hyperion-rabbit-mq-health:
         extraVars:
           user: voice
           pass: voice
           vhost: voice
-        image: "gcr.io/voice-dev-infra-services/auto-init-container/auto-init-container:latest"
+        image: "gcr.io/voice-ops-dev/auto-init-container/auto-init-container:latest"
         imagePullPolicy: IfNotPresent
         command: ['bash','check-rabbit-mq-health.sh','voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local']
     lifecycle:
@@ -242,12 +239,19 @@ deployments:
       configMap:
         name:  eos-hyperion-connections
     initContainers:
+      check-elastic:
+        image: "gcr.io/voice-ops-dev/auto-init-container/auto-init-container:latest"
+        imagePullPolicy: IfNotPresent
+        command:
+          - '/bin/sh'
+          - '-c'
+          - 'until curl -s -f -o /dev/null "elastic:password@voice-elasticsearch.default.svc.cluster.local:9200";  do   echo "waiting for elastic" && sleep 5; done; echo "connected"'
       check-hyperion-rabbit-mq-health:
         extraVars:
           user: voice
           pass: voice
           vhost: voice
-        image: "gcr.io/voice-dev-infra-services/auto-init-container/auto-init-container:latest"
+        image: "gcr.io/voice-ops-dev/auto-init-container/auto-init-container:latest"
         imagePullPolicy: IfNotPresent
         command: ['bash','check-rabbit-mq-health.sh','voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local']
     containers:
