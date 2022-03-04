@@ -11,15 +11,14 @@ RUN apt-get update \
 WORKDIR /hyperion-history-api
 COPY . .
 COPY .npmrc.template .npmrc
-RUN npm install  && \
-       git clone https://github.com/voice-social/hyperion-explorer-plugin /hyperion-history-api/plugins/repos/explorer  && \
-      cp /hyperion-history-api/plugins/repos/explorer/.npmrc.template  /hyperion-history-api/plugins/repos/explorer/.npmrc &&\
+RUN npm ci && \
+      git clone https://github.com/voice-social/hyperion-explorer-plugin /hyperion-history-api/plugins/repos/explorer && \
+      mv /hyperion-history-api/plugins/repos/explorer/.npmrc.template  /hyperion-history-api/plugins/repos/explorer/.npmrc && \
       ./hpm build-all && \
       ./hpm enable explorer && \
       pm2 startup
 
 RUN adduser --system --group voice && chown -R voice:voice /hyperion-history-api
 USER voice
-RUN  npm install
 
 EXPOSE 7000

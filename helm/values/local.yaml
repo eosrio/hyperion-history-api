@@ -186,12 +186,12 @@ deployments:
     replicaCount: 1
     terminationGracePeriodSeconds: 60
     volumes:
-    - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
+    - name: "{{if .Values.config.abi_scan}}eos-hyperion-config-abi{{else}}eos-hyperion-config{{end}}"
       configMap:
-        name:  "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
+        name: "{{if .Values.config.abi_scan}}eos-hyperion-config-abi{{else}}eos-hyperion-config{{end}}"
     - name: eos-hyperion-connections
       configMap:
-        name:  eos-hyperion-connections
+        name: eos-hyperion-connections
     initContainers:
       check-elastic:
         image: "gcr.io/voice-ops-dev/auto-init-container/auto-init-container:latest"
@@ -220,21 +220,21 @@ deployments:
             name: hyperion-api
         image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
         imagePullPolicy: IfNotPresent
-        command: ["bash", "scripts/get-secrets.sh","voice-indexer"]
+        command: ["bash", "run.sh","voice-indexer"]
         volumeMounts:
           - name: eos-hyperion-connections
             mountPath: /hyperion-history-api/connections.json
             subPath: connections.json
-          - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
+          - name: "{{if .Values.config.abi_scan}}eos-hyperion-config-abi{{else}}eos-hyperion-config{{end}}"
             mountPath: /hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
 
   voice-eos-hyperion-api:
     replicaCount: 1
     volumes:
-    - name:  "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
+    - name:  "{{if .Values.config.abi_scan}}eos-hyperion-config-abi{{else}}eos-hyperion-config{{end}}"
       configMap:
-        name:  "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
+        name:  "{{if .Values.config.abi_scan}}eos-hyperion-config-abi{{else}}eos-hyperion-config{{end}}"
     - name: eos-hyperion-connections
       configMap:
         name:  eos-hyperion-connections
@@ -272,7 +272,7 @@ deployments:
             mountPath: /hyperion-history-api/connections.json
             subPath: connections.json
             readOnly: false
-          - name:  "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
+          - name:  "{{if .Values.config.abi_scan}}eos-hyperion-config-abi{{else}}eos-hyperion-config{{end}}"
             mountPath: /hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
             readOnly: false
@@ -556,7 +556,7 @@ configmaps:
           voice:
             name: "voice production chain"
             chain_id: "6a2f1d83a0375271b7018cc9190098f2af0dc49ca4d809cfa83d41612864f324"
-            http: "chain-preducer.{{ .Release.Namespace }}.svc.cluster.local:8888"
-            ship: "chain-preducer.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            http: "http://chain-producer.{{ .Release.Namespace }}.svc.cluster.local:8888"
+            ship: "ws://chain-producer.{{ .Release.Namespace }}.svc.cluster.local:8080"
             WS_ROUTER_PORT: 7001
             WS_ROUTER_HOST: "127.0.0.1"

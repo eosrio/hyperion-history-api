@@ -36,7 +36,6 @@
     "@elastic/elasticsearch": "^7.15.0",
     "@eosrio/node-abieos": "^2.1.1",
     "@pm2/io": "^5.0.0",
-    "@voice-social/voice-skaffold-tools": "^1.13.0",
     "amqplib": "^0.8.0",
     "async": "^3.2.2",
     "base-x": "^3.0.9",
@@ -76,7 +75,8 @@
     "@types/lodash": "^4.14.177",
     "@types/node": "^16.11.10",
     "@types/nodemailer": "^6.4.4",
-    "@types/ws": "^8.2.0"
+    "@types/ws": "^8.2.0",
+    "@voice-social/voice-skaffold-tools": "^1.13.0"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.5",
