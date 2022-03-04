@@ -1,13 +1,17 @@
 release:
   tag: latest
 config:
-  serverName: "explorer.dev.vops.co"
+  server_name: vault:secret/data/applications/devel#HYPERION_SERVER_NAME
   provider_url: https://voice.com
   provider_name: "voice"
   ## this only take the image form URL
   chain_logo_url: "https://storage.googleapis.com/voice_logo/logo.ico"
   es_replicas: 1
   abi_scan: false
+  elastic_host:  vault:secret/data/devops/elasticsearch#ELASTIC_HOST
+  elastic_user: elastic
+  elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
+
 services:
   voice-eos-hyperion:
     customLabels:
@@ -150,8 +154,10 @@ deployments:
           GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128
           no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
           GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
-          elastic_user: elastic
-          elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
+          elastic_user: {{ .Values.config.elastic_user}}
+          elastic_pass: {{ .Values.config.elastic_pass}}
+          elastic_host: {{ .Values.config.elastic_host}}
+          server_name: {{ .Values.config.server_name}}
         resources:
           requests:
             cpu: "1500m"
@@ -214,8 +220,10 @@ deployments:
           GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128
           no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io
           GLOBAL_AGENT_NO_PROXY	: "*.svc.cluster.local,*.service,*.internal,*.vops.int,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io,.psc.us-west1.gcp.cloud.es.io"
-          elastic_user: elastic
-          elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
+          elastic_user: {{ .Values.config.elastic_user}}
+          elastic_pass: {{ .Values.config.elastic_pass}}
+          elastic_host: {{ .Values.config.elastic_host}}
+          server_name: {{ .Values.config.server_name}}
         lifecycle:
           preStop:
             exec:
@@ -507,9 +515,8 @@ configmaps:
           frameMax: '0x10000'
         elasticsearch:
           protocol: https
-          host: e5c2cc213555467384fd009fce583f3d.psc.us-west1.gcp.cloud.es.io:9243
+          host: " "
           ingest_nodes:
-          - e5c2cc213555467384fd009fce583f3d.psc.us-west1.gcp.cloud.es.io:9243
           user:
           pass:
         redis:

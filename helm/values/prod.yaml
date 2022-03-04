@@ -142,11 +142,15 @@ deployments:
             name: hyperion-api
         image: "gcr.io/voice-prod-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
         imagePullPolicy: Always
-        command: ["bash", "run.sh","voice-indexer"]
+        command: ["bash", "scripts/get-secrets.sh","voice-indexer"]
         extraVars:
           http_proxy: http://proxy.service:3128
           https_proxy: http://proxy.service:3128
           no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal
+          elastic_user: {{ .Values.config.elastic_user}}
+          elastic_pass: {{ .Values.config.elastic_pass}}
+          elastic_host: {{ .Values.config.elastic_host}}
+          server_name: {{ .Values.config.server_name}}
         resources:
           requests:
             cpu: "1500m"
@@ -207,11 +211,15 @@ deployments:
             name: hyperion-api
         image: "gcr.io/voice-prod-infra-services/voice/voice-eos-hyperion:{{ .Values.tag }}"
         imagePullPolicy: Always
-        command: ["bash", "run.sh","voice-api"]
+        command: ["bash", "scripts/get-secrets.sh","voice-api"]
         extraVars:
           http_proxy: http://proxy.service:3128
           https_proxy: http://proxy.service:3128
           no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal
+          elastic_user: {{ .Values.config.elastic_user}}
+          elastic_pass: {{ .Values.config.elastic_pass}}
+          elastic_host: {{ .Values.config.elastic_host}}
+          server_name: {{ .Values.config.server_name}}
         lifecycle:
           preStop:
             exec:

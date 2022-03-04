@@ -1,7 +1,7 @@
 release:
   tag: latest
 config:
-  serverName: "explorer.dev.vops.co"
+  serverName: ""
   provider_url: https://voice.com
   provider_name: "voice"
   ## this only take the image form URL
