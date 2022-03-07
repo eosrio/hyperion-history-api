@@ -243,7 +243,7 @@ deployments:
             subPath: connections.json
             readOnly: false
           - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
-            mountPath: //tmp/voice.config.json
+            mountPath: /tmp/voice.config.json
             subPath: voice.config.json
             readOnly: false
 hpas:
