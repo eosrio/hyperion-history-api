@@ -276,6 +276,9 @@ deployments:
             mountPath: /hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
             readOnly: false
+        extraVars:
+          # LaunchDarkly Config
+          LAUNCHDARKLY_SDK_KEY: "foobarbaz"
 
 configmaps:
   eos-hyperion-config-abi:

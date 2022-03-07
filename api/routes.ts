@@ -4,6 +4,7 @@ import {createReadStream} from "fs";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
 import autoLoad from 'fastify-autoload';
 import got from "got";
+import { FeatureFlagClient } from "./shared/featureFlag/FeatureFlagClient";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     server.route({
@@ -18,16 +19,19 @@ function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     });
 }
 
-function addRoute(server: FastifyInstance, handlersPath: string, prefix: string) {
+function addRoute(server: FastifyInstance, handlersPath: string, prefix: string, featureFlagClient?: FeatureFlagClient) {
     server.register(autoLoad, {
         dir: join(__dirname, 'routes', handlersPath),
         ignorePattern: /.*(handler|schema).js/,
         dirNameRoutePrefix: false,
-        options: {prefix}
+        options: {
+            prefix,
+            featureFlagClient,
+        }
     });
 }
 
-export function registerRoutes(server: FastifyInstance) {
+export function registerRoutes(server: FastifyInstance, featureFlagClient?: FeatureFlagClient) {
 
     // build internal map of routes
     const routeSet = new Set<string>();
@@ -50,7 +54,7 @@ export function registerRoutes(server: FastifyInstance) {
     // Register fastify api routes
     addRoute(server, 'v2', '/v2');
     addRoute(server, 'v2-history', '/v2/history');
-    addRoute(server, 'v2-state', '/v2/state');
+    addRoute(server, 'v2-state', '/v2/state', featureFlagClient);
     addRoute(server, 'v2-stats', '/v2/stats');
 
     // legacy routes
