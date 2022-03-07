@@ -8,6 +8,10 @@ config:
   chain_logo_url: "https://storage.googleapis.com/voice_logo/logo.ico"
   es_replicas: 1
   abi_scan: false
+  elastic_host: vault:secret/data/devops/elasticsearch#ELASTIC_HOST
+  elastic_user: elastic
+  elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
+
 services:
   voice-eos-hyperion:
     customLabels:
@@ -147,10 +151,10 @@ deployments:
           http_proxy: http://proxy.service:3128
           https_proxy: http://proxy.service:3128
           no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal
-          elastic_user: {{ .Values.config.elastic_user}}
-          elastic_pass: {{ .Values.config.elastic_pass}}
-          elastic_host: {{ .Values.config.elastic_host}}
-          server_name: {{ .Values.config.server_name}}
+          ELASTIC_USER: "{{ .Values.config.elastic_user }}"
+          ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
+          ELASTIC_HOST: "{{ .Values.config.elastic_host }}"
+          SERVER_NAME: "{{ .Values.config.server_name }}"
         resources:
           requests:
             cpu: "1500m"
@@ -216,10 +220,10 @@ deployments:
           http_proxy: http://proxy.service:3128
           https_proxy: http://proxy.service:3128
           no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal
-          elastic_user: {{ .Values.config.elastic_user}}
-          elastic_pass: {{ .Values.config.elastic_pass}}
-          elastic_host: {{ .Values.config.elastic_host}}
-          server_name: {{ .Values.config.server_name}}
+          ELASTIC_USER: "{{ .Values.config.elastic_user }}"
+          ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
+          ELASTIC_HOST: "{{ .Values.config.elastic_host }}"
+          SERVER_NAME: "{{ .Values.config.server_name }}"
           # LaunchDarkly Config
           LAUNCHDARKLY_SDK_KEY: "vault:secret/data/applications/prod#LAUNCHDARKLY_SDK_KEY"
         lifecycle:
@@ -247,39 +251,6 @@ hpas:
     minReplicas: 1
     maxReplicas: 3
     targetCPUUtilizationPercentage: 80
-configmaps:
-  config:
-    eos-hyperion-indexer-config:
-## turn the abi true only on the 1st run or if the elastic data has been wiped
-      abi_scan: true
-      indexer: true
-      api: false
-    eos-hyperion-api-config:
-      indexer: false
-      api: true
-  connections:
-    eos-hyperion-connections:
-      elasticsearch:
-        host: elastic.service
-        ingest_nodes: elastic.service
-        user: ""
-        pass: ""
-      redis:
-        host: "172.31.40.4"
-        port: "6379"
-      chains:
-        name: "voice production chain"
-        chain_id: "8fb2215338190e08e3ec6c2b012d5d2a4adc2bbce11c9e8746ddfe7dec199fe5"
-        http: "http://chain-api-lb-prod.service.b-oma-prod.vops.int:8888"
-        ship: "ws://ship-lb-prod.service.b-oma-prod.vops.int:8080"
-        WS_ROUTER_PORT: 7001
-        WS_ROUTER_HOST: "127.0.0.1"
-      amqp:
-        service: voice-hyperion-rabbit-mq
-        user: "voice"
-        pass: "voice"
-        vhost: "voice"
-
 
 configmaps:
   eos-hyperion-config-abi:
