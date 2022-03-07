@@ -7,6 +7,6 @@ jq --arg elastic_user $ELASTIC_USER --arg  elastic_pass $ELASTIC_PASS --arg elas
     /tmp/connections.json > /hyperion-history-api/connections.json
 
 jq --arg  server_name $SERVER_NAME \
-    '.api.server_name = $server_name'  /temp/voice.config.json> chains/example.config.json
+    '.api.server_name = $server_name'  /temp/voice.config.json> /hyperion-history-api/chains/voice.config.json
 
 ./run.sh $@
