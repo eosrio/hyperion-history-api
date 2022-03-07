@@ -14,13 +14,14 @@ steps:
         exit 1;
       fi
       echo "--- :helm: Helm deploy"
-      helm upgrade -i ${HELM_RELEASE} helm/ -f ${HELM_VALUE_FILE} -n ${HELM_RELEASE_NAMESPACE} --set release.tag=${HELM_RELEASE_TAG} 
+      helm upgrade -i ${HELM_RELEASE} helm/ -f ${HELM_VALUE_FILE} -n ${HELM_RELEASE_NAMESPACE} --set release.tag=${HELM_RELEASE_TAG}
     env:
       HELM_RELEASE: voice-payments-graphql
       HELM_RELEASE_NAMESPACE: prod
       HELM_RELEASE_TAG: ${BUILDKITE_COMMIT}
       HELM_VALUE_FILE: helm/values/prod.yaml
       BUILDKITE_AGENT: voice-infra-prod-v2
+      NR_DEPLOY_MARKER: skip
     concurrency: 1
     concurrency_group: "${BUILDKITE_PIPELINE_SLUG}/prod"
     agents: *default-agents

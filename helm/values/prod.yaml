@@ -148,9 +148,6 @@ deployments:
         imagePullPolicy: Always
         command: ["bash", "scripts/get-secrets.sh","voice-indexer"]
         extraVars:
-          http_proxy: http://proxy.service:3128
-          https_proxy: http://proxy.service:3128
-          no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal
           ELASTIC_USER: "{{ .Values.config.elastic_user }}"
           ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
           ELASTIC_HOST: "{{ .Values.config.elastic_host }}"
@@ -217,9 +214,6 @@ deployments:
         imagePullPolicy: Always
         command: ["bash", "scripts/get-secrets.sh","voice-api"]
         extraVars:
-          http_proxy: http://proxy.service:3128
-          https_proxy: http://proxy.service:3128
-          no_proxy: .svc.cluster.local,.service,.internal,.vops.int,metadata.google.internal
           ELASTIC_USER: "{{ .Values.config.elastic_user }}"
           ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
           ELASTIC_HOST: "{{ .Values.config.elastic_host }}"
