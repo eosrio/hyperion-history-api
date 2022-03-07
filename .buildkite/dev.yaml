@@ -16,7 +16,7 @@ steps:
       HELM_RELEASE_TAG: ${BUILDKITE_COMMIT}
       HELM_VALUE_FILE: helm/values/dev.yaml
       BUILDKITE_AGENT: voice-main-dev-deployer
-      NR_DEPLOY_MARKER: "skip"
+      NR_DEPLOY_MARKER: skip
     concurrency: 1
     concurrency_group: "${BUILDKITE_PIPELINE_SLUG}/dev"
     agents: *default-agents
