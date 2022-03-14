@@ -59,7 +59,7 @@ export function registerRoutes(server: FastifyInstance, featureFlagClient?: Feat
 
     // legacy routes
     addRoute(server, 'v1-history', '/v1/history');
-    addRoute(server, 'v1-trace', '/v1/trace_api');
+    addRoute(server, 'v1-trace', '/v1/trace_api', featureFlagClient);
 
     addSharedSchemas(server);
 
