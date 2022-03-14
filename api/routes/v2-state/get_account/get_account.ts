@@ -1,6 +1,9 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import got from "got";
 import {timedQuery} from "../../../helpers/functions";
+import { FeatureFlagClient } from "../../../shared/featureFlag/FeatureFlagClient";
+import { FeatureFlagName } from "../../../featureFlags";
+
 
 async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
 
@@ -46,8 +49,16 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     return response;
 }
 
-export function getAccountHandler(fastify: FastifyInstance, route: string) {
+export function getAccountHandler(fastify: FastifyInstance, route: string, featureFlagClient: FeatureFlagClient) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-        reply.send(await timedQuery(getAccount, fastify, request, route));
+        const systemAccountsFfValue = await featureFlagClient.variation(FeatureFlagName.VoiceSystemAccounts) as string;
+        const systemAccounts = JSON.parse(systemAccountsFfValue ?? '[]');
+
+        const account = (request.query as any)?.account?.toLowerCase() ?? '';
+        if (account.length > 0 && systemAccounts.includes(account)) {
+          reply.status(403).send('forbidden');
+        } else {
+          reply.send(await timedQuery(getAccount, fastify, request, route));
+        }
     }
 }
