@@ -7,9 +7,9 @@ This is a forked implementation of [EOSRIO's hyperion-history-api](https://githu
 1. `npm install`
 1. `npm run generate-skaffold`
 1. `npm run start-skaffold`
-1. Wait till all the pods and services are running, then: `kubectl port-forward voice-eos-hyperion-api 7000:7000`
-1. Visit `localhost:7000/v2/explore/` to get to the Hyperion API homepage
-    1. You can also visit `localhost:7000/v2/docs` to access the Swagger API documentation
+1. Wait till all the pods and services are running
+1. Visit `localhost:31500/v2/explore/` to get to the Hyperion API homepage
+    1. You can also visit `localhost:31500/v2/docs` to access the Swagger API documentation
 
 <img alt="hyperion logo" height="64" src="https://eosrio.io/hyperion.png">
 <br/>
