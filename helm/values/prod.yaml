@@ -8,9 +8,9 @@ config:
   chain_logo_url: "https://storage.googleapis.com/voice_logo/logo.ico"
   es_replicas: 1
   abi_scan: false
-  elastic_host: vault:secret/data/devops/elasticsearch#ELASTIC_HOST
+  elastic_host:  vault:secret/data/devops/elastic#ELASTIC_HOST
   elastic_user: elastic
-  elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
+  elastic_pass:  vault:secret/data/devops/elastic#ELASTIC_HOST
 
 services:
   voice-eos-hyperion:
@@ -152,13 +152,19 @@ deployments:
           ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
           ELASTIC_HOST: "{{ .Values.config.elastic_host }}"
           SERVER_NAME: "{{ .Values.config.server_name }}"
+          http_proxy: http://proxy.service:3128
+          https_proxy: http://proxy.service:3128
+          GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128
+          GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128
+          no_proxy: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
+          GLOBAL_AGENT_NO_PROXY	: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
         resources:
           requests:
             cpu: "1500m"
             memory: "1024Mi"
         volumeMounts:
           - name: eos-hyperion-connections
-            mountPath: /hyperion-history-api/connections.json
+            mountPath: /tmp/connections.json
             subPath: connections.json
           - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
             mountPath: hyperion-history-api/chains/voice.config.json
@@ -218,6 +224,12 @@ deployments:
           ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
           ELASTIC_HOST: "{{ .Values.config.elastic_host }}"
           SERVER_NAME: "{{ .Values.config.server_name }}"
+          http_proxy: http://proxy.service:3128
+          https_proxy: http://proxy.service:3128
+          GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128
+          GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128
+          no_proxy: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
+          GLOBAL_AGENT_NO_PROXY	: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
           # LaunchDarkly Config
           LAUNCHDARKLY_SDK_KEY: "vault:secret/data/applications/prod#LAUNCHDARKLY_SDK_KEY"
         lifecycle:
@@ -233,13 +245,11 @@ deployments:
             memory: "256Mi"
         volumeMounts:
           - name: eos-hyperion-connections
-            mountPath: hyperion-history-api/connections.json
+            mountPath: /tmp/connections.json
             subPath: connections.json
-            readOnly: false
           - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
             mountPath: hyperion-history-api/chains/voice.config.json
             subPath: voice.config.json
-            readOnly: false
 hpas:
   voice-eos-hyperion-api:
     minReplicas: 1
