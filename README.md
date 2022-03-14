@@ -1,4 +1,15 @@
-# Hyperion History API
+# Voice's Hyperion History API
+
+This is a forked implementation of [EOSRIO's hyperion-history-api](https://github.com/eosrio/hyperion-history-api) to suit the specific needs of a block explorer for Voice.
+
+## Running Locally
+
+1. `npm install`
+1. `npm run generate-skaffold`
+1. `npm run start-skaffold`
+1. Wait till all the pods and services are running
+1. Visit `localhost:31500/v2/explore/` to get to the Hyperion API homepage
+    1. You can also visit `localhost:31500/v2/docs` to access the Swagger API documentation
 
 <img alt="hyperion logo" height="64" src="https://eosrio.io/hyperion.png">
 <br/>
@@ -20,25 +31,25 @@ no blocks or transaction data is stored, all information can be reconstructed fr
 
 
 ### 2. Architecture
-The following components are required in order to have a fully functional Hyperion API deployment, 
-for small use cases its absolutely fine to run all components on a single machine. For larger chains and 
+The following components are required in order to have a fully functional Hyperion API deployment,
+for small use cases its absolutely fine to run all components on a single machine. For larger chains and
 production environments we recommend setting them up into different servers under a high-speed local network.
 
 #### 2.1 Elasticsearch Cluster
 The ES cluster is responsible for storing all indexed data.
-Direct access to the Hyperion API and Indexer must be provided. We recommend nodes in the 
-cluster to have at least 32 GB of RAM and 8 cpu cores. SSD/NVME drives are recommended for 
+Direct access to the Hyperion API and Indexer must be provided. We recommend nodes in the
+cluster to have at least 32 GB of RAM and 8 cpu cores. SSD/NVME drives are recommended for
 maximum indexing throughput. For production environments a multi-node cluster is highly recommended.
 
 #### 2.2 Hyperion Indexer
 The Indexer is a Node.js based app that process data from the state history plugin and allows it to be indexed.
-The PM2 process manager is used to launch and operate the indexer. The configuration flexibility is very extensive, 
-so system recommendations will depend on the use case and data load. It will require access to at least one ES node, 
+The PM2 process manager is used to launch and operate the indexer. The configuration flexibility is very extensive,
+so system recommendations will depend on the use case and data load. It will require access to at least one ES node,
 RabbitMQ and the state history node.
 
 #### 2.3 Hyperion API
 Parallelizable API server that provides the V2 and V1 (legacy history plugin) endpoints.
-It is launched by PM2 and can also operate in cluster mode. It requires direct access to 
+It is launched by PM2 and can also operate in cluster mode. It requires direct access to
 at least one ES node for the queries and all other services for full healthcheck
 
 #### 2.4 RabbitMQ

@@ -1,6 +1,8 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions";
 import * as _ from "lodash";
+import { FeatureFlagClient } from "../../../shared/featureFlag/FeatureFlagClient";
+import { FeatureFlagName } from "../../../featureFlags";
 
 interface getBlockTraceResponse {
     id: string;
@@ -119,8 +121,13 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
     }
 }
 
-export function getBlockTraceHandler(fastify: FastifyInstance, route: string) {
+export function getBlockTraceHandler(fastify: FastifyInstance, route: string, featureFlagClient: FeatureFlagClient) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-        reply.send(await timedQuery(getBlockTrace, fastify, request, route));
+        const isQueryingByBlockNumberEnabled = await featureFlagClient.variation(FeatureFlagName.IsQueryingByBlockNumberEnabled);
+        if (!isQueryingByBlockNumberEnabled) {
+          reply.status(500).send('search by block number disaled');
+        } else {
+          reply.send(await timedQuery(getBlockTrace, fastify, request, route));
+        }
     }
 }
