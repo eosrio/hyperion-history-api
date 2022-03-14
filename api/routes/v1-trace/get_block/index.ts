@@ -1,5 +1,5 @@
 import {FastifyInstance} from "fastify";
-import {addApiRoute, extendResponseSchema, getRouteName} from "../../../helpers/functions";
+import {addFeatureFlaggedApiRoute, extendResponseSchema, getRouteName} from "../../../helpers/functions";
 import {getBlockTraceHandler} from "./get_block";
 
 export default function (fastify: FastifyInstance, opts: any, next) {
@@ -61,10 +61,11 @@ export default function (fastify: FastifyInstance, opts: any, next) {
             }
         })
     };
-    addApiRoute(
+    addFeatureFlaggedApiRoute(
         fastify,
         'POST',
         getRouteName(__filename),
+        opts.featureFlagClient,
         getBlockTraceHandler,
         schema
     );
