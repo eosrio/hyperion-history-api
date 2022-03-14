@@ -1,6 +1,6 @@
 import {FastifyInstance} from "fastify";
 import {getAccountHandler} from "./get_account";
-import {addApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName} from "../../../helpers/functions";
+import {addFeatureFlaggedApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName} from "../../../helpers/functions";
 import {getActionResponseSchema} from "../../v2-history/get_actions";
 
 export default function (fastify: FastifyInstance, opts: any, next) {
@@ -54,10 +54,11 @@ export default function (fastify: FastifyInstance, opts: any, next) {
             },
         })
     };
-    addApiRoute(
+    addFeatureFlaggedApiRoute(
         fastify,
         'GET',
         getRouteName(__filename),
+        opts.featureFlagClient,
         getAccountHandler,
         schema
     );
