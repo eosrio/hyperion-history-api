@@ -16,7 +16,7 @@ steps:
       echo "--- :helm: Helm deploy"
       helm upgrade -i ${HELM_RELEASE} helm/ -f ${HELM_VALUE_FILE} -n ${HELM_RELEASE_NAMESPACE} --set release.tag=${HELM_RELEASE_TAG}
     env:
-      HELM_RELEASE: voice-payments-graphql
+      HELM_RELEASE: hyperion-history-api
       HELM_RELEASE_NAMESPACE: prod
       HELM_RELEASE_TAG: ${BUILDKITE_COMMIT}
       HELM_VALUE_FILE: helm/values/prod.yaml
