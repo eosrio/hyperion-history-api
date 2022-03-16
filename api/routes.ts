@@ -59,28 +59,34 @@ export function registerRoutes(server: FastifyInstance, featureFlagClient?: Feat
 
     // legacy routes
     // addRoute(server, 'v1-history', '/v1/history');
-    // addRoute(server, 'v1-trace', '/v1/trace_api', featureFlagClient);
+    addRoute(server, 'v1-trace', '/v1/trace_api', featureFlagClient);
 
     addSharedSchemas(server);
 
     // chain api redirects
-  //   addRoute(server, 'v1-chain', '/v1/chain');
+    // addRoute(server, 'v1-chain', '/v1/chain');
 
-	// // other v1 requests
-  //   server.route({
-  //       url: '/v1/chain/*',
-  //       method: ["GET", "POST"],
-  //       schema: {
-  //           summary: "Wildcard chain api handler",
-  //           tags: ["chain"]
-  //       },
-  //       handler: async (request: FastifyRequest, reply: FastifyReply) => {
+	  // other v1 requests
+    server.route({
+        url: '/v1/chain/*',
+        method: ["GET", "POST"],
+        schema: {
+            summary: "Wildcard chain api handler",
+            tags: ["chain"]
+        },
+        handler: async (request: FastifyRequest, reply: FastifyReply) => {
 
-  //           console.log(request.url);
+            console.log(request.url);
 
-  //           await handleChainApiRedirect(request, reply, server);
-  //       }
-  //   });
+            // restrict access to only the api endpoints the frontend is using
+            const allowedRoutes = ['/v1/chain/get_info', '/v1/chain/get_table_by_scope']
+            if (!allowedRoutes.includes(request.url)) {
+               await handleChainApiRedirect(request, reply, server);
+            } else {
+                reply.code(404).send({ error: 'Not found' });
+            }
+        }
+    });
 
   //   // /v1/node/get_supported_apis
   //   server.route({
