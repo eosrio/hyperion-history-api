@@ -58,15 +58,11 @@ export function registerRoutes(server: FastifyInstance, featureFlagClient?: Feat
     addRoute(server, 'v2-stats', '/v2/stats');
 
     // legacy routes
-    addRoute(server, 'v1-history', '/v1/history');
     addRoute(server, 'v1-trace', '/v1/trace_api', featureFlagClient);
 
     addSharedSchemas(server);
 
-    // chain api redirects
-    addRoute(server, 'v1-chain', '/v1/chain');
-
-	// other v1 requests
+	  // other v1 requests
     server.route({
         url: '/v1/chain/*',
         method: ["GET", "POST"],
@@ -78,26 +74,12 @@ export function registerRoutes(server: FastifyInstance, featureFlagClient?: Feat
 
             console.log(request.url);
 
-            await handleChainApiRedirect(request, reply, server);
-        }
-    });
-
-    // /v1/node/get_supported_apis
-    server.route({
-        url: '/v1/node/get_supported_apis',
-        method: ["GET"],
-        schema: {
-            summary: "Get list of supported APIs",
-            tags: ["node"]
-        },
-        handler: async (request: FastifyRequest, reply: FastifyReply) => {
-            const data = await got.get(`${server.chain_api}/v1/node/get_supported_apis`).json() as any;
-            if (data.apis && data.apis.length > 0) {
-                const apiSet = new Set(server.routeSet);
-                data.apis.forEach((a) => apiSet.add(a));
-                reply.send({apis: [...apiSet]});
+            // restrict access to only the api endpoints the frontend is using
+            const allowedRoutes = ['/v1/chain/get_info', '/v1/chain/get_table_by_scope']
+            if (!allowedRoutes.includes(request.url)) {
+               await handleChainApiRedirect(request, reply, server);
             } else {
-                reply.send({apis: [...server.routeSet], error: 'nodeos did not send any data'});
+                reply.code(404).send({ error: 'Not found' });
             }
         }
     });
