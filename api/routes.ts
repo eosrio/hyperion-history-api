@@ -58,13 +58,9 @@ export function registerRoutes(server: FastifyInstance, featureFlagClient?: Feat
     addRoute(server, 'v2-stats', '/v2/stats');
 
     // legacy routes
-    // addRoute(server, 'v1-history', '/v1/history');
     addRoute(server, 'v1-trace', '/v1/trace_api', featureFlagClient);
 
     addSharedSchemas(server);
-
-    // chain api redirects
-    // addRoute(server, 'v1-chain', '/v1/chain');
 
 	  // other v1 requests
     server.route({
@@ -87,26 +83,6 @@ export function registerRoutes(server: FastifyInstance, featureFlagClient?: Feat
             }
         }
     });
-
-  //   // /v1/node/get_supported_apis
-  //   server.route({
-  //       url: '/v1/node/get_supported_apis',
-  //       method: ["GET"],
-  //       schema: {
-  //           summary: "Get list of supported APIs",
-  //           tags: ["node"]
-  //       },
-  //       handler: async (request: FastifyRequest, reply: FastifyReply) => {
-  //           const data = await got.get(`${server.chain_api}/v1/node/get_supported_apis`).json() as any;
-  //           if (data.apis && data.apis.length > 0) {
-  //               const apiSet = new Set(server.routeSet);
-  //               data.apis.forEach((a) => apiSet.add(a));
-  //               reply.send({apis: [...apiSet]});
-  //           } else {
-  //               reply.send({apis: [...server.routeSet], error: 'nodeos did not send any data'});
-  //           }
-  //       }
-  //   });
 
     server.addHook('onError', (request: FastifyRequest, reply: FastifyReply, error: FastifyError, done) => {
         console.log(`[${request.headers['x-real-ip'] || request.ip}] ${request.method} ${request.url} failed >> ${error.message}`);
