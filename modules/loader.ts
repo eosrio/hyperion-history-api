@@ -26,11 +26,12 @@ export class HyperionModuleLoader {
         this.plugins = [];
         this.conn = cm.connections;
         this.config = cm.config;
-        if (!this.conn.chains[this.config.settings.chain]) {
-            console.log('Chain  ' + this.config.settings.chain + ' not defined on connections.json!');
+        const chain = this.config.settings.chain;
+        if (!this.conn.chains[chain]) {
+            console.log('Chain  ' + chain + ' not defined on connections.json!');
             process.exit(0);
         }
-        this.chainID = this.conn.chains[this.config.settings.chain].chain_id;
+        this.chainID = this.conn.chains[chain].chain_id;
         this.loadActionHandlers();
     }
 

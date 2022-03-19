@@ -1,8 +1,9 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions";
+import {ActionIndexSource} from "../../../../interfaces/es-interfaces";
 
 async function getLastSeq(fastify: FastifyInstance, date: string) {
-	const req = await fastify.elastic.search({
+	const req = await fastify.elastic.search<ActionIndexSource>({
 		index: fastify.manager.chain + '-action-*',
 		body: {
 			"size": 1,
@@ -19,7 +20,7 @@ async function getLastSeq(fastify: FastifyInstance, date: string) {
 			"sort": [{"global_sequence": "desc"}]
 		}
 	});
-	return req.body.hits.hits[0]._source.global_sequence;
+	return req.hits.hits[0]._source.global_sequence;
 }
 
 async function getTxCount(fastify: FastifyInstance, dateFrom: string, dateTo: string) {
@@ -36,11 +37,11 @@ async function getTxCount(fastify: FastifyInstance, dateFrom: string, dateTo: st
 			}
 		}
 	});
-	return req.body.count;
+	return req.count;
 }
 
 async function getUniqueActors(fastify: FastifyInstance, dateFrom: string, dateTo: string) {
-	const req = await fastify.elastic.search({
+	const req = await fastify.elastic.search<ActionIndexSource,any>({
 		index: fastify.manager.chain + '-action-*',
 		size: 0,
 		body: {
@@ -58,7 +59,7 @@ async function getUniqueActors(fastify: FastifyInstance, dateFrom: string, dateT
 			}
 		}
 	});
-	return req.body.aggregations.unique_actors.value;
+	return req.aggregations.unique_actors.value;
 }
 
 async function getActionUsage(fastify: FastifyInstance, request: FastifyRequest) {

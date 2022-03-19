@@ -1,7 +1,7 @@
 import {ConfigurationModule} from "./config";
 import {ConnectionManager} from "../connections/manager.class";
 import {JsonRpc} from "eosjs/dist";
-import {ApiResponse, Client} from "@elastic/elasticsearch";
+import {Client} from "@elastic/elasticsearch";
 import {HyperionModuleLoader} from "./loader";
 
 import {
@@ -43,6 +43,11 @@ import {IOConfig} from "@pm2/io/build/main/pmx";
 import Gauge from "@pm2/io/build/main/utils/metrics/gauge";
 import moment = require("moment");
 import Timeout = NodeJS.Timeout;
+import {
+    AggregationsHistogramAggregation,
+    AggregationsHistogramOrder,
+    IlmPutLifecycleRequest
+} from "@elastic/elasticsearch/lib/api/types";
 
 interface RevBlock {
     num: number;
@@ -435,8 +440,8 @@ export class HyperionMaster {
     private async verifyIngestClients() {
         for (const ingestClient of this.manager.ingestClients) {
             try {
-                const ping_response: ApiResponse = await ingestClient.ping();
-                if (ping_response.body) {
+                const ping_response = await ingestClient.ping({}, {meta: true});
+                if (ping_response) {
                     hLog(`Ingest client ready at ${ping_response.meta.connection.id}`);
                 }
             } catch (e) {
@@ -532,7 +537,7 @@ export class HyperionMaster {
                 }
             }
         });
-        if (!script_status.body['acknowledged']) {
+        if (!script_status.acknowledged) {
             hLog('Failed to load script updateByBlock. Aborting!');
             process.exit(1);
         } else {
@@ -544,13 +549,11 @@ export class HyperionMaster {
         if (indexConfig.ILPs) {
             for (const ILP of indexConfig.ILPs) {
                 try {
-                    await this.client.ilm.getLifecycle({
-                        policy: ILP.policy
-                    });
+                    await this.client.ilm.getLifecycle({name: ILP.name});
                 } catch {
                     try {
-                        const ilm_status: ApiResponse = await this.client.ilm.putLifecycle(ILP);
-                        if (!ilm_status.body['acknowledged']) {
+                        const ilm_status = await this.client.ilm.putLifecycle(ILP);
+                        if (!ilm_status.acknowledged) {
                             hLog(`Failed to create ILM Policy`);
                         }
                     } catch (e) {
@@ -591,7 +594,7 @@ export class HyperionMaster {
         for (const index of indicesList) {
             try {
                 if (indexConfig[index.name]) {
-                    const creation_status: ApiResponse = await this.client['indices'].putTemplate({
+                    const creation_status = await this.client['indices'].putTemplate({
                         name: `${this.conf.settings.chain}-${index.type}`,
                         body: indexConfig[index.name]
                     });
@@ -632,7 +635,7 @@ export class HyperionMaster {
                 const new_index = `${queue_prefix}-${index.type}-${version}-000001`;
                 const exists = await this.client.indices.exists({index: new_index});
 
-                if (!exists.body) {
+                if (!exists) {
 
                     // create index
                     try {
@@ -782,7 +785,7 @@ export class HyperionMaster {
     }
 
     async getLastBlock(index_name) {
-        const lastBlockSearch = await this.manager.elasticsearchClient.search({
+        const lastBlockSearch = await this.manager.elasticsearchClient.search<any>({
             index: index_name,
             size: 1,
             _source: "block_num",
@@ -791,15 +794,15 @@ export class HyperionMaster {
                 sort: [{"block_num": {"order": "desc"}}]
             }
         });
-        if (lastBlockSearch.body.hits.hits[0]) {
-            return lastBlockSearch.body.hits.hits[0]._source.block_num;
+        if (lastBlockSearch.hits.hits[0]) {
+            return lastBlockSearch.hits.hits[0]._source.block_num;
         } else {
             return null;
         }
     }
 
     async getFirstBlock(index_name) {
-        const firstBlockSearch = await this.manager.elasticsearchClient.search({
+        const firstBlockSearch = await this.manager.elasticsearchClient.search<any>({
             index: index_name,
             size: 1,
             _source: "block_num",
@@ -808,8 +811,8 @@ export class HyperionMaster {
                 sort: [{"block_num": {"order": "asc"}}]
             }
         });
-        if (firstBlockSearch.body.hits.hits[0]) {
-            return firstBlockSearch.body.hits.hits[0]._source.block_num;
+        if (firstBlockSearch.hits.hits[0]) {
+            return firstBlockSearch.hits.hits[0]._source.block_num;
         } else {
             return null;
         }
@@ -825,13 +828,13 @@ export class HyperionMaster {
         hLog(`Loading indices...`);
 
         if (!this.conf.settings.bypass_index_map) {
-            const getIndicesResponse = await this.manager.elasticsearchClient.cat.indices({
-                index: this.chain + "-*",
-                format: 'json'
-            });
 
-            if (getIndicesResponse && getIndicesResponse.statusCode === 200 && getIndicesResponse.body) {
-                const indices = getIndicesResponse.body;
+            try {
+                const indices = await this.manager.elasticsearchClient.cat.indices({
+                    index: this.chain + "-*",
+                    format: 'json'
+                });
+
                 const actionIndices = indices.filter(k => k.index.startsWith(this.chain + "-action"));
                 for (const actionIndex of actionIndices) {
                     const last_block = await this.getLastBlock(actionIndex.index);
@@ -855,8 +858,9 @@ export class HyperionMaster {
                         last_block
                     });
                 }
-            } else {
-                console.log(JSON.stringify(getIndicesResponse, null, 2));
+
+            } catch (e: any) {
+                console.log(e);
                 hLog(`Failed to load all indices!`);
                 process.exit();
             }
@@ -1713,8 +1717,8 @@ export class HyperionMaster {
         this.client = this.manager.elasticsearchClient;
         try {
             const esInfo = await this.client.info();
-            hLog(`Elasticsearch: ${esInfo.body.version.number} | Lucene: ${esInfo.body.version.lucene_version}`);
-            this.emitAlert('info', `Indexer started using ES v${esInfo.body.version.number}`);
+            hLog(`Elasticsearch: ${esInfo.version.number} | Lucene: ${esInfo.version.lucene_version}`);
+            this.emitAlert('info', `Indexer started using ES v${esInfo.version.number}`);
         } catch (e) {
             hLog('Failed to check elasticsearch version!');
             process.exit();
@@ -1905,8 +1909,10 @@ export class HyperionMaster {
                 }
             },
         });
-        const totalHits = init_response.body.hits.total.value;
-        hLog(`Total hits in range: ${totalHits}`);
+        if (typeof init_response.hits.total !== "number") {
+            const totalHits = init_response.hits.total.value;
+            hLog(`Total hits in range: ${totalHits}`);
+        }
         responseQueue.push(init_response);
         while (responseQueue.length) {
             const {body} = responseQueue.shift();
@@ -1914,7 +1920,7 @@ export class HyperionMaster {
                 func(hit._source);
             }
             const next_response = await this.client.scroll({scroll_id: body['_scroll_id'], scroll: '30s'});
-            if (next_response.body['hits']['hits'].length > 0) {
+            if (next_response.hits.hits.length > 0) {
                 responseQueue.push(next_response);
             }
         }
@@ -1923,34 +1929,34 @@ export class HyperionMaster {
     async collectBlockHistogram() {
         const min_interval = 25000;
         const missed_ranges = [];
-        const response = await this.client.search({
+        const response = await this.client.search<any, any>({
             index: this.chain + '-block-*',
             track_total_hits: true,
-            body: {
-                aggs: {
-                    "blocks": {
-                        "histogram": {
-                            "field": "block_num",
-                            "interval": min_interval,
-                            "min_doc_count": 1
-                        }
+            size: 0,
+            aggs: {
+                blocks: {
+                    "histogram": {
+                        "field": "block_num",
+                        "interval": min_interval,
+                        "min_doc_count": 1
                     }
-                },
-                size: 0,
-                _source: {
-                    excludes: []
-                },
-                query: {
-                    match_all: {}
                 }
+            },
+            query: {
+                match_all: {}
             }
         });
-        const totalBlockCount = response.body.hits.total.value;
+        let totalBlockCount;
+        if (typeof response.hits.total == 'number') {
+            totalBlockCount = response.hits.total;
+        } else {
+            totalBlockCount = response.hits.total.value;
+        }
         hLog('Total indexed blocks: ' + totalBlockCount);
         hLog('Last indexed block: ' + this.head);
         hLog(`Total missing blocks: ${this.head - totalBlockCount}`);
         let lastKey = 0;
-        for (const bucket of response.body.aggregations.blocks.buckets) {
+        for (const bucket of response.aggregations.blocks.buckets) {
             if (lastKey !== 0 && bucket.key !== lastKey + min_interval) {
                 hLog(`All blocks missing from ${lastKey + min_interval} to ${bucket.key}`);
                 missed_ranges.push([lastKey + min_interval, bucket.key]);
@@ -1997,7 +2003,6 @@ export class HyperionMaster {
                 await this.manager.elasticsearchClient.index({
                     index: this.chain + '-table-accounts',
                     id: `${payload.code}-${payload.scope}-${payload.symbol}`,
-                    type: '_doc',
                     body: payload
                 });
                 // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
@@ -2032,7 +2037,6 @@ export class HyperionMaster {
                 await this.manager.elasticsearchClient.index({
                     index: this.chain + '-table-voters',
                     id: `${payload.voter}`,
-                    type: '_doc',
                     body: payload
                 });
                 // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
@@ -2074,7 +2078,6 @@ export class HyperionMaster {
                     await this.manager.elasticsearchClient.index({
                         index: this.chain + '-perm',
                         id: `${payload.owner}-${payload.name}`,
-                        type: '_doc',
                         body: payload
                     });
                     // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);

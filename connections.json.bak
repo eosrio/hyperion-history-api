@@ -1,0 +1,50 @@
+{
+  "amqp": {
+    "host": "127.0.0.1:5672",
+    "api": "127.0.0.1:15672",
+    "user": "eosrio",
+    "pass": "QfhsSU2eZgqBXq8R",
+    "vhost": "hyperion"
+  },
+  "elasticsearch": {
+    "host": "127.0.0.1:9200",
+    "ingest_nodes": [
+      "127.0.0.1:9200"
+    ],
+    "secure": false,
+    "user": "elastic",
+    "pass": ""
+  },
+  "redis": {
+    "host": "127.0.0.1",
+    "port": "6379"
+  },
+  "chains": {
+    "eos21": {
+      "name": "EOS Mainnet",
+      "chain_id": "aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906",
+      "http2": "http://34.91.38.250",
+      "http": "http://127.0.0.1:8011",
+      "ship2": "http://34.91.38.250/ship",
+      "ship": "ws://127.0.0.1:8013",
+      "WS_ROUTER_PORT": 8015,
+      "WS_ROUTER_HOST": "127.0.0.1"
+    },
+    "eos20": {
+      "name": "EOS Mainnet",
+      "chain_id": "aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906",
+      "http": "http://127.0.0.1:18011",
+      "ship": "ws://127.0.0.1:18013",
+      "WS_ROUTER_PORT": 18015,
+      "WS_ROUTER_HOST": "127.0.0.1"
+    },
+    "telos-staging": {
+      "name": "Telos Staging",
+      "ship": "ws://192.168.10.120:8093",
+      "http": "http://192.168.10.120:8091",
+      "chain_id": "4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11",
+      "WS_ROUTER_HOST": "127.0.0.1",
+      "WS_ROUTER_PORT": 7001
+    }
+  }
+}

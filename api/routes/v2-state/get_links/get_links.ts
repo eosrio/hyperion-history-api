@@ -1,6 +1,5 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {getTrackTotalHits, timedQuery} from "../../../helpers/functions";
-import {ApiResponse} from "@elastic/elasticsearch";
 import {getSkipLimit} from "../../v2-history/get_actions/functions";
 
 async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
@@ -34,24 +33,22 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
 	// only present deltas
 	queryStruct.bool.must_not.push({'term': {'present': 0}});
 
-	// Prepare query body
-	const query_body = {
-		track_total_hits: getTrackTotalHits(query),
-		query: queryStruct,
-		sort: {block_num: 'desc'}
-	};
 
 	const maxLinks = fastify.manager.config.api.limits.get_links;
-	const results: ApiResponse = await fastify.elastic.search({
+
+	// Prepare query
+	const results = await fastify.elastic.search<any>({
 		index: fastify.manager.chain + '-link-*',
 		from: skip || 0,
 		size: (limit > maxLinks ? maxLinks : limit) || 50,
-		body: query_body
+		track_total_hits: getTrackTotalHits(query),
+		query: queryStruct,
+		sort: 'block_num:desc'
 	});
-	const hits = results.body.hits.hits;
+	const hits = results.hits.hits;
 	const response: any = {
 		cached: false,
-		total: results.body.hits.total,
+		total: results.hits.total,
 		links: []
 	};
 

@@ -1,6 +1,5 @@
 import {HyperionWorker} from "./hyperionWorker";
 import {Api} from "eosjs/dist";
-import {ApiResponse} from "@elastic/elasticsearch";
 import {cargo, queue} from 'async';
 import * as AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "../addons/eosjs-native";
@@ -640,7 +639,7 @@ export default class MainDSWorker extends HyperionWorker {
                     ]
                 }
             };
-            const queryResult: ApiResponse = await this.client.search({
+            const queryResult = await this.client.search<any>({
                 index: `${this.chain}-abi-*`,
                 body: {
                     size: 1, query,
@@ -648,9 +647,9 @@ export default class MainDSWorker extends HyperionWorker {
                     _source: {includes: _includes}
                 }
             });
-            const results = queryResult.body.hits.hits;
+            const results = queryResult.hits.hits;
             if (results.length > 0) {
-                const nextRefResponse: ApiResponse = await this.client.search({
+                const nextRefResponse = await this.client.search<any>({
                     index: `${this.chain}-abi-*`,
                     body: {
                         size: 1,
@@ -666,7 +665,7 @@ export default class MainDSWorker extends HyperionWorker {
                         _source: {includes: ["block"]}
                     }
                 });
-                const nextRef = nextRefResponse.body.hits.hits;
+                const nextRef = nextRefResponse.hits.hits;
                 if (nextRef.length > 0) {
                     return {
                         valid_until: nextRef[0]._source.block,

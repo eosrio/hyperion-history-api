@@ -42,10 +42,10 @@ async function checkElastic(fastify: FastifyInstance) {
 		const data = {
 			last_indexed_block: indexedBlocks[0],
 			total_indexed_blocks: indexedBlocks[1] + 1,
-			active_shards: esStatus.body[0]['active_shards_percent']
+			active_shards: esStatus[0]['active_shards_percent']
 		};
 		let stat = 'OK';
-		esStatus.body.forEach(status => {
+		esStatus.forEach(status => {
 			if (status.status === 'yellow' && stat !== 'Error') {
 				stat = 'Warning'
 			} else if (status.status === 'red') {

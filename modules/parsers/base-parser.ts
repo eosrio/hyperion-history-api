@@ -8,6 +8,17 @@ import {debugLog, hLog} from "../../helpers/common_functions";
 import {SerialBuffer} from "eosjs/dist/eosjs-serialize";
 import {HyperionActionAct} from "../../interfaces/hyperion-action";
 
+export function timedFunction(enable: boolean, method: () => void) {
+    if (enable) {
+        const ref = process.hrtime.bigint();
+        method();
+        return Number(process.hrtime.bigint() - ref) / 1000;
+    } else {
+        method();
+        return null;
+    }
+}
+
 export abstract class BaseParser {
 
     txDec = new TextDecoder();

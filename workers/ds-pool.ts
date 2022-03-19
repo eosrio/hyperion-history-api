@@ -9,6 +9,7 @@ import {join, resolve} from "path";
 import {existsSync, readdirSync, readFileSync} from "fs";
 import flatstr from 'flatstr';
 import IORedis from "ioredis";
+import {SearchHit} from "@elastic/elasticsearch/lib/api/types";
 
 const abi_remapping = {
     "_Bool": "bool",
@@ -147,7 +148,7 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    async fetchAbiHexAtBlockElastic(contract_name, last_block, get_json, fetch_offset: number) {
+    async fetchAbiHexAtBlockElastic(contract_name, last_block, get_json, fetch_offset: number): Promise<any | null> {
         try {
             const _includes = ["block", "actions", "tables"];
             if (get_json) {
@@ -173,7 +174,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 }
             });
             // const t_end = process.hrtime.bigint();
-            const results = queryResult.body.hits.hits;
+            const results = queryResult.hits.hits;
             // const duration = (Number(t_end - t_start) / 1000 / 1000).toFixed(2);
             if (results.length > 0) {
                 // hLog(`fetch abi from elastic took: ${duration} ms`);

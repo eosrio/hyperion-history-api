@@ -1,16 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions";
 import * as _ from "lodash";
-
-interface getBlockTraceResponse {
-    id: string;
-    number: number;
-    previous_id: string;
-    status: string;
-    timestamp: string;
-    producer: string;
-    transactions: any[];
-}
+import {ActionIndexSource, BlockIndexSource, getBlockTraceResponse} from "../../../../interfaces/es-interfaces";
 
 async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) {
 
@@ -55,15 +46,15 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
 
     if (searchBody) {
 
-        const getBlockHeader = await fastify.elastic.search({
+        const getBlockHeader = await fastify.elastic.search<BlockIndexSource>({
             index: fastify.manager.chain + "-block-*",
             size: 1,
             body: searchBody
         });
 
-        if (getBlockHeader.body.hits.hits.length === 1) {
+        if (getBlockHeader.hits.hits.length === 1) {
 
-            const block = getBlockHeader.body.hits.hits[0]._source;
+            const block = getBlockHeader.hits.hits[0]._source;
             const info = await fastify.eosjs.rpc.get_info();
 
             response.id = block.block_id;
@@ -74,7 +65,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
             response.producer = block.producer;
 
             // lookup all actions on block
-            const getActionsResponse = await fastify.elastic.search({
+            const getActionsResponse = await fastify.elastic.search<ActionIndexSource>({
                 index: fastify.manager.chain + "-action-*",
                 size: fastify.manager.config.api.limits.get_actions || 1000,
                 body: {
@@ -89,7 +80,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
                 }
             });
 
-            const hits = getActionsResponse.body.hits.hits;
+            const hits = getActionsResponse.hits.hits;
             if (hits.length > 0) {
                 _.forEach(_.groupBy(hits, (v) => v['_source']['trx_id']), (value, key) => {
                     const actArray = [];
