@@ -9,8 +9,8 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
 
 	const queryStruct = {
 		"bool": {
-			must: [],
-			must_not: []
+			must: [] as any[],
+			must_not: [] as any[]
 		}
 	};
 
@@ -40,7 +40,7 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
 	const results = await fastify.elastic.search<any>({
 		index: fastify.manager.chain + '-link-*',
 		from: skip || 0,
-		size: (limit > maxLinks ? maxLinks : limit) || 50,
+		size: (maxLinks && (limit > maxLinks) ? maxLinks : limit) || 50,
 		track_total_hits: getTrackTotalHits(query),
 		query: queryStruct,
 		sort: 'block_num:desc'

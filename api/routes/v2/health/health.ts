@@ -74,7 +74,7 @@ async function getHealthQuery(fastify: FastifyInstance, request: FastifyRequest)
 		version: fastify.manager.current_version,
 		version_hash: fastify.manager.getServerHash(),
 		host: fastify.manager.config.api.server_name,
-		health: [],
+		health: [] as any[],
 		features: fastify.manager.config.features
 	};
 	response.health.push(await checkRabbit(fastify));

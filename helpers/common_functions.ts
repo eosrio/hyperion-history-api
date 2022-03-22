@@ -3,8 +3,8 @@ import {existsSync, readFileSync} from "node:fs";
 import {join} from "node:path";
 import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
 import {Serialize} from "eosjs";
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
+import {dirname} from 'path';
+import {fileURLToPath} from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -13,7 +13,7 @@ const conf_path = join(__dirname, `../${process.env.CONFIG_JSON}`);
 if (existsSync(conf_path)) {
     try {
         config = JSON.parse(readFileSync(conf_path).toString());
-    } catch (e:any) {
+    } catch (e: any) {
         console.log(e.message);
         process.exit(1);
     }
@@ -26,11 +26,15 @@ if (!config) {
 
 function getLastResult(results: SearchResponse) {
     if (results.hits?.hits?.length > 0) {
-        const last = results.hits.hits[0].sort[0];
-        if (last && typeof last === 'number') {
-            return last;
-        } else if (typeof last === 'string') {
-            return parseInt(last, 10);
+        if (results.hits.hits[0].sort) {
+            const last = results.hits.hits[0].sort[0];
+            if (last && typeof last === 'number') {
+                return last;
+            } else if (typeof last === 'string') {
+                return parseInt(last, 10);
+            } else {
+                return 1;
+            }
         } else {
             return 1;
         }
@@ -75,8 +79,12 @@ export async function getLastIndexedBlockWithTotalBlocks(es_client: Client, chai
     });
     let lastBlock = getLastResult(results);
     let totalBlocks = 1;
-    if (typeof results.hits.total !== "number") {
-        totalBlocks = results.hits.total.value;
+    if (results.hits.total) {
+        if (typeof results.hits.total !== "number") {
+            totalBlocks = results.hits.total.value;
+        } else {
+            totalBlocks = results.hits.total;
+        }
     }
     return [lastBlock, totalBlocks];
 }
@@ -147,7 +155,7 @@ export function messageAllWorkers(cl, payload) {
                     } else {
                         hLog('Worker is not connected!');
                     }
-                } catch (e:any) {
+                } catch (e: any) {
                     hLog('Failed to message worker!');
                     hLog(e);
                 }
@@ -225,7 +233,7 @@ export function checkFilter(filter, _source) {
 export function hLog(input: any, ...extra: any[]) {
     let role;
     if (process.env.worker_role) {
-        const id = parseInt(process.env.worker_id);
+        const id = parseInt(process.env.worker_id as string);
         role = `[${process.pid} - ${(id < 10 ? '0' : '') + id.toString()}_${process.env.worker_role}]`;
     } else {
         if (process.env.script && process.env.script === './api/server.js') {
@@ -236,12 +244,14 @@ export function hLog(input: any, ...extra: any[]) {
     }
     if (process.env.TRACE_LOGS === 'true') {
         const e = new Error();
-        const frame = e.stack.split("\n")[2];
-        const where = frame.split(" ")[6].split(/[:()]/);
-        const arr = where[1].split("/");
-        const fileName = arr[arr.length - 1];
-        const lineNumber = where[2];
-        role += ` ${fileName}:${lineNumber}`;
+        if (e.stack) {
+            const frame = e.stack.split("\n")[2];
+            const where = frame.split(" ")[6].split(/[:()]/);
+            const arr = where[1].split("/");
+            const fileName = arr[arr.length - 1];
+            const lineNumber = where[2];
+            role += ` ${fileName}:${lineNumber}`;
+        }
     }
     console.log(role, input, ...extra);
 }

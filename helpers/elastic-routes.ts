@@ -255,7 +255,7 @@ export class ElasticRoutes {
             coll[type].push(message);
         }
 
-        const queue = [];
+        const queue: any[] = [];
         const v = this.cm.config.settings.index_version;
         let counter = 0;
 
@@ -512,12 +512,12 @@ export class ElasticRoutes {
                     properties: payload.properties
                 };
                 if (contractMap.has(headers.code)) {
-                    contractMap.get(headers.code).push(item);
+                    contractMap.get(headers.code)?.push(item);
                 } else {
                     contractMap.set(headers.code, [item]);
                 }
             }
-            const processingQueue = [];
+            const processingQueue: any[] = [];
             for (const entry of contractMap.entries()) {
                 processingQueue.push(
                     this.createGenericBuilder(
@@ -536,7 +536,7 @@ export class ElasticRoutes {
     }
 
     private static reportMaxBlock(maxBlockNum: number, index_name: string) {
-        process.send({
+        process.send?.({
             event: 'ingestor_block_report',
             index: index_name,
             proc: process.env.worker_role,

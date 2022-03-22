@@ -67,7 +67,7 @@ async function buildPlugin(name, flags) {
                 stdio: 'inherit',
             });
             npmInstall.on('close', (code) => {
-                if (code !== 0) {
+                if (code && code !== 0) {
                     console.log(`process exited with code ${code}`);
                     process.exit(code);
                 }
@@ -82,7 +82,7 @@ async function buildPlugin(name, flags) {
             stdio: 'inherit',
         });
         npmInstall.on('close', (code) => {
-            if (code !== 0) {
+            if (code && code !== 0) {
                 console.log(`process exited with code ${code}`);
                 process.exit(code);
             }

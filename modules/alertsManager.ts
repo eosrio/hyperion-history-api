@@ -41,9 +41,9 @@ interface AlertOptions {
 export default class AlertsManager {
 
 	opts: AlertManagerOptions;
-	telegramBot: Telegraf;
-	smptTransport: Mail;
-	chainName: string;
+	telegramBot?: Telegraf;
+	smptTransport?: Mail;
+	chainName!: string;
 	private ready = false;
 
 	constructor(options: AlertManagerOptions) {

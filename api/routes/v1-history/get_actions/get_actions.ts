@@ -12,7 +12,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     const reqBody = request.body as any;
-    const should_array = [];
+    const should_array = [] as any[];
     for (const entry of terms) {
         const tObj = {term: {}};
         tObj.term[entry] = reqBody.account_name;
@@ -20,11 +20,11 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
     let code, method, pos, offset;
     let sort_direction = 'desc';
-    let filterObj = [];
+    let filterObj: any[] = [];
     if (reqBody.filter) {
         const filters = reqBody.filter.split(',');
         for (const filter of filters) {
-            const obj = {bool: {must: []}};
+            const obj = {bool: {must: [] as any[]}};
             const parts = filter.split(':');
             if (parts.length === 2) {
                 [code, method] = parts;
@@ -69,14 +69,14 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
     const queryStruct = {
         "bool": {
-            must: [],
+            must: [] as any,
             boost: 1.0
         }
     };
 
     if (reqBody.parent !== undefined) {
         const parent = parseInt(reqBody.parent, 10);
-        queryStruct.bool['filter'] = [];
+        queryStruct.bool['filter'] = [] as any[];
         queryStruct.bool['filter'].push({
             "term": {
                 "parent": parent
@@ -119,10 +119,11 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         queryStruct.bool['should'] = filterObj;
         queryStruct.bool['minimum_should_match'] = 1;
     }
+    const getActionsLimit = fastify.manager.config.api.limits.get_actions;
     const esOpts = {
         "index": fastify.manager.chain + '-action-*',
         "from": from || 0,
-        "size": (size > fastify.manager.config.api.limits.get_actions ? fastify.manager.config.api.limits.get_actions : size),
+        "size": (getActionsLimit && (size > getActionsLimit) ? getActionsLimit : size),
         "body": {
             "query": queryStruct,
             "sort": {
@@ -133,7 +134,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     const pResults = await Promise.all([fastify.eosjs.rpc.get_info(), fastify.elastic['search'](esOpts)]);
     const results = pResults[1];
     const response = {
-        actions: [],
+        actions: [] as any[],
         last_irreversible_block: pResults[0].last_irreversible_block_num
     };
     const hits = results['body']['hits']['hits'];

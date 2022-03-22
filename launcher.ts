@@ -22,8 +22,8 @@ async function launch() {
 	const conf = new ConfigurationModule();
 	const chain_name = conf.config.settings.chain;
 	const env: WorkerEnv = {
-		worker_id: process.env.worker_id,
-		worker_role: process.env.worker_role
+		worker_id: process.env.worker_id as string,
+		worker_role: process.env.worker_role as string
 	};
 
 	process.on('SIGINT', function () {

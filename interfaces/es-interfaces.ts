@@ -32,6 +32,7 @@ export interface DeltaIndexSource {
 }
 
 export interface ActionIndexSource {
+    trx_id: string;
     act: {
         account: string;
         name: string;

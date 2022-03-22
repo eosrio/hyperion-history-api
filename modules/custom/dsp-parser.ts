@@ -2,13 +2,13 @@ import DSPoolWorker from "../../workers/ds-pool";
 import flatstr from 'flatstr';
 
 export async function parseDSPEvent(worker: DSPoolWorker, data: any) {
-    const parsedEvents = [];
+    const parsedEvents: any[] = [];
     const events = data.console.split("\n");
     for (const event of events) {
         if (event !== '') {
             try {
                 parsedEvents.push(JSON.parse(event));
-            } catch (e:any) {
+            } catch (e: any) {
             }
         }
     }

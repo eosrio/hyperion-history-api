@@ -7,20 +7,20 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
 
     const query: any = request.query;
 
-    const response = {
+    const response: any = {
         account: null,
         actions: null,
         total_actions: 0,
         tokens: null,
-        links: null
+        links: undefined
     };
 
     const account = query.account;
-    const reqQueue = [];
+    const reqQueue: any[] = [];
 
     try {
         response.account = await fastify.eosjs.rpc.get_account(account);
-    } catch (e:any) {
+    } catch (e: any) {
         throw new Error("Account not found!");
     }
 
@@ -38,7 +38,7 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     // fetch account permission links
     reqQueue.push(got.get(`${getLinksApi}?account=${account}`).json());
 
-    const results = await Promise.all(reqQueue);
+    const results = await Promise.all(reqQueue) as any[];
     response.actions = results[0].actions;
     response.total_actions = results[0].total.value;
     response.tokens = results[1].tokens;

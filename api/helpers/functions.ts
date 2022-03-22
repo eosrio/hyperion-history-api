@@ -173,10 +173,12 @@ export async function timedQuery(
     const [cachedResponse, hash] = await getCachedResponse(
         fastify,
         route,
-        request.method === 'POST' ? request.body : request.query
+        request.method === 'POST' ? request.body as any : request.query as any
     );
 
-    if (cachedResponse && !request.query["ignoreCache"]) {
+    const query = request.query as any;
+
+    if (cachedResponse && !query["ignoreCache"]) {
         // add cached query time
         cachedResponse['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
         return cachedResponse;
@@ -187,7 +189,7 @@ export async function timedQuery(
 
     // save response to cash
     if (hash) {
-        let EX = null;
+        let EX;
         if (defaultRouteCacheMap[route]) {
             EX = defaultRouteCacheMap[route];
         }
@@ -262,7 +264,7 @@ export async function handleChainApiRedirect(
             reply.send(apiResponse.body);
             return apiResponse.body;
         }
-    } catch (error) {
+    } catch (error: any) {
 
         if (error.response) {
             reply.status(error.response.statusCode).send(error.response.body);
@@ -285,7 +287,7 @@ export async function handleChainApiRedirect(
                 //     const trxData = await fastify.eosjs.api.deserializeTransactionWithActions(trxBuffer);
                 //     console.log(trxData);
                 // }
-            } catch (e:any) {
+            } catch (e: any) {
                 console.log(e);
             }
         }

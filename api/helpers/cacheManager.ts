@@ -41,7 +41,7 @@ export class CacheManager {
                 if (removeCount > 0) {
                     console.log(`${removeCount} expired cache entries removed`);
                 }
-            } catch (e:any) {
+            } catch (e: any) {
                 console.log(e);
             }
         }, 5000);
@@ -53,10 +53,13 @@ export class CacheManager {
 
     setCachedData(hash: string, path: string, payload: any): void {
         if (this.v1CacheConfigs.has(path) && this.v1Caches.has(path)) {
-            this.v1Caches.get(path).set(hash, {
-                data: payload,
-                exp: this.v1CacheConfigs.get(path).ttl + Date.now()
-            });
+            const ttl = this.v1CacheConfigs.get(path)?.ttl
+            if (ttl) {
+                this.v1Caches.get(path)?.set(hash, {
+                    data: payload,
+                    exp: ttl + Date.now()
+                });
+            }
         }
     }
 
@@ -71,15 +74,15 @@ export class CacheManager {
             payload = request.url;
         }
         const hashedString = this.hashPayload(payload);
-        if (this.v1Caches.has(path)) {
-            const entry = this.v1Caches.get(path).get(hashedString);
+        if (this.v1Caches.has(path as string)) {
+            const entry = this.v1Caches.get(path as string)?.get(hashedString);
             if (entry && entry.exp > Date.now()) {
-                return [entry.data, hashedString, path];
+                return [entry.data, hashedString, path as string];
             } else {
-                return [null, hashedString, path];
+                return [null, hashedString, path as string];
             }
         } else {
-            return [null, hashedString, path];
+            return [null, hashedString, path as string];
         }
     }
 

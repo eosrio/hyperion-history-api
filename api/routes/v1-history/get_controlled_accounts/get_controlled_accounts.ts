@@ -3,10 +3,14 @@ import {timedQuery} from "../../../helpers/functions";
 import {SearchHit} from "@elastic/elasticsearch/lib/api/types";
 
 async function getControlledAccounts(fastify: FastifyInstance, request: FastifyRequest) {
+    let body;
     if (typeof request.body === 'string') {
-        request.body = JSON.parse(request.body)
+        body = JSON.parse(request.body) as any;
     }
-    let controlling_account = request.body["controlling_account"];
+    let controlling_account;
+    if (request && request.body && body["controlling_account"]) {
+        controlling_account = body["controlling_account"]
+    }
     const results = await fastify.elastic.search({
         index: fastify.manager.chain + '-action-*',
         size: 100,
@@ -37,7 +41,7 @@ async function getControlledAccounts(fastify: FastifyInstance, request: FastifyR
     });
 
     const response = {
-        controlled_accounts: []
+        controlled_accounts: [] as any[]
     };
 
     const hits = results.hits.hits;

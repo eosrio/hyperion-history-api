@@ -5,7 +5,7 @@ import {applyTimeFilter} from "../get_actions/functions";
 async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
     let skip, limit;
     let sort_direction = 'desc';
-    const mustArray = [];
+    const mustArray: any[] = [];
     const query: any = request.query;
     for (const param in query) {
         if (Object.prototype.hasOwnProperty.call(query, param)) {

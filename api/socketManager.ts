@@ -112,7 +112,7 @@ async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
     deltaQueryFields.forEach(f => {
         addTermMatch(data, search_body, f);
     });
-    const responseQueue = [];
+    const responseQueue: any[] = [];
     let counter = 0;
     const init_response = await fastify.elastic.search({
         index: fastify.manager.chain + '-delta-*',
@@ -150,7 +150,7 @@ async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
 }
 
 async function streamPastActions(fastify: FastifyInstance, socket, data) {
-    const search_body = {
+    const search_body: any = {
         query: {bool: {must: []}},
         sort: {
             global_sequence: {
@@ -180,7 +180,7 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
         search_body.query.bool.must.push({'term': {'act.name': data.action}});
     }
 
-    const onDemandFilters = [];
+    const onDemandFilters: any[] = [];
     if (data.filters.length > 0) {
         data.filters.forEach(f => {
             if (f.field && f.value) {
@@ -195,7 +195,7 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
         });
     }
 
-    const responseQueue = [];
+    const responseQueue: any[] = [];
     let counter = 0;
 
     const init_response = await fastify.elastic.search({
@@ -207,7 +207,7 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
     responseQueue.push(init_response);
     while (responseQueue.length) {
         const {body} = responseQueue.shift();
-        const enqueuedMessages = [];
+        const enqueuedMessages: any[] = [];
         counter += body['hits']['hits'].length;
         for (const doc of body['hits']['hits']) {
             let allow = false;
@@ -232,6 +232,9 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
             hLog(`${counter} past actions streamed to ${socket.id}`);
             break;
         }
+
+        if (!init_response.hits.total) break;
+
         if (typeof init_response.hits.total !== "number" && init_response.hits.total.value < 1000) {
             const next_response = await fastify.elastic.scroll({
                 body: {scroll_id: body['_scroll_id'], scroll: '30s'}
@@ -291,7 +294,7 @@ export class SocketManager {
                             await streamPastDeltas(this.server, socket, data);
                         }
                         this.emitToRelay(data, 'delta_request', socket, callback);
-                    } catch (e:any) {
+                    } catch (e: any) {
                         console.log(e);
                     }
                 }
@@ -304,7 +307,7 @@ export class SocketManager {
                             await streamPastActions(this.server, socket, data);
                         }
                         this.emitToRelay(data, 'action_request', socket, callback);
-                    } catch (e:any) {
+                    } catch (e: any) {
                         console.log(e);
                     }
                 }
@@ -369,7 +372,7 @@ export class SocketManager {
 
     emitToClient(traceData, type) {
         if (this.io.sockets.sockets.has(traceData.client)) {
-            this.io.sockets.sockets.get(traceData.client).emit('message', {
+            this.io.sockets.sockets.get(traceData.client)?.emit('message', {
                 type: type,
                 mode: 'live',
                 message: traceData.message,

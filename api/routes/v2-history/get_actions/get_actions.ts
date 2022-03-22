@@ -49,7 +49,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 	const esResults = await fastify.elastic.search({
 		"index": indexPattern,
 		"from": skip || 0,
-		"size": (limit > maxActions ? maxActions : limit) || 10,
+		"size": (maxActions && (limit > maxActions) ? maxActions : limit) || 10,
 		"body": query_body
 	});
 

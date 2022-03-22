@@ -44,8 +44,8 @@ async function getResourceUsage(fastify: FastifyInstance, request: FastifyReques
         }
     };
 
-    if (request.query['@transfer.to']) {
-        searchBody.query.bool.must.push({term: {"@transfer.to": request.query['@transfer.to']}});
+    if (query['@transfer.to']) {
+        searchBody.query.bool.must.push({term: {"@transfer.to": query['@transfer.to']}});
     }
 
     const results = await fastify.elastic.search<ActionIndexSource, any>({

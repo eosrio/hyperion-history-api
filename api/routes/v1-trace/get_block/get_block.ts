@@ -42,7 +42,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
         }
     }
 
-    const response = {transactions: []} as getBlockTraceResponse;
+    const response = {transactions: [] as any[]} as getBlockTraceResponse;
 
     if (searchBody) {
 
@@ -54,7 +54,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
 
         if (getBlockHeader.hits.hits.length === 1) {
 
-            const block = getBlockHeader.hits.hits[0]._source;
+            const block = getBlockHeader.hits.hits[0]._source as any;
             const info = await fastify.eosjs.rpc.get_info();
 
             response.id = block.block_id;
@@ -68,35 +68,36 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
             const getActionsResponse = await fastify.elastic.search<ActionIndexSource>({
                 index: fastify.manager.chain + "-action-*",
                 size: fastify.manager.config.api.limits.get_actions || 1000,
-                body: {
-                    query: {
-                        bool: {
-                            must: [
-                                {term: {block_num: block.block_num}}
-                            ]
-                        }
-                    },
-                    sort: {global_sequence: "asc"}
-                }
+                query: {
+                    bool: {
+                        must: [
+                            {term: {block_num: block.block_num}}
+                        ]
+                    }
+                },
+                sort: ["global_sequence:asc"]
             });
 
             const hits = getActionsResponse.hits.hits;
             if (hits.length > 0) {
-                _.forEach(_.groupBy(hits, (v) => v['_source']['trx_id']), (value, key) => {
-                    const actArray = [];
+                _.forEach(_.groupBy(hits, (v) => v._source?.trx_id), (value, key) => {
+                    const actArray: any[] = [];
                     for (const act of value) {
                         const action = act['_source']
-                        for (const receipt of action.receipts) {
-                            actArray.push({
-                                receiver: receipt.receiver,
-                                account: action.act.account,
-                                action: action.act.name,
-                                authorization: action.act.authorization.map(auth => {
-                                    return {account: auth.actor, permission: auth.permission};
-                                }),
-                                data: action.act.data
-                            });
+                        if (action) {
+                            for (const receipt of action.receipts) {
+                                actArray.push({
+                                    receiver: receipt.receiver,
+                                    account: action.act.account,
+                                    action: action.act.name,
+                                    authorization: action.act.authorization.map(auth => {
+                                        return {account: auth.actor, permission: auth.permission};
+                                    }),
+                                    data: action.act.data
+                                });
+                            }
                         }
+
                     }
                     response.transactions.push({id: key, actions: actArray});
                 });

@@ -7,20 +7,21 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 
     const query: any = request.query;
 
-    const response = {'account': query.account, 'tokens': []};
+    const response = {
+        account: query.account,
+        tokens: [] as any[]
+    };
 
     const {skip, limit} = getSkipLimit(request.query);
     const maxDocs = fastify.manager.config.api.limits.get_tokens ?? 100;
 
     const stateResult = await fastify.elastic.search<any>({
-        "index": fastify.manager.chain + '-table-accounts-*',
-        "size": (limit > maxDocs ? maxDocs : limit) || 50,
-        "from": skip || 0,
-        "body": {
-            query: {
-                bool: {
-                    filter: [{term: {"scope": query.account}}]
-                }
+        index: fastify.manager.chain + '-table-accounts-*',
+        size: (limit > maxDocs ? maxDocs : limit) || 50,
+        from: skip || 0,
+        query: {
+            bool: {
+                filter: [{term: {"scope": query.account}}]
             }
         }
     });
@@ -34,7 +35,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
         let precision;
         const key = `${data.code}_${data.symbol}`;
 
-		if (testSet.has(key)) {
+        if (testSet.has(key)) {
             continue;
         }
 
@@ -57,7 +58,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
                         // console.log('Caching token precision -', key, precision);
                     }
                 }
-            } catch (e:any) {
+            } catch (e: any) {
                 console.log(`get_currency_balance error - contract:${data.code} - account:${query.account}`);
             }
         }

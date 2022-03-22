@@ -17,14 +17,14 @@ import {CacheManager} from "./helpers/cacheManager";
 
 class HyperionApiServer {
 
-    private hub: Socket;
+    private hub!: Socket;
     private readonly fastify;
     private readonly chain: string;
     private readonly conf: HyperionConfig;
     private readonly manager: ConnectionManager;
     private readonly cacheManager: CacheManager;
 
-    socketManager: SocketManager;
+    socketManager!: SocketManager;
     mLoader: HyperionModuleLoader;
 
     constructor() {
@@ -87,7 +87,7 @@ class HyperionApiServer {
         this.fastify.decorate('allowedActionQueryParamSet', extendedActionsSet);
 
         // define chain api url for /v1/chain/ redirects
-        let chainApiUrl: string = this.conf.api.push_api;
+        let chainApiUrl: string | undefined = this.conf.api.push_api;
         if (chainApiUrl === null || chainApiUrl === "") {
             chainApiUrl = this.manager.conn.chains[this.chain].http;
         }

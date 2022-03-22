@@ -26,7 +26,7 @@ export default class HyperionParser extends BaseParser {
         action.producer = trx_data.producer;
         action.trx_id = trx_data.trx_id;
 
-        if (action.account_ram_deltas.length === 0) {
+        if (action.account_ram_deltas && action.account_ram_deltas.length === 0) {
             delete action.account_ram_deltas;
         }
 
@@ -60,7 +60,7 @@ export default class HyperionParser extends BaseParser {
         for (const message of messages) {
 
             // profile deserialization
-            const ds_times = {
+            const ds_times: any = {
                 size: message.content.length,
                 eosjs: {
                     result: undefined,
@@ -98,7 +98,7 @@ export default class HyperionParser extends BaseParser {
 
             const res = ds_msg[1];
 
-            let block = null;
+            let block: any = null;
             if (res.block && res.block.length) {
 
                 if (typeof res.block === 'object' && res.block.length === 2) {
@@ -110,7 +110,7 @@ export default class HyperionParser extends BaseParser {
                         ds_times.abieos.signed_block = timedFunction(dsProfiling, () => {
                             block = worker.deserializeNative('signed_block_variant', res.block)[1];
                         });
-                    } catch (e:any) {
+                    } catch (e: any) {
                         hLog('signed_block_variant deserialization failed with abieos!');
                     }
                     if (!block) {
@@ -119,7 +119,7 @@ export default class HyperionParser extends BaseParser {
                             ds_times.eosjs.signed_block = timedFunction(dsProfiling, () => {
                                 block = deserialize('signed_block_variant', res.block, this.txEnc, this.txDec, worker.types);
                             });
-                        } catch (e:any) {
+                        } catch (e: any) {
                             hLog('signed_block_variant deserialization failed with eosjs!');
                         }
                     }
@@ -160,7 +160,7 @@ export default class HyperionParser extends BaseParser {
                         // store time diff
                         if (worker.conf.settings.ds_profiling) ds_times['packed_trx'] = Number(process.hrtime.bigint() - ds_times['packed_trx']) / 1000;
 
-                    } catch (e:any) {
+                    } catch (e: any) {
                         console.log(e);
                         allowProcessing = true;
                     }
@@ -176,7 +176,7 @@ export default class HyperionParser extends BaseParser {
                     ds_times.abieos.transaction_trace = timedFunction(dsProfiling, () => {
                         traces = worker.deserializeNative('transaction_trace[]', res.traces);
                     });
-                } catch (e:any) {
+                } catch (e: any) {
                     hLog('transaction_trace[] deserialization failed with abieos!');
                 }
 
@@ -186,7 +186,7 @@ export default class HyperionParser extends BaseParser {
                         ds_times.eosjs.transaction_trace = timedFunction(dsProfiling, () => {
                             traces = deserialize('transaction_trace[]', res.traces, this.txEnc, this.txDec, worker.types);
                         });
-                    } catch (e:any) {
+                    } catch (e: any) {
                         hLog('transaction_trace[] deserialization failed with eosjs!');
                     }
                 }
@@ -206,7 +206,7 @@ export default class HyperionParser extends BaseParser {
                     ds_times.abieos.table_delta = timedFunction(dsProfiling, () => {
                         deltas = worker.deserializeNative('table_delta[]', res.deltas);
                     });
-                } catch (e:any) {
+                } catch (e: any) {
                     hLog('table_delta[] deserialization failed with abieos!');
                 }
 
@@ -216,7 +216,7 @@ export default class HyperionParser extends BaseParser {
                         ds_times.eosjs.table_delta = timedFunction(dsProfiling, () => {
                             deltas = deserialize('table_delta[]', res.deltas, this.txEnc, this.txDec, worker.types);
                         });
-                    } catch (e:any) {
+                    } catch (e: any) {
                         hLog('table_delta[] deserialization failed with eosjs!');
                     }
                 }
@@ -228,7 +228,7 @@ export default class HyperionParser extends BaseParser {
 
             if (worker.conf.settings.ds_profiling) {
                 hLog(ds_times);
-                const line = [ds_times.size];
+                const line: any[] = [ds_times.size];
                 line.push(...[ds_times.eosjs.result, ds_times.eosjs.signed_block, ds_times.eosjs.transaction_trace, ds_times.eosjs.table_delta]);
                 line.push(...[ds_times.abieos.result, ds_times.abieos.signed_block, ds_times.abieos.transaction_trace, ds_times.abieos.table_delta]);
                 appendFileSync('ds_profiling.csv', line.join(',') + "\n");
@@ -250,14 +250,14 @@ export default class HyperionParser extends BaseParser {
                         evPayload["producer"] = block['producer'];
                         evPayload["schedule_version"] = block['schedule_version'];
                     }
-                    process.send(evPayload);
+                    process.send?.(evPayload);
                 } else {
                     hLog(`ERROR: Block data not found for #${res['this_block']['block_num']}`);
                 }
                 if (worker.ch_ready) {
                     worker.ch.ack(message);
                 }
-            } catch (e:any) {
+            } catch (e: any) {
                 console.log(e);
                 if (worker.ch_ready) {
                     worker.ch.nack(message);
@@ -267,7 +267,7 @@ export default class HyperionParser extends BaseParser {
         }
     }
 
-    async flattenInlineActions(action_traces: any[]): Promise<any[]> {
+    async flattenInlineActions(action_traces: any[]): Promise<any> {
         hLog(`Calling undefined flatten operation!`);
         return Promise.resolve(undefined);
     }

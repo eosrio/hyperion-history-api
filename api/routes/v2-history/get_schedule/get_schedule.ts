@@ -27,23 +27,21 @@ async function getSchedule(fastify: FastifyInstance, request: FastifyRequest) {
     const response: any = {
         producers: []
     };
-    const searchParams = {
+    const searchParams: any = {
         track_total_hits: true,
         index: fastify.manager.chain + "-block-*",
         size: 1,
-        body: {
-            query: {
-                bool: {
-                    must: []
-                }
-            },
-            sort: {block_num: "desc"}
-        }
+        query: {
+            bool: {
+                must: []
+            }
+        },
+        sort: ["block_num:desc"]
     };
     if (query.version) {
-        searchParams.body.query.bool.must.push({"term": {"new_producers.version": {"value": query.version}}});
+        searchParams.query.bool.must.push({"term": {"new_producers.version": {"value": query.version}}});
     } else {
-        searchParams.body.query.bool.must.push({
+        searchParams.query.bool.must.push({
             "exists": {
                 "field": "new_producers.version"
             }

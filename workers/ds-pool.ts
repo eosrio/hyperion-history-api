@@ -688,7 +688,7 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     onReady() {
-        // process.send({
+        // process.send?.({
         //     event: 'ds_ready',
         //     id: process.env.local_id
         // });

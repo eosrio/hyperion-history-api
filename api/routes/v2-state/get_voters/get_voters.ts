@@ -9,7 +9,7 @@ async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
 
 	const response = {
 		voter_count: 0,
-		'voters': []
+		voters: [] as any[]
 	};
 	let queryStruct: any = {
 		"bool": {

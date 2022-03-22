@@ -85,7 +85,7 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
         query_time: null,
         cached: false,
         total: results['body']['hits']['total'],
-        proposals: []
+        proposals: [] as any[]
     };
 
     const hits = results['body']['hits']['hits'];

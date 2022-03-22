@@ -40,7 +40,7 @@ export default class HyperionParser extends BaseParser {
         action.producer = trx_data.producer;
         action.trx_id = trx_data.trx_id;
 
-        if (action.account_ram_deltas.length === 0) {
+        if (action.account_ram_deltas && action.account_ram_deltas.length === 0) {
             delete action.account_ram_deltas;
         }
 
@@ -97,7 +97,7 @@ export default class HyperionParser extends BaseParser {
                         'transaction_trace[]',
                         await unzipAsync(res['traces'])
                     );
-                } catch (e:any) {
+                } catch (e: any) {
                     hLog(e);
                 }
             }
@@ -107,7 +107,7 @@ export default class HyperionParser extends BaseParser {
                         'table_delta[]',
                         await unzipAsync(res['deltas'])
                     );
-                } catch (e:any) {
+                } catch (e: any) {
                     hLog(e);
                 }
             }
@@ -127,14 +127,14 @@ export default class HyperionParser extends BaseParser {
                         evPayload["producer"] = block['producer'];
                         evPayload["schedule_version"] = block['schedule_version'];
                     }
-                    process.send(evPayload);
+                    process.send?.(evPayload);
                 } else {
                     hLog(`ERROR: Block data not found for #${res['this_block']['block_num']}`);
                 }
                 if (worker.ch_ready) {
                     worker.ch.ack(message);
                 }
-            } catch (e:any) {
+            } catch (e: any) {
                 console.log(e);
                 if (worker.ch_ready) {
                     worker.ch.nack(message);
@@ -145,8 +145,8 @@ export default class HyperionParser extends BaseParser {
     }
 
     async flattenInlineActions(action_traces: any[], level: number, trace_counter: any, parent_index: number): Promise<any[]> {
-        const arr = [];
-        const nextLevel = [];
+        const arr: any[] = [];
+        const nextLevel: any[] = [];
         for (const action_trace of action_traces) {
             const trace = action_trace[1];
             trace['creator_action_ordinal'] = parent_index;
