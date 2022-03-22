@@ -3,13 +3,13 @@
     "host": "127.0.0.1:5672",
     "api": "127.0.0.1:15672",
     "protocol": "http",
-    "user": "username",
-    "pass": "password",
+    "user": "guest",
+    "pass": "guest",
     "vhost": "hyperion",
     "frameMax": "0x10000"
   },
   "elasticsearch": {
-    "protocol": "http",
+    "protocol": "https",
     "host": "127.0.0.1:9200",
     "ingest_nodes": [
       "127.0.0.1:9200"
@@ -19,7 +19,7 @@
   },
   "redis": {
     "host": "127.0.0.1",
-    "port": "6379"
+    "port": 6379
   },
   "chains": {
     "eos": {

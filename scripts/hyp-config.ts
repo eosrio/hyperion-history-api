@@ -5,20 +5,39 @@ import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {existsSync} from "fs";
 import {JsonRpc} from "eosjs";
-import fetch from "cross-fetch";
+import fetch, {Headers} from "cross-fetch";
 import WebSocket from 'ws';
+import {Client} from "@elastic/elasticsearch";
+import * as readline from "readline";
+import * as amqp from "amqplib";
+import {btoa} from "buffer";
+import {parseInt} from "lodash";
+import IORedis from "ioredis";
 
 const program = new Command();
 const chainsDir = path.join(path.resolve(), 'chains');
 
 async function getConnections(): Promise<HyperionConnections> {
-    const connectionsJsonFile = await readFile(path.join(path.resolve(), 'connections.json'));
-    return JSON.parse(connectionsJsonFile.toString());
+    try {
+        const connectionsJsonFile = await readFile(path.join(path.resolve(), 'connections.json'));
+        return JSON.parse(connectionsJsonFile.toString());
+    } catch (e) {
+        return null;
+    }
 }
 
 async function getExampleConfig(): Promise<HyperionConfig> {
     const exampleChainData = await readFile(path.join(chainsDir, 'example.config.json'));
     return JSON.parse(exampleChainData.toString());
+}
+
+async function getExampleConnections(): Promise<HyperionConnections> {
+    try {
+        const connectionsJsonFile = await readFile(path.join(path.resolve(), 'example-connections.json'));
+        return JSON.parse(connectionsJsonFile.toString());
+    } catch (e) {
+        return null;
+    }
 }
 
 
@@ -85,7 +104,7 @@ async function listChains(flags) {
                     ...common,
                     nodeos_http: chainConn?.http,
                     nodeos_ship: chainConn?.ship,
-                    chain_id: chainConn?.chain_id.substr(0,16) + '...'
+                    chain_id: chainConn?.chain_id.substr(0, 16) + '...'
                 });
             } else {
                 pendingTable.push(common);
@@ -204,7 +223,7 @@ async function newChain(shortName, options) {
     const fullNameArr = [];
     shortName.split('-').forEach((word: string) => {
         fullNameArr.push(word[0].toUpperCase() + word.substr(1));
-        });
+    });
     const fullChainName = fullNameArr.join(' ');
 
     jsonData.api.chain_name = fullChainName;
@@ -258,8 +277,278 @@ async function rmChain(shortName) {
     console.log(`✅ ${shortName} removal completed!`);
 }
 
+async function checkES(conn: HyperionConnections): Promise<boolean> {
+    console.log(`\n[info] [ES] - Testing elasticsearch connection...`);
+    let es_url;
+    const _es = conn.elasticsearch;
+    if (!_es.protocol) {
+        _es.protocol = 'http';
+    }
+    if (_es.user !== '') {
+        es_url = `${_es.protocol}://${_es.user}:${_es.pass}@${_es.host}`;
+    } else {
+        es_url = `${_es.protocol}://${_es.host}`
+    }
+    const client = new Client({
+        node: es_url,
+        tls: {rejectUnauthorized: false}
+    });
+    try {
+        const result = await client.cat.health();
+        console.log(`[info] [ES] - ${result}`.trim());
+        console.log('[info] [ES] - Connection established!');
+        return true;
+    } catch (reason) {
+        console.log('[error] [ES] - ' + reason.message);
+        return false;
+    }
+}
+
+async function checkAMQP(conn: HyperionConnections): Promise<boolean> {
+    console.log(`\n[info] [RABBIT:AMQP] - Testing rabbitmq amqp connection...`);
+    let frameMaxValue = '0x10000';
+    if (conn.amqp.frameMax) {
+        frameMaxValue = conn.amqp.frameMax;
+    }
+    const u = encodeURIComponent(conn.amqp.user);
+    const p = encodeURIComponent(conn.amqp.pass);
+    const v = encodeURIComponent(conn.amqp.vhost)
+    const amqp_url = `amqp://${u}:${p}@${conn.amqp.host}/${v}?frameMax=${frameMaxValue}`;
+    try {
+        const connection = await amqp.connect(amqp_url);
+        if (connection) {
+            console.log('[info] [RABBIT:AMQP] - Connection established!');
+            await connection.close();
+            console.log(`\n[info] [RABBIT:HTTP] - Testing rabbitmq http api connection...`);
+            const apiUrl = `${conn.amqp.protocol}://${conn.amqp.api}/api/nodes`;
+
+            let headers = new Headers();
+            headers.set('Authorization', 'Basic ' + btoa(conn.amqp.user + ":" + conn.amqp.pass));
+            const data = await fetch(apiUrl, {
+                method: 'GET',
+                headers: headers
+            });
+            const resp = await data.json();
+            if (resp.length > 0) {
+                for (const node of resp) {
+                    console.log(`[info] [RABBIT:HTTP] - Node name: ${node.name} (running: ${node.running})`);
+                    if (!node.running) {
+                        return false;
+                    }
+                }
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    } catch (reason) {
+        console.log('[error] [RABBIT] - ' + reason.message);
+        return false;
+    }
+}
+
+async function checkRedis(conn: HyperionConnections) {
+    console.log(`\n[info] [REDIS] - Testing redis connection...`);
+    try {
+        const ioRedisClient = new IORedis(conn.redis);
+        const pingResult = await ioRedisClient.ping();
+        if (pingResult === 'PONG') {
+            console.log('[info] [REDIS] - Connection established!');
+            ioRedisClient.disconnect();
+            return true;
+        } else {
+            console.log('[error] [REDIS] - PONG expected, got: ' + pingResult);
+            return false;
+        }
+    } catch (reason) {
+        console.log('[error] [REDIS] - ' + reason.message);
+        return false;
+    }
+}
+
+async function initConfig() {
+    const connections = await getConnections();
+
+    if (connections) {
+        console.log('connections.json already created!\n use "./hyp-config connections reset" to revert to default');
+        return;
+    }
+
+    const exampleConn = await getExampleConnections();
+
+    const rl = readline.createInterface({input: process.stdin, output: process.stdout});
+    const prompt = (query) => new Promise((resolve) => rl.question(query, resolve));
+
+    const conn = exampleConn;
+    conn.chains = {};
+
+    // check rabbitmq
+    let amqp_state = false;
+    while (!amqp_state) {
+        amqp_state = await checkAMQP(conn);
+        if (!amqp_state) {
+
+            const amqp_user = await prompt('\n > Enter the RabbitMQ user (or press ENTER to use "guest"): ');
+            if (amqp_user) {
+                conn.amqp.user = amqp_user as string;
+            } else {
+                conn.amqp.user = 'guest'
+            }
+
+            const amqp_pass = await prompt(' > Enter the RabbitMQ password (or press ENTER to use "guest"): ');
+            if (amqp_pass) {
+                conn.amqp.pass = amqp_pass as string;
+            } else {
+                conn.amqp.pass = 'guest'
+            }
+
+            const amqp_vhost = await prompt(' > Enter the RabbitMQ vhost (or press ENTER to use "hyperion"): ');
+            if (amqp_vhost) {
+                conn.amqp.vhost = amqp_vhost as string;
+            } else {
+                conn.amqp.vhost = 'hyperion'
+            }
+
+            console.log('\n------ current RabbitMQ config -----');
+            console.log(conn.amqp);
+            console.log('--------------------------------------');
+        }
+    }
+
+    console.log(`\n RabbitMQ ✅`);
+
+    // check elasticsearch
+    let elastic_state = false;
+    while (!elastic_state) {
+        elastic_state = await checkES(conn);
+        if (!elastic_state) {
+
+            const es_user = await prompt('\n > Enter the elasticsearch user (or press ENTER to use "elastic"): ');
+            if (es_user) {
+                conn.elasticsearch.user = es_user as string;
+            } else {
+                conn.elasticsearch.user = 'elastic'
+            }
+
+            const es_pass = await prompt(' > Enter the elasticsearch password: ');
+            if (es_pass) {
+                conn.elasticsearch.pass = es_pass as string;
+            }
+
+            const es_proto = await prompt(' > Do you want to use http or https?\n1 = http\n2 = https (default)\n');
+            if (es_proto === "1") {
+                conn.elasticsearch.protocol = 'http';
+            } else {
+                conn.elasticsearch.protocol = 'https';
+            }
+
+            console.log('\n------ current elasticsearch config -----');
+            console.log(conn.elasticsearch);
+            console.log('-------------------------------------------');
+        }
+    }
+
+    console.log(`\n Elasticsearch ✅`);
+
+    // check redis connection
+    let redis_state = false;
+    while (!redis_state) {
+        redis_state = await checkRedis(conn);
+        if (!redis_state) {
+            const redis_host = await prompt('\n > Enter the Redis Server address (or press ENTER to use "127.0.0.1"): ');
+            if (redis_host) {
+                conn.redis.host = redis_host as string;
+            } else {
+                conn.redis.host = '127.0.0.1';
+            }
+
+            const redis_port = await prompt(' > Enter the Redis Server port (or press ENTER to use "6379"): ');
+            if (redis_port) {
+                conn.redis.port = parseInt(redis_port as string);
+            } else {
+                conn.redis.port = 6379;
+            }
+
+            console.log('\n------ current redis config -----');
+            console.log(conn.redis);
+            console.log('-----------------------------------');
+        }
+    }
+
+    console.log(`\n Redis ✅`);
+
+    console.log('Init completed! Saving configuration...');
+
+    await writeFile(path.join(path.resolve(), 'connections.json'), JSON.stringify(conn, null, 2));
+
+    console.log('✅ ✅');
+
+    rl.close();
+    process.exit(0);
+}
+
+async function resetConnections() {
+    const connPath = path.join(path.resolve(), 'connections.json');
+    try {
+        if (existsSync(connPath)) {
+            const rl = readline.createInterface({input: process.stdin, output: process.stdout});
+            const prompt = (query) => new Promise((resolve) => rl.question(query, resolve));
+            const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.');
+            if (confirmation === 'YES') {
+                await rm(connPath);
+                console.log('connections.json removed, please use "./hyp-config init" to reconfigure');
+            } else {
+                console.log('Operation canceled. No files were removed.');
+            }
+        } else {
+            console.log(`The connections.json file is not present, please run "./hyp-config init" to configure it.`);
+        }
+    } catch (e) {
+        console.log(e);
+    }
+}
+
+async function testConnections() {
+    const connPath = path.join(path.resolve(), 'connections.json');
+    if (existsSync(connPath)) {
+        try {
+            const conn = await getConnections();
+            const results = {
+                redis: await checkRedis(conn),
+                elasticsearch: await checkES(conn),
+                rabbitmq: await checkAMQP(conn)
+            }
+            console.log('\n------ Testing Completed -----');
+            console.table(results);
+        } catch (e) {
+            console.log(e.message);
+        }
+    } else {
+        console.log(`The connections.json file is not present, please run "./hyp-config init" to configure it.`);
+    }
+}
+
 // main program
 (() => {
+
+    program.command('init')
+        .description('create and test the connections.json file')
+        .action(initConfig);
+
+    const connections = program.command('connections');
+
+    connections
+        .command('test')
+        .description('test connections to the hyperion infrastructure')
+        .action(testConnections);
+
+    connections
+        .command('reset')
+        .description('remove the connections.json file')
+        .action(resetConnections);
+
     const list = program.command('list').alias('ls');
     list.command('chains')
         .option('--valid', 'only show valid chains')
