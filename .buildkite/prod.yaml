@@ -1,27 +1,23 @@
 defaults:
   agents: &default-agents
-    queue: voice-app-builder-v2
+    queue: voice-main-prod-deployer
+  plugins: &default-plugins
+    - first-aml/git-clone:
+        repository: https://github.com/voice-social/voice-buildkite-template.git
 
 steps:
 # helm deploy to prod
   - label: ":helm: Trigger Helm Deploy"
-    command: |
-      export NO_PROXY="\${KUBERNETES_SERVICE_HOST}"
-      echo "--- :helm: Helm dry-run"
-      if helm upgrade -i $${HELM_RELEASE} helm/ -f $${HELM_VALUE_FILE} -n $${HELM_RELEASE_NAMESPACE} --set release.tag=$${HELM_RELEASE_TAG} --dry-run > /dev/null; then
-        echo "dry-run completed OK."
-      else
-        exit 1;
-      fi
-      echo "--- :helm: Helm deploy"
-      helm upgrade -i ${HELM_RELEASE} helm/ -f ${HELM_VALUE_FILE} -n ${HELM_RELEASE_NAMESPACE} --set release.tag=${HELM_RELEASE_TAG}
+    command:
+      - "buildkite-agent pipeline upload voice-buildkite-template/helm/deploy/template.yaml"
     env:
-      HELM_RELEASE: hyperion-history-api
+      HELM_RELEASE: voice-eos-hyperion
       HELM_RELEASE_NAMESPACE: prod
       HELM_RELEASE_TAG: ${BUILDKITE_COMMIT}
       HELM_VALUE_FILE: helm/values/prod.yaml
-      BUILDKITE_AGENT: voice-infra-prod-v2
+      BUILDKITE_AGENT: voice-main-prod-deployer
       NR_DEPLOY_MARKER: skip
     concurrency: 1
     concurrency_group: "${BUILDKITE_PIPELINE_SLUG}/prod"
     agents: *default-agents
+    plugins: *default-plugins
