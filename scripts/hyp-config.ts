@@ -208,7 +208,7 @@ async function newChain(shortName, options) {
                 ws.close();
             });
             ws.on("error", err => {
-                console.log(err);
+                console.log(err.message);
                 ws.close();
                 resolve(false);
             });
@@ -217,6 +217,7 @@ async function newChain(shortName, options) {
             connections.chains[shortName].ship = options.ship;
         } else {
             console.log(`Invalid SHIP Endpoint [${options.ship}]`);
+            process.exit(0);
         }
     }
 
