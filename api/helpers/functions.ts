@@ -285,7 +285,7 @@ export async function handleChainApiRedirect(
                 //     const trxData = await fastify.eosjs.api.deserializeTransactionWithActions(trxBuffer);
                 //     console.log(trxData);
                 // }
-            } catch (e) {
+            } catch (e:any) {
                 console.log(e);
             }
         }

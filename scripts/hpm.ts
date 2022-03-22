@@ -1,9 +1,9 @@
 import {Command, InvalidArgumentError} from 'commander';
-import path from 'path'
-import {readdir, rm} from "fs/promises";
-import fs, {existsSync, readdirSync, readFileSync, writeFileSync} from "fs";
-import {execSync, spawn} from "child_process";
-import crypto from "crypto";
+import path from 'node:path'
+import {readdir, rm} from "node:fs/promises";
+import fs, {existsSync, readdirSync, readFileSync, writeFileSync} from "node:fs";
+import {execSync, spawn} from "node:child_process";
+import crypto from "node:crypto";
 
 const package_json = JSON.parse(readFileSync('./package.json').toString());
 const debug = process.env.HPM_DEBUG;
@@ -230,7 +230,7 @@ function init() {
     if (check) {
         try {
             stateJson = JSON.parse(readFileSync(pluginStatePath).toString());
-        } catch (e) {
+        } catch (e:any) {
             console.log(e);
         }
     } else {
@@ -293,7 +293,7 @@ async function uninstall(plugin) {
             saveState();
         }
         console.log(`${plugin} removed!`);
-    } catch (e) {
+    } catch (e:any) {
         throwAndQuit(e.message);
     }
 }
@@ -326,7 +326,7 @@ async function listPlugins() {
                 branch,
                 description
             });
-        } catch (e) {
+        } catch (e:any) {
             console.log(e.message);
         }
     }

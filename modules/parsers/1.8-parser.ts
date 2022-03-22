@@ -147,7 +147,7 @@ export default class HyperionParser extends BaseParser {
                         // store time diff
                         if (worker.conf.settings.ds_profiling) ds_times['packed_trx'] = Number(process.hrtime.bigint() - ds_times['packed_trx']) / 1000;
 
-                    } catch (e) {
+                    } catch (e:any) {
                         console.log(e);
                         allowProcessing = true;
                     }
@@ -219,7 +219,7 @@ export default class HyperionParser extends BaseParser {
                 if (worker.ch_ready) {
                     worker.ch.ack(message);
                 }
-            } catch (e) {
+            } catch (e:any) {
                 console.log(e);
                 if (worker.ch_ready) {
                     worker.ch.nack(message);

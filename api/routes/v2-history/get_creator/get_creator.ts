@@ -49,7 +49,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 		let accountInfo;
 		try {
 			accountInfo = await fastify.eosjs.rpc.get_account(query.account);
-		} catch (e) {
+		} catch (e:any) {
 			throw new Error("account not found");
 		}
 		if (accountInfo) {
@@ -84,7 +84,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 					}
 				}
 				return response;
-			} catch (e) {
+			} catch (e:any) {
 				throw new Error("account creation not found");
 			}
 		} else {

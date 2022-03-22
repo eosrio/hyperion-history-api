@@ -105,7 +105,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 
 			// execute in parallel
 			pResults = await Promise.all([$getInfo, $search]);
-		} catch (e) {
+		} catch (e:any) {
 			console.log(e.message);
 			if (e.meta.statusCode === 404) {
 				return response;

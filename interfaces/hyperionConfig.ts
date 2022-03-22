@@ -1,4 +1,4 @@
-import {AlertManagerOptions} from "../modules/alertsManager";
+import {AlertManagerOptions} from "../modules/alertsManager.js";
 
 export interface ScalingConfigs {
     polling_interval: number;

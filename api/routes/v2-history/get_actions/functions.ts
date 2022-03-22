@@ -75,14 +75,14 @@ export function applyTimeFilter(query, queryStruct) {
 		if (query['before']) {
 			try {
 				_lte = new Date(query['before']).toISOString();
-			} catch (e) {
+			} catch (e:any) {
 				throw new Error(e.message + ' [before]');
 			}
 		}
 		if (query['after']) {
 			try {
 				_gte = new Date(query['after']).toISOString();
-			} catch (e) {
+			} catch (e:any) {
 				throw new Error(e.message + ' [after]');
 			}
 		}

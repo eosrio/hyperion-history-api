@@ -3,7 +3,7 @@ import {HyperionWorker} from "./hyperionWorker";
 import {Server, Socket} from "socket.io";
 import {checkFilter, hLog} from "../helpers/common_functions";
 import {createServer} from "http";
-
+import process from "node:process";
 const greylist = ['eosio.token'];
 
 export default class WSRouter extends HyperionWorker {
@@ -18,7 +18,7 @@ export default class WSRouter extends HyperionWorker {
     codeDeltaMap = new Map();
     payerMap = new Map();
     activeRequests = new Map();
-    private io: Server;
+    private io!: Server;
     private totalClients = 0;
 
     constructor() {
@@ -389,7 +389,7 @@ export default class WSRouter extends HyperionWorker {
     }
 
     ready() {
-        process.send({event: 'router_ready'});
+        process.send?.({event: 'router_ready'});
     }
 
     private forwardActionMessage(msg: any, link: any, notified: string[]) {

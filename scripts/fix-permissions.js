@@ -1,5 +1,5 @@
-const os = require('os');
-const {execSync} = require('child_process');
+import os from "os";
+import {execSync} from "child_process";
 
 if (os.type() === 'Windows_NT') {
   console.log('Skipping permission update on windows');

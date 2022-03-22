@@ -1,42 +1,14 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const commander_1 = require("commander");
-const path_1 = __importDefault(require("path"));
-const promises_1 = require("fs/promises");
-const fs_1 = __importStar(require("fs"));
-const child_process_1 = require("child_process");
-const crypto_1 = __importDefault(require("crypto"));
-const package_json = JSON.parse((0, fs_1.readFileSync)('./package.json').toString());
+import { Command, InvalidArgumentError } from 'commander';
+import path from 'node:path';
+import { readdir, rm } from "node:fs/promises";
+import fs, { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execSync, spawn } from "node:child_process";
+import crypto from "node:crypto";
+const package_json = JSON.parse(readFileSync('./package.json').toString());
 const debug = process.env.HPM_DEBUG;
-const program = new commander_1.Command();
-const pluginDirAbsolutePath = path_1.default.join(path_1.default.resolve(), 'plugins', 'repos');
-const pluginStatePath = path_1.default.join(path_1.default.resolve(), 'plugins', '.state.json');
+const program = new Command();
+const pluginDirAbsolutePath = path.join(path.resolve(), 'plugins', 'repos');
+const pluginStatePath = path.join(path.resolve(), 'plugins', '.state.json');
 let stateJson;
 const ignoredDirsForHash = ['.git', 'node_modules'];
 program.version(package_json.version);
@@ -45,7 +17,7 @@ function checkUrl(value) {
         return value;
     }
     else {
-        throw new commander_1.InvalidArgumentError('Invalid url.');
+        throw new InvalidArgumentError('Invalid url.');
     }
 }
 function throwAndQuit(message) {
@@ -57,32 +29,32 @@ function getCurrentBranch(dir) {
     if (debug) {
         console.log(` >> ${gitCmd}`);
     }
-    return (0, child_process_1.execSync)(gitCmd).toString().trim();
+    return execSync(gitCmd).toString().trim();
 }
 function checkoutBranch(dir, branchName) {
     const gitCmd = `(cd ${dir} && git checkout ${branchName})`;
     if (debug) {
         console.log(` >> ${gitCmd}`);
     }
-    return (0, child_process_1.execSync)(gitCmd).toString();
+    return execSync(gitCmd).toString();
 }
 function gitPull(dir) {
     const gitCmd = `(cd ${dir} && git pull)`;
     if (debug) {
         console.log(` >> ${gitCmd}`);
     }
-    return (0, child_process_1.execSync)(gitCmd).toString();
+    return execSync(gitCmd).toString();
 }
 function gitReset(dir) {
     const gitCmd = `(cd ${dir} && git reset --hard)`;
     if (debug) {
         console.log(` >> ${gitCmd}`);
     }
-    return (0, child_process_1.execSync)(gitCmd).toString();
+    return execSync(gitCmd).toString();
 }
 async function buildPlugin(name, flags) {
-    const pluginDir = path_1.default.join(pluginDirAbsolutePath, name);
-    if (!(0, fs_1.existsSync)(pluginDir)) {
+    const pluginDir = path.join(pluginDirAbsolutePath, name);
+    if (!existsSync(pluginDir)) {
         throwAndQuit(`plugin ${name} not found!`);
     }
     const currentBranch = getCurrentBranch(pluginDir);
@@ -90,7 +62,7 @@ async function buildPlugin(name, flags) {
     if (!flags.skipInstall) {
         // run npm install
         await new Promise(resolve => {
-            const npmInstall = (0, child_process_1.spawn)('npm', ['install'], {
+            const npmInstall = spawn('npm', ['install'], {
                 cwd: pluginDir,
                 stdio: 'inherit',
             });
@@ -105,7 +77,7 @@ async function buildPlugin(name, flags) {
     }
     // typescript build
     await new Promise(resolve => {
-        const npmInstall = (0, child_process_1.spawn)('npm', ['run', 'build'], {
+        const npmInstall = spawn('npm', ['run', 'build'], {
             cwd: pluginDir,
             stdio: 'inherit',
         });
@@ -132,8 +104,8 @@ async function buildPlugin(name, flags) {
     }
 }
 async function verifyInstalledPlugin(pluginName, options) {
-    const dir = path_1.default.join(pluginDirAbsolutePath, pluginName);
-    const dirExists = (0, fs_1.existsSync)(dir);
+    const dir = path.join(pluginDirAbsolutePath, pluginName);
+    const dirExists = existsSync(dir);
     if (dirExists) {
         if (options.branch && options.branch !== '') {
             const currentBranch = getCurrentBranch(dir);
@@ -153,23 +125,23 @@ async function verifyInstalledPlugin(pluginName, options) {
     }
 }
 async function hashItem(item) {
-    if (fs_1.default.lstatSync(item).isDirectory()) {
-        const dir = fs_1.default.readdirSync(item);
-        const sha = crypto_1.default.createHash('sha1');
+    if (fs.lstatSync(item).isDirectory()) {
+        const dir = fs.readdirSync(item);
+        const sha = crypto.createHash('sha1');
         for (const file of dir) {
-            if (ignoredDirsForHash.includes(file) && fs_1.default.lstatSync(path_1.default.join(item, file)).isDirectory()) {
+            if (ignoredDirsForHash.includes(file) && fs.lstatSync(path.join(item, file)).isDirectory()) {
                 sha.update('');
             }
             else {
-                const hash = await hashItem(path_1.default.join(item, file));
+                const hash = await hashItem(path.join(item, file));
                 sha.update(hash.toString());
             }
         }
         return sha.digest('hex');
     }
     else {
-        const sha = crypto_1.default.createHash('sha1');
-        const reader = fs_1.default.createReadStream(item);
+        const sha = crypto.createHash('sha1');
+        const reader = fs.createReadStream(item);
         return new Promise(resolve => {
             reader.on('data', chunk => {
                 sha.update(chunk);
@@ -195,7 +167,7 @@ async function verifyInstallation(installPath, pluginName, opts) {
         //     console.log(`Current:\t${hash}`);
         //     process.exit(0);
         // }
-        const installedFiles = fs_1.default.readdirSync(installPath);
+        const installedFiles = fs.readdirSync(installPath);
         if (!installedFiles.includes('package.json')) {
             console.log('package.json not found!');
             process.exit(0);
@@ -203,9 +175,9 @@ async function verifyInstallation(installPath, pluginName, opts) {
     }
 }
 async function clonePluginRepo(pluginName, options) {
-    const dir = path_1.default.join(pluginDirAbsolutePath, pluginName);
+    const dir = path.join(pluginDirAbsolutePath, pluginName);
     await new Promise((resolve, reject) => {
-        const gitClone = (0, child_process_1.spawn)('git', ['clone', options.repository, dir]);
+        const gitClone = spawn('git', ['clone', options.repository, dir]);
         gitClone.stdout.on('data', chunk => {
             console.log(`->> ${chunk}`);
         });
@@ -228,10 +200,10 @@ async function clonePluginRepo(pluginName, options) {
     });
 }
 function init() {
-    const check = (0, fs_1.existsSync)(pluginStatePath);
+    const check = existsSync(pluginStatePath);
     if (check) {
         try {
-            stateJson = JSON.parse((0, fs_1.readFileSync)(pluginStatePath).toString());
+            stateJson = JSON.parse(readFileSync(pluginStatePath).toString());
         }
         catch (e) {
             console.log(e);
@@ -244,7 +216,7 @@ function init() {
             hyperion_version: package_json.version,
             plugins: {}
         };
-        (0, fs_1.writeFileSync)(pluginStatePath, JSON.stringify(stateJson, null, 2));
+        writeFileSync(pluginStatePath, JSON.stringify(stateJson, null, 2));
     }
 }
 async function installPlugin(plugin, options) {
@@ -265,7 +237,7 @@ async function installPlugin(plugin, options) {
     await clonePluginRepo(plugin, options);
     // checkout branch
     if (options.branch) {
-        const dir = path_1.default.join(pluginDirAbsolutePath, plugin);
+        const dir = path.join(pluginDirAbsolutePath, plugin);
         const results = checkoutBranch(dir, options.branch);
         stateJson.plugins[plugin].branch = options.branch;
         console.log(results);
@@ -276,13 +248,13 @@ async function installPlugin(plugin, options) {
     });
 }
 async function uninstall(plugin) {
-    const pluginDir = path_1.default.join(pluginDirAbsolutePath, plugin);
+    const pluginDir = path.join(pluginDirAbsolutePath, plugin);
     try {
-        if (!(0, fs_1.existsSync)(pluginDir)) {
+        if (!existsSync(pluginDir)) {
             throwAndQuit(`plugin ${plugin} not found!`);
         }
         console.log(`Removing ${pluginDir}...`);
-        await (0, promises_1.rm)(pluginDir, {
+        await rm(pluginDir, {
             recursive: true
         });
         if (stateJson && stateJson.plugins) {
@@ -296,12 +268,12 @@ async function uninstall(plugin) {
     }
 }
 async function listPlugins() {
-    const dirs = await (0, promises_1.readdir)(pluginDirAbsolutePath);
+    const dirs = await readdir(pluginDirAbsolutePath);
     const results = [];
     for (const dir of dirs) {
         try {
-            const packageJsonPath = path_1.default.join(pluginDirAbsolutePath, dir, 'package.json');
-            const package_json = JSON.parse((0, fs_1.readFileSync)(packageJsonPath).toString());
+            const packageJsonPath = path.join(pluginDirAbsolutePath, dir, 'package.json');
+            const package_json = JSON.parse(readFileSync(packageJsonPath).toString());
             const { name, version, description } = package_json;
             // console.table([dir, name, version, description].join('\t'));
             let pluginState = false;
@@ -330,7 +302,7 @@ async function listPlugins() {
 }
 function saveState() {
     stateJson.update_ts = Date.now();
-    (0, fs_1.writeFileSync)(pluginStatePath, JSON.stringify(stateJson, null, 2));
+    writeFileSync(pluginStatePath, JSON.stringify(stateJson, null, 2));
 }
 async function setPluginState(pluginName, newState) {
     if (stateJson) {
@@ -356,13 +328,13 @@ function printState() {
     console.log(JSON.stringify(stateJson, null, 2));
 }
 async function buildAllPlugins(flags) {
-    const names = (0, fs_1.readdirSync)(pluginDirAbsolutePath);
+    const names = readdirSync(pluginDirAbsolutePath);
     for (const name of names) {
         await buildPlugin(name, flags);
     }
 }
 async function updatePlugin(name) {
-    const pluginDir = path_1.default.join(pluginDirAbsolutePath, name);
+    const pluginDir = path.join(pluginDirAbsolutePath, name);
     const resetStatus = gitReset(pluginDir);
     console.log(resetStatus);
     const pullStatus = gitPull(pluginDir);

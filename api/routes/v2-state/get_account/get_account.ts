@@ -20,7 +20,7 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
 
     try {
         response.account = await fastify.eosjs.rpc.get_account(account);
-    } catch (e) {
+    } catch (e:any) {
         throw new Error("Account not found!");
     }
 

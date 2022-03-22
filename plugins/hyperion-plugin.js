@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.HyperionPlugin = void 0;
-class HyperionPlugin {
+export class HyperionPlugin {
     constructor(config) {
         this.internalPluginName = '';
         this.actionHandlers = [];
@@ -22,5 +19,4 @@ class HyperionPlugin {
         return {};
     }
 }
-exports.HyperionPlugin = HyperionPlugin;
 //# sourceMappingURL=hyperion-plugin.js.map

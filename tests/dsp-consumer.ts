@@ -7,7 +7,7 @@ class DspEventConsumer {
 
     private conf: HyperionConfig;
     private manager: ConnectionManager;
-    private ch: Channel;
+    private ch!: Channel;
     private ch_ready: boolean = false;
     private lastBlock = 0;
     private lastGS = 0;
@@ -45,16 +45,19 @@ class DspEventConsumer {
     processBuffer(block_num: number) {
         setTimeout(() => {
             if (this.actionBuffer.has(block_num)) {
-                const sortedActions = this.actionBuffer.get(block_num).sort((a, b) => a.global_sequence - b.global_sequence);
-                for (const action of sortedActions) {
-                    console.log(action['@timestamp'], action.block_num, action.global_sequence);
+                const sortedActions = this.actionBuffer.get(block_num)?.sort((a, b) => a.global_sequence - b.global_sequence);
+                if (sortedActions) {
+                    for (const action of sortedActions) {
+                        console.log(action['@timestamp'], action.block_num, action.global_sequence);
+                    }
                 }
                 this.actionBuffer.delete(block_num);
             }
         }, 500);
     }
 
-    onMessage(msg: Message) {
+    onMessage(msg: Message | null) {
+        if (!msg) return;
         try {
             const content: any = JSON.parse(msg.content.toString());
             console.log(content);
@@ -63,14 +66,14 @@ class DspEventConsumer {
                 this.actionBuffer.set(content.block_num, [content]);
             } else if (content.block_num === this.lastBlock) {
                 if (this.actionBuffer.has(this.lastBlock)) {
-                    this.actionBuffer.get(this.lastBlock).push(content);
+                    this.actionBuffer.get(this.lastBlock)?.push(content);
                 }
             } else {
-                this.actionBuffer.get(content.block_num).push(content);
+                this.actionBuffer.get(content.block_num)?.push(content);
             }
             this.processBuffer(this.lastBlock);
             this.ch.ack(msg);
-        } catch (e) {
+        } catch (e: any) {
             this.ch.nack(msg);
         }
     }

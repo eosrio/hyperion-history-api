@@ -1,8 +1,8 @@
-import {ConfigurationModule} from "./config";
-import {ConnectionManager} from "../connections/manager.class";
+import {ConfigurationModule} from "./config.js";
+import {ConnectionManager} from "../connections/manager.class.js";
 import {JsonRpc} from "eosjs/dist";
 import {Client} from "@elastic/elasticsearch";
-import {HyperionModuleLoader} from "./loader";
+import {HyperionModuleLoader} from "./loader.js";
 
 import {
     debugLog,
@@ -13,7 +13,7 @@ import {
     getLastIndexedBlockFromRange,
     hLog,
     messageAllWorkers
-} from "../helpers/common_functions";
+} from "../helpers/common_functions.js";
 
 import {GetInfoResult} from "eosjs/dist/eosjs-rpc-interfaces";
 import pm2io from '@pm2/io';
@@ -29,25 +29,20 @@ import {
     WriteStream
 } from "fs";
 
-import path from "path";
-import cluster, {Worker} from "cluster";
+import path from "node:path";
+import cluster, {Worker} from "node:cluster";
 import {io, Socket} from 'socket.io-client';
-import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef";
-import {HyperionConfig} from "../interfaces/hyperionConfig";
+import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef.js";
+import {HyperionConfig} from "../interfaces/hyperionConfig.js";
 
 import {queue, QueueObject} from "async";
 import {convertLegacyPublicKey} from "eosjs/dist/eosjs-numeric";
-import AlertsManager from "./alertsManager";
+import AlertsManager from "./alertsManager.js";
 import IORedis from "ioredis";
 import {IOConfig} from "@pm2/io/build/main/pmx";
 import Gauge from "@pm2/io/build/main/utils/metrics/gauge";
-import moment = require("moment");
+import moment from "moment";
 import Timeout = NodeJS.Timeout;
-import {
-    AggregationsHistogramAggregation,
-    AggregationsHistogramOrder,
-    IlmPutLifecycleRequest
-} from "@elastic/elasticsearch/lib/api/types";
 
 interface RevBlock {
     num: number;
@@ -444,7 +439,7 @@ export class HyperionMaster {
                 if (ping_response) {
                     hLog(`Ingest client ready at ${ping_response.meta.connection.id}`);
                 }
-            } catch (e) {
+            } catch (e:any) {
                 hLog(e.message);
                 hLog('Failed to connect to one of the ingestion nodes. Please verify the connections.json file');
                 process.exit(1);
@@ -500,7 +495,7 @@ export class HyperionMaster {
                     this.proposedSchedule = this.currentSchedule.proposed;
                 }
             }
-        } catch (e) {
+        } catch (e:any) {
             console.error('failed to connect to api');
             process.exit(1);
         }
@@ -556,7 +551,7 @@ export class HyperionMaster {
                         if (!ilm_status.acknowledged) {
                             hLog(`Failed to create ILM Policy`);
                         }
-                    } catch (e) {
+                    } catch (e:any) {
                         hLog(`[FATAL] :: Failed to create ILM Policy`);
                         hLog(e);
                         process.exit(1);
@@ -607,7 +602,7 @@ export class HyperionMaster {
                 } else {
                     hLog(`${index.name} template not found!`);
                 }
-            } catch (e) {
+            } catch (e:any) {
                 hLog(`[FATAL] ${e.message}`);
                 if (e.meta) {
                     hLog(e.meta.body);
@@ -643,7 +638,7 @@ export class HyperionMaster {
                         await this.client.indices.create({
                             index: new_index
                         });
-                    } catch (e) {
+                    } catch (e:any) {
                         console.log(e);
                         process.exit(1);
                     }
@@ -655,7 +650,7 @@ export class HyperionMaster {
                             index: new_index,
                             name: `${queue_prefix}-${index.type}`
                         });
-                    } catch (e) {
+                    } catch (e:any) {
                         console.log(e);
                         process.exit(1);
                     }
@@ -1001,7 +996,7 @@ export class HyperionMaster {
                                     }
                                     hLog(`${missingProd} missed a round [${this.missedRounds[missingProd]}]`);
                                 }
-                            } catch (e) {
+                            } catch (e:any) {
                                 hLog(activeProds);
                                 hLog(e);
                             }
@@ -1719,7 +1714,7 @@ export class HyperionMaster {
             const esInfo = await this.client.info();
             hLog(`Elasticsearch: ${esInfo.version.number} | Lucene: ${esInfo.version.lucene_version}`);
             this.emitAlert('info', `Indexer started using ES v${esInfo.version.number}`);
-        } catch (e) {
+        } catch (e:any) {
             hLog('Failed to check elasticsearch version!');
             process.exit();
         }
@@ -1865,7 +1860,7 @@ export class HyperionMaster {
         if (this.conf.hub) {
             try {
                 this.startHyperionHub();
-            } catch (e) {
+            } catch (e:any) {
                 hLog(e);
             }
         }
@@ -2006,7 +2001,7 @@ export class HyperionMaster {
                     body: payload
                 });
                 // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
-            } catch (e) {
+            } catch (e:any) {
                 console.log(`Failed to index account: ${payload.code}-${payload.scope}-${payload.symbol}`);
                 console.log(e);
             }
@@ -2040,7 +2035,7 @@ export class HyperionMaster {
                     body: payload
                 });
                 // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
-            } catch (e) {
+            } catch (e:any) {
                 console.log(`Failed to index voter: ${payload.voter}`);
                 console.log(e);
             }
@@ -2081,7 +2076,7 @@ export class HyperionMaster {
                         body: payload
                     });
                     // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
-                } catch (e) {
+                } catch (e:any) {
                     console.log(`Failed to index permission: ${payload.owner}-${payload.name}`);
                     console.log(e);
                 }
@@ -2237,7 +2232,7 @@ export class HyperionMaster {
         // Fecth chain lib
         try {
             this.chain_data = await this.rpc.get_info();
-        } catch (e) {
+        } catch (e:any) {
             console.log(e.message);
             console.error('failed to connect to chain api');
             process.exit(1);
@@ -2309,7 +2304,7 @@ export class HyperionMaster {
                         });
                     }
                 }, 100);
-            } catch (e) {
+            } catch (e:any) {
                 reply({ack: false, error: e.message});
             }
         });

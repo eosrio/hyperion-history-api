@@ -120,7 +120,7 @@ export class HyperionModuleLoader {
         try {
             await this.loadParser();
             await this.loadPlugins();
-        } catch (e) {
+        } catch (e:any) {
             console.log(e);
             process.exit(1);
         }
@@ -146,7 +146,7 @@ export class HyperionModuleLoader {
         try {
             const stateFile = JSON.parse(readFileSync(state).toString());
             pState = stateFile.plugins;
-        } catch (e) {
+        } catch (e:any) {
             hLog('Failed to read plugin state');
             return;
         }
@@ -167,7 +167,7 @@ export class HyperionModuleLoader {
                             this.loadPluginStreamHandlers(pl.streamHandlers);
                         }
                         this.plugins.push(pl);
-                    } catch (e) {
+                    } catch (e:any) {
                         hLog(`Plugin "${key}" failed to load: ${e.message}`);
                     }
                 }

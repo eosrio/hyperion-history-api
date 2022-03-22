@@ -31,7 +31,7 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
     } else if (public_Key.startsWith("EOS")) {
         try {
             publicKey = Numeric.convertLegacyPublicKey(public_Key);
-        } catch (e) {
+        } catch (e:any) {
             console.log(e.message);
             invalidKey();
         }
@@ -77,7 +77,7 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
             }
         }
 
-    } catch (e) {
+    } catch (e:any) {
         console.log(e);
     }
 

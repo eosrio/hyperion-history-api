@@ -97,7 +97,7 @@ export default class HyperionParser extends BaseParser {
                         'transaction_trace[]',
                         await unzipAsync(res['traces'])
                     );
-                } catch (e) {
+                } catch (e:any) {
                     hLog(e);
                 }
             }
@@ -107,7 +107,7 @@ export default class HyperionParser extends BaseParser {
                         'table_delta[]',
                         await unzipAsync(res['deltas'])
                     );
-                } catch (e) {
+                } catch (e:any) {
                     hLog(e);
                 }
             }
@@ -134,7 +134,7 @@ export default class HyperionParser extends BaseParser {
                 if (worker.ch_ready) {
                     worker.ch.ack(message);
                 }
-            } catch (e) {
+            } catch (e:any) {
                 console.log(e);
                 if (worker.ch_ready) {
                     worker.ch.nack(message);

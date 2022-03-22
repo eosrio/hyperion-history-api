@@ -291,7 +291,7 @@ export class SocketManager {
                             await streamPastDeltas(this.server, socket, data);
                         }
                         this.emitToRelay(data, 'delta_request', socket, callback);
-                    } catch (e) {
+                    } catch (e:any) {
                         console.log(e);
                     }
                 }
@@ -304,7 +304,7 @@ export class SocketManager {
                             await streamPastActions(this.server, socket, data);
                         }
                         this.emitToRelay(data, 'action_request', socket, callback);
-                    } catch (e) {
+                    } catch (e:any) {
                         console.log(e);
                     }
                 }

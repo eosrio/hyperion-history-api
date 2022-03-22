@@ -8,7 +8,7 @@ export async function parseDSPEvent(worker: DSPoolWorker, data: any) {
         if (event !== '') {
             try {
                 parsedEvents.push(JSON.parse(event));
-            } catch (e) {
+            } catch (e:any) {
             }
         }
     }

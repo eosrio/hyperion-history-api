@@ -8,7 +8,7 @@ async function checkRabbit(fastify: FastifyInstance) {
 		const connection = await connect(fastify.manager.ampqUrl);
 		await connection.close();
 		return createHealth('RabbitMq', 'OK');
-	} catch (e) {
+	} catch (e:any) {
 		console.log(e);
 		return createHealth('RabbitMq', 'Error');
 	}
@@ -30,7 +30,7 @@ async function checkNodeos(fastify: FastifyInstance) {
 		} else {
 			return createHealth('NodeosRPC', 'Error');
 		}
-	} catch (e) {
+	} catch (e:any) {
 		return createHealth('NodeosRPC', 'Error');
 	}
 }
@@ -53,7 +53,7 @@ async function checkElastic(fastify: FastifyInstance) {
 			}
 		});
 		return createHealth('Elasticsearch', stat, data);
-	} catch (e) {
+	} catch (e:any) {
 		console.log(e, 'Elasticsearch Error');
 		return createHealth('Elasticsearch', 'Error');
 	}

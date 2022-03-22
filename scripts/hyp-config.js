@@ -1,49 +1,21 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const commander_1 = require("commander");
-const path_1 = __importDefault(require("path"));
-const promises_1 = require("fs/promises");
-const fs_1 = require("fs");
-const eosjs_1 = require("eosjs");
-const cross_fetch_1 = __importStar(require("cross-fetch"));
-const ws_1 = __importDefault(require("ws"));
-const elasticsearch_1 = require("@elastic/elasticsearch");
-const readline = __importStar(require("readline"));
-const amqp = __importStar(require("amqplib"));
-const buffer_1 = require("buffer");
-const lodash_1 = require("lodash");
-const ioredis_1 = __importDefault(require("ioredis"));
-const program = new commander_1.Command();
-const chainsDir = path_1.default.join(path_1.default.resolve(), 'chains');
+import { Command } from "commander";
+import path from "node:path";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { JsonRpc } from "eosjs";
+import fetch, { Headers } from "cross-fetch";
+import WebSocket from 'ws';
+import { Client } from "@elastic/elasticsearch";
+import * as readline from "node:readline";
+import * as amqp from "amqplib";
+import { btoa } from "node:buffer";
+import { parseInt } from "lodash";
+import IORedis from "ioredis";
+const program = new Command();
+const chainsDir = path.join(path.resolve(), 'chains');
 async function getConnections() {
     try {
-        const connectionsJsonFile = await (0, promises_1.readFile)(path_1.default.join(path_1.default.resolve(), 'connections.json'));
+        const connectionsJsonFile = await readFile(path.join(path.resolve(), 'connections.json'));
         return JSON.parse(connectionsJsonFile.toString());
     }
     catch (e) {
@@ -51,12 +23,12 @@ async function getConnections() {
     }
 }
 async function getExampleConfig() {
-    const exampleChainData = await (0, promises_1.readFile)(path_1.default.join(chainsDir, 'example.config.json'));
+    const exampleChainData = await readFile(path.join(chainsDir, 'example.config.json'));
     return JSON.parse(exampleChainData.toString());
 }
 async function getExampleConnections() {
     try {
-        const connectionsJsonFile = await (0, promises_1.readFile)(path_1.default.join(path_1.default.resolve(), 'example-connections.json'));
+        const connectionsJsonFile = await readFile(path.join(path.resolve(), 'example-connections.json'));
         return JSON.parse(connectionsJsonFile.toString());
     }
     catch (e) {
@@ -64,8 +36,10 @@ async function getExampleConnections() {
     }
 }
 async function listChains(flags) {
-    const dirdata = await (0, promises_1.readdir)(chainsDir);
+    const dirdata = await readdir(chainsDir);
     const connections = await getConnections();
+    if (!connections)
+        return;
     const exampleChain = await getExampleConfig();
     const configuredTable = [];
     const pendingTable = [];
@@ -74,7 +48,7 @@ async function listChains(flags) {
             continue;
         }
         try {
-            const fileData = await (0, promises_1.readFile)(path_1.default.join(chainsDir, file));
+            const fileData = await readFile(path.join(chainsDir, file));
             const jsonData = JSON.parse(fileData.toString());
             const chainName = jsonData.settings.chain;
             const chainConn = connections.chains[chainName];
@@ -107,7 +81,7 @@ async function listChains(flags) {
                 }
             }
             if (flags.fixMissingFields) {
-                await (0, promises_1.writeFile)(path_1.default.join(chainsDir, file), JSON.stringify(jsonData, null, 2));
+                await writeFile(path.join(chainsDir, file), JSON.stringify(jsonData, null, 2));
             }
             const common = {
                 full_name: fullChainName,
@@ -143,8 +117,8 @@ async function listChains(flags) {
 }
 async function newChain(shortName, options) {
     console.log(`Creating new config for ${shortName}...`);
-    const targetPath = path_1.default.join(chainsDir, `${shortName}.config.json`);
-    if ((0, fs_1.existsSync)(targetPath)) {
+    const targetPath = path.join(chainsDir, `${shortName}.config.json`);
+    if (existsSync(targetPath)) {
         console.error(`Chain config for ${shortName} already defined!`);
         process.exit(0);
     }
@@ -152,6 +126,8 @@ async function newChain(shortName, options) {
     const exampleChain = await getExampleConfig();
     // read connections.json
     const connections = await getConnections();
+    if (!connections)
+        return;
     if (connections.chains[shortName]) {
         console.log('Connections already defined!');
         console.log(connections.chains[shortName]);
@@ -178,12 +154,12 @@ async function newChain(shortName, options) {
             process.exit(1);
         }
         // test nodeos availability
-        const jsonRpc = new eosjs_1.JsonRpc(options.http, { fetch: cross_fetch_1.default });
+        const jsonRpc = new JsonRpc(options.http, { fetch });
         const info = await jsonRpc.get_info();
         jsonData.api.chain_api = options.http;
         connections.chains[shortName].chain_id = info.chain_id;
         connections.chains[shortName].http = options.http;
-        if (info.server_version_string.includes('2.1')) {
+        if (info.server_version_string && info.server_version_string.includes('2.1')) {
             jsonData.settings.parser = '2.1';
         }
         else {
@@ -202,7 +178,7 @@ async function newChain(shortName, options) {
         }
         // test ship availability
         const status = await new Promise(resolve => {
-            const ws = new ws_1.default(options.ship);
+            const ws = new WebSocket(options.ship);
             ws.on("message", (data) => {
                 try {
                     const abi = JSON.parse(data.toString());
@@ -236,37 +212,39 @@ async function newChain(shortName, options) {
     }
     const fullNameArr = [];
     shortName.split('-').forEach((word) => {
-        fullNameArr.push(word[0].toUpperCase() + word.substr(1));
+        fullNameArr.push(word[0].toUpperCase() + word.slice(1));
     });
     const fullChainName = fullNameArr.join(' ');
     jsonData.api.chain_name = fullChainName;
     connections.chains[shortName].name = fullChainName;
     console.log(connections.chains[shortName]);
     console.log('Saving connections.json...');
-    await (0, promises_1.writeFile)(path_1.default.join(path_1.default.resolve(), 'connections.json'), JSON.stringify(connections, null, 2));
+    await writeFile(path.join(path.resolve(), 'connections.json'), JSON.stringify(connections, null, 2));
     console.log(`Saving chains/${shortName}.config.json...`);
-    await (0, promises_1.writeFile)(targetPath, JSON.stringify(jsonData, null, 2));
+    await writeFile(targetPath, JSON.stringify(jsonData, null, 2));
 }
 async function rmChain(shortName) {
     console.log(`Removing config for ${shortName}...`);
-    const targetPath = path_1.default.join(chainsDir, `${shortName}.config.json`);
-    if (!(0, fs_1.existsSync)(targetPath)) {
+    const targetPath = path.join(chainsDir, `${shortName}.config.json`);
+    if (!existsSync(targetPath)) {
         console.error(`Chain config for ${shortName} not found!`);
         process.exit(0);
     }
     // create backups
-    const backupDir = path_1.default.join(path_1.default.resolve(), 'configuration_backups');
-    if (!(0, fs_1.existsSync)(backupDir)) {
-        await (0, promises_1.mkdir)(backupDir);
+    const backupDir = path.join(path.resolve(), 'configuration_backups');
+    if (!existsSync(backupDir)) {
+        await mkdir(backupDir);
     }
     const connections = await getConnections();
+    if (!connections)
+        return;
     try {
         const chainConn = connections.chains[shortName];
         const now = Date.now();
         if (chainConn) {
-            await (0, promises_1.writeFile)(path_1.default.join(backupDir, `${shortName}_${now}_connections.json`), JSON.stringify(chainConn, null, 2));
+            await writeFile(path.join(backupDir, `${shortName}_${now}_connections.json`), JSON.stringify(chainConn, null, 2));
         }
-        await (0, promises_1.cp)(targetPath, path_1.default.join(backupDir, `${shortName}_${now}_config.json`));
+        await cp(targetPath, path.join(backupDir, `${shortName}_${now}_config.json`));
     }
     catch (e) {
         console.log(e.message);
@@ -274,10 +252,10 @@ async function rmChain(shortName) {
         process.exit(1);
     }
     console.log(`Deleting ${targetPath}`);
-    await (0, promises_1.rm)(targetPath);
+    await rm(targetPath);
     delete connections.chains[shortName];
     console.log('Saving connections.json...');
-    await (0, promises_1.writeFile)(path_1.default.join(path_1.default.resolve(), 'connections.json'), JSON.stringify(connections, null, 2));
+    await writeFile(path.join(path.resolve(), 'connections.json'), JSON.stringify(connections, null, 2));
     console.log(`✅ ${shortName} removal completed!`);
 }
 async function checkES(conn) {
@@ -293,7 +271,7 @@ async function checkES(conn) {
     else {
         es_url = `${_es.protocol}://${_es.host}`;
     }
-    const client = new elasticsearch_1.Client({
+    const client = new Client({
         node: es_url,
         tls: { rejectUnauthorized: false }
     });
@@ -325,9 +303,9 @@ async function checkAMQP(conn) {
             await connection.close();
             console.log(`\n[info] [RABBIT:HTTP] - Testing rabbitmq http api connection...`);
             const apiUrl = `${conn.amqp.protocol}://${conn.amqp.api}/api/nodes`;
-            let headers = new cross_fetch_1.Headers();
-            headers.set('Authorization', 'Basic ' + (0, buffer_1.btoa)(conn.amqp.user + ":" + conn.amqp.pass));
-            const data = await (0, cross_fetch_1.default)(apiUrl, {
+            let headers = new Headers();
+            headers.set('Authorization', 'Basic ' + btoa(conn.amqp.user + ":" + conn.amqp.pass));
+            const data = await fetch(apiUrl, {
                 method: 'GET',
                 headers: headers
             });
@@ -357,7 +335,7 @@ async function checkAMQP(conn) {
 async function checkRedis(conn) {
     console.log(`\n[info] [REDIS] - Testing redis connection...`);
     try {
-        const ioRedisClient = new ioredis_1.default(conn.redis);
+        const ioRedisClient = new IORedis(conn.redis);
         const pingResult = await ioRedisClient.ping();
         if (pingResult === 'PONG') {
             console.log('[info] [REDIS] - Connection established!');
@@ -384,6 +362,8 @@ async function initConfig() {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const prompt = (query) => new Promise((resolve) => rl.question(query, resolve));
     const conn = exampleConn;
+    if (!conn)
+        return;
     conn.chains = {};
     // check rabbitmq
     let amqp_state = false;
@@ -460,7 +440,7 @@ async function initConfig() {
             }
             const redis_port = await prompt(' > Enter the Redis Server port (or press ENTER to use "6379"): ');
             if (redis_port) {
-                conn.redis.port = (0, lodash_1.parseInt)(redis_port);
+                conn.redis.port = parseInt(redis_port);
             }
             else {
                 conn.redis.port = 6379;
@@ -472,20 +452,20 @@ async function initConfig() {
     }
     console.log(`\n Redis ✅`);
     console.log('Init completed! Saving configuration...');
-    await (0, promises_1.writeFile)(path_1.default.join(path_1.default.resolve(), 'connections.json'), JSON.stringify(conn, null, 2));
+    await writeFile(path.join(path.resolve(), 'connections.json'), JSON.stringify(conn, null, 2));
     console.log('✅ ✅');
     rl.close();
     process.exit(0);
 }
 async function resetConnections() {
-    const connPath = path_1.default.join(path_1.default.resolve(), 'connections.json');
+    const connPath = path.join(path.resolve(), 'connections.json');
     try {
-        if ((0, fs_1.existsSync)(connPath)) {
+        if (existsSync(connPath)) {
             const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
             const prompt = (query) => new Promise((resolve) => rl.question(query, resolve));
             const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.');
             if (confirmation === 'YES') {
-                await (0, promises_1.rm)(connPath);
+                await rm(connPath);
                 console.log('connections.json removed, please use "./hyp-config init" to reconfigure');
             }
             else {
@@ -501,17 +481,22 @@ async function resetConnections() {
     }
 }
 async function testConnections() {
-    const connPath = path_1.default.join(path_1.default.resolve(), 'connections.json');
-    if ((0, fs_1.existsSync)(connPath)) {
+    const connPath = path.join(path.resolve(), 'connections.json');
+    if (existsSync(connPath)) {
         try {
             const conn = await getConnections();
-            const results = {
-                redis: await checkRedis(conn),
-                elasticsearch: await checkES(conn),
-                rabbitmq: await checkAMQP(conn)
-            };
-            console.log('\n------ Testing Completed -----');
-            console.table(results);
+            if (conn) {
+                const results = {
+                    redis: await checkRedis(conn),
+                    elasticsearch: await checkES(conn),
+                    rabbitmq: await checkAMQP(conn)
+                };
+                console.log('\n------ Testing Completed -----');
+                console.table(results);
+            }
+            else {
+                console.log(`The connections.json was not found!.`);
+            }
         }
         catch (e) {
             console.log(e.message);

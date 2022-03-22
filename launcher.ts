@@ -1,7 +1,7 @@
-import cluster from "cluster";
-import {ConfigurationModule} from "./modules/config";
-import {HyperionWorker} from "./workers/hyperionWorker";
-import {hLog} from "./helpers/common_functions";
+import cluster from "node:cluster";
+import {ConfigurationModule} from "./modules/config.js";
+import {HyperionWorker} from "./workers/hyperionWorker.js";
+import {hLog} from "./helpers/common_functions.js";
 
 interface WorkerEnv {
 	worker_role: string;

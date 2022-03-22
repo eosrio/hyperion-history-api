@@ -1,27 +1,27 @@
 import {Command} from "commander";
-import path from "path";
-import {cp, mkdir, readdir, readFile, rm, writeFile} from "fs/promises";
-import {HyperionConfig} from "../interfaces/hyperionConfig";
-import {HyperionConnections} from "../interfaces/hyperionConnections";
-import {existsSync} from "fs";
+import path from "node:path";
+import {cp, mkdir, readdir, readFile, rm, writeFile} from "node:fs/promises";
+import {HyperionConfig} from "../interfaces/hyperionConfig.js";
+import {HyperionConnections} from "../interfaces/hyperionConnections.js";
+import {existsSync} from "node:fs";
 import {JsonRpc} from "eosjs";
 import fetch, {Headers} from "cross-fetch";
 import WebSocket from 'ws';
 import {Client} from "@elastic/elasticsearch";
-import * as readline from "readline";
+import * as readline from "node:readline";
 import * as amqp from "amqplib";
-import {btoa} from "buffer";
+import {btoa} from "node:buffer";
 import {parseInt} from "lodash";
 import IORedis from "ioredis";
 
 const program = new Command();
 const chainsDir = path.join(path.resolve(), 'chains');
 
-async function getConnections(): Promise<HyperionConnections> {
+async function getConnections(): Promise<HyperionConnections | null> {
     try {
         const connectionsJsonFile = await readFile(path.join(path.resolve(), 'connections.json'));
         return JSON.parse(connectionsJsonFile.toString());
-    } catch (e) {
+    } catch (e: any) {
         return null;
     }
 }
@@ -31,11 +31,11 @@ async function getExampleConfig(): Promise<HyperionConfig> {
     return JSON.parse(exampleChainData.toString());
 }
 
-async function getExampleConnections(): Promise<HyperionConnections> {
+async function getExampleConnections(): Promise<HyperionConnections | null> {
     try {
         const connectionsJsonFile = await readFile(path.join(path.resolve(), 'example-connections.json'));
         return JSON.parse(connectionsJsonFile.toString());
-    } catch (e) {
+    } catch (e: any) {
         return null;
     }
 }
@@ -45,10 +45,11 @@ async function listChains(flags) {
 
     const dirdata = await readdir(chainsDir);
     const connections = await getConnections();
+    if (!connections) return;
     const exampleChain = await getExampleConfig();
 
-    const configuredTable = [];
-    const pendingTable = [];
+    const configuredTable: any[] = [];
+    const pendingTable: any[] = [];
     for (const file of dirdata.filter(f => f.endsWith('.json'))) {
         if (file === 'example.config.json') {
             continue;
@@ -109,7 +110,7 @@ async function listChains(flags) {
             } else {
                 pendingTable.push(common);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.log(`Failed to parse ${file} - ${e.message}`);
         }
     }
@@ -137,6 +138,7 @@ async function newChain(shortName, options) {
 
     // read connections.json
     const connections = await getConnections();
+    if (!connections) return;
 
     if (connections.chains[shortName]) {
         console.log('Connections already defined!');
@@ -171,7 +173,7 @@ async function newChain(shortName, options) {
         jsonData.api.chain_api = options.http;
         connections.chains[shortName].chain_id = info.chain_id;
         connections.chains[shortName].http = options.http;
-        if (info.server_version_string.includes('2.1')) {
+        if (info.server_version_string && info.server_version_string.includes('2.1')) {
             jsonData.settings.parser = '2.1';
         } else {
             jsonData.settings.parser = '1.8';
@@ -201,7 +203,7 @@ async function newChain(shortName, options) {
                     } else {
                         resolve(false);
                     }
-                } catch (e) {
+                } catch (e: any) {
                     console.log(e.message);
                     resolve(false);
                 }
@@ -221,9 +223,9 @@ async function newChain(shortName, options) {
         }
     }
 
-    const fullNameArr = [];
+    const fullNameArr: string[] = [];
     shortName.split('-').forEach((word: string) => {
-        fullNameArr.push(word[0].toUpperCase() + word.substr(1));
+        fullNameArr.push(word[0].toUpperCase() + word.slice(1));
     });
     const fullChainName = fullNameArr.join(' ');
 
@@ -254,6 +256,8 @@ async function rmChain(shortName) {
     }
 
     const connections = await getConnections();
+    if (!connections) return;
+
     try {
         const chainConn = connections.chains[shortName];
         const now = Date.now();
@@ -264,7 +268,7 @@ async function rmChain(shortName) {
             );
         }
         await cp(targetPath, path.join(backupDir, `${shortName}_${now}_config.json`));
-    } catch (e) {
+    } catch (e: any) {
         console.log(e.message);
         console.log('Failed to create backups! Aborting!');
         process.exit(1);
@@ -299,7 +303,7 @@ async function checkES(conn: HyperionConnections): Promise<boolean> {
         console.log(`[info] [ES] - ${result}`.trim());
         console.log('[info] [ES] - Connection established!');
         return true;
-    } catch (reason) {
+    } catch (reason: any) {
         console.log('[error] [ES] - ' + reason.message);
         return false;
     }
@@ -344,7 +348,7 @@ async function checkAMQP(conn: HyperionConnections): Promise<boolean> {
         } else {
             return false;
         }
-    } catch (reason) {
+    } catch (reason: any) {
         console.log('[error] [RABBIT] - ' + reason.message);
         return false;
     }
@@ -363,7 +367,7 @@ async function checkRedis(conn: HyperionConnections) {
             console.log('[error] [REDIS] - PONG expected, got: ' + pingResult);
             return false;
         }
-    } catch (reason) {
+    } catch (reason: any) {
         console.log('[error] [REDIS] - ' + reason.message);
         return false;
     }
@@ -383,6 +387,8 @@ async function initConfig() {
     const prompt = (query) => new Promise((resolve) => rl.question(query, resolve));
 
     const conn = exampleConn;
+
+    if (!conn) return;
     conn.chains = {};
 
     // check rabbitmq
@@ -506,7 +512,7 @@ async function resetConnections() {
         } else {
             console.log(`The connections.json file is not present, please run "./hyp-config init" to configure it.`);
         }
-    } catch (e) {
+    } catch (e: any) {
         console.log(e);
     }
 }
@@ -516,14 +522,18 @@ async function testConnections() {
     if (existsSync(connPath)) {
         try {
             const conn = await getConnections();
-            const results = {
-                redis: await checkRedis(conn),
-                elasticsearch: await checkES(conn),
-                rabbitmq: await checkAMQP(conn)
+            if (conn) {
+                const results = {
+                    redis: await checkRedis(conn),
+                    elasticsearch: await checkES(conn),
+                    rabbitmq: await checkAMQP(conn)
+                }
+                console.log('\n------ Testing Completed -----');
+                console.table(results);
+            } else {
+                console.log(`The connections.json was not found!.`);
             }
-            console.log('\n------ Testing Completed -----');
-            console.table(results);
-        } catch (e) {
+        } catch (e: any) {
             console.log(e.message);
         }
     } else {

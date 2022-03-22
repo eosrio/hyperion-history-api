@@ -1,1 +1,0 @@
-declare const tests: any;

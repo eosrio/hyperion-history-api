@@ -172,7 +172,7 @@ export abstract class BaseParser {
         let ds_act, error_message;
         try {
             ds_act = await worker.common.deserializeActionAtBlockNative(worker, act, trx_data.block_num);
-        } catch (e) {
+        } catch (e:any) {
             console.log(e);
             error_message = e.message;
         }
@@ -181,7 +181,7 @@ export abstract class BaseParser {
         if (!ds_act) {
             try {
                 ds_act = await this.reinterpretActionData(act);
-            } catch (e) {
+            } catch (e:any) {
                 hLog(`Failed to reinterpret action: ${act.account}::${act.name}`);
                 hLog(act.data);
             }
@@ -199,7 +199,7 @@ export abstract class BaseParser {
             action.act.data = ds_act;
             try {
                 worker.common.attachActionExtras(worker, action);
-            } catch (e) {
+            } catch (e:any) {
                 hLog('Failed to call attachActionExtras:', e.message);
                 hLog(action?.act?.account, action?.act?.name, action?.act?.data);
             }

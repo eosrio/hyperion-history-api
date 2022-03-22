@@ -1,15 +1,19 @@
 import {Client} from "@elastic/elasticsearch";
-import {Serialize} from "../addons/eosjs-native";
-import {existsSync} from "fs";
-import {join} from "path";
+import {existsSync, readFileSync} from "node:fs";
+import {join} from "node:path";
 import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
+import {Serialize} from "eosjs";
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let config;
 const conf_path = join(__dirname, `../${process.env.CONFIG_JSON}`);
 if (existsSync(conf_path)) {
     try {
-        config = require(conf_path);
-    } catch (e) {
+        config = JSON.parse(readFileSync(conf_path).toString());
+    } catch (e:any) {
         console.log(e.message);
         process.exit(1);
     }
@@ -143,7 +147,7 @@ export function messageAllWorkers(cl, payload) {
                     } else {
                         hLog('Worker is not connected!');
                     }
-                } catch (e) {
+                } catch (e:any) {
                     hLog('Failed to message worker!');
                     hLog(e);
                 }

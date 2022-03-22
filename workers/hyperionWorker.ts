@@ -21,8 +21,8 @@ export abstract class HyperionWorker {
 	chainId: string;
 
 	// AMQP Channels
-	ch: Channel;
-	cch: ConfirmChannel;
+	ch!: Channel;
+	cch!: ConfirmChannel;
 
 	rpc: JsonRpc;
 	client: Client;
@@ -74,7 +74,7 @@ export abstract class HyperionWorker {
 				case 'request_v8_heap_stats': {
 					const report: HeapInfo = v8.getHeapStatistics();
 					const used_pct = report.used_heap_size / report.heap_size_limit;
-					process.send({
+					process.send?.({
 						event: 'v8_heap_report',
 						id: process.env.worker_role + ':' + process.env.worker_id,
 						data: {
@@ -86,7 +86,7 @@ export abstract class HyperionWorker {
 				}
 				case 'request_memory_usage': {
 					const report = process.memoryUsage();
-					process.send({
+					process.send?.({
 						event: 'memory_report',
 						id: process.env.worker_role + ':' + process.env.worker_id,
 						data: {
@@ -224,7 +224,7 @@ export abstract class HyperionWorker {
 	loadAbiHex(contract, block_num, abi_hex) {
 		// check local blacklist for corrupted abis that failed to load before
 		let _status;
-		if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract).has(block_num)) {
+		if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract)?.has(block_num)) {
 			_status = false;
 			debugLog('ignore saved abi for', contract, block_num);
 		} else {
@@ -232,7 +232,7 @@ export abstract class HyperionWorker {
 			if (!_status) {
 				hLog(`AbiEOS.load_abi_hex error for ${contract} at ${block_num}`);
 				if (this.failedAbiMap.has(contract)) {
-					this.failedAbiMap.get(contract).add(block_num);
+					this.failedAbiMap.get(contract)?.add(block_num);
 				} else {
 					this.failedAbiMap.set(contract, new Set([block_num]));
 				}
@@ -252,7 +252,7 @@ export abstract class HyperionWorker {
 
 	async loadCurrentAbiHex(contract) {
 		let _status;
-		if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract).has(-1)) {
+		if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract)?.has(-1)) {
 			_status = false;
 			debugLog('ignore current abi for', contract);
 		} else {
@@ -263,7 +263,7 @@ export abstract class HyperionWorker {
 				if (!_status) {
 					hLog(`AbiEOS.load_abi_hex error for ${contract} at head`);
 					if (this.failedAbiMap.has(contract)) {
-						this.failedAbiMap.get(contract).add(-1);
+						this.failedAbiMap.get(contract)?.add(-1);
 					} else {
 						this.failedAbiMap.set(contract, new Set([-1]));
 					}

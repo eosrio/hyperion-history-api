@@ -16,5 +16,5 @@ echo -e "\n-->> Saving pm2 state..."
 echo -e "\n-->> Reading $1 logs..."
 (
   set -x
-  pm2 logs --raw --lines 10 "$@"
+  pm2 logs --raw --lines 25 "$@"
 )

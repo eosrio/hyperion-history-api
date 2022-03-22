@@ -57,7 +57,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
                         // console.log('Caching token precision -', key, precision);
                     }
                 }
-            } catch (e) {
+            } catch (e:any) {
                 console.log(`get_currency_balance error - contract:${data.code} - account:${query.account}`);
             }
         }

@@ -110,7 +110,7 @@ export default class HyperionParser extends BaseParser {
                         ds_times.abieos.signed_block = timedFunction(dsProfiling, () => {
                             block = worker.deserializeNative('signed_block_variant', res.block)[1];
                         });
-                    } catch (e) {
+                    } catch (e:any) {
                         hLog('signed_block_variant deserialization failed with abieos!');
                     }
                     if (!block) {
@@ -119,7 +119,7 @@ export default class HyperionParser extends BaseParser {
                             ds_times.eosjs.signed_block = timedFunction(dsProfiling, () => {
                                 block = deserialize('signed_block_variant', res.block, this.txEnc, this.txDec, worker.types);
                             });
-                        } catch (e) {
+                        } catch (e:any) {
                             hLog('signed_block_variant deserialization failed with eosjs!');
                         }
                     }
@@ -160,7 +160,7 @@ export default class HyperionParser extends BaseParser {
                         // store time diff
                         if (worker.conf.settings.ds_profiling) ds_times['packed_trx'] = Number(process.hrtime.bigint() - ds_times['packed_trx']) / 1000;
 
-                    } catch (e) {
+                    } catch (e:any) {
                         console.log(e);
                         allowProcessing = true;
                     }
@@ -176,7 +176,7 @@ export default class HyperionParser extends BaseParser {
                     ds_times.abieos.transaction_trace = timedFunction(dsProfiling, () => {
                         traces = worker.deserializeNative('transaction_trace[]', res.traces);
                     });
-                } catch (e) {
+                } catch (e:any) {
                     hLog('transaction_trace[] deserialization failed with abieos!');
                 }
 
@@ -186,7 +186,7 @@ export default class HyperionParser extends BaseParser {
                         ds_times.eosjs.transaction_trace = timedFunction(dsProfiling, () => {
                             traces = deserialize('transaction_trace[]', res.traces, this.txEnc, this.txDec, worker.types);
                         });
-                    } catch (e) {
+                    } catch (e:any) {
                         hLog('transaction_trace[] deserialization failed with eosjs!');
                     }
                 }
@@ -206,7 +206,7 @@ export default class HyperionParser extends BaseParser {
                     ds_times.abieos.table_delta = timedFunction(dsProfiling, () => {
                         deltas = worker.deserializeNative('table_delta[]', res.deltas);
                     });
-                } catch (e) {
+                } catch (e:any) {
                     hLog('table_delta[] deserialization failed with abieos!');
                 }
 
@@ -216,7 +216,7 @@ export default class HyperionParser extends BaseParser {
                         ds_times.eosjs.table_delta = timedFunction(dsProfiling, () => {
                             deltas = deserialize('table_delta[]', res.deltas, this.txEnc, this.txDec, worker.types);
                         });
-                    } catch (e) {
+                    } catch (e:any) {
                         hLog('table_delta[] deserialization failed with eosjs!');
                     }
                 }
@@ -257,7 +257,7 @@ export default class HyperionParser extends BaseParser {
                 if (worker.ch_ready) {
                     worker.ch.ack(message);
                 }
-            } catch (e) {
+            } catch (e:any) {
                 console.log(e);
                 if (worker.ch_ready) {
                     worker.ch.nack(message);

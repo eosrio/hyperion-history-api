@@ -101,7 +101,7 @@ export default class AlertsManager {
 			for (const chatId of this.opts.telegram.destinationIds) {
 				try {
 					await this.telegramBot.telegram.sendMessage(chatId, '[' + this.chainName + '] ' + message);
-				} catch (e) {
+				} catch (e:any) {
 					hLog('Failed to send telegram message!');
 					hLog(e.message);
 				}
@@ -119,7 +119,7 @@ export default class AlertsManager {
 					html: `Testing`,
 					raw: JSON.stringify(data)
 				});
-			} catch (e) {
+			} catch (e:any) {
 				hLog('Failed to send mail!');
 				hLog(e.message);
 			}
@@ -134,7 +134,7 @@ export default class AlertsManager {
 					username: this.opts.http.useAuth ? this.opts.http.user : undefined,
 					password: this.opts.http.useAuth ? this.opts.http.pass : undefined
 				}).json();
-			} catch (e) {
+			} catch (e:any) {
 				hLog('Failed to HTTP Post alert!');
 				hLog(e.message);
 			}

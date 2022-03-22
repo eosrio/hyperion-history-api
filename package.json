@@ -24,6 +24,7 @@
     "url": "https://github.com/eosrio/hyperion-history-api.git"
   },
   "license": "MIT",
+  "type": "module",
   "dependencies": {
     "@elastic/elasticsearch": "8.1.0",
     "@eosrio/node-abieos": "^2.1.1",

@@ -27,16 +27,16 @@ export default class IndexerWorker extends HyperionWorker {
         this.esRoutes = new ElasticRoutes(this.manager, this.distributionMap);
         this.indexQueue = cargo((payload: Message[], callback) => {
             if (this.ch_ready && payload) {
-                if (this.esRoutes.routes[process.env.type]) {
+                if (this.esRoutes.routes[process.env.type as string]) {
 
                     // call route type
-                    this.esRoutes.routes[process.env.type](payload, this.ch, (indexed_size) => {
+                    this.esRoutes.routes[process.env.type as string](payload, this.ch, (indexed_size) => {
                         if (indexed_size) {
                             this.temp_indexed_count += indexed_size;
                         }
                         try {
                             callback();
-                        } catch (e) {
+                        } catch (e: any) {
                             hLog(`${e.message} on ${process.env.type}`);
                         }
                     });
@@ -59,9 +59,9 @@ export default class IndexerWorker extends HyperionWorker {
                 });
                 this.ch.assertQueue(process.env.queue, {durable: true});
                 this.ch.prefetch(this.conf.prefetch.index);
-                this.ch.consume(process.env.queue, this.indexQueue.push);
+                this.ch.consume(process.env.queue as string, this.indexQueue.push);
             }
-        } catch (e) {
+        } catch (e:any) {
             console.error('rabbitmq error!');
             console.log(e);
             process.exit(1);
@@ -71,7 +71,7 @@ export default class IndexerWorker extends HyperionWorker {
     startMonitoring() {
         setInterval(() => {
             if (this.temp_indexed_count > 0) {
-                process.send({event: 'add_index', size: this.temp_indexed_count});
+                process.send?.({event: 'add_index', size: this.temp_indexed_count});
             }
             this.temp_indexed_count = 0;
         }, 1000);

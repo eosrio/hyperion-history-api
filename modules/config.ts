@@ -1,6 +1,6 @@
-import {existsSync, readFileSync, writeFileSync} from "fs";
-import {HyperionConnections} from "../interfaces/hyperionConnections";
-import {HyperionConfig} from "../interfaces/hyperionConfig";
+import {existsSync, readFileSync, writeFileSync} from "node:fs";
+import {HyperionConnections} from "../interfaces/hyperionConnections.js";
+import {HyperionConfig} from "../interfaces/hyperionConfig.js";
 
 export interface Filters {
 	action_blacklist: Set<string>;
@@ -100,7 +100,7 @@ export class ConfigurationModule {
 			try {
 				this.config = JSON.parse(data);
 				this.processConfig();
-			} catch (e) {
+			} catch (e:any) {
 				console.log(`Failed to Load configuration file ${process.env.CONFIG_JSON}`);
 				console.log(e);
 				process.exit(1);
@@ -125,7 +125,7 @@ export class ConfigurationModule {
 			const data = readFileSync(file).toString();
 			try {
 				this.connections = JSON.parse(data);
-			} catch (e) {
+			} catch (e:any) {
 				console.log(`Failed to Load ${file}`);
 				console.log(e.message);
 				process.exit(1);

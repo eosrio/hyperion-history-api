@@ -41,7 +41,7 @@ export class CacheManager {
                 if (removeCount > 0) {
                     console.log(`${removeCount} expired cache entries removed`);
                 }
-            } catch (e) {
+            } catch (e:any) {
                 console.log(e);
             }
         }, 5000);

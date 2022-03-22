@@ -1,14 +1,15 @@
-import {ConfigurationModule} from "../modules/config";
-import {JsonRpc} from "eosjs";
 import got from "got";
+import {ConfigurationModule} from "../modules/config.js";
+import {JsonRpc} from "eosjs";
 import {Client} from '@elastic/elasticsearch'
-import {HyperionConnections} from "../interfaces/hyperionConnections";
-import {HyperionConfig} from "../interfaces/hyperionConfig";
-import {amqpConnect, checkQueueSize, getAmpqUrl} from "./amqp";
-import {StateHistorySocket} from "./state-history";
+import {HyperionConnections} from "../interfaces/hyperionConnections.js";
+import {HyperionConfig} from "../interfaces/hyperionConfig.js";
+import {amqpConnect, checkQueueSize, getAmpqUrl} from "./amqp.js";
+import {StateHistorySocket} from "./state-history.js";
 import fetch from 'cross-fetch';
-import {exec} from "child_process";
-import {hLog} from "../helpers/common_functions";
+import {exec} from "node:child_process";
+import {hLog} from "../helpers/common_functions.js";
+import {readFileSync} from "node:fs";
 
 export class ConnectionManager {
 
@@ -16,11 +17,11 @@ export class ConnectionManager {
     conn: HyperionConnections;
 
     chain: string;
-    last_commit_hash: string;
-    current_version: string;
+    last_commit_hash!: string;
+    current_version!: string;
 
     private readonly esIngestClients: Client[];
-    private esIngestClient: Client;
+    private esIngestClient!: Client;
 
     constructor(private cm: ConfigurationModule) {
         this.config = cm.config;
@@ -54,7 +55,7 @@ export class ConnectionManager {
             if (data) {
                 result = JSON.parse(data.body);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.log(e.message);
             console.error('failed to connect to rabbitmq http api');
             process.exit(1);
@@ -67,7 +68,7 @@ export class ConnectionManager {
                         try {
                             await got.delete(apiUrl + `/api/queues/${vHost}/${queue.name}/contents`, opts);
                             hLog(`${queue.messages} messages deleted on queue ${queue.name}`);
-                        } catch (e) {
+                        } catch (e: any) {
                             console.log(e.message);
                             console.error('failed to connect to rabbitmq http api');
                             process.exit(1);
@@ -131,11 +132,11 @@ export class ConnectionManager {
         }
     }
 
-    async createAMQPChannels(onReconnect, onClose) {
+    async createAMQPChannels(onReconnect, onClose): Promise<any[]> {
         return await amqpConnect(onReconnect, this.conn.amqp, onClose);
     }
 
-    async checkQueueSize(queue) {
+    async checkQueueSize(queue): Promise<any> {
         return await checkQueueSize(queue, this.conn.amqp);
     }
 
@@ -166,7 +167,8 @@ export class ConnectionManager {
     }
 
     getHyperionVersion() {
-        this.current_version = require('../package.json').version;
+        const pkg = JSON.parse(readFileSync('../package.json').toString());
+        this.current_version = pkg.version;
         if (this.last_commit_hash === 'custom') {
             this.current_version = this.current_version + '-dirty';
         }

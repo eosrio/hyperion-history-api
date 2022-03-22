@@ -68,7 +68,7 @@ class SocketTester {
         // Ack Block
         this.send(['get_blocks_ack_request_v0', {num_messages: 1}]);
       }
-    } catch (e) {
+    } catch (e:any) {
       console.log(e);
       process.exit(1);
     }
@@ -105,7 +105,7 @@ class SocketTester {
           console.log(`Block: ${block_num} | Account: ${act.act.account} | Name: ${act.act.name}`);
         }
       }
-    } catch (e) {
+    } catch (e:any) {
       console.log(`Block: ${block_num} | Deserialization Error: ${e.message}`);
     }
     // if (response.block[1].transactions.length > 0) {
