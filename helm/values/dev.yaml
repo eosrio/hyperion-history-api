@@ -8,10 +8,9 @@ config:
   chain_logo_url: "https://storage.googleapis.com/voice_logo/logo.ico"
   es_replicas: 1
   abi_scan: false
-  elastic_host: elastic.service.us-west1-dev.vops.int
-  elastic_user: ''
-  elastic_pass: ''
-
+  elastic_host: vault:secret/data/devops/elasticsearch#ELASTIC_HOST
+  elastic_user: elastic
+  elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
 
 services:
   voice-eos-hyperion:
@@ -147,7 +146,7 @@ deployments:
             name: hyperion-api
         image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.release.tag }}"
         imagePullPolicy: Always
-        command: ["bash", "run.sh","voice-indexer"]
+        command: ["bash", "scripts/get-secrets.sh","voice-indexer"]
         extraVars:
           ELASTIC_USER: "{{ .Values.config.elastic_user }}"
           ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
@@ -165,10 +164,10 @@ deployments:
             memory: "1024Mi"
         volumeMounts:
           - name: eos-hyperion-connections
-            mountPath: /hyperion-history-api/connections.json
+            mountPath: /tmp/connections.json
             subPath: connections.json
           - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
-            mountPath: /hyperion-history-api/chains/voice.config.json
+            mountPath: /tmp/voice.config.json
             subPath: voice.config.json
 
   voice-eos-hyperion-api:
@@ -213,7 +212,7 @@ deployments:
             name: hyperion-api
         image: "gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:{{ .Values.release.tag }}"
         imagePullPolicy: Always
-        command: ["bash", "run.sh","voice-api"]
+        command: ["bash", "scripts/get-secrets.sh","voice-api"]
         extraVars:
           ELASTIC_USER: "{{ .Values.config.elastic_user }}"
           ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
@@ -227,6 +226,7 @@ deployments:
           GLOBAL_AGENT_NO_PROXY	: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
           # LaunchDarkly Config
           LAUNCHDARKLY_SDK_KEY: "vault:secret/data/applications/devel#LAUNCHDARKLY_SDK_KEY"
+          LAUNCHDARKLY_CLIENT_SIDE_ID: "vault:secret/data/applications/devel#LAUNCHDARKLY_CLIENT_SIDE_ID"
         lifecycle:
           preStop:
             exec:
@@ -240,11 +240,11 @@ deployments:
             memory: "256Mi"
         volumeMounts:
           - name: eos-hyperion-connections
-            mountPath: /hyperion-history-api/connections.json
+            mountPath: /tmp/connections.json
             subPath: connections.json
             readOnly: false
           - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
-            mountPath: /hyperion-history-api/chains/voice.config.json
+            mountPath: /tmp/voice.config.json
             subPath: voice.config.json
             readOnly: false
 hpas:
@@ -296,13 +296,13 @@ configmaps:
         indexer:
           enabled: true
           node_max_old_space_size: 4096
-          start_on: 1
+          start_on: 0
           stop_on: 0
           rewrite: false
           purge_queues: false
-          live_reader: true
+          live_reader: false
           live_only_mode: false
-          abi_scan_mode: false
+          abi_scan_mode: true
           fetch_block: true
           fetch_traces: true
           disable_reading: false
@@ -517,12 +517,11 @@ configmaps:
           vhost: voice
           frameMax: '0x10000'
         elasticsearch:
-          protocol: http
-          host: elastic.service
+          protocol: https
+          host: " "
           ingest_nodes:
-            - elastic.service
-          user: ""
-          pass: ""
+          user:
+          pass:
         redis:
           host: "172.31.32.12"
           port: '6379'

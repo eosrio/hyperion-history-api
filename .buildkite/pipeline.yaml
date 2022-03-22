@@ -73,8 +73,8 @@ steps:
     command:
       - "buildkite-agent pipeline upload voice-buildkite-template/docker/promote/template.yaml"
     env:
-      BASE_IMAGE: gcr.io/voice-ops-dev/voice/hyperion-history-api:${BUILDKITE_COMMIT}
-      TARGET_IMAGE: gcr.io/voice-ops-prod/voice/hyperion-history-api:${BUILDKITE_COMMIT}
+      BASE_IMAGE: gcr.io/voice-dev-infra-services/voice/voice-eos-hyperion:${BUILDKITE_COMMIT}
+      TARGET_IMAGE: gcr.io/voice-prod-infra-services/voice/voice-eos-hyperion:${BUILDKITE_COMMIT}
       BUILDKITE_AGENT: voice-app-builder-v2
     agents: *default-agents
     plugins: *default-plugins
