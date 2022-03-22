@@ -2,7 +2,7 @@ import {Telegraf} from 'telegraf';
 import * as nodemailer from "nodemailer";
 import Mail from "nodemailer/lib/mailer";
 import got from 'got';
-import {hLog} from "../helpers/common_functions";
+import {hLog} from "../helpers/common_functions.js";
 
 export interface AlertManagerOptions {
 	cases: {

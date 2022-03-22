@@ -1,4 +1,4 @@
-import {ConfigurationModule} from "../modules/config";
+import {ConfigurationModule} from "../modules/config.js";
 
 const cm = new ConfigurationModule();
 const chain = cm.config.settings.chain;

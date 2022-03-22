@@ -1,12 +1,14 @@
 import {HyperionWorker} from "./hyperionWorker.js";
 import {cargo, queue} from 'async';
-import * as AbiEOS from "@eosrio/node-abieos";
+import AbiEOS from "@eosrio/node-abieos";
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {createHash} from "node:crypto";
 import flatstr from 'flatstr';
 import {Api, Serialize} from "eosjs";
 import {Type} from "eosjs/dist/eosjs-serialize";
-import {JsSignatureProvider} from "eosjs/dist/eosjs-jssig";
+import {JsSignatureProvider} from "eosjs/dist/eosjs-jssig.js";
+import {AbiDefinitions} from '../definitions/abi_def.js';
+import {Abi} from "eosjs/dist/eosjs-rpc-interfaces";
 
 // const FJS = require('fast-json-stringify');
 // const lightBlockSerializer = FJS({
@@ -40,8 +42,8 @@ import {JsSignatureProvider} from "eosjs/dist/eosjs-jssig";
 //     }
 // });
 
-const index_queues = require('../definitions/index-queues').index_queues;
-const {AbiDefinitions} = require("../definitions/abi_def");
+import {index_queues} from '../definitions/index-queues.js';
+
 const abi_remapping = {
     "_Bool": "bool"
 };
@@ -457,6 +459,7 @@ export default class MainDSWorker extends HyperionWorker {
                                 filtered = true;
                                 hLog(`${block_num} was filtered with ${inline_count} actions!`);
                             }
+
                             try {
                                 this.routeToPool(trace[1], {
                                     block_num,
@@ -1184,7 +1187,7 @@ export default class MainDSWorker extends HyperionWorker {
                     const abiHex = account['abi'];
                     const abiBin = new Uint8Array(Buffer.from(abiHex, 'hex'));
                     const initialTypes = Serialize.createInitialTypes();
-                    const abiDefTypes: Type | undefined = Serialize.getTypesFromAbi(initialTypes, AbiDefinitions).get('abi_def');
+                    const abiDefTypes: Type | undefined = Serialize.getTypesFromAbi(initialTypes, AbiDefinitions as Abi).get('abi_def');
                     if (!abiDefTypes) {
                         return;
                     }

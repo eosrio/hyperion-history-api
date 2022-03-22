@@ -1,4 +1,4 @@
-import {debugLog, hLog} from "../helpers/common_functions";
+import {debugLog, hLog} from "../helpers/common_functions.js";
 import got, {HTTPError} from "got";
 import {connect, Connection} from 'amqplib';
 

@@ -3,9 +3,9 @@ import {existsSync, readFileSync} from "node:fs";
 import {join} from "node:path";
 import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
 import {Serialize} from "eosjs";
-import {dirname} from 'path';
-import {fileURLToPath} from 'url';
 
+import {dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let config;

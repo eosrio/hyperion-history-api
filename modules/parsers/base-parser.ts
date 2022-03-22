@@ -1,12 +1,12 @@
-import {ConfigurationModule, Filters} from "../config";
-import MainDSWorker from "../../workers/deserializer";
+import {ConfigurationModule, Filters} from "../config.js";
+import MainDSWorker from "../../workers/deserializer.js";
 import {Message} from "amqplib";
-import DSPoolWorker from "../../workers/ds-pool";
-import {TrxMetadata} from "../../interfaces/trx-metadata";
-import {ActionTrace} from "../../interfaces/action-trace";
-import {debugLog, hLog} from "../../helpers/common_functions";
-import {SerialBuffer} from "eosjs/dist/eosjs-serialize";
-import {HyperionActionAct} from "../../interfaces/hyperion-action";
+import DSPoolWorker from "../../workers/ds-pool.js";
+import {TrxMetadata} from "../../interfaces/trx-metadata.js";
+import {ActionTrace} from "../../interfaces/action-trace.js";
+import {debugLog, hLog} from "../../helpers/common_functions.js";
+import {SerialBuffer} from "eosjs/dist/eosjs-serialize.js";
+import {HyperionActionAct} from "../../interfaces/hyperion-action.js";
 
 export function timedFunction(enable: boolean, method: () => void) {
     if (enable) {
@@ -196,7 +196,10 @@ export abstract class BaseParser {
 
         if (ds_act) {
             // save serialized data
+            // console.log('------ ORIGINAL ACT DATA ------\n', original_act)
+            // console.log('------ DESERIALIZED ACT DATA ------\n', ds_act);
             action.act.data = ds_act;
+            // console.log('------ FULL ACTION DATA ------\n', action.act);
             try {
                 worker.common.attachActionExtras(worker, action);
             } catch (e: any) {

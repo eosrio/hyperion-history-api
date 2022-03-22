@@ -1,8 +1,8 @@
-import {HyperionWorker} from "./hyperionWorker";
+import {HyperionWorker} from "./hyperionWorker.js";
 import {cargo, QueueObject} from "async";
 import {Type} from "eosjs/dist/eosjs-serialize";
-import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions";
-import * as AbiEOS from "@eosrio/node-abieos";
+import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions.js";
+import AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "eosjs";
 
 export default class StateReader extends HyperionWorker {

@@ -1,14 +1,13 @@
 import {HyperionWorker} from "./hyperionWorker.js";
 import {cargo, queue} from "async";
-import * as AbiEOS from "@eosrio/node-abieos";
+import AbiEOS from "@eosrio/node-abieos";
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {Message} from "amqplib";
 import {parseDSPEvent} from "../modules/custom/dsp-parser.js";
-import {join, resolve} from "path";
-import {existsSync, readdirSync, readFileSync} from "fs";
+import {join, resolve} from "node:path";
+import {existsSync, readdirSync, readFileSync} from "node:fs";
 import flatstr from 'flatstr';
 import IORedis from "ioredis";
-import {SearchHit} from "@elastic/elasticsearch/lib/api/types";
 import {Serialize} from "eosjs";
 
 const abi_remapping = {
@@ -127,7 +126,7 @@ export default class DSPoolWorker extends HyperionWorker {
                             this.customAbiMap.get(code)?.push(def);
                         }
 
-                    } catch (e:any) {
+                    } catch (e: any) {
                         hLog(e);
                     }
                 }
@@ -182,7 +181,7 @@ export default class DSPoolWorker extends HyperionWorker {
             } else {
                 return null;
             }
-        } catch (e:any) {
+        } catch (e: any) {
             hLog(e);
             return null;
         }
@@ -354,7 +353,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 if (!this.failedAbiMap.has(accountName) || !this.failedAbiMap.get(accountName)?.has(-1)) {
                     try {
                         AbiEOS.load_abi(accountName, JSON.stringify(abi));
-                    } catch (e:any) {
+                    } catch (e: any) {
                         hLog(e);
                     }
                 } else {
@@ -375,7 +374,7 @@ export default class DSPoolWorker extends HyperionWorker {
         if (contract) {
             if (contract[0].actions.has(action.name)) {
                 try {
-                    return Serialize.deserializeAction(
+                    const deserialized_act = Serialize.deserializeAction(
                         contract[0],
                         action.account,
                         action.name,
@@ -384,6 +383,12 @@ export default class DSPoolWorker extends HyperionWorker {
                         this.txEnc,
                         this.txDec
                     );
+                    if (deserialized_act.data) {
+                        return deserialized_act.data;
+                    } else {
+                        hLog(`(eosjs) - No data object on ${action.account}::${action.name} @ ${block_num}`);
+                        return deserialized_act;
+                    }
                 } catch (e: any) {
                     debugLog(`(eosjs)  ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
                     return null;
@@ -405,7 +410,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 // console.log(data.fields.deliveryTag);
                 try {
                     this.ch.ack(data);
-                } catch (e:any) {
+                } catch (e: any) {
                     console.log(e);
                     console.log(parsedData);
                     console.log(data.properties.headers);
@@ -547,7 +552,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 try {
                     await this.ioRedisClient.hset('trx_' + trx_data.trx_id, redisPayload);
                     await this.ioRedisClient.expire('trx_' + trx_data.trx_id, this.txCacheExpiration);
-                } catch (e:any) {
+                } catch (e: any) {
                     hLog(e);
                 }
             }

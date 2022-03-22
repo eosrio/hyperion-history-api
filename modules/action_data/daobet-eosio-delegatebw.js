@@ -1,4 +1,4 @@
-const hyperionModule = {
+export const hyperionModule = {
     chain: "74d023a9293d9b68c3c52e2f738ee681c1671cc3dc0f263cf2c533cd5523ff95",
     contract: 'eosio',
     action: 'delegatebw',
@@ -41,5 +41,3 @@ const hyperionModule = {
         delete action['act']['data'];
     }
 };
-
-module.exports = {hyperionModule};

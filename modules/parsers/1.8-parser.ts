@@ -1,10 +1,10 @@
-import {BaseParser, timedFunction} from "./base-parser";
+import {BaseParser, timedFunction} from "./base-parser.js";
 import MainDSWorker from "../../workers/deserializer";
 import {Message} from "amqplib";
 import DSPoolWorker from "../../workers/ds-pool";
 import {TrxMetadata} from "../../interfaces/trx-metadata";
 import {ActionTrace} from "../../interfaces/action-trace";
-import {deserialize, hLog} from "../../helpers/common_functions";
+import {deserialize, hLog} from "../../helpers/common_functions.js";
 import {appendFileSync} from "fs";
 
 export default class HyperionParser extends BaseParser {

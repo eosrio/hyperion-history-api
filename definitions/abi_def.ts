@@ -1,4 +1,4 @@
-const AbiDefinitions = {
+export const AbiDefinitions = {
   version: 'eosio::abi/1.1',
   structs: [
     {
@@ -192,7 +192,7 @@ const AbiDefinitions = {
   ],
 };
 
-const RexAbi = {
+export const RexAbi = {
   version: 'eosio::abi/1.1',
   types: [],
   structs: [
@@ -260,5 +260,3 @@ const RexAbi = {
     },
   ],
 };
-
-module.exports = {AbiDefinitions, RexAbi};

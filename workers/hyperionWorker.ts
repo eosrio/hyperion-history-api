@@ -1,16 +1,16 @@
-import {HyperionConfig} from "../interfaces/hyperionConfig";
-import {ConnectionManager} from "../connections/manager.class";
-import {HyperionModuleLoader} from "../modules/loader";
-import {ConfigurationModule, Filters} from "../modules/config";
+import {HyperionConfig} from "../interfaces/hyperionConfig.js";
+import {ConnectionManager} from "../connections/manager.class.js";
+import {HyperionModuleLoader} from "../modules/loader.js";
+import {ConfigurationModule, Filters} from "../modules/config.js";
 import {JsonRpc} from "eosjs/dist";
 import {Client} from "@elastic/elasticsearch";
 import {Channel, ConfirmChannel} from "amqplib/callback_api";
 import {EventEmitter} from "events";
 import * as v8 from "v8";
 import {HeapInfo} from "v8";
-import {debugLog, hLog} from "../helpers/common_functions";
-import {StateHistorySocket} from "../connections/state-history";
-import * as AbiEOS from "@eosrio/node-abieos";
+import {debugLog, hLog} from "../helpers/common_functions.js";
+import {StateHistorySocket} from "../connections/state-history.js";
+import AbiEOS from "@eosrio/node-abieos";
 
 export abstract class HyperionWorker {
 

@@ -11,7 +11,6 @@ import {Client} from "@elastic/elasticsearch";
 import * as readline from "node:readline";
 import * as amqp from "amqplib";
 import {btoa} from "node:buffer";
-import {parseInt} from "lodash";
 import IORedis from "ioredis";
 
 const program = new Command();

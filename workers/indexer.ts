@@ -1,8 +1,8 @@
-import {HyperionWorker} from "./hyperionWorker";
+import {HyperionWorker} from "./hyperionWorker.js";
 import {cargo, QueueObject} from "async";
-import {ElasticRoutes} from '../helpers/elastic-routes';
+import {ElasticRoutes} from '../helpers/elastic-routes.js';
 
-import {hLog} from "../helpers/common_functions";
+import {hLog} from "../helpers/common_functions.js";
 import {Message} from "amqplib";
 
 export default class IndexerWorker extends HyperionWorker {

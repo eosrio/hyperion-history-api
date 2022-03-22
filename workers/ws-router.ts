@@ -1,7 +1,7 @@
 import {HyperionWorker} from "./hyperionWorker";
 
 import {Server, Socket} from "socket.io";
-import {checkFilter, hLog} from "../helpers/common_functions";
+import {checkFilter, hLog} from "../helpers/common_functions.js";
 import {createServer} from "http";
 import process from "node:process";
 const greylist = ['eosio.token'];

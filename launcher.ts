@@ -33,7 +33,7 @@ async function launch() {
 
 	if (cluster.isPrimary) {
 		process.title = `${conf.proc_prefix}-${chain_name}-master`;
-		const master = await import('./modules/master');
+		const master = await import('./modules/master.js');
 		new master.HyperionMaster().runMaster().catch((err) => {
 			console.log(process.env['worker_role']);
 			console.log(err);
@@ -41,7 +41,7 @@ async function launch() {
 	} else {
 		if (hyperionWorkers[env.worker_role] && !conf.disabledWorkers.has(env.worker_role)) {
 			process.title = `${conf.proc_prefix}-${chain_name}-${env.worker_role}:${env.worker_id}`;
-			const mod = (await import(`./workers/${hyperionWorkers[env.worker_role]}`)).default;
+			const mod = (await import(`./workers/${hyperionWorkers[env.worker_role]}.js`)).default;
 			const instance = new mod() as HyperionWorker;
 			await instance.run();
 		}

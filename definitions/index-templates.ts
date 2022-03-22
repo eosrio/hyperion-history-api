@@ -1,9 +1,9 @@
-import {ConfigurationModule} from "../modules/config";
+import {ConfigurationModule} from "../modules/config.js";
 
 const shards = 2;
 const refresh = "1s";
 
-export * from './index-lifecycle-policies';
+export * from './index-lifecycle-policies.js';
 
 // LZ4 Compression
 // const compression = 'default';

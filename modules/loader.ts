@@ -1,11 +1,15 @@
-import {ConfigurationModule} from "./config";
-import {join} from "path";
-import {existsSync, readdirSync, readFileSync} from "fs";
-import {HyperionConnections} from "../interfaces/hyperionConnections";
-import {HyperionConfig} from "../interfaces/hyperionConfig";
-import {BaseParser} from "./parsers/base-parser";
-import {hLog} from "../helpers/common_functions";
-import {HyperionPlugin, HyperionStreamHandler} from "../plugins/hyperion-plugin";
+import {ConfigurationModule} from "./config.js";
+import {join} from "node:path";
+import {existsSync, readdirSync, readFileSync} from "node:fs";
+import {HyperionConnections} from "../interfaces/hyperionConnections.js";
+import {HyperionConfig} from "../interfaces/hyperionConfig.js";
+import {BaseParser} from "./parsers/base-parser.js";
+import {hLog} from "../helpers/common_functions.js";
+import {HyperionPlugin, HyperionStreamHandler} from "../plugins/hyperion-plugin.js";
+
+import {dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export class HyperionModuleLoader {
 
@@ -32,11 +36,11 @@ export class HyperionModuleLoader {
             process.exit(0);
         }
         this.chainID = this.conn.chains[chain].chain_id;
-        this.loadActionHandlers();
+        this.loadActionHandlers().catch(console.log);
     }
 
     async loadParser() {
-        const path = join(__dirname, 'parsers', this.config.settings.parser + "-parser");
+        const path = join(__dirname, 'parsers', this.config.settings.parser + "-parser.js");
         const mod = (await import(path)).default;
         this.parser = new mod(this.cm) as BaseParser;
     }
@@ -95,10 +99,10 @@ export class HyperionModuleLoader {
         }
     }
 
-    loadActionHandlers() {
+    async loadActionHandlers() {
         const files = readdirSync('modules/action_data/');
         for (const plugin of files) {
-            const _module = require(join(__dirname, 'action_data', plugin)).hyperionModule;
+            const _module = (await import(join(__dirname, 'action_data', plugin))).hyperionModule;
             if (_module.parser_version.includes(this.config.settings.parser)) {
                 if (_module.chain === this.chainID || _module.chain === '*') {
                     const key = `${_module.contract}::${_module.action}`;

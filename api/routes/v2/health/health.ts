@@ -1,7 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {connect} from "amqplib";
 import {timedQuery} from "../../../helpers/functions";
-import {getLastIndexedBlockWithTotalBlocks} from "../../../../helpers/common_functions";
+import {getLastIndexedBlockWithTotalBlocks} from "../../../../helpers/common_functions.js";
 
 async function checkRabbit(fastify: FastifyInstance) {
 	try {

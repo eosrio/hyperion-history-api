@@ -1,8 +1,8 @@
 import {Channel, Message} from "amqplib/callback_api";
-import {ConnectionManager} from "../connections/manager.class";
+import {ConnectionManager} from "../connections/manager.class.js";
 import _ from "lodash";
-import {hLog} from "./common_functions";
-import {createHash} from "crypto";
+import {hLog} from "./common_functions.js";
+import {createHash} from "node:crypto";
 
 type MaxBlockCb = (maxBlock: number) => void;
 type routerFunction = (blockNum: number) => string;
@@ -225,7 +225,7 @@ export class ElasticRoutes {
                     maxBlockNum = maxBlock;
                 })
             }).then((resp: any) => {
-                if (resp.body.errors) {
+                if (resp.errors) {
                     this.ackOrNack(resp, messageMap, channel);
                 } else {
                     if (maxBlockNum > 0) {
@@ -280,7 +280,7 @@ export class ElasticRoutes {
     }
 
     ackOrNack(resp, messageMap, channel: Channel) {
-        for (const item of resp.body.items) {
+        for (const item of resp.items) {
             let id, itemBody;
             if (item['index']) {
                 id = item.index._id;
@@ -344,8 +344,8 @@ export class ElasticRoutes {
     onError(err, channel: Channel, callback) {
         try {
             channel.nackAll();
-            if (err.meta.body) {
-                hLog('NackAll:', JSON.stringify(err.meta.body.error, null, 2));
+            if (err.meta) {
+                hLog('NackAll:', JSON.stringify(err.meta.error, null, 2));
             } else {
                 hLog('NackAll:', err);
             }
@@ -369,7 +369,7 @@ export class ElasticRoutes {
                 }
             });
         }
-        this.ingestNodeCounters[minIdx].docs += bulkData.body.length;
+        this.ingestNodeCounters[minIdx].docs += bulkData.length;
         if (this.ingestNodeCounters[minIdx].docs > 10000) {
             this.resetCounters();
         }

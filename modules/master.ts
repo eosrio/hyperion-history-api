@@ -36,14 +36,13 @@ import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef.js";
 import {HyperionConfig} from "../interfaces/hyperionConfig.js";
 
 import {queue, QueueObject} from "async";
-import {convertLegacyPublicKey} from "eosjs/dist/eosjs-numeric";
+import {Numeric} from "eosjs";
 import AlertsManager from "./alertsManager.js";
 import IORedis from "ioredis";
 import {IOConfig} from "@pm2/io/build/main/pmx";
 import Gauge from "@pm2/io/build/main/utils/metrics/gauge";
 import moment from "moment";
 import Timeout = NodeJS.Timeout;
-import {range} from "lodash";
 
 interface RevBlock {
     num: number;
@@ -596,7 +595,7 @@ export class HyperionMaster {
                         name: `${this.conf.settings.chain}-${index.type}`,
                         body: indexConfig[index.name]
                     });
-                    if (!creation_status || !creation_status['body']['acknowledged']) {
+                    if (!creation_status || !creation_status.acknowledged) {
                         hLog(`Failed to create template: ${this.conf.settings.chain}-${index}`);
                     } else {
                         updateCounter++;
@@ -1758,7 +1757,7 @@ export class HyperionMaster {
             }
         ];
 
-        const indexConfig = await import('../definitions/index-templates');
+        const indexConfig = await import('../definitions/index-templates.js');
 
         const indicesList = [
             {name: "action", type: "action"},
@@ -2079,7 +2078,7 @@ export class HyperionMaster {
                     delete payload.auth.keys;
                 } else {
                     for (const key of payload.auth.keys) {
-                        key.key = convertLegacyPublicKey(key.key);
+                        key.key = Numeric.convertLegacyPublicKey(key.key);
                     }
                 }
 

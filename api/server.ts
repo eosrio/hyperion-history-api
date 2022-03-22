@@ -1,4 +1,4 @@
-import {hLog} from "../helpers/common_functions";
+import {hLog} from "../helpers/common_functions.js";
 import {ConfigurationModule} from "../modules/config";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionConfig} from "../interfaces/hyperionConfig";

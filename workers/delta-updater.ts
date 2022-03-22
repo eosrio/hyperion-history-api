@@ -1,5 +1,5 @@
 import {HyperionWorker} from "./hyperionWorker";
-import {hLog} from "../helpers/common_functions";
+import {hLog} from "../helpers/common_functions.js";
 import {Message} from "amqplib";
 import {createHash} from "crypto";
 
