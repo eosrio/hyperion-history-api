@@ -27,7 +27,7 @@
   "type": "module",
   "dependencies": {
     "@elastic/elasticsearch": "8.1.0",
-    "@eosrio/node-abieos": "^2.1.1",
+    "@eosrio/node-abieos": "../node-abieos",
     "@pm2/io": "^5.0.0",
     "amqplib": "^0.8.0",
     "async": "^3.2.3",

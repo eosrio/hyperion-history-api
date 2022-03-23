@@ -259,6 +259,15 @@ export default class DSPoolWorker extends HyperionWorker {
         if (_status) {
             try {
                 return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
+                // if(_action.account === 'eosio' && _action.name === 'onblock') {
+                //     console.log(_action.data);
+                // }
+                // const dsActData = AbiEOS.hex_to_json(_action.account, actionType, _action.data);
+                //
+                // if(_action.account === 'eosio' && _action.name === 'onblock') {
+                //     console.log(dsActData);
+                // }
+                // return dsActData;
             } catch (e: any) {
                 debugLog(`(abieos) ${_action.account}::${_action.name} @ ${block_num} >>> ${e.message}`);
             }
@@ -352,7 +361,10 @@ export default class DSPoolWorker extends HyperionWorker {
             if (actions.has(check_action)) {
                 if (!this.failedAbiMap.has(accountName) || !this.failedAbiMap.get(accountName)?.has(-1)) {
                     try {
-                        AbiEOS.load_abi(accountName, JSON.stringify(abi));
+                        const abiLoadStatus = AbiEOS.load_abi(accountName, JSON.stringify(abi));
+                        if (!abiLoadStatus) {
+                            console.log('AbiEOS.load_abi >> ', abiLoadStatus);
+                        }
                     } catch (e: any) {
                         hLog(e);
                     }
