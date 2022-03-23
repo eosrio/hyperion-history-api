@@ -167,7 +167,7 @@ deployments:
             mountPath: /tmp/connections.json
             subPath: connections.json
           - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
-            mountPath: hyperion-history-api/chains/voice.config.json
+            mountPath:  /tmp/voice.config.json
             subPath: voice.config.json
 
   voice-eos-hyperion-api:
@@ -248,7 +248,7 @@ deployments:
             mountPath: /tmp/connections.json
             subPath: connections.json
           - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
-            mountPath: hyperion-history-api/chains/voice.config.json
+            mountPath: tmp/voice.config.json
             subPath: voice.config.json
 hpas:
   voice-eos-hyperion-api:
