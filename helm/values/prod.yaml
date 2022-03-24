@@ -10,7 +10,7 @@ config:
   abi_scan: false
   elastic_host:  vault:secret/data/devops/elastic#ELASTIC_HOST
   elastic_user: elastic
-  elastic_pass:  vault:secret/data/devops/elastic#ELASTIC_HOST
+  elastic_pass:  vault:secret/data/devops/elastic#ELATIC_PASSWORD
 
 services:
   voice-eos-hyperion:
