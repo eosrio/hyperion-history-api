@@ -1,9 +1,7 @@
 import {ConfigurationModule} from "../modules/config";
 
 const shards = 2;
-const replicas = 0;
 const refresh = "1s";
-let defaultLifecyclePolicy = "200G";
 
 export * from './index-lifecycle-policies';
 
@@ -15,12 +13,10 @@ const compression = "best_compression";
 const cm = new ConfigurationModule();
 const chain = cm.config.settings.chain;
 
-if (cm.config.settings.hot_warm_policy) {
-	defaultLifecyclePolicy = "hyperion-rollover";
-}
-
-if (cm.config.settings.custom_policy) {
-	defaultLifecyclePolicy = cm.config.settings.custom_policy;
+// update number of replicas if set to larger than 0
+let replicas = 0;
+if (cm.config.settings.es_replicas) {
+	replicas = cm.config.settings.es_replicas;
 }
 
 const defaultIndexSettings = {

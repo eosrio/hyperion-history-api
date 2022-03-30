@@ -15,6 +15,9 @@ import {extendedActions} from "./routes/v2-history/get_actions/definitions";
 import {io, Socket} from "socket.io-client";
 import {CacheManager} from "./helpers/cacheManager";
 
+import {bootstrap} from 'global-agent';
+bootstrap();
+
 class HyperionApiServer {
 
     private hub: Socket;

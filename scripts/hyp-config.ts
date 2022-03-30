@@ -203,8 +203,8 @@ async function newChain(shortName, options) {
 
     const fullNameArr = [];
     shortName.split('-').forEach((word: string) => {
-        fullNameArr.push(word.at(0).toUpperCase() + word.substr(1));
-    });
+        fullNameArr.push(word[0].toUpperCase() + word.substr(1));
+        });
     const fullChainName = fullNameArr.join(' ');
 
     jsonData.api.chain_name = fullChainName;

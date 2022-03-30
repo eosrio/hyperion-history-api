@@ -44,6 +44,9 @@ import Gauge from "@pm2/io/build/main/utils/metrics/gauge";
 import moment = require("moment");
 import Timeout = NodeJS.Timeout;
 
+import {bootstrap} from 'global-agent';
+bootstrap();
+
 interface RevBlock {
     num: number;
     id: string;
