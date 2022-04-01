@@ -200,6 +200,12 @@ deployments:
         command: ['bash','check-rabbit-mq-health.sh','voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local']
     containers:
       voice-eos-hyperion-api:
+        livenessProbe:
+          httpGet:
+            path: /v2/health
+            port: 7000
+          periodSeconds: 10
+          initialDelaySeconds: 10
         readinessProbe:
           httpGet:
             path: /v2/health
@@ -234,10 +240,10 @@ deployments:
         resources:
           requests:
             cpu: "250m"
-            memory: "256Mi"
+            memory: "500Mi"
           limits:
             cpu: "250m"
-            memory: "256Mi"
+            memory: "500Mi"
         volumeMounts:
           - name: eos-hyperion-connections
             mountPath: /tmp/connections.json
@@ -247,6 +253,7 @@ deployments:
             mountPath: /tmp/voice.config.json
             subPath: voice.config.json
             readOnly: false
+
 hpas:
   voice-eos-hyperion-api:
     minReplicas: 1
@@ -265,7 +272,7 @@ configmaps:
           chain_name: voice
           server_addr: 0.0.0.0
           server_port: 7000
-          server_name: "{{ .Values.config.serverName }}"
+          server_name: "{{ .Values.config.server_name }}"
           provider_name: "{{ .Values.config.provider_name }}"
           provider_url:  "{{ .Values.config.provider_url }}"
           chain_api: ''
@@ -390,7 +397,7 @@ configmaps:
           chain_name: voice
           server_addr: 0.0.0.0
           server_port: 7000
-          server_name: "{{ .Values.config.serverName }}"
+          server_name: "{{ .Values.config.server_name }}"
           provider_name: " {{ .Values.config.provider_name }}"
           provider_url:  "{{ .Values.config.provider_url }}"
           chain_api: ''
