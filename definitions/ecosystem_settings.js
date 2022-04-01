@@ -26,6 +26,7 @@ function addIndexer(chainName, heap) {
             CONFIG_JSON: 'chains/' + chainName + '.config.json',
             TRACE_LOGS: 'false',
         },
+        filter_env: ['VOICE'],
     };
 }
 
@@ -45,6 +46,7 @@ function addApiServer(chainName, threads, heap) {
         env: {
             CONFIG_JSON: 'chains/' + chainName + '.config.json',
         },
+        filter_env: ['VOICE'],
     };
 }
 
