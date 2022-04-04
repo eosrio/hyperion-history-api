@@ -6,15 +6,15 @@ fi
 echo -e "\n-->> Starting $1..."
 (
   set -x
-  pm2 start --only "$@" --update-env --silent
+  /home/eosio/.npm-global/bin/pm2 start --only "$@" --update-env --silent
 )
 echo -e "\n-->> Saving pm2 state..."
 (
   set -x
-  pm2 save
+  /home/eosio/.npm-global/bin/pm2 save
 )
 echo -e "\n-->> Reading $1 logs..."
 (
   set -x
-  pm2 logs --raw --lines 10 "$@"
+  /home/eosio/.npm-global/bin/pm2 logs --raw --lines 10 "$@"
 )

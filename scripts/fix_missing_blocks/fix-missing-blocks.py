@@ -46,10 +46,10 @@ lastblock_indexed = r'.*Last Indexed Block:.* (\d*)'  #group the last block inde
 
 
 # Config 
-filepath="chains/wax.config.json"
-indexer_stop = ["pm2", "trigger", "wax-indexer", "stop"]
-indexer_start = ["./run.sh", "wax-indexer"]
-indexer_log_file = "/home/charles/.pm2/logs/wax-indexer-out.log"
+filepath="/opt/eosio/src/Hyperion-History-API/chains/proton.config.json"
+indexer_stop = ["pm2", "trigger", "proton-indexer", "stop"]
+indexer_start = ["./run.sh", "proton-indexer"]
+indexer_log_file = "/home/eosio/.pm2/logs/proton-indexer-out.log"
 tail_indexer_logs = ["tail","-f", indexer_log_file]
 hyperion_version = '3.3'  #'3.1' or '3.3'
 
@@ -128,7 +128,7 @@ def query_body2(gte,lte,interval):
 # Search and return buckets
 def get_buckets(interval, query):
     query = query(interval)
-    result = es.search(index="wax-block-*", body=query)
+    result = es.search(index="proton-block-*", body=query)
     buckets = result['aggregations']['block_histogram']['buckets']
     return buckets
 
@@ -244,7 +244,7 @@ def CreateGtLT(missing):
     for num, bucket in enumerate(missing):
         gte = bucket['key']
         lte = gte+lte
-        result = es.search(index="wax-block-*", body=query_body2(gte,lte,1000))
+        result = es.search(index="proton-block-*", body=query_body2(gte,lte,1000))
         buckets = result['aggregations']['block_histogram']['buckets']
         # Search for missing buckets with less than 1000
         missing = buckets_missing(buckets,1000,1000)
