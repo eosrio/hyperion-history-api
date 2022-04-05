@@ -13,6 +13,7 @@ if len(sys.argv) != 2:
     raise ValueError('Please provide Elastic username, password and Elastic IP address. http://elastic:password@127.0.0.1')
 elasticnode = sys.argv[1]+":9200/"
 
+
 es = Elasticsearch(
     [
         elasticnode
@@ -45,11 +46,14 @@ offline = r'.*(offline or unexistent)'
 lastblock_indexed = r'.*Last Indexed Block:.* (\d*)'  #group the last block indexed for reference.
 
 
-# Config 
-filepath="chains/wax.config.json"
-indexer_stop = ["pm2", "trigger", "wax-indexer", "stop"]
-indexer_start = ["./run.sh", "wax-indexer"]
+# Config
+hyperionfolder="/home/charles/hyperion-history-api/"
 indexer_log_file = "/home/charles/.pm2/logs/wax-indexer-out.log"
+
+chain = "wax"  #set the Chain name eos or wax
+filepath=hyperionfolder+"chains/wax.config.json"
+indexer_stop = ["pm2", "trigger", "wax-indexer", "stop"]
+indexer_start = [hyperionfolder+"./run.sh", "wax-indexer"]
 tail_indexer_logs = ["tail","-f", indexer_log_file]
 hyperion_version = '3.3'  #'3.1' or '3.3'
 
@@ -60,7 +64,8 @@ if hyperion_version == '3.3':
 else:
     no_blocks_processed = r'.*No blocks processed.*'
 
-
+# Set ES index pattern
+es_index = f'{chain}-block-*'
 
 def query_body(interval):
     query_body = {
@@ -128,7 +133,7 @@ def query_body2(gte,lte,interval):
 # Search and return buckets
 def get_buckets(interval, query):
     query = query(interval)
-    result = es.search(index="wax-block-*", body=query)
+    result = es.search(index=es_index, body=query)
     buckets = result['aggregations']['block_histogram']['buckets']
     return buckets
 
@@ -236,6 +241,7 @@ def startRewrite(gt,lt):
             continue
 
 
+
 # Create greater, less than lists.
 def CreateGtLT(missing):
     lte = 10000000
@@ -244,7 +250,7 @@ def CreateGtLT(missing):
     for num, bucket in enumerate(missing):
         gte = bucket['key']
         lte = gte+lte
-        result = es.search(index="wax-block-*", body=query_body2(gte,lte,1000))
+        result = es.search(index=es_index, body=query_body2(gte,lte,1000))
         buckets = result['aggregations']['block_histogram']['buckets']
         # Search for missing buckets with less than 1000
         missing = buckets_missing(buckets,1000,1000)
