@@ -39,6 +39,8 @@ export default class StateReader extends HyperionWorker {
     // private tempBlockSizeSum = 0;
     private shipInitStatus: any;
 
+    private forkedBlocks = new Map<string, number>();
+
     constructor() {
         super();
 
@@ -84,12 +86,19 @@ export default class StateReader extends HyperionWorker {
             this.baseRequest.fetch_block_header = true;
         }
 
-        // setInterval(() => {
-        //     if (this.tempBlockSizeSum > 0) {
-        //         hLog(`Block reading rate: ${((this.tempBlockSizeSum / 10) / 1000000).toFixed(2)} MB/s`);
-        //         this.tempBlockSizeSum = 0;
-        //     }
-        // }, 10000);
+        setInterval(async () => {
+            for (const blockId of this.forkedBlocks.keys()) {
+                const ts = this.forkedBlocks.get(blockId);
+                if (ts) {
+                    // if older than 30 sec remove from the map
+                    if ((ts + (30 * 1000)) > Date.now()) {
+                        await this.deleteForkedBlock(blockId);
+                    } else {
+                        this.forkedBlocks.delete(blockId);
+                    }
+                }
+            }
+        }, 5000);
     }
 
     distribute(data, cb) {
@@ -509,6 +518,36 @@ export default class StateReader extends HyperionWorker {
         this.send([reqType, request]);
     }
 
+    private async deleteForkedBlock(block_id: string) {
+        const searchBody = {
+            query: {bool: {must: [{term: {block_id: block_id}}]}}
+        };
+
+        // remove deltas
+        const dbqResultDelta = await this.client.deleteByQuery({
+            index: this.chain + '-delta-' + this.conf.settings.index_version + '-*',
+            refresh: true,
+            body: searchBody
+        });
+        if (dbqResultDelta.body && dbqResultDelta.statusCode === 200) {
+            hLog(`${dbqResultDelta.body.deleted} deltas removed from ${block_id}`);
+        } else {
+            hLog('Operation failed');
+        }
+
+        // remove actions
+        const dbqResultAction = await this.client.deleteByQuery({
+            index: this.chain + '-action-' + this.conf.settings.index_version + '-*',
+            refresh: true,
+            body: searchBody
+        });
+        if (dbqResultAction.body && dbqResultAction.statusCode === 200) {
+            hLog(`${dbqResultAction.body.deleted} traces removed from ${block_id}`);
+        } else {
+            hLog('Operation failed');
+        }
+    }
+
     private async handleFork(data: any) {
         const this_block = data['this_block'];
         await this.logForkEvent(this_block['block_num'], this.local_block_num, this_block['block_id']);
@@ -516,54 +555,16 @@ export default class StateReader extends HyperionWorker {
 
         let targetBlock = this_block['block_num'];
         while (targetBlock < this.local_block_num + 1) {
-
             // fetch by block number to find the forked block_id
             const blockData = await this.client.get({
                 index: this.chain + '-block-' + this.conf.settings.index_version,
                 id: targetBlock
             });
-
             targetBlock++;
-
             if (blockData.body) {
                 const targetBlockId = blockData.body._source.block_id;
-                const searchBody = {
-                    query: {bool: {must: [{term: {block_id: targetBlockId}}]}}
-                };
-
-                // remove deltas
-                await new Promise<void>((resolve) => {
-                    setTimeout(async () => {
-                        const dbqResult = await this.client.deleteByQuery({
-                            index: this.chain + '-delta-' + this.conf.settings.index_version + '-*',
-                            refresh: true,
-                            body: searchBody
-                        });
-                        if (dbqResult.body && dbqResult.statusCode === 200) {
-                            hLog(`${dbqResult.body.deleted} deltas removed from ${targetBlock}`);
-                        } else {
-                            hLog('Operation failed');
-                        }
-                        resolve();
-                    }, 1000);
-                });
-
-                // remove actions
-                await new Promise<void>((resolve) => {
-                    setTimeout(async () => {
-                        const dbqResult = await this.client.deleteByQuery({
-                            index: this.chain + '-action-' + this.conf.settings.index_version + '-*',
-                            refresh: true,
-                            body: searchBody
-                        });
-                        if (dbqResult.body && dbqResult.statusCode === 200) {
-                            hLog(`${dbqResult.body.deleted} traces removed from ${targetBlock}`);
-                        } else {
-                            hLog('Operation failed');
-                        }
-                        resolve();
-                    }, 1000);
-                });
+                this.forkedBlocks.set(targetBlockId, Date.now());
+                await this.deleteForkedBlock(targetBlockId).catch(console.log);
             }
         }
     }
