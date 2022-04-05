@@ -564,7 +564,7 @@ export default class StateReader extends HyperionWorker {
             if (blockData.body) {
                 const targetBlockId = blockData.body._source.block_id;
                 this.forkedBlocks.set(targetBlockId, Date.now());
-                await this.deleteForkedBlock(targetBlockId).catch(console.log);
+                this.deleteForkedBlock(targetBlockId).catch(console.log);
             }
         }
     }
