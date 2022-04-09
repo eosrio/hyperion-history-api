@@ -51,7 +51,7 @@
     "got": "^11.8.2",
     "ioredis": "^4.27.7",
     "lodash": "^4.17.21",
-    "moment": "2.27.0",
+    "moment": "2.29.2",
     "portfinder": "^1.0.26",
     "redis": "^3.1.2",
     "socket.io": "2.4.1",
