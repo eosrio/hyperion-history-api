@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# sync.sh - Bash script for synchronizing Hyperion EOS in spans 
+# syncbyrange.sh - Bash script for synchronizing Hyperion EOS in spans 
 # Save this in your Hyperion folder and add to cron 
 # to run this every 10 minutes... just add this to your cron
 # */10 * * * * /opt/eosio/src/Hyperion-History-API/scripts/syncbyrange.sh
@@ -10,7 +10,7 @@
 
 PM2="/home/eosio/.npm-global/bin/pm2"
 HYPERIONPATH="/opt/eosio/src/Hyperion-History-API"
-BLOCKSPAN="1000000"
+BLOCKSPAN="100000"
 CHAINNAME="proton"
 CHAINCONF="$HYPERIONPATH/chains/$CHAINNAME.config.json"
 
