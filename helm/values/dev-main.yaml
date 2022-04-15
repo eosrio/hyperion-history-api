@@ -1,7 +1,7 @@
 release:
   tag: latest
 config:
-  server_name: vault:secret/data/applications/devel#HYPERION_SERVER_NAME
+  server_name: vault:secret/data/voice/devel#HYPERION_SERVER_NAME
   provider_url: https://voice.com
   provider_name: "voice"
   ## this only take the image form URL
@@ -231,8 +231,8 @@ deployments:
           no_proxy: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
           GLOBAL_AGENT_NO_PROXY	: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
           # LaunchDarkly Config
-          LAUNCHDARKLY_SDK_KEY: "vault:secret/data/applications/devel#LAUNCHDARKLY_SDK_KEY"
-          LAUNCHDARKLY_CLIENT_SIDE_ID: "vault:secret/data/applications/devel#LAUNCHDARKLY_CLIENT_SIDE_ID"
+          LAUNCHDARKLY_SDK_KEY: "vault:secret/data/voice/devel#LAUNCHDARKLY_SDK_KEY"
+          LAUNCHDARKLY_CLIENT_SIDE_ID: "vault:secret/data/voice/devel#LAUNCHDARKLY_CLIENT_SIDE_ID"
         lifecycle:
           preStop:
             exec:
