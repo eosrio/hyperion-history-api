@@ -31,7 +31,8 @@ steps:
         permit_on_passed: true
 
   - wait
-
+  - block: ":rocket: Release!"
+    if: build.tag == null && build.branch == "master" && build.pull_request.id == null
 # promote image
   - label: ":arrow_up: Trigger gcrane promote"
     command:
