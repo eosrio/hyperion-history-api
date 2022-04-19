@@ -106,9 +106,11 @@ statefulsets:
           RABBITMQ_DEFAULT_PASS: voice
 
 deployments:
-  voice-eos-hyperion-indexer:
+  voice-hyperion-history-indexer:
     replicaCount: 1
     terminationGracePeriodSeconds: 60
+    podAnnotations:
+      releaseTime: '{{ dateInZone "2006-01-02 15:04:05Z" (now) "UTC"| quote }}'
     affinity:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
@@ -170,9 +172,11 @@ deployments:
             mountPath: /tmp/voice.config.json
             subPath: voice.config.json
 
-  voice-eos-hyperion-api:
+  voice-hyperion-history-api:
     replicaCount: 1
     terminationGracePeriodSeconds: 60
+    podAnnotations:
+      releaseTime: '{{ dateInZone "2006-01-02 15:04:05Z" (now) "UTC"| quote }}'
     affinity:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
@@ -536,7 +540,7 @@ configmaps:
           voice:
             name: "voice dev chain"
             chain_id: "53b1b94e5159791c1431eda07f2e6a3679bf5207e4039cf3e3f87a36e16bae2d"
-            http: "http://chain-api-lb-dev.service.b-oma-devel.vops.int:8888"
-            ship: "ws://ship-lb-dev.service.b-oma-devel.vops.int:8080"
+            http: "http://chain-api.dev.svc.cluster.local:8888"
+            ship: "ws://chain-sh-peer.dev.svc.cluster.local:8080"
             WS_ROUTER_PORT: 7001
             WS_ROUTER_HOST: "127.0.0.1"

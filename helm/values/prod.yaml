@@ -106,9 +106,11 @@ statefulsets:
           RABBITMQ_DEFAULT_PASS: voice
 
 deployments:
-  voice-eos-hyperion-indexer:
+  voice-hyperion-history-indexer:
     replicaCount: 1
     terminationGracePeriodSeconds: 60
+    podAnnotations:
+      releaseTime: '{{ dateInZone "2006-01-02 15:04:05Z" (now) "UTC"| quote }}'
     affinity:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
@@ -170,9 +172,11 @@ deployments:
             mountPath:  /tmp/voice.config.json
             subPath: voice.config.json
 
-  voice-eos-hyperion-api:
+  voice-eos-hyperion-history-api:
     replicaCount: 1
     terminationGracePeriodSeconds: 60
+    podAnnotations:
+      releaseTime: '{{ dateInZone "2006-01-02 15:04:05Z" (now) "UTC"| quote }}'
     affinity:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:

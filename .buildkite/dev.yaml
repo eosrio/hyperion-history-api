@@ -11,7 +11,7 @@ steps:
     command:
       - "buildkite-agent pipeline upload voice-buildkite-template/helm/deploy/template.yaml"
     env:
-      HELM_RELEASE: voice-eos-hyperion
+      HELM_RELEASE: voice-hiperion-history-api
       HELM_RELEASE_NAMESPACE: dev
       HELM_RELEASE_TAG: ${BUILDKITE_COMMIT}
       HELM_VALUE_FILE: helm/values/dev-main.yaml
