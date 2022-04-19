@@ -172,7 +172,7 @@ deployments:
             mountPath:  /tmp/voice.config.json
             subPath: voice.config.json
 
-  voice-eos-hyperion-history-api:
+  voice-eos-hyperion-api:
     replicaCount: 1
     terminationGracePeriodSeconds: 60
     podAnnotations:
