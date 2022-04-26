@@ -198,14 +198,14 @@ class HyperionApiServer {
     }
 
     async init() {
-
-        await this.mLoader.init();
+        try {
+            await this.mLoader.init();
 
         // add custom plugin routes
         for (const plugin of this.mLoader.plugins) {
             if (plugin.hasApiRoutes) {
                 hLog(`Adding routes for plugin: ${plugin.internalPluginName}`);
-                plugin.addRoutes(this.fastify);
+                await plugin.addRoutes(this.fastify);
                 plugin.chainName = this.chain;
             }
         }
@@ -220,6 +220,10 @@ class HyperionApiServer {
         }, (err) => {
             hLog('an error happened', err)
         });
+
+        } catch (err) {
+            hLog(`Error with plugins ${err}`)
+        }
 
         try {
             await this.fastify.listen({
