@@ -24,7 +24,7 @@ steps:
     command: |
       buildkite-agent pipeline upload .buildkite/dev.yaml
     agents:
-      queue: voice-infra-devel-v2
+      queue: voice-main-dev-deployer
     if: build.tag == null && build.branch == "master" && build.pull_request.id == null
     retry:
       manual:
