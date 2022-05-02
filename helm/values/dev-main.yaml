@@ -90,12 +90,12 @@ statefulsets:
             app.kubernetes.io/component: "voice-eos-hyperion"
             app.kubernetes.io/chain: "voice-hyperion-rabbit-mq"
         spec:
-          storageClassName: standard
+          storageClassName: dp-storageclass
           accessModes:
             - ReadWriteOnce
           resources:
             requests:
-              storage: 256Gi
+              storage: 1Gi
     containers:
       voice-hyperion-rabbit-mq:
         image:  rabbitmq:3.9.11-management-alpine
