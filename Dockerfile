@@ -1,24 +1,16 @@
-FROM ubuntu:20.04
+FROM gcr.io/voice-dev-infra-services/voice/hyperion-explorer-plugin:latest as explorer
+FROM gcr.io/voice-dev-infra-services/voice/hyperion-simpleassets-plugin:latest as sa
+
+FROM gcr.io/voice-ops-dev/alpine-node:16
 ARG NPM_AUTH_TOKEN
-RUN apt-get update \
-        && apt-get upgrade -y \
-        && apt-get autoremove \
-        && apt-get install -y build-essential git curl netcat && \
-        curl -sL https://deb.nodesource.com/setup_16.x | bash - && \
-        apt-get install -y nodejs && npm install pm2@latest -g && \
-        apt-get install -y jq
-
-WORKDIR /hyperion-history-api
-COPY . .
-COPY .npmrc.template .npmrc
-RUN npm ci && \
-      git clone https://github.com/voice-social/hyperion-explorer-plugin /hyperion-history-api/plugins/repos/explorer && \
-      mv /hyperion-history-api/plugins/repos/explorer/.npmrc.template  /hyperion-history-api/plugins/repos/explorer/.npmrc && \
-      ./hpm build-all && \
-      ./hpm enable explorer && \
-      pm2 startup
-
-RUN adduser --system --group voice && chown -R voice:voice /hyperion-history-api
+USER root
+RUN apk add jq && npm install pm2@latest -g
 USER voice
-
+COPY --chown=voice:voice . .
+RUN mv .npmrc.template .npmrc && \
+ npm ci && \
+ rm .npmrc
+COPY --chown=voice:voice --from=explorer /opt/app/ /opt/app/plugins/repos/explorer
+COPY --chown=voice:voice --from=sa /opt/app/ /opt/app/plugins/repos/sa
+RUN ./hpm enable explorer && ./hpm enable sa
 EXPOSE 7000
