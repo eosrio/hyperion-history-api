@@ -7,7 +7,7 @@ config:
   ## this only take the image form URL
   chain_logo_url: "https://storage.googleapis.com/voice_logo/logo.ico"
   es_replicas: 1
-  abi_scan: false
+  abi_scan: true
   elastic_host: vault:secret/data/devops/elasticsearch#ELASTIC_HOST
   elastic_user: elastic
   elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
@@ -390,7 +390,7 @@ configmaps:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
             server_name: explorer.dev.vops.co
-          sa:
+          simpleasssests:
             enable: true
             contracts:
               main: simpleassets
@@ -520,7 +520,7 @@ configmaps:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
             server_name: explorer.dev.vops.co
-          sa:
+          simpleasssests:
             enable: true
             contracts:
               main: simpleassets

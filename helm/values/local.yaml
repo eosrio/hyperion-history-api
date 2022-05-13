@@ -224,10 +224,10 @@ deployments:
         command: ["bash", "run.sh","voice-indexer"]
         volumeMounts:
           - name: eos-hyperion-connections
-            mountPath: /hyperion-history-api/connections.json
+            mountPath: /opt/app/connections.json
             subPath: connections.json
           - name: "{{if .Values.config.abi_scan}}eos-hyperion-config-abi{{else}}eos-hyperion-config{{end}}"
-            mountPath: /hyperion-history-api/chains/voice.config.json
+            mountPath: /opt/app/chains/voice.config.json
             subPath: voice.config.json
 
   voice-eos-hyperion-api:
@@ -270,11 +270,11 @@ deployments:
               command: ["bash","stop.sh","voice-api"]
         volumeMounts:
           - name: eos-hyperion-connections
-            mountPath: /hyperion-history-api/connections.json
+            mountPath: /opt/app/connections.json
             subPath: connections.json
             readOnly: false
           - name:  "{{if .Values.config.abi_scan}}eos-hyperion-config-abi{{else}}eos-hyperion-config{{end}}"
-            mountPath: /hyperion-history-api/chains/voice.config.json
+            mountPath: /opt/app/chains/voice.config.json
             subPath: voice.config.json
             readOnly: false
         extraVars:

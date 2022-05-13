@@ -11,6 +11,6 @@ RUN mv .npmrc.template .npmrc && \
  npm ci && \
  rm .npmrc
 COPY --chown=voice:voice --from=explorer /opt/app/ /opt/app/plugins/repos/explorer
-COPY --chown=voice:voice --from=sa /opt/app/ /opt/app/plugins/repos/sa
-RUN ./hpm enable explorer && ./hpm enable sa
+COPY --chown=voice:voice --from=sa /opt/app/ /opt/app/plugins/repos/simpleasssests
+RUN ./hpm enable explorer && ./hpm enable simpleasssests
 EXPOSE 7000
