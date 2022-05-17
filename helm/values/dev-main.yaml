@@ -390,7 +390,7 @@ configmaps:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
             server_name: explorer.dev.vops.co
-          simpleasssests:
+          simpleassests:
             enable: true
             contracts:
               main: simpleassets
@@ -520,7 +520,7 @@ configmaps:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
             server_name: explorer.dev.vops.co
-          simpleasssests:
+          simpleassests:
             enable: true
             contracts:
               main: simpleassets
