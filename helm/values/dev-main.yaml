@@ -258,6 +258,12 @@ deployments:
             subPath: voice.config.json
             readOnly: false
 
+podDisruptionBudgets:
+  voice-eos-hyperion-api:
+    maxUnavailable: 10%
+  voice-hyperion-history-indexer:
+    maxUnavailable: 10%
+
 hpas:
   voice-eos-hyperion-api:
     minReplicas: 1
@@ -390,8 +396,8 @@ configmaps:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
             server_name: explorer.dev.vops.co
-          simpleassests:
-            enable: true
+          simpleasssests:
+            enabled: true
             contracts:
               main: simpleassets
               market: simplemarket
@@ -520,8 +526,8 @@ configmaps:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
             server_name: explorer.dev.vops.co
-          simpleassests:
-            enable: true
+          simpleasssests:
+            enabled: true
             contracts:
               main: simpleassets
               market: simplemarket
