@@ -76,7 +76,7 @@ export function registerRoutes(server: FastifyInstance, featureFlagClient?: Feat
 
             // restrict access to only the api endpoints the frontend is using
             const allowedRoutes = ['/v1/chain/get_info', '/v1/chain/get_table_by_scope']
-            if (!allowedRoutes.includes(request.url)) {
+            if (allowedRoutes.includes(request.url)) {
                await handleChainApiRedirect(request, reply, server);
             } else {
                 reply.code(404).send({ error: 'Not found' });
