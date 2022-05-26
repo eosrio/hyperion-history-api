@@ -195,7 +195,7 @@ deployments:
         name: eos-hyperion-connections
     initContainers:
       check-elastic:
-        image: "gcr.io/voice-ops-dev/auto-init-container/auto-init-container:latest"
+        image: "gcr.io/voice-dev-infra-services/auto-init-container/auto-init-container:latest"
         imagePullPolicy: IfNotPresent
         command:
           - '/bin/sh'
@@ -206,7 +206,7 @@ deployments:
           user: voice
           pass: voice
           vhost: voice
-        image: "gcr.io/voice-ops-dev/auto-init-container/auto-init-container:latest"
+        image: "gcr.io/voice-dev-infra-services/auto-init-container/auto-init-container:latest"
         imagePullPolicy: IfNotPresent
         command: ['bash','check-rabbit-mq-health.sh','voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local']
     lifecycle:
@@ -241,7 +241,7 @@ deployments:
         name:  eos-hyperion-connections
     initContainers:
       check-elastic:
-        image: "gcr.io/voice-ops-dev/auto-init-container/auto-init-container:latest"
+        image: "gcr.io/voice-dev-infra-services/auto-init-container/auto-init-container:latest"
         imagePullPolicy: IfNotPresent
         command:
           - '/bin/sh'
@@ -252,7 +252,7 @@ deployments:
           user: voice
           pass: voice
           vhost: voice
-        image: "gcr.io/voice-ops-dev/auto-init-container/auto-init-container:latest"
+        image: "gcr.io/voice-dev-infra-services/auto-init-container/auto-init-container:latest"
         imagePullPolicy: IfNotPresent
         command: ['bash','check-rabbit-mq-health.sh','voice-hyperion-rabbit-mq.{{ .Release.Namespace }}.svc.cluster.local']
     containers:
@@ -412,6 +412,10 @@ configmaps:
             contracts:
               main: simpleassets
               market: simplemarket
+        launchdarkly:
+          sdk_key: ""
+          clinet_side_id: ""
+
   eos-hyperion-config:
     toJson: true
     data:
@@ -542,6 +546,9 @@ configmaps:
             contracts:
               main: simpleassets
               market: simplemarket
+        launchdarkly:
+          sdk_key: ""
+          clinet_side_id: ""
   eos-hyperion-connections:
     toJson: true
     data:

@@ -160,6 +160,9 @@ deployments:
           GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128
           no_proxy: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
           GLOBAL_AGENT_NO_PROXY	: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
+          # LaunchDarkly Config
+          LAUNCHDARKLY_SDK_KEY: "vault:secret/data/voice/devel#LAUNCHDARKLY_SDK_KEY"
+          LAUNCHDARKLY_CLIENT_SIDE_ID: "vault:secret/data/voice/devel#LAUNCHDARKLY_CLIENT_SIDE_ID"
         resources:
           requests:
             cpu: "1500m"
@@ -396,11 +399,14 @@ configmaps:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
             server_name: explorer.dev.vops.co
-          simpleasssests:
+          simpleassests:
             enabled: true
             contracts:
               main: simpleassets
               market: simplemarket
+        launchdarkly:
+          sdk_key: ""
+          clinet_side_id: ""
   eos-hyperion-config:
     toJson: true
     data:
@@ -526,11 +532,14 @@ configmaps:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
             server_name: explorer.dev.vops.co
-          simpleasssests:
+          simpleassests:
             enabled: true
             contracts:
               main: simpleassets
               market: simplemarket
+        launchdarkly:
+          sdk_key: ""
+          clinet_side_id: ""
   eos-hyperion-connections:
     toJson: true
     data:
