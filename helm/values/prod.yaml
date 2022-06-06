@@ -1,7 +1,7 @@
 release:
   tag: latest
 config:
-  server_name: "explorer.voice.com"
+  server_name: "scan.voice.com"
   provider_url: https://voice.com
   provider_name: "voice"
   ## this only take the image form URL
@@ -396,7 +396,7 @@ configmaps:
           explorer:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
-            server_name: explorer.voice.com
+            server_name: scan.voice.com
           simpleassests:
             enabled: true
             contracts:
@@ -530,7 +530,7 @@ configmaps:
           explorer:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
-            server_name: explorer.voice.com
+            server_name: scan.voice.com
           simpleassests:
             enabled: true
             contracts:
