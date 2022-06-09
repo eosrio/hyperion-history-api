@@ -415,6 +415,8 @@ configmaps:
         launchdarkly:
           sdk_key: ""
           clinet_side_id: ""
+        googleanalytics:
+          tracking_id: ""
 
   eos-hyperion-config:
     toJson: true
@@ -549,6 +551,8 @@ configmaps:
         launchdarkly:
           sdk_key: ""
           clinet_side_id: ""
+        googleanalytics:
+          tracking_id: ""
   eos-hyperion-connections:
     toJson: true
     data:

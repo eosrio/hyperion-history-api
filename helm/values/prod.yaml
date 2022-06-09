@@ -163,6 +163,8 @@ deployments:
           # LaunchDarkly Config
           LAUNCHDARKLY_SDK_KEY: "vault:secret/data/applications/prod#LAUNCHDARKLY_SDK_KEY"
           LAUNCHDARKLY_CLIENT_SIDE_ID: "vault:secret/data/applications/prod#LAUNCHDARKLY_CLIENT_SIDE_ID"
+          # Google Analytics
+          BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID: "vault:secret/data/voice/devel#BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID"
         resources:
           requests:
             cpu: "1500m"
@@ -240,6 +242,8 @@ deployments:
           # LaunchDarkly Config
           LAUNCHDARKLY_SDK_KEY: "vault:secret/data/applications/prod#LAUNCHDARKLY_SDK_KEY"
           LAUNCHDARKLY_CLIENT_SIDE_ID: "vault:secret/data/applications/prod#LAUNCHDARKLY_CLIENT_SIDE_ID"
+          # Google Analytics
+          BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID: "vault:secret/data/voice/devel#BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID"
         lifecycle:
           preStop:
             exec:
@@ -405,6 +409,8 @@ configmaps:
         launchdarkly:
           sdk_key: ""
           clinet_side_id: ""
+        googleanalytics:
+          tracking_id: ""
 
   eos-hyperion-config:
     toJson: true
@@ -539,6 +545,8 @@ configmaps:
         launchdarkly:
           sdk_key: ""
           clinet_side_id: ""
+        googleanalytics:
+          tracking_id: ""
 
   eos-hyperion-connections:
     toJson: true
