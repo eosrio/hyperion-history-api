@@ -164,7 +164,7 @@ deployments:
           LAUNCHDARKLY_SDK_KEY: "vault:secret/data/applications/prod#LAUNCHDARKLY_SDK_KEY"
           LAUNCHDARKLY_CLIENT_SIDE_ID: "vault:secret/data/applications/prod#LAUNCHDARKLY_CLIENT_SIDE_ID"
           # Google Analytics
-          BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID: "vault:secret/data/voice/devel#BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID"
+          BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID: "vault:secret/data/applications/prod#BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID"
         resources:
           requests:
             cpu: "1500m"
@@ -178,7 +178,7 @@ deployments:
             subPath: voice.config.json
 
   voice-eos-hyperion-api:
-    replicaCount: 1
+    replicaCount: 2
     terminationGracePeriodSeconds: 60
     podAnnotations:
       releaseTime: '{{ dateInZone "2006-01-02 15:04:05Z" (now) "UTC"| quote }}'
@@ -243,7 +243,7 @@ deployments:
           LAUNCHDARKLY_SDK_KEY: "vault:secret/data/applications/prod#LAUNCHDARKLY_SDK_KEY"
           LAUNCHDARKLY_CLIENT_SIDE_ID: "vault:secret/data/applications/prod#LAUNCHDARKLY_CLIENT_SIDE_ID"
           # Google Analytics
-          BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID: "vault:secret/data/voice/devel#BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID"
+          BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID: "BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID#BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID"
         lifecycle:
           preStop:
             exec:
@@ -271,8 +271,8 @@ podDisruptionBudgets:
 
 hpas:
   voice-eos-hyperion-api:
-    minReplicas: 1
-    maxReplicas: 3
+    minReplicas: 2
+    maxReplicas: 5
     targetCPUUtilizationPercentage: 80
 
 configmaps:
