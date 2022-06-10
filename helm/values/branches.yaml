@@ -334,7 +334,7 @@ configmaps:
           explorer:
             enabled: true
             chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
-            server_name: explorer.dev.vops.co
+            server_name: scan.dev.vops.co
   eos-hyperion-config:
     toJson: true
     data:
@@ -459,7 +459,7 @@ configmaps:
             explorer:
               enabled: true
               chain_logo_url: https://storage.googleapis.com/voice_logo/logo.ico
-              server_name: explorer.dev.vops.co
+              server_name: scan.dev.vops.co
   eos-hyperion-connections:
     toJson: true
     data:
