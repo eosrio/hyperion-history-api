@@ -243,7 +243,7 @@ deployments:
           LAUNCHDARKLY_SDK_KEY: "vault:secret/data/applications/prod#LAUNCHDARKLY_SDK_KEY"
           LAUNCHDARKLY_CLIENT_SIDE_ID: "vault:secret/data/applications/prod#LAUNCHDARKLY_CLIENT_SIDE_ID"
           # Google Analytics
-          BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID: "BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID#BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID"
+          BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID: "vault:secret/data/applications/prod#BLOCK_EXPLORER_GOOGLE_ANALYTICS_ID"
         lifecycle:
           preStop:
             exec:
