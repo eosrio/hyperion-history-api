@@ -65,6 +65,10 @@ services:
       app.kubernetes.io/branch: "master"
       app.kubernetes.io/authority: "voice-eos-hyperion"
       app.kubernetes.io/component: "voice-hyperion-rabbit-mq"
+      vo.billing: app
+      vo.billing/family: etl
+      vo.billing/svc.grp: messaging
+      vo.billing/svc.release: voice-hiperion-history-api
     type: ClusterIP
     customSelectors:
       service: "voice-hyperion-rabbit-mq"
