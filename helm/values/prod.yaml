@@ -223,14 +223,14 @@ deployments:
           httpGet:
             path: /v2/health
             port: 7000
-          periodSeconds: 10
-          initialDelaySeconds: 10
+          periodSeconds: 30
+          initialDelaySeconds: 30
         readinessProbe:
           httpGet:
             path: /v2/health
             port: 7000
-          initialDelaySeconds: 10
-          periodSeconds: 10
+          initialDelaySeconds: 30
+          periodSeconds: 30
         containerPorts:
           - containerPort: 7000
             protocol: TCP
