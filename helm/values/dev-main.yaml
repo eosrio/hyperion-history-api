@@ -158,7 +158,7 @@ deployments:
           NEW_RELIC_APP_NAME: " voice-eos-hyperion-indexer-dev"
           NEW_RELIC_LICENSE_KEY: vault:secret/data/voice/devel#NEWRELIC_LICENSE_KEY
           NEW_RELIC_DISTRIBUTED_TRACING_ENABLED: "true"
-          NEW_RELIC_LOG: "stderr"
+          NEW_RELIC_LOG: "stdout"
           NEW_RELIC_LABELS: "env: dev"
           ELASTIC_USER: "{{ .Values.config.elastic_user }}"
           ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
@@ -243,7 +243,7 @@ deployments:
           NEW_RELIC_APP_NAME: "voice-eos-hyperion-api-dev"
           NEW_RELIC_LICENSE_KEY: vault:secret/data/voice/devel#NEWRELIC_LICENSE_KEY
           NEW_RELIC_DISTRIBUTED_TRACING_ENABLED: "true"
-          NEW_RELIC_LOG: "stderr"
+          NEW_RELIC_LOG: "stdout"
           NEW_RELIC_LABELS: "env: dev"
           ELASTIC_USER: "{{ .Values.config.elastic_user }}"
           ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
