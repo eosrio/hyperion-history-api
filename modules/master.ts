@@ -3,6 +3,7 @@ import {ConnectionManager} from "../connections/manager.class";
 import {JsonRpc} from "eosjs/dist";
 import {ApiResponse, Client} from "@elastic/elasticsearch";
 import {HyperionModuleLoader} from "./loader";
+import 'newrelic'
 
 import {
     debugLog,
@@ -518,7 +519,7 @@ export class HyperionMaster {
                         valid = false;
                       } else {
                         valid = true;
-                      } 
+                      }
                     } else {
                       valid = true;
                     }
@@ -2373,4 +2374,3 @@ export class HyperionMaster {
         return responses;
     }
 }
-

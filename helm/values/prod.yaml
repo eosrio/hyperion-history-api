@@ -154,6 +154,12 @@ deployments:
         imagePullPolicy: Always
         command: ["bash", "scripts/get-secrets.sh","voice-indexer"]
         extraVars:
+          NEW_RELIC_NO_CONFIG_FILE: "true"
+          NEW_RELIC_APP_NAME: "voice-eos-hyperion-indexer-prod"
+          NEW_RELIC_LICENSE_KEY: "vault:secret/data/applications/prod#NEWRELIC_LICENSE_KEY"
+          NEW_RELIC_DISTRIBUTED_TRACING_ENABLED: "true"
+          NEW_RELIC_LOG: "stderr"
+          NEW_RELIC_LABELS: "env: prod"
           ELASTIC_USER: "{{ .Values.config.elastic_user }}"
           ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
           ELASTIC_HOST: "{{ .Values.config.elastic_host }}"
@@ -233,6 +239,12 @@ deployments:
         imagePullPolicy: Always
         command: ["bash", "scripts/get-secrets.sh","voice-api"]
         extraVars:
+          NEW_RELIC_NO_CONFIG_FILE: "true"
+          NEW_RELIC_APP_NAME: "voice-eos-hyperion-api-prod"
+          NEW_RELIC_LICENSE_KEY: "vault:secret/data/applications/prod#NEWRELIC_LICENSE_KEY"
+          NEW_RELIC_DISTRIBUTED_TRACING_ENABLED: "true"
+          NEW_RELIC_LOG: "stderr"
+          NEW_RELIC_LABELS: "env: prod"
           ELASTIC_USER: "{{ .Values.config.elastic_user }}"
           ELASTIC_PASS: "{{ .Values.config.elastic_pass }}"
           ELASTIC_HOST: "{{ .Values.config.elastic_host }}"
