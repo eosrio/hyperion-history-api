@@ -1,6 +1,8 @@
 release:
   tag: latest
-
+billing:
+  family: etl
+  group: messaging
 config:
   serverName: "localhost:7000"
   provider_url: https://voice.com

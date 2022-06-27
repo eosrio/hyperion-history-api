@@ -1,5 +1,8 @@
 release:
   tag: latest
+billing:
+  family: etl
+  group: messaging
 config:
   server_name: vault:secret/data/voice/devel#HYPERION_SERVER_NAME
   provider_url: https://voice.com
