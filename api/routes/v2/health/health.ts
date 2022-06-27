@@ -1,7 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {connect} from "amqplib";
 import {timedQuery} from "../../../helpers/functions";
-import {getLastIndexedBlockWithTotalBlocks} from "../../../../helpers/common_functions";
+import {getLastIndexedBlockWithTotalBlocks, hLog} from "../../../../helpers/common_functions";
 
 async function checkRabbit(fastify: FastifyInstance) {
 	try {
@@ -84,7 +84,12 @@ async function getHealthQuery(fastify: FastifyInstance, request: FastifyRequest)
 }
 
 export function healthHandler(fastify: FastifyInstance, route: string) {
-	return async (request: FastifyRequest, reply: FastifyReply) => {
-		reply.send(await timedQuery(getHealthQuery, fastify, request, route));
+	try {
+		return async (request: FastifyRequest, reply: FastifyReply) => {
+			reply.send(await timedQuery(getHealthQuery, fastify, request, route));
+		}
+	} catch(e) {
+		hLog(`Health error: ${e}`)
+		throw new Error(`Failed health check ${e}`)
 	}
 }
