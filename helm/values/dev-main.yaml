@@ -12,6 +12,10 @@ config:
   elastic_user: elastic
   elastic_pass: vault:secret/data/devops/elasticsearch#ELASTIC_PASSWORD
 
+billing:
+  family: api
+  group: services
+
 services:
   voice-eos-hyperion:
     customLabels:

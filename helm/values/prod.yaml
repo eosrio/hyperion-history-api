@@ -52,6 +52,9 @@ services:
         protocol: TCP
         name: monitoring
 
+billing:
+  family: api
+  group: services
 
 statefulsets:
   voice-hyperion-rabbit-mq:
