@@ -126,7 +126,7 @@ deployments:
             - key: cat
               operator: In
               values:
-              - hyperion-indexer
+              - data
     volumes:
     - name: "{{ if .Values.config.abi_scan }}eos-hyperion-config-abi{{ else }}eos-hyperion-config{{ end }}"
       configMap:
