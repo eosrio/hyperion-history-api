@@ -3,6 +3,7 @@ import * as _ from "lodash";
 import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethods} from "fastify";
 import got from "got";
 import { FeatureFlagClient } from "../shared/featureFlag/FeatureFlagClient";
+import { hLog } from "../../helpers/common_functions";
 
 export function extendResponseSchema(responseProps: any) {
     const props = {
@@ -197,6 +198,9 @@ export async function timedQuery(
         request.method === 'POST' ? request.body : request.query
     );
 
+    console.log(cachedResponse, 'in case it needed to be stringified')
+    hLog(`was there a cached response? ${cachedResponse}`)
+
     if (cachedResponse && !request.query["ignoreCache"]) {
         // add cached query time
         cachedResponse['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
@@ -205,6 +209,9 @@ export async function timedQuery(
 
     // call query function
     const response = await queryFunction(fastify, request, featureFlagClient);
+
+    console.log(response, 'in case it needed to be stringified')
+    hLog(`Query function response ${response}`)
 
     // save response to cash
     if (hash) {

@@ -63,7 +63,11 @@ export function getAccountHandler(fastify: FastifyInstance, route: string, featu
           reply.status(403).send('forbidden');
         } else {
           hLog('sending the account response')
-          reply.send(await timedQuery(getAccount, fastify, request, route));
+          try{
+            reply.send(await timedQuery(getAccount, fastify, request, route));
+          } catch(error){
+              hLog(`Error sending the response. Error: ${error}`)
+          }
         }
     }
 }
