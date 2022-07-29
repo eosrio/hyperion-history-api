@@ -198,12 +198,14 @@ export async function timedQuery(
         request.method === 'POST' ? request.body : request.query
     );
 
-    console.log(cachedResponse, 'in case it needed to be stringified')
-    hLog(`was there a cached response? ${cachedResponse}`)
+    hLog(`Request method ${JSON.stringify(request.method, null, 2)}`)
+
+    hLog(`was there a cached response? ${JSON.stringify(cachedResponse, null, 2)}`)
 
     if (cachedResponse && !request.query["ignoreCache"]) {
         // add cached query time
         cachedResponse['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
+        hLog(`trying to return cached response ${JSON.stringify(cachedResponse, null, 2)}`)
         return cachedResponse;
     }
 
@@ -211,7 +213,7 @@ export async function timedQuery(
     const response = await queryFunction(fastify, request, featureFlagClient);
 
     console.log(response, 'in case it needed to be stringified')
-    hLog(`Query function response ${response}`)
+    hLog(`Query function response ${JSON.stringify(response, null, 2)}`)
 
     // save response to cash
     if (hash) {
