@@ -3,6 +3,7 @@ import got from "got";
 import {timedQuery} from "../../../helpers/functions";
 import { FeatureFlagClient } from "../../../shared/featureFlag/FeatureFlagClient";
 import { FeatureFlagName } from "../../../featureFlags";
+import { hLog } from "../../../../helpers/common_functions";
 
 
 async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
@@ -22,8 +23,10 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     const reqQueue = [];
 
     try {
+        hLog('attempting to get account')
         response.account = await fastify.eosjs.rpc.get_account(account);
     } catch (e) {
+        hLog(`Failed to fetch account: ${e}`)
         throw new Error("Account not found!");
     }
 
@@ -56,8 +59,10 @@ export function getAccountHandler(fastify: FastifyInstance, route: string, featu
 
         const account = (request.query as any)?.account?.toLowerCase() ?? '';
         if (account.length > 0 && systemAccounts.includes(account)) {
+          hLog(`failed in account handler. Account: ${account} sys account ff value ${systemAccountsFfValue}`)
           reply.status(403).send('forbidden');
         } else {
+          hLog('sending the account response')
           reply.send(await timedQuery(getAccount, fastify, request, route));
         }
     }
