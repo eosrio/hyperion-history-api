@@ -219,7 +219,7 @@ configmaps:
           pm2_scaling: 1
           node_max_old_space_size: 1024
           chain_name: voice
-          server_addr: localhost
+          server_addr: 0.0.0.0
           server_port: 7000
           server_name: "{{ .Values.config.serverName }}"
           provider_name: "{{ .Values.config.provider_name }}"
@@ -344,7 +344,7 @@ configmaps:
           pm2_scaling: 1
           node_max_old_space_size: 1024
           chain_name: voice
-          server_addr: localhost
+          server_addr: 0.0.0.0
           server_port: 7000
           server_name: "{{ .Values.config.serverName }}"
           provider_name: " {{ .Values.config.provider_name }}"
@@ -489,4 +489,4 @@ configmaps:
             http: "http://chain-api-lb-dev.service.b-oma-devel.vops.int:8888"
             ship: "ws://ship-lb-dev.service.b-oma-devel.vops.int:8080"
             WS_ROUTER_PORT: 7001
-            WS_ROUTER_HOST: "localhost"
+            WS_ROUTER_HOST: "127.0.0.1"
