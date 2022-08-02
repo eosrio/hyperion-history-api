@@ -258,6 +258,7 @@ deployments:
           GLOBAL_AGENT_HTTP_PROXY: http://proxy.service:3128
           GLOBAL_AGENT_HTTPS_PROXY: http://proxy.service:3128
           no_proxy: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
+          NO_PROXY: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
           GLOBAL_AGENT_NO_PROXY	: ".svc.cluster.local,.service,.internal,.vops.int,.googleapis.com,.gcr.io,.gstatic.com,gcr.io,.gcp.cloud.es.io,accounts.google.com,packages.cloud.google.com,metadata.google.internal,.psc.us-west1.gcp.cloud.es.io,0.0.0.0"
           # LaunchDarkly Config
           LAUNCHDARKLY_SDK_KEY: "vault:secret/data/voice/devel#LAUNCHDARKLY_SDK_KEY"
