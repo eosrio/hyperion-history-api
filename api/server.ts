@@ -18,8 +18,6 @@ import * as LaunchDarkly from 'launchdarkly-node-server-sdk';
 import { launchDarklyConfig } from "../settings";
 import { LaunchDarklyClient } from "./shared/featureFlag/LaunchDarklyClient";
 import 'newrelic'
-import {bootstrap} from 'global-agent';
-bootstrap();
 
 class HyperionApiServer {
 
