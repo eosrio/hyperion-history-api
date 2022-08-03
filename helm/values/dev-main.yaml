@@ -120,7 +120,7 @@ deployments:
     podAnnotations:
       releaseTime: '{{ dateInZone "2006-01-02 15:04:05Z" (now) "UTC"| quote }}'
     customLabels:
-      bypass-no-proxy-value: 'true'
+      bypass-no-proxy-webhook: 'true'
     affinity:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
