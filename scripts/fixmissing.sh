@@ -5,6 +5,7 @@
 # to run this every 2 minutes... just add this to your cron
 # */2 * * * * /opt/eosio/src/Hyperion-History-API/scripts/fixmissing.sh
 #
+# You can modify the CHAINNAME variable to match your chains/$CHAINNAME.config.json
 #
 # variables that need to be set based on your configuration
 PM2="/home/eosio/.npm-global/bin/pm2"

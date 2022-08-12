@@ -5,6 +5,7 @@
 # to run this every 10 minutes... just add this to your cron
 # */10 * * * * /opt/eosio/src/Hyperion-History-API/scripts/syncbyrange.sh
 #
+# You can modify the CHAINNAME variable to match your chains/$CHAINNAME.config.json
 #
 # variables that need to be set based on your configuration
 
