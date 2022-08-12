@@ -15,6 +15,9 @@ import {extendedActions} from "./routes/v2-history/get_actions/definitions";
 import {io, Socket} from "socket.io-client";
 import {CacheManager} from "./helpers/cacheManager";
 
+import {bootstrap} from 'global-agent';
+bootstrap();
+
 class HyperionApiServer {
 
     private hub: Socket;
@@ -87,7 +90,7 @@ class HyperionApiServer {
         this.fastify.decorate('allowedActionQueryParamSet', extendedActionsSet);
 
         // define chain api url for /v1/chain/ redirects
-        let chainApiUrl: string = this.conf.api.push_api;
+        let chainApiUrl: string = this.conf.api.chain_api;
         if (chainApiUrl === null || chainApiUrl === "") {
             chainApiUrl = this.manager.conn.chains[this.chain].http;
         }

@@ -12,12 +12,10 @@ pip3 install sh
 pip3 install elasticsearch==7.15.2
 ```
 
-### Update config files accordingly in python file
+### Update the following 3 config lines in the python code.
 
 ```
-filepath="chains/wax.config.json"
-indexer_stop = ["pm2", "trigger", "wax-indexer", "stop"]
-indexer_start = ["./run.sh", "wax-indexer"]
+hyperionfolder="/home/charles/hyperion-history-api"
 indexer_log_file = "/home/charles/.pm2/logs/wax-indexer-out.log"
 # Please set the version of Hyperion to either 3.1 or 3.3 to take into account changes to no blocks processed text in log file. 
 hyperion_version = '3.3'  #'3.1' or '3.3'
