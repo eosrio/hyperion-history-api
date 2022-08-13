@@ -5,7 +5,22 @@ from subprocess import Popen, PIPE, STDOUT
 from sh import tail
 import time
 import sys
+from pathlib import Path
 
+home_dir = Path.home()
+
+# Variables for you to change for your system / hyperion
+chain = "libre"  # set the Chain to whatever your chains/chain.config.json is named
+hyperionfolder = f"{home_dir}/hyperion-history-api"
+indexer_log_file = f"{home_dir}/.pm2/logs/{chain}-indexer-out.log"
+hyperion_version = '3.5'  # '3.1' or '3.3'
+
+# Configs
+filepath = hyperionfolder+f"/chains/{chain}.config.json"
+indexer_stop = ["pm2", "trigger", f"{chain}-indexer", "stop"]
+indexer_start = [hyperionfolder+"./run.sh", f"{chain}-indexer"]
+tail_indexer_logs = ["tail", "-f", indexer_log_file]
+es_index = f'{chain}-block-*'
 
 # Import that you stop the indexer before you start running this script
 
@@ -51,26 +66,11 @@ offline = r'.*(offline or unexistent)'
 lastblock_indexed = r'.*Last Indexed Block:.* (\d*)'
 
 
-# Config
-hyperionfolder = "/home/charles/hyperion-history-api/"
-indexer_log_file = "/home/charles/.pm2/logs/wax-indexer-out.log"
-
-chain = "wax"  # set the Chain name eos or wax
-filepath = hyperionfolder+"chains/wax.config.json"
-indexer_stop = ["pm2", "trigger", "wax-indexer", "stop"]
-indexer_start = [hyperionfolder+"./run.sh", "wax-indexer"]
-tail_indexer_logs = ["tail", "-f", indexer_log_file]
-hyperion_version = '3.3'  # '3.1' or '3.3'
-
-
 # No blocks being processed differs between 3.3 and 3.1
-if hyperion_version == '3.3':
+if (hyperion_version == '3.5' or hyperion_version == '3.3'):
     no_blocks_processed = r'.*No blocks are being processed.*'
 else:
     no_blocks_processed = r'.*No blocks processed.*'
-
-# Set ES index pattern
-es_index = f'{chain}-block-*'
 
 
 def query_body(interval):
