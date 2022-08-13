@@ -3,7 +3,7 @@
 # fixmissing.sh - Bash script for finding missing blocks in the pm2 logs 
 # Update paths and then you can run this as a test if you have missing blocks in the log 
 # to run this every 2 minutes... just add this to your cron
-# */2 * * * * /opt/eosio/src/Hyperion-History-API/scripts/fixmissing.sh
+# */2 * * * * /opt/eosio/src/Hyperion-History-API/scripts/watch-missing-blocks.sh
 #
 # You can modify the CHAINNAME variable to match your chains/$CHAINNAME.config.json
 #

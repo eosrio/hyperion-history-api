@@ -3,7 +3,7 @@
 # syncbyrange.sh - Bash script for synchronizing Hyperion EOS in spans 
 # Save this in your Hyperion folder and add to cron 
 # to run this every 10 minutes... just add this to your cron
-# */10 * * * * /opt/eosio/src/Hyperion-History-API/scripts/syncbyrange.sh
+# */10 * * * * /opt/eosio/src/Hyperion-History-API/scripts/sync-by=range.sh
 #
 # You can modify the CHAINNAME variable to match your chains/$CHAINNAME.config.json
 #

@@ -1,0 +1,2 @@
+elasticsearch==7.15.2
+sh==1.14.3

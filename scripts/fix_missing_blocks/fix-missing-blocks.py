@@ -7,20 +7,36 @@ import time
 import sys
 from pathlib import Path
 
+# set paths
 home_dir = Path.home()
+hyperionpath = Path().resolve()
+hyperionfolder = str(hyperionpath)
 
 # Variables for you to change for your system / hyperion
 chain = "libre"  # set the Chain to whatever your chains/chain.config.json is named
-hyperionfolder = f"{home_dir}/hyperion-history-api"
-indexer_log_file = f"{home_dir}/.pm2/logs/{chain}-indexer-out.log"
-hyperion_version = '3.5'  # '3.1' or '3.3'
+hyperion_version = '3.5'  # '3.1' or '3.3' or '3.5'
 
 # Configs
-filepath = hyperionfolder+f"/chains/{chain}.config.json"
+indexer_log_file = f"{home_dir}/.pm2/logs/{chain}-indexer-out.log"
+jsonpath = hyperionfolder+f"/chains/{chain}.config.json"
 indexer_stop = ["pm2", "trigger", f"{chain}-indexer", "stop"]
-indexer_start = [hyperionfolder+"./run.sh", f"{chain}-indexer"]
+indexer_start = [hyperionfolder+"/run.sh", f"{chain}-indexer"]
 tail_indexer_logs = ["tail", "-f", indexer_log_file]
 es_index = f'{chain}-block-*'
+
+# Check if chains/chain.config.json exists
+if Path(jsonpath).is_file():
+    print(jsonpath + " found")
+else:
+    raise ValueError(
+        jsonpath + " not found - please check fix-missing-blocks.py lines 14-18")
+
+# Check if chains/chain.config.json exists
+if Path(indexer_log_file).is_file():
+    print(indexer_log_file + " found.")
+else:
+    raise ValueError(
+        indexer_log_file + " not found - please check fix-missing-blocks.py lines 14-18")
 
 # Import that you stop the indexer before you start running this script
 
@@ -28,7 +44,6 @@ if len(sys.argv) != 2:
     raise ValueError(
         'Please provide Elastic username, password and Elastic IP address. http://elastic:password@127.0.0.1')
 elasticnode = sys.argv[1]+":9200/"
-
 
 es = Elasticsearch(
     [
@@ -167,7 +182,7 @@ def buckets_missing(bucketlist, count1, count2):
 
 # Find and replace text
 def replacement(Path, text, subs, flags=0):
-    with open(filepath, "r+") as f1:
+    with open(jsonpath, "r+") as f1:
         contents = f1.read()
         pattern = re.compile(text, flags)
         contents = pattern.sub(subs, contents)
@@ -194,10 +209,10 @@ def MagicFuzz(missing):
         rewrite_k = buildReplacementText('rewrite', 'true')
         print(bcolors.OKYELLOW,
               f"{'='*100}\n2.Updating the config file ", bcolors.ENDC)
-        replacement(filepath, start_on, subs_start)
-        replacement(filepath, stop_on, subs_stop)
-        replacement(filepath, live_reader, live_reader_k)
-        replacement(filepath, rewrite, rewrite_k)
+        replacement(jsonpath, start_on, subs_start)
+        replacement(jsonpath, stop_on, subs_stop)
+        replacement(jsonpath, live_reader, live_reader_k)
+        replacement(jsonpath, rewrite, rewrite_k)
         print(bcolors.OKYELLOW,
               f"{'='*100}\n3.Config file is now updated for: ", gt, "-", lt, bcolors.ENDC)
         print(bcolors.OKYELLOW,
@@ -288,10 +303,10 @@ def start_indexer_live():
     subs_stop = buildReplacementText('stop_on', 0)
     live_reader_k = buildReplacementText('live_reader', 'true')
     rewrite_k = buildReplacementText('rewrite', 'false')
-    replacement(filepath, start_on, subs_start)
-    replacement(filepath, stop_on, subs_stop)
-    replacement(filepath, live_reader, live_reader_k)
-    replacement(filepath, rewrite, rewrite_k)
+    replacement(jsonpath, start_on, subs_start)
+    replacement(jsonpath, stop_on, subs_stop)
+    replacement(jsonpath, live_reader, live_reader_k)
+    replacement(jsonpath, rewrite, rewrite_k)
     run = Popen(indexer_start, stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL)
 

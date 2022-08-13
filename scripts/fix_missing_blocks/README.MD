@@ -8,23 +8,25 @@
 ### Install
 
 ```
-pip3 install sh
-pip3 install elasticsearch==7.15.2
+pip3 install -r requirements.txt
 ```
 
-### Update the following 3 config lines in the python code.
+### Update the following 2 config lines in the python code.
+
+Please set the Chain to whatever your chain in chains/"chain".config.json is named
+This script supports Hyperion versions 3.3.1, 3.3.3, or 3.3.5 - which you must enter as: '3.1', '3.3', or '3.5' because that's how Charles likes it.
 
 ```
-hyperionfolder="/home/charles/hyperion-history-api"
-indexer_log_file = "/home/charles/.pm2/logs/wax-indexer-out.log"
-# Please set the version of Hyperion to either 3.1 or 3.3 to take into account changes to no blocks processed text in log file. 
-hyperion_version = '3.3'  #'3.1' or '3.3'
+chain = "libre"  
+hyperion_version = '3.5'  
 ```
 
 ### RUN
 
+You should run this from your Hyperion directory by using the following command and indicating the user, pass from your elastic_pass.txt and url to your elasticsearch (default is 127.0.0.1):
+
 ```
-python3 fix-missing-blocks.py http://elasticusername:elasticpasswordD@127.0.0.1
+python3 ./scripts/fix-missing-blocks.py http://elasticusername:elasticpasswordD@127.0.0.1
 ```
 
 
