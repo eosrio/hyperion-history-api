@@ -61,7 +61,7 @@
     "launchdarkly-node-server-sdk": "^6.3.0",
     "lodash": "^4.17.21",
     "moment": "^2.29.1",
-    "newrelic": "^8.14.1",
+    "newrelic": "^9.0.0",
     "nodemailer": "^6.6.3",
     "portfinder": "^1.0.28",
     "socket.io": "^4.4.0",
