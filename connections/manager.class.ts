@@ -1,14 +1,14 @@
-import {ConfigurationModule} from "../modules/config";
-import {JsonRpc} from "eosjs/dist";
-import got from "got";
-import {Client} from '@elastic/elasticsearch'
-import {HyperionConnections} from "../interfaces/hyperionConnections";
-import {HyperionConfig} from "../interfaces/hyperionConfig";
-import {amqpConnect, checkQueueSize, getAmpqUrl} from "./amqp";
-import {StateHistorySocket} from "./state-history";
+import { Client } from '@elastic/elasticsearch';
+import { exec } from "child_process";
 import fetch from 'cross-fetch';
-import {exec} from "child_process";
-import {hLog} from "../helpers/common_functions";
+import { JsonRpc } from "eosjs/dist";
+import got from "got";
+import { hLog } from "../helpers/common_functions";
+import { HyperionConfig } from "../interfaces/hyperionConfig";
+import { HyperionConnections } from "../interfaces/hyperionConnections";
+import { ConfigurationModule } from "../modules/config";
+import { amqpConnect, checkQueueSize, getAmpqUrl } from "./amqp";
+import { StateHistorySocket } from "./state-history";
 
 export class ConnectionManager {
 
@@ -86,6 +86,7 @@ export class ConnectionManager {
             es_url = `${_es.protocol}://${_es.host}`
         }
         this.esIngestClient = new Client({
+            requestTimeout: 120000,
             node: es_url,
             ssl: {
                 rejectUnauthorized: false
@@ -112,6 +113,7 @@ export class ConnectionManager {
                         es_url = `${_es.protocol}://${node}`
                     }
                     this.esIngestClients.push(new Client({
+                        requestTimeout: 120000,
                         node: es_url,
                         pingTimeout: 100,
                         ssl: {
