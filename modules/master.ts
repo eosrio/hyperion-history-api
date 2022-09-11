@@ -45,6 +45,7 @@ import moment = require("moment");
 import Timeout = NodeJS.Timeout;
 
 import {bootstrap} from 'global-agent';
+
 bootstrap();
 
 interface RevBlock {
@@ -1711,6 +1712,9 @@ export class HyperionMaster {
 
         // Redis
         this.ioRedisClient = new IORedis(this.manager.conn.redis);
+
+        // Remove first indexed block from cache (v2/health)
+        await this.ioRedisClient.del(`${this.manager.chain}::fib`)
 
         // Elasticsearch
         this.client = this.manager.elasticsearchClient;
