@@ -1,5 +1,4 @@
-<br>
-<br>
+<br></br>
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)"
@@ -7,13 +6,19 @@
     <img alt="Hyperion Logo"
          src="https://eosrio.io/hyperion.png">
   </picture>
-<br>
-<br>
-<h4 align="center">Scalable Full History API Solution for <a href="https://antelope.io">Antelope</a> (former EOSIO) based blockchains</h4>
 </p>
+
+<h4 align="center">
+    Scalable Full History API Solution for 
+    <a href="https://antelope.io">
+        Antelope
+    </a>
+    (former EOSIO) based blockchains
+</h4>
+
 <br>
 
-Made with ♥ by [EOS Rio](https://eosrio.io/)
+Made with ♥ by [Rio Blocks / EOS Rio](https://rioblocks.io/?lang=en)
 
 ### [Official documentation](https://hyperion.docs.eosrio.io)
 
