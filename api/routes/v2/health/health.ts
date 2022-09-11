@@ -125,7 +125,7 @@ async function getHealthQuery(fastify: FastifyInstance) {
     ]);
     const es = response.health.find(value => value.service === 'Elasticsearch');
     const nodeos = response.health.find(value => value.service === 'NodeosRPC');
-    es.service_data.v = nodeos.service_data.head_block_num - es.service_data.last_indexed_block;
+    es.service_data.head_offset = nodeos.service_data.head_block_num - es.service_data.last_indexed_block;
     return response;
 }
 
