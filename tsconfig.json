@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "module": "commonjs",
-    "target": "ES2019",
+    "target": "ES2020",
+    "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "noImplicitAny": false,
     "moduleResolution": "node",
@@ -16,6 +17,6 @@
     "node_modules",
     "hyperion-explorer",
     "build",
-    "plugins"
+    "plugins/repos"
   ]
 }

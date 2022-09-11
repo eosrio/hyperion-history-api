@@ -3,6 +3,7 @@ const hyperionModule = {
   contract: 'fio.treasury',
   action: 'fdtnrwdupdat',
   parser_version: ['1.8'],
+  defineQueryPrefix: 'fdtnrwdupdat',
   mappings: {
     action: {
       '@fdtnrwdupdat': {
@@ -13,7 +14,6 @@ const hyperionModule = {
     },
   },
   handler: (action) => {
-    // attach action extras here
     const data = action['act']['data'];
     action['@fdtnrwdupdat'] = {
       amount: data['amount'],

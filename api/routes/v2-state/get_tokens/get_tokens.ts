@@ -1,4 +1,3 @@
-import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {getSkipLimit} from "../../v2-history/get_actions/functions";
@@ -6,7 +5,9 @@ import {getSkipLimit} from "../../v2-history/get_actions/functions";
 
 async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 
-    const response = {'account': request.query.account, 'tokens': []};
+    const query: any = request.query;
+
+    const response = {'account': query.account, 'tokens': []};
 
     const {skip, limit} = getSkipLimit(request.query);
     const maxDocs = fastify.manager.config.api.limits.get_tokens ?? 100;
@@ -18,19 +19,26 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
         "body": {
             query: {
                 bool: {
-                    filter: [{term: {"scope": request.query.account}}]
+                    filter: [{term: {"scope": query.account}}]
                 }
             }
         }
     });
 
+    const testSet = new Set();
     for (const hit of stateResult.body.hits.hits) {
         const data = hit._source;
-        if (typeof data.present !== "undefined" && data.present === false) {
+        if (typeof data.present !== "undefined" && data.present === 0) {
             continue;
         }
         let precision;
         const key = `${data.code}_${data.symbol}`;
+
+		if (testSet.has(key)) {
+            continue;
+        }
+
+        testSet.add(key);
         if (!fastify.tokenCache) {
             fastify.tokenCache = new Map<string, any>();
         }
@@ -39,7 +47,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
         } else {
             let token_data;
             try {
-                token_data = await fastify.eosjs.rpc.get_currency_balance(data.code, request.query.account, data.symbol);
+                token_data = await fastify.eosjs.rpc.get_currency_balance(data.code, query.account, data.symbol);
                 if (token_data.length > 0) {
                     const [amount, symbol] = token_data[0].split(" ");
                     const amount_arr = amount.split(".");
@@ -50,7 +58,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
                     }
                 }
             } catch (e) {
-                console.log(`get_currency_balance error - contract:${data.code} - account:${request.query.account}`);
+                console.log(`get_currency_balance error - contract:${data.code} - account:${query.account}`);
             }
         }
 
@@ -66,7 +74,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 }
 
 export function getTokensHandler(fastify: FastifyInstance, route: string) {
-    return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
         reply.send(await timedQuery(getTokens, fastify, request, route));
     }
 }

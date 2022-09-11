@@ -1,8 +1,9 @@
 import {HyperionWorker} from "./hyperionWorker";
-import {AsyncCargo, cargo} from "async";
+import {cargo, QueueObject} from "async";
 import {Serialize} from "../addons/eosjs-native";
 import {Type} from "eosjs/dist/eosjs-serialize";
 import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions";
+import * as AbiEOS from "@eosrio/node-abieos";
 
 export default class StateReader extends HyperionWorker {
 
@@ -15,8 +16,8 @@ export default class StateReader extends HyperionWorker {
     private allowRequests = true;
     private pendingRequest = null;
     private completionSignaled = false;
-    private stageOneDistQueue: AsyncCargo;
-    private blockReadingQueue: AsyncCargo;
+    private stageOneDistQueue: QueueObject<any>;
+    private blockReadingQueue: QueueObject<any>;
     private range_size = parseInt(process.env.last_block) - parseInt(process.env.first_block);
     private completionMonitoring: NodeJS.Timeout;
     private types: Map<string, Type>;
@@ -33,8 +34,12 @@ export default class StateReader extends HyperionWorker {
     private local_lib = 0;
     private delay_active = false;
     private block_processing_delay = 100;
+    private shipRev = 'v0';
 
     // private tempBlockSizeSum = 0;
+    private shipInitStatus: any;
+
+    private forkedBlocks = new Map<string, number>();
 
     constructor() {
         super();
@@ -64,6 +69,10 @@ export default class StateReader extends HyperionWorker {
             this.conf.indexer.fetch_deltas = true;
         }
 
+        if (this.conf.settings.ship_request_rev) {
+            this.shipRev = this.conf.settings.ship_request_rev;
+        }
+
         this.baseRequest = {
             max_messages_in_flight: this.conf.prefetch.read,
             have_positions: [],
@@ -73,12 +82,23 @@ export default class StateReader extends HyperionWorker {
             fetch_deltas: this.conf.indexer.fetch_deltas
         };
 
-        // setInterval(() => {
-        //     if (this.tempBlockSizeSum > 0) {
-        //         hLog(`Block reading rate: ${((this.tempBlockSizeSum / 10) / 1000000).toFixed(2)} MB/s`);
-        //         this.tempBlockSizeSum = 0;
-        //     }
-        // }, 10000);
+        if (this.shipRev === 'v1') {
+            this.baseRequest.fetch_block_header = true;
+        }
+
+        setInterval(async () => {
+            for (const blockId of this.forkedBlocks.keys()) {
+                const ts = this.forkedBlocks.get(blockId);
+                if (ts) {
+                    // if older than 30 sec remove from the map
+                    if ((ts + (30 * 1000)) > Date.now()) {
+                        await this.deleteForkedBlock(blockId);
+                    } else {
+                        this.forkedBlocks.delete(blockId);
+                    }
+                }
+            }
+        }, 5000);
     }
 
     distribute(data, cb) {
@@ -145,22 +165,14 @@ export default class StateReader extends HyperionWorker {
     assertQueues(): void {
         if (this.isLiveReader) {
             const live_queue = this.chain + ':live_blocks';
-            this.ch.assertQueue(live_queue, {
-                durable: true
-            });
+            this.ch.assertQueue(live_queue, {durable: true});
             this.ch.on('drain', () => {
-                console.log('drain...');
                 this.qStatusMap[live_queue] = true;
             });
         } else {
             for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                // console.log(`Asserting queue ${this.chain + ":blocks:" + (i + 1)}`);
-                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {
-                    durable: true
-                });
-
+                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {durable: true});
                 this.ch.on('drain', () => {
-                    console.log('drain...');
                     this.qStatusMap[this.chain + ":blocks:" + (i + 1)] = true;
                 });
             }
@@ -175,23 +187,27 @@ export default class StateReader extends HyperionWorker {
         }
     }
 
+    newRange(data: any) {
+        debugLog(`new_range [${data.first_block},${data.last_block}]`);
+        this.local_distributed_count = 0;
+        clearInterval(this.completionMonitoring);
+        this.completionMonitoring = null;
+        this.completionSignaled = false;
+        this.local_last_block = data.last_block;
+        this.range_size = parseInt(data.last_block) - parseInt(data.first_block);
+        if (this.allowRequests) {
+            this.requestBlockRange(data.first_block, data.last_block);
+            this.pendingRequest = null;
+        } else {
+            this.pendingRequest = [data.first_block, data.last_block];
+        }
+    }
+
     onIpcMessage(msg: any): void {
         switch (msg.event) {
             case 'new_range': {
                 if (msg.target === process.env.worker_id) {
-                    debugLog(`new_range [${msg.data.first_block},${msg.data.last_block}]`);
-                    this.local_distributed_count = 0;
-                    clearInterval(this.completionMonitoring);
-                    this.completionMonitoring = null;
-                    this.completionSignaled = false;
-                    this.local_last_block = msg.data.last_block;
-                    this.range_size = parseInt(msg.data.last_block) - parseInt(msg.data.first_block);
-                    if (this.allowRequests) {
-                        this.requestBlockRange(msg.data.first_block, msg.data.last_block);
-                        this.pendingRequest = null;
-                    } else {
-                        this.pendingRequest = [msg.data.first_block, msg.data.last_block];
-                    }
+                    this.newRange(msg.data);
                 }
                 break;
             }
@@ -207,6 +223,7 @@ export default class StateReader extends HyperionWorker {
                 break;
             }
             case 'set_delay': {
+                console.log('received new delay action from master')
                 this.delay_active = msg.data.state;
                 this.block_processing_delay = msg.data.delay;
                 break;
@@ -225,7 +242,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     async run(): Promise<void> {
-        this.startQueueWatcher();
+        // this.startQueueWatcher();
         this.events.once('ready', () => {
             this.startWS();
         });
@@ -275,6 +292,7 @@ export default class StateReader extends HyperionWorker {
             this.ackBlockRange(block_array.length);
         } else {
             await this.onMessage(block_array[0]);
+            this.ackBlockRange(block_array.length);
         }
         if (this.delay_active) {
             await new Promise(resolve => setTimeout(resolve, this.block_processing_delay));
@@ -282,165 +300,197 @@ export default class StateReader extends HyperionWorker {
         return true;
     }
 
-    private async onMessage(data: any) {
+    private async onMessage(data: Buffer) {
         // this.tempBlockSizeSum += data.length;
-        if (this.abi) {
 
-            // NORMAL OPERATION MODE WITH ABI PRESENT
-            if (!this.recovery) {
-
-                // NORMAL OPERATION MODE
-                if (process.env.worker_role) {
-                    const res = deserialize('result', data, this.txEnc, this.txDec, this.types)[1];
-
-                    if (res['this_block']) {
-
-                        const blk_num = res['this_block']['block_num'];
-                        const lib = res['last_irreversible'];
-
-                        if (res.block && res.traces && res.deltas) {
-                            debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
-                        } else {
-                            if (!res.traces) {
-                                debugLog('missing traces field');
-                            }
-                            if (!res.deltas) {
-                                debugLog('missing deltas field');
-                            }
-                            if (!res.block) {
-                                debugLog('missing block field');
-                            }
-                        }
-
-                        if (this.isLiveReader) {
-
-                            // LIVE READER MODE
-                            if (blk_num !== this.local_block_num + 1) {
-                                hLog(`Expected: ${this.local_block_num + 1}, received: ${blk_num}`);
-                                try {
-                                    await this.handleFork(res);
-                                } catch (e) {
-                                    hLog('Failed to handle fork during live reading!');
-                                    hLog(e.message);
-                                }
-                            } else {
-                                this.local_block_num = blk_num;
-                            }
-
-                            if (lib.block_num > this.local_lib) {
-                                this.local_lib = lib.block_num;
-                                // emit lib update event
-                                process.send({event: 'lib_update', data: lib});
-                            }
-
-                            this.stageOneDistQueue.push({num: blk_num, content: data});
-                            return 1;
-                        } else {
-
-                            // Detect skipped first block
-                            if (!this.receivedFirstBlock) {
-                                if (blk_num !== this.local_block_num + 1) {
-                                    hLog(`WARNING: First block received was #${blk_num}, but #${this.local_block_num + 1} was expected!`);
-                                    hLog(`Make sure the block.log file contains the requested range, check with "eosio-blocklog --smoke-test"`);
-                                    this.local_block_num = blk_num - 1;
-                                }
-                                this.receivedFirstBlock = true;
-                            }
-
-                            // BACKLOG MODE
-                            if (this.future_block !== 0 && this.future_block === blk_num) {
-                                console.log('Missing block ' + blk_num + ' received!');
-                            } else {
-                                this.future_block = 0;
-                            }
-
-                            if (blk_num === this.local_block_num + 1) {
-                                this.local_block_num = blk_num;
-                                if (res['block'] || res['traces'] || res['deltas']) {
-                                    this.stageOneDistQueue.push({num: blk_num, content: data});
-                                    return 1;
-                                } else {
-                                    if (blk_num === 1) {
-                                        this.stageOneDistQueue.push({num: blk_num, content: data});
-                                        return 1;
-                                    } else {
-                                        return 0;
-                                    }
-                                }
-                            } else {
-                                console.log(`[${process.env['worker_role']}] missing block: ${(this.local_block_num + 1)} current block: ${blk_num}`);
-                                this.future_block = blk_num + 1;
-                                return 0;
-                            }
-                        }
-                    } else {
-                        return 0;
-                    }
-                } else {
-                    console.log("[FATAL ERROR] undefined role! Exiting now!");
-                    this.ship.close();
-                    process.exit(1);
-                }
-
-            } else {
-
-                // RECOVERY MODE
-                if (this.isLiveReader) {
-                    console.log(`Resuming live stream from block ${this.local_block_num}...`);
-                    this.requestBlocks(this.local_block_num + 1);
-                    this.recovery = false;
-                } else {
-                    if (!this.completionSignaled) {
-                        let first = this.local_block_num;
-                        let last = this.local_last_block;
-                        if (last === 0) {
-                            last = parseInt(process.env.last_block, 10);
-                        }
-                        last = last - 1;
-                        if (first === 0) {
-                            first = parseInt(process.env.first_block, 10);
-                        }
-                        console.log(`Resuming stream from block ${first} to ${last}...`);
-                        if (last - first > 0) {
-                            this.requestBlockRange(first, last);
-                            this.recovery = false;
-                        } else {
-                            console.log('Invalid range!');
-                        }
-                    } else {
-                        console.log('Reader already finished, no need to restart.');
-                        this.recovery = false;
-                    }
-                }
-
-            }
-        } else {
+        if (!this.abi) {
             this.processFirstABI(data);
             return 1;
         }
-    }
 
-    private processFirstABI(data: any) {
-        this.abi = JSON.parse(data);
-        this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
-        this.abi.tables.map(table => this.tables.set(table.name, table.type));
-        process.send({event: 'init_abi', data: data});
-        // console.log('state reader sent first abi!');
-        if (!this.conf.indexer.disable_reading) {
-            switch (process.env['worker_role']) {
-                case 'reader': {
-                    this.requestBlocks(0);
-                    break;
-                }
-                case 'continuous_reader': {
-                    this.requestBlocks(parseInt(process.env['worker_last_processed_block'], 10));
-                    break;
-                }
-            }
-        } else {
+        if (!process.env.worker_role) {
+            console.log("[FATAL ERROR] undefined role! Exiting now!");
             this.ship.close();
             process.exit(1);
+            return;
         }
+
+        // NORMAL OPERATION MODE
+        if (!this.recovery) {
+            const result = deserialize('result', data, this.txEnc, this.txDec, this.types);
+            if (result[0] === 'get_status_result_v0') {
+                this.shipInitStatus = result[1];
+                hLog(`\n| SHIP Status Report\n| Init block: ${this.shipInitStatus['chain_state_begin_block']}\n| Head block: ${this.shipInitStatus['chain_state_end_block']}`);
+                const chain_state_begin_block = this.shipInitStatus['chain_state_begin_block'];
+                if (!this.conf.indexer.disable_reading) {
+                    switch (process.env['worker_role']) {
+                        case 'reader': {
+                            if (chain_state_begin_block > process.env.first_block) {
+                                hLog(`First saved block is ahead of requested range! - Req: ${process.env.first_block} | First: ${chain_state_begin_block}`);
+                                hLog('Requesting a single block');
+                                if (this.conf.settings.ignore_snapshot) {
+                                    this.local_block_num = chain_state_begin_block;
+                                    process.send({event: 'update_init_block', block_num: chain_state_begin_block + 2,});
+                                    this.newRange({
+                                        first_block: chain_state_begin_block + 1,
+                                        last_block: chain_state_begin_block + this.conf.scaling.batch_size
+                                    });
+                                } else {
+                                    process.send({event: 'update_init_block', block_num: chain_state_begin_block + 1});
+                                    this.newRange({
+                                        first_block: chain_state_begin_block,
+                                        last_block: chain_state_begin_block + 1
+                                    });
+                                }
+                            } else {
+                                this.requestBlocks(0);
+                            }
+                            break;
+                        }
+                        case 'continuous_reader': {
+                            this.requestBlocks(parseInt(process.env['worker_last_processed_block'], 10));
+                            break;
+                        }
+                    }
+                } else {
+                    this.ship.close();
+                    process.exit(1);
+                }
+            } else {
+                const res = result[1];
+
+                if (res['this_block']) {
+                    const blk_num = res['this_block']['block_num'];
+                    const lib = res['last_irreversible'];
+                    const task_payload = {num: blk_num, content: data};
+
+                    if (res.block && res.traces && res.deltas) {
+                        debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
+                    } else {
+                        if (!res.traces) {
+                            debugLog('missing traces field');
+                        }
+                        if (!res.deltas) {
+                            debugLog('missing deltas field');
+                        }
+                        if (!res.block) {
+                            debugLog('missing block field');
+                        }
+                    }
+
+                    if (this.isLiveReader) {
+
+                        // LIVE READER MODE
+                        if (blk_num !== this.local_block_num + 1) {
+                            hLog(`Expected: ${this.local_block_num + 1}, received: ${blk_num}`);
+                            try {
+                                // delete all previously stored data for the forked blocks
+                                await this.handleFork(res);
+                            } catch (e) {
+                                hLog(`Failed to handle fork during live reading! - Error: ${e.message}`);
+                            }
+                        } else {
+                            this.local_block_num = blk_num;
+                        }
+
+                        if (lib.block_num > this.local_lib) {
+                            this.local_lib = lib.block_num;
+                            // emit lib update event
+                            process.send({event: 'lib_update', data: lib});
+                        }
+
+                        await this.stageOneDistQueue.push(task_payload);
+                        return 1;
+                    } else {
+
+                        // Detect skipped first block
+                        if (!this.receivedFirstBlock) {
+                            if (blk_num !== this.local_block_num + 1) {
+                                hLog(`WARNING: First block received was #${blk_num}, but #${this.local_block_num + 1} was expected!`);
+                                hLog(`Make sure the block.log file contains the requested range, check with "eosio-blocklog --smoke-test"`);
+                                this.local_block_num = blk_num - 1;
+                            }
+                            this.receivedFirstBlock = true;
+                        }
+
+                        // BACKLOG MODE
+                        if (this.future_block !== 0 && this.future_block === blk_num) {
+                            console.log('Missing block ' + blk_num + ' received!');
+                        } else {
+                            this.future_block = 0;
+                        }
+
+                        if (blk_num === this.local_block_num + 1) {
+                            this.local_block_num = blk_num;
+                            if (res['block'] || res['traces'] || res['deltas']) {
+                                await this.stageOneDistQueue.push(task_payload);
+                                return 1;
+                            } else {
+                                if (blk_num === 1) {
+                                    await this.stageOneDistQueue.push(task_payload);
+                                    return 1;
+                                } else {
+                                    return 0;
+                                }
+                            }
+                        } else {
+                            hLog(`Missing block: ${(this.local_block_num + 1)} current block: ${blk_num}`)
+                            this.future_block = blk_num + 1;
+                            return 0;
+                        }
+                    }
+                } else {
+                    return 0;
+                }
+            }
+
+        } else {
+
+            // RECOVERY MODE
+            if (this.isLiveReader) {
+                hLog(`Resuming live stream from block ${this.local_block_num}...`);
+                this.requestBlocks(this.local_block_num + 1);
+                this.recovery = false;
+            } else {
+                if (!this.completionSignaled) {
+                    let first = this.local_block_num;
+                    let last = this.local_last_block;
+                    if (last === 0) {
+                        last = parseInt(process.env.last_block, 10);
+                    }
+                    last = last - 1;
+                    if (first === 0) {
+                        first = parseInt(process.env.first_block, 10);
+                    }
+                    if (first > last) {
+                        last = first + 1;
+                    }
+                    hLog(`Resuming stream from block ${first} to ${last}...`);
+                    if (last - first > 0) {
+                        this.requestBlockRange(first, last);
+                        this.recovery = false;
+                    } else {
+                        hLog('Invalid range!');
+                    }
+                } else {
+                    hLog('Reader already finished, no need to restart.');
+                    this.recovery = false;
+                }
+            }
+
+        }
+    }
+
+    private processFirstABI(data: Buffer) {
+        const abiString = data.toString();
+        AbiEOS.load_abi("0", abiString);
+        this.abi = JSON.parse(abiString);
+        this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
+        this.abi.tables.map(table => this.tables.set(table.name, table.type));
+        // notify master about first abi
+        process.send({event: 'init_abi', data: abiString});
+        // request status
+        this.send(['get_status_request_v0', {}]);
     }
 
     private requestBlocks(start: number) {
@@ -449,8 +499,9 @@ export default class StateReader extends HyperionWorker {
         const request = this.baseRequest;
         request.start_block_num = parseInt(first_block > 0 ? first_block.toString() : '1', 10);
         request.end_block_num = parseInt(last_block.toString(), 10);
-        debugLog(`Reader ${process.env.worker_id} requestBlocks from: ${request.start_block_num} to: ${request.end_block_num}`);
-        this.send(['get_blocks_request_v0', request]);
+        const reqType = 'get_blocks_request_' + this.shipRev;
+        debugLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
+        this.send([reqType, request]);
     }
 
     private send(req_data: (string | any)[]) {
@@ -462,35 +513,66 @@ export default class StateReader extends HyperionWorker {
         request.start_block_num = parseInt(first, 10);
         this.local_block_num = request.start_block_num - 1;
         request.end_block_num = parseInt(last, 10);
-        debugLog(`Reader ${process.env.worker_id} requestBlockRange from: ${request.start_block_num} to: ${request.end_block_num}`);
-        this.send(['get_blocks_request_v0', request]);
+        const reqType = 'get_blocks_request_' + this.shipRev;
+        debugLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
+        this.send([reqType, request]);
+    }
+
+    private async deleteForkedBlock(block_id: string) {
+        const searchBody = {
+            query: {bool: {must: [{term: {block_id: block_id}}]}}
+        };
+
+        // remove deltas
+        const dbqResultDelta = await this.client.deleteByQuery({
+            index: this.chain + '-delta-' + this.conf.settings.index_version + '-*',
+            refresh: true,
+            body: searchBody
+        });
+        if (dbqResultDelta.body && dbqResultDelta.statusCode === 200) {
+            hLog(`${dbqResultDelta.body.deleted} deltas removed from ${block_id}`);
+        } else {
+            hLog('Operation failed');
+        }
+
+        // remove actions
+        const dbqResultAction = await this.client.deleteByQuery({
+            index: this.chain + '-action-' + this.conf.settings.index_version + '-*',
+            refresh: true,
+            body: searchBody
+        });
+        if (dbqResultAction.body && dbqResultAction.statusCode === 200) {
+            hLog(`${dbqResultAction.body.deleted} traces removed from ${block_id}`);
+        } else {
+            hLog('Operation failed');
+        }
     }
 
     private async handleFork(data: any) {
         const this_block = data['this_block'];
         await this.logForkEvent(this_block['block_num'], this.local_block_num, this_block['block_id']);
         hLog(`Handling fork event: new block ${this_block['block_num']} has id ${this_block['block_id']}`);
-        hLog(`Removing indexed data from ${this_block['block_num']} to ${this.local_block_num}`);
-        const searchBody = {
-            query: {
-                bool: {
-                    must: [{range: {block_num: {gte: this_block['block_num'], lte: this.local_block_num}}}]
-                }
+
+        let targetBlock = this_block['block_num'];
+        while (targetBlock < this.local_block_num + 1) {
+            // fetch by block number to find the forked block_id
+            const blockData = await this.client.get({
+                index: this.chain + '-block-' + this.conf.settings.index_version,
+                id: targetBlock
+            });
+            targetBlock++;
+            if (blockData.body) {
+                const targetBlockId = blockData.body._source.block_id;
+                this.forkedBlocks.set(targetBlockId, Date.now());
+                this.deleteForkedBlock(targetBlockId).catch(console.log);
             }
-        };
-        const indexName = this.chain + '-delta-' + this.conf.settings.index_version + '-*';
-        await this.client.deleteByQuery({
-            index: indexName,
-            refresh: true,
-            body: searchBody
-        });
-        hLog(`Live reading resumed!`);
+        }
     }
 
     private async logForkEvent(starting_block, ending_block, new_id) {
         process.send({event: 'fork_event', data: {starting_block, ending_block, new_id}});
         await this.client.index({
-            index: this.chain + '-logs',
+            index: this.chain + '-logs-' + this.conf.settings.index_version,
             body: {
                 type: 'fork',
                 '@timestamp': new Date().toISOString(),
@@ -508,21 +590,37 @@ export default class StateReader extends HyperionWorker {
 
     private startQueueWatcher() {
         setInterval(() => {
-            let checkArr = [];
-            for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                const q = this.chain + ":blocks:" + (i + 1);
-                checkArr.push(this.manager.checkQueueSize(q));
-            }
-            Promise.all(checkArr).then(data => {
-                if (data.some(el => el > this.conf.scaling.block_queue_limit)) {
-                    this.allowRequests = false;
-                } else {
-                    this.allowRequests = true;
-                    if (this.pendingRequest) {
-                        this.processPending();
+            if (this.isLiveReader) {
+                this.manager.checkQueueSize(this.chain + ":live_blocks").then(value => {
+                    if (value > this.conf.scaling.block_queue_limit) {
+                        this.allowRequests = false;
+                    } else {
+                        this.allowRequests = true;
+                        if (this.pendingRequest) {
+                            this.processPending();
+                        }
                     }
+                });
+            } else {
+                let checkArr = [];
+                for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
+                    const q = this.chain + ":blocks:" + (i + 1);
+                    checkArr.push(this.manager.checkQueueSize(q));
                 }
-            });
+                Promise.all(checkArr).then(data => {
+                    if (data.some(el => el > this.conf.scaling.block_queue_limit)) {
+                        if (this.allowRequests) {
+                            hLog('ship reader paused!', data);
+                        }
+                        this.allowRequests = false;
+                    } else {
+                        this.allowRequests = true;
+                        if (this.pendingRequest) {
+                            this.processPending();
+                        }
+                    }
+                });
+            }
         }, this.queueSizeCheckInterval);
     }
 

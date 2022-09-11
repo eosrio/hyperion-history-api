@@ -3,6 +3,7 @@ const hyperionModule = {
   contract: 'fio.treasury',
   action: 'bprewdupdate',
   parser_version: ['1.8'],
+  defineQueryPrefix: 'bprewdupdate',
   mappings: {
     action: {
       '@bprewdupdate': {
@@ -13,7 +14,6 @@ const hyperionModule = {
     },
   },
   handler: (action) => {
-    // attach action extras here
     const data = action['act']['data'];
     action['@bprewdupdate'] = {
       amount: data['amount'],

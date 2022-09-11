@@ -1,27 +1,28 @@
-import * as fastify_static from "fastify-static";
 import {join} from "path";
-import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
-import {createReadStream, existsSync, readFileSync, unlinkSync} from "fs";
-import * as AutoLoad from "fastify-autoload";
+import {FastifyError, FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
+import {createReadStream} from "fs";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
+import autoLoad from 'fastify-autoload';
 import got from "got";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     server.route({
         url,
         method: 'GET',
-        schema: {hide: true},
-        handler: async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+        schema: {
+            hide: true
+        },
+        handler: async (request: FastifyRequest, reply: FastifyReply) => {
             reply.redirect(redirectTo);
         }
     });
 }
 
 function addRoute(server: FastifyInstance, handlersPath: string, prefix: string) {
-    server.register(AutoLoad, {
+    server.register(autoLoad, {
         dir: join(__dirname, 'routes', handlersPath),
         ignorePattern: /.*(handler|schema).js/,
+        dirNameRoutePrefix: false,
         options: {prefix}
     });
 }
@@ -36,11 +37,11 @@ export function registerRoutes(server: FastifyInstance) {
         '/v2/history',
         '/v2/state',
         '/v1/chain/*',
-        '/v1/chain',
+        '/v1/chain'
     ];
     server.addHook('onRoute', opts => {
         if (!ignoreList.includes(opts.url)) {
-            if (opts.url.startsWith('/v') && !opts.url.startsWith('/v2/explore') && !opts.url.startsWith('/v2/docs')) {
+            if (opts.url.startsWith('/v')) {
                 routeSet.add(opts.url);
             }
         }
@@ -60,6 +61,8 @@ export function registerRoutes(server: FastifyInstance) {
 
     // chain api redirects
     addRoute(server, 'v1-chain', '/v1/chain');
+
+	// other v1 requests
     server.route({
         url: '/v1/chain/*',
         method: ["GET", "POST"],
@@ -67,7 +70,10 @@ export function registerRoutes(server: FastifyInstance) {
             summary: "Wildcard chain api handler",
             tags: ["chain"]
         },
-        handler: async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+        handler: async (request: FastifyRequest, reply: FastifyReply) => {
+
+            console.log(request.url);
+
             await handleChainApiRedirect(request, reply, server);
         }
     });
@@ -80,7 +86,7 @@ export function registerRoutes(server: FastifyInstance) {
             summary: "Get list of supported APIs",
             tags: ["node"]
         },
-        handler: async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+        handler: async (request: FastifyRequest, reply: FastifyReply) => {
             const data = await got.get(`${server.chain_api}/v1/node/get_supported_apis`).json() as any;
             if (data.apis && data.apis.length > 0) {
                 const apiSet = new Set(server.routeSet);
@@ -92,88 +98,20 @@ export function registerRoutes(server: FastifyInstance) {
         }
     });
 
-    server.addHook('onError', (request, reply, error, done) => {
-        console.log(`[${request.req.headers['x-real-ip']}] ${request.req.method} ${request.req.url} failed with error: ${error.message}`);
+    server.addHook('onError', (request: FastifyRequest, reply: FastifyReply, error: FastifyError, done) => {
+        console.log(`[${request.headers['x-real-ip'] || request.ip}] ${request.method} ${request.url} failed >> ${error.message}`);
         done();
     });
 
-    // server.addHook('onResponse', (request, reply, done) => {
-    //     if (reply.res.statusCode !== 200) {
-    //         console.log(`${request.req.url} - code: ${reply.res.statusCode}`);
-    //     }
-    //     done();
-    // });
-
-    // Serve integrated explorer
-    if (server.manager.config.api.enable_explorer) {
-
-        server.register(require('fastify-compress'), {global: false});
-
-        try {
-            const _data = readFileSync(join(__dirname, '..', 'hyperion-explorer', 'src', 'manifest.webmanifest'));
-            const tempPath = join(__dirname, '..', 'hyperion-explorer', 'dist', 'manifest.webmanifest');
-            if (existsSync(tempPath)) {
-                unlinkSync(tempPath);
-            }
-            const baseManifest = JSON.parse(_data.toString());
-            baseManifest.name = `Hyperion Explorer - ${server.manager.config.api.chain_name}`;
-            baseManifest.short_name = baseManifest.name;
-            server.get('/v2/explore/manifest.webmanifest', (request, reply) => {
-                reply.send(baseManifest);
-            });
-        } catch (e) {
-            console.log(e);
-        }
-
-        server.register(fastify_static, {
-            root: join(__dirname, '..', 'hyperion-explorer', 'dist'),
-            redirect: true,
-            wildcard: false,
-            prefix: '/v2/explore',
-            setHeaders: (res: ServerResponse, path) => {
-                if (path.endsWith('/ngsw-worker.js')) {
-                    res.setHeader('Service-Worker-Allowed', '/');
-                }
-            }
-        });
-
-        server.get(
-            '/v2/explore/**/*',
-            {
-                schema: {
-                    tags: ['internal']
-                }
-            },
-            (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
-                reply.sendFile('index.html', join(__dirname, '..', 'hyperion-explorer', 'dist'));
-            }
-        );
-
-        server.get(
-            '/v2/explorer_metadata',
-            {
-                schema: {
-                    tags: ['internal']
-                }
-            },
-            (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
-                reply.send({
-                    logo: server.manager.config.api.chain_logo_url,
-                    provider: server.manager.config.api.provider_name,
-                    provider_url: server.manager.config.api.provider_url,
-                    chain_name: server.manager.config.api.chain_name,
-                    chain_id: server.manager.conn.chains[server.manager.chain].chain_id,
-                    custom_core_token: server.manager.config.api.custom_core_token
-                });
-            });
-    }
-
     if (server.manager.config.features.streaming) {
         // steam client lib
-        server.get('/stream-client.js', {schema: {tags: ['internal']}}, (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
-            const stream = createReadStream('./client_bundle.js');
-            reply.type('application/javascript').send(stream);
-        });
+        server.get(
+            '/stream-client.js',
+            {schema: {tags: ['internal']}},
+            (request: FastifyRequest, reply: FastifyReply) => {
+                const stream = createReadStream('./hyperion-stream-client.js');
+                reply.type('application/javascript').send(stream);
+            });
     }
 
     // Redirect routes to documentation

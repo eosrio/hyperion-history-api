@@ -1,16 +1,17 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {getTrackTotalHits, timedQuery} from "../../../helpers/functions";
 
 async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
 
+    const query: any = request.query;
+
     // Pagination
     let skip, limit;
-    skip = parseInt(request.query.skip, 10);
+    skip = parseInt(query.skip, 10);
     if (skip < 0) {
         return 'invalid skip parameter';
     }
-    limit = parseInt(request.query.limit, 10);
+    limit = parseInt(query.limit, 10);
     if (limit < 1) {
         return 'invalid limit parameter';
     }
@@ -22,8 +23,8 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     };
 
     // Filter by accounts
-    if (request.query.account) {
-        const accounts = request.query.account.split(',');
+    if (query.account) {
+        const accounts = query.account.split(',');
         for(const acc of accounts) {
             queryStruct.bool.must.push({
                 "bool": {
@@ -37,28 +38,28 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     // Filter by proposer account
-    if (request.query.proposer) {
-        queryStruct.bool.must.push({"term": {"proposer": request.query.proposer}});
+    if (query.proposer) {
+        queryStruct.bool.must.push({"term": {"proposer": query.proposer}});
     }
 
     // Filter by proposal name
-    if (request.query.proposal) {
-        queryStruct.bool.must.push({"term": {"proposal_name": request.query.proposal}});
+    if (query.proposal) {
+        queryStruct.bool.must.push({"term": {"proposal_name": query.proposal}});
     }
 
     // Filter by execution status
-    if (typeof request.query.executed !== 'undefined') {
-        queryStruct.bool.must.push({"term": {"executed": request.query.executed}});
+    if (typeof query.executed !== 'undefined') {
+        queryStruct.bool.must.push({"term": {"executed": query.executed}});
     }
 
     // Filter by requested actors
-    if (request.query.requested) {
-        queryStruct.bool.must.push({"term": {"requested_approvals.actor": request.query.requested}});
+    if (query.requested) {
+        queryStruct.bool.must.push({"term": {"requested_approvals.actor": query.requested}});
     }
 
     // Filter by provided actors
-    if (request.query.provided) {
-        queryStruct.bool.must.push({"term": {"provided_approvals.actor": request.query.provided}});
+    if (query.provided) {
+        queryStruct.bool.must.push({"term": {"provided_approvals.actor": query.provided}});
     }
 
     // If no filter switch to full match
@@ -97,7 +98,7 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
 }
 
 export function getProposalsHandler(fastify: FastifyInstance, route: string) {
-    return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
         reply.send(await timedQuery(getProposals, fastify, request, route));
     }
 }

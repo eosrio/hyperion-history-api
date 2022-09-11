@@ -7,7 +7,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         getRouteName(__filename),
         'Retrieves contract code',
         {
-            "account_name": 'AccountName#',
+            "account_name": {$ref: 'AccountName#'},
             "code_as_wasm": {
                 "type": "integer",
                 "default": 1,

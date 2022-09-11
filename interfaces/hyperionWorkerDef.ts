@@ -2,6 +2,7 @@ import * as cluster from "cluster";
 
 export interface HyperionWorkerDef {
     worker_id?: number;
+    failures?: number;
     worker_role?: string;
     worker_queue?: string;
     queue?: string;

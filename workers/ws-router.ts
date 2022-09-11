@@ -1,7 +1,8 @@
 import {HyperionWorker} from "./hyperionWorker";
 
-import * as IOServer from 'socket.io';
+import {Server, Socket} from "socket.io";
 import {checkFilter, hLog} from "../helpers/common_functions";
+import {createServer} from "http";
 
 const greylist = ['eosio.token'];
 
@@ -17,7 +18,7 @@ export default class WSRouter extends HyperionWorker {
     codeDeltaMap = new Map();
     payerMap = new Map();
     activeRequests = new Map();
-    private io: IOServer.Server;
+    private io: Server;
     private totalClients = 0;
 
     constructor() {
@@ -63,6 +64,10 @@ export default class WSRouter extends HyperionWorker {
         if (!this.firstData) {
             this.firstData = true;
         }
+
+        // push to plugin handlers
+        this.mLoader.processStreamEvent(msg);
+
         switch (msg.properties.headers.event) {
             case 'trace': {
                 const actHeader = msg.properties.headers;
@@ -310,14 +315,14 @@ export default class WSRouter extends HyperionWorker {
     }
 
     initRoutingServer() {
-        const server = require('http').createServer();
-        this.io = IOServer(server, {
+        const server = createServer();
+        this.io = new Server(server, {
             path: '/router',
             serveClient: false,
             cookie: false
         });
 
-        this.io.on('connection', (socket) => {
+        this.io.on('connection', (socket: Socket) => {
             console.log(`[ROUTER] New relay connected with ID = ${socket.id}`);
             this.relays[socket.id] = {clients: 0, connected: true};
             socket.on('event', (data, callback) => {
@@ -389,7 +394,7 @@ export default class WSRouter extends HyperionWorker {
 
     private forwardActionMessage(msg: any, link: any, notified: string[]) {
         let allow = false;
-        const relay = this.io.sockets.connected[link.relay];
+        const relay = this.io.of('/').sockets.get(link.relay);
         if (relay) {
             if (link.account !== '') {
                 allow = notified.indexOf(link.account) !== -1;
@@ -412,7 +417,7 @@ export default class WSRouter extends HyperionWorker {
 
     private forwardDeltaMessage(msg, link, payer) {
         let allow = false;
-        const relay = this.io.sockets.connected[link.relay];
+        const relay = this.io.of('/').sockets.get(link.relay);
         if (relay) {
             if (link.payer !== '') {
                 allow = link.payer === payer;

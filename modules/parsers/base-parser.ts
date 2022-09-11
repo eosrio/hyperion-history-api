@@ -4,9 +4,9 @@ import {Message} from "amqplib";
 import DSPoolWorker from "../../workers/ds-pool";
 import {TrxMetadata} from "../../interfaces/trx-metadata";
 import {ActionTrace} from "../../interfaces/action-trace";
-import {hLog} from "../../helpers/common_functions";
-import {HyperionAction} from "../../interfaces/hyperion-action";
+import {debugLog, hLog} from "../../helpers/common_functions";
 import {SerialBuffer} from "eosjs/dist/eosjs-serialize";
+import {HyperionActionAct} from "../../interfaces/hyperion-action";
 
 export abstract class BaseParser {
 
@@ -16,7 +16,7 @@ export abstract class BaseParser {
     filters: Filters;
     private readonly chain: string;
     flatten: boolean = false;
-    private actionReinterpretMap: Map<string, (act: HyperionAction) => any>;
+    private actionReinterpretMap: Map<string, (act: HyperionActionAct) => any>;
 
     protected constructor(cm: ConfigurationModule) {
         this.configModule = cm;
@@ -141,7 +141,7 @@ export abstract class BaseParser {
         });
     }
 
-    async reinterpretActionData(act: HyperionAction) {
+    async reinterpretActionData(act: HyperionActionAct) {
         if (this.actionReinterpretMap.has(`${act.account}::${act.name}`)) {
             // code and action
             return await this.actionReinterpretMap.get(`${act.account}::${act.name}`)(act);
@@ -176,13 +176,21 @@ export abstract class BaseParser {
             }
         }
 
+        // retry with last abi before the given block_num
+        if (!ds_act) {
+            debugLog('DS Failed ->>', original_act);
+            ds_act = await worker.common.deserializeActionAtBlockNative(worker, act, trx_data.block_num - 1);
+            debugLog('Retry with previous ABI ->>', ds_act);
+        }
+
         if (ds_act) {
+            // save serialized data
             action.act.data = ds_act;
             try {
                 worker.common.attachActionExtras(worker, action);
             } catch (e) {
-                hLog(e.message);
-                hLog(action?.act?.data);
+                hLog('Failed to call attachActionExtras:', e.message);
+                hLog(action?.act?.account, action?.act?.name, action?.act?.data);
             }
         } else {
             action['act'] = original_act;

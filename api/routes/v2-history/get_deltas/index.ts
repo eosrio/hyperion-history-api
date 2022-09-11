@@ -1,9 +1,9 @@
-import {FastifyInstance, RouteSchema} from "fastify";
+import {FastifyInstance, FastifySchema} from "fastify";
 import {getDeltasHandler} from "./get_deltas";
 import {addApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName} from "../../../helpers/functions";
 
 export default function (fastify: FastifyInstance, opts: any, next) {
-    const schema: RouteSchema = {
+    const schema: FastifySchema = {
         description: 'get state deltas',
         summary: 'get state deltas',
         tags: ['history'],
@@ -31,7 +31,11 @@ export default function (fastify: FastifyInstance, opts: any, next) {
             "before": {
                 description: 'filter before specified date (ISO8601)',
                 type: 'string'
-            }
+            },
+            "present": {
+                description: 'delta present flag',
+                type: 'number'
+            },
         }),
         response: extendResponseSchema({
             "deltas": {
@@ -40,12 +44,12 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                     type: 'object',
                     properties: {
                         "timestamp": {type: 'string'},
+                        "present": {type: 'number'},
                         "code": {type: 'string'},
                         "scope": {type: 'string'},
                         "table": {type: 'string'},
                         "primary_key": {type: 'string'},
                         "payer": {type: 'string'},
-                        "present": {type: 'boolean'},
                         "block_num": {type: 'number'},
                         "block_id": {type: 'string'},
                         "data": {

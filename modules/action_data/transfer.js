@@ -4,9 +4,9 @@ const hyperionModule = {
   chain: '*',
   contract: '*',
   action: 'transfer',
-  parser_version: ['1.8', '1.7'],
+  parser_version: ['2.1','1.8', '1.7'],
+  defineQueryPrefix: 'transfer',
   handler: (action) => {
-    // attach action extras here
     let qtd = null;
     const data = action['act']['data'];
     if (data['quantity'] && typeof data['quantity'] === 'string') {

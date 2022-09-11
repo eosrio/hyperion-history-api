@@ -1,5 +1,4 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {mergeDeltaMeta, timedQuery} from "../../../helpers/functions";
 import {applyTimeFilter} from "../get_actions/functions";
 
@@ -7,9 +6,10 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
 	let skip, limit;
 	let sort_direction = 'desc';
 	const mustArray = [];
-	for (const param in request.query) {
-		if (Object.prototype.hasOwnProperty.call(request.query, param)) {
-			const value = request.query[param];
+	const query: any = request.query;
+	for (const param in query) {
+		if (Object.prototype.hasOwnProperty.call(query, param)) {
+			const value = query[param];
 			switch (param) {
 				case 'limit': {
 					limit = parseInt(value, 10);
@@ -42,7 +42,7 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
 					break;
 				}
 				default: {
-					const values = request.query[param].split(",");
+					const values = query[param].split(",");
 					if (values.length > 1) {
 						const terms = {};
 						terms[param] = values;
@@ -61,7 +61,7 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
 	const maxDeltas = fastify.manager.config.api.limits.get_deltas ?? 1000;
 	const queryStruct = {bool: {must: mustArray}};
 
-	applyTimeFilter(request.query, queryStruct);
+	applyTimeFilter(query, queryStruct);
 
 	const results = await fastify.elastic.search({
 		"index": fastify.manager.chain + '-delta-*',
@@ -85,7 +85,7 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
 }
 
 export function getDeltasHandler(fastify: FastifyInstance, route: string) {
-	return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+	return async (request: FastifyRequest, reply: FastifyReply) => {
 		reply.send(await timedQuery(getDeltas, fastify, request, route));
 	}
 }

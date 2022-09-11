@@ -1,3 +1,5 @@
+import {AlertManagerOptions} from "../modules/alertsManager";
+
 export interface ScalingConfigs {
     polling_interval: number;
     resume_trigger: number;
@@ -12,17 +14,21 @@ export interface ScalingConfigs {
     ds_pool_size: number;
     indexing_queues: number;
     ad_idx_queues: number;
-    "max_autoscale": number;
-    "auto_scale_trigger": number;
+    dyn_idx_queues: number;
+    max_autoscale: number;
+    auto_scale_trigger: number;
 }
 
 export interface MainSettings {
+    process_prefix?: string;
+    ignore_snapshot?: boolean;
+    ship_request_rev: string;
     custom_policy: string;
     bypass_index_map: boolean;
     hot_warm_policy: boolean;
     auto_mode_switch: boolean;
     ds_profiling: boolean;
-    max_ws_payload_kb: number;
+    max_ws_payload_mb: number;
     ipc_debug_rate?: number;
     bp_monitoring?: boolean;
     preview: boolean;
@@ -36,9 +42,13 @@ export interface MainSettings {
     bp_logs: boolean;
     dsp_parser: boolean;
     allow_custom_abi: boolean;
+    index_partition_size: number;
+    es_replicas: number;
 }
 
 export interface IndexerConfigs {
+    enabled?: boolean;
+    node_max_old_space_size?: number;
     fill_state: boolean;
     start_on: number;
     stop_on: number;
@@ -55,6 +65,7 @@ export interface IndexerConfigs {
     process_deltas: boolean;
     repair_mode: boolean;
     max_inline: number;
+    disable_delta_rm?: boolean;
 }
 
 interface ApiLimits {
@@ -71,14 +82,24 @@ interface ApiLimits {
     get_trx_actions?: number;
 }
 
+interface CachedRouteConfig {
+    path: string;
+    ttl: number
+}
+
 interface ApiConfigs {
+    enabled?: boolean;
+    pm2_scaling?: number;
+    node_max_old_space_size?: number;
+    disable_rate_limit?: boolean;
     disable_tx_cache?: boolean;
-	tx_cache_expiration_sec?: number | string;
-    custom_core_token: string;
+    tx_cache_expiration_sec?: number | string;
+    rate_limit_rpm?: number;
+    rate_limit_allow?: string[];
+    custom_core_token?: string;
     chain_api_error_log?: boolean;
     chain_api?: string;
     push_api?: string;
-    enable_explorer?: boolean;
     access_log: boolean;
     chain_name: string;
     server_port: number;
@@ -90,7 +111,8 @@ interface ApiConfigs {
     chain_logo_url: string;
     enable_caching: boolean,
     cache_life: number;
-    limits: ApiLimits
+    limits: ApiLimits,
+    v1_chain_cache?: CachedRouteConfig[]
 }
 
 interface HubLocation {
@@ -108,12 +130,14 @@ interface HyperionHubConfigs {
 }
 
 export interface HyperionConfig {
-    hub: HyperionHubConfigs;
-    settings: MainSettings;
-    scaling: ScalingConfigs;
-    indexer: IndexerConfigs;
-
     api: ApiConfigs;
+
+    settings: MainSettings;
+
+    hub: HyperionHubConfigs;
+    scaling: ScalingConfigs;
+
+    indexer: IndexerConfigs;
 
     blacklists: {
         actions: string[],
@@ -156,4 +180,10 @@ export interface HyperionConfig {
     };
 
     experimental: any;
+
+    plugins: {
+        [key: string]: any;
+    };
+
+    alerts: AlertManagerOptions;
 }

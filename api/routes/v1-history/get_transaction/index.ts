@@ -9,7 +9,10 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         tags: ['history'],
         body: {
             type: ['object', 'string'],
-            properties: {id: {description: 'transaction id', type: 'string'}},
+            properties: {
+                id: {description: 'transaction id', type: 'string'},
+                block_num_hint: {description: 'block number hint', type: 'integer'},
+            },
             required: ["id"]
         }
     });

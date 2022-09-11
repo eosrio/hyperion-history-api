@@ -38,7 +38,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                                 last_updated: {type: 'string'},
                                 auth: {},
                                 name: {type: 'string'},
-                                present: {type: 'boolean'}
+                                present: {type: 'number'}
                             }
                         }
                     }

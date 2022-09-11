@@ -7,7 +7,7 @@ import {Message} from "amqplib";
 import {parseDSPEvent} from "../modules/custom/dsp-parser";
 import {join, resolve} from "path";
 import {existsSync, readdirSync, readFileSync} from "fs";
-import * as flatstr from 'flatstr';
+import flatstr from 'flatstr';
 import IORedis from "ioredis";
 
 const abi_remapping = {
@@ -44,6 +44,8 @@ export default class DSPoolWorker extends HyperionWorker {
 
     customAbiMap: Map<string, CustomAbiDef[]> = new Map();
     private noActionCounter = 0;
+
+    // tx caching layer
     private readonly ioRedisClient: IORedis.Redis;
     txCacheExpiration = 3600;
 
@@ -185,6 +187,7 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
+    // noinspection JSUnusedGlobalSymbols
     async verifyLocalType(contract, type, block_num, field) {
         let _status;
         let resultType;
@@ -410,7 +413,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     async processTraces(transaction_trace, extra) {
         const {cpu_usage_us, net_usage_words} = transaction_trace;
-        const {block_num, producer, ts, inline_count, filtered, live, signatures} = extra;
+        const {block_num, block_id, producer, ts, inline_count, filtered, live, signatures} = extra;
 
         if (transaction_trace.status === 0) {
             let action_count = 0;
@@ -421,6 +424,7 @@ export default class DSPoolWorker extends HyperionWorker {
             const trx_data = {
                 trx_id,
                 block_num,
+                block_id,
                 producer,
                 cpu_usage_us,
                 net_usage_words,
@@ -442,7 +446,7 @@ export default class DSPoolWorker extends HyperionWorker {
             }
 
             for (const action_trace of action_traces) {
-                if (action_trace[0] === 'action_trace_v0') {
+                if (action_trace[0].startsWith('action_trace_')) {
                     const ds_status = await this.mLoader.parser.parseAction(this,
                         ts,
                         action_trace[1],
@@ -520,24 +524,12 @@ export default class DSPoolWorker extends HyperionWorker {
             }
 
             // Submit Actions after deduplication
-            // hLog(_finalTraces.length);
 
             const redisPayload = new Map<string, IORedis.ValueType>();
 
             for (const uniqueAction of _finalTraces) {
-
-                // let tref = process.hrtime.bigint();
-                // const buf2 = Buffer.from(JSON.stringify(uniqueAction));
-                // const t1 = Number(process.hrtime.bigint() - tref) / 1000;
-                //
-                // tref = process.hrtime.bigint();
-                // const payload = Buffer.from(flatstr(JSON.stringify(uniqueAction)));
-                // const t2 = Number(process.hrtime.bigint() - tref) / 1000;
-                // console.log(`flatstr improvement (uniqueAction): ${(((t1 / t2) * 100) - 100).toFixed(2)}% | size: ${payload.length}`);
-
                 const payload = Buffer.from(flatstr(JSON.stringify(uniqueAction)));
-                redisPayload.set(uniqueAction.global_sequence, payload);
-
+                redisPayload.set(uniqueAction.global_sequence.toString(), payload);
                 this.actionDsCounter++;
                 this.pushToActionsQueue(payload, block_num);
                 if (live === 'true') {
@@ -548,10 +540,10 @@ export default class DSPoolWorker extends HyperionWorker {
             // save payload to redis
             if (this.ioRedisClient && !this.conf.api.disable_tx_cache) {
                 try {
-                    await this.ioRedisClient.hset(trx_data.trx_id, redisPayload);
-                    await this.ioRedisClient.expire(trx_data.trx_id, this.txCacheExpiration);
+                    await this.ioRedisClient.hset('trx_' + trx_data.trx_id, redisPayload);
+                    await this.ioRedisClient.expire('trx_' + trx_data.trx_id, this.txCacheExpiration);
                 } catch (e) {
-                    hLog(e.message);
+                    hLog(e);
                 }
             }
         }
@@ -566,7 +558,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 headers: {block_num}
             });
             this.act_emit_idx++;
-            if (this.act_emit_idx > (this.conf.scaling.indexing_queues * this.conf.scaling.ad_idx_queues)) {
+            if (this.act_emit_idx > (this.conf.scaling.ad_idx_queues)) {
                 this.act_emit_idx = 1;
             }
         }
@@ -609,7 +601,7 @@ export default class DSPoolWorker extends HyperionWorker {
         if (!status) {
             debugLog('Contract not found on cache!');
         } else {
-            debugLog(`🗑️ Contract Successfully removed from cache!`);
+            debugLog(`🗑️ Contract successfully removed from cache!`);
         }
     }
 

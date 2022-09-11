@@ -7,7 +7,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         getRouteName(__filename),
         'Retrieves raw ABI for a contract based on account name',
         {
-            "account_name": 'AccountName#'
+            "account_name": {$ref: 'AccountName#'}
         },
         ["account_name"]
     );

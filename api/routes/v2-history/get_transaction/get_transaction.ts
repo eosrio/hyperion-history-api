@@ -1,28 +1,49 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
+import {GetInfoResult} from "eosjs/dist/eosjs-rpc-interfaces";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
-
 	const redis = fastify.redis;
-	const trxId = request.query.id.toLowerCase();
-	const cachedData = await redis.hgetall(trxId);
-
-	let hits;
-	let hits2;
-
+	const query: any = request.query;
+	const trxId = query.id.toLowerCase();
+	const conf = fastify.manager.config;
+	const cachedData = await redis.hgetall('trx_' + trxId);
 	const response = {
-		"query_time_ms": undefined,
-		"cached": undefined,
-		"cache_expires_in": undefined,
-		"executed": false,
-		"hot_only": false,
-		"trx_id": trxId,
-		"lib": undefined,
-		"actions": [],
-		"generated": undefined
+		query_time_ms: undefined,
+		executed: false,
+		cached: undefined,
+		cache_expires_in: undefined,
+		trx_id: query.id,
+		lib: undefined,
+		cached_lib: false,
+		actions: undefined,
+		generated: undefined,
+		error: undefined
 	};
+	let hits;
 
+	// build get_info request with caching
+	const $getInfo = new Promise<GetInfoResult>(resolve => {
+		const key = `${fastify.manager.chain}_get_info`;
+		fastify.redis.get(key).then(value => {
+			if (value) {
+				response.cached_lib = true;
+				resolve(JSON.parse(value));
+			} else {
+				fastify.eosjs.rpc.get_info().then(value1 => {
+					fastify.redis.set(key, JSON.stringify(value1), 'EX', 6);
+					response.cached_lib = false;
+					resolve(value1);
+				}).catch((reason) => {
+					console.log(reason);
+					response.error = 'failed to get last_irreversible_block_num'
+					resolve(null);
+				});
+			}
+		});
+	});
+
+	// reconstruct hits from cached data
 	if (cachedData && Object.keys(cachedData).length > 0) {
 		const gsArr = [];
 		for (let cachedDataKey in cachedData) {
@@ -31,83 +52,77 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 		gsArr.sort((a, b) => {
 			return a.global_sequence - b.global_sequence;
 		});
-		response.cache_expires_in = await redis.ttl(trxId);
 		hits = gsArr.map(value => {
-			return {_source: JSON.parse(value)}
+			return {
+				_source: JSON.parse(value)
+			};
 		});
+		const promiseResults = await Promise.all([
+			redis.ttl('trx_' + trxId),
+			$getInfo
+		]);
+		response.cache_expires_in = promiseResults[0];
+		response.lib = promiseResults[1].last_irreversible_block_num;
 	}
 
+	// search on ES if cache is not present
 	if (!hits) {
-		const _size = fastify.manager.config.api.limits.get_trx_actions || 100;
-		let indexPattern = fastify.manager.chain + '-action-*';
-		if (request.query.hot_only) {
-			indexPattern = fastify.manager.chain + '-action';
+		const _size = conf.api.limits.get_trx_actions || 100;
+		const blockHint = parseInt(query.block_hint, 10);
+		let indexPattern = '';
+		if (blockHint) {
+			const idxPart = Math.ceil(blockHint / conf.settings.index_partition_size).toString().padStart(6, '0');
+			indexPattern = fastify.manager.chain + `-action-${conf.settings.index_version}-${idxPart}`;
+		} else {
+			indexPattern = fastify.manager.chain + '-action-*';
 		}
+		let pResults;
+		try {
 
-		const pResults = await Promise.all([
-			fastify.eosjs.rpc.get_info(),
-			fastify.elastic.search({
+			// build search request
+			const $search = fastify.elastic.search({
 				index: indexPattern,
 				size: _size,
 				body: {
-					query: {bool: {must: [{term: {trx_id: request.query.id.toLowerCase()}}]}},
+					query: {bool: {must: [{term: {trx_id: trxId}}]}},
 					sort: {global_sequence: "asc"}
 				}
-			}),
-			fastify.elastic.search({
-				index: fastify.manager.chain + '-gentrx-*',
-				size: _size,
-				body: {
-					query: {bool: {must: [{term: {trx_id: request.query.id.toLowerCase()}}]}}
-				}
-			})
-		]);
+			});
 
-		const results = pResults[1];
-		const genTrxRes = pResults[2];
-
+			// execute in parallel
+			pResults = await Promise.all([$getInfo, $search]);
+		} catch (e) {
+			console.log(e.message);
+			if (e.meta.statusCode === 404) {
+				response.error = 'no data near block_hint'
+				return response;
+			}
+		}
+		hits = pResults[1]['body']['hits']['hits'];
 		response.lib = pResults[0].last_irreversible_block_num;
-
-		if (request.query.hot_only) {
-			response.hot_only = true;
-		}
-
-		hits = results['body']['hits']['hits'];
-		hits2 = genTrxRes['body']['hits']['hits'];
 	}
 
-	if (hits) {
-		if (hits.length > 0) {
-			let highestBlockNum = 0;
-			for (let action of hits) {
-				if (action._source.block_num > highestBlockNum) {
-					highestBlockNum = action._source.block_num;
-				}
+	if (hits.length > 0) {
+		let highestBlockNum = 0;
+		for (let action of hits) {
+			if (action._source.block_num > highestBlockNum) {
+				highestBlockNum = action._source.block_num;
 			}
-			for (let action of hits) {
-				if (action._source.block_num === highestBlockNum) {
-					action = action._source;
-					mergeActionMeta(action);
-					response.actions.push(action);
-				}
+		}
+		response.actions = [];
+		for (let action of hits) {
+			if (action._source.block_num === highestBlockNum) {
+				mergeActionMeta(action._source);
+				response.actions.push(action._source);
 			}
-			response.executed = true;
 		}
+		response.executed = true;
 	}
-
-	if (hits2 && hits2.length > 0) {
-		if (hits2[0]._source['@timestamp']) {
-			hits2[0]._source['timestamp'] = hits2[0]._source['@timestamp'];
-			delete hits2[0]._source['@timestamp'];
-		}
-		response.generated = hits2[0]._source;
-	}
-
 	return response;
 }
 
 export function getTransactionHandler(fastify: FastifyInstance, route: string) {
-	return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+	return async (request: FastifyRequest, reply: FastifyReply) => {
 		reply.send(await timedQuery(getTransaction, fastify, request, route));
 	}
 }

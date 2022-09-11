@@ -2,103 +2,145 @@ import {hLog} from "../helpers/common_functions";
 import {ConfigurationModule} from "../modules/config";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
-import {IncomingMessage, Server, ServerResponse} from "http";
-import * as Fastify from 'fastify';
-import * as Redis from 'ioredis';
+import IORedis from 'ioredis';
+import fastify from 'fastify'
 import {registerPlugins} from "./plugins";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes";
 import {generateOpenApiConfig} from "./config/open_api";
-import {createWriteStream, existsSync, mkdirSync, writeFileSync} from "fs";
+import {createWriteStream, existsSync, mkdirSync, readFileSync} from "fs";
 import {SocketManager} from "./socketManager";
-import got from "got";
-import {join} from "path";
-import * as io from 'socket.io-client';
+import {HyperionModuleLoader} from "../modules/loader";
+import {extendedActions} from "./routes/v2-history/get_actions/definitions";
+import {io, Socket} from "socket.io-client";
+import {CacheManager} from "./helpers/cacheManager";
+
+import {bootstrap} from 'global-agent';
+bootstrap();
 
 class HyperionApiServer {
 
-    private conf: HyperionConfig;
-    private readonly manager: ConnectionManager;
-    private readonly fastify: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>;
+    private hub: Socket;
+    private readonly fastify;
     private readonly chain: string;
-    socketManager: SocketManager;
+    private readonly conf: HyperionConfig;
+    private readonly manager: ConnectionManager;
+    private readonly cacheManager: CacheManager;
 
-    private hub: SocketIOClient.Socket;
+    socketManager: SocketManager;
+    mLoader: HyperionModuleLoader;
 
     constructor() {
+
+        const package_json = JSON.parse(readFileSync('./package.json').toString());
+        hLog(`--------- Hyperion API ${package_json.version} ---------`);
+
         const cm = new ConfigurationModule();
         this.conf = cm.config;
         this.chain = this.conf.settings.chain;
         process.title = `hyp-${this.chain}-api`;
         this.manager = new ConnectionManager(cm);
         this.manager.calculateServerHash();
-        this.manager.getHyperionVersion();
+        this.mLoader = new HyperionModuleLoader(cm);
+        this.cacheManager = new CacheManager(this.conf);
 
         if (!existsSync('./logs/' + this.chain)) {
             mkdirSync('./logs/' + this.chain, {recursive: true});
         }
 
         const logStream = createWriteStream('./logs/' + this.chain + '/api.access.log');
-        this.fastify = Fastify({
+
+        const loggerOpts = {
+            stream: logStream,
+            redact: ['req.headers.authorization'],
+            level: 'info',
+            prettyPrint: true,
+            serializers: {
+                res: (reply) => {
+                    return {
+                        statusCode: reply.statusCode
+                    };
+                },
+                req: (request) => {
+                    return {
+                        method: request.method,
+                        url: request.url,
+                        ip: request.headers['x-real-ip']
+                    }
+                }
+            }
+        };
+
+        this.fastify = fastify({
             ignoreTrailingSlash: false,
             trustProxy: true,
             pluginTimeout: 5000,
-            logger: this.conf.api.access_log ? {
-                stream: logStream,
-                redact: ['req.headers.authorization'],
-                level: 'info',
-                serializers: {
-                    res: (res) => {
-                        return {
-                            status: res.statusCode
-                        };
-                    },
-                    req: (req) => {
-                        return {
-                            method: req.method,
-                            url: req.url,
-                            ip: req.headers['x-real-ip']
-                        }
-                    }
-                }
-            } : false
+            logger: this.conf.api.access_log ? loggerOpts : false
         });
+
+        this.fastify.decorate('cacheManager', this.cacheManager);
+
         this.fastify.decorate('manager', this.manager);
 
-        if (this.conf.api.chain_api && this.conf.api.chain_api !== "") {
-            this.fastify.decorate('chain_api', this.conf.api.chain_api);
-        } else {
-            this.fastify.decorate('chain_api', this.manager.conn.chains[this.chain].http);
+        // import get_actions query params from custom modules
+        const extendedActionsSet: Set<string> = new Set([...extendedActions]);
+        for (const qPrefix of this.mLoader.extendedActions) {
+            extendedActionsSet.add(qPrefix);
         }
+        this.fastify.decorate('allowedActionQueryParamSet', extendedActionsSet);
 
-        if (this.conf.api.push_api && this.conf.api.push_api !== "") {
+        // define chain api url for /v1/chain/ redirects
+        let chainApiUrl: string = this.conf.api.chain_api;
+        if (chainApiUrl === null || chainApiUrl === "") {
+            chainApiUrl = this.manager.conn.chains[this.chain].http;
+        }
+        this.fastify.decorate('chain_api', chainApiUrl);
+
+        // define optional push api url for /v1/chain/push_transaction
+        if (this.conf.api.push_api) {
             this.fastify.decorate('push_api', this.conf.api.push_api);
         }
 
-        console.log(`Chain API URL: ${this.fastify.chain_api}`);
-        console.log(`Push API URL: ${this.fastify.push_api}`);
+        hLog(`Chain API URL: "${this.fastify.chain_api}" | Push API URL: "${this.fastify.push_api}"`);
 
-        const ioRedisClient = new Redis(this.manager.conn.redis);
-        const api_rate_limit = {
-            max: 1000,
-            whitelist: ['127.0.0.1'],
-            timeWindow: '1 minute',
-            redis: ioRedisClient
-        };
+        const ioRedisClient = new IORedis(this.manager.conn.redis);
+
+        const pluginParams = {
+            fastify_elasticsearch: {
+                client: this.manager.elasticsearchClient
+            },
+            fastify_redis: this.manager.conn.redis,
+            fastify_eosjs: this.manager,
+        } as any;
+
+        if (!this.conf.api.disable_rate_limit) {
+            let rateLimiterWhitelist = ['127.0.0.1'];
+            if (this.conf.api.rate_limit_allow && this.conf.api.rate_limit_allow.length > 0) {
+                const tempSet = new Set<string>(['127.0.0.1', ...this.conf.api.rate_limit_allow]);
+                rateLimiterWhitelist = [...tempSet];
+            }
+            let rateLimiterRPM = 1000;
+            if (this.conf.api.rate_limit_rpm) {
+                rateLimiterRPM = this.conf.api.rate_limit_rpm;
+            }
+            pluginParams.fastify_rate_limit = {
+                max: rateLimiterRPM,
+                allowList: rateLimiterWhitelist,
+                timeWindow: '1 minute',
+                redis: ioRedisClient
+            }
+        }
 
         if (this.conf.features.streaming.enable) {
             this.activateStreaming();
         }
 
-        registerPlugins(this.fastify, {
-            fastify_elasticsearch: {
-                client: this.manager.elasticsearchClient
-            },
-            fastify_oas: generateOpenApiConfig(this.manager.config),
-            fastify_rate_limit: api_rate_limit,
-            fastify_redis: this.manager.conn.redis,
-            fastify_eosjs: this.manager,
-        });
+        const docsConfig = generateOpenApiConfig(this.manager.config);
+        if (docsConfig) {
+            pluginParams.fastify_swagger = docsConfig;
+        }
+
+        registerPlugins(this.fastify, pluginParams);
 
         this.addGenericTypeParsing();
     }
@@ -128,15 +170,15 @@ class HyperionApiServer {
     }
 
     private addGenericTypeParsing() {
-        this.fastify.addContentTypeParser('*', (req, done) => {
+        this.fastify.addContentTypeParser('*', (request, payload, done) => {
             let data = '';
-            req.on('data', chunk => {
+            payload.on('data', chunk => {
                 data += chunk;
             });
-            req.on('end', () => {
+            payload.on('end', () => {
                 done(null, data);
             });
-            req.on('error', (err) => {
+            payload.on('error', (err) => {
                 console.log('---- Content Parsing Error -----');
                 console.log(err);
             });
@@ -145,15 +187,24 @@ class HyperionApiServer {
 
     async init() {
 
-        await this.fetchChainLogo();
+        await this.mLoader.init();
+
+        // add custom plugin routes
+        for (const plugin of this.mLoader.plugins) {
+            if (plugin.hasApiRoutes) {
+                hLog(`Adding routes for plugin: ${plugin.internalPluginName}`);
+                plugin.addRoutes(this.fastify);
+                plugin.chainName = this.chain;
+            }
+        }
 
         registerRoutes(this.fastify);
 
+        // register documentation when ready
         this.fastify.ready().then(async () => {
-            await this.fastify.oas();
-            console.log(this.chain + ' api ready!');
+            await this.fastify.swagger();
         }, (err) => {
-            console.log('an error happened', err)
+            hLog('an error happened', err)
         });
 
         try {
@@ -161,25 +212,11 @@ class HyperionApiServer {
                 host: this.conf.api.server_addr,
                 port: this.conf.api.server_port
             });
-            console.log(`server listening on ${(this.fastify.server.address() as AddressInfo).port}`);
+            hLog(`${this.chain} hyperion api ready and listening on port ${(this.fastify.server.address() as AddressInfo).port}`);
             this.startHyperionHub();
         } catch (err) {
-            console.log(err);
+            hLog(err);
             process.exit(1)
-        }
-    }
-
-    async fetchChainLogo() {
-        try {
-            if (this.conf.api.chain_logo_url && this.conf.api.enable_explorer) {
-                console.log(`Downloading chain logo from ${this.conf.api.chain_logo_url}...`);
-                const chainLogo = await got(this.conf.api.chain_logo_url);
-                const path = join(__dirname, '..', 'hyperion-explorer', 'dist', 'assets', this.chain + '_logo.png');
-                writeFileSync(path, chainLogo.rawBody);
-                this.conf.api.chain_logo_url = 'https://' + this.conf.api.server_name + '/v2/explore/assets/' + this.chain + '_logo.png';
-            }
-        } catch (e) {
-            console.log(e);
         }
     }
 
@@ -190,17 +227,13 @@ class HyperionApiServer {
             this.hub = io(url, {
                 query: {
                     key: this.conf.hub.publisher_key,
-                    client_mode: false
+                    client_mode: 'false'
                 }
             });
             this.hub.on('connect', () => {
                 hLog(`Hyperion Hub connected!`);
                 this.emitHubApiUpdate();
             });
-            // this.hub.on('reconnect', () => {
-            //     hLog(`Reconnecting...`);
-            //     this.emitHubApiUpdate();
-            // });
         }
     }
 
@@ -211,7 +244,7 @@ class HyperionApiServer {
             location: this.conf.hub.location,
             chainId: this.manager.conn.chains[this.chain].chain_id,
             providerName: this.conf.api.provider_name,
-            explorerEnabled: this.conf.api.enable_explorer,
+            explorerEnabled: this.conf.plugins.explorer?.enabled,
             providerUrl: this.conf.api.provider_url,
             providerLogo: this.conf.api.provider_logo,
             chainLogo: this.conf.api.chain_logo_url,

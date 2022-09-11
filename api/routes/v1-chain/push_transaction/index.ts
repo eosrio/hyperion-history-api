@@ -17,7 +17,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                     signatures: {
                         "type": "array",
                         "description": "array of signatures required to authorize transaction",
-                        "items": 'Signature#'
+                        "items": {$ref: 'Signature#'}
                     },
                     compression: {
                         "type": "boolean",

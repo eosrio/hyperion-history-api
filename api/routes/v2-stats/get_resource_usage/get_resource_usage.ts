@@ -1,16 +1,16 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
 
 const percentiles = [1, 5, 25, 50, 75, 95, 99];
 
 async function getResourceUsage(fastify: FastifyInstance, request: FastifyRequest) {
+	const query: any = request.query;
 	const searchBody: any = {
 		query: {
 			bool: {
 				must: [
-					{term: {"act.account": request.query.code}},
-					{term: {"act.name": request.query.action}},
+					{term: {"act.account": query.code}},
+					{term: {"act.name": query.action}},
 					{term: {"action_ordinal": {"value": 1}}},
 					{
 						range: {
@@ -69,7 +69,7 @@ async function getResourceUsage(fastify: FastifyInstance, request: FastifyReques
 }
 
 export function getResourceUsageHandler(fastify: FastifyInstance, route: string) {
-	return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+	return async (request: FastifyRequest, reply: FastifyReply) => {
 		reply.send(await timedQuery(getResourceUsage, fastify, request, route));
 	}
 }

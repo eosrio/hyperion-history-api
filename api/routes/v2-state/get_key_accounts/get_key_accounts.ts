@@ -1,137 +1,139 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {timedQuery} from "../../../helpers/functions";
 import {Numeric} from "eosjs/dist";
 import {getSkipLimit} from "../../v2-history/get_actions/functions";
 
 function invalidKey() {
-    const err: any = new Error();
-    err.statusCode = 400;
-    err.message = 'invalid public key';
-    throw err;
+	const err: any = new Error();
+	err.statusCode = 400;
+	err.message = 'invalid public key';
+	throw err;
 }
 
 async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest) {
 
-    let publicKey;
-    if (typeof request.body === 'string' && request.req.method === 'POST') {
-        request.body = JSON.parse(request.body);
-    }
+	let publicKey;
+	if (typeof request.body === 'string' && request.method === 'POST') {
+		request.body = JSON.parse(request.body);
+	}
 
-    const {skip, limit} = getSkipLimit(request.query);
-    const maxDocs = fastify.manager.config.api.limits.get_key_accounts ?? 1000;
+	const body: any = request.body;
+	const query: any = request.query;
 
-    const public_Key = request.req.method === 'POST' ? request.body.public_key : request.query.public_key;
+	const {skip, limit} = getSkipLimit(request.query);
+	const maxDocs = fastify.manager.config.api.limits.get_key_accounts ?? 1000;
 
-    if (public_Key.startsWith("PUB_")) {
-        publicKey = public_Key;
-    } else if (public_Key.startsWith("EOS")) {
-        try {
-            publicKey = Numeric.convertLegacyPublicKey(public_Key);
-        } catch (e) {
-            console.log(e.message);
-            invalidKey();
-        }
-    } else {
-        invalidKey();
-    }
+	const public_Key = request.method === 'POST' ? body.public_key : query.public_key;
 
-    const response = {
-        account_names: []
-    } as any;
+	if (public_Key.startsWith("PUB_")) {
+		publicKey = public_Key;
+	} else if (public_Key.startsWith("EOS")) {
+		try {
+			publicKey = Numeric.convertLegacyPublicKey(public_Key);
+		} catch (e) {
+			console.log(e.message);
+			invalidKey();
+		}
+	} else {
+		invalidKey();
+	}
 
-    if (request.req.method === 'GET' && request.query.details) {
-        response.permissions = [];
-    }
+	const response = {
+		account_names: []
+	} as any;
 
-    try {
+	if (request.method === 'GET' && query.details) {
+		response.permissions = [];
+	}
 
-        const permTableResults = await fastify.elastic.search({
-            index: fastify.manager.chain + '-perm-*',
-            size: (limit > maxDocs ? maxDocs : limit) || 100,
-            from: skip || 0,
-            body: {
-                query: {
-                    bool: {
-                        must: [
-                            {
-                                term: {
-                                    "auth.keys.key.keyword": publicKey
-                                }
-                            }
-                        ],
-                    }
-                }
-            }
-        });
+	try {
 
-        if (permTableResults.body.hits.hits.length > 0) {
-            for (const perm of permTableResults.body.hits.hits) {
-                response.account_names.push(perm._source.owner);
-                if (request.req.method === 'GET' && request.query.details) {
-                    response.permissions.push(perm._source);
-                }
-            }
-        }
+		const permTableResults = await fastify.elastic.search({
+			index: fastify.manager.chain + '-perm-*',
+			size: (limit > maxDocs ? maxDocs : limit) || 100,
+			from: skip || 0,
+			body: {
+				query: {
+					bool: {
+						must: [
+							{
+								term: {
+									"auth.keys.key.keyword": publicKey
+								}
+							}
+						],
+					}
+				}
+			}
+		});
 
-    } catch (e) {
-        console.log(e);
-    }
+		if (permTableResults.body.hits.hits.length > 0) {
+			for (const perm of permTableResults.body.hits.hits) {
+				response.account_names.push(perm._source.owner);
+				if (request.method === 'GET' && query.details) {
+					response.permissions.push(perm._source);
+				}
+			}
+		}
 
-    if (response.account_names.length > 0) {
-        response.account_names = [...(new Set(response.account_names))];
-        return response;
-    }
+	} catch (e) {
+		console.log(e);
+	}
 
-    // Fallback to action search
-    const _body = {
-        query: {
-            bool: {
-                should: [
-                    {term: {"@updateauth.auth.keys.key.keyword": publicKey}},
-                    {term: {"@newaccount.active.keys.key.keyword": publicKey}},
-                    {term: {"@newaccount.owner.keys.key.keyword": publicKey}}
-                ],
-                minimum_should_match: 1
-            }
-        },
-        sort: [{"global_sequence": {"order": "desc"}}]
-    };
+	if (response.account_names.length > 0) {
+		response.account_names = [...(new Set(response.account_names))];
+		return response;
+	}
 
-    const results = await fastify.elastic.search({
-        index: fastify.manager.chain + '-action-*',
-        size: (limit > maxDocs ? maxDocs : limit) || 100,
-        from: skip || 0,
-        body: _body
-    });
+	// Fallback to action search
+	const _body = {
+		query: {
+			bool: {
+				should: [
+					{term: {"@updateauth.auth.keys.key.keyword": publicKey}},
+					{term: {"@newaccount.active.keys.key.keyword": publicKey}},
+					{term: {"@newaccount.owner.keys.key.keyword": publicKey}}
+				],
+				minimum_should_match: 1
+			}
+		},
+		sort: [{"global_sequence": {"order": "desc"}}]
+	};
 
-    if (results['body']['hits']['hits'].length > 0) {
-        response.account_names = results['body']['hits']['hits'].map((v) => {
-            if (v._source.act.name === 'newaccount') {
-                if (v._source['@newaccount'].newact) {
-                    return v._source['@newaccount'].newact;
-                } else if (v._source.act.data.newact) {
-                    return v._source.act.data.newact;
-                } else {
-                    return null;
-                }
-            } else if (v._source.act.name === 'updateauth') {
-                return v._source.act.data.account;
-            } else {
-                return null;
-            }
-        });
-    }
+	const results = await fastify.elastic.search({
+		index: fastify.manager.chain + '-action-*',
+		size: (limit > maxDocs ? maxDocs : limit) || 100,
+		from: skip || 0,
+		body: _body
+	});
 
-    if (response.account_names.length > 0) {
-        response.account_names = [...(new Set(response.account_names))];
-    }
+	if (results['body']['hits']['hits'].length > 0) {
+		response.account_names = results['body']['hits']['hits'].map((v) => {
+			if (v._source.act.name === 'newaccount') {
+				if (v._source['@newaccount'].newact) {
+					return v._source['@newaccount'].newact;
+				} else if (v._source.act.data.newact) {
+					return v._source.act.data.newact;
+				} else {
+					return null;
+				}
+			} else if (v._source.act.name === 'updateauth') {
+				return v._source.act.data.account;
+			} else {
+				return null;
+			}
+		});
+	}
 
-    return response;
+	if (response.account_names.length > 0) {
+		response.account_names = [...(new Set(response.account_names))];
+	}
+
+	return response;
 }
 
 export function getKeyAccountsHandler(fastify: FastifyInstance, route: string) {
-    return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
-        reply.send(await timedQuery(getKeyAccounts, fastify, request, route));
-    }
+	return async (request: FastifyRequest, reply: FastifyReply) => {
+		reply.send(await timedQuery(getKeyAccounts, fastify, request, route));
+	}
 }

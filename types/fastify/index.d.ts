@@ -1,25 +1,23 @@
-import {IncomingMessage, Server, ServerResponse} from "http";
 import {Client} from "@elastic/elasticsearch";
-import {Redis} from "ioredis";
 import {ConnectionManager} from "../../connections/manager.class";
-import {JsonRpc, Api} from "eosjs/dist";
+import {Api, JsonRpc} from "eosjs";
+import {CacheManager} from "../../api/helpers/cacheManager";
+import {FastifyRedis} from "fastify-redis";
 
 declare module 'fastify' {
-
-    export interface FastifyInstance<HttpServer = Server,
-        HttpRequest = IncomingMessage,
-        HttpResponse = ServerResponse,
-        > {
-        manager: ConnectionManager
-        redis: Redis;
+    export interface FastifyInstance {
+        manager: ConnectionManager;
+        cacheManager: CacheManager;
+        redis: FastifyRedis;
         elastic: Client;
         eosjs: {
-            rpc: JsonRpc,
-            api: Api
-        },
-        chain_api: string,
-        push_api: string,
-        tokenCache: Map<string, any>,
-        routeSet: Set<string>
+            rpc: JsonRpc;
+            api: Api;
+        };
+        chain_api: string;
+        push_api: string;
+        tokenCache: Map<string, any>;
+        allowedActionQueryParamSet: Set<string>;
+        routeSet: Set<string>;
     }
 }

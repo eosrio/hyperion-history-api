@@ -1,31 +1,21 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
 import {createHash} from "crypto";
-import * as flatstr from 'flatstr';
+import flatstr from 'flatstr';
+import {GetInfoResult} from "eosjs/dist/eosjs-rpc-interfaces";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
 	if (typeof request.body === 'string') {
 		request.body = JSON.parse(request.body)
 	}
-	const pResults = await Promise.all([fastify.eosjs.rpc.get_info(), fastify.elastic['search']({
-		"index": fastify.manager.chain + '-action-*',
-		"body": {
-			"query": {
-				"bool": {
-					must: [
-						{term: {"trx_id": request.body.id.toLowerCase()}}
-					]
-				}
-			},
-			"sort": {
-				"global_sequence": "asc"
-			}
-		}
-	})]);
-	const results = pResults[1];
+	const body: any = request.body;
+	const redis = fastify.redis;
+	const trxId = body.id.toLowerCase();
+	const conf = fastify.manager.config;
+	const cachedData = await redis.hgetall('trx_' + trxId);
+
 	const response: any = {
-		"id": request.body.id,
+		"id": body.id,
 		"trx": {
 			"receipt": {
 				"status": "executed",
@@ -42,11 +32,89 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 		},
 		"block_num": 0,
 		"block_time": "",
-		"last_irreversible_block": pResults[0].last_irreversible_block_num,
+		"last_irreversible_block": undefined,
 		"traces": []
 	};
 
-	const hits = results['body']['hits']['hits'];
+	let hits;
+
+	// build get_info request with caching
+	const $getInfo = new Promise<GetInfoResult>(resolve => {
+		const key = `${fastify.manager.chain}_get_info`;
+		fastify.redis.get(key).then(value => {
+			if (value) {
+				resolve(JSON.parse(value));
+			} else {
+				fastify.eosjs.rpc.get_info().then(value1 => {
+					fastify.redis.set(key, JSON.stringify(value1), 'EX', 6);
+					resolve(value1);
+				}).catch((reason) => {
+					console.log(reason);
+					response.error = 'failed to get last_irreversible_block_num'
+					resolve(null);
+				});
+			}
+		});
+	});
+
+	// reconstruct hits from cached data
+	if (cachedData && Object.keys(cachedData).length > 0) {
+		const gsArr = [];
+		for (let cachedDataKey in cachedData) {
+			gsArr.push(cachedData[cachedDataKey]);
+		}
+		gsArr.sort((a, b) => {
+			return a.global_sequence - b.global_sequence;
+		});
+		hits = gsArr.map(value => {
+			return {
+				_source: JSON.parse(value)
+			};
+		});
+		const promiseResults = await Promise.all([
+			redis.ttl('trx_' + trxId),
+			$getInfo
+		]);
+		response.cache_expires_in = promiseResults[0];
+		response.last_irreversible_block = promiseResults[1].last_irreversible_block_num;
+	}
+
+	// search on ES if cache is not present
+	if (!hits) {
+		const _size = conf.api.limits.get_trx_actions || 100;
+		const blockHint = parseInt(body.block_num_hint, 10);
+		let indexPattern = '';
+		if (blockHint) {
+			const idxPart = Math.ceil(blockHint / conf.settings.index_partition_size).toString().padStart(6, '0');
+			indexPattern = fastify.manager.chain + `-action-${conf.settings.index_version}-${idxPart}`;
+		} else {
+			indexPattern = fastify.manager.chain + '-action-*';
+		}
+		let pResults;
+		try {
+
+			// build search request
+			const $search = fastify.elastic.search({
+				index: indexPattern,
+				size: _size,
+				body: {
+					query: {bool: {must: [{term: {trx_id: trxId}}]}},
+					sort: {global_sequence: "asc"}
+				}
+			});
+
+			// execute in parallel
+			pResults = await Promise.all([$getInfo, $search]);
+		} catch (e) {
+			console.log(e.message);
+			if (e.meta.statusCode === 404) {
+				return response;
+			}
+		}
+		hits = pResults[1]['body']['hits']['hits'];
+		response.last_irreversible_block = pResults[0].last_irreversible_block_num;
+	}
+
 
 	if (hits.length > 0) {
 		const actions = hits;
@@ -98,7 +166,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 				except: null,
 				inline_traces: [],
 				producer_block_id: "",
-				trx_id: request.body.id,
+				trx_id: body.id,
 				notified: action.notified
 			};
 			let hash = createHash('sha256');
@@ -157,7 +225,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 						except: null,
 						inline_traces: [],
 						producer_block_id: "",
-						trx_id: request.body.id,
+						trx_id: body.id,
 					};
 					traces[action.global_sequence].inline_traces.unshift(trace);
 					response.traces.push(trace);
@@ -166,7 +234,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 			}
 		});
 	} else {
-		const errmsg = "Transaction " + request.body.id.toLowerCase() + " not found in history and no block hint was given";
+		const errmsg = "Transaction " + body.id.toLowerCase() + " not found in history and no block hint was given";
 		return {
 			code: 500,
 			message: "Internal Service Error",
@@ -189,7 +257,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 }
 
 export function getTransactionHandler(fastify: FastifyInstance, route: string) {
-	return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+	return async (request: FastifyRequest, reply: FastifyReply) => {
 		reply.send(await timedQuery(getTransaction, fastify, request, route));
 	}
 }

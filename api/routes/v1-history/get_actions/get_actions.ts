@@ -1,7 +1,6 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {ServerResponse} from "http";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
-import * as flatstr from 'flatstr';
+import flatstr from 'flatstr';
 
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
@@ -12,7 +11,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         request.body = JSON.parse(request.body);
     }
 
-    const reqBody = request.body;
+    const reqBody = request.body as any;
     const should_array = [];
     for (const entry of terms) {
         const tObj = {term: {}};
@@ -191,7 +190,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 }
 
 export function getActionsHandler(fastify: FastifyInstance, route: string) {
-    return async (request: FastifyRequest, reply: FastifyReply<ServerResponse>) => {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
         reply.send(await timedQuery(getActions, fastify, request, route));
     }
 }

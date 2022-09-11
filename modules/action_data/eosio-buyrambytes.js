@@ -2,9 +2,9 @@ const hyperionModule = {
     chain: "*",
     contract: 'eosio',
     action: 'buyrambytes',
-    parser_version: ['1.8','1.7'],
+    defineQueryPrefix: 'buyrambytes',
+    parser_version: ['2.1','1.8','1.7'],
     handler: (action) => {
-        // attach action extras here
         const data = action['act']['data'];
         action['@buyrambytes'] = {
             bytes: parseInt(data['bytes']),

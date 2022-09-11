@@ -7,9 +7,9 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         getRouteName(__filename),
         'Retrieves the current balance',
         {
-            "code": 'AccountName#',
-            "account": 'AccountName#',
-            "symbol": 'Symbol#',
+            "code": {$ref: 'AccountName#'},
+            "account": {$ref: 'AccountName#'},
+            "symbol": {$ref: 'Symbol#'}
         },
         ["code", "account", "symbol"]
     );

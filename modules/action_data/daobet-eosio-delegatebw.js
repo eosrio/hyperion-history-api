@@ -3,6 +3,7 @@ const hyperionModule = {
     contract: 'eosio',
     action: 'delegatebw',
     parser_version: ['1.7'],
+    defineQueryPrefix: 'delegatebw',
     mappings: {
         action: {
             "@delegatebw": {
@@ -19,7 +20,6 @@ const hyperionModule = {
         }
     },
     handler: (action) => {
-        // attach action extras here
         const data = action['act']['data'];
         let cpu_qtd = null;
         let net_qtd = null;

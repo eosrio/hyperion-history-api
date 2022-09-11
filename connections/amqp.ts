@@ -9,8 +9,8 @@ export async function createConnection(config): Promise<Connection> {
 		debugLog("[AMQP] connection established");
 		return conn;
 	} catch (e) {
-		console.log("[AMQP] failed to connect!");
-		console.log(e.message);
+		hLog("[AMQP] failed to connect!");
+		hLog(e.message);
 		await new Promise(resolve => setTimeout(resolve, 5000));
 		return await createConnection(config);
 	}
@@ -34,8 +34,8 @@ async function createChannels(connection) {
 		const confirmChannel = await connection.createConfirmChannel();
 		return [channel, confirmChannel];
 	} catch (e) {
-		console.log("[AMQP] failed to create channels");
-		console.error(e);
+		hLog("[AMQP] failed to create channels");
+		hLog(e);
 		return null;
 	}
 }
@@ -70,7 +70,7 @@ export async function amqpConnect(onReconnect, config, onClose) {
 export async function checkQueueSize(q_name, config) {
 	try {
 		const v = encodeURIComponent(config.vhost);
-		const apiUrl = `http://${config.api}/api/queues/${v}/${encodeURIComponent(q_name)}`;
+		const apiUrl = `${config.protocol}://${config.api}/api/queues/${v}/${encodeURIComponent(q_name)}`;
 		const opts = {
 			username: config.user,
 			password: config.pass
@@ -78,13 +78,13 @@ export async function checkQueueSize(q_name, config) {
 		const data = await got.get(apiUrl, opts).json() as any;
 		return data.messages;
 	} catch (e) {
-		hLog('[WARNING] Checking queue size failed, HTTP API is not ready!');
-		if (e instanceof HTTPError) {
-			if(e.response.body) {
+		hLog(`[WARNING] Checking queue size failed! - ${e.message}`);
+		if (e.response && e.response.body) {
+			if (e instanceof HTTPError) {
 				hLog(e.response.body);
+			} else {
+				hLog(JSON.stringify(e.response.body, null, 2));
 			}
-		} else {
-			hLog(JSON.stringify(e, null, 2));
 		}
 		return 0;
 	}
