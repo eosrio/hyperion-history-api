@@ -5,8 +5,6 @@
   <img alt="Hyperion Logo" src="https://eosrio.io/hyperion.png">
 </picture>
 
-<br/>
-
 Scalable Full History API Solution for [Antelope](https://antelope.io/) (former EOSIO) based blockchains
 
 Made with ♥ by [EOS Rio](https://eosrio.io/)
