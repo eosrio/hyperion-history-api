@@ -77,10 +77,10 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
         const missingCounter = (indexedBlocks[0] - firstIndexedBlock) - indexedBlocks[1];
         const missingPct = (missingCounter * 100 / indexedBlocks[1]).toFixed(2) + "%";
         const data: ESService = {
+            active_shards: esStatus.body[0]['active_shards_percent'],
             first_indexed_block: firstIndexedBlock,
             last_indexed_block: indexedBlocks[0],
             total_indexed_blocks: indexedBlocks[1] + 1,
-            active_shards: esStatus.body[0]['active_shards_percent'],
             missing_blocks: (indexedBlocks[0] - firstIndexedBlock) - indexedBlocks[1],
             missing_pct: missingPct,
             head_offset: null
