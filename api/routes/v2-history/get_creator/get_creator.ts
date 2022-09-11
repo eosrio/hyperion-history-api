@@ -85,10 +85,11 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 				}
 				return response;
 			} catch (e) {
+				console.log(e);
 				throw new Error("account creation not found");
 			}
 		} else {
-			throw new Error("account creation not found");
+			throw new Error("account not found");
 		}
 	}
 }
