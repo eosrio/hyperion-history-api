@@ -14,16 +14,18 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
     };
 
     if (query.account === fastify.manager.config.settings.eosio_alias) {
-        const genesisBlock = await fastify.eosjs.rpc.get_block(1);
-        if (genesisBlock) {
-            response.creator = '__self__';
-            response.timestamp = genesisBlock.timestamp;
-            response.block_num = 1;
-            response.trx_id = "";
-            return response;
-        } else {
-            throw new Error("genesis block not found");
+        try {
+            const genesisBlock = await fastify.eosjs.rpc.get_block(1);
+            if (genesisBlock) {
+                response.timestamp = genesisBlock.timestamp;
+            }
+        } catch (e) {
+            console.log(e.message);
         }
+        response.creator = '__self__';
+        response.block_num = 1;
+        response.trx_id = "";
+        return response;
     }
 
     const results = await fastify.elastic.search({
