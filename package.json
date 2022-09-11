@@ -27,10 +27,12 @@
   "dependencies": {
     "@elastic/elasticsearch": "^7.17.0",
     "@eosrio/node-abieos": "^2.1.1",
+    "@fastify/swagger": "^7.5.1",
     "@pm2/io": "^5.0.0",
     "amqplib": "^0.8.0",
     "async": "^3.2.4",
     "base-x": "^4.0.0",
+    "commander": "^8.3.0",
     "cross-fetch": "^3.1.5",
     "eosjs": "^22.1.0",
     "fast-json-stringify": "^2.7.9",
@@ -42,7 +44,6 @@
     "fastify-plugin": "^3.0.0",
     "fastify-rate-limit": "^5.6.2",
     "fastify-redis": "^4.3.3",
-    "fastify-swagger": "^4.12.6",
     "flatstr": "^1.0.12",
     "global-agent": "^3.0.0",
     "got": "11.8.5",
@@ -56,17 +57,16 @@
     "socket.io-redis": "^6.1.1",
     "telegraf": "^4.9.1",
     "typescript": "^4.5.2",
-    "ws": "^8.8.1",
-    "commander": "^8.3.0"
+    "ws": "^8.8.1"
   },
   "devDependencies": {
     "@types/amqplib": "^0.8.2",
     "@types/async": "^3.2.10",
+    "@types/global-agent": "^2.1.1",
     "@types/ioredis": "^4.28.1",
     "@types/lodash": "^4.14.177",
     "@types/node": "^16.11.10",
     "@types/nodemailer": "^6.4.4",
-    "@types/global-agent": "^2.1.1",
     "@types/ws": "^8.2.0"
   },
   "optionalDependencies": {

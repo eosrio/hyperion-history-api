@@ -3,9 +3,9 @@ import {IncomingMessage, Server, ServerResponse} from "http";
 
 // fastify plugins
 import * as fastifyElasticsearch from 'fastify-elasticsearch';
-import fastifySwagger from 'fastify-swagger';
+import fastifySwagger from '@fastify/swagger';
 import fastifyCors from 'fastify-cors';
-import fastifyFormbody from 'fastify-formbody';
+import formBodyPlugin from 'fastify-formbody';
 import fastifyRedis from 'fastify-redis';
 import fastifyRateLimit from 'fastify-rate-limit';
 
@@ -21,7 +21,7 @@ export function registerPlugins(server: Fastify.FastifyInstance<Server, Incoming
 
     server.register(fastifyCors);
 
-    server.register(fastifyFormbody);
+    server.register(formBodyPlugin);
 
     server.register(fastifyRedis, params.fastify_redis);
 
