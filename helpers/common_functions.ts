@@ -66,6 +66,18 @@ export async function getLastIndexedBlockWithTotalBlocks(es_client: Client, chai
 	return [lastBlock, totalBlocks];
 }
 
+export async function getFirstIndexedBlock(es_client: Client, chain: string): Promise<number> {
+	const results: ApiResponse = await es_client.search({
+		index: chain + '-block-*',
+		size: 1,
+		body: {
+			query: {bool: {filter: {match_all: {}}}},
+			sort: [{block_num: {order: "asc"}}]
+		}
+	});
+	return getLastResult(results);
+}
+
 
 export async function getLastIndexedABI(es_client: Client, chain: string) {
 	const results: ApiResponse = await es_client.search({
