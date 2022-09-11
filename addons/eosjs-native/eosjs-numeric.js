@@ -308,6 +308,7 @@ var KeyType;
 (function (KeyType) {
     KeyType[KeyType["k1"] = 0] = "k1";
     KeyType[KeyType["r1"] = 1] = "r1";
+    KeyType[KeyType["wa"] = 2] = "wa";
 })(KeyType = exports.KeyType || (exports.KeyType = {}));
 /** Public key data size, excluding type field */
 exports.publicKeyDataSize = 33;
@@ -459,6 +460,8 @@ function signatureToString(signature) {
         return keyToString(signature, 'K1', 'SIG_K1_');
     } else if (signature.type === KeyType.r1) {
         return keyToString(signature, 'R1', 'SIG_R1_');
+    } else if (signature.type === KeyType.wa) {
+	return keyToString(signature, 'WA', 'SIG_WA_');
     } else {
         throw new Error('unrecognized signature format');
     }
