@@ -27,7 +27,7 @@
   "dependencies": {
     "@elastic/elasticsearch": "^7.17.0",
     "@eosrio/node-abieos": "^2.1.1",
-    "@fastify/swagger": "^7.5.1",
+    "@fastify/swagger": "6.1.0",
     "@pm2/io": "^5.0.0",
     "amqplib": "^0.8.0",
     "async": "^3.2.4",
