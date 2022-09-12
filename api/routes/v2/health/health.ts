@@ -4,7 +4,6 @@ import {timedQuery} from "../../../helpers/functions";
 import {getFirstIndexedBlock, getLastIndexedBlockWithTotalBlocks} from "../../../../helpers/common_functions";
 
 
-
 async function checkRabbit(fastify: FastifyInstance): Promise<ServiceResponse<any>> {
     try {
         const connection = await connect(fastify.manager.ampqUrl);
@@ -74,16 +73,18 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
             await fastify.redis.set(`${fastify.manager.chain}::fib`, firstIndexedBlock);
         }
         let indexedBlocks = await getLastIndexedBlockWithTotalBlocks(fastify.elastic, fastify.manager.chain);
-        const missingCounter = (indexedBlocks[0] - firstIndexedBlock) - indexedBlocks[1];
+        const lastIndexedBlock = indexedBlocks[0];
+        const totalIndexed = indexedBlocks[1] + 1;
+        const missingCounter = (indexedBlocks[0] - firstIndexedBlock) - totalIndexed;
         const missingPct = (missingCounter * 100 / indexedBlocks[1]).toFixed(2) + "%";
         const data: ESService = {
             active_shards: esStatus.body[0]['active_shards_percent'],
+            head_offset: null,
             first_indexed_block: firstIndexedBlock,
-            last_indexed_block: indexedBlocks[0],
-            total_indexed_blocks: indexedBlocks[1] + 1,
-            missing_blocks: (indexedBlocks[0] - firstIndexedBlock) - indexedBlocks[1],
-            missing_pct: missingPct,
-            head_offset: null
+            last_indexed_block: lastIndexedBlock,
+            total_indexed_blocks: totalIndexed,
+            missing_blocks: missingCounter,
+            missing_pct: missingPct
         };
         let stat = 'OK';
         esStatus.body.forEach(status => {
