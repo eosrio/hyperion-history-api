@@ -71,9 +71,6 @@ export function registerRoutes(server: FastifyInstance) {
             tags: ["chain"]
         },
         handler: async (request: FastifyRequest, reply: FastifyReply) => {
-
-            console.log(request.url);
-
             await handleChainApiRedirect(request, reply, server);
         }
     });

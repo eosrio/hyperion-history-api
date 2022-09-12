@@ -34,7 +34,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
         let precision;
         const key = `${data.code}_${data.symbol}`;
 
-		if (testSet.has(key)) {
+        if (testSet.has(key)) {
             continue;
         }
 
@@ -58,6 +58,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
                     }
                 }
             } catch (e) {
+                console.log(e.message);
                 console.log(`get_currency_balance error - contract:${data.code} - account:${query.account}`);
             }
         }
