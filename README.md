@@ -22,25 +22,35 @@ Made with ♥ by [Rio Blocks / EOS Rio](https://rioblocks.io/?lang=en)
 
 ### [Official documentation](https://hyperion.docs.eosrio.io)
 
+### How to use
+
+ - [For Providers](https://hyperion.docs.eosrio.io/manual_installation/)
+
+ - [For Developers](https://hyperion.docs.eosrio.io/howtouse/)
+
+### Official plugins:
+
+- [Hyperion Lightweight Explorer](https://github.com/eosrio/hyperion-explorer-plugin)
+
 ### 1. Overview
 
-Hyperion is a full history solution for indexing, storing and retrieving Antelope blockchain`s historical data.
+Hyperion is a full history solution for indexing, storing and retrieving Antelope blockchain's historical data.
 Antelope protocol is highly scalable reaching up to tens of thousands of transactions per second demanding high
 performance indexing and optimized storage and querying solutions. Hyperion is developed to tackle those challenges
 providing open source software to be operated by block producers, infrastructure providers and dApp developers.
 
 Focused on delivering faster search times, lower bandwidth overhead and easier usability for UI/UX developers,
-Hyperion implements an improved data structure actions are stored in a flattened format, transaction ids are added to 
-all inline actions, allowing to group by transaction without storing a full transaction index, also if the inline 
-action data is identical to the parent it is considered a notification and thus removed from the database. No full 
-block or transaction data is stored, all information can be reconstructed from actions and deltas, only a block 
+Hyperion implements an improved data structure. Actions are stored in a flattened format, transaction ids are added to 
+all inline actions, allowing to group by transaction without storing a full transaction index. Besides that if the inline 
+action data is identical to the parent, it is considered a notification and thus removed from the database.
+No full block or transaction data is stored, all information can be reconstructed from actions and deltas, only a block 
 header index is stored.
 
 ### 2. Architecture
 
-The following components are required in order to have a fully functional Hyperion API deployment,
-for small use cases its absolutely fine to run all components on a single machine. For larger chains and
-production environments we recommend setting them up into different servers under a high-speed local network.
+The following components are required in order to have a fully functional Hyperion API deployment.
+* For small use cases, it is absolutely fine to run all components on a single machine.
+* For larger chains and production environments, we recommend setting them up into different servers under a high-speed local network.
 
 #### 2.1 Elasticsearch Cluster
 
@@ -48,7 +58,7 @@ The ES cluster is responsible for storing all indexed data.
 Direct access to the Hyperion API and Indexer must be provided. We recommend nodes in the
 cluster to have at least 32 GB of RAM and 8 cpu cores. SSD/NVME drives are recommended for
 maximum indexing throughput, although HDDs can be used for cold storage nodes.
-For production environments a multi-node cluster is highly recommended.
+For production environments, a multi-node cluster is highly recommended.
 
 #### 2.2 Hyperion Indexer
 
@@ -85,15 +95,5 @@ providers. [Documentation](https://hyperion.docs.eosrio.io/stream_client/)
 
 #### 2.8 Hyperion Plugins (optional)
 
-Hyperion includes a flexible plugin architecture to allow further customization. Plugins are managed by the `hpm`
-command line tool.
-
-Official plugins:
-
-- [Hyperion Lightweight Explorer](https://github.com/eosrio/hyperion-explorer-plugin)
-
-### 4. How to use
-
-#### 4.1 [For Providers](https://hyperion.docs.eosrio.io/manual_installation/)
-
-#### 4.2 [For Developers](https://hyperion.docs.eosrio.io/howtouse/)
+Hyperion includes a flexible plugin architecture to allow further customization.
+Plugins are managed by the `hpm` (hyperion plugin manager) command line tool.
