@@ -7,7 +7,10 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 
     const query: any = request.query;
 
-    const response = {'account': query.account, 'tokens': []};
+    const response = {
+        account: query.account,
+        tokens: []
+    };
 
     const {skip, limit} = getSkipLimit(request.query);
     const maxDocs = fastify.manager.config.api.limits.get_tokens ?? 100;
@@ -19,7 +22,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
         "body": {
             query: {
                 bool: {
-                    filter: [{term: {"scope": query.account}}]
+                    filter: [{term: {scope: query.account}}]
                 }
             }
         }
@@ -32,6 +35,9 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
             continue;
         }
         let precision;
+        let token_data;
+        let errorMsg;
+
         const key = `${data.code}_${data.symbol}`;
 
         if (testSet.has(key)) {
@@ -45,7 +51,6 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
         if (fastify.tokenCache.has(key)) {
             precision = fastify.tokenCache.get(key).precision;
         } else {
-            let token_data;
             try {
                 token_data = await fastify.eosjs.rpc.get_currency_balance(data.code, query.account, data.symbol);
                 if (token_data.length > 0) {
@@ -54,21 +59,25 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
                     if (amount_arr.length === 2) {
                         precision = amount_arr[1].length;
                         fastify.tokenCache.set(key, {precision});
-                        // console.log('Caching token precision -', key, precision);
                     }
                 }
             } catch (e) {
-                console.log(e.message);
-                console.log(`get_currency_balance error - contract:${data.code} - account:${query.account}`);
+                errorMsg = e.message;
             }
         }
 
-        response.tokens.push({
+        const resp: Record<string, any> = {
             symbol: data.symbol,
             precision: precision,
             amount: parseFloat(data.amount),
-            contract: data.code
-        });
+            contract: data.code,
+        };
+
+        if (errorMsg) {
+            resp.error = errorMsg;
+        }
+
+        response.tokens.push(resp);
     }
 
     return response;
