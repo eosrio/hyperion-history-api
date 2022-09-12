@@ -1,8 +1,8 @@
+<!--suppress HtmlUnknownTarget, HtmlDeprecatedAttribute -->
 <br></br>
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)"
-            srcset="https://eosrio.io/hyperion-white.png">
+    <source media="(prefers-color-scheme: dark)" srcset="https://eosrio.io/hyperion-white.png">
     <img alt="Hyperion Logo"
          src="https://eosrio.io/hyperion.png">
   </picture>
@@ -29,12 +29,12 @@ Antelope protocol is highly scalable reaching up to tens of thousands of transac
 performance indexing and optimized storage and querying solutions. Hyperion is developed to tackle those challenges
 providing open source software to be operated by block producers, infrastructure providers and dApp developers.
 
-Focused on delivering faster search times, lower bandwidth overhead and easier usability for UI/UX developers, Hyperion
-implements an improved data structure
-actions are stored in a flattened format
-a parent field is added to the inline actions to point to the parent global sequence
-if the inline action data is identical to the parent it is considered a notification and thus removed from the database
-no blocks or transaction data is stored, all information can be reconstructed from actions
+Focused on delivering faster search times, lower bandwidth overhead and easier usability for UI/UX developers,
+Hyperion implements an improved data structure actions are stored in a flattened format, transaction ids are added to 
+all inline actions, allowing to group by transaction without storing a full transaction index, also if the inline 
+action data is identical to the parent it is considered a notification and thus removed from the database. No full 
+block or transaction data is stored, all information can be reconstructed from actions and deltas, only a block 
+header index is stored.
 
 ### 2. Architecture
 
@@ -75,8 +75,8 @@ the `v2/history/get_transaction` and `v2/history/check_transaction` endpoints
 
 #### 2.6 Leap State History
 
-[Leap / Nodeos](https://github.com/AntelopeIO/leap/tree/main/plugins/state_history_plugin) plugin used to collect action
-traces and state deltas. Provides data via websocket to the indexer
+[Leap / Nodeos](https://github.com/AntelopeIO/leap/tree/main/plugins/state_history_plugin) plugin used
+to collect action traces and state deltas. Provides data via websocket to the indexer
 
 #### 2.7 Hyperion Stream Client (optional)
 
