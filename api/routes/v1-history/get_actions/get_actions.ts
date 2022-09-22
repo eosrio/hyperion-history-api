@@ -1,6 +1,148 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
-import flatstr from 'flatstr';
+import {Serialize} from "eosjs";
+import {hLog} from "../../../../helpers/common_functions";
+import * as AbiEOS from "@eosrio/node-abieos";
+import {ApiResponse} from "@elastic/elasticsearch";
+import {TextDecoder, TextEncoder} from "util";
+import {JsonRpc} from "eosjs/dist";
+
+const abi_remapping = {
+    "_Bool": "bool"
+};
+
+const txEnc = new TextEncoder();
+const txDec = new TextDecoder();
+
+async function fetchAbiHexAtBlockElastic(client, contract_name, last_block, get_json) {
+    try {
+        const _includes = ["actions", "tables", "block"];
+        if (get_json) {
+            _includes.push("abi");
+        } else {
+            _includes.push("abi_hex");
+        }
+        const query = {
+            bool: {
+                must: [
+                    {term: {account: contract_name}},
+                    {range: {block: {lte: last_block}}}
+                ]
+            }
+        };
+        const queryResult: ApiResponse = await client.search({
+            index: `${this.chain}-abi-*`,
+            body: {
+                size: 1, query,
+                sort: [{block: {order: "desc"}}],
+                _source: {includes: _includes}
+            }
+        });
+        const results = queryResult.body.hits.hits;
+        if (results.length > 0) {
+            const nextRefResponse: ApiResponse = await client.search({
+                index: `${this.chain}-abi-*`,
+                body: {
+                    size: 1,
+                    query: {
+                        bool: {
+                            must: [
+                                {term: {account: contract_name}},
+                                {range: {block: {gte: last_block}}}
+                            ]
+                        }
+                    },
+                    sort: [{block: {order: "asc"}}],
+                    _source: {includes: ["block"]}
+                }
+            });
+            const nextRef = nextRefResponse.body.hits.hits;
+            if (nextRef.length > 0) {
+                return {
+                    valid_until: nextRef[0]._source.block,
+                    ...results[0]._source
+                };
+            }
+            return results[0]._source;
+        } else {
+            return null;
+        }
+    } catch (e) {
+        hLog(e);
+        return null;
+    }
+}
+
+async function getAbiFromHeadBlock(rpc: JsonRpc, code) {
+    let _abi;
+    try {
+        _abi = (await rpc.get_abi(code)).abi;
+    } catch (e) {
+        hLog(e);
+    }
+    return {abi: _abi, valid_until: null, valid_from: null};
+}
+
+async function getContractAtBlock(esClient, rpc, accountName: string, block_num: number, check_action?: string) {
+    let savedAbi, abi;
+    savedAbi = await fetchAbiHexAtBlockElastic(esClient, accountName, block_num, true);
+    if (savedAbi === null || (savedAbi.actions && !savedAbi.actions.includes(check_action))) {
+        savedAbi = await getAbiFromHeadBlock(rpc, accountName);
+        if (!savedAbi) return [null, null];
+        abi = savedAbi.abi;
+    } else {
+        try {
+            abi = JSON.parse(savedAbi.abi);
+        } catch (e) {
+            hLog(e);
+            return [null, null];
+        }
+    }
+    if (!abi) return [null, null];
+    const initialTypes = Serialize.createInitialTypes();
+    let types;
+    try {
+        types = Serialize.getTypesFromAbi(initialTypes, abi);
+    } catch (e) {
+        let remapped = false;
+        for (const struct of abi.structs) {
+            for (const field of struct.fields) {
+                if (abi_remapping[field.type]) {
+                    field.type = abi_remapping[field.type];
+                    remapped = true;
+                }
+            }
+        }
+        if (remapped) {
+            try {
+                types = Serialize.getTypesFromAbi(initialTypes, abi);
+            } catch (e) {
+                hLog('failed after remapping abi');
+                hLog(accountName, block_num, check_action);
+                hLog(e);
+            }
+        } else {
+            hLog(accountName, block_num);
+            hLog(e);
+        }
+    }
+    const actions = new Map();
+    for (const {name, type} of abi.actions) {
+        actions.set(name, Serialize.getType(types, type));
+    }
+    const result = {types, actions, tables: abi.tables};
+    if (check_action) {
+        if (actions.has(check_action)) {
+            try {
+                AbiEOS['load_abi'](accountName, JSON.stringify(abi));
+            } catch (e) {
+                hLog(e);
+            }
+        }
+    }
+    return [result, abi];
+}
+
 
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
@@ -154,11 +296,13 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             }
             actions = actions.slice(index);
         }
-        actions.forEach((action, index) => {
+
+        for (let i = 0; i < actions.length; i++) {
+            let action = actions[i];
             action = action._source;
             let act: any = {
                 "global_action_seq": action.global_sequence,
-                "account_action_seq": index,
+                "account_action_seq": i,
                 "block_num": action.block_num,
                 "block_time": action['@timestamp'],
                 "action_trace": {
@@ -174,6 +318,28 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             };
             mergeActionMeta(action);
             act.action_trace.act = action.act;
+
+            if (reqBody.hex_data) {
+                try {
+                    const contract = await getContractAtBlock(
+                        fastify.elastic,
+                        fastify.eosjs.rpc,
+                        action.act.account,
+                        action.block_num
+                    ) as unknown as Serialize.Contract;
+                    reqBody.hex_data = Serialize.serializeActionData(
+                        contract,
+                        action.act.account,
+                        action.act.name,
+                        action.act.data,
+                        txEnc,
+                        txDec
+                    );
+                } catch (e: any) {
+                    console.log(e.message);
+                }
+            }
+
             // TODO: Optionally re-encode using the original ABI, will increase query time
             // act.action_trace.act.hex_data = Buffer.from(flatstr(JSON.stringify(action.act.data))).toString('hex');
             if (action.act.account_ram_deltas) {
@@ -185,7 +351,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             act.action_trace.receiver = receipt.receiver;
             act.account_action_seq = receipt['recv_sequence'];
             response.actions.push(act);
-        });
+        }
     }
     return response;
 }
