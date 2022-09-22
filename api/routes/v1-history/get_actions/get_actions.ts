@@ -14,7 +14,7 @@ const abi_remapping = {
 const txEnc = new TextEncoder();
 const txDec = new TextDecoder();
 
-async function fetchAbiHexAtBlockElastic(client, contract_name, last_block, get_json) {
+async function fetchAbiHexAtBlockElastic(client, chain, contract_name, last_block, get_json) {
     try {
         const _includes = ["actions", "tables", "block"];
         if (get_json) {
@@ -31,7 +31,7 @@ async function fetchAbiHexAtBlockElastic(client, contract_name, last_block, get_
             }
         };
         const queryResult: ApiResponse = await client.search({
-            index: `${this.chain}-abi-*`,
+            index: `${chain}-abi-*`,
             body: {
                 size: 1, query,
                 sort: [{block: {order: "desc"}}],
@@ -41,7 +41,7 @@ async function fetchAbiHexAtBlockElastic(client, contract_name, last_block, get_
         const results = queryResult.body.hits.hits;
         if (results.length > 0) {
             const nextRefResponse: ApiResponse = await client.search({
-                index: `${this.chain}-abi-*`,
+                index: `${chain}-abi-*`,
                 body: {
                     size: 1,
                     query: {
@@ -83,9 +83,9 @@ async function getAbiFromHeadBlock(rpc: JsonRpc, code) {
     return {abi: _abi, valid_until: null, valid_from: null};
 }
 
-async function getContractAtBlock(esClient, rpc, accountName: string, block_num: number, check_action?: string) {
+async function getContractAtBlock(esClient, rpc, chain, accountName: string, block_num: number, check_action?: string) {
     let savedAbi, abi;
-    savedAbi = await fetchAbiHexAtBlockElastic(esClient, accountName, block_num, true);
+    savedAbi = await fetchAbiHexAtBlockElastic(esClient, chain, accountName, block_num, true);
     if (savedAbi === null || (savedAbi.actions && !savedAbi.actions.includes(check_action))) {
         savedAbi = await getAbiFromHeadBlock(rpc, accountName);
         if (!savedAbi) return [null, null];
@@ -324,6 +324,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
                     const contract = await getContractAtBlock(
                         fastify.elastic,
                         fastify.eosjs.rpc,
+                        fastify.manager.chain,
                         action.act.account,
                         action.block_num
                     ) as unknown as Serialize.Contract;
