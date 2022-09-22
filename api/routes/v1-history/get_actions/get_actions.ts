@@ -328,7 +328,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
                         action.act.account,
                         action.block_num
                     );
-                    reqBody.hex_data = Serialize.serializeActionData(
+                    action.act.hex_data = Serialize.serializeActionData(
                         contract,
                         action.act.account,
                         action.act.name,
