@@ -174,7 +174,8 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             };
             mergeActionMeta(action);
             act.action_trace.act = action.act;
-            act.action_trace.act.hex_data = Buffer.from(flatstr(JSON.stringify(action.act.data))).toString('hex');
+            // TODO: Optionally re-encode using the original ABI, will increase query time
+            // act.action_trace.act.hex_data = Buffer.from(flatstr(JSON.stringify(action.act.data))).toString('hex');
             if (action.act.account_ram_deltas) {
                 act.action_trace.account_ram_deltas = action.account_ram_deltas
             }

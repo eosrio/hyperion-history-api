@@ -136,7 +136,9 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 		for (let action of actions) {
 			action = action._source;
 			mergeActionMeta(action);
-			action.act['hex_data'] = Buffer.from(flatstr(JSON.stringify(action.act.data))).toString('hex');
+
+			// action.act['hex_data'] = Buffer.from(flatstr(JSON.stringify(action.act.data))).toString('hex');
+
 			if (action.parent === 0) {
 				response.trx.trx.actions.push(action.act);
 			}
