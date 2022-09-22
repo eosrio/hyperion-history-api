@@ -337,7 +337,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
                         txDec
                     );
                 } catch (e: any) {
-                    console.log(e.message);
+                    console.log(e);
                 }
             }
 
