@@ -321,13 +321,13 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
             if (reqBody.hex_data) {
                 try {
-                    const contract = await getContractAtBlock(
+                    const [contract, _] = await getContractAtBlock(
                         fastify.elastic,
                         fastify.eosjs.rpc,
                         fastify.manager.chain,
                         action.act.account,
                         action.block_num
-                    ) as unknown as Serialize.Contract;
+                    );
                     reqBody.hex_data = Serialize.serializeActionData(
                         contract,
                         action.act.account,
