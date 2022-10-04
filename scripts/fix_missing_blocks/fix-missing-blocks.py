@@ -74,7 +74,7 @@ def query_body(interval):
         "histogram": {
             "field": "block_num",
             "interval": interval,
-            "min_doc_count": 1
+            "min_doc_count": 0
         },
         "aggs": {
             "max_block": {
@@ -99,7 +99,7 @@ def query_body2(gte,lte,interval):
                 "histogram": {
                     "field": "block_num",
                     "interval": interval,
-                    "min_doc_count": 1
+                    "min_doc_count": 0
                 },
                 "aggs": {
                     "max_block": {
@@ -151,6 +151,7 @@ def buckets_missing(bucketlist,count1,count2):
             new.update({'key': key, 'doc_count': doc_count})
             buckets_final.append(new)
         # If not first bucket but has less than count2
+        # Might have to remove to account for indices with 0 count
         elif doc_count < count2 and num != 0:
             new.update({'key': key, 'doc_count': doc_count})
             buckets_final.append(new)
@@ -281,8 +282,8 @@ if __name__ == '__main__':
     print(bcolors.OKYELLOW,f"{'='*100}\nSearching for missing Blocks ",bcolors.ENDC)
     # Search for buckets using histogram interval
     buckets = get_buckets(10000000,query_body)
-    # Get buckets with missing blocks, first count is 9999999 to account for bucket 0-9999999.
-    missing = buckets_missing(buckets,9999999,10000000 )
+    # Get buckets with missing blocks, first count is 9999998 to account for bucket 0-9999999.
+    missing = buckets_missing(buckets,9999998,10000000 )
     # Redefine search and set interval to 1000
     gt_lt_list = CreateGtLT(missing)
     print(bcolors.OKYELLOW,f"{'='*100}\nCompleted Search ",bcolors.ENDC)
