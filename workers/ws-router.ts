@@ -314,6 +314,9 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
+    /*
+    WS Routing server, API will connect to it.
+     */
     initRoutingServer() {
         const server = createServer();
         this.io = new Server(server, {
