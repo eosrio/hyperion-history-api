@@ -13,7 +13,7 @@
     "fix-permissions": "node scripts/fix-permissions.js"
   },
   "engines": {
-    "node": "^16"
+    "node": "^18"
   },
   "author": {
     "name": "EOS Rio",
@@ -27,11 +27,12 @@
   "type": "module",
   "dependencies": {
     "@elastic/elasticsearch": "8.1.0",
-    "@eosrio/node-abieos": "../node-abieos",
+    "@eosrio/node-abieos": "file:../node-abieos/eosrio-node-abieos-2.2.0.tgz",
     "@pm2/io": "^5.0.0",
     "amqplib": "^0.8.0",
     "async": "^3.2.3",
     "base-x": "^4.0.0",
+    "commander": "^9.1.0",
     "cross-fetch": "^3.1.5",
     "eosjs": "^22.1.0",
     "fast-json-stringify": "^3.0.3",
@@ -56,8 +57,8 @@
     "socket.io-redis": "^6.1.1",
     "telegraf": "^4.7.0",
     "typescript": "^4.6.2",
-    "ws": "^8.5.0",
-    "commander": "^9.1.0"
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.12.0",
+    "ws": "^8.5.0"
   },
   "devDependencies": {
     "@types/amqplib": "^0.8.2",

@@ -1,6 +1,5 @@
 import {HyperionWorker} from "./hyperionWorker.js";
 import {cargo, queue} from 'async';
-import AbiEOS from "@eosrio/node-abieos";
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {createHash} from "node:crypto";
 import flatstr from 'flatstr';
@@ -174,7 +173,7 @@ export default class MainDSWorker extends HyperionWorker {
         switch (msg.event) {
             case 'initialize_abi': {
                 this.abi = JSON.parse(msg.data);
-                AbiEOS.load_abi("0", msg.data);
+                this.abieos.loadAbi("0", msg.data);
                 const initialTypes = Serialize.createInitialTypes();
                 this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
                 this.abi.tables.map(table => this.tables.set(table.name, table.type));
@@ -184,7 +183,7 @@ export default class MainDSWorker extends HyperionWorker {
             case 'update_abi': {
                 if (msg.abi) {
                     if (msg.abi.abi_hex) {
-                        AbiEOS.load_abi_hex(msg.abi.account, msg.abi.abi_hex);
+                        this.abieos.loadAbiHex(msg.abi.account, msg.abi.abi_hex);
                         hLog(`Worker ${process.env.worker_id} updated the abi for ${msg.abi.account}`);
                     }
                 }
@@ -691,7 +690,11 @@ export default class MainDSWorker extends HyperionWorker {
     async verifyLocalType(contract, type, block_num, field) {
         let abiStatus, resultType;
         try {
-            resultType = AbiEOS['get_type_for_' + field](contract, type);
+            if (field === 'action') {
+                resultType = this.abieos.getTypeForAction(contract, type);
+            } else {
+                resultType = this.abieos.getTypeForTable(contract, type);
+            }
             abiStatus = true;
         } catch {
             abiStatus = false;
@@ -714,7 +717,11 @@ export default class MainDSWorker extends HyperionWorker {
                     }
                     if (abiStatus) {
                         try {
-                            resultType = AbiEOS['get_type_for_' + field](contract, type);
+                            if (field === 'action') {
+                                resultType = this.abieos.getTypeForAction(contract, type);
+                            } else {
+                                resultType = this.abieos.getTypeForTable(contract, type);
+                            }
                             abiStatus = true;
                             return [abiStatus, resultType];
                         } catch {
@@ -726,7 +733,11 @@ export default class MainDSWorker extends HyperionWorker {
             abiStatus = await this.loadCurrentAbiHex(contract);
             if (abiStatus === true) {
                 try {
-                    resultType = AbiEOS['get_type_for_' + field](contract, type);
+                    if (field === 'action') {
+                        resultType = this.abieos.getTypeForAction(contract, type);
+                    } else {
+                        resultType = this.abieos.getTypeForTable(contract, type);
+                    }
                     abiStatus = true;
                 } catch (e: any) {
                     debugLog(`(abieos/current) >> ${e.message}`);
@@ -767,9 +778,9 @@ export default class MainDSWorker extends HyperionWorker {
             let result;
             try {
                 if (typeof row.value === 'string') {
-                    result = AbiEOS.hex_to_json(row['code'], tableType, row.value);
+                    result = this.abieos.hexToJson(row['code'], tableType, row.value);
                 } else {
-                    result = AbiEOS.bin_to_json(row['code'], tableType, row.value);
+                    result = this.abieos.binToJson(row['code'], tableType, row.value);
                 }
                 row['data'] = result;
                 delete row.value;
@@ -842,7 +853,7 @@ export default class MainDSWorker extends HyperionWorker {
         if (check_action) {
             if (actions.has(check_action)) {
                 try {
-                    AbiEOS['load_abi'](accountName, JSON.stringify(abi));
+                    this.abieos.loadAbi(accountName, JSON.stringify(abi));
                 } catch (e: any) {
                     hLog(e);
                 }
@@ -1213,7 +1224,7 @@ export default class MainDSWorker extends HyperionWorker {
                     // update locally cached abi
                     if (process.env['live_mode'] === 'true') {
                         hLog('Abi changed during live mode, updating local version...');
-                        const abi_update_status = AbiEOS['load_abi_hex'](account['name'], abiHex);
+                        const abi_update_status = this.abieos.loadAbiHex(account['name'], abiHex);
                         if (!abi_update_status) {
                             hLog(`Reload status: ${abi_update_status}`);
                         }
@@ -1465,7 +1476,11 @@ export default class MainDSWorker extends HyperionWorker {
     deserializeNative(datatype: string, array: any): any {
         if (this.abi) {
             try {
-                return AbiEOS[typeof array === 'string' ? "hex_to_json" : "bin_to_json"]("0", datatype, array);
+                if (typeof array === 'string') {
+                    return this.abieos.hexToJson("0", datatype, array);
+                } else {
+                    return this.abieos.binToJson("0", datatype, array);
+                }
             } catch (e: any) {
                 hLog('deserializeNative >>', datatype, '>>', e.message);
             }
@@ -1477,7 +1492,7 @@ export default class MainDSWorker extends HyperionWorker {
         const [_status, actionType] = await this.verifyLocalType(_action.account, _action.name, block_num, "action");
         if (_status) {
             try {
-                return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
+                return this.abieos.binToJson(_action.account, actionType, Buffer.from(_action.data, 'hex'));
             } catch (e: any) {
                 debugLog(`deserializeActionAtBlockNative: ${e.message}`);
             }

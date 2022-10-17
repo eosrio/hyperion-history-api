@@ -2,7 +2,6 @@ import {HyperionWorker} from "./hyperionWorker.js";
 import {cargo, QueueObject} from "async";
 import {Type} from "eosjs/dist/eosjs-serialize";
 import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions.js";
-import AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "eosjs";
 
 export default class StateReader extends HyperionWorker {
@@ -280,7 +279,7 @@ export default class StateReader extends HyperionWorker {
             for (const block of block_array) {
                 try {
                     await this.onMessage(block);
-                } catch (e:any) {
+                } catch (e: any) {
                     console.log(e);
                 }
             }
@@ -484,7 +483,7 @@ export default class StateReader extends HyperionWorker {
 
     private processFirstABI(data: Buffer) {
         const abiString = data.toString();
-        AbiEOS.load_abi("0", abiString);
+        this.abieos.loadAbi("0", abiString);
         this.abi = JSON.parse(abiString);
         this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
         this.abi.tables.map(table => this.tables.set(table.name, table.type));

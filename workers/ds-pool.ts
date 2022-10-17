@@ -1,6 +1,5 @@
 import {HyperionWorker} from "./hyperionWorker.js";
 import {cargo, queue} from "async";
-import AbiEOS from "@eosrio/node-abieos";
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {Message} from "amqplib";
 import {parseDSPEvent} from "../modules/custom/dsp-parser.js";
@@ -192,7 +191,11 @@ export default class DSPoolWorker extends HyperionWorker {
         let _status;
         let resultType;
         try {
-            resultType = AbiEOS['get_type_for_' + field](contract, type);
+            if (field === 'action') {
+                resultType = this.abieos.getTypeForAction(contract, type);
+            } else {
+                resultType = this.abieos.getTypeForTable(contract, type);
+            }
             _status = true;
         } catch {
             _status = false;
@@ -207,7 +210,7 @@ export default class DSPoolWorker extends HyperionWorker {
                             return entry.startingBlock < block_num && entry.endingBlock > block_num;
                         });
                         if (matchingAbi && matchingAbi.abi) {
-                            _status = AbiEOS.load_abi(contract, matchingAbi.abi);
+                            _status = this.abieos.loadAbi(contract, matchingAbi.abi);
                         }
                     }
                 }
@@ -228,7 +231,11 @@ export default class DSPoolWorker extends HyperionWorker {
             // successful load from ES cache
             if (_status) {
                 try {
-                    resultType = AbiEOS['get_type_for_' + field](contract, type);
+                    if (field === 'action') {
+                        resultType = this.abieos.getTypeForAction(contract, type);
+                    } else {
+                        resultType = this.abieos.getTypeForTable(contract, type);
+                    }
                     _status = true;
                     return [_status, resultType];
                 } catch (e: any) {
@@ -242,7 +249,11 @@ export default class DSPoolWorker extends HyperionWorker {
 
             if (_status === true) {
                 try {
-                    resultType = AbiEOS['get_type_for_' + field](contract, type);
+                    if (field === 'action') {
+                        resultType = this.abieos.getTypeForAction(contract, type);
+                    } else {
+                        resultType = this.abieos.getTypeForTable(contract, type);
+                    }
                     _status = true;
                 } catch (e: any) {
                     debugLog(`(abieos/current) >> ${e.message}`);
@@ -258,7 +269,7 @@ export default class DSPoolWorker extends HyperionWorker {
         const [_status, actionType] = await self.verifyLocalType(_action.account, _action.name, block_num, "action");
         if (_status) {
             try {
-                return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
+                return this.abieos.binToJson(_action.account, actionType, Buffer.from(_action.data, 'hex'));
                 // if(_action.account === 'eosio' && _action.name === 'onblock') {
                 //     console.log(_action.data);
                 // }
@@ -361,7 +372,7 @@ export default class DSPoolWorker extends HyperionWorker {
             if (actions.has(check_action)) {
                 if (!this.failedAbiMap.has(accountName) || !this.failedAbiMap.get(accountName)?.has(-1)) {
                     try {
-                        const abiLoadStatus = AbiEOS.load_abi(accountName, JSON.stringify(abi));
+                        const abiLoadStatus = this.abieos.loadAbi(accountName, JSON.stringify(abi));
                         if (!abiLoadStatus) {
                             console.log('AbiEOS.load_abi >> ', abiLoadStatus);
                         }
@@ -619,7 +630,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     deleteCache(contract) {
         // delete cache contract on abieos context
-        const status = AbiEOS.delete_contract(contract);
+        const status = this.abieos.deleteContract(contract);
         if (!status) {
             debugLog('Contract not found on cache!');
         } else {
@@ -661,7 +672,7 @@ export default class DSPoolWorker extends HyperionWorker {
     initializeShipAbi(data) {
         debugLog(`state history abi ready on ds_worker ${process.env.local_id}`);
         this.abi = JSON.parse(data);
-        AbiEOS.load_abi("0", data);
+        this.abieos.loadAbi("0", data);
         const initialTypes = Serialize.createInitialTypes();
         this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
         this.abi.tables.map(table => this.tables.set(table.name, table.type));
