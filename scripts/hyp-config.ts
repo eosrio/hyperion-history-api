@@ -1,8 +1,8 @@
 import {Command} from "commander";
 import path from "node:path";
 import {cp, mkdir, readdir, readFile, rm, writeFile} from "node:fs/promises";
-import {HyperionConfig} from "../interfaces/hyperionConfig.js";
-import {HyperionConnections} from "../interfaces/hyperionConnections.js";
+import {HyperionConfig} from "../src/interfaces/hyperionConfig.js";
+import {HyperionConnections} from "../src/interfaces/hyperionConnections.js";
 import {existsSync} from "node:fs";
 import {JsonRpc} from "eosjs";
 import fetch, {Headers} from "cross-fetch";
@@ -11,7 +11,7 @@ import {Client} from "@elastic/elasticsearch";
 import * as readline from "node:readline";
 import * as amqp from "amqplib";
 import {btoa} from "node:buffer";
-import IORedis from "ioredis";
+import {default as IORedis} from "ioredis";
 
 const program = new Command();
 const chainsDir = path.join(path.resolve(), 'chains');
@@ -356,7 +356,7 @@ async function checkAMQP(conn: HyperionConnections): Promise<boolean> {
 async function checkRedis(conn: HyperionConnections) {
     console.log(`\n[info] [REDIS] - Testing redis connection...`);
     try {
-        const ioRedisClient = new IORedis(conn.redis);
+        const ioRedisClient = new IORedis.default(conn.redis);
         const pingResult = await ioRedisClient.ping();
         if (pingResult === 'PONG') {
             console.log('[info] [REDIS] - Connection established!');

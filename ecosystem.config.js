@@ -1,6 +1,6 @@
-const {addApiServer, addIndexer} = require('./definitions/ecosystem_settings');
-const {readdirSync, readFileSync} = require("fs");
-const path = require('path');
+const {addApiServer, addIndexer} = require('./ecosystem.helpers.js');
+const {readdirSync, readFileSync} = require("node:fs");
+const path = require('node:path');
 
 const apps = [];
 const chainsRoot = path.join(path.resolve(), 'chains');
