@@ -1,9 +1,9 @@
-const {addApiServer, addIndexer} = require('./ecosystem.helpers.js');
+const {addApiServer, addIndexer} = require('./scripts/ecosystem.helpers.js');
 const {readdirSync, readFileSync} = require("node:fs");
 const path = require('node:path');
 
 const apps = [];
-const chainsRoot = path.join(path.resolve(), 'chains');
+const chainsRoot = path.join(path.resolve(), 'config', 'chains');
 readdirSync(chainsRoot)
     .filter(f => f.endsWith('.config.json'))
     .forEach(value => {

@@ -96,7 +96,7 @@ export class ConfigurationModule {
         this.config.indexer.abi_scan_mode = value;
     }
     loadConnectionsJson() {
-        const file = './connections.json';
+        const file = './config/connections.json';
         if (existsSync(file)) {
             const data = readFileSync(file).toString();
             try {
