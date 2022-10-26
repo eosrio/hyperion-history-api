@@ -256,12 +256,12 @@ export default class DSPoolWorker extends HyperionWorker {
         const [_status, actionType] = await self.verifyLocalType(_action.account, _action.name, block_num, "action");
         if (_status) {
             try {
-                return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
+                return JSON.parse(AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex')));
             } catch (e) {
                 debugLog(`(abieos) ${_action.account}::${_action.name} @ ${block_num} >>> ${e.message}`);
             }
         }
-        return await self.deserializeActionAtBlock(_action, block_num);
+        return self.deserializeActionAtBlock(_action, block_num);
     }
 
     async getAbiFromHeadBlock(code) {
@@ -380,9 +380,9 @@ export default class DSPoolWorker extends HyperionWorker {
                         action.data,
                         this.txEnc,
                         this.txDec
-                    );
+                    ).data;
                 } catch (e) {
-                    debugLog(`(eosjs)  ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
+                    debugLog(`(eosjs) ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
                     return null;
                 }
             } else {

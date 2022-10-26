@@ -184,6 +184,12 @@ export abstract class BaseParser {
         }
 
         if (ds_act) {
+
+            if (ds_act.account && ds_act.name && ds_act.authorization) {
+                console.log(ds_act);
+                action.act.data = ds_act.data;
+            }
+
             // save serialized data
             action.act.data = ds_act;
             try {
