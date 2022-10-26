@@ -78,6 +78,11 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         const actions = results['hits'];
         for (let action of actions) {
             action = action._source;
+
+			if (action.act.data.account && action.act.data.name && action.act.data.authorization) {
+				action.act.data = action.act.data.data;
+			}
+
             mergeActionMeta(action);
 
             if (query.noBinary === true) {
@@ -88,10 +93,6 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
                         }
                     }
                 }
-            }
-
-            if (action.act.data.account && action.act.data.name && action.act.data.authorization) {
-                action.act.data = action.act.data.data;
             }
 
             if (query.simple) {
