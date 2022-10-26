@@ -42,14 +42,20 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
 					break;
 				}
 				default: {
-					const values = query[param].split(",");
-					if (values.length > 1) {
-						const terms = {};
-						terms[param] = values;
-						mustArray.push({terms: terms});
+					if(typeof query[param] === 'string') {
+						const values = query[param].split(",");
+						if (values.length > 1) {
+							const terms = {};
+							terms[param] = values;
+							mustArray.push({terms: terms});
+						} else {
+							const term = {};
+							term[param] = values[0];
+							mustArray.push({term: term});
+						}
 					} else {
 						const term = {};
-						term[param] = values[0];
+						term[param] = query[param];
 						mustArray.push({term: term});
 					}
 					break;
