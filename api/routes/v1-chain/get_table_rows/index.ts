@@ -37,7 +37,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 "type": "string"
             }
         },
-        ["code", "table", "scope"]
+        ["code", "table"]
     );
     next();
 }
