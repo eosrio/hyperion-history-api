@@ -4,8 +4,7 @@ import {Command} from "commander";
 import path from "node:path";
 import {cp, mkdir, readdir, readFile, rm, writeFile} from "node:fs/promises";
 import {existsSync} from "node:fs";
-import {JsonRpc} from "eosjs";
-import fetch, {Headers} from "cross-fetch";
+import {JsonRpc} from "enf-eosjs";
 import WebSocket from 'ws';
 import {Client} from "@elastic/elasticsearch";
 import * as readline from "node:readline";
@@ -14,6 +13,7 @@ import {btoa} from "node:buffer";
 import {default as IORedis} from "ioredis";
 import {HyperionConnections} from "../interfaces/hyperionConnections.js";
 import {HyperionConfig} from "../interfaces/hyperionConfig.js";
+import {copyFileSync, rmSync} from "fs";
 
 const program = new Command();
 const configDir = path.join(path.resolve(), 'config');
@@ -42,7 +42,6 @@ async function getExampleConnections(): Promise<HyperionConnections | null> {
         return null;
     }
 }
-
 
 async function listChains(flags) {
 
@@ -121,7 +120,7 @@ async function listChains(flags) {
     console.log(' >>>> Fully Configured Chains');
     console.table(configuredTable);
 
-    if (!flags.valid) {
+    if (!flags.valid && pendingTable.length > 0) {
         console.log(' >>>> Pending Configuration Chains');
         console.table(pendingTable);
     }
@@ -171,6 +170,7 @@ async function newChain(shortName, options) {
         }
 
         // test nodeos availability
+        // @ts-ignore
         const jsonRpc = new JsonRpc(options.http, {fetch});
         const info = await jsonRpc.get_info();
         jsonData.api.chain_api = options.http;
@@ -238,8 +238,8 @@ async function newChain(shortName, options) {
     console.log(connections.chains[shortName]);
 
     console.log('Saving connections.json...');
-    await writeFile(path.join(path.resolve(), 'connections.json'), JSON.stringify(connections, null, 2));
-    console.log(`Saving chains/${shortName}.config.json...`);
+    await writeFile(path.join(configDir, 'connections.json'), JSON.stringify(connections, null, 2));
+    console.log(`Saving config/chains/${shortName}.config.json...`);
     await writeFile(targetPath, JSON.stringify(jsonData, null, 2));
 }
 
@@ -253,7 +253,7 @@ async function rmChain(shortName) {
     }
 
     // create backups
-    const backupDir = path.join(path.resolve(), 'configuration_backups');
+    const backupDir = path.join(configDir, 'backups');
     if (!existsSync(backupDir)) {
         await mkdir(backupDir);
     }
@@ -281,7 +281,7 @@ async function rmChain(shortName) {
     await rm(targetPath);
     delete connections.chains[shortName];
     console.log('Saving connections.json...');
-    await writeFile(path.join(path.resolve(), 'connections.json'), JSON.stringify(connections, null, 2));
+    await writeFile(path.join(configDir, 'connections.json'), JSON.stringify(connections, null, 2));
     console.log(`✅ ${shortName} removal completed!`);
 }
 
@@ -494,24 +494,24 @@ async function initConfig() {
     await writeFile(path.join(configDir, 'connections.json'), JSON.stringify(conn, null, 2));
 
     console.log('✅ ✅');
-
     rl.close();
-    process.exit(0);
 }
 
 async function resetConnections() {
-    const connPath = path.join(path.resolve(), 'connections.json');
+    const connPath = path.join(configDir, 'connections.json');
     try {
         if (existsSync(connPath)) {
             const rl = readline.createInterface({input: process.stdin, output: process.stdout});
             const prompt = (query) => new Promise((resolve) => rl.question(query, resolve));
-            const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.');
+            const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n');
             if (confirmation === 'YES') {
-                await rm(connPath);
+                copyFileSync(connPath, path.join(configDir, 'connections.json.bak'));
+                rmSync(connPath);
                 console.log('connections.json removed, please use "./hyp-config init" to reconfigure');
             } else {
                 console.log('Operation canceled. No files were removed.');
             }
+            rl.close();
         } else {
             console.log(`The connections.json file is not present, please run "./hyp-config init" to configure it.`);
         }
@@ -521,7 +521,7 @@ async function resetConnections() {
 }
 
 async function testConnections() {
-    const connPath = path.join(path.resolve(), 'connections.json');
+    const connPath = path.join(configDir, 'connections.json');
     if (existsSync(connPath)) {
         try {
             const conn = await getConnections();
@@ -547,40 +547,54 @@ async function testConnections() {
 // main program
 (() => {
 
-    program.command('init')
+    const connections = program.command('connections');
+
+    // ./hyp-config connections init
+    connections
+        .command('init')
         .description('create and test the connections.json file')
         .action(initConfig);
 
-    const connections = program.command('connections');
-
+    // ./hyp-config connections test
     connections
         .command('test')
         .description('test connections to the hyperion infrastructure')
         .action(testConnections);
 
+    // ./hyp-config connections reset
     connections
         .command('reset')
         .description('remove the connections.json file')
         .action(resetConnections);
 
     const list = program.command('list').alias('ls');
-    list.command('chains')
+
+    // ./hyp-config list chains
+    list
+        .command('chains')
         .option('--valid', 'only show valid chains')
         .option('--fix-missing-fields', 'set defaults on missing fields')
         .description('list configured chains')
         .action(listChains);
 
     const newCmd = program.command('new').alias('n');
-    newCmd.command('chain <shortName>')
+
+    // ./hyp-config new chain [shortName]
+    newCmd
+        .command('chain <shortName>')
         .description('initialize new chain config based on example')
         .option('--http <http_endpoint>', 'define chain api http endpoint')
         .option('--ship <ship_endpoint>', 'define state history ws endpoint')
-        .action(newChain)
+        .action(newChain);
 
     const remove = program.command('remove').alias('rm');
-    remove.command('chain <shortName>')
+
+    // ./hyp-config remove chain [shortName]
+    remove
+        .command('chain <shortName>')
         .description('backup and delete chain configuration')
         .action(rmChain);
 
+    // process current command
     program.parse(process.argv);
 })();

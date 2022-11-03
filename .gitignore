@@ -30,3 +30,6 @@ dist
 # configuration
 config
 !config/chains/example.config.json
+
+# logging
+logs

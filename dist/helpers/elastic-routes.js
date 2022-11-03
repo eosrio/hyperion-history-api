@@ -1,4 +1,4 @@
-import { omit, flat } from 'radash';
+import { flat, omit } from 'radash';
 import { hLog } from "./common_functions.js";
 import { createHash } from "node:crypto";
 function makeScriptedOp(id, body) {
@@ -13,12 +13,9 @@ function makeDelOp(id) {
     ];
 }
 function flatMap(payloads, builder) {
-    const out = flat(payloads.map((payload) => {
-        return builder(payload, JSON.parse(payload.content.toString()));
+    return flat(payloads.map((payload) => {
+        return builder(payload, payload.content.toString());
     }));
-    console.log(out);
-    return out;
-    // return _(payloads).map(...).flatten()['value']();
 }
 function buildAbiBulk(payloads, messageMap) {
     return flatMap(payloads, (payload, body) => {
@@ -68,12 +65,13 @@ function buildDeltaBulk(payloads, messageMap, maxBlockCb, routerFunc, indexName)
 }
 function buildDynamicTableBulk(payloads, messageMap) {
     return flatMap(payloads, (payload, body) => {
-        messageMap.set(payload.id, omit(payload, ['content']));
-        if (payload.present === 0) {
-            return makeDelOp(payload.id);
+        const id = payload.properties.messageId;
+        messageMap.set(payload.properties.messageId.id, omit(payload, ['content']));
+        if (body.present === 0) {
+            return makeDelOp(id);
         }
         else {
-            return makeScriptedOp(payload.id, body);
+            return makeScriptedOp(id, body);
         }
     });
 }

@@ -44,6 +44,7 @@
     "base-x": "^4.0.0",
     "commander": "^9.4.1",
     "cross-fetch": "^3.1.5",
+    "node-fetch": "^3.2.10",
     "enf-eosjs": "^23.0.0-rc4",
     "eosjs": "^22.1.0",
     "fast-json-stringify": "^5.4.0",

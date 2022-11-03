@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { hLog } from "../helpers/common_functions.js";
 import { dirname } from 'node:path';
@@ -87,24 +87,30 @@ export class HyperionModuleLoader {
         }
     }
     async loadActionHandlers() {
-        const files = readdirSync('modules/action_data/');
-        for (const plugin of files) {
-            const _module = (await import(join(__dirname, 'action_data', plugin))).hyperionModule;
-            if (_module.parser_version.includes(this.config.settings.parser)) {
-                if (_module.chain === this.chainID || _module.chain === '*') {
-                    const key = `${_module.contract}::${_module.action}`;
-                    if (this.chainMappings.has(key)) {
-                        if (this.chainMappings.get(key) === '*' && _module.chain === this.chainID) {
+        try {
+            const files = readdirSync(join(resolve(), 'dist', 'modules', 'action_data'));
+            for (const plugin of files) {
+                const _module = (await import(join(__dirname, 'action_data', plugin))).hyperionModule;
+                if (_module.parser_version.includes(this.config.settings.parser)) {
+                    if (_module.chain === this.chainID || _module.chain === '*') {
+                        const key = `${_module.contract}::${_module.action}`;
+                        if (this.chainMappings.has(key)) {
+                            if (this.chainMappings.get(key) === '*' && _module.chain === this.chainID) {
+                                this.includeActionModule(_module);
+                                this.chainMappings.set(key, _module.chain);
+                            }
+                        }
+                        else {
                             this.includeActionModule(_module);
                             this.chainMappings.set(key, _module.chain);
                         }
                     }
-                    else {
-                        this.includeActionModule(_module);
-                        this.chainMappings.set(key, _module.chain);
-                    }
                 }
             }
+        }
+        catch (e) {
+            hLog(e.message);
+            process.exit(1);
         }
     }
     async init() {

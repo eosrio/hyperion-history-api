@@ -1,14 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Serialize } from "eosjs";
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-const __dirname = dirname(fileURLToPath(import.meta.url));
 let config;
-const conf_path = join(__dirname, `../${process.env.CONFIG_JSON}`);
-if (existsSync(conf_path)) {
+let confPath = process.env.CONFIG_JSON;
+if (!existsSync(confPath)) {
+    confPath = join(resolve(), `${process.env.CONFIG_JSON}`);
+}
+if (existsSync(confPath)) {
     try {
-        config = JSON.parse(readFileSync(conf_path).toString());
+        config = JSON.parse(readFileSync(confPath).toString());
     }
     catch (e) {
         console.log(e.message);
@@ -16,7 +16,7 @@ if (existsSync(conf_path)) {
     }
 }
 if (!config) {
-    console.log(`Configuration not found: ${conf_path}`);
+    console.log(`Configuration not found: ${confPath}`);
     process.exit(1);
 }
 function getLastResult(results) {

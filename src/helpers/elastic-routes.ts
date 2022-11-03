@@ -1,11 +1,30 @@
 import {Channel, Message} from "amqplib";
 import {ConnectionManager} from "../connections/manager.class.js";
-import {omit, flat} from 'radash';
+import {flat, omit} from 'radash';
 import {hLog} from "./common_functions.js";
 import {createHash} from "node:crypto";
 
 type MaxBlockCb = (maxBlock: number) => void;
 type routerFunction = (blockNum: number) => string;
+type flatMapBuilder = (payload: Message, body: any) => {
+    index?: {
+        _id: any,
+        _index?: string
+    },
+    update?: {
+        _id: any,
+        retry_on_conflict: number
+    },
+    script?: {
+        id: string
+        params?: any
+    }
+    scripted_upsert?: boolean
+    upsert?: any
+    delete?: {
+        _id: any
+    }
+} | any;
 type MMap = Map<string, any>;
 
 function makeScriptedOp(id, body) {
@@ -21,28 +40,22 @@ function makeDelOp(id) {
     ];
 }
 
-function flatMap(payloads: Message[], builder) {
-    const out = flat(payloads.map((payload: Message) => {
-        return builder(
-            payload,
-            JSON.parse(payload.content.toString())
-        );
+function flatMap(payloads: Message[], builder: flatMapBuilder) {
+    return flat(payloads.map((payload: Message) => {
+        return builder(payload, payload.content.toString());
     }));
-    console.log(out);
-    return out;
-    // return _(payloads).map(...).flatten()['value']();
 }
 
-function buildAbiBulk(payloads, messageMap: MMap) {
-    return flatMap(payloads, (payload, body) => {
+function buildAbiBulk(payloads: Message[], messageMap: MMap) {
+    return flatMap(payloads, (payload: Message, body: any) => {
         const id = body['block'] + body['account'];
         messageMap.set(id, omit(payload, ['content']));
         return [{index: {_id: id}}, body];
     });
 }
 
-function buildActionBulk(payloads, messageMap: MMap, maxBlockCb: MaxBlockCb, routerFunc: routerFunction, indexName: string) {
-    return flatMap(payloads, (payload, body) => {
+function buildActionBulk(payloads: Message[], messageMap: MMap, maxBlockCb: MaxBlockCb, routerFunc: routerFunction, indexName: string) {
+    return flatMap(payloads, (payload: Message, body: any) => {
         const id = body['global_sequence'];
         messageMap.set(id, omit(payload, ['content']));
         return [{
@@ -54,8 +67,8 @@ function buildActionBulk(payloads, messageMap: MMap, maxBlockCb: MaxBlockCb, rou
     });
 }
 
-function buildBlockBulk(payloads, messageMap: MMap, maxBlockCb: MaxBlockCb, routerFunc: routerFunction, indexName: string) {
-    return flatMap(payloads, (payload, body) => {
+function buildBlockBulk(payloads: Message[], messageMap: MMap, maxBlockCb: MaxBlockCb, routerFunc: routerFunction, indexName: string) {
+    return flatMap(payloads, (payload: Message, body: any) => {
         const id = body['block_num'];
         messageMap.set(id, omit(payload, ['content']));
         return [{
@@ -64,9 +77,9 @@ function buildBlockBulk(payloads, messageMap: MMap, maxBlockCb: MaxBlockCb, rout
     });
 }
 
-function buildDeltaBulk(payloads, messageMap: MMap, maxBlockCb: MaxBlockCb, routerFunc: routerFunction, indexName: string) {
+function buildDeltaBulk(payloads: Message[], messageMap: MMap, maxBlockCb: MaxBlockCb, routerFunc: routerFunction, indexName: string) {
     let maxBlock = 0;
-    const flat_map = flatMap(payloads, (payload, b) => {
+    const flat_map = flatMap(payloads, (payload: Message, b: any) => {
         if (maxBlock < b.block_num) {
             maxBlock = b.block_num;
         }
@@ -83,26 +96,27 @@ function buildDeltaBulk(payloads, messageMap: MMap, maxBlockCb: MaxBlockCb, rout
     return flat_map;
 }
 
-function buildDynamicTableBulk(payloads, messageMap: MMap) {
-    return flatMap(payloads, (payload, body) => {
-        messageMap.set(payload.id, omit(payload, ['content']));
-        if (payload.present === 0) {
-            return makeDelOp(payload.id);
+function buildDynamicTableBulk(payloads: Message[], messageMap: MMap) {
+    return flatMap(payloads, (payload: Message, body: any) => {
+        const id = payload.properties.messageId;
+        messageMap.set(payload.properties.messageId.id, omit(payload, ['content']));
+        if (body.present === 0) {
+            return makeDelOp(id);
         } else {
-            return makeScriptedOp(payload.id, body);
+            return makeScriptedOp(id, body);
         }
     });
 }
 
-function buildTableProposalsBulk(payloads, messageMap: MMap) {
-    return flatMap(payloads, (payload, body) => {
+function buildTableProposalsBulk(payloads: Message[], messageMap: MMap) {
+    return flatMap(payloads, (payload: Message, body: any) => {
         const id = `${body.proposer}-${body.proposal_name}-${body.primary_key}`;
         messageMap.set(id, omit(payload, ['content']));
         return makeScriptedOp(id, body);
     });
 }
 
-function buildTableAccountsBulk(payloads, messageMap: MMap) {
+function buildTableAccountsBulk(payloads: Message[], messageMap: MMap) {
     return flatMap(payloads, (payload, body) => {
         const id = `${body.code}-${body.scope}-${body.symbol}`;
         messageMap.set(id, omit(payload, ['content']));
@@ -110,7 +124,7 @@ function buildTableAccountsBulk(payloads, messageMap: MMap) {
     });
 }
 
-function buildTableVotersBulk(payloads, messageMap: MMap) {
+function buildTableVotersBulk(payloads: Message[], messageMap: MMap) {
     return flatMap(payloads, (payload, body) => {
         const id = `${body.voter}`;
         messageMap.set(id, omit(payload, ['content']));
@@ -118,7 +132,7 @@ function buildTableVotersBulk(payloads, messageMap: MMap) {
     });
 }
 
-function buildLinkBulk(payloads, messageMap: MMap) {
+function buildLinkBulk(payloads: Message[], messageMap: MMap) {
     return flatMap(payloads, (payload, body) => {
         const id = `${body.account}-${body.permission}-${body.code}-${body.action}`;
         messageMap.set(id, omit(payload, ['content']));
@@ -126,7 +140,7 @@ function buildLinkBulk(payloads, messageMap: MMap) {
     });
 }
 
-function buildPermBulk(payloads, messageMap: MMap) {
+function buildPermBulk(payloads: Message[], messageMap: MMap) {
     return flatMap(payloads, (payload, body) => {
         const id = `${body.owner}-${body.name}`;
         messageMap.set(id, omit(payload, ['content']));
@@ -134,7 +148,7 @@ function buildPermBulk(payloads, messageMap: MMap) {
     });
 }
 
-function buildResLimitBulk(payloads, messageMap: MMap) {
+function buildResLimitBulk(payloads: Message[], messageMap: MMap) {
     return flatMap(payloads, (payload, body) => {
         const id = `${body.owner}`;
         messageMap.set(id, omit(payload, ['content']));
@@ -142,7 +156,7 @@ function buildResLimitBulk(payloads, messageMap: MMap) {
     });
 }
 
-function buildResUsageBulk(payloads, messageMap: MMap) {
+function buildResUsageBulk(payloads: Message[], messageMap: MMap) {
     return flatMap(payloads, (payload, body) => {
         const id = `${body.owner}`;
         messageMap.set(id, omit(payload, ['content']));
@@ -150,7 +164,7 @@ function buildResUsageBulk(payloads, messageMap: MMap) {
     });
 }
 
-function buildGenTrxBulk(payloads, messageMap: MMap) {
+function buildGenTrxBulk(payloads: Message[], messageMap: MMap) {
     return flatMap(payloads, (payload, body) => {
         const hash = createHash('sha256')
             .update(body.sender + body.sender_id + body.payer)
@@ -162,7 +176,7 @@ function buildGenTrxBulk(payloads, messageMap: MMap) {
     });
 }
 
-function buildTrxErrBulk(payloads, messageMap: MMap) {
+function buildTrxErrBulk(payloads: Message[], messageMap: MMap) {
     return flatMap(payloads, (payload, body) => {
         const id = body.trx_id.toLowerCase();
         delete body.trx_id;
