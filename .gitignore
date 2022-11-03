@@ -1,9 +1,8 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+node_modules/
+.npm
+.idea
+package-lock.json
+*.tsbuildinfo
 
 # Runtime data
 pids
@@ -11,34 +10,23 @@ pids
 *.seed
 *.pid.lock
 
-# Dependency directories
-node_modules/
-
-# Optional npm cache directory
-.npm
-
-.idea
-*.pem
-package-lock.json
-connections.json
-connections.json2
 api_access.log
 api_error.log
-.ecosystem.config.js.swp
 
+# plugins
 plugins/.state.json
 plugins/repos
 plugins/*.js
-.gitmodules
 
+# docker storage
 docker/redis/data
 docker/elasticsearch/data
 docker/rabbitmq/data
 docker/eosio/data
 
-# transpiled output dir
+# transpiled output
 dist
 
-# configuration folder
+# configuration
 config
 !config/chains/example.config.json
