@@ -1495,7 +1495,7 @@ export default class MainDSWorker extends HyperionWorker {
             proposal_name: data['@approvals']['proposal_name'],
             requested_approvals: data['@approvals']['requested_approvals'],
             provided_approvals: data['@approvals']['provided_approvals'],
-            executed: data.present === false,
+            executed: data.present === false || data.present === 0,
             primary_key: data['primary_key'],
             block_num: data['block_num']
         };
