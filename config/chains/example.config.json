@@ -62,7 +62,7 @@
     "preview": false,
     "chain": "eos",
     "eosio_alias": "eosio",
-    "parser": "2.1",
+    "parser": "1.8",
     "auto_stop": 0,
     "index_version": "v1",
     "debug": false,

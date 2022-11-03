@@ -26,9 +26,6 @@ api_access.log
 api_error.log
 .ecosystem.config.js.swp
 
-chains/*
-!chains/example.config.json
-
 plugins/.state.json
 plugins/repos
 plugins/*.js
@@ -39,6 +36,9 @@ docker/elasticsearch/data
 docker/rabbitmq/data
 docker/eosio/data
 
-configuration_backups
-
+# transpiled output dir
 dist
+
+# configuration folder
+config
+!config/chains/example.config.json
