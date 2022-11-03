@@ -40,3 +40,5 @@ docker/rabbitmq/data
 docker/eosio/data
 
 configuration_backups
+
+dist

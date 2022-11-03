@@ -1,8 +1,8 @@
+// noinspection HttpUrlsUsage
+
 import {Command} from "commander";
 import path from "node:path";
 import {cp, mkdir, readdir, readFile, rm, writeFile} from "node:fs/promises";
-import {HyperionConfig} from "../src/interfaces/hyperionConfig.js";
-import {HyperionConnections} from "../src/interfaces/hyperionConnections.js";
 import {existsSync} from "node:fs";
 import {JsonRpc} from "eosjs";
 import fetch, {Headers} from "cross-fetch";
@@ -12,15 +12,19 @@ import * as readline from "node:readline";
 import * as amqp from "amqplib";
 import {btoa} from "node:buffer";
 import {default as IORedis} from "ioredis";
+import {HyperionConnections} from "../interfaces/hyperionConnections.js";
+import {HyperionConfig} from "../interfaces/hyperionConfig.js";
 
 const program = new Command();
-const chainsDir = path.join(path.resolve(), 'chains');
+const configDir = path.join(path.resolve(), 'config');
+const chainsDir = path.join(configDir, 'chains');
 
 async function getConnections(): Promise<HyperionConnections | null> {
     try {
-        const connectionsJsonFile = await readFile(path.join(path.resolve(), 'connections.json'));
+        const connectionsJsonFile = await readFile(path.join(configDir, 'connections.json'));
         return JSON.parse(connectionsJsonFile.toString());
     } catch (e: any) {
+        console.log(e.message)
         return null;
     }
 }
@@ -32,7 +36,7 @@ async function getExampleConfig(): Promise<HyperionConfig> {
 
 async function getExampleConnections(): Promise<HyperionConnections | null> {
     try {
-        const connectionsJsonFile = await readFile(path.join(path.resolve(), 'example-connections.json'));
+        const connectionsJsonFile = await readFile(path.join(configDir, 'example-connections.json'));
         return JSON.parse(connectionsJsonFile.toString());
     } catch (e: any) {
         return null;
@@ -42,14 +46,14 @@ async function getExampleConnections(): Promise<HyperionConnections | null> {
 
 async function listChains(flags) {
 
-    const dirdata = await readdir(chainsDir);
+    const dirData = await readdir(chainsDir);
     const connections = await getConnections();
     if (!connections) return;
     const exampleChain = await getExampleConfig();
 
     const configuredTable: any[] = [];
     const pendingTable: any[] = [];
-    for (const file of dirdata.filter(f => f.endsWith('.json'))) {
+    for (const file of dirData.filter(f => f.endsWith('.json'))) {
         if (file === 'example.config.json') {
             continue;
         }
@@ -104,7 +108,7 @@ async function listChains(flags) {
                     ...common,
                     nodeos_http: chainConn?.http,
                     nodeos_ship: chainConn?.ship,
-                    chain_id: chainConn?.chain_id.substr(0, 16) + '...'
+                    chain_id: chainConn?.chain_id.substring(0, 16) + '...'
                 });
             } else {
                 pendingTable.push(common);
@@ -487,7 +491,7 @@ async function initConfig() {
 
     console.log('Init completed! Saving configuration...');
 
-    await writeFile(path.join(path.resolve(), 'connections.json'), JSON.stringify(conn, null, 2));
+    await writeFile(path.join(configDir, 'connections.json'), JSON.stringify(conn, null, 2));
 
     console.log('✅ ✅');
 
