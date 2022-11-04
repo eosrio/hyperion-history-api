@@ -6,7 +6,7 @@
     "incremental": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "diagnostics": false,
     "moduleResolution": "NodeNext",
     "sourceMap": false,

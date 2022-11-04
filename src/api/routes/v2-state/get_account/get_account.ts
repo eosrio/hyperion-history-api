@@ -24,6 +24,7 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
         throw new Error("Account not found!");
     }
 
+    // TODO: replace with internal calls
     const localApi = `http://${fastify.manager.config.api.server_addr}:${fastify.manager.config.api.server_port}/v2`;
     const getTokensApi = localApi + '/state/get_tokens';
     const getActionsApi = localApi + '/history/get_actions';

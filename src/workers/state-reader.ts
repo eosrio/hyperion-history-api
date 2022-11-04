@@ -35,7 +35,7 @@ export default class StateReader extends HyperionWorker {
     private local_lib = 0;
     private delay_active = false;
     private block_processing_delay = 100;
-    private shipRev = 'v0';
+    private readonly shipRev: string = 'v0';
 
     // private tempBlockSizeSum = 0;
     private shipInitStatus: any;
