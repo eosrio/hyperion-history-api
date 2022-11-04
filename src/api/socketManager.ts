@@ -1,9 +1,9 @@
 import {checkFilter, hLog} from '../helpers/common_functions.js';
 import {Server, Socket} from 'socket.io';
 import {createAdapter} from 'socket.io-redis';
-import {io} from 'socket.io-client';
+import {io, Socket as ClientSocket} from 'socket.io-client';
 import {FastifyInstance} from "fastify";
-import { default as IORedis, Redis } from 'ioredis';
+import {default as IORedis, RedisOptions} from 'ioredis';
 import {estypes} from "@elastic/elasticsearch";
 
 export interface StreamDeltasRequest {
@@ -29,10 +29,31 @@ export interface StreamActionsRequest {
     read_until: number | string;
 }
 
-async function addBlockRangeOpts(data, search_body, fastify: FastifyInstance) {
+export interface SearchBody {
+    query: estypes.QueryDslQueryContainer,
+    sort: estypes.SortOptions
+}
 
-    let timeRange;
-    let blockRange;
+async function addBlockRangeOpts(
+    data: StreamActionsRequest | StreamDeltasRequest,
+    searchBody: SearchBody,
+    fastify: FastifyInstance
+) {
+
+    let timeRange: {
+        "@timestamp": {
+            gte?: string;
+            lte?: string;
+        }
+    } | undefined;
+
+    let blockRange: {
+        "block_num": {
+            gte?: number;
+            lte?: number;
+        }
+    } | undefined;
+
     let head;
 
     if (typeof data['start_from'] === 'string' && data['start_from'] !== '') {
@@ -77,79 +98,96 @@ async function addBlockRangeOpts(data, search_body, fastify: FastifyInstance) {
         }
     }
 
-    if (timeRange) {
-        search_body.query.bool.must.push({
-            range: timeRange,
-        });
-    }
-    if (blockRange) {
-        search_body.query.bool.must.push({
-            range: blockRange,
-        });
+    if (Array.isArray(searchBody.query.bool?.must) && searchBody.query.bool?.must) {
+        if (timeRange) {
+            searchBody.query.bool.must.push({range: timeRange});
+        }
+        if (blockRange) {
+            searchBody.query.bool.must.push({range: blockRange});
+        }
     }
 }
 
-function addTermMatch(data, search_body, field) {
+function addTermMatch(data: Record<string, any>, searchBody: SearchBody, field: string) {
     if (data[field] !== '*' && data[field] !== '') {
-        const termQuery = {};
+        const termQuery: Record<string, any> = {};
         termQuery[field] = data[field];
-        search_body.query.bool.must.push({'term': termQuery});
+        if (Array.isArray(searchBody.query.bool?.must) && searchBody.query.bool?.must) {
+            searchBody.query.bool.must.push({'term': termQuery});
+        }
     }
 }
 
 const deltaQueryFields = ['code', 'table', 'scope', 'payer'];
 
-async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
-    const search_body = {
+async function streamPastDeltas(
+    fastify: FastifyInstance,
+    socket: Socket,
+    data: StreamDeltasRequest
+) {
+    const searchBody: {
+        query: estypes.QueryDslQueryContainer,
+        sort: estypes.SortOptions
+    } = {
         query: {bool: {must: []}},
         sort: {
             block_num: {
                 order: "asc"
             }
-        } as estypes.SortOptions,
+        }
     };
-    await addBlockRangeOpts(data, search_body, fastify);
+    await addBlockRangeOpts(data, searchBody, fastify);
     deltaQueryFields.forEach(f => {
-        addTermMatch(data, search_body, f);
+        addTermMatch(data, searchBody, f);
     });
-    const responseQueue: any[] = [];
+    const responseQueue: estypes.SearchResponse<any>[] = [];
     let counter = 0;
-    const init_response = await fastify.elastic.search({
+    const init_response = await fastify.elastic.search<any>({
         index: fastify.manager.chain + '-delta-*',
         scroll: '30s',
         size: 20,
-        body: search_body,
+        ...searchBody,
     });
     responseQueue.push(init_response);
-    while (responseQueue.length) {
-        const {body} = responseQueue.shift();
-        counter += body['hits']['hits'].length;
-        if (socket.connected) {
-            socket.emit('message', {
-                type: 'delta_trace',
-                mode: 'history',
-                messages: body['hits']['hits'].map(doc => doc._source),
-            });
-        } else {
-            hLog('LOST CLIENT');
-            break;
-        }
-        if (body['hits'].total.value === counter) {
-            hLog(`${counter} past deltas streamed to ${socket.id}`);
-            break;
-        }
-
-        const next_response = await fastify.elastic.scroll({
-            body: {
-                scroll_id: body['_scroll_id'],
-                scroll: '30s'
+    while (responseQueue.length > 0) {
+        const r = responseQueue.shift();
+        if (r) {
+            const {hits} = r;
+            counter += hits.hits.length;
+            if (socket.connected) {
+                socket.emit('message', {
+                    type: 'delta_trace',
+                    mode: 'history',
+                    messages: hits.hits.map((doc) => doc._source),
+                });
+            } else {
+                hLog('LOST CLIENT');
+                break;
             }
-        });
-        responseQueue.push(next_response);
+
+            if (hits.total && typeof hits.total !== 'number' && hits.total.value === counter) {
+                hLog(`${counter} past deltas streamed to ${socket.id}`);
+                break;
+            }
+
+            if (r._scroll_id) {
+                const next_response = await fastify.elastic.scroll<any>({
+                    scroll_id: r._scroll_id,
+                    scroll: '30s'
+                });
+                if (next_response) {
+                    responseQueue.push(next_response);
+                }
+            }
+        }
     }
 }
 
-async function streamPastActions(fastify: FastifyInstance, socket, data) {
+async function streamPastActions(
+    fastify: FastifyInstance,
+    socket: Socket,
+    data: StreamActionsRequest
+) {
     const search_body: any = {
         query: {bool: {must: []}},
         sort: {
@@ -185,7 +223,7 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
         data.filters.forEach(f => {
             if (f.field && f.value) {
                 if (f.field.startsWith('@') && !f.field.startsWith('act.data')) {
-                    const _q = {};
+                    const _q: Record<string, any> = {};
                     _q[f.field] = f.value;
                     search_body.query.bool.must.push({'term': _q});
                 } else {
@@ -195,7 +233,7 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
         });
     }
 
-    const responseQueue: any[] = [];
+    const responseQueue: estypes.SearchResponse<any>[] = [];
     let counter = 0;
 
     const init_response = await fastify.elastic.search({
@@ -205,44 +243,52 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
         body: search_body,
     });
     responseQueue.push(init_response);
-    while (responseQueue.length) {
-        const {body} = responseQueue.shift();
-        const enqueuedMessages: any[] = [];
-        counter += body['hits']['hits'].length;
-        for (const doc of body['hits']['hits']) {
-            let allow = false;
-            if (onDemandFilters.length > 0) {
-                allow = onDemandFilters.every(filter => {
-                    return checkFilter(filter, doc._source);
-                });
+    while (responseQueue.length > 0) {
+        const r = responseQueue.shift();
+        if (r) {
+            const {hits} = r;
+            const enqueuedMessages: any[] = [];
+            counter += hits.hits.length;
+            for (const doc of hits.hits) {
+                let allow = false;
+                if (onDemandFilters.length > 0) {
+                    allow = onDemandFilters.every(filter => {
+                        return checkFilter(filter, doc._source);
+                    });
+                } else {
+                    allow = true;
+                }
+                if (allow) {
+                    enqueuedMessages.push(doc._source);
+                }
+            }
+            if (socket.connected) {
+                socket.emit('message', {type: 'action_trace', mode: 'history', messages: enqueuedMessages});
             } else {
-                allow = true;
+                hLog('LOST CLIENT');
+                break;
             }
-            if (allow) {
-                enqueuedMessages.push(doc._source);
+            if (hits.total && typeof hits.total !== 'number' && hits.total.value === counter) {
+                hLog(`${counter} past actions streamed to ${socket.id}`);
+                break;
             }
-        }
-        if (socket.connected) {
-            socket.emit('message', {type: 'action_trace', mode: 'history', messages: enqueuedMessages});
-        } else {
-            hLog('LOST CLIENT');
-            break;
-        }
-        if (body['hits'].total.value === counter) {
-            hLog(`${counter} past actions streamed to ${socket.id}`);
-            break;
-        }
 
-        if (!init_response.hits.total) break;
+            if (!init_response.hits.total) break;
 
-        if (typeof init_response.hits.total !== "number" && init_response.hits.total.value < 1000) {
-            const next_response = await fastify.elastic.scroll({
-                body: {scroll_id: body['_scroll_id'], scroll: '30s'}
-            });
-            responseQueue.push(next_response);
-        } else {
-            hLog('Request too large!');
-            socket.emit('message', {type: 'action_trace', mode: 'history', messages: []});
+            if (typeof init_response.hits.total !== "number" && init_response.hits.total.value < 1000) {
+                if (r._scroll_id) {
+                    const next_response = await fastify.elastic.scroll({
+                        scroll_id: r._scroll_id,
+                        scroll: '30s'
+                    });
+                    if (next_response) {
+                        responseQueue.push(next_response);
+                    }
+                }
+            } else {
+                hLog('Request too large!');
+                socket.emit('message', {type: 'action_trace', mode: 'history', messages: []});
+            }
         }
     }
 }
@@ -250,15 +296,15 @@ async function streamPastActions(fastify: FastifyInstance, socket, data) {
 export class SocketManager {
 
     private io: Server;
-    private relay;
+    private relay?: ClientSocket;
     relay_restored = true;
     relay_down = false;
     private readonly url;
     private readonly server: FastifyInstance;
 
-    constructor(fastify: FastifyInstance, url, redisOptions) {
+    constructor(fastify: FastifyInstance, relayUrl: string, redisOptions: RedisOptions) {
         this.server = fastify;
-        this.url = url;
+        this.url = relayUrl;
 
         this.io = new Server(fastify.server, {
             allowEIO3: true,
@@ -315,11 +361,13 @@ export class SocketManager {
 
             socket.on('disconnect', (reason) => {
                 hLog(`[socket] ${socket.id} disconnected - ${reason}`);
-                this.relay.emit('event', {
-                    type: 'client_disconnected',
-                    id: socket.id,
-                    reason,
-                });
+                if (this.relay) {
+                    this.relay.emit('event', {
+                        type: 'client_disconnected',
+                        id: socket.id,
+                        reason,
+                    });
+                }
             });
         });
         hLog('Websocket manager loaded!');
@@ -370,7 +418,7 @@ export class SocketManager {
         });
     }
 
-    emitToClient(traceData, type) {
+    emitToClient(traceData: any, type: string) {
         if (this.io.sockets.sockets.has(traceData.client)) {
             this.io.sockets.sockets.get(traceData.client)?.emit('message', {
                 type: type,
@@ -380,13 +428,13 @@ export class SocketManager {
         }
     }
 
-    emitToRelay(data, type, socket, callback) {
-        if (this.relay.connected) {
+    emitToRelay(data: any, type: string, socket: Socket, callback: (r: any) => void) {
+        if (this.relay && this.relay.connected) {
             this.relay.emit('event', {
                 type: type,
                 client_socket: socket.id,
                 request: data,
-            }, (response) => {
+            }, (response: any) => {
                 callback(response);
             });
         } else {
