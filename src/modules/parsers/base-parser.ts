@@ -195,11 +195,13 @@ export abstract class BaseParser {
         }
 
         if (ds_act) {
-            // save serialized data
-            // console.log('------ ORIGINAL ACT DATA ------\n', original_act)
-            // console.log('------ DESERIALIZED ACT DATA ------\n', ds_act);
+
+            if (ds_act.account && ds_act.name && ds_act.authorization) {
+                console.log(ds_act);
+                action.act.data = ds_act.data;
+            }
+
             action.act.data = ds_act;
-            // console.log('------ FULL ACTION DATA ------\n', action.act);
             try {
                 worker.common.attachActionExtras(worker, action);
             } catch (e: any) {

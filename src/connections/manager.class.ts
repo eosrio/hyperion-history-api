@@ -8,8 +8,7 @@ import {amqpConnect, checkQueueSize, getAmpqUrl} from "./amqp.js";
 import {StateHistorySocket} from "./state-history.js";
 import fetch from 'cross-fetch';
 import {exec} from "node:child_process";
-import {hLog} from "../helpers/common_functions.js";
-import {readFileSync} from "node:fs";
+import {getPackageJson, hLog} from "../helpers/common_functions.js";
 
 export class ConnectionManager {
 
@@ -168,7 +167,7 @@ export class ConnectionManager {
     }
 
     getHyperionVersion() {
-        const pkg = JSON.parse(readFileSync('../package.json').toString());
+        const pkg = getPackageJson();
         this.current_version = pkg.version;
         if (this.last_commit_hash === 'custom') {
             this.current_version = this.current_version + '-dirty';

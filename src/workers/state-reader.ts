@@ -120,7 +120,9 @@ export default class StateReader extends HyperionWorker {
 
                     if (!this.isLiveReader) {
                         this.local_distributed_count++;
-                        debugLog(`Block Number: ${d.num} - Range progress: ${this.local_distributed_count}/${this.range_size}`);
+
+                        // debugLog(`Block Number: ${d.num} - Range progress: ${this.local_distributed_count}/${this.range_size}`);
+
                         if (this.local_distributed_count === this.range_size) {
                             this.signalReaderCompletion();
                         }
@@ -366,18 +368,17 @@ export default class StateReader extends HyperionWorker {
                     const lib = res['last_irreversible'];
                     const task_payload = {num: blk_num, content: data};
 
-                    if (res.block && res.traces && res.deltas) {
-                        debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
-                    } else {
-                        if (!res.traces) {
-                            debugLog('missing traces field');
+                    if (!this.conf.indexer.abi_scan_mode) {
+                        if (this.conf.indexer.fetch_traces && !res.traces) {
+                            hLog('missing traces field');
                         }
-                        if (!res.deltas) {
-                            debugLog('missing deltas field');
+                        if (this.conf.indexer.fetch_block && !res.block) {
+                            hLog('missing traces field');
                         }
-                        if (!res.block) {
-                            debugLog('missing block field');
-                        }
+                    }
+
+                    if (!res.deltas) {
+                        hLog('missing deltas field');
                     }
 
                     if (this.isLiveReader) {

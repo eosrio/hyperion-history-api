@@ -8,17 +8,24 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         summary: 'get block traces',
         tags: ['history'],
         body: {
-            type: ['object', 'string'],
-            properties: {
-                "block_num": {
-                    description: 'block number',
-                    type: 'integer'
-                },
-                "block_id": {
-                    description: 'block id',
+            anyOf: [
+                {
                     type: 'string'
+                },
+                {
+                    type: 'object',
+                    properties: {
+                        "block_num": {
+                            description: 'block number',
+                            type: 'integer'
+                        },
+                        "block_id": {
+                            description: 'block id',
+                            type: 'string'
+                        }
+                    }
                 }
-            }
+            ]
         },
         response: extendResponseSchema({
             "id": {type: "string"},
@@ -64,7 +71,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     addApiRoute(
         fastify,
         'POST',
-        getRouteName(__filename),
+        getRouteName(import.meta.url),
         getBlockTraceHandler,
         schema
     );

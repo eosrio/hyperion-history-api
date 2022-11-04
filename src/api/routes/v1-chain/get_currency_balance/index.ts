@@ -4,7 +4,7 @@ import {addChainApiRoute, getRouteName} from "../../../helpers/functions.js";
 export default function (fastify: FastifyInstance, opts: any, next) {
     addChainApiRoute(
         fastify,
-        getRouteName(__filename),
+        getRouteName(import.meta.url),
         'Retrieves the current balance',
         {
             "code": {$ref: 'AccountName#'},

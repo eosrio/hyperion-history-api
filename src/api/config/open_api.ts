@@ -1,7 +1,8 @@
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
+import {getPackageJson} from "../../helpers/common_functions.js";
 
 export function generateOpenApiConfig(config: HyperionConfig) {
-    const packageData = require('../../package');
+    const packageData = getPackageJson();
     const health_link = `https://${config.api.server_name}/v2/health`;
     const explorer_link = `https://${config.api.server_name}/v2/explore`;
 

@@ -42,19 +42,26 @@ function makeDelOp(id) {
 
 function flatMap(payloads: Message[], builder: flatMapBuilder) {
     return flat(payloads.map((payload: Message) => {
-        return builder(payload, payload.content.toString());
+        return builder(payload, JSON.parse(payload.content.toString()));
     }));
 }
 
 function buildAbiBulk(payloads: Message[], messageMap: MMap) {
     return flatMap(payloads, (payload: Message, body: any) => {
         const id = body['block'] + body['account'];
+        console.log('buildAbiBulk', id);
         messageMap.set(id, omit(payload, ['content']));
         return [{index: {_id: id}}, body];
     });
 }
 
-function buildActionBulk(payloads: Message[], messageMap: MMap, maxBlockCb: MaxBlockCb, routerFunc: routerFunction, indexName: string) {
+function buildActionBulk(
+    payloads: Message[],
+    messageMap: MMap,
+    maxBlockCb: MaxBlockCb,
+    routerFunc: routerFunction,
+    indexName: string
+) {
     return flatMap(payloads, (payload: Message, body: any) => {
         const id = body['global_sequence'];
         messageMap.set(id, omit(payload, ['content']));
@@ -67,30 +74,44 @@ function buildActionBulk(payloads: Message[], messageMap: MMap, maxBlockCb: MaxB
     });
 }
 
-function buildBlockBulk(payloads: Message[], messageMap: MMap, maxBlockCb: MaxBlockCb, routerFunc: routerFunction, indexName: string) {
+function buildBlockBulk(
+    payloads: Message[],
+    messageMap: MMap,
+    maxBlockCb: MaxBlockCb,
+    routerFunc: routerFunction,
+    indexName: string
+) {
     return flatMap(payloads, (payload: Message, body: any) => {
         const id = body['block_num'];
         messageMap.set(id, omit(payload, ['content']));
         return [{
-            index: {_id: id}
+            index: {
+                _id: id
+            }
         }, body];
     });
 }
 
-function buildDeltaBulk(payloads: Message[], messageMap: MMap, maxBlockCb: MaxBlockCb, routerFunc: routerFunction, indexName: string) {
+function buildDeltaBulk(
+    payloads: Message[],
+    messageMap: MMap,
+    maxBlockCb: MaxBlockCb,
+    routerFunc: routerFunction,
+    indexName: string
+) {
     let maxBlock = 0;
-    const flat_map = flatMap(payloads, (payload: Message, b: any) => {
-        if (maxBlock < b.block_num) {
-            maxBlock = b.block_num;
+    const flat_map = flatMap(payloads, (payload: Message, body: any) => {
+        if (maxBlock < body.block_num) {
+            maxBlock = body.block_num;
         }
-        const id = `${b.block_num}-${b.code}-${b.scope}-${b.table}-${b.primary_key}`;
+        const id = `${body.block_num}-${body.code}-${body.scope}-${body.table}-${body.primary_key}`;
         messageMap.set(id, omit(payload, ['content']));
         return [{
             index: {
                 _id: id,
-                _index: `${indexName}-${routerFunc(b.block_num)}`
+                _index: `${indexName}-${routerFunc(body.block_num)}`
             }
-        }, b];
+        }, body];
     });
     maxBlockCb(maxBlock);
     return flat_map;
@@ -398,6 +419,9 @@ export class ElasticRoutes {
     }
 
     getIndexPartition(blockNum: number): string {
+        if (!blockNum) {
+            process.exit(1);
+        }
         return Math.ceil(blockNum / this.cm.config.settings.index_partition_size).toString().padStart(6, '0');
     }
 

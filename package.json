@@ -27,7 +27,7 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@elastic/elasticsearch": "8.4.0",
+    "@elastic/elasticsearch": "8.5.0",
     "@eosrio/hyperion-stream-client": "^1.0.3",
     "@eosrio/node-abieos": "3.1.0",
     "@fastify/autoload": "^5.4.1",
@@ -70,7 +70,8 @@
     "@types/async": "^3.2.15",
     "@types/node": "^18.11.9",
     "@types/nodemailer": "^6.4.6",
-    "@types/ws": "^8.5.3"
+    "@types/ws": "^8.5.3",
+    "nodemon": "^2.0.20"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.7",

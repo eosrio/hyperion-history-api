@@ -5,53 +5,60 @@ import {getActionsHandler} from "./get_actions.js";
 export default function (fastify: FastifyInstance, opts: any, next) {
 
     // POST
-    addApiRoute(fastify, 'POST', getRouteName(__filename), getActionsHandler, {
+    addApiRoute(fastify, 'POST', getRouteName(import.meta.url), getActionsHandler, {
         description: 'legacy get actions query',
         summary: 'get actions',
         tags: ['history'],
         body: {
-            type: ['object', 'string'],
-            properties: {
-                "account_name": {
-                    description: 'notified account',
-                    type: 'string',
-                    minLength: 1,
-                    maxLength: 12
-                },
-                "pos": {
-                    description: 'action position (pagination)',
-                    type: 'integer'
-                },
-                "offset": {
-                    description: 'limit of [n] actions per page',
-                    type: 'integer'
-                },
-                "filter": {
-                    description: 'code:name filter',
-                    type: 'string',
-                    minLength: 3
-                },
-                "sort": {
-                    description: 'sort direction',
-                    enum: ['desc', 'asc', '1', '-1'],
+            anyOf: [
+                {
                     type: 'string'
                 },
-                "after": {
-                    description: 'filter after specified date (ISO8601)',
-                    type: 'string',
-                    format: 'date-time'
-                },
-                "before": {
-                    description: 'filter before specified date (ISO8601)',
-                    type: 'string',
-                    format: 'date-time'
-                },
-                "parent": {
-                    description: 'filter by parent global sequence',
-                    type: 'integer',
-                    minimum: 0
+                {
+                    type: 'object',
+                    properties: {
+                        "account_name": {
+                            description: 'notified account',
+                            type: 'string',
+                            minLength: 1,
+                            maxLength: 12
+                        },
+                        "pos": {
+                            description: 'action position (pagination)',
+                            type: 'integer'
+                        },
+                        "offset": {
+                            description: 'limit of [n] actions per page',
+                            type: 'integer'
+                        },
+                        "filter": {
+                            description: 'code:name filter',
+                            type: 'string',
+                            minLength: 3
+                        },
+                        "sort": {
+                            description: 'sort direction',
+                            enum: ['desc', 'asc', '1', '-1'],
+                            type: 'string'
+                        },
+                        "after": {
+                            description: 'filter after specified date (ISO8601)',
+                            type: 'string',
+                            format: 'date-time'
+                        },
+                        "before": {
+                            description: 'filter before specified date (ISO8601)',
+                            type: 'string',
+                            format: 'date-time'
+                        },
+                        "parent": {
+                            description: 'filter by parent global sequence',
+                            type: 'integer',
+                            minimum: 0
+                        }
+                    }
                 }
-            }
+            ],
         },
         response: {
             200: {

@@ -1,9 +1,10 @@
-import {join} from "path";
 import {FastifyError, FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {createReadStream} from "fs";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions.js";
 import {fastifyAutoload} from '@fastify/autoload';
 import got from "got";
+import {resolve} from "node:path";
+import {hLog} from "../helpers/common_functions.js";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     server.route({
@@ -20,7 +21,7 @@ function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
 
 function addRoute(server: FastifyInstance, handlersPath: string, prefix: string) {
     server.register(fastifyAutoload, {
-        dir: join(__dirname, 'routes', handlersPath),
+        dir: resolve('dist', 'api', 'routes', handlersPath),
         ignorePattern: /.*(handler|schema).js/,
         dirNameRoutePrefix: false,
         options: {prefix}
@@ -32,6 +33,7 @@ export function registerRoutes(server: FastifyInstance) {
     // build internal map of routes
     const routeSet = new Set<string>();
     server.decorate('routeSet', routeSet);
+
     const ignoreList = [
         '/v2',
         '/v2/history',
@@ -39,6 +41,7 @@ export function registerRoutes(server: FastifyInstance) {
         '/v1/chain/*',
         '/v1/chain'
     ];
+
     server.addHook('onRoute', opts => {
         if (!ignoreList.includes(opts.url)) {
             if (opts.url.startsWith('/v')) {
@@ -62,7 +65,7 @@ export function registerRoutes(server: FastifyInstance) {
     // chain api redirects
     addRoute(server, 'v1-chain', '/v1/chain');
 
-	// other v1 requests
+    // other v1 requests
     server.route({
         url: '/v1/chain/*',
         method: ["GET", "POST"],
@@ -84,14 +87,22 @@ export function registerRoutes(server: FastifyInstance) {
         method: ["GET"],
         schema: {summary: "Get list of supported APIs", tags: ["node"]},
         handler: async (request: FastifyRequest, reply: FastifyReply) => {
-            const data = await got.get(`${server.chain_api}/v1/node/get_supported_apis`).json() as any;
-            if (data.apis && data.apis.length > 0) {
-                const apiSet = new Set(server.routeSet);
-                data.apis.forEach((a) => apiSet.add(a));
-                reply.send({apis: [...apiSet]});
-            } else {
-                reply.send({apis: [...server.routeSet], error: 'nodeos did not send any data'});
+            const response = {apis: []} as { apis: string[], error?: string };
+            const apiSet = new Set(server.routeSet);
+            try {
+                const data = await got.get(`${server.chain_api}/v1/node/get_supported_apis`).json() as any;
+                if (data.apis && data.apis.length > 0) {
+                    data.apis.forEach((a) => apiSet.add(a));
+                    response.apis = [...apiSet];
+                }
+            } catch (e: any) {
+                hLog(e.message);
             }
+            if (response.apis.length === 0) {
+                response.apis = [...server.routeSet];
+                response.error = 'nodeos did not send any data';
+            }
+            reply.send(response);
         }
     });
 

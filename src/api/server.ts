@@ -4,7 +4,7 @@ import {ConnectionManager} from "../connections/manager.class.js";
 import {HyperionConfig} from "../interfaces/hyperionConfig.js";
 import {default as IORedis} from 'ioredis';
 import {fastify} from 'fastify'
-import {registerPlugins} from "./plugins.js";
+import {ApiPluginOptions, registerPlugins} from "./plugins.js";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes.js";
 import {generateOpenApiConfig} from "./config/open_api.js";
@@ -100,15 +100,27 @@ class HyperionApiServer {
 
         hLog(`Chain API URL: "${this.fastify.chain_api}" | Push API URL: "${this.fastify.push_api}"`);
 
-        const ioRedisClient = new IORedis.default(this.manager.conn.redis);
+        const ioRedisClient = new IORedis.default({
+            ...this.manager.conn.redis,
+            maxRetriesPerRequest: 3,
+        });
 
-        const pluginParams = {
-            fastify_elasticsearch: {
+        ioRedisClient.on('error', (err) => {
+            console.log(err);
+        });
+
+        const pluginParams: ApiPluginOptions = {
+            fastifyCors: {
+                origin: '*'
+            },
+            fastifyElasticsearch: {
                 client: this.manager.elasticsearchClient
             },
-            fastify_redis: this.manager.conn.redis,
-            fastify_eosjs: this.manager,
-        } as any;
+            fastifyRedis: {
+                client: ioRedisClient
+            },
+            fastifyEosjs: this.manager,
+        };
 
         if (!this.conf.api.disable_rate_limit) {
             let rateLimiterWhitelist = ['127.0.0.1'];
@@ -120,7 +132,7 @@ class HyperionApiServer {
             if (this.conf.api.rate_limit_rpm) {
                 rateLimiterRPM = this.conf.api.rate_limit_rpm;
             }
-            pluginParams.fastify_rate_limit = {
+            pluginParams.fastifyRateLimit = {
                 max: rateLimiterRPM,
                 allowList: rateLimiterWhitelist,
                 timeWindow: '1 minute',
@@ -134,7 +146,7 @@ class HyperionApiServer {
 
         const docsConfig = generateOpenApiConfig(this.manager.config);
         if (docsConfig) {
-            pluginParams.fastify_swagger = docsConfig;
+            pluginParams.fastifySwagger = docsConfig;
         }
 
         registerPlugins(this.fastify, pluginParams);

@@ -37,7 +37,7 @@ import {HyperionConfig} from "../interfaces/hyperionConfig.js";
 import {queue, QueueObject} from "async";
 import {Numeric} from "eosjs";
 import AlertsManager from "./alertsManager.js";
-import { default as IORedis, Redis } from 'ioredis';
+import {default as IORedis, Redis} from 'ioredis';
 import {IOConfig} from "@pm2/io/build/main/pmx.js";
 import moment from "moment";
 import Timeout = NodeJS.Timeout;
@@ -504,10 +504,9 @@ export class HyperionMaster {
     private async applyUpdateScript() {
         const script_status = await this.client.putScript({
             id: "updateByBlock",
-            body: {
-                script: {
-                    lang: "painless",
-                    source: `
+            script: {
+                lang: "painless",
+                source: `
                     boolean valid = false;
                     if(ctx._source.block_num != null) {
                       if(params.block_num < ctx._source.block_num) {
@@ -529,7 +528,6 @@ export class HyperionMaster {
                       }
                     }
                 `
-                }
             }
         });
         if (!script_status.acknowledged) {
@@ -953,7 +951,7 @@ export class HyperionMaster {
         if (existsSync(symbolicLink)) unlinkSync(symbolicLink);
         symlinkSync(dsLogFileName, symbolicLink);
         this.dsErrorStream = createWriteStream(dsErrorsLog, {flags: 'a'});
-        hLog(`📣️  Deserialization errors are being logged in:\n[${symbolicLink}]`);
+        hLog(`📣️  Deserialization errors are being logged in: ${symbolicLink}`);
         this.dsErrorStream.write(`begin ${this.chain} error logs\n`);
     }
 
@@ -1714,6 +1712,9 @@ export class HyperionMaster {
 
         // Redis
         this.ioRedisClient = new IORedis.default(this.manager.conn.redis);
+
+        // Remove first indexed block from cache (v2/health)
+        await this.ioRedisClient.del(`${this.manager.chain}::fib`);
 
         // Elasticsearch
         this.client = this.manager.elasticsearchClient;

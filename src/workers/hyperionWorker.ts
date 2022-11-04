@@ -252,6 +252,69 @@ export abstract class HyperionWorker {
         }
     }
 
+    async fetchAbiAtBlock(contractName: string, lastBlock: number, getJson: boolean): Promise<any> {
+        try {
+            const t_start = process.hrtime.bigint();
+            const _includes = ["actions", "tables", "block"];
+            if (getJson) {
+                _includes.push("abi");
+            } else {
+                _includes.push("abi_hex");
+            }
+            const contractTerm = {term: {account: contractName}};
+            const lteQuery = {
+                bool: {must: [contractTerm, {range: {block: {lte: lastBlock}}}]}
+            };
+            const gteQuery = {
+                bool: {must: [contractTerm, {range: {block: {gte: lastBlock}}}]}
+            };
+            const queryResult = await this.client.search<any>({
+                index: `${this.chain}-abi-*`,
+                size: 1,
+                query: lteQuery,
+                sort: [{block: {order: "desc"}}],
+                _source: {includes: _includes}
+            });
+            const results = queryResult.hits.hits;
+            if (results.length > 0) {
+                const nextRefResponse = await this.client.search<any>({
+                    index: `${this.chain}-abi-*`,
+                    size: 1,
+                    query: gteQuery,
+                    sort: [{block: {order: "asc"}}],
+                    _source: {includes: ["block"]}
+                });
+                const nextRef = nextRefResponse.hits.hits;
+
+                const t_end = process.hrtime.bigint();
+                const results = queryResult.hits.hits;
+                const duration = (Number(t_end - t_start) / 1000 / 1000).toFixed(2);
+                hLog(`fetchAbiAtBlock took: ${duration} ms`);
+
+                const from = results[0]._source.block;
+
+                let until = -1;
+                if (nextRef.length > 0) {
+                    until = nextRef[0]._source.block;
+                }
+
+                console.log(contractName, from, until);
+
+                return {
+                    valid_from: from,
+                    valid_until: until,
+                    ...results[0]._source
+                };
+
+            } else {
+                return null;
+            }
+        } catch (e: any) {
+            hLog(e);
+            return null;
+        }
+    }
+
     async loadCurrentAbiHex(contract) {
         let _status;
         if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract)?.has(-1)) {

@@ -3,6 +3,7 @@ import {existsSync, readFileSync} from "node:fs";
 import {join, resolve} from "node:path";
 import {Serialize} from "eosjs";
 import {PathLike} from "fs";
+import {fileURLToPath} from "node:url";
 
 let config;
 let confPath = process.env.CONFIG_JSON as PathLike;
@@ -55,12 +56,24 @@ export async function getLastIndexedBlockByDelta(es_client: Client, chain: strin
 }
 
 export async function getLastIndexedBlock(es_client: Client, chain: string) {
-    const results = await es_client.search({
+    const results: estypes.SearchResponse = await es_client.search({
         index: chain + '-block-*',
         size: 1,
         body: {
             query: {bool: {filter: {match_all: {}}}},
             sort: [{block_num: {order: "desc"}}]
+        }
+    });
+    return getLastResult(results);
+}
+
+export async function getFirstIndexedBlock(esClient: Client, chain: string): Promise<number> {
+    const results: estypes.SearchResponse = await esClient.search({
+        index: chain + '-block-*',
+        size: 1,
+        body: {
+            query: {bool: {filter: {match_all: {}}}},
+            sort: [{block_num: {order: "asc"}}]
         }
     });
     return getLastResult(results);
@@ -234,14 +247,9 @@ export function checkFilter(filter, _source) {
 export function hLog(input: any, ...extra: any[]) {
     let role;
     if (process.env.worker_role) {
-        const id = parseInt(process.env.worker_id as string);
-        role = `[${process.pid} - ${(id < 10 ? '0' : '') + id.toString()}_${process.env.worker_role}]`;
+        role = `[${(process.env.worker_id as string).toString().padStart(2, '0')} - ${process.env.worker_role}]`;
     } else {
-        if (process.env.script && process.env.script === './api/server.js') {
-            role = `[${process.pid} - api]`;
-        } else {
-            role = `[${process.pid} - 00_master]`;
-        }
+        role = process.title && process.title.endsWith('-api') ? `[API]` : `[MASTER]`;
     }
     if (process.env.TRACE_LOGS === 'true') {
         const e = new Error();
@@ -262,3 +270,9 @@ export function debugLog(text: any, ...extra: any[]) {
         hLog(text, ...extra);
     }
 }
+
+export function getPackageJson(): any {
+    return JSON.parse(readFileSync(resolve('package.json')).toString());
+}
+
+export const __filename = () => fileURLToPath(import.meta.url);

@@ -611,7 +611,11 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     createSerialBuffer(inputArray) {
-        return new Serialize.SerialBuffer({textEncoder: this.txEnc, textDecoder: this.txDec, array: inputArray});
+        return new Serialize.SerialBuffer({
+            textEncoder: this.txEnc,
+            textDecoder: this.txDec,
+            array: inputArray
+        });
     }
 
     async fetchAbiHexAtBlockElastic(contract_name, last_block, get_json) {

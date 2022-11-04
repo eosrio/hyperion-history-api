@@ -145,46 +145,6 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    async fetchAbiHexAtBlockElastic(contract_name, last_block, get_json, fetch_offset: number): Promise<any | null> {
-        try {
-            const _includes = ["block", "actions", "tables"];
-            if (get_json) {
-                _includes.push("abi");
-            } else {
-                _includes.push("abi_hex");
-            }
-            // const t_start = process.hrtime.bigint();
-            const queryResult = await this.client.search({
-                index: `${this.chain}-abi-*`,
-                body: {
-                    size: 1 + fetch_offset,
-                    query: {
-                        bool: {
-                            must: [
-                                {term: {account: contract_name}},
-                                {range: {block: {lte: last_block}}}
-                            ]
-                        }
-                    },
-                    sort: [{block: {order: "desc"}}],
-                    _source: {includes: _includes}
-                }
-            });
-            // const t_end = process.hrtime.bigint();
-            const results = queryResult.hits.hits;
-            // const duration = (Number(t_end - t_start) / 1000 / 1000).toFixed(2);
-            if (results.length > 0) {
-                // hLog(`fetch abi from elastic took: ${duration} ms`);
-                return results[fetch_offset]._source;
-            } else {
-                return null;
-            }
-        } catch (e: any) {
-            hLog(e);
-            return null;
-        }
-    }
-
     // noinspection JSUnusedGlobalSymbols
     async verifyLocalType(contract, type, block_num, field) {
         let _status;
@@ -199,6 +159,7 @@ export default class DSPoolWorker extends HyperionWorker {
         } catch {
             _status = false;
         }
+
         if (!_status) {
 
             if (this.conf.settings.allow_custom_abi) {
@@ -217,7 +178,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
 
             if (!_status) {
-                const savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false, 0);
+                const savedAbi = await this.fetchAbiAtBlock(contract, block_num, false);
                 if (savedAbi) {
                     if (savedAbi[field + 's'] && savedAbi[field + 's'].includes(type)) {
                         if (savedAbi.abi_hex) {
@@ -263,26 +224,29 @@ export default class DSPoolWorker extends HyperionWorker {
         return [_status, resultType];
     }
 
-    async deserializeActionAtBlockNative(self, _action, block_num): Promise<any> {
+    async deserializeActionAtBlockNative(self: DSPoolWorker, _action, block_num): Promise<any> {
         self.recordContractUsage(_action.account);
+        // abieos is having issues to deserialize onblock, lets use eosjs directly here
+        if (_action.account === self.conf.settings.eosio_alias && _action.name === 'onblock') {
+            return self.deserializeActionAtBlock(_action, block_num);
+        }
+        const tRef = Date.now();
         const [_status, actionType] = await self.verifyLocalType(_action.account, _action.name, block_num, "action");
+        let abieosFailed = false;
         if (_status) {
             try {
-                return this.abieos.binToJson(_action.account, actionType, Buffer.from(_action.data, 'hex'));
-                // if(_action.account === 'eosio' && _action.name === 'onblock') {
-                //     console.log(_action.data);
-                // }
-                // const dsActData = AbiEOS.hex_to_json(_action.account, actionType, _action.data);
-                //
-                // if(_action.account === 'eosio' && _action.name === 'onblock') {
-                //     console.log(dsActData);
-                // }
-                // return dsActData;
+                return self.abieos.binToJson(_action.account, actionType, Buffer.from(_action.data, 'hex'));
             } catch (e: any) {
-                debugLog(`(abieos) ${_action.account}::${_action.name} @ ${block_num} >>> ${e.message}`);
+                abieosFailed = true;
+                debugLog(`(abieos.binToJson) ${_action.account}::${_action.name} @ ${block_num} >>> ${e.message}`);
             }
         }
-        return await self.deserializeActionAtBlock(_action, block_num);
+        console.log(`Abieos part took: ${Date.now() - tRef}`);
+        const fallbackData = await self.deserializeActionAtBlock(_action, block_num);
+        if (abieosFailed && fallbackData) {
+            console.log('FALLBACK TO EOSJS OK ->>>> ', fallbackData);
+        }
+        return fallbackData;
     }
 
     async getAbiFromHeadBlock(code) {
@@ -292,21 +256,27 @@ export default class DSPoolWorker extends HyperionWorker {
         } catch (e: any) {
             hLog(e);
         }
-        return {abi: _abi, valid_until: null, valid_from: null};
+        return {
+            abi: _abi,
+            valid_until: null,
+            valid_from: null
+        };
     }
 
     async getContractAtBlock(accountName, block_num, check_action) {
+
+        // check in memory cache for contract
         if (this.contracts.has(accountName)) {
             let _sc = this.contracts.get(accountName);
             if ((_sc['valid_until'] > block_num && block_num > _sc['valid_from']) || _sc['valid_until'] === -1) {
                 if (_sc['contract'].actions.has(check_action)) {
-                    hLog('cached abi');
                     return [_sc['contract'], null];
                 }
             }
         }
+
         let savedAbi, abi;
-        savedAbi = await this.fetchAbiHexAtBlockElastic(accountName, block_num, true, 0);
+        savedAbi = await this.fetchAbiAtBlock(accountName, block_num, true);
         if (savedAbi === null || (savedAbi.actions && !savedAbi.actions.includes(check_action))) {
             savedAbi = await this.getAbiFromHeadBlock(accountName);
             if (!savedAbi) {
@@ -343,10 +313,10 @@ export default class DSPoolWorker extends HyperionWorker {
             if (remapped) {
                 try {
                     types = Serialize.getTypesFromAbi(initialTypes, abi);
-                } catch (e: any) {
+                } catch (e2: any) {
                     hLog('failed after remapping abi');
                     hLog(accountName, block_num, check_action);
-                    hLog(e);
+                    hLog(e2.message);
                 }
             } else {
                 hLog(accountName, block_num);
@@ -367,6 +337,7 @@ export default class DSPoolWorker extends HyperionWorker {
         }
 
         const result = {types, actions, tables: abi.tables};
+
         if (check_action) {
             if (actions.has(check_action)) {
                 if (!this.failedAbiMap.has(accountName) || !this.failedAbiMap.get(accountName)?.has(-1)) {
@@ -381,6 +352,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 } else {
                     debugLog('ignore reloading of current abi for', accountName);
                 }
+                console.log(`Saving ${accountName}@${block_num} - from: ${savedAbi.valid_from} - until: ${savedAbi.valid_until}`);
                 this.contracts.set(accountName, {
                     contract: result,
                     valid_until: savedAbi.valid_until,

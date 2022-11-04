@@ -46,7 +46,13 @@ export default function (fastify: FastifyInstance, opts: any, next) {
             }
         }
     };
-    addApiRoute(fastify, 'GET', getRouteName(__filename), getKeyAccountsHandler, getSchema);
+    addApiRoute(
+        fastify,
+        'GET',
+        getRouteName(import.meta.url),
+        getKeyAccountsHandler,
+        getSchema
+    );
 
     // POST
     const postSchema = {
@@ -77,6 +83,11 @@ export default function (fastify: FastifyInstance, opts: any, next) {
             }
         }
     };
-    addApiRoute(fastify, 'POST', getRouteName(__filename), getKeyAccountsHandler, postSchema);
+    addApiRoute(fastify,
+        'POST',
+        getRouteName(import.meta.url),
+        getKeyAccountsHandler,
+        postSchema
+    );
     next();
 }

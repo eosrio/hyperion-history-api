@@ -39,6 +39,6 @@ export default function (fastify: FastifyInstance, opts: any, next) {
 			}
 		})
 	};
-	addApiRoute(fastify, 'GET', getRouteName(__filename), getCreatedAccountsHandler, schema);
+	addApiRoute(fastify, 'GET', getRouteName(import.meta.url), getCreatedAccountsHandler, schema);
 	next();
 }

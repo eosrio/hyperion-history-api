@@ -1,6 +1,6 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
-import {Numeric} from "eosjs/dist";
+import {Numeric} from "enf-eosjs";
 import {getSkipLimit} from "../../v2-history/get_actions/functions.js";
 import {ActionIndexSource} from "../../../../interfaces/es-interfaces.js";
 
@@ -31,7 +31,7 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
     } else if (public_Key.startsWith("EOS")) {
         try {
             publicKey = Numeric.convertLegacyPublicKey(public_Key);
-        } catch (e:any) {
+        } catch (e: any) {
             console.log(e.message);
             invalidKey();
         }
@@ -77,7 +77,7 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
             }
         }
 
-    } catch (e:any) {
+    } catch (e: any) {
         console.log(e);
     }
 

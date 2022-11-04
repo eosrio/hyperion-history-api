@@ -100,8 +100,7 @@ export function setCacheByHash(fastify, hash, response, expiration?: number) {
 }
 
 export function getRouteName(filename: string) {
-    const arr = filename.split("/");
-    return arr[arr.length - 2];
+    return filename.split("/").at(-2) || "";
 }
 
 export function addApiRoute(
@@ -298,12 +297,20 @@ export async function handleChainApiRedirect(
     }
 }
 
-export function addChainApiRoute(fastify: FastifyInstance, routeName, description, props?, required?) {
+export function addChainApiRoute(
+    fastify: FastifyInstance,
+    routeName: string,
+    description: string,
+    props?: Record<string, any>,
+    required?: string[]
+) {
+
     const baseSchema = {
         description: description,
         summary: description,
         tags: ['chain']
     };
+
     addApiRoute(
         fastify,
         ['GET', 'HEAD'],
@@ -318,6 +325,7 @@ export function addChainApiRoute(fastify: FastifyInstance, routeName, descriptio
             } : undefined
         }
     );
+
     addApiRoute(
         fastify,
         'POST',
@@ -326,9 +334,10 @@ export function addChainApiRoute(fastify: FastifyInstance, routeName, descriptio
         {
             ...baseSchema,
             body: props ? {
-                type: ['object', 'string'],
-                properties: props,
-                required: required
+                anyOf: [
+                    {type: 'object', properties: props, required: required},
+                    {type: 'string'},
+                ]
             } : undefined
         }
     );
@@ -340,13 +349,8 @@ export function addSharedSchemas(fastify: FastifyInstance) {
         title: "Integer",
         description: "Integer or String",
         anyOf: [
-            {
-                type: "string",
-                pattern: "^\\d+$"
-            },
-            {
-                type: "integer"
-            }
+            {type: "string", pattern: "^\\d+$"},
+            {type: "integer"}
         ],
     });
 
@@ -411,8 +415,8 @@ export function addSharedSchemas(fastify: FastifyInstance) {
         "type": "array",
         "items": {
             "anyOf": [
-                {"type": "integer"},
-                {"type": "string"}
+                {type: "integer"},
+                {type: "string"}
             ]
         },
         "title": "Extension"
