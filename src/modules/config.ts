@@ -11,6 +11,7 @@ export interface Filters {
 
 export class ConfigurationModule {
 
+    public activeConfigPath = '';
     public config!: HyperionConfig;
     public connections!: HyperionConnections;
     public EOSIO_ALIAS!: string;
@@ -102,23 +103,27 @@ export class ConfigurationModule {
             try {
                 this.config = JSON.parse(data);
                 this.processConfig();
+                this.activeConfigPath = process.env.CONFIG_JSON;
             } catch (e: any) {
                 console.log(`Failed to Load configuration file ${process.env.CONFIG_JSON}`);
                 console.log(e);
                 process.exit(1);
             }
         } else {
+            // TODO: use single chain config
             console.error('Configuration file not specified!');
             process.exit(1);
         }
     }
 
     setAbiScanMode(value: boolean) {
-        const data = readFileSync(process.env.CONFIG_JSON as string).toString();
-        const tempConfig: HyperionConfig = JSON.parse(data);
-        tempConfig.indexer.abi_scan_mode = value;
-        writeFileSync(process.env.CONFIG_JSON as string, JSON.stringify(tempConfig, null, 2));
-        this.config.indexer.abi_scan_mode = value;
+        if(this.activeConfigPath) {
+            const data = readFileSync(this.activeConfigPath).toString();
+            const tempConfig: HyperionConfig = JSON.parse(data);
+            tempConfig.indexer.abi_scan_mode = value;
+            writeFileSync(process.env.CONFIG_JSON as string, JSON.stringify(tempConfig, null, 2));
+            this.config.indexer.abi_scan_mode = value;
+        }
     }
 
     loadConnectionsJson() {

@@ -9,6 +9,8 @@ import {HyperionPlugin, HyperionStreamHandler} from "../interfaces/hyperion-plug
 
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {ActionTrace} from "../interfaces/action-trace.js";
+import {HyperionDelta} from "../interfaces/hyperion-delta.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -46,7 +48,7 @@ export class HyperionModuleLoader {
         this.parser = new mod(this.cm) as BaseParser;
     }
 
-    processActionData(action) {
+    processActionData(action: ActionTrace) {
         const wildcard = this.handledActions.get('*');
         if (wildcard && wildcard.has(action.act.name)) {
             wildcard.get(action.act.name)(action);
@@ -59,7 +61,7 @@ export class HyperionModuleLoader {
         }
     }
 
-    async processDeltaData(delta): Promise<void> {
+    async processDeltaData(delta: HyperionDelta): Promise<void> {
         if (this.handledDeltas.has(delta.code)) {
             const _c = this.handledDeltas.get(delta.code);
             if (_c.has(delta.table)) {

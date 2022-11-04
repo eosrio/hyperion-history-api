@@ -3,7 +3,7 @@ import {ConfigurationModule} from "../modules/config.js";
 import {ConnectionManager} from "../connections/manager.class.js";
 import {HyperionConfig} from "../interfaces/hyperionConfig.js";
 import {default as IORedis} from 'ioredis';
-import {fastify} from 'fastify'
+import {fastify, FastifyLoggerOptions} from 'fastify'
 import {ApiPluginOptions, registerPlugins} from "./plugins.js";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes.js";
@@ -47,11 +47,9 @@ class HyperionApiServer {
 
         const logStream = createWriteStream('./logs/' + this.chain + '/api.access.log');
 
-        const loggerOpts = {
+        const loggerOpts: FastifyLoggerOptions = {
             stream: logStream,
-            redact: ['req.headers.authorization'],
             level: 'info',
-            prettyPrint: true,
             serializers: {
                 res: (reply) => {
                     return {
