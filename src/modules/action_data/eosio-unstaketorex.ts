@@ -1,4 +1,6 @@
-export const hyperionModule = {
+import {HyperionActionTransform} from "../../interfaces/hyperion-action-transform.js";
+
+export const hyperionModule: HyperionActionTransform = {
     chain: "*",
     contract: 'eosio',
     action: 'unstaketorex',
@@ -6,8 +8,8 @@ export const hyperionModule = {
     defineQueryPrefix: 'unstaketorex',
     handler: (action) => {
         const data = action['act']['data'];
-        let cpu_qtd = null;
-        let net_qtd = null;
+        let cpu_qtd = 0;
+        let net_qtd = 0;
         if (data['from_net'] && data['from_cpu']) {
             cpu_qtd = parseFloat(data['from_cpu'].split(' ')[0]);
             net_qtd = parseFloat(data['from_net'].split(' ')[0]);
@@ -19,5 +21,3 @@ export const hyperionModule = {
         };
     }
 };
-
-// module.exports = {hyperionModule};

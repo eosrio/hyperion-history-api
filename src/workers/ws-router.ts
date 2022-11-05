@@ -6,17 +6,35 @@ import {Server, Socket} from "socket.io";
 import {checkFilter, hLog} from "../helpers/common_functions.js";
 import {createServer} from "http";
 import process from "node:process";
+import {Message} from "amqplib";
+
 const greylist = ['eosio.token'];
+
+interface BaseLink {
+    type: string;
+    relay: string;
+    client: any;
+    filters: any;
+    added_on: number;
+}
+
+interface ActionLink extends BaseLink {
+    account: string;
+}
+
+interface DeltaLink extends BaseLink {
+    payer: string;
+}
 
 export default class WSRouter extends HyperionWorker {
 
     q: string;
     totalRoutedMessages = 0;
     firstData = false;
-    relays = {};
+    relays: Record<string, any> = {};
     clientIndex = new Map();
-    codeActionMap = new Map();
-    notifiedMap = new Map();
+    codeActionMap: Map<string, any> = new Map();
+    notifiedMap: Map<string, any> = new Map();
     codeDeltaMap = new Map();
     payerMap = new Map();
     activeRequests = new Map();
@@ -62,7 +80,12 @@ export default class WSRouter extends HyperionWorker {
         return undefined;
     }
 
-    onConsume(msg) {
+    onConsume(msg: Message | null) {
+
+        if (msg === null) {
+            return;
+        }
+
         if (!this.firstData) {
             this.firstData = true;
         }
@@ -75,8 +98,8 @@ export default class WSRouter extends HyperionWorker {
                 const actHeader = msg.properties.headers;
                 const code = actHeader.account;
                 const name = actHeader.name;
-                const notified = actHeader.notified.split(',');
-                let decodedMsg;
+                const notified: string[] = actHeader.notified.split(',');
+                let decodedMsg: string;
 
                 // send to contract subscribers
                 if (this.codeActionMap.has(code)) {
@@ -98,7 +121,7 @@ export default class WSRouter extends HyperionWorker {
                 }
 
                 // send to notification subscribers
-                notified.forEach((acct) => {
+                notified.forEach((acct: string) => {
                     if (this.notifiedMap.has(acct)) {
                         if (!decodedMsg) {
                             decodedMsg = Buffer.from(msg.content).toString();
@@ -177,7 +200,11 @@ export default class WSRouter extends HyperionWorker {
         hLog('Total WS clients:', this.totalClients);
     }
 
-    appendToL1Map(target, primary, link) {
+    appendToL1Map(
+        target: Map<string, any>,
+        primary: string,
+        link: ActionLink | DeltaLink
+    ) {
         if (target.has(primary)) {
             target.get(primary).links.push(link);
         } else {
@@ -185,7 +212,12 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-    appendToL2Map(target, primary, secondary, link) {
+    appendToL2Map(
+        target: Map<string, any>,
+        primary: string,
+        secondary: string,
+        link: ActionLink | DeltaLink
+    ) {
         if (target.has(primary)) {
             const pMap = target.get(primary);
             if (pMap.has(secondary)) {
@@ -205,7 +237,7 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-    addActionRequest(data, id) {
+    addActionRequest(data: any, id: string) {
         const req = data.request;
         if (typeof req.account !== 'string') {
             return {status: 'FAIL', reason: 'invalid request'};
@@ -218,7 +250,7 @@ export default class WSRouter extends HyperionWorker {
                 };
             }
         }
-        const link = {
+        const link: ActionLink = {
             type: 'action',
             relay: id,
             client: data.client_socket,
@@ -241,7 +273,7 @@ export default class WSRouter extends HyperionWorker {
         };
     }
 
-    addToClientIndex(data, id, path) {
+    addToClientIndex(data: any, id: string, path: string[]) {
         // register client on index
         if (this.clientIndex.has(data.client_socket)) {
             this.clientIndex.get(data.client_socket).set(id, path);
@@ -254,9 +286,9 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-    addDeltaRequest(data, id) {
+    addDeltaRequest(data: any, id: string) {
         const req = data.request;
-        const link = {
+        const link: DeltaLink = {
             type: 'delta',
             relay: id,
             client: data.client_socket,
@@ -279,11 +311,11 @@ export default class WSRouter extends HyperionWorker {
         };
     }
 
-    removeDeepLinks(map, path, key, id) {
+    removeDeepLinks(map: Map<string, any>, path: string[], key: string, id: string) {
         if (map.has(path[0])) {
             if (map.get(path[0]).has(path[1])) {
                 const currentLinks = map.get(path[0]).get(path[1]).links;
-                currentLinks.forEach((item, index) => {
+                currentLinks.forEach((item: BaseLink, index: number) => {
                     if (item.relay === key && item.client === id) {
                         currentLinks.splice(index, 1);
                     }
@@ -292,10 +324,10 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-    removeSingleLevelLinks(map, path, key, id) {
+    removeSingleLevelLinks(map: Map<string, any>, path: string[], key: string, id: string) {
         if (map.has(path[2])) {
             const _links = map.get(path[2]).links;
-            _links.forEach((item, index) => {
+            _links.forEach((item: BaseLink, index: number) => {
                 if (item.relay === key && item.client === id) {
                     _links.splice(index, 1);
                 }
@@ -303,11 +335,11 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-    removeLinks(id) {
+    removeLinks(id: string) {
         // console.log(`Removing links for ${id}...`);
         if (this.clientIndex.has(id)) {
             const links = this.clientIndex.get(id);
-            links.forEach((path, key) => {
+            links.forEach((path: string[], key: string) => {
                 this.removeDeepLinks(this.codeActionMap, path, key, id);
                 this.removeDeepLinks(this.codeDeltaMap, path, key, id);
                 this.removeSingleLevelLinks(this.notifiedMap, path, key, id);
@@ -406,7 +438,7 @@ export default class WSRouter extends HyperionWorker {
             if (link.filters?.length > 0) {
                 // check filters
                 const _parsedMsg = JSON.parse(msg);
-                allow = link.filters.every(filter => {
+                allow = link.filters.every((filter: any) => {
                     return checkFilter(filter, _parsedMsg);
                 });
             }
@@ -417,7 +449,7 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-    private forwardDeltaMessage(msg, link, payer) {
+    private forwardDeltaMessage(msg: any, link: DeltaLink, payer: string) {
         let allow = false;
         const relay = this.io.of('/').sockets.get(link.relay);
         if (relay) {

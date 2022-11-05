@@ -15,4 +15,6 @@ export interface HyperionWorkerDef {
     distribution?: any;
     first_block?: number;
     last_block?: number;
+
+    [k: string]: any;
 }

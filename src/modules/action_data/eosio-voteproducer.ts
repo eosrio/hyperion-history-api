@@ -1,8 +1,10 @@
-export const hyperionModule = {
+import {HyperionActionTransform} from "../../interfaces/hyperion-action-transform.js";
+
+export const hyperionModule: HyperionActionTransform = {
     chain: "*",
     contract: 'eosio',
     action: 'voteproducer',
-    parser_version: ['2.1','1.8', '1.7'],
+    parser_version: ['2.1', '1.8', '1.7'],
     defineQueryPrefix: 'voteproducer',
     mappings: {
         action: {
@@ -22,5 +24,3 @@ export const hyperionModule = {
         };
     }
 };
-
-// module.exports = {hyperionModule};

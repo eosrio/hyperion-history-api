@@ -1,4 +1,6 @@
-export const hyperionModule = {
+import {HyperionActionTransform} from "../../interfaces/hyperion-action-transform.js";
+
+export const hyperionModule:HyperionActionTransform = {
     chain: "*",
     contract: 'eosio',
     action: 'updateauth',
@@ -17,5 +19,3 @@ export const hyperionModule = {
         };
     }
 };
-
-// module.exports = {hyperionModule};

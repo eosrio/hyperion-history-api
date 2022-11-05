@@ -11,13 +11,13 @@ const program = new Command();
 const pluginDirAbsolutePath = path.join(path.resolve(), 'plugins', 'repos');
 const pluginStatePath = path.join(path.resolve(), 'plugins', '.state.json');
 
-let stateJson;
+let stateJson: any;
 
 const ignoredDirsForHash = ['.git', 'node_modules'];
 
 program.version(package_json.version);
 
-function checkUrl(value) {
+function checkUrl(value: string) {
     if (value.startsWith('https://') || value.startsWith('git@')) {
         return value;
     } else {
@@ -30,7 +30,7 @@ function throwAndQuit(message: string) {
     process.exit(1);
 }
 
-function getCurrentBranch(dir): string {
+function getCurrentBranch(dir: string): string {
     const gitCmd = `(cd ${dir} && git rev-parse --abbrev-ref HEAD)`;
     if (debug) {
         console.log(` >> ${gitCmd}`);
@@ -38,7 +38,7 @@ function getCurrentBranch(dir): string {
     return execSync(gitCmd).toString().trim();
 }
 
-function checkoutBranch(dir, branchName): string {
+function checkoutBranch(dir: string, branchName: string): string {
     const gitCmd = `(cd ${dir} && git checkout ${branchName})`;
     if (debug) {
         console.log(` >> ${gitCmd}`);
@@ -46,7 +46,7 @@ function checkoutBranch(dir, branchName): string {
     return execSync(gitCmd).toString();
 }
 
-function gitPull(dir): string {
+function gitPull(dir: string): string {
     const gitCmd = `(cd ${dir} && git pull)`;
     if (debug) {
         console.log(` >> ${gitCmd}`);
@@ -54,7 +54,7 @@ function gitPull(dir): string {
     return execSync(gitCmd).toString();
 }
 
-function gitReset(dir): string {
+function gitReset(dir: string): string {
     const gitCmd = `(cd ${dir} && git reset --hard)`;
     if (debug) {
         console.log(` >> ${gitCmd}`);
@@ -62,7 +62,9 @@ function gitReset(dir): string {
     return execSync(gitCmd).toString();
 }
 
-async function buildPlugin(name, flags) {
+async function buildPlugin(name: string, flags: {
+    skipInstall?: boolean
+}) {
 
     const pluginDir = path.join(pluginDirAbsolutePath, name);
 
@@ -145,7 +147,7 @@ async function verifyInstalledPlugin(pluginName: string, options: any): Promise<
     }
 }
 
-async function hashItem(item): Promise<string> {
+async function hashItem(item: string): Promise<string> {
     if (fs.lstatSync(item).isDirectory()) {
         const dir = fs.readdirSync(item);
         const sha = crypto.createHash('sha1');
@@ -172,7 +174,9 @@ async function hashItem(item): Promise<string> {
     }
 }
 
-async function verifyInstallation(installPath, pluginName, opts) {
+async function verifyInstallation(installPath: string, pluginName: string, opts: {
+    skipValidation: boolean
+}) {
     console.log('Verifying integrity...');
     const hash = await hashItem(installPath);
     console.log(`SHA1 Hash: ${hash}`);
@@ -278,7 +282,7 @@ async function installPlugin(plugin: string, options: any) {
     });
 }
 
-async function uninstall(plugin) {
+async function uninstall(plugin: string) {
     const pluginDir = path.join(pluginDirAbsolutePath, plugin);
     try {
         if (!existsSync(pluginDir)) {
@@ -365,7 +369,7 @@ function printState() {
     console.log(JSON.stringify(stateJson, null, 2));
 }
 
-async function buildAllPlugins(flags) {
+async function buildAllPlugins(flags: any) {
     const names = readdirSync(pluginDirAbsolutePath);
     for (const name of names) {
         await buildPlugin(name, flags)

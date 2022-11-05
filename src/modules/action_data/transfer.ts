@@ -1,9 +1,14 @@
 import {readFileSync} from "node:fs";
 import {resolve, join} from "node:path";
+import {HyperionActionTransform} from "../../interfaces/hyperion-action-transform.js";
+import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 
-const config = JSON.parse(readFileSync(join(resolve(),process.env.CONFIG_JSON)).toString());
+let config = {} as HyperionConfig;
+if (process.env.CONFIG_JSON) {
+    config = JSON.parse(readFileSync(join(resolve(), process.env.CONFIG_JSON)).toString());
+}
 
-export const hyperionModule = {
+export const hyperionModule: HyperionActionTransform = {
     chain: '*',
     contract: '*',
     action: 'transfer',
@@ -33,5 +38,3 @@ export const hyperionModule = {
         }
     },
 };
-
-// module.exports = {hyperionModule};

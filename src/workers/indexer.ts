@@ -30,9 +30,9 @@ export default class IndexerWorker extends HyperionWorker {
                 if (this.esRoutes.routes[process.env.type as string]) {
 
                     // call route type
-                    this.esRoutes.routes[process.env.type as string](payload, this.ch, (indexed_size) => {
-                        if (indexed_size) {
-                            this.temp_indexed_count += indexed_size;
+                    this.esRoutes.routes[process.env.type as string](payload, this.ch, (indexedSize: number) => {
+                        if (indexedSize) {
+                            this.temp_indexed_count += indexedSize;
                         }
                         try {
                             callback();
@@ -61,7 +61,7 @@ export default class IndexerWorker extends HyperionWorker {
                 this.ch.prefetch(this.conf.prefetch.index);
                 this.ch.consume(process.env.queue as string, this.indexQueue.push);
             }
-        } catch (e:any) {
+        } catch (e: any) {
             console.error('rabbitmq error!');
             console.log(e);
             process.exit(1);

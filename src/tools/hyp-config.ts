@@ -43,12 +43,15 @@ async function getExampleConnections(): Promise<HyperionConnections | null> {
     }
 }
 
-async function listChains(flags) {
+async function listChains(flags: {
+    fixMissingFields: boolean,
+    valid: boolean
+}) {
 
     const dirData = await readdir(chainsDir);
     const connections = await getConnections();
     if (!connections) return;
-    const exampleChain = await getExampleConfig();
+    const exampleChain: Record<string, any> = await getExampleConfig();
 
     const configuredTable: any[] = [];
     const pendingTable: any[] = [];
@@ -58,7 +61,7 @@ async function listChains(flags) {
         }
         try {
             const fileData = await readFile(path.join(chainsDir, file));
-            const jsonData: HyperionConfig = JSON.parse(fileData.toString());
+            const jsonData: Record<string, any> = JSON.parse(fileData.toString());
             const chainName = jsonData.settings.chain;
             const chainConn = connections.chains[chainName];
             const fullChainName = jsonData.api.chain_name;
@@ -126,7 +129,10 @@ async function listChains(flags) {
     }
 }
 
-async function newChain(shortName, options) {
+async function newChain(shortName: string, options: {
+    http: string,
+    ship: string
+}) {
     console.log(`Creating new config for ${shortName}...`);
     const targetPath = path.join(chainsDir, `${shortName}.config.json`);
 
@@ -243,7 +249,7 @@ async function newChain(shortName, options) {
     await writeFile(targetPath, JSON.stringify(jsonData, null, 2));
 }
 
-async function rmChain(shortName) {
+async function rmChain(shortName: string) {
     console.log(`Removing config for ${shortName}...`);
     const targetPath = path.join(chainsDir, `${shortName}.config.json`);
 
@@ -387,7 +393,7 @@ async function initConfig() {
     const exampleConn = await getExampleConnections();
 
     const rl = readline.createInterface({input: process.stdin, output: process.stdout});
-    const prompt = (query) => new Promise((resolve) => rl.question(query, resolve));
+    const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
 
     const conn = exampleConn;
 
@@ -502,7 +508,7 @@ async function resetConnections() {
     try {
         if (existsSync(connPath)) {
             const rl = readline.createInterface({input: process.stdin, output: process.stdout});
-            const prompt = (query) => new Promise((resolve) => rl.question(query, resolve));
+            const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
             const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n');
             if (confirmation === 'YES') {
                 copyFileSync(connPath, path.join(configDir, 'connections.json.bak'));

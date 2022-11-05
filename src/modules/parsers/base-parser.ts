@@ -7,6 +7,7 @@ import {ActionTrace} from "../../interfaces/action-trace.js";
 import {debugLog, hLog} from "../../helpers/common_functions.js";
 import {SerialBuffer} from "eosjs/dist/eosjs-serialize.js";
 import {HyperionActionAct} from "../../interfaces/hyperion-action.js";
+import {Numeric} from "enf-eosjs";
 
 export function timedFunction(enable: boolean, method: () => void) {
     if (enable) {
@@ -37,19 +38,19 @@ export abstract class BaseParser {
         this.addCustomHandlers();
     }
 
-    private anyFromCode(act) {
+    private anyFromCode(act: HyperionActionAct) {
         return this.chain + '::' + act['account'] + '::*';
     }
 
-    private anyFromName(act) {
+    private anyFromName(act: HyperionActionAct) {
         return this.chain + '::*::' + act['name'];
     }
 
-    private codeActionPair(act) {
+    private codeActionPair(act: HyperionActionAct) {
         return this.chain + '::' + act['account'] + '::' + act['name'];
     }
 
-    protected checkBlacklist(act) {
+    protected checkBlacklist(act: HyperionActionAct) {
 
         // test action blacklist for chain::code::*
         if (this.filters.action_blacklist.has(this.anyFromCode(act))) {
@@ -65,7 +66,7 @@ export abstract class BaseParser {
         return this.filters.action_blacklist.has(this.codeActionPair(act));
     }
 
-    protected checkWhitelist(act) {
+    protected checkWhitelist(act: HyperionActionAct) {
 
         // test action whitelist for chain::code::*
         if (this.filters.action_whitelist.has(this.anyFromCode(act))) {
@@ -81,13 +82,19 @@ export abstract class BaseParser {
         return this.filters.action_whitelist.has(this.codeActionPair(act));
     }
 
-    protected extendFirstAction(worker: DSPoolWorker, action: ActionTrace, trx_data: TrxMetadata, full_trace: any, usageIncluded) {
-        action.cpu_usage_us = trx_data.cpu_usage_us;
-        action.net_usage_words = trx_data.net_usage_words;
-        action.signatures = trx_data.signatures;
-        if (full_trace.action_traces.length > 1) {
-            action.inline_count = trx_data.inline_count - 1;
-            action.inline_filtered = trx_data.filtered;
+    protected extendFirstAction(
+        worker: DSPoolWorker,
+        action: ActionTrace,
+        trxData: TrxMetadata,
+        fullTrace: any,
+        usageIncluded: any
+    ) {
+        action.cpu_usage_us = trxData.cpu_usage_us;
+        action.net_usage_words = trxData.net_usage_words;
+        action.signatures = trxData.signatures;
+        if (fullTrace.action_traces.length > 1) {
+            action.inline_count = trxData.inline_count - 1;
+            action.inline_filtered = trxData.filtered;
             if (action.inline_filtered) {
                 action.max_inline = worker.conf.indexer.max_inline;
             }
@@ -130,11 +137,17 @@ export abstract class BaseParser {
 
         this.actionReinterpretMap.set('*::saeclaim', (act) => {
             const _sb = this.createSerialBuffer(act.data);
-            const result = {who: "", assetids: {}};
+            const result: {
+                who: string,
+                assetids: Record<string, any>
+            } = {
+                who: "",
+                assetids: {}
+            };
             result.who = _sb.getName();
             const len = _sb.getVaruint32();
             for (let i = 0; i < len; i++) {
-                result.assetids[_sb.getUint64AsNumber()] = _sb.getName();
+                result.assetids[Numeric.binaryToDecimal(_sb.getUint8Array(8))] = _sb.getName();
             }
             return result;
         });
@@ -145,7 +158,7 @@ export abstract class BaseParser {
             result.who = _sb.getName();
             const len = _sb.getVaruint32();
             for (let i = 0; i < len; i++) {
-                result.assetids.push(_sb.getUint64AsNumber());
+                result.assetids.push(Numeric.binaryToDecimal(_sb.getUint8Array(8)));
             }
             result.memo = _sb.getString();
             return result;
@@ -166,7 +179,7 @@ export abstract class BaseParser {
         }
     }
 
-    async deserializeActionData(worker: DSPoolWorker, action: ActionTrace, trx_data) {
+    async deserializeActionData(worker: DSPoolWorker, action: ActionTrace, trx_data: any) {
         let act = action.act;
         const original_act = Object.assign({}, act);
         let ds_act, error_message;
@@ -228,9 +241,26 @@ export abstract class BaseParser {
         }
     }
 
-    abstract parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace, usageIncluded: { status: boolean }): Promise<boolean>
+    abstract parseAction(
+        worker: DSPoolWorker,
+        ts: string,
+        action: ActionTrace,
+        trx_data: TrxMetadata,
+        _actDataArray: any[],
+        _processedTraces: ActionTrace[],
+        full_trace: any,
+        usageIncluded: { status: boolean }
+    ): Promise<boolean>
 
-    abstract parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void>
+    abstract parseMessage(
+        worker: MainDSWorker,
+        messages: Message[]
+    ): Promise<void>
 
-    abstract flattenInlineActions(action_traces: any[], level?: number, trace_counter?: any, parent_index?: number): Promise<any[]>
+    abstract flattenInlineActions(
+        action_traces: any[],
+        level?: number,
+        trace_counter?: any,
+        parent_index?: number
+    ): Promise<any[]>
 }

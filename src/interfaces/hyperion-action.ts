@@ -17,4 +17,5 @@ export interface HyperionAction {
 	account_ram_deltas: any[];
 	except: any;
 	error_code: any;
+	[k: string]: any;
 }

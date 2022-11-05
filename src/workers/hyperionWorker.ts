@@ -11,6 +11,8 @@ import {HeapInfo} from "v8";
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {StateHistorySocket} from "../connections/state-history.js";
 import {Abieos} from "@eosrio/node-abieos";
+import {HyperionActionAct} from "../interfaces/hyperion-action.js";
+import {HyperionDelta} from "../interfaces/hyperion-delta.js";
 
 export abstract class HyperionWorker {
 
@@ -105,7 +107,7 @@ export abstract class HyperionWorker {
     }
 
     async connectAMQP() {
-        [this.ch, this.cch] = await this.manager.createAMQPChannels((channels) => {
+        [this.ch, this.cch] = await this.manager.createAMQPChannels((channels: [Channel, ConfirmChannel]) => {
             [this.ch, this.cch] = channels;
             hLog('AMQP Reconnecting...');
             this.onConnect();
@@ -159,7 +161,7 @@ export abstract class HyperionWorker {
         return this.chain + '::' + delta.code + '::' + delta.table;
     }
 
-    protected checkBlacklist(act) {
+    protected checkBlacklist(act: HyperionActionAct) {
 
         // test for chain::code::*
         if (this.filters.action_blacklist.has(this.anyFromCode(act))) {
@@ -175,7 +177,7 @@ export abstract class HyperionWorker {
         return this.filters.action_blacklist.has(this.codeActionPair(act));
     }
 
-    protected checkWhitelist(act) {
+    protected checkWhitelist(act: HyperionActionAct) {
 
         // test for chain::code::*
         if (this.filters.action_whitelist.has(this.anyFromCode(act))) {
@@ -191,7 +193,7 @@ export abstract class HyperionWorker {
         return this.filters.action_whitelist.has(this.codeActionPair(act));
     }
 
-    protected checkDeltaBlacklist(delta) {
+    protected checkDeltaBlacklist(delta: HyperionDelta) {
 
         // test blacklist for chain::code::*
         if (this.filters.delta_blacklist.has(this.anyFromDeltaCode(delta))) {
@@ -207,7 +209,7 @@ export abstract class HyperionWorker {
         return this.filters.delta_blacklist.has(this.codeDeltaPair(delta));
     }
 
-    protected checkDeltaWhitelist(delta) {
+    protected checkDeltaWhitelist(delta: HyperionDelta) {
 
         // test whitelist for chain::code::*
         if (this.filters.delta_whitelist.has(this.anyFromDeltaCode(delta))) {
@@ -223,7 +225,7 @@ export abstract class HyperionWorker {
         return this.filters.delta_whitelist.has(this.codeDeltaPair(delta));
     }
 
-    loadAbiHex(contract, block_num, abi_hex) {
+    loadAbiHex(contract: string, block_num: number, abi_hex: string) {
         // check local blacklist for corrupted abis that failed to load before
         let _status;
         if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract)?.has(block_num)) {
@@ -245,7 +247,7 @@ export abstract class HyperionWorker {
         return _status;
     }
 
-    removeFromFailed(contract) {
+    removeFromFailed(contract: string) {
         if (this.failedAbiMap.has(contract)) {
             this.failedAbiMap.delete(contract);
             hLog(`${contract} was removed from the failed map!`);
@@ -315,7 +317,7 @@ export abstract class HyperionWorker {
         }
     }
 
-    async loadCurrentAbiHex(contract) {
+    async loadCurrentAbiHex(contract: string) {
         let _status;
         if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract)?.has(-1)) {
             _status = false;

@@ -11,6 +11,8 @@ import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {ActionTrace} from "../interfaces/action-trace.js";
 import {HyperionDelta} from "../interfaces/hyperion-delta.js";
+import {HyperionActionTransform} from "../interfaces/hyperion-action-transform.js";
+import {HyperionDeltaTransform} from "../interfaces/hyperion-delta-transform.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -71,7 +73,7 @@ export class HyperionModuleLoader {
     }
 
 
-    includeActionModule(_module) {
+    includeActionModule(_module: HyperionActionTransform) {
         if (this.handledActions.has(_module.contract)) {
             const existing = this.handledActions.get(_module.contract);
             existing.set(_module.action, _module.handler);
@@ -88,7 +90,7 @@ export class HyperionModuleLoader {
         }
     }
 
-    includeDeltaModule(deltaModule) {
+    includeDeltaModule(deltaModule: HyperionDeltaTransform) {
         if (this.handledDeltas.has(deltaModule.contract)) {
             const existing = this.handledDeltas.get(deltaModule.contract);
             existing.set(deltaModule.table, deltaModule.handler);
@@ -106,7 +108,8 @@ export class HyperionModuleLoader {
         try {
             const files = readdirSync(join(resolve(), 'dist', 'modules', 'action_data'));
             for (const plugin of files) {
-                const _module = (await import(join(__dirname, 'action_data', plugin))).hyperionModule;
+                const path = join(__dirname, 'action_data', plugin);
+                const _module: HyperionActionTransform = (await import(path)).hyperionModule;
                 if (_module.parser_version.includes(this.config.settings.parser)) {
                     if (_module.chain === this.chainID || _module.chain === '*') {
                         const key = `${_module.contract}::${_module.action}`;
@@ -218,11 +221,11 @@ export class HyperionModuleLoader {
         }
     }
 
-    includeStreamModule(_module) {
+    includeStreamModule(_module: HyperionStreamHandler) {
         this.streamHandlers.push(_module);
     }
 
-    processStreamEvent(msg) {
+    processStreamEvent(msg: any) {
         if (this.streamHandlers.length > 0) {
             this.streamHandlers.forEach(sth => {
                 sth.handler(msg).catch(reason => {

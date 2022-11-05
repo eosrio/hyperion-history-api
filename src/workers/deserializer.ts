@@ -1,47 +1,18 @@
+// noinspection BadExpressionStatementJS
+
 import {HyperionWorker} from "./hyperionWorker.js";
-import {cargo, queue} from 'async';
+import {cargo, ErrorCallback, queue, QueueObject} from 'async';
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {createHash} from "node:crypto";
-import flatstr from 'flatstr';
-import {Api, Serialize, RpcInterfaces} from "enf-eosjs";
+import {Api, RpcInterfaces, Serialize} from "enf-eosjs";
 import {JsSignatureProvider} from "eosjs/dist/eosjs-jssig.js";
 import {AbiDefinitions} from '../definitions/abi_def.js';
-
-// const FJS = require('fast-json-stringify');
-// const lightBlockSerializer = FJS({
-//     title: 'Light Block',
-//     type: 'object',
-//     properties: {
-//         '@timestamp': {type: 'string'},
-//         block_num: {type: 'integer'},
-//         block_id: {type: 'string'},
-//         prev_id: {type: 'string'},
-//         producer: {type: 'string'},
-//         new_producers: {
-//             type: 'object',
-//             nullable: true,
-//             properties: {
-//                 version: {type: 'integer'},
-//                 producers: {
-//                     type: 'array',
-//                     items: {
-//                         properties: {
-//                             block_signing_key: {type: 'string'},
-//                             producer_name: {type: 'string'}
-//                         }
-//                     }
-//                 }
-//             }
-//         },
-//         schedule_version: {type: 'integer'},
-//         cpu_usage: {type: 'integer'},
-//         net_usage: {type: 'integer'}
-//     }
-// });
-
 import {index_queues} from '../definitions/index-queues.js';
+import {HyperionDelta} from "../interfaces/hyperion-delta.js";
+import {HyperionActionAct} from "../interfaces/hyperion-action.js";
+import {Message} from "amqplib";
 
-const abi_remapping = {
+const abi_remapping: Record<string, string> = {
     "_Bool": "bool"
 };
 
@@ -51,8 +22,8 @@ interface QueuePayload {
     headers?: any;
 }
 
-function extractDeltaStruct(deltas) {
-    const deltaStruct = {};
+function extractDeltaStruct(deltas: HyperionDelta[]) {
+    const deltaStruct: Record<string, any[]> = {};
     for (const table_delta of deltas) {
         if (table_delta[0] === "table_delta_v0" || table_delta[0] === "table_delta_v1") {
             deltaStruct[table_delta[1].name] = table_delta[1].rows;
@@ -65,7 +36,7 @@ interface HyperionLightBlock {
     '@timestamp': string;
     block_num: number;
     block_id: string;
-    prev_id: string;
+    prev_id?: string;
     producer: string;
     new_producers: {
         version: number;
@@ -79,6 +50,12 @@ interface HyperionLightBlock {
     net_usage: number;
 }
 
+function flatstr(s: string): string {
+    // @ts-ignore
+    s | 0
+    return s
+}
+
 function bufferFromJson(data: any, useFlatstr?: boolean) {
     if (useFlatstr) {
         return Buffer.from(flatstr(JSON.stringify(data)));
@@ -90,18 +67,18 @@ function bufferFromJson(data: any, useFlatstr?: boolean) {
 export default class MainDSWorker extends HyperionWorker {
 
     ch_ready = false;
-    private consumerQueue;
-    private preIndexingQueue;
-    private abi: any;
+    private consumerQueue: QueueObject<Message>;
+    private preIndexingQueue: QueueObject<QueuePayload>;
+    private abi?: RpcInterfaces.Abi;
     public types!: Map<string, Serialize.Type>;
     private tables = new Map();
     private allowStreaming = false;
-    private dsPoolMap = {};
-    private ds_pool_counters = {};
+    private dsPoolMap: Record<string, any> = {};
+    private ds_pool_counters: Record<string, any> = {};
     private block_emit_idx = 1;
     private local_block_count = 0;
     common: any;
-    tableHandlers = {};
+    tableHandlers: Record<string, (delta: HyperionDelta) => Promise<void> | void> = {};
     api: Api;
 
     // generic queue id
@@ -127,7 +104,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         this.deltaRemovalQueue = this.chain + ":delta_rm";
 
-        this.consumerQueue = cargo((payload, cb) => {
+        this.consumerQueue = cargo((payload: Message[], cb: ErrorCallback) => {
             this.processMessages(payload).then(() => {
                 cb();
             }).catch((err) => {
@@ -138,7 +115,7 @@ export default class MainDSWorker extends HyperionWorker {
             });
         }, this.conf.prefetch.block);
 
-        this.preIndexingQueue = queue((data: any, cb) => {
+        this.preIndexingQueue = queue((data: QueuePayload, cb) => {
             if (this.ch_ready) {
                 this.ch.sendToQueue(data.queue, data.content, {headers: data.headers});
                 cb();
@@ -170,12 +147,19 @@ export default class MainDSWorker extends HyperionWorker {
     onIpcMessage(msg: any): void {
         switch (msg.event) {
             case 'initialize_abi': {
-                this.abi = JSON.parse(msg.data);
-                this.abieos.loadAbi("0", msg.data);
-                const initialTypes = Serialize.createInitialTypes();
-                this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
-                this.abi.tables.map(table => this.tables.set(table.name, table.type));
-                this.initConsumer();
+
+                try {
+                    this.abi = JSON.parse(msg.data);
+                } catch (e: any) {
+                    hLog(e.message);
+                }
+                if (this.abi) {
+                    this.abieos.loadAbi("0", msg.data);
+                    const initialTypes = Serialize.createInitialTypes();
+                    this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
+                    this.abi.tables.map(table => this.tables.set(table.name, table.type));
+                    this.initConsumer();
+                }
                 break;
             }
             case 'update_abi': {
@@ -269,7 +253,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async processMessages(messages) {
+    async processMessages(messages: Message[]) {
         await this.mLoader.parser.parseMessage(this, messages);
     }
 
@@ -277,12 +261,14 @@ export default class MainDSWorker extends HyperionWorker {
         if (this.ch_ready) {
             this.ch.prefetch(this.conf.prefetch.block);
             this.ch.consume(process.env.worker_queue as string, (data) => {
-                this.consumerQueue.push(data).catch(console.log);
+                if (data) {
+                    this.consumerQueue.push(data).catch(console.log);
+                }
             });
         }
     }
 
-    async processBlock(res, block, traces, deltas) {
+    async processBlock(res: any, block: any, traces: any[], deltas: any[]) {
         if (!res['this_block']) {
             // missing current block data
             hLog(res);
@@ -293,7 +279,7 @@ export default class MainDSWorker extends HyperionWorker {
             const block_num = res['this_block']['block_num'];
             const block_id = res['this_block']['block_id'].toLowerCase();
             let block_ts = res['this_time'];
-            let light_block;
+            let light_block: HyperionLightBlock | undefined;
 
             if (this.conf.indexer.fetch_block) {
 
@@ -310,7 +296,7 @@ export default class MainDSWorker extends HyperionWorker {
 
                 const failedTrx: any[] = [];
 
-                block.transactions.forEach((trx) => {
+                block.transactions.forEach((trx: any) => {
 
                     total_cpu += trx['cpu_usage_us'];
                     total_net += trx['net_usage_words'];
@@ -411,11 +397,13 @@ export default class MainDSWorker extends HyperionWorker {
             const onBlockTransactions: any[] = [];
             if (traces && this.conf.indexer.fetch_traces) {
 
-                if (traces["valueForKeyPath"]) {
-                    _traces = traces['valueForKeyPath'](".");
-                } else {
-                    _traces = traces;
-                }
+                _traces = traces;
+
+                // if (traces["valueForKeyPath"]) {
+                //     _traces = traces['valueForKeyPath'](".");
+                // } else {
+                //     _traces = traces;
+                // }
 
                 if (_traces.length > 0 && this.conf.indexer.fetch_traces) {
                     for (const trace of _traces) {
@@ -440,7 +428,7 @@ export default class MainDSWorker extends HyperionWorker {
                                     onBlockTransactions.push(trxId);
                                     process.send?.({
                                         event: 'included_trx',
-                                        block_num: light_block.block_num,
+                                        block_num: light_block?.block_num,
                                         trx_id: trxId,
                                         signatures: signatures,
                                         root_act: trace[1].action_traces[0][1].act
@@ -479,7 +467,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
 
             // Send light block to indexer
-            if (this.conf.indexer.fetch_block) {
+            if (this.conf.indexer.fetch_block && light_block) {
                 await this.pushToBlocksQueue(light_block);
             }
             return {
@@ -506,7 +494,7 @@ export default class MainDSWorker extends HyperionWorker {
         this.local_block_count++;
     }
 
-    routeToPool(trace, headers) {
+    routeToPool(trace: any, headers: any) {
 
         let first_action;
         if (trace['action_traces'][0] && trace['action_traces'][0].length === 2) {
@@ -610,7 +598,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    createSerialBuffer(inputArray) {
+    createSerialBuffer(inputArray: Uint8Array): Serialize.SerialBuffer {
         return new Serialize.SerialBuffer({
             textEncoder: this.txEnc,
             textDecoder: this.txDec,
@@ -618,7 +606,7 @@ export default class MainDSWorker extends HyperionWorker {
         });
     }
 
-    async fetchAbiHexAtBlockElastic(contract_name, last_block, get_json) {
+    async fetchAbiHexAtBlockElastic(contract_name: string, last_block: number, get_json: boolean) {
         try {
             const _includes = ["actions", "tables", "block"];
             if (get_json) {
@@ -636,29 +624,25 @@ export default class MainDSWorker extends HyperionWorker {
             };
             const queryResult = await this.client.search<any>({
                 index: `${this.chain}-abi-*`,
-                body: {
-                    size: 1, query,
-                    sort: [{block: {order: "desc"}}],
-                    _source: {includes: _includes}
-                }
+                size: 1, query,
+                sort: [{block: {order: "desc"}}],
+                _source: {includes: _includes}
             });
             const results = queryResult.hits.hits;
             if (results.length > 0) {
                 const nextRefResponse = await this.client.search<any>({
                     index: `${this.chain}-abi-*`,
-                    body: {
-                        size: 1,
-                        query: {
-                            bool: {
-                                must: [
-                                    {term: {account: contract_name}},
-                                    {range: {block: {gte: last_block}}}
-                                ]
-                            }
-                        },
-                        sort: [{block: {order: "asc"}}],
-                        _source: {includes: ["block"]}
-                    }
+                    size: 1,
+                    query: {
+                        bool: {
+                            must: [
+                                {term: {account: contract_name}},
+                                {range: {block: {gte: last_block}}}
+                            ]
+                        }
+                    },
+                    sort: [{block: {order: "asc"}}],
+                    _source: {includes: ["block"]}
                 });
                 const nextRef = nextRefResponse.hits.hits;
                 if (nextRef.length > 0) {
@@ -677,7 +661,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    registerAutoBlacklist(contract, field, type, block, valid_until) {
+    registerAutoBlacklist(contract: string, field: string, type: string, block: number, valid_until: number) {
         const info = {field, type, block, valid_until};
         if (!info.valid_until) {
             info.valid_until = 0;
@@ -689,7 +673,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async verifyLocalType(contract, type, block_num, field) {
+    async verifyLocalType(contract: string, type: string, block_num: number, field: string) {
         let abiStatus, resultType;
         try {
             if (field === 'action') {
@@ -733,7 +717,7 @@ export default class MainDSWorker extends HyperionWorker {
                 }
             }
             abiStatus = await this.loadCurrentAbiHex(contract);
-            if (abiStatus === true) {
+            if (abiStatus) {
                 try {
                     if (field === 'action') {
                         resultType = this.abieos.getTypeForAction(contract, type);
@@ -755,14 +739,14 @@ export default class MainDSWorker extends HyperionWorker {
         return [abiStatus, resultType, valid_from, valid_until];
     }
 
-    async processContractRowNative(row, block) {
+    async processContractRowNative(row: any, blockNum: number) {
 
         // check dynamic blacklist
         if (this.autoBlacklist.has(row.code)) {
             const info = this.autoBlacklist.get(row.code)?.find(v => {
                 if (v.field === "table" && v.type === row.table) {
-                    if (v.block <= block) {
-                        if (v.valid_until > block || v.valid_until === 0) {
+                    if (v.block <= blockNum) {
+                        if (v.valid_until > blockNum || v.valid_until === 0) {
                             return true;
                         }
                     }
@@ -775,7 +759,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         }
 
-        const [_status, tableType, validFrom, validUntil] = await this.verifyLocalType(row['code'], row['table'], block, "table");
+        const [_status, tableType, validFrom, validUntil] = await this.verifyLocalType(row['code'], row['table'], blockNum, "table");
         if (_status) {
             let result;
             try {
@@ -791,10 +775,10 @@ export default class MainDSWorker extends HyperionWorker {
                 debugLog(e);
             }
         }
-        return await this.processContractRow(row, block, validFrom, validUntil);
+        return await this.processContractRow(row, blockNum, validFrom, validUntil);
     }
 
-    async getAbiFromHeadBlock(code) {
+    async getAbiFromHeadBlock(code: string) {
         let _abi;
         try {
             _abi = (await this.rpc.get_abi(code)).abi;
@@ -821,7 +805,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
         if (!abi) return [null, null];
         const initialTypes = Serialize.createInitialTypes();
-        let types;
+        let types: Map<string, Serialize.Type> | undefined;
         try {
             types = Serialize.getTypesFromAbi(initialTypes, abi);
         } catch (e: any) {
@@ -849,7 +833,9 @@ export default class MainDSWorker extends HyperionWorker {
         }
         const actions = new Map();
         for (const {name, type} of abi.actions) {
-            actions.set(name, Serialize.getType(types, type));
+            if (types) {
+                actions.set(name, Serialize.getType(types, type));
+            }
         }
         const result = {types, actions, tables: abi.tables};
         if (check_action) {
@@ -864,7 +850,7 @@ export default class MainDSWorker extends HyperionWorker {
         return [result, abi];
     }
 
-    async getTableType(code, table, block): Promise<Serialize.Type | undefined> {
+    async getTableType(code: string, table: string, block: number): Promise<Serialize.Type | undefined> {
         let abi, contract, abi_tables;
 
         try {
@@ -896,14 +882,16 @@ export default class MainDSWorker extends HyperionWorker {
             if (!currentABI) {
                 return;
             }
-            abi_tables = currentABI.abi.tables;
-            for (let t of abi_tables) {
-                if (t.name === table) {
-                    this_table = t;
-                    break;
+            abi_tables = currentABI.abi?.tables;
+            if (abi_tables) {
+                for (let t of abi_tables) {
+                    if (t.name === table) {
+                        this_table = t;
+                        break;
+                    }
                 }
             }
-            if (this_table) {
+            if (this_table && currentABI.abi) {
                 type = this_table.type;
                 const initialTypes = Serialize.createInitialTypes();
                 contract.types = Serialize.getTypesFromAbi(initialTypes, currentABI.abi);
@@ -930,7 +918,7 @@ export default class MainDSWorker extends HyperionWorker {
         return cType;
     }
 
-    async processContractRow(row, block, validFrom, validUntil) {
+    async processContractRow(row: any, block: number, validFrom: number, validUntil: number) {
         const row_sb = this.createSerialBuffer(Serialize.hexToUint8Array(row['value']));
         let error;
         try {
@@ -964,11 +952,11 @@ export default class MainDSWorker extends HyperionWorker {
         return row;
     }
 
-    isAsync(fun) {
+    isAsync(fun: Function) {
         return fun.constructor.name === 'AsyncFunction';
     }
 
-    async processTableDelta(data) {
+    async processTableDelta(data: HyperionDelta) {
 
         if (data['table']) {
             data['primary_key'] = String(data['primary_key']);
@@ -1019,7 +1007,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    pushToDeltaStreamingQueue(payload, jsonRow) {
+    pushToDeltaStreamingQueue(payload: any, jsonRow: any) {
         if (this.allowStreaming && this.conf.features.streaming.deltas) {
             this.ch.publish('', this.chain + ':stream', payload, {
                 headers: {
@@ -1034,7 +1022,7 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     addTablePrefix(table: string, data: any) {
-        const prefixedOutput = {};
+        const prefixedOutput: Record<string, any> = {};
         Object.keys(data).forEach(value => {
             let _val = data[value];
 
@@ -1046,13 +1034,12 @@ export default class MainDSWorker extends HyperionWorker {
                 }
             }
 
-
             prefixedOutput[`${table}.${value}`] = _val;
         });
         return prefixedOutput;
     }
 
-    pushToDynamicTableQueue(jsonRow) {
+    pushToDynamicTableQueue(jsonRow: any) {
         if (this.allowedDynamicContracts.has(jsonRow.code)) {
             const doc = {
                 '@timestamp': jsonRow['@timestamp'],
@@ -1081,7 +1068,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async pushToDeltaQueue(bufferData: any, block_num) {
+    async pushToDeltaQueue(bufferData: any, block_num: number) {
         const q = this.chain + ":index_deltas:" + (this.delta_emit_idx);
         await this.preIndexingQueue.push({
             queue: q,
@@ -1107,25 +1094,31 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    private anyFromSender(gen_trx: any) {
-        return this.chain + '::' + gen_trx.sender + '::*';
+    private anyFromSender(genTrx: any) {
+        return this.chain + '::' + genTrx.sender + '::*';
     }
 
-    checkDeltaBlacklistForGenTrx(gen_trx) {
-        if (this.filters.delta_blacklist.has(this.anyFromSender(gen_trx))) {
+    checkDeltaBlacklistForGenTrx(genTrx: any) {
+        if (this.filters.delta_blacklist.has(this.anyFromSender(genTrx))) {
             return true;
         }
     }
 
-    checkDeltaWhitelistForGenTrx(gen_trx) {
-        if (this.filters.delta_whitelist.has(this.anyFromSender(gen_trx))) {
+    checkDeltaWhitelistForGenTrx(genTrx: any) {
+        if (this.filters.delta_whitelist.has(this.anyFromSender(genTrx))) {
             return true;
         }
     }
 
-    deltaStructHandlers = {
+    deltaStructHandlers: Record<string, (
+        payload: any,
+        block_num: number,
+        block_ts: string,
+        row: any,
+        block_id: string
+    ) => Promise<void | boolean | undefined> | void | boolean | undefined> = {
 
-        "contract_row": async (payload, block_num, block_ts, row, block_id) => {
+        contract_row: async (payload, block_num, block_ts, row, block_id) => {
 
             if (this.conf.indexer.abi_scan_mode) {
                 return false;
@@ -1194,7 +1187,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         },
 
-        "account": async (account, block_num, block_ts) => {
+        account: async (account, block_num, block_ts) => {
             if (account['abi'] !== '') {
                 try {
                     const abiHex = account['abi'];
@@ -1206,7 +1199,7 @@ export default class MainDSWorker extends HyperionWorker {
                     if (!abiDefTypes) {
                         return;
                     }
-                    const abiObj = abiDefTypes.deserialize(this.createSerialBuffer(abiBin));
+                    const abiObj: RpcInterfaces.Abi = abiDefTypes.deserialize(this.createSerialBuffer(abiBin));
                     const jsonABIString = JSON.stringify(abiObj);
                     const abi_actions = abiObj.actions.map(a => a.name);
                     const abi_tables = abiObj.tables.map(t => t.name);
@@ -1258,7 +1251,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         },
 
-        "permission_link": async (link, block_num, block_ts, row) => {
+        permission_link: async (link, block_num, block_ts, row) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
                 await this.pushToIndexQueue({
                     "@timestamp": block_ts,
@@ -1272,7 +1265,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         },
 
-        "permission": async (perm, block_num, block_ts, row) => {
+        permission: async (perm, block_num, block_ts, row) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
 
                 if (perm.auth.accounts.length === 0) {
@@ -1303,7 +1296,7 @@ export default class MainDSWorker extends HyperionWorker {
         // },
 
         // Deferred Transactions
-        "generated_transaction": async (generated_transaction: any, block_num, block_ts) => {
+        generated_transaction: async (generated_transaction: any, block_num: number, block_ts: string) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.deferred_trx) {
 
                 // check delta blacklist chain::code::table
@@ -1343,7 +1336,7 @@ export default class MainDSWorker extends HyperionWorker {
 
 
         // Account resource updates
-        "resource_limits": async (resource_limits, block_num, block_ts) => {
+        resource_limits: async (resource_limits: any, block_num: number, block_ts: string) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.resource_limits) {
                 const cpu = parseInt(resource_limits.cpu_weight);
                 const net = parseInt(resource_limits.net_weight);
@@ -1367,7 +1360,7 @@ export default class MainDSWorker extends HyperionWorker {
         //     hLog(block_num, resource_limits_state);
         // },
 
-        "resource_usage": async (resource_usage, block_num, block_ts) => {
+        resource_usage: async (resource_usage, block_num, block_ts) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.resource_usage) {
                 const net_used = parseInt(resource_usage.net_usage[1].consumed);
                 const net_total = parseInt(resource_usage.net_usage[1].value_ex);
@@ -1431,7 +1424,7 @@ export default class MainDSWorker extends HyperionWorker {
         // },
     }
 
-    async processDeltas(deltas, block_num, block_ts, block_id) {
+    async processDeltas(deltas: HyperionDelta[], block_num: number, block_ts: string, block_id: string) {
         const deltaStruct = extractDeltaStruct(deltas);
         for (const key in deltaStruct) {
             if (this.deltaStructHandlers[key] && deltaStruct.hasOwnProperty(key)) {
@@ -1492,7 +1485,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async deserializeActionAtBlockNative(_action, block_num): Promise<any> {
+    async deserializeActionAtBlockNative(_action: HyperionActionAct, block_num: number): Promise<any> {
         const [_status, actionType] = await this.verifyLocalType(_action.account, _action.name, block_num, "action");
         if (_status) {
             try {
@@ -1504,7 +1497,7 @@ export default class MainDSWorker extends HyperionWorker {
         return null;
     }
 
-    async storeProposal(data) {
+    async storeProposal(data: HyperionDelta) {
         const proposalDoc = {
             proposer: data['scope'],
             proposal_name: data['@approvals']['proposal_name'],
@@ -1527,7 +1520,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async storeVoter(data) {
+    async storeVoter(data: HyperionDelta) {
         if (data['@voters']) {
             const voterDoc: any = {
                 "voter": data['payer'],
@@ -1558,8 +1551,8 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async storeAccount(data) {
-        const accountDoc = {
+    async storeAccount(data: HyperionDelta) {
+        const accountDoc: Record<string, any> = {
             "code": data['code'],
             "scope": data['scope'],
             "block_num": data['block_num'],
@@ -1586,6 +1579,8 @@ export default class MainDSWorker extends HyperionWorker {
 
     private async populateTableHandlers() {
         const EOSIO_ALIAS = this.conf.settings.eosio_alias;
+
+        // eosio::voters
         this.tableHandlers[EOSIO_ALIAS + ':voters'] = (delta) => {
             delta['@voters'] = {};
             delta['@voters']['is_proxy'] = delta.data['is_proxy'];
@@ -1610,11 +1605,13 @@ export default class MainDSWorker extends HyperionWorker {
             }
         };
 
-        this.tableHandlers[EOSIO_ALIAS + ':global'] = (delta) => {
+        // eosio::global
+        this.tableHandlers[EOSIO_ALIAS + ':global'] = (delta: HyperionDelta) => {
             delta['@global'] = delta['data'];
             delete delta['data'];
         };
 
+        // eosio::producers
         this.tableHandlers[EOSIO_ALIAS + ':producers'] = (delta) => {
             const data = delta['data'];
             delta['@producers'] = {
@@ -1683,10 +1680,10 @@ export default class MainDSWorker extends HyperionWorker {
         this.tableHandlers[EOSIO_ALIAS + '.msig:approvals2'] = (delta) => {
             delta['@approvals'] = {
                 proposal_name: delta['data']['proposal_name'],
-                requested_approvals: delta['data']['requested_approvals'].map((item) => {
+                requested_approvals: delta['data']['requested_approvals'].map((item: any) => {
                     return {actor: item.level.actor, permission: item.level.permission, time: item.time};
                 }),
-                provided_approvals: delta['data']['provided_approvals'].map((item) => {
+                provided_approvals: delta['data']['provided_approvals'].map((item: any) => {
                     return {actor: item.level.actor, permission: item.level.permission, time: item.time};
                 })
             };

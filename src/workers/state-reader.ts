@@ -1,17 +1,17 @@
 // noinspection JSUnusedGlobalSymbols
 
 import {HyperionWorker} from "./hyperionWorker.js";
-import {cargo, QueueObject} from "async";
+import {cargo, ErrorCallback, QueueObject} from "async";
 import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions.js";
-import {Serialize} from "enf-eosjs";
-
+import {Serialize, RpcInterfaces} from "enf-eosjs";
+import { ConfirmChannel } from "amqplib/callback_api.js";
 
 export default class StateReader extends HyperionWorker {
 
     private readonly isLiveReader = process.env['worker_role'] === 'continuous_reader';
     private readonly baseRequest: any;
-    private abi: any;
-    private qStatusMap = {};
+    private abi?: RpcInterfaces.Abi;
+    private qStatusMap: Record<string, boolean> = {};
     private recovery = false;
     private tables = new Map();
     private allowRequests = true;
@@ -47,11 +47,11 @@ export default class StateReader extends HyperionWorker {
             this.local_block_num = parseInt(process.env.worker_last_processed_block as string, 10) - 1;
         }
 
-        this.stageOneDistQueue = cargo((tasks, callback) => {
+        this.stageOneDistQueue = cargo((tasks: any[], callback: ErrorCallback) => {
             this.distribute(tasks, callback);
         }, this.conf.prefetch.read);
 
-        this.blockReadingQueue = cargo((tasks, next) => {
+        this.blockReadingQueue = cargo((tasks: any[], next:ErrorCallback) => {
             this.processIncomingBlocks(tasks).then(() => {
                 next();
             }).catch((err) => {
@@ -93,23 +93,23 @@ export default class StateReader extends HyperionWorker {
         // }, 10000);
     }
 
-    distribute(data, cb) {
+    distribute(data: any[], cb: ErrorCallback) {
         this.recursiveDistribute(data, this.cch, cb);
     }
 
-    recursiveDistribute(data, channel, cb) {
+    recursiveDistribute(data: any[], channel: ConfirmChannel, cb: ErrorCallback) {
         if (data.length > 0) {
             const q = this.isLiveReader ? this.chain + ':live_blocks' : this.chain + ":blocks:" + this.currentIdx;
             if (!this.qStatusMap[q]) {
                 this.qStatusMap[q] = true;
             }
-            if (this.qStatusMap[q] === true) {
+            if (this.qStatusMap[q]) {
                 if (this.cch_ready) {
                     const d = data.pop();
                     const result = channel.sendToQueue(q, d.content, {
                         persistent: true,
                         mandatory: true,
-                    }, (err) => {
+                    }, (err: any) => {
                         if (err !== null) {
                             console.log('Message nacked!');
                             console.log(err.message);
@@ -251,9 +251,9 @@ export default class StateReader extends HyperionWorker {
             this.local_distributed_count = 0;
             this.completionMonitoring = setInterval(() => {
                 let pending = 0;
-                const unconfirmed = this.cch['unconfirmed'];
+                const unconfirmed = (this.cch as any)['unconfirmed'];
                 if (unconfirmed.length > 0) {
-                    unconfirmed.forEach((elem) => {
+                    unconfirmed.forEach((elem: any) => {
                         if (elem) {
                             pending++;
                         }
@@ -488,12 +488,14 @@ export default class StateReader extends HyperionWorker {
         const abiString = data.toString();
         this.abieos.loadAbi("0", abiString);
         this.abi = JSON.parse(abiString);
-        this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
-        this.abi.tables.map(table => this.tables.set(table.name, table.type));
-        // notify master about first abi
-        process.send?.({event: 'init_abi', data: abiString});
-        // request status
-        this.send(['get_status_request_v0', {}]);
+        if (this.abi) {
+            this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
+            this.abi.tables.map(table => this.tables.set(table.name, table.type));
+            // notify master about first abi
+            process.send?.({event: 'init_abi', data: abiString});
+            // request status
+            this.send(['get_status_request_v0', {}]);
+        }
     }
 
     private requestBlocks(start: number) {
@@ -554,7 +556,7 @@ export default class StateReader extends HyperionWorker {
         }
     }
 
-    private async logForkEvent(starting_block, ending_block, new_id) {
+    private async logForkEvent(starting_block: number, ending_block: number, new_id: string) {
         process.send?.({event: 'fork_event', data: {starting_block, ending_block, new_id}});
         await this.client.index({
             index: this.chain + '-logs-' + this.conf.settings.index_version,
