@@ -9,6 +9,7 @@ import {StateHistorySocket} from "./state-history.js";
 import fetch from 'cross-fetch';
 import {exec} from "node:child_process";
 import {getPackageJson, hLog} from "../helpers/common_functions.js";
+import {Channel, ConfirmChannel} from "amqplib/callback_api.js";
 
 export class ConnectionManager {
 
@@ -132,11 +133,14 @@ export class ConnectionManager {
         }
     }
 
-    async createAMQPChannels(onReconnect, onClose): Promise<any[]> {
+    async createAMQPChannels(
+        onReconnect: (channels: [Channel | null, ConfirmChannel | null]) => void,
+        onClose: () => void
+    ): Promise<any[]> {
         return await amqpConnect(onReconnect, this.conn.amqp, onClose);
     }
 
-    async checkQueueSize(queue): Promise<any> {
+    async checkQueueSize(queue: string): Promise<any> {
         return await checkQueueSize(queue, this.conn.amqp);
     }
 

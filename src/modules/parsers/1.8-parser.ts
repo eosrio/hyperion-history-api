@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {BaseParser, timedFunction} from "./base-parser.js";
 import MainDSWorker from "../../workers/deserializer.js";
 import {Message} from "amqplib";
@@ -11,7 +13,16 @@ export default class HyperionParser extends BaseParser {
 
     flatten = false;
 
-    public async parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace, usageIncluded): Promise<boolean> {
+    public async parseAction(
+        worker: DSPoolWorker,
+        ts: string,
+        action: ActionTrace,
+        trx_data: TrxMetadata,
+        _actDataArray: any[],
+        _processedTraces: ActionTrace[],
+        full_trace: any,
+        usageIncluded: { status: boolean }
+    ): Promise<boolean> {
         // check filters
         if (this.checkBlacklist(action.act)) return false;
         if (this.filters.action_whitelist.size > 0) {
@@ -95,136 +106,142 @@ export default class HyperionParser extends BaseParser {
                 }
             }
 
-            const res = ds_msg[1];
-            let block: any = null;
-            let traces = [];
-            let deltas = [];
+            if (ds_msg) {
+                const res: any = ds_msg[1];
+                let block: any = null;
+                let traces: any[] = [];
+                let deltas: any[] = [];
 
-            if (res.block && res.block.length) {
+                if (res.block && res.block.length) {
 
-                // deserialize signed_block using abieos (faster)
-                ds_times.abieos.signed_block = timedFunction(dsProfiling, () => {
-                    block = worker.deserializeNative('signed_block', res.block);
-                });
+                    // deserialize signed_block using abieos (faster)
+                    ds_times.abieos.signed_block = timedFunction(dsProfiling, () => {
+                        block = worker.deserializeNative('signed_block', res.block);
+                    });
 
-                // deserialize signed_block using eosjs
-                // ds_times.eosjs.signed_block = timedFunction(dsProfiling,() => {
-                //     block = deserialize('signed_block', res.block, this.txEnc, this.txDec, worker.types);
-                // });
+                    // deserialize signed_block using eosjs
+                    // ds_times.eosjs.signed_block = timedFunction(dsProfiling,() => {
+                    //     block = deserialize('signed_block', res.block, this.txEnc, this.txDec, worker.types);
+                    // });
 
-                if (block === null) {
-                    hLog('incompatible block');
-                    process.exit(1);
-                }
+                    if (block === null) {
+                        hLog('incompatible block');
+                        process.exit(1);
+                    }
 
-                // verify for whitelisted contracts (root actions only)
-                if (worker.conf.whitelists.root_only) {
-                    try {
+                    // verify for whitelisted contracts (root actions only)
+                    if (worker.conf.whitelists.root_only) {
+                        try {
 
-                        // get time reference for profiling
-                        if (worker.conf.settings.ds_profiling) ds_times['packed_trx'] = process.hrtime.bigint();
+                            // get time reference for profiling
+                            if (worker.conf.settings.ds_profiling) ds_times['packed_trx'] = process.hrtime.bigint();
 
-                        if (worker.conf.whitelists &&
-                            (worker.conf.whitelists.actions.length > 0 ||
-                                worker.conf.whitelists.deltas.length > 0)) {
+                            if (worker.conf.whitelists &&
+                                (worker.conf.whitelists.actions.length > 0 ||
+                                    worker.conf.whitelists.deltas.length > 0)) {
 
-                            allowProcessing = false;
+                                allowProcessing = false;
 
-                            for (const transaction of block.transactions) {
-                                if (transaction.status === 0 && transaction.trx[1] && transaction.trx[1].packed_trx) {
-                                    const unpacked_trx = worker.api.deserializeTransaction(Buffer.from(transaction.trx[1].packed_trx, 'hex'));
-                                    for (const act of unpacked_trx.actions) {
-                                        if (this.checkWhitelist(act)) {
-                                            allowProcessing = true;
-                                            break;
+                                for (const transaction of block.transactions) {
+                                    if (transaction.status === 0 && transaction.trx[1] && transaction.trx[1].packed_trx) {
+                                        const unpacked_trx = worker.api.deserializeTransaction(Buffer.from(transaction.trx[1].packed_trx, 'hex'));
+                                        for (const act of unpacked_trx.actions) {
+                                            if (this.checkWhitelist(act)) {
+                                                allowProcessing = true;
+                                                break;
+                                            }
                                         }
+                                        if (allowProcessing) break;
                                     }
-                                    if (allowProcessing) break;
                                 }
                             }
+
+                            // store time diff
+                            if (worker.conf.settings.ds_profiling) ds_times['packed_trx'] = Number(process.hrtime.bigint() - ds_times['packed_trx']) / 1000;
+
+                        } catch (e: any) {
+                            console.log(e);
+                            allowProcessing = true;
                         }
-
-                        // store time diff
-                        if (worker.conf.settings.ds_profiling) ds_times['packed_trx'] = Number(process.hrtime.bigint() - ds_times['packed_trx']) / 1000;
-
-                    } catch (e: any) {
-                        console.log(e);
-                        allowProcessing = true;
                     }
                 }
-            }
 
-            if (allowProcessing && res.traces && res.traces.length) {
+                if (allowProcessing && res.traces && res.traces.length) {
 
-                // deserialize transaction_trace using abieos (faster)
-                ds_times.abieos.transaction_trace = timedFunction(dsProfiling, () => {
-                    traces = worker.deserializeNative('transaction_trace[]', res.traces);
-                });
+                    // deserialize transaction_trace using abieos (faster)
+                    ds_times.abieos.transaction_trace = timedFunction(dsProfiling, () => {
+                        traces = worker.deserializeNative('transaction_trace[]', res.traces);
+                    });
 
-                // deserialize transaction_trace using eosjs
-                // ds_times.eosjs.transaction_trace = timedFunction(dsProfiling, () => {
-                //     traces = deserialize('transaction_trace[]', res.traces, this.txEnc, this.txDec, worker.types);
-                // });
+                    // deserialize transaction_trace using eosjs
+                    // ds_times.eosjs.transaction_trace = timedFunction(dsProfiling, () => {
+                    //     traces = deserialize('transaction_trace[]', res.traces, this.txEnc, this.txDec, worker.types);
+                    // });
 
-                if (!traces) {
-                    hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res['this_block']['block_num']}`);
-                }
-            }
-
-            if (allowProcessing && res.deltas && res.deltas.length) {
-
-                // deserialize table_delta using abieos
-                // ds_times.abieos.table_delta = timedFunction(dsProfiling, () => {
-                //     worker.deserializeNative('table_delta[]', res.deltas);
-                // });
-
-                // deserialize table_delta using eosjs (faster)
-                ds_times.eosjs.table_delta = timedFunction(dsProfiling, () => {
-                    deltas = deserialize('table_delta[]', res.deltas, this.txEnc, this.txDec, worker.types);
-                });
-
-                if (!deltas) {
-                    hLog(`[WARNING] table_delta[] deserialization failed on block ${res['this_block']['block_num']}`);
-                }
-            }
-
-            if (worker.conf.settings.ds_profiling) {
-                hLog(ds_times);
-                const line: any[] = [ds_times.size];
-                line.push(...[ds_times.eosjs.result, ds_times.eosjs.signed_block, ds_times.eosjs.transaction_trace, ds_times.eosjs.table_delta]);
-                line.push(...[ds_times.abieos.result, ds_times.abieos.signed_block, ds_times.abieos.transaction_trace, ds_times.abieos.table_delta]);
-                appendFileSync('ds_profiling.csv', line.join(',') + "\n");
-            }
-
-            let result;
-            try {
-                result = await worker.processBlock(res, block, traces, deltas);
-                if (result) {
-                    const evPayload = {
-                        event: 'consumed_block',
-                        block_num: result['block_num'],
-                        block_id: result['block_id'],
-                        trx_ids: result['trx_ids'],
-                        lib: res.last_irreversible.block_num,
-                        live: process.env.live_mode
-                    };
-                    if (block) {
-                        evPayload["producer"] = block['producer'];
-                        evPayload["schedule_version"] = block['schedule_version'];
+                    if (!traces) {
+                        hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res['this_block']['block_num']}`);
                     }
-                    process.send?.(evPayload);
-                } else {
-                    hLog(`ERROR: Block data not found for #${res['this_block']['block_num']}`);
                 }
-                if (worker.ch_ready) {
-                    worker.ch.ack(message);
+
+                if (allowProcessing && res.deltas && res.deltas.length) {
+
+                    // deserialize table_delta using abieos
+                    // ds_times.abieos.table_delta = timedFunction(dsProfiling, () => {
+                    //     worker.deserializeNative('table_delta[]', res.deltas);
+                    // });
+
+                    // deserialize table_delta using eosjs (faster)
+                    ds_times.eosjs.table_delta = timedFunction(dsProfiling, () => {
+                        deltas = deserialize('table_delta[]', res.deltas, this.txEnc, this.txDec, worker.types);
+                    });
+
+                    if (!deltas) {
+                        hLog(`[WARNING] table_delta[] deserialization failed on block ${res['this_block']['block_num']}`);
+                    }
                 }
-            } catch (e: any) {
-                console.log(e);
+
+                if (worker.conf.settings.ds_profiling) {
+                    hLog(ds_times);
+                    const line: any[] = [ds_times.size];
+                    line.push(...[ds_times.eosjs.result, ds_times.eosjs.signed_block, ds_times.eosjs.transaction_trace, ds_times.eosjs.table_delta]);
+                    line.push(...[ds_times.abieos.result, ds_times.abieos.signed_block, ds_times.abieos.transaction_trace, ds_times.abieos.table_delta]);
+                    appendFileSync('ds_profiling.csv', line.join(',') + "\n");
+                }
+
+                let result;
+                try {
+                    result = await worker.processBlock(res, block, traces, deltas);
+                    if (result) {
+                        const evPayload: Record<string, any> = {
+                            event: 'consumed_block',
+                            block_num: result['block_num'],
+                            block_id: result['block_id'],
+                            trx_ids: result['trx_ids'],
+                            lib: res.last_irreversible.block_num,
+                            live: process.env.live_mode
+                        };
+                        if (block) {
+                            evPayload["producer"] = block['producer'];
+                            evPayload["schedule_version"] = block['schedule_version'];
+                        }
+                        process.send?.(evPayload);
+                    } else {
+                        hLog(`ERROR: Block data not found for #${res['this_block']['block_num']}`);
+                    }
+                    if (worker.ch_ready) {
+                        worker.ch.ack(message);
+                    }
+                } catch (e: any) {
+                    console.log(e);
+                    if (worker.ch_ready) {
+                        worker.ch.nack(message);
+                    }
+                    process.exit(1);
+                }
+            } else {
                 if (worker.ch_ready) {
                     worker.ch.nack(message);
                 }
-                process.exit(1);
             }
         }
     }

@@ -1,12 +1,28 @@
 import {Channel, Message} from "amqplib";
 import {ConnectionManager} from "../connections/manager.class.js";
-import {flat, omit} from 'radash';
+import {flat} from 'radash';
 import {hLog} from "./common_functions.js";
-import {createHash} from "node:crypto";
+import {estypes} from "@elastic/elasticsearch";
+import {
+    buildAbiBulk,
+    buildActionBulk,
+    buildBlockBulk,
+    buildDeltaBulk,
+    buildDynamicTableBulk,
+    buildGenTrxBulk,
+    buildLinkBulk,
+    buildPermBulk,
+    buildResLimitBulk,
+    buildResUsageBulk,
+    buildTableAccountsBulk,
+    buildTableProposalsBulk,
+    buildTableVotersBulk,
+    buildTrxErrBulk
+} from "./builders.js";
 
-type MaxBlockCb = (maxBlock: number) => void;
-type routerFunction = (blockNum: number) => string;
-type flatMapBuilder = (payload: Message, body: any) => {
+export type MaxBlockCb = (maxBlock: number) => void;
+export type RouterFunction = (blockNum: number) => string;
+export type flatMapBuilder = (payload: Message, body: any) => {
     index?: {
         _id: any,
         _index?: string
@@ -25,188 +41,38 @@ type flatMapBuilder = (payload: Message, body: any) => {
         _id: any
     }
 } | any;
-type MMap = Map<string, any>;
+export type MMap = Map<string, any>;
+export type BulkGenerator = (
+    payloads: Message[],
+    messageMap: MMap,
+    maxBlockCb: MaxBlockCb,
+    routerFunc: RouterFunction | null,
+    indexName: string
+) => any[];
 
-function makeScriptedOp(id, body) {
+export function makeScriptedOp(id: string, body: any) {
     return [
         {update: {_id: id, retry_on_conflict: 3}},
         {script: {id: "updateByBlock", params: body}, scripted_upsert: true, upsert: {}}
     ];
 }
 
-function makeDelOp(id) {
+export function makeDelOp(id: string) {
     return [
         {delete: {_id: id}}
     ];
 }
 
-function flatMap(payloads: Message[], builder: flatMapBuilder) {
+export function flatMap(payloads: Message[], builder: flatMapBuilder): any[] {
     return flat(payloads.map((payload: Message) => {
         return builder(payload, JSON.parse(payload.content.toString()));
     }));
 }
 
-function buildAbiBulk(payloads: Message[], messageMap: MMap) {
-    return flatMap(payloads, (payload: Message, body: any) => {
-        const id = body['block'] + body['account'];
-        console.log('buildAbiBulk', id);
-        messageMap.set(id, omit(payload, ['content']));
-        return [{index: {_id: id}}, body];
-    });
-}
-
-function buildActionBulk(
-    payloads: Message[],
-    messageMap: MMap,
-    maxBlockCb: MaxBlockCb,
-    routerFunc: routerFunction,
-    indexName: string
-) {
-    return flatMap(payloads, (payload: Message, body: any) => {
-        const id = body['global_sequence'];
-        messageMap.set(id, omit(payload, ['content']));
-        return [{
-            index: {
-                _id: id,
-                _index: `${indexName}-${routerFunc(body.block_num)}`
-            }
-        }, body];
-    });
-}
-
-function buildBlockBulk(
-    payloads: Message[],
-    messageMap: MMap,
-    maxBlockCb: MaxBlockCb,
-    routerFunc: routerFunction,
-    indexName: string
-) {
-    return flatMap(payloads, (payload: Message, body: any) => {
-        const id = body['block_num'];
-        messageMap.set(id, omit(payload, ['content']));
-        return [{
-            index: {
-                _id: id
-            }
-        }, body];
-    });
-}
-
-function buildDeltaBulk(
-    payloads: Message[],
-    messageMap: MMap,
-    maxBlockCb: MaxBlockCb,
-    routerFunc: routerFunction,
-    indexName: string
-) {
-    let maxBlock = 0;
-    const flat_map = flatMap(payloads, (payload: Message, body: any) => {
-        if (maxBlock < body.block_num) {
-            maxBlock = body.block_num;
-        }
-        const id = `${body.block_num}-${body.code}-${body.scope}-${body.table}-${body.primary_key}`;
-        messageMap.set(id, omit(payload, ['content']));
-        return [{
-            index: {
-                _id: id,
-                _index: `${indexName}-${routerFunc(body.block_num)}`
-            }
-        }, body];
-    });
-    maxBlockCb(maxBlock);
-    return flat_map;
-}
-
-function buildDynamicTableBulk(payloads: Message[], messageMap: MMap) {
-    return flatMap(payloads, (payload: Message, body: any) => {
-        const id = payload.properties.messageId;
-        messageMap.set(payload.properties.messageId.id, omit(payload, ['content']));
-        if (body.present === 0) {
-            return makeDelOp(id);
-        } else {
-            return makeScriptedOp(id, body);
-        }
-    });
-}
-
-function buildTableProposalsBulk(payloads: Message[], messageMap: MMap) {
-    return flatMap(payloads, (payload: Message, body: any) => {
-        const id = `${body.proposer}-${body.proposal_name}-${body.primary_key}`;
-        messageMap.set(id, omit(payload, ['content']));
-        return makeScriptedOp(id, body);
-    });
-}
-
-function buildTableAccountsBulk(payloads: Message[], messageMap: MMap) {
-    return flatMap(payloads, (payload, body) => {
-        const id = `${body.code}-${body.scope}-${body.symbol}`;
-        messageMap.set(id, omit(payload, ['content']));
-        return makeScriptedOp(id, body);
-    });
-}
-
-function buildTableVotersBulk(payloads: Message[], messageMap: MMap) {
-    return flatMap(payloads, (payload, body) => {
-        const id = `${body.voter}`;
-        messageMap.set(id, omit(payload, ['content']));
-        return makeScriptedOp(id, body);
-    });
-}
-
-function buildLinkBulk(payloads: Message[], messageMap: MMap) {
-    return flatMap(payloads, (payload, body) => {
-        const id = `${body.account}-${body.permission}-${body.code}-${body.action}`;
-        messageMap.set(id, omit(payload, ['content']));
-        return makeScriptedOp(id, body);
-    });
-}
-
-function buildPermBulk(payloads: Message[], messageMap: MMap) {
-    return flatMap(payloads, (payload, body) => {
-        const id = `${body.owner}-${body.name}`;
-        messageMap.set(id, omit(payload, ['content']));
-        return makeScriptedOp(id, body);
-    });
-}
-
-function buildResLimitBulk(payloads: Message[], messageMap: MMap) {
-    return flatMap(payloads, (payload, body) => {
-        const id = `${body.owner}`;
-        messageMap.set(id, omit(payload, ['content']));
-        return makeScriptedOp(id, body);
-    });
-}
-
-function buildResUsageBulk(payloads: Message[], messageMap: MMap) {
-    return flatMap(payloads, (payload, body) => {
-        const id = `${body.owner}`;
-        messageMap.set(id, omit(payload, ['content']));
-        return makeScriptedOp(id, body);
-    });
-}
-
-function buildGenTrxBulk(payloads: Message[], messageMap: MMap) {
-    return flatMap(payloads, (payload, body) => {
-        const hash = createHash('sha256')
-            .update(body.sender + body.sender_id + body.payer)
-            .digest()
-            .toString("hex");
-        const id = `${body.block_num}-${hash}`;
-        messageMap.set(id, omit(payload, ['content']));
-        return [{index: {_id: id}}, body];
-    });
-}
-
-function buildTrxErrBulk(payloads: Message[], messageMap: MMap) {
-    return flatMap(payloads, (payload, body) => {
-        const id = body.trx_id.toLowerCase();
-        delete body.trx_id;
-        messageMap.set(id, omit(payload, ['content']));
-        return [{index: {_id: id}}, body];
-    });
-}
-
-const generatorsMap = {
+const generatorsMap: Record<string, {
+    index_name: string,
+    func: (payloads: Message[], messageMap: MMap) => any[]
+}> = {
     permission: {
         index_name: 'perm',
         func: buildPermBulk
@@ -243,7 +109,7 @@ export class ElasticRoutes {
     public routes: any;
     cm: ConnectionManager;
     chain: string;
-    ingestNodeCounters = {};
+    ingestNodeCounters: Record<number, any> = {};
     distributionMap: IndexDist[];
 
     constructor(connectionManager: ConnectionManager, distributionMap: IndexDist[]) {
@@ -255,16 +121,22 @@ export class ElasticRoutes {
         this.resetCounters();
     }
 
-    createGenericBuilder(collection, channel, counter, index_name, method) {
+    createGenericBuilder(
+        collection: Message[],
+        channel: Channel,
+        index_name: string,
+        method: (payloads: Message[], messageMap: MMap, updateBlock?: (maxBlock: number) => void) => any[]
+    ) {
         return new Promise((resolve) => {
             const messageMap = new Map();
-            let maxBlockNum;
+            let maxBlockNum: number;
+            const ops = method(collection, messageMap, (maxBlock: number) => {
+                maxBlockNum = maxBlock;
+            });
             this.bulkAction({
                 index: index_name,
-                body: method(collection, messageMap, (maxBlock) => {
-                    maxBlockNum = maxBlock;
-                })
-            }).then((resp: any) => {
+                operations: ops
+            }).then((resp: estypes.BulkResponse) => {
                 if (resp.errors) {
                     this.ackOrNack(resp, messageMap, channel);
                 } else {
@@ -285,8 +157,12 @@ export class ElasticRoutes {
         })
     }
 
-    async handleGenericRoute(payload: Message[], ch: Channel, cb: (indexed_size: number) => void): Promise<void> {
-        const coll = {};
+    async handleGenericRoute(
+        payload: Message[],
+        ch: Channel,
+        cb: (indexed_size: number) => void
+    ): Promise<void> {
+        const coll: Record<string, Message[]> = {};
         for (const message of payload) {
             const type = message.properties.headers.type;
             if (!coll[type]) {
@@ -294,18 +170,15 @@ export class ElasticRoutes {
             }
             coll[type].push(message);
         }
-
         const queue: any[] = [];
         const v = this.cm.config.settings.index_version;
         let counter = 0;
-
         Object.keys(coll).forEach(value => {
             if (generatorsMap[value]) {
                 const indexName = `${this.chain}-${generatorsMap[value].index_name}-${v}`;
-                queue.push(this.createGenericBuilder(coll[value], ch, counter, indexName, generatorsMap[value].func));
+                queue.push(this.createGenericBuilder(coll[value], ch, indexName, generatorsMap[value].func));
             }
         });
-
         await Promise.all(queue);
         cb(counter);
     }
@@ -319,9 +192,10 @@ export class ElasticRoutes {
         });
     }
 
-    ackOrNack(resp, messageMap, channel: Channel) {
+    ackOrNack(resp: estypes.BulkResponse, messageMap: MMap, channel: Channel) {
         for (const item of resp.items) {
-            let id, itemBody;
+            let id;
+            let itemBody;
             if (item['index']) {
                 id = item.index._id;
                 itemBody = item.index;
@@ -335,32 +209,37 @@ export class ElasticRoutes {
                 console.log(item);
                 throw new Error('FATAL ERROR - CANNOT EXTRACT ID');
             }
-            const message = messageMap.get(id);
-            const status = itemBody.status;
-            if (message) {
-                switch (status) {
-                    case 200: {
-                        channel.ack(message);
-                        break;
+            if (id) {
+                const message = messageMap.get(id);
+                const status = itemBody.status;
+                if (message) {
+                    switch (status) {
+                        case 200: {
+                            channel.ack(message);
+                            break;
+                        }
+                        case 201: {
+                            channel.ack(message);
+                            break;
+                        }
+                        case 404: {
+                            channel.ack(message);
+                            break;
+                        }
+                        case 409: {
+                            console.log(item);
+                            channel.nack(message);
+                            break;
+                        }
+                        default: {
+                            console.log(item, message.fields.deliveryTag);
+                            console.info(`nack id: ${id} - status: ${status}`);
+                            channel.nack(message);
+                        }
                     }
-                    case 201: {
-                        channel.ack(message);
-                        break;
-                    }
-                    case 404: {
-                        channel.ack(message);
-                        break;
-                    }
-                    case 409: {
-                        console.log(item);
-                        channel.nack(message);
-                        break;
-                    }
-                    default: {
-                        console.log(item, message.fields.deliveryTag);
-                        console.info(`nack id: ${id} - status: ${status}`);
-                        channel.nack(message);
-                    }
+                } else {
+                    console.log(item);
+                    throw new Error('Message not found');
                 }
             } else {
                 console.log(item);
@@ -369,7 +248,14 @@ export class ElasticRoutes {
         }
     }
 
-    onResponse(resp, messageMap, callback, payloads, channel: Channel, index_name: string, maxBlockNum: number) {
+    onResponse(
+        resp: estypes.BulkResponse,
+        messageMap: MMap,
+        callback: (counter: number) => void,
+        channel: Channel,
+        index_name: string,
+        maxBlockNum: number
+    ): void {
         if (resp.errors) {
             this.ackOrNack(resp, messageMap, channel);
             if (maxBlockNum > 0) {
@@ -381,7 +267,7 @@ export class ElasticRoutes {
         callback(messageMap.size);
     }
 
-    onError(err, channel: Channel, callback) {
+    onError(err: any, channel: Channel, callback: () => void) {
         try {
             channel.nackAll();
             if (err.meta) {
@@ -394,10 +280,10 @@ export class ElasticRoutes {
         }
     }
 
-    bulkAction(bulkData) {
+    bulkAction(bulkData: estypes.BulkRequest<any, any>): Promise<estypes.BulkResponse> {
         let minIdx = 0;
         if (this.cm.ingestClients.length > 1) {
-            let min;
+            let min: number | undefined;
             this.cm.ingestClients.forEach((val, idx) => {
                 if (!min) {
                     min = this.ingestNodeCounters[idx].docs;
@@ -409,13 +295,11 @@ export class ElasticRoutes {
                 }
             });
         }
-        this.ingestNodeCounters[minIdx].docs += bulkData.length;
+        this.ingestNodeCounters[minIdx].docs += bulkData.operations?.length;
         if (this.ingestNodeCounters[minIdx].docs > 10000) {
             this.resetCounters();
         }
-        // print full request
-        // console.log(JSON.stringify(bulkData));
-        return this.cm.ingestClients[minIdx]['bulk'](bulkData);
+        return this.cm.ingestClients[minIdx].bulk<any, any>(bulkData);
     }
 
     getIndexPartition(blockNum: number): string {
@@ -425,105 +309,27 @@ export class ElasticRoutes {
         return Math.ceil(blockNum / this.cm.config.settings.index_partition_size).toString().padStart(6, '0');
     }
 
-    getIndexNameByBlock(block_num) {
-        if (!this.distributionMap) {
-            return null;
-        }
-        for (let i = this.distributionMap.length - 1; i >= 0; i--) {
-            const test = this.distributionMap[i].first_block <= block_num && this.distributionMap[i].last_block >= block_num;
-            if (test) {
-                return this.distributionMap[i].index;
-            }
-        }
-        return null;
-    }
-
-    addToIndexMap(map, idx, payload) {
-        if (idx) {
-            if (!map[idx]) {
-                map[idx] = [];
-            }
-            map[idx].push(payload);
-        }
-    }
-
-    private routeFactory(indexName: string, bulkGenerator, routerFunction) {
-        return async (payloads, channel, cb) => {
-
+    private routeFactory(
+        indexName: string,
+        bulkGenerator: BulkGenerator,
+        routerFunction: RouterFunction | null
+    ) {
+        return async (payloads: Message[], channel: Channel, cb: () => void) => {
             let _index = `${this.chain}-${indexName}-${this.cm.config.settings.index_version}`;
-
-            // write directly to index
-            const messageMap = new Map();
-            let maxBlockNum;
-            this.bulkAction({
-                index: _index,
-                body: bulkGenerator(payloads, messageMap, (maxBlock) => {
-                    maxBlockNum = maxBlock;
-                }, routerFunction, _index)
-            }).then(resp => {
-                this.onResponse(resp, messageMap, cb, payloads, channel, _index, maxBlockNum);
-            }).catch(err => {
+            const messageMap: MMap = new Map();
+            let maxBlockNum: number;
+            const ops = bulkGenerator(payloads, messageMap, (maxBlock) => {
+                maxBlockNum = maxBlock;
+            }, routerFunction, _index);
+            this.bulkAction({index: _index, operations: ops}).then((resp: estypes.BulkResponse) => {
+                this.onResponse(resp, messageMap, cb, channel, _index, maxBlockNum);
+            }).catch((err: any) => {
                 this.onError(err, channel, cb);
             });
-
-            // if (this.cm.config.indexer.rewrite) {
-            //
-            // 	// // write to remapped indices
-            // 	// let payloadBlock = null;
-            // 	// const indexMap = {};
-            // 	// let pIdx = null;
-            // 	// if (indexName === 'action' || indexName === 'delta') {
-            // 	// 	for (const payload of payloads) {
-            // 	// 		const blk = payload.properties.headers?.block_num;
-            // 	// 		if (!payloadBlock) {
-            // 	// 			payloadBlock = blk;
-            // 	// 			pIdx = this.getIndexNameByBlock(blk);
-            // 	// 			console.log(pIdx);
-            // 	// 			this.addToIndexMap(indexMap, pIdx, payload);
-            // 	// 		} else {
-            // 	// 			const _idx = payloadBlock === blk ? pIdx : this.getIndexNameByBlock(blk);
-            // 	// 			console.log(_idx);
-            // 	// 			this.addToIndexMap(indexMap, _idx, payload);
-            // 	// 		}
-            // 	// 	}
-            // 	// }
-            // 	//
-            // 	// // if no index was mapped to that range use the default alias
-            // 	// if (Object.keys(indexMap).length === 0) {
-            // 	// 	indexMap[_index] = payloads;
-            // 	// }
-            // 	//
-            // 	// const queue = [];
-            // 	// let counter = 0;
-            // 	//
-            // 	// for (const idxKey in indexMap) {
-            // 	// 	queue.push(this.createGenericBuilder(indexMap[idxKey], channel, counter, idxKey, bulkGenerator));
-            // 	// }
-            // 	//
-            // 	// const results = await Promise.all(queue);
-            // 	// results.forEach(value => counter += value);
-            // 	// cb(counter);
-            //
-            // } else {
-            // 	// write directly to index
-            // 	const messageMap = new Map();
-            // 	let maxBlockNum;
-            // 	this.bulkAction({
-            // 		index: _index,
-            // 		type: '_doc',
-            // 		body: bulkGenerator(payloads, messageMap, (maxBlock) => {
-            // 			maxBlockNum = maxBlock;
-            // 		}, routerFunction, _index)
-            // 	}).then(resp => {
-            // 		this.onResponse(resp, messageMap, cb, payloads, channel, _index, maxBlockNum);
-            // 	}).catch(err => {
-            // 		this.onError(err, channel, cb);
-            // 	});
-            // }
         };
     }
 
-    private addRoute(indexType: string, bulkGenerator, routerFunction) {
+    private addRoute(indexType: string, bulkGenerator: BulkGenerator, routerFunction: RouterFunction | null) {
         this.routes[indexType] = this.routeFactory(indexType, bulkGenerator, routerFunction);
     }
 
@@ -541,7 +347,7 @@ export class ElasticRoutes {
     }
 
     private registerDynamicTableRoute() {
-        this.routes['dynamic-table'] = async (payloads, channel, cb) => {
+        this.routes['dynamic-table'] = async (payloads: Message[], channel: Channel, cb: (counter: number) => void) => {
             const contractMap: Map<string, any[]> = new Map();
             let counter = 0;
             for (const payload of payloads) {
@@ -562,15 +368,12 @@ export class ElasticRoutes {
             }
             const processingQueue: any[] = [];
             for (const entry of contractMap.entries()) {
-                processingQueue.push(
-                    this.createGenericBuilder(
-                        entry[1],
-                        channel,
-                        counter,
-                        `${this.chain}-dt-${entry[0]}`,
-                        buildDynamicTableBulk
-                    )
-                );
+                processingQueue.push(this.createGenericBuilder(
+                    entry[1],
+                    channel,
+                    `${this.chain}-dt-${entry[0]}`,
+                    buildDynamicTableBulk
+                ));
             }
             const results = await Promise.all(processingQueue);
             results.forEach(value => counter += value);

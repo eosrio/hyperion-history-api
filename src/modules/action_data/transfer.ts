@@ -2,6 +2,7 @@ import {readFileSync} from "node:fs";
 import {resolve, join} from "node:path";
 import {HyperionActionTransform} from "../../interfaces/hyperion-action-transform.js";
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
+import {HyperionAction} from "../../interfaces/hyperion-action.js";
 
 let config = {} as HyperionConfig;
 if (process.env.CONFIG_JSON) {
@@ -14,8 +15,8 @@ export const hyperionModule: HyperionActionTransform = {
     action: 'transfer',
     parser_version: ['2.1', '1.8', '1.7'],
     defineQueryPrefix: 'transfer',
-    handler: (action) => {
-        let qtd = null;
+    handler: (action: HyperionAction) => {
+        let qtd: string[] | undefined;
         const data = action['act']['data'];
         if (data['quantity'] && typeof data['quantity'] === 'string') {
             qtd = data['quantity'].split(' ');

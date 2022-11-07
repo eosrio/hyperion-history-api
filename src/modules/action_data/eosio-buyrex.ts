@@ -9,13 +9,11 @@ export const hyperionModule: HyperionActionTransform = {
     parser_version: ['2.1', '1.8', '1.7'],
     handler: (action: HyperionAction) => {
         const data = action['act']['data'];
-        let qtd = null;
-        if (data['amount']) {
-            qtd = parseFloat(data['amount'].split(' ')[0]);
-        }
         action['@buyrex'] = {
-            amount: qtd,
             from: data['from']
         };
+        if (data['amount']) {
+            action['@buyrex']['amount'] = parseFloat(data['amount'].split(' ')[0]);
+        }
     }
 };

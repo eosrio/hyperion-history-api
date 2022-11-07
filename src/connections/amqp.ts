@@ -1,8 +1,10 @@
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import got, {HTTPError} from "got";
 import {connect, Connection} from 'amqplib';
+import {AmqpConfig} from "../interfaces/hyperionConnections.js";
+import {Channel, ConfirmChannel} from "amqplib/callback_api.js";
 
-export async function createConnection(config): Promise<Connection> {
+export async function createConnection(config: AmqpConfig): Promise<Connection> {
     try {
         const amqp_url = getAmpqUrl(config);
         const conn: Connection = await connect(amqp_url);
@@ -16,7 +18,7 @@ export async function createConnection(config): Promise<Connection> {
     }
 }
 
-export function getAmpqUrl(config): string {
+export function getAmpqUrl(config: AmqpConfig): string {
     let frameMaxValue = '0x10000';
     if (config.frameMax) {
         frameMaxValue = config.frameMax;
@@ -28,19 +30,23 @@ export function getAmpqUrl(config): string {
 }
 
 
-async function createChannels(connection) {
+async function createChannels(connection: Connection): Promise<[Channel | null, ConfirmChannel | null]> {
     try {
         const channel = await connection.createChannel();
         const confirmChannel = await connection.createConfirmChannel();
         return [channel, confirmChannel];
-    } catch (e:any) {
+    } catch (e: any) {
         hLog("[AMQP] failed to create channels");
         hLog(e);
-        return null;
+        return [null, null];
     }
 }
 
-export async function amqpConnect(onReconnect, config, onClose): Promise<any[]> {
+export async function amqpConnect(
+    onReconnect: (channels: [Channel | null, ConfirmChannel | null]) => void,
+    config: AmqpConfig,
+    onClose: () => void
+): Promise<[Channel | null, ConfirmChannel | null]> {
     let connection = await createConnection(config);
     if (connection) {
         const channels = await createChannels(connection);
@@ -60,14 +66,14 @@ export async function amqpConnect(onReconnect, config, onClose): Promise<any[]> 
             });
             return channels;
         } else {
-            return [];
+            return [null, null];
         }
     } else {
-        return [];
+        return [null, null];
     }
 }
 
-export async function checkQueueSize(q_name, config) {
+export async function checkQueueSize(q_name: string, config: AmqpConfig) {
     try {
         const v = encodeURIComponent(config.vhost);
         const apiUrl = `${config.protocol}://${config.api}/api/queues/${v}/${encodeURIComponent(q_name)}`;

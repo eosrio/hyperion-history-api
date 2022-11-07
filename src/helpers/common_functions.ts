@@ -4,8 +4,12 @@ import {join, resolve} from "node:path";
 import {Serialize} from "eosjs";
 import {PathLike} from "fs";
 import {fileURLToPath} from "node:url";
+import {HyperionConfig} from "../interfaces/hyperionConfig.js";
+import {HyperionAction} from "../interfaces/hyperion-action.js";
+import {Cluster} from "cluster";
+import {Serializable} from "child_process";
 
-let config;
+let config: HyperionConfig | undefined;
 let confPath = process.env.CONFIG_JSON as PathLike;
 if (!existsSync(confPath)) {
     confPath = join(resolve(), `${process.env.CONFIG_JSON}`);
@@ -47,10 +51,8 @@ export async function getLastIndexedBlockByDelta(es_client: Client, chain: strin
     const results = await es_client.search({
         index: chain + '-delta-*',
         size: 1,
-        body: {
-            query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "desc"}}]
-        }
+        query: {bool: {filter: {match_all: {}}}},
+        sort: [{block_num: {order: "desc"}}]
     });
     return getLastResult(results);
 }
@@ -59,10 +61,8 @@ export async function getLastIndexedBlock(es_client: Client, chain: string) {
     const results: estypes.SearchResponse = await es_client.search({
         index: chain + '-block-*',
         size: 1,
-        body: {
-            query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "desc"}}]
-        }
+        query: {bool: {filter: {match_all: {}}}},
+        sort: [{block_num: {order: "desc"}}]
     });
     return getLastResult(results);
 }
@@ -71,10 +71,8 @@ export async function getFirstIndexedBlock(esClient: Client, chain: string): Pro
     const results: estypes.SearchResponse = await esClient.search({
         index: chain + '-block-*',
         size: 1,
-        body: {
-            query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "asc"}}]
-        }
+        query: {bool: {filter: {match_all: {}}}},
+        sort: [{block_num: {order: "asc"}}]
     });
     return getLastResult(results);
 }
@@ -83,11 +81,9 @@ export async function getLastIndexedBlockWithTotalBlocks(es_client: Client, chai
     const results = await es_client.search({
         index: chain + '-block-*',
         size: 1,
-        body: {
-            query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "desc"}}],
-            track_total_hits: true
-        }
+        query: {bool: {filter: {match_all: {}}}},
+        sort: [{block_num: {order: "desc"}}],
+        track_total_hits: true
     });
     let lastBlock = getLastResult(results);
     let totalBlocks = 1;
@@ -106,12 +102,10 @@ export async function getLastIndexedABI(es_client: Client, chain: string) {
     const results = await es_client.search({
         index: chain + '-abi-*',
         size: 1,
-        body: {
-            query: {
-                match_all: {}
-            },
-            sort: [{block: {order: "desc"}}]
-        }
+        query: {
+            match_all: {}
+        },
+        sort: [{block: {order: "desc"}}]
     });
     return getLastResult(results);
 }
@@ -120,18 +114,16 @@ export async function getLastIndexedBlockByDeltaFromRange(es_client: Client, cha
     const results = await es_client.search({
         index: chain + '-delta-*',
         size: 1,
-        body: {
-            query: {
-                range: {
-                    block_num: {
-                        "gte": first,
-                        "lt": last,
-                        "boost": 2
-                    }
+        query: {
+            range: {
+                block_num: {
+                    "gte": first,
+                    "lt": last,
+                    "boost": 2
                 }
-            },
-            sort: [{block_num: {order: "desc"}}]
-        }
+            }
+        },
+        sort: [{block_num: {order: "desc"}}]
     });
     return getLastResult(results);
 }
@@ -140,23 +132,21 @@ export async function getLastIndexedBlockFromRange(es_client: Client, chain: str
     const results = await es_client.search({
         index: chain + '-block-*',
         size: 1,
-        body: {
-            query: {
-                range: {
-                    block_num: {
-                        "gte": first,
-                        "lt": last,
-                        "boost": 2
-                    }
+        query: {
+            range: {
+                block_num: {
+                    "gte": first,
+                    "lt": last,
+                    "boost": 2
                 }
-            },
-            sort: [{block_num: {order: "desc"}}]
-        }
+            }
+        },
+        sort: [{block_num: {order: "desc"}}]
     });
     return getLastResult(results);
 }
 
-export function messageAllWorkers(cl, payload) {
+export function messageAllWorkers(cl: Cluster, payload: Serializable) {
     for (const c in cl.workers) {
         if (cl.workers.hasOwnProperty(c)) {
             const _w = cl.workers[c];
@@ -178,7 +168,13 @@ export function messageAllWorkers(cl, payload) {
     }
 }
 
-export function serialize(type, value, txtEnc, txtDec, types) {
+export function serialize(
+    type: string,
+    value: any,
+    txtEnc: TextEncoder,
+    txtDec: TextDecoder,
+    types: Map<string, Serialize.Type>
+) {
     const buffer = new Serialize.SerialBuffer({
         textEncoder: txtEnc,
         textDecoder: txtDec
@@ -187,7 +183,13 @@ export function serialize(type, value, txtEnc, txtDec, types) {
     return buffer.asUint8Array();
 }
 
-export function deserialize(typeName: string, array, txtEnc, txtDec, types: Map<string, Serialize.Type>) {
+export function deserialize(
+    typeName: string,
+    array: Uint8Array,
+    txtEnc: TextEncoder,
+    txtDec: TextDecoder,
+    types: Map<string, Serialize.Type>
+): any {
     const buffer = new Serialize.SerialBuffer({
         textEncoder: txtEnc,
         textDecoder: txtDec,
@@ -198,8 +200,11 @@ export function deserialize(typeName: string, array, txtEnc, txtDec, types: Map<
         .deserialize(buffer, new Serialize.SerializerState({bytesAsUint8Array: true}));
 }
 
-function getNested(path_array, jsonObj) {
+function getNested(path_array: string[], jsonObj: Record<string, any>): any {
     const nextPath = path_array.shift();
+    if (!nextPath) {
+        return null;
+    }
     const nextValue = jsonObj[nextPath];
     if (!nextValue) {
         return null;
@@ -216,7 +221,7 @@ function getNested(path_array, jsonObj) {
     }
 }
 
-export function checkFilter(filter, _source) {
+export function checkFilter(filter: { field: string, value: string }, _source: HyperionAction) {
     if (filter.field && filter.value) {
         let fieldValue = getNested(filter.field.split("."), _source);
         if (!fieldValue) {
@@ -266,7 +271,7 @@ export function hLog(input: any, ...extra: any[]) {
 }
 
 export function debugLog(text: any, ...extra: any[]) {
-    if (config.settings.debug) {
+    if (config && config.settings.debug) {
         hLog(text, ...extra);
     }
 }

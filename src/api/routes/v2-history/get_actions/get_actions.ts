@@ -9,11 +9,14 @@ import {
     getSkipLimit,
     getSortDir
 } from "./functions.js";
+import {estypes} from "@elastic/elasticsearch";
+import {HyperionAction} from "../../../../interfaces/hyperion-action.js";
+import {Serialize} from "enf-eosjs";
 
 async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
     const maxActions = fastify.manager.config.api.limits.get_actions;
-    const queryStruct = {
+    const queryStruct: estypes.QueryDslQueryContainer = {
         "bool": {
             must: [],
             must_not: [],
@@ -46,7 +49,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         indexPattern = fastify.manager.chain + '-action';
     }
 
-    const esResults = await fastify.elastic.search<any>({
+    const esResults = await fastify.elastic.search<HyperionAction>({
         "index": indexPattern,
         "from": skip || 0,
         "size": (maxActions && (limit > maxActions) ? maxActions : limit) || 10,
@@ -59,7 +62,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     const response: any = {
         cached: false,
         lib: 0,
-        total: results['total']
+        total: results.total
     };
 
     if (query.hot_only) {
@@ -71,42 +74,45 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     if (query.simple) {
-        response['simple_actions'] = [];
+        response.simple_actions = [];
     } else {
-        response['actions'] = [];
+        response.actions = [];
     }
 
     if (results.hits.length > 0) {
         const actions = results.hits;
         for (let action of actions) {
-            action = action._source;
-            mergeActionMeta(action);
-
-            if (query.noBinary === true) {
-                for (const key in action['act']['data']) {
-                    if (action['act']['data'].hasOwnProperty(key)) {
-                        if (typeof action['act']['data'][key] === 'string' && action['act']['data'][key].length > 256) {
-                            action['act']['data'][key] = action['act']['data'][key].slice(0, 32) + "...";
+            if (action._source) {
+                const source = action._source;
+                mergeActionMeta(action);
+                if (query.noBinary === true) {
+                    for (const key in source.act.data) {
+                        if (source.act.data.hasOwnProperty(key)) {
+                            if (typeof source.act.data[key] === 'string' && source.act.data[key].length > 256) {
+                                source.act.data[key] = source.act.data[key].slice(0, 32) + "...";
+                            }
                         }
                     }
                 }
-            }
 
-            if (query.simple) {
-                response.simple_actions.push({
-                    block: action['block_num'],
-                    irreversible: response.lib !== 0 ? action['block_num'] < response.lib : undefined,
-                    timestamp: action['@timestamp'],
-                    transaction_id: action['trx_id'],
-                    actors: action['act']['authorization'].map(a => `${a.actor}@${a.permission}`).join(","),
-                    notified: action['notified'].join(','),
-                    contract: action['act']['account'],
-                    action: action['act']['name'],
-                    data: action['act']['data']
-                });
+                if (query.simple) {
+                    response.simple_actions.push({
+                        block: source.block_num,
+                        irreversible: response.lib !== 0 ? source.block_num < response.lib : undefined,
+                        timestamp: source["@timestamp"],
+                        transaction_id: source.trx_id,
+                        actors: source.act.authorization.map((a: Serialize.Authorization) => {
+                            return `${a.actor}@${a.permission}`;
+                        }).join(","),
+                        notified: source.notified.join(','),
+                        contract: source.act.account,
+                        action: source.act.name,
+                        data: source.act.data
+                    });
 
-            } else {
-                response.actions.push(action);
+                } else {
+                    response.actions.push(source);
+                }
             }
         }
     }

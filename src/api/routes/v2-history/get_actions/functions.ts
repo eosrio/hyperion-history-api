@@ -1,23 +1,28 @@
 import {primaryTerms, terms} from "./definitions.js";
+import {estypes} from "@elastic/elasticsearch";
 
-export function addSortedBy(query, queryBody, sort_direction) {
+export function addSortedBy(query: any, queryBody: estypes.SearchRequest, sort_direction: estypes.SortOrder) {
     if (query['sortedBy']) {
         const opts = query['sortedBy'].split(":");
-        const sortedByObj = {};
+        const sortedByObj: Record<string, any> = {};
         sortedByObj[opts[0]] = opts[1];
-        queryBody['sort'] = sortedByObj;
+        queryBody.sort = sortedByObj;
     } else {
-        queryBody['sort'] = {
+        queryBody.sort = {
             "global_sequence": sort_direction
         };
     }
 }
 
-export function processMultiVars(queryStruct, parts, field) {
+export function processMultiVars(
+    queryStruct: estypes.QueryDslQueryContainer,
+    parts: string[],
+    field: string
+) {
     const must: any[] = [];
     const mustNot: any[] = [];
 
-    parts.forEach(part => {
+    parts.forEach((part: string) => {
         if (part.startsWith("!")) {
             mustNot.push(part.replace("!", ""));
         } else {
@@ -26,49 +31,68 @@ export function processMultiVars(queryStruct, parts, field) {
     });
 
     if (must.length > 1) {
-        queryStruct.bool.must.push({
+        pushBoolElement(queryStruct, 'must', {
             bool: {
                 should: must.map(elem => {
-                    const _q = {};
+                    const _q: Record<string, any> = {};
                     _q[field] = elem;
                     return {term: _q}
                 })
             }
         });
     } else if (must.length === 1) {
-        const mustQuery = {};
+        const mustQuery: Record<string, any> = {};
         mustQuery[field] = must[0];
-        queryStruct.bool.must.push({term: mustQuery});
+        pushBoolElement(queryStruct, 'must', {term: mustQuery});
     }
 
     if (mustNot.length > 1) {
-        queryStruct.bool.must_not.push({
+        pushBoolElement(queryStruct, 'must_not', {
             bool: {
                 should: mustNot.map(elem => {
-                    const _q = {};
+                    const _q: Record<string, any> = {};
                     _q[field] = elem;
                     return {term: _q}
                 })
             }
         });
     } else if (mustNot.length === 1) {
-        const mustNotQuery = {};
+        const mustNotQuery: Record<string, any> = {};
         mustNotQuery[field] = mustNot[0].replace("!", "");
-        queryStruct.bool.must_not.push({term: mustNotQuery});
+        pushBoolElement(queryStruct, 'must_not', {term: mustNotQuery});
     }
 }
 
-function addRangeQuery(queryStruct, prop, pkey, query) {
-    const _termQuery = {};
+function pushBoolElement(
+    queryStruct: estypes.QueryDslQueryContainer,
+    key: 'must' | 'must_not' | 'filter' | 'should',
+    obj: any
+): void {
+    if (queryStruct.bool && Array.isArray(queryStruct.bool[key])) {
+        if (!queryStruct.bool[key]) {
+            queryStruct.bool[key] = [obj];
+        } else {
+            (queryStruct as any).bool[key].push(obj);
+        }
+    }
+}
+
+function addRangeQuery(
+    queryStruct: estypes.QueryDslQueryContainer,
+    prop: string,
+    pkey: string,
+    query: Record<string, any>
+) {
+    const _termQuery: Record<string, any> = {};
     const parts = query[prop].split("-");
     _termQuery[pkey] = {
         "gte": parts[0],
         "lte": parts[1]
     };
-    queryStruct.bool.must.push({range: _termQuery});
+    pushBoolElement(queryStruct, "must", {range: _termQuery});
 }
 
-export function applyTimeFilter(query, queryStruct) {
+export function applyTimeFilter(query: Record<string, any>, queryStruct: estypes.QueryDslQueryContainer) {
     if (query['after'] || query['before']) {
         let _lte = "now";
         let _gte = "0";
@@ -86,26 +110,20 @@ export function applyTimeFilter(query, queryStruct) {
                 throw new Error(e.message + ' [after]');
             }
         }
-        if (!queryStruct.bool['filter']) {
-            queryStruct.bool['filter'] = [];
-        }
-        queryStruct.bool['filter'].push({
-            range: {
-                "@timestamp": {
-                    "gte": _gte,
-                    "lte": _lte
-                }
-            }
-        });
+        pushBoolElement(queryStruct, "filter", {range: {"@timestamp": {gte: _gte, lte: _lte}}});
     }
 }
 
-export function applyGenericFilters(query, queryStruct, allowedExtraParams: Set<string>) {
+export function applyGenericFilters(
+    query: Record<string, any>,
+    queryStruct: estypes.QueryDslQueryContainer,
+    allowedExtraParams: Set<string>
+) {
     for (const prop in query) {
         if (Object.prototype.hasOwnProperty.call(query, prop)) {
             const pair = prop.split(".");
             if (pair.length > 1 || primaryTerms.includes(pair[0])) {
-                let pkey;
+                let pkey: string;
                 if (pair.length > 1 && allowedExtraParams) {
                     pkey = allowedExtraParams.has(pair[0]) ? "@" + prop : prop;
                 } else {
@@ -114,7 +132,7 @@ export function applyGenericFilters(query, queryStruct, allowedExtraParams: Set<
                 if (query[prop].indexOf("-") !== -1) {
                     addRangeQuery(queryStruct, prop, pkey, query);
                 } else {
-                    const _qObj = {};
+                    const _qObj: Record<string, any> = {};
                     const parts = query[prop].split(",");
                     if (parts.length > 1) {
                         processMultiVars(queryStruct, parts, prop);
@@ -125,33 +143,28 @@ export function applyGenericFilters(query, queryStruct, allowedExtraParams: Set<
                             _qObj[pkey] = {
                                 query: parts[0]
                             };
-
                             if (query.match_fuzziness) {
                                 _qObj[pkey].fuzziness = query.match_fuzziness;
                             }
-
                             if (query.match_operator) {
                                 _qObj[pkey].operator = query.match_operator;
                             }
-
-                            queryStruct.bool.must.push({
-                                match: _qObj
-                            });
+                            pushBoolElement(queryStruct, "must", {match: _qObj});
                         } else {
                             const andParts = parts[0].split(" ");
                             if (andParts.length > 1) {
-                                andParts.forEach(value => {
-                                    const _q = {};
+                                andParts.forEach((value: string) => {
+                                    const _q: Record<string, any> = {};
                                     _q[pkey] = value;
-                                    queryStruct.bool.must.push({term: _q});
+                                    pushBoolElement(queryStruct, "must", {term: _q});
                                 });
                             } else {
                                 if (parts[0].startsWith("!")) {
                                     _qObj[pkey] = parts[0].replace("!", "");
-                                    queryStruct.bool.must_not.push({term: _qObj});
+                                    pushBoolElement(queryStruct, "must_not", {term: _qObj});
                                 } else {
                                     _qObj[pkey] = parts[0];
-                                    queryStruct.bool.must.push({term: _qObj});
+                                    pushBoolElement(queryStruct, "must", {term: _qObj});
                                 }
                             }
                         }
@@ -162,17 +175,17 @@ export function applyGenericFilters(query, queryStruct, allowedExtraParams: Set<
     }
 }
 
-export function makeShouldArray(query) {
-    const should_array:any[] = [];
+export function makeShouldArray(query: Record<string, any>) {
+    const should_array: any[] = [];
     for (const entry of terms) {
-        const tObj = {term: {}};
+        const tObj: { term: Record<string, any> } = {term: {}};
         tObj.term[entry] = query.account;
         should_array.push(tObj);
     }
     return should_array;
 }
 
-export function applyCodeActionFilters(query, queryStruct) {
+export function applyCodeActionFilters(query: Record<string, any>, queryStruct: estypes.QueryDslQueryContainer) {
     let filterObj: any[] = [];
     if (query.filter) {
         for (const filter of query.filter.split(',')) {
@@ -193,14 +206,14 @@ export function applyCodeActionFilters(query, queryStruct) {
                 }
             }
         }
-        if (filterObj.length > 0) {
+        if (queryStruct.bool && filterObj.length > 0) {
             queryStruct.bool['should'] = filterObj;
             queryStruct.bool['minimum_should_match'] = 1;
         }
     }
 }
 
-export function getSkipLimit(query, max?: number) {
+export function getSkipLimit(query: Record<string, any>, max?: number) {
     let skip, limit;
     skip = parseInt(query.skip, 10);
     if (skip < 0) {
@@ -215,8 +228,8 @@ export function getSkipLimit(query, max?: number) {
     return {skip, limit};
 }
 
-export function getSortDir(query) {
-    let sort_direction = 'desc';
+export function getSortDir(query: Record<string, any>): estypes.SortOrder {
+    let sort_direction: estypes.SortOrder = 'desc';
     if (query.sort) {
         if (query.sort === 'asc' || query.sort === '1') {
             sort_direction = 'asc';
@@ -229,8 +242,6 @@ export function getSortDir(query) {
     return sort_direction;
 }
 
-export function applyAccountFilters(query, queryStruct) {
-    if (query.account) {
-        queryStruct.bool.must.push({"bool": {should: makeShouldArray(query)}});
-    }
+export function applyAccountFilters(query: Record<string, any>, queryStruct: estypes.QueryDslQueryContainer) {
+    pushBoolElement(queryStruct, "must", {"bool": {should: makeShouldArray(query)}})
 }

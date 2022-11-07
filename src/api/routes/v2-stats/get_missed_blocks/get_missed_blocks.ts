@@ -37,6 +37,10 @@ async function getMissedBlocks(fastify: FastifyInstance, request: FastifyRequest
         }
     }
 
+    if (!searchParams.query) {
+        return;
+    }
+
     applyTimeFilter(query, searchParams.query);
 
     const apiResponse = await fastify.elastic.search<LogsIndexSource>(searchParams);

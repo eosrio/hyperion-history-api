@@ -107,8 +107,14 @@ export abstract class HyperionWorker {
     }
 
     async connectAMQP() {
-        [this.ch, this.cch] = await this.manager.createAMQPChannels((channels: [Channel, ConfirmChannel]) => {
-            [this.ch, this.cch] = channels;
+        [this.ch, this.cch] = await this.manager.createAMQPChannels((channels: [Channel | null, ConfirmChannel | null]) => {
+            const [ch, cch] = channels;
+            if (ch) {
+                this.ch = ch;
+            }
+            if (cch) {
+                this.cch = cch;
+            }
             hLog('AMQP Reconnecting...');
             this.onConnect();
         }, () => {

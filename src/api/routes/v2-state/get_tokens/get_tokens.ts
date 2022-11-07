@@ -5,6 +5,10 @@ import {getSkipLimit} from "../../v2-history/get_actions/functions.js";
 
 async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 
+    if (!request.query) {
+        return;
+    }
+
     const query: any = request.query;
 
     const response = {

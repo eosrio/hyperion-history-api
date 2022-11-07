@@ -28,7 +28,7 @@ const defaultIndexSettings = {
 	}
 };
 
-const actionSettings = {
+const actionSettings: Record<string, any> = {
 	index: {
 		codec: compression,
 		refresh_interval: refresh,
@@ -47,7 +47,7 @@ const actionSettings = {
 // };
 
 if (cm.config.settings.hot_warm_policy) {
-	actionSettings["routing"] = {"allocation": {"exclude": {"data": "warm"}}};
+	actionSettings.routing = {"allocation": {"exclude": {"data": "warm"}}};
 }
 
 export const action = {
@@ -187,7 +187,7 @@ export const action = {
 	}
 };
 
-const deltaSettings = {
+const deltaSettings: Record<string, any> = {
 	index: {
 		codec: compression,
 		number_of_shards: shards * 2,
@@ -206,7 +206,7 @@ const deltaSettings = {
 // };
 
 if (cm.config.settings.hot_warm_policy) {
-	deltaSettings["routing"] = {"allocation": {"exclude": {"data": "warm"}}};
+	deltaSettings.routing = {"allocation": {"exclude": {"data": "warm"}}};
 }
 
 export const delta = {

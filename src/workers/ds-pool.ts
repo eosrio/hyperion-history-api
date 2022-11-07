@@ -2,7 +2,6 @@ import {HyperionWorker} from "./hyperionWorker.js";
 import {cargo, queue, QueueObject} from "async";
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {Message} from "amqplib";
-import {parseDSPEvent} from "../modules/custom/dsp-parser.js";
 import {join, resolve} from "node:path";
 import {existsSync, readdirSync, readFileSync} from "node:fs";
 import {default as IORedis, RedisValue} from "ioredis";
@@ -474,15 +473,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
                 // collect digests & receipts
                 for (const _trace of _processedTraces) {
-
-                    if (this.conf.settings.dsp_parser) {
-                        if (_trace.console !== '') {
-                            await parseDSPEvent(this, _trace);
-                        }
-                    } else {
-                        delete _trace.console;
-                    }
-
+                    delete _trace.console;
                     if (act_digests[_trace.receipt.act_digest]) {
                         act_digests[_trace.receipt.act_digest].push(_trace.receipt);
                     } else {

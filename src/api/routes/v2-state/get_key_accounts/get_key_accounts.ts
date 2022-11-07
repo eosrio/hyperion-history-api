@@ -13,6 +13,10 @@ function invalidKey() {
 
 async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest) {
 
+    if (!request.query) {
+        return;
+    }
+
     let publicKey;
     if (typeof request.body === 'string' && request.method === 'POST') {
         request.body = JSON.parse(request.body);
@@ -53,17 +57,11 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
             index: fastify.manager.chain + '-perm-*',
             size: (limit > maxDocs ? maxDocs : limit) || 100,
             from: skip || 0,
-            body: {
-                query: {
-                    bool: {
-                        must: [
-                            {
-                                term: {
-                                    "auth.keys.key.keyword": publicKey
-                                }
-                            }
-                        ],
-                    }
+            query: {
+                bool: {
+                    must: [
+                        {term: {"auth.keys.key.keyword": publicKey}}
+                    ],
                 }
             }
         });
