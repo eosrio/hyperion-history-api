@@ -102,18 +102,22 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
         sort: "global_sequence:desc"
     });
 
-    if (results['body']['hits']['hits'].length > 0) {
-        response.account_names = results['body']['hits']['hits'].map((v) => {
-            if (v._source.act.name === 'newaccount') {
-                if (v._source['@newaccount'].newact) {
-                    return v._source['@newaccount'].newact;
-                } else if (v._source.act.data.newact) {
-                    return v._source.act.data.newact;
+    if (results.hits.hits.length > 0) {
+        response.account_names = results.hits.hits.map((v) => {
+            if (v && v._source) {
+                if (v._source.act.name === 'newaccount') {
+                    if (v._source['@newaccount'].newact) {
+                        return v._source['@newaccount'].newact;
+                    } else if (v._source.act.data.newact) {
+                        return v._source.act.data.newact;
+                    } else {
+                        return null;
+                    }
+                } else if (v._source.act.name === 'updateauth') {
+                    return v._source.act.data.account;
                 } else {
                     return null;
                 }
-            } else if (v._source.act.name === 'updateauth') {
-                return v._source.act.data.account;
             } else {
                 return null;
             }

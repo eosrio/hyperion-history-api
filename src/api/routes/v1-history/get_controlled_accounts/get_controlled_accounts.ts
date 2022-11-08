@@ -14,30 +14,28 @@ async function getControlledAccounts(fastify: FastifyInstance, request: FastifyR
     const results = await fastify.elastic.search({
         index: fastify.manager.chain + '-action-*',
         size: 100,
-        body: {
-            query: {
-                bool: {
-                    should: [
-                        {
-                            term: {"@updateauth.auth.accounts.permission.actor": controlling_account}
-                        },
-                        {
-                            bool: {
-                                must: [
-                                    {term: {"act.account": "eosio"}},
-                                    {term: {"act.name": "newaccount"}},
-                                    {term: {"act.authorization.actor": controlling_account}}
-                                ]
-                            }
+        query: {
+            bool: {
+                should: [
+                    {
+                        term: {"@updateauth.auth.accounts.permission.actor": controlling_account}
+                    },
+                    {
+                        bool: {
+                            must: [
+                                {term: {"act.account": "eosio"}},
+                                {term: {"act.name": "newaccount"}},
+                                {term: {"act.authorization.actor": controlling_account}}
+                            ]
                         }
-                    ],
-                    minimum_should_match: 1
-                }
-            },
-            sort: [
-                {"global_sequence": {"order": "desc"}}
-            ]
-        }
+                    }
+                ],
+                minimum_should_match: 1
+            }
+        },
+        sort: [
+            {"global_sequence": {"order": "desc"}}
+        ]
     });
 
     const response = {

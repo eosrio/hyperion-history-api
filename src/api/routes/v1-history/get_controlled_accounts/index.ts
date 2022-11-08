@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {addApiRoute, getRouteName} from "../../../helpers/functions.js";
 import {getControlledAccountsHandler} from "./get_controlled_accounts.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     addApiRoute(fastify, 'POST', getRouteName(import.meta.url), getControlledAccountsHandler, {
         description: 'get controlled accounts by controlling accounts',
         summary: 'get controlled accounts by controlling accounts',

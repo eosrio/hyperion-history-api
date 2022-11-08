@@ -1,10 +1,25 @@
 import {createHash} from "crypto";
 import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethods} from "fastify";
-import got from "got";
+import got, {Options, Response} from "got";
 import {Redis} from "ioredis";
+import {estypes} from "@elastic/elasticsearch";
+
+export function pushBoolElement(
+    queryStruct: estypes.QueryDslQueryContainer,
+    key: 'must' | 'must_not' | 'filter' | 'should',
+    obj: any
+): void {
+    if (queryStruct.bool && Array.isArray(queryStruct.bool[key])) {
+        if (!queryStruct.bool[key]) {
+            queryStruct.bool[key] = [obj];
+        } else {
+            (queryStruct as any).bool[key].push(obj);
+        }
+    }
+}
 
 export function extendResponseSchema(responseProps: any) {
-    const props = {
+    const props: Record<string, any> = {
         query_time_ms: {type: "number"},
         cached: {type: "boolean"},
         hot_only: {type: "boolean"},
@@ -31,7 +46,7 @@ export function extendResponseSchema(responseProps: any) {
 }
 
 export function extendQueryStringSchema(queryParams: any, required?: string[]) {
-    const params = {
+    const params: Record<string, any> = {
         limit: {
             description: 'limit of [n] results per page',
             type: 'integer',
@@ -48,7 +63,7 @@ export function extendQueryStringSchema(queryParams: any, required?: string[]) {
             params[p] = queryParams[p];
         }
     }
-    const schema = {
+    const schema: any = {
         type: 'object',
         properties: params
     }
@@ -87,7 +102,7 @@ export function mergeDeltaMeta(delta: Record<string, any>): Record<string, any> 
     return delta;
 }
 
-export function setCacheByHash(fastify, hash, response, expiration?: number) {
+export function setCacheByHash(fastify: FastifyInstance, hash: string, response: any, expiration?: number) {
     if (fastify.manager.config.api.enable_caching) {
         let exp;
         if (expiration) {
@@ -107,7 +122,13 @@ export function addApiRoute(
     fastifyInstance: FastifyInstance,
     method: HTTPMethods | HTTPMethods[],
     routeName: string,
-    routeBuilder: (fastify: FastifyInstance, route: string) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>,
+    routeBuilder: (
+        fastify: FastifyInstance,
+        route: string
+    ) => (
+        request: FastifyRequest,
+        reply: FastifyReply
+    ) => Promise<void>,
     schema: FastifySchema
 ) {
     fastifyInstance.route({
@@ -135,7 +156,7 @@ export async function getCachedResponse(server: FastifyInstance, route: string, 
     }
 }
 
-export function getTrackTotalHits(query) {
+export function getTrackTotalHits(query: Record<string, any>) {
     let trackTotalHits: number | boolean = 10000;
     if (query?.track) {
         if (query.track === 'true') {
@@ -158,7 +179,7 @@ function bigint2Milliseconds(input: bigint) {
     return parseFloat((parseInt(input.toString()) / 1000000).toFixed(3));
 }
 
-const defaultRouteCacheMap = {
+const defaultRouteCacheMap: Record<string, any> = {
     get_resource_usage: 3600,
     get_creator: 3600 * 24
 }
@@ -238,7 +259,7 @@ export async function handleChainApiRedirect(
         reqUrl = fastify.push_api + urlParts[0];
     }
 
-    const opts = {};
+    const opts: Options = {} as Options;
 
     if (request.method === 'POST') {
         if (request.body) {
@@ -255,7 +276,7 @@ export async function handleChainApiRedirect(
     }
 
     try {
-        const apiResponse = await got.post(reqUrl, opts);
+        const apiResponse = await got.post(reqUrl, opts) as Response<any>;
         reply.headers({"Content-Type": "application/json"});
         if (request.method === 'HEAD') {
             reply.headers({"Content-Length": apiResponse.body.length});

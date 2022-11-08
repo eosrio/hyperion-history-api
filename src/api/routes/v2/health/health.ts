@@ -137,7 +137,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
     }
 }
 
-function createHealth(name: string, status, data?: any): ServiceResponse<any> {
+function createHealth(name: string, status: string, data?: any): ServiceResponse<any> {
     let time = Date.now();
     return {
         service: name,

@@ -2,7 +2,6 @@ import * as Fastify from "fastify";
 import {IncomingMessage, Server, ServerResponse} from "http";
 
 // fastify ecosystem plugins
-import fastifyElasticsearch from '@fastify/elasticsearch';
 import fastifySwagger, {SwaggerOptions} from '@fastify/swagger';
 import fastifyCors, {FastifyCorsOptions} from '@fastify/cors';
 import fastifyFormbody, {FormBodyPluginOptions} from '@fastify/formbody';
@@ -11,6 +10,7 @@ import fastifyRateLimit, {RateLimitPluginOptions} from '@fastify/rate-limit';
 
 // custom plugins
 import fastifyEosjs from "./plugins/fastify-eosjs.js";
+import fastifyElastic from "./plugins/fastify-elastic.js";
 
 export interface ApiPluginOptions {
     fastifyElasticsearch: any;
@@ -26,8 +26,8 @@ export function registerPlugins(server: Fastify.FastifyInstance<Server, Incoming
 
     server.register(fastifyCors.default, params.fastifyCors);
     server.register(fastifyFormbody.default, params.fastifyFormbody);
-    server.register(fastifyElasticsearch.default, params.fastifyElasticsearch);
     server.register(fastifyRedis.default, params.fastifyRedis);
+    server.register(fastifyElastic, params.fastifyElasticsearch);
     server.register(fastifyEosjs, params.fastifyEosjs);
 
     if (params.fastifyRateLimit) {

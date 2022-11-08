@@ -2,7 +2,7 @@ import {FastifyInstance, FastifySchema} from "fastify";
 import {getCreatorHandler} from "./get_creator.js";
 import {addApiRoute, extendResponseSchema, getRouteName} from "../../../helpers/functions.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
 	const schema: FastifySchema = {
 		description: 'get account creator',
 		summary: 'get account creator',

@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {addApiRoute, getRouteName} from "../../../helpers/functions.js";
 import {getActionUsageHandler} from "./get_action_usage.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     const schema = {
         description: 'get action and transaction stats for a given period',
         summary: 'get action and transaction stats for a given period',

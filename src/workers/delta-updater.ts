@@ -84,7 +84,7 @@ export default class MainDSWorker extends HyperionWorker {
             const searchResult = await this.manager.elasticsearchClient.updateByQuery({
                 index: this.chain + '-delta-*',
                 conflicts: "proceed",
-                body: updateByQuery
+                ...updateByQuery
             });
             if (searchResult.total === 0) {
 

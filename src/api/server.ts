@@ -167,11 +167,8 @@ class HyperionApiServer {
                 _host = connOpts.WS_ROUTER_HOST;
             }
 
-            this.socketManager = new mod.SocketManager(
-                this.fastify,
-                `http://${_host}:${_port}`,
-                this.manager.conn.redis
-            );
+            const relayUrl = 'http' + `://${_host}:${_port}`;
+            this.socketManager = new mod.SocketManager(this.fastify, relayUrl, this.manager.conn.redis);
             this.socketManager.startRelay();
         });
     }

@@ -9,7 +9,7 @@ async function getMissedBlocks(fastify: FastifyInstance, request: FastifyRequest
     const query: any = request.query;
     const response = {
         stats: {
-            by_producer: {}
+            by_producer: {} as Record<string, any>
         },
         events: [] as any[]
     };

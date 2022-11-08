@@ -92,7 +92,7 @@ export function registerRoutes(server: FastifyInstance) {
             try {
                 const data = await got.get(`${server.chain_api}/v1/node/get_supported_apis`).json() as any;
                 if (data.apis && data.apis.length > 0) {
-                    data.apis.forEach((a) => apiSet.add(a));
+                    data.apis.forEach((a: string) => apiSet.add(a));
                     response.apis = [...apiSet];
                 }
             } catch (e: any) {

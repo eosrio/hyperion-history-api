@@ -26,14 +26,12 @@ async function getLastSeq(fastify: FastifyInstance, date: string) {
 async function getTxCount(fastify: FastifyInstance, dateFrom: string, dateTo: string) {
     const req = await fastify.elastic.count({
         index: fastify.manager.chain + '-action-*',
-        body: {
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"creator_action_ordinal": 0}},
-                        {"range": {"@timestamp": {"gt": dateFrom, "lt": dateTo}}}
-                    ]
-                }
+        query: {
+            bool: {
+                must: [
+                    {"term": {"creator_action_ordinal": 0}},
+                    {"range": {"@timestamp": {"gt": dateFrom, "lt": dateTo}}}
+                ]
             }
         }
     });
@@ -44,18 +42,16 @@ async function getUniqueActors(fastify: FastifyInstance, dateFrom: string, dateT
     const req = await fastify.elastic.search<ActionIndexSource, any>({
         index: fastify.manager.chain + '-action-*',
         size: 0,
-        body: {
-            "aggs": {
-                "unique_actors": {
-                    "cardinality": {
-                        "field": "act.authorization.actor"
-                    }
+        "aggs": {
+            "unique_actors": {
+                "cardinality": {
+                    "field": "act.authorization.actor"
                 }
-            },
-            "query": {
-                "bool": {
-                    "filter": [{"range": {"@timestamp": {"gt": dateFrom, "lt": dateTo}}}]
-                }
+            }
+        },
+        "query": {
+            "bool": {
+                "filter": [{"range": {"@timestamp": {"gt": dateFrom, "lt": dateTo}}}]
             }
         }
     });

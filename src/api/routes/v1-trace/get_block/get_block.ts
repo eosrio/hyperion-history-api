@@ -2,6 +2,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 import {ActionIndexSource, BlockIndexSource, getBlockTraceResponse} from "../../../../interfaces/es-interfaces.js";
 import {group} from "radash";
+import {estypes} from "@elastic/elasticsearch";
 
 async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) {
 
@@ -11,7 +12,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
 
     const reqBody: any = request.body;
     const targetBlock = parseInt(reqBody.block_num);
-    let searchBody;
+    let searchBody: estypes.SearchRequest | undefined;
 
     if (reqBody.block_id) {
         searchBody = {
@@ -45,18 +46,14 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
     const response = {transactions: [] as any[]} as getBlockTraceResponse;
 
     if (searchBody) {
-
         const getBlockHeader = await fastify.elastic.search<BlockIndexSource>({
             index: fastify.manager.chain + "-block-*",
             size: 1,
-            body: searchBody
+            ...searchBody
         });
-
         if (getBlockHeader.hits.hits.length === 1) {
-
             const block = getBlockHeader.hits.hits[0]._source as any;
             const info = await fastify.eosjs.rpc.get_info();
-
             response.id = block.block_id;
             response.number = block.block_num;
             response.previous_id = block.prev_id;

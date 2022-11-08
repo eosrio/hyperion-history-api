@@ -1,11 +1,11 @@
 import {HyperionWorker} from "./hyperionWorker.js";
 import {cargo, queue, QueueObject} from "async";
-import {debugLog, hLog} from "../helpers/common_functions.js";
+import {debugLog, fetchAbiAtBlock, hLog} from "../helpers/common_functions.js";
 import {Message} from "amqplib";
 import {join, resolve} from "node:path";
 import {existsSync, readdirSync, readFileSync} from "node:fs";
 import {default as IORedis, RedisValue} from "ioredis";
-import {ApiInterfaces, RpcInterfaces, Serialize} from "enf-eosjs";
+import {RpcInterfaces, Serialize} from "enf-eosjs";
 import {ActionTrace} from "../interfaces/action-trace.js";
 import {HyperionAction, HyperionActionAct} from "../interfaces/hyperion-action.js";
 
@@ -178,7 +178,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
 
             if (!_status) {
-                const savedAbi = await this.fetchAbiAtBlock(contract, block_num, false);
+                const savedAbi = await fetchAbiAtBlock(this.client, this.chain, contract, block_num, false);
                 if (savedAbi) {
                     if (savedAbi[field + 's'] && savedAbi[field + 's'].includes(type)) {
                         if (savedAbi.abi_hex) {
@@ -276,7 +276,7 @@ export default class DSPoolWorker extends HyperionWorker {
         }
 
         let savedAbi, abi;
-        savedAbi = await this.fetchAbiAtBlock(accountName, block_num, true);
+        savedAbi = await fetchAbiAtBlock(this.client, this.chain, accountName, block_num, true);
         if (savedAbi === null || (savedAbi.actions && !savedAbi.actions.includes(check_action))) {
             savedAbi = await this.getAbiFromHeadBlock(accountName);
             if (!savedAbi) {
@@ -552,7 +552,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 queue: q,
                 content: payload,
                 headers: {block_num}
-            });
+            }).catch(hLog);
             this.act_emit_idx++;
             if (this.act_emit_idx > (this.conf.scaling.ad_idx_queues)) {
                 this.act_emit_idx = 1;

@@ -17,16 +17,7 @@ import {
 
 import pm2io from '@pm2/io';
 
-import {
-    createWriteStream,
-    existsSync,
-    mkdirSync,
-    readFileSync,
-    symlinkSync,
-    unlinkSync,
-    writeFileSync,
-    WriteStream
-} from "fs";
+import {createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, WriteStream} from "fs";
 
 import path from "node:path";
 import cluster, {Worker} from "node:cluster";
@@ -38,7 +29,6 @@ import {queue, QueueObject} from "async";
 import {Numeric} from "eosjs";
 import AlertsManager from "./alertsManager.js";
 import {default as IORedis, Redis} from 'ioredis';
-import {IOConfig} from "@pm2/io/build/main/pmx.js";
 import moment from "moment";
 import Timeout = NodeJS.Timeout;
 
@@ -1130,7 +1120,7 @@ export class HyperionMaster {
         };
         this.client.index({
             index: this.chain + '-logs-' + this.conf.settings.index_version,
-            body: _body
+            document: _body
         }).catch(hLog);
     }
 
@@ -2040,7 +2030,7 @@ export class HyperionMaster {
                 await this.manager.elasticsearchClient.index({
                     index: this.chain + '-table-accounts',
                     id: `${payload.code}-${payload.scope}-${payload.symbol}`,
-                    body: payload
+                    document: payload
                 });
                 // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
             } catch (e: any) {
@@ -2074,7 +2064,7 @@ export class HyperionMaster {
                 await this.manager.elasticsearchClient.index({
                     index: this.chain + '-table-voters',
                     id: `${payload.voter}`,
-                    body: payload
+                    document: payload
                 });
                 // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
             } catch (e: any) {
@@ -2118,7 +2108,7 @@ export class HyperionMaster {
                     await this.manager.elasticsearchClient.index({
                         index: this.chain + '-perm',
                         id: `${payload.owner}-${payload.name}`,
-                        body: payload
+                        document: payload
                     });
                     // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
                 } catch (e: any) {

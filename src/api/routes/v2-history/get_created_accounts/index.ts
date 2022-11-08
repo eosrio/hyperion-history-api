@@ -2,7 +2,7 @@ import {FastifyInstance, FastifySchema} from "fastify";
 import {getCreatedAccountsHandler} from "./get_created_accounts.js";
 import {addApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName} from "../../../helpers/functions.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
 	const schema: FastifySchema = {
 		description: 'get all accounts created by one creator',
 		summary: 'get created accounts',

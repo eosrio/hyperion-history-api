@@ -2,7 +2,7 @@ import {FastifyInstance, FastifySchema} from "fastify";
 import {getDeltasHandler} from "./get_deltas.js";
 import {addApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName} from "../../../helpers/functions.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     const schema: FastifySchema = {
         description: 'get state deltas',
         summary: 'get state deltas',

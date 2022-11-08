@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {addApiRoute, extendResponseSchema, getRouteName} from "../../../helpers/functions.js";
 import {checkTransactionHandler} from "./check_transaction.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
 	const schema = {
 		description: 'check if a transaction was included in a block',
 		summary: 'check if a transaction was included in a block',

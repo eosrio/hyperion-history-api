@@ -25,7 +25,8 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     // TODO: replace with internal calls
-    const localApi = `http://${fastify.manager.config.api.server_addr}:${fastify.manager.config.api.server_port}/v2`;
+    const {server_addr, server_port} = fastify.manager.config.api;
+    const localApi = 'http' + `://${server_addr}:${server_port}/v2`;
     const getTokensApi = localApi + '/state/get_tokens';
     const getActionsApi = localApi + '/history/get_actions';
     const getLinksApi = localApi + '/state/get_links';

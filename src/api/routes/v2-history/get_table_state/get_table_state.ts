@@ -1,6 +1,6 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeDeltaMeta, timedQuery} from "../../../helpers/functions.js";
-import {ActionIndexSource, DeltaIndexSource} from "../../../../interfaces/es-interfaces.js";
+import {DeltaIndexSource} from "../../../../interfaces/es-interfaces.js";
 
 async function getTableState(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
@@ -71,7 +71,7 @@ async function getTableState(fastify: FastifyInstance, request: FastifyRequest) 
         if (scope_buckets.after_key) {
             response.next_key = scope_buckets.after_key.scope_pk;
         }
-        response.results = scope_buckets.buckets.map(bucket => {
+        response.results = scope_buckets.buckets.map((bucket: any) => {
             const row = mergeDeltaMeta(bucket.last_doc.hits.hits[0]._source);
             delete row.table;
             return row;

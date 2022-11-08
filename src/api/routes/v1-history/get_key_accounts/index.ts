@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {getKeyAccountsHandler} from "../../v2-state/get_key_accounts/get_key_accounts.js";
 import {addApiRoute, getRouteName} from "../../../helpers/functions.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
 
     // POST
     addApiRoute(fastify, 'POST', getRouteName(import.meta.url), getKeyAccountsHandler, {

@@ -3,7 +3,7 @@ import {getAccountHandler} from "./get_account.js";
 import {addApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName} from "../../../helpers/functions.js";
 import {getActionResponseSchema} from "../../v2-history/get_actions/index.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     const schema = {
         description: 'get account data',
         summary: 'get account summary',

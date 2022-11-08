@@ -13,7 +13,10 @@ export interface HyperionAction {
     receipt: any[];
     notified: string[];
     receiver: string;
-    act: Serialize.Action;
+    act: Serialize.Action & {
+        hex_data: string;
+        account_ram_deltas: any
+    };
     context_free: boolean;
     elapsed: string;
     console: string;

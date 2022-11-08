@@ -3,7 +3,11 @@ import {getTrackTotalHits, timedQuery} from "../../../helpers/functions.js";
 
 async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
 
-    const query: any = request.query;
+    if(!request.query) {
+        return 'missing query';
+    }
+
+    const query: Record<string, any> = request.query;
 
     // Pagination
     let skip, limit;
@@ -25,7 +29,7 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     // Filter by accounts
     if (query.account) {
         const accounts = query.account.split(',');
-        for(const acc of accounts) {
+        for (const acc of accounts) {
             queryStruct.bool.must.push({
                 "bool": {
                     "should": [
@@ -74,26 +78,23 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
         "index": fastify.manager.chain + '-table-proposals-*',
         "from": skip || 0,
         "size": (limit > maxDocs ? maxDocs : limit) || 10,
-        "body": {
-            "track_total_hits": getTrackTotalHits(request.query),
-            "query": queryStruct,
-            "sort": [{"block_num": "desc"}]
-        }
+        "track_total_hits": getTrackTotalHits(request.query),
+        "query": queryStruct,
+        "sort": [{"block_num": "desc"}]
     });
 
     const response = {
         query_time: null,
         cached: false,
-        total: results['body']['hits']['total'],
+        total: results.hits.total,
         proposals: [] as any[]
     };
 
-    const hits = results['body']['hits']['hits'];
+    const hits = results.hits.hits;
     for (const hit of hits) {
         const prop = hit._source;
         response.proposals.push(prop);
     }
-
     return response;
 }
 

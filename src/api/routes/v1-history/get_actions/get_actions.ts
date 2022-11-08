@@ -1,9 +1,15 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
-import flatstr from 'flatstr';
+import {mergeActionMeta, pushBoolElement, timedQuery} from "../../../helpers/functions.js";
+import {HyperionAction} from "../../../../interfaces/hyperion-action.js";
+import {Serialize} from "enf-eosjs";
+import {getContractAtBlock} from "../../../../helpers/common_functions.js";
+import {estypes} from "@elastic/elasticsearch";
 
 const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
+
+const txEnc = new TextEncoder();
+const txDec = new TextDecoder();
 
 async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
@@ -14,7 +20,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     const reqBody = request.body as any;
     const should_array = [] as any[];
     for (const entry of terms) {
-        const tObj = {term: {}};
+        const tObj: any = {term: {}};
         tObj.term[entry] = reqBody.account_name;
         should_array.push(tObj);
     }
@@ -67,8 +73,8 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         }
     }
 
-    const queryStruct = {
-        "bool": {
+    const queryStruct: estypes.QueryDslQueryContainer = {
+        bool: {
             must: [] as any,
             boost: 1.0
         }
@@ -76,31 +82,26 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
     if (reqBody.parent !== undefined) {
         const parent = parseInt(reqBody.parent, 10);
-        queryStruct.bool['filter'] = [] as any[];
-        queryStruct.bool['filter'].push({
-            "term": {
-                "parent": parent
-            }
-        });
+        if (queryStruct.bool) {
+            queryStruct.bool.filter = [{term: {parent: parent}}];
+        }
     }
 
     if (reqBody.account_name) {
-        queryStruct.bool.must.push({"bool": {should: should_array}});
+        pushBoolElement(queryStruct, 'must', {bool: {should: should_array}});
     }
 
     for (const prop in reqBody) {
         if (Object.prototype.hasOwnProperty.call(reqBody, prop)) {
             const actionName = prop.split(".")[0];
             if (prop.split(".").length > 1) {
+                const _termQuery: Record<string, any> = {};
                 if (extendedActions.has(actionName)) {
-                    const _termQuery = {};
                     _termQuery["@" + prop] = reqBody[prop];
-                    queryStruct.bool.must.push({term: _termQuery});
                 } else {
-                    const _termQuery = {};
                     _termQuery[prop] = reqBody[prop];
-                    queryStruct.bool.must.push({term: _termQuery});
                 }
+                pushBoolElement(queryStruct, "must", {term: _termQuery});
             }
         }
     }
@@ -110,14 +111,19 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         let _gte = 0;
         if (reqBody['before']) _lte = reqBody['before'];
         if (reqBody['after']) _gte = reqBody['after'];
-        if (!queryStruct.bool['filter']) queryStruct.bool['filter'] = [];
-        queryStruct.bool['filter'].push({
-            range: {"@timestamp": {"gte": _gte, "lte": _lte}}
+
+        pushBoolElement(queryStruct, 'filter', {
+            range: {
+                "@timestamp": {
+                    gte: _gte,
+                    lte: _lte
+                }
+            }
         });
     }
-    if (reqBody.filter) {
-        queryStruct.bool['should'] = filterObj;
-        queryStruct.bool['minimum_should_match'] = 1;
+    if (reqBody.filter && queryStruct.bool) {
+        queryStruct.bool.should = filterObj;
+        queryStruct.bool.minimum_should_match = 1;
     }
     const getActionsLimit = fastify.manager.config.api.limits.get_actions;
     const esOpts = {
@@ -137,7 +143,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         actions: [] as any[],
         last_irreversible_block: pResults[0].last_irreversible_block_num
     };
-    const hits = results['body']['hits']['hits'];
+    const hits = results.hits.hits;
     if (hits.length > 0) {
         let actions = hits;
         if (offset < 0) {
@@ -155,11 +161,12 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             }
             actions = actions.slice(index);
         }
-        actions.forEach((action, index) => {
-            action = action._source;
+
+        for (let i = 0; i < actions.length; i++) {
+            const action = actions[i]._source as HyperionAction;
             let act: any = {
                 "global_action_seq": action.global_sequence,
-                "account_action_seq": index,
+                "account_action_seq": i,
                 "block_num": action.block_num,
                 "block_time": action['@timestamp'],
                 "action_trace": {
@@ -175,7 +182,29 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             };
             mergeActionMeta(action);
             act.action_trace.act = action.act;
-            act.action_trace.act.hex_data = Buffer.from(flatstr(JSON.stringify(action.act.data))).toString('hex');
+
+            if (reqBody.hex_data) {
+                try {
+                    const [contract, _] = await getContractAtBlock(
+                        fastify.elastic,
+                        fastify.eosjs.rpc,
+                        fastify.manager.chain,
+                        action.act.account,
+                        action.block_num
+                    );
+                    action.act.hex_data = Serialize.serializeActionData(
+                        contract,
+                        action.act.account,
+                        action.act.name,
+                        action.act.data,
+                        txEnc,
+                        txDec
+                    );
+                } catch (e: any) {
+                    console.log(e);
+                }
+            }
+
             if (action.act.account_ram_deltas) {
                 act.action_trace.account_ram_deltas = action.account_ram_deltas
             }
@@ -185,7 +214,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             act.action_trace.receiver = receipt.receiver;
             act.account_action_seq = receipt['recv_sequence'];
             response.actions.push(act);
-        });
+        }
     }
     return response;
 }

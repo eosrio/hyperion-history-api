@@ -3,7 +3,8 @@ import {mergeDeltaMeta, timedQuery} from "../../../helpers/functions.js";
 import {applyTimeFilter} from "../get_actions/functions.js";
 
 async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
-    let skip, limit;
+    let skip;
+    let limit = 10;
     let sort_direction = 'desc';
     const mustArray: any[] = [];
     const query: any = request.query;
@@ -44,11 +45,11 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
                 default: {
                     const values = query[param].split(",");
                     if (values.length > 1) {
-                        const terms = {};
+                        const terms: Record<string, any> = {};
                         terms[param] = values;
                         mustArray.push({terms: terms});
                     } else {
-                        const term = {};
+                        const term: Record<string, any> = {};
                         term[param] = values[0];
                         mustArray.push({term: term});
                     }
@@ -63,21 +64,20 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
 
     applyTimeFilter(query, queryStruct);
 
-    const results = await fastify.elastic.search({
-        "index": fastify.manager.chain + '-delta-*',
-        "from": skip || 0,
-        "size": (limit > maxDeltas ? maxDeltas : limit) || 10,
-        "body": {
-            query: queryStruct,
-            sort: "block_num:" + sort_direction
-        }
+    const results = await fastify.elastic.search<any>({
+        index: fastify.manager.chain + '-delta-*',
+        from: skip || 0,
+        size: (limit > maxDeltas ? maxDeltas : limit) || 10,
+        query: queryStruct,
+        sort: "block_num:" + sort_direction
+
     });
-    const deltas = results['body']['hits']['hits'].map((d) => {
+    const deltas = results.hits.hits.map((d) => {
         return mergeDeltaMeta(d._source);
     });
     return {
         query_time: null,
-        total: results['body']['hits']['total'],
+        total: results.hits.total,
         deltas
     };
 }

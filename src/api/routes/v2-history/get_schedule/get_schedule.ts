@@ -5,14 +5,14 @@ import {Numeric} from "enf-eosjs";
 
 function convertToLegacyKey(block_signing_key: string) {
     if (block_signing_key.startsWith("PUB_K1_")) {
-        const buf = Numeric.base58ToBinary(37, block_signing_key.substr(7));
+        const buf = Numeric.base58ToBinary(37, block_signing_key.substring(7));
         const data = buf.slice(0, buf.length - 4);
         const merged = Buffer.concat([
             data,
             createHash('ripemd160')
                 .update(data)
                 .digest()
-                .slice(0, 4)
+                .subarray(0, 4)
         ]);
         return "EOS" + Numeric.binaryToBase58(merged);
     } else {
@@ -53,12 +53,14 @@ async function getSchedule(fastify: FastifyInstance, request: FastifyRequest) {
         response.timestamp = results[0]._source["@timestamp"];
         response.block_num = results[0]._source.block_num;
         response.version = results[0]._source.new_producers.version;
-        response.producers = results[0]._source.new_producers.producers.map(prod => {
-            return {
-                ...prod,
-                legacy_key: convertToLegacyKey(prod.block_signing_key)
+        response.producers = results[0]._source.new_producers.producers.map((prod: any) => {
+                return {
+                    ...prod,
+                    legacy_key: convertToLegacyKey(prod.block_signing_key)
+                }
             }
-        });
+        )
+        ;
     }
     return response;
 }

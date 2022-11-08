@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {getProposalsHandler} from "./get_proposals.js";
 import {addApiRoute, getRouteName} from "../../../helpers/functions.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     const schema = {
         description: 'get proposals',
         summary: 'get proposals',

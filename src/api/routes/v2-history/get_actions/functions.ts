@@ -1,5 +1,6 @@
 import {primaryTerms, terms} from "./definitions.js";
 import {estypes} from "@elastic/elasticsearch";
+import {pushBoolElement} from "../../../helpers/functions.js";
 
 export function addSortedBy(query: any, queryBody: estypes.SearchRequest, sort_direction: estypes.SortOrder) {
     if (query['sortedBy']) {
@@ -60,20 +61,6 @@ export function processMultiVars(
         const mustNotQuery: Record<string, any> = {};
         mustNotQuery[field] = mustNot[0].replace("!", "");
         pushBoolElement(queryStruct, 'must_not', {term: mustNotQuery});
-    }
-}
-
-function pushBoolElement(
-    queryStruct: estypes.QueryDslQueryContainer,
-    key: 'must' | 'must_not' | 'filter' | 'should',
-    obj: any
-): void {
-    if (queryStruct.bool && Array.isArray(queryStruct.bool[key])) {
-        if (!queryStruct.bool[key]) {
-            queryStruct.bool[key] = [obj];
-        } else {
-            (queryStruct as any).bool[key].push(obj);
-        }
     }
 }
 

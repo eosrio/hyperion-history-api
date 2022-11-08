@@ -48,4 +48,6 @@ export interface ActionIndexSource {
     global_sequence: estypes.long;
     cpu_usage_us: number;
     net_usage_words: number;
+
+    [key: string]: any;
 }

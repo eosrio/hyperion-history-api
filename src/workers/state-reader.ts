@@ -560,7 +560,7 @@ export default class StateReader extends HyperionWorker {
         process.send?.({event: 'fork_event', data: {starting_block, ending_block, new_id}});
         await this.client.index({
             index: this.chain + '-logs-' + this.conf.settings.index_version,
-            body: {
+            document: {
                 type: 'fork',
                 '@timestamp': new Date().toISOString(),
                 'fork.from_block': starting_block,

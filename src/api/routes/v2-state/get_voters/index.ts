@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {getVotersHandler} from "./get_voters.js";
 import {addApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName} from "../../../helpers/functions.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     const schema = {
         description: 'get voters',
         summary: 'get voters',

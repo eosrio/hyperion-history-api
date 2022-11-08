@@ -2,7 +2,7 @@ import {FastifyInstance, FastifySchema} from "fastify";
 import {addApiRoute, getRouteName} from "../../../helpers/functions.js";
 import {getCreatorHandler} from "../get_creator/get_creator.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
 	const schema: FastifySchema = {
 		description: 'request large action data export',
 		summary: 'request large action data export',

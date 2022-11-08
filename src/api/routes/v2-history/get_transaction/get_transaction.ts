@@ -1,6 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
 import {RpcInterfaces} from "enf-eosjs";
+import {getIndexPatternFromBlockHint} from "../../../../helpers/common_functions.js";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
     const redis = fastify.redis;
@@ -20,7 +21,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         generated: undefined,
         error: undefined
     };
-    let hits;
+    let hits: any[] | undefined;
 
     // build get_info request with caching
     const $getInfo = new Promise<RpcInterfaces.GetInfoResult>(resolve => {
@@ -68,25 +69,15 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
     // search on ES if cache is not present
     if (!hits) {
         const _size = conf.api.limits.get_trx_actions || 100;
-        const blockHint = parseInt(query.block_hint, 10);
-        let indexPattern = '';
-        if (blockHint) {
-            const idxPart = Math.ceil(blockHint / conf.settings.index_partition_size).toString().padStart(6, '0');
-            indexPattern = fastify.manager.chain + `-action-${conf.settings.index_version}-${idxPart}`;
-        } else {
-            indexPattern = fastify.manager.chain + '-action-*';
-        }
         let pResults;
         try {
 
             // build search request
-            const $search = fastify.elastic.search({
-                index: indexPattern,
+            const $search = fastify.elastic.search<any>({
+                index: getIndexPatternFromBlockHint(query.block_hint, fastify),
                 size: _size,
-                body: {
-                    query: {bool: {must: [{term: {trx_id: trxId}}]}},
-                    sort: {global_sequence: "asc"}
-                }
+                query: {bool: {must: [{term: {trx_id: trxId}}]}},
+                sort: {global_sequence: "asc"}
             });
 
             // execute in parallel
@@ -98,11 +89,13 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
                 return response;
             }
         }
-        hits = pResults[1]['body']['hits']['hits'];
-        response.lib = pResults[0].last_irreversible_block_num;
+        if (pResults && pResults.length === 2) {
+            hits = pResults[1].hits.hits;
+            response.lib = pResults[0].last_irreversible_block_num;
+        }
     }
 
-    if (hits.length > 0) {
+    if (hits && hits.length > 0) {
         let highestBlockNum = 0;
         for (let action of hits) {
             if (action._source.block_num > highestBlockNum) {

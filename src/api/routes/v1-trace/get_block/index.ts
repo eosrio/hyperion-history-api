@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {addApiRoute, extendResponseSchema, getRouteName} from "../../../helpers/functions.js";
 import {getBlockTraceHandler} from "./get_block.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     const schema = {
         description: 'get block traces',
         summary: 'get block traces',

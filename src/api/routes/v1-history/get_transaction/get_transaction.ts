@@ -1,8 +1,8 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
 import {createHash} from "crypto";
-import flatstr from 'flatstr';
 import {RpcInterfaces} from "enf-eosjs";
+import {getIndexPatternFromBlockHint} from "../../../../helpers/common_functions.js";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
     if (typeof request.body === 'string') {
@@ -15,25 +15,25 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
     const cachedData = await redis.hgetall('trx_' + trxId);
 
     const response: any = {
-        "id": body.id,
-        "trx": {
-            "receipt": {
-                "status": "executed",
-                "cpu_usage_us": 0,
-                "net_usage_words": 0,
-                "trx": [1, {
-                    "signatures": "",
-                    "compression": "none",
-                    "packed_context_free_data": "",
-                    "packed_trx": ""
+        id: body.id,
+        trx: {
+            receipt: {
+                status: "executed",
+                cpu_usage_us: 0,
+                net_usage_words: 0,
+                trx: [1, {
+                    signatures: "",
+                    compression: "none",
+                    packed_context_free_data: "",
+                    packed_trx: ""
                 }]
             },
-            "trx": {}
+            trx: {}
         },
-        "block_num": 0,
-        "block_time": "",
-        "last_irreversible_block": undefined,
-        "traces": []
+        block_num: 0,
+        block_time: "",
+        last_irreversible_block: undefined,
+        traces: []
     };
 
     let hits;
@@ -82,25 +82,14 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
     // search on ES if cache is not present
     if (!hits) {
         const _size = conf.api.limits.get_trx_actions || 100;
-        const blockHint = parseInt(body.block_num_hint, 10);
-        let indexPattern = '';
-        if (blockHint) {
-            const idxPart = Math.ceil(blockHint / conf.settings.index_partition_size).toString().padStart(6, '0');
-            indexPattern = fastify.manager.chain + `-action-${conf.settings.index_version}-${idxPart}`;
-        } else {
-            indexPattern = fastify.manager.chain + '-action-*';
-        }
         let pResults;
         try {
-
             // build search request
-            const $search = fastify.elastic.search({
-                index: indexPattern,
+            const $search = fastify.elastic.search<any>({
+                index: getIndexPatternFromBlockHint(body.block_num_hint, fastify),
                 size: _size,
-                body: {
-                    query: {bool: {must: [{term: {trx_id: trxId}}]}},
-                    sort: {global_sequence: "asc"}
-                }
+                query: {bool: {must: [{term: {trx_id: trxId}}]}},
+                sort: {global_sequence: "asc"}
             });
 
             // execute in parallel
@@ -111,12 +100,14 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
                 return response;
             }
         }
-        hits = pResults[1]['body']['hits']['hits'];
-        response.last_irreversible_block = pResults[0].last_irreversible_block_num;
+        if (pResults) {
+            hits = pResults[1].hits.hits;
+            response.last_irreversible_block = pResults[0].last_irreversible_block_num;
+        }
     }
 
 
-    if (hits.length > 0) {
+    if (hits && hits.length > 0) {
         const actions = hits;
         response.trx.trx = {
             "expiration": "",
@@ -131,94 +122,89 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             "signatures": [],
             "context_free_data": []
         };
-        let traces = {};
+        let traces: Record<string, any> = {};
         let seqNum = 0;
         for (let action of actions) {
-            action = action._source;
-            mergeActionMeta(action);
-            action.act['hex_data'] = Buffer.from(flatstr(JSON.stringify(action.act.data))).toString('hex');
-            if (action.parent === 0) {
-                response.trx.trx.actions.push(action.act);
+            const a = action._source;
+            mergeActionMeta(a);
+
+            if (a.parent === 0) {
+                response.trx.trx.actions.push(a.act);
             }
-            response.block_num = action.block_num;
-            response.block_time = action['@timestamp'];
+
+            response.block_num = a.block_num;
+            response.block_time = a['@timestamp'];
             seqNum += 1;
             let trace = {
                 receipt: {
-                    receiver: action.act.account,
-                    global_sequence: String(action.global_sequence),
-                    auth_sequence: [
-                        action.act.authorization[0].actor,
-                        seqNum
-                    ],
+                    receiver: a.act.account,
+                    global_sequence: String(a.global_sequence),
+                    auth_sequence: [a.act.authorization[0].actor, seqNum],
                     act_digest: '',
                     recv_sequence: seqNum,
                     code_sequence: 1,
                     abi_sequence: 1
                 },
-                act: action.act,
-                account_ram_deltas: action.account_ram_deltas || [],
+                act: a.act,
+                account_ram_deltas: a.account_ram_deltas || [],
                 context_free: false,
-                block_num: action.block_num,
-                block_time: action['@timestamp'],
+                block_num: a.block_num,
+                block_time: a['@timestamp'],
                 console: "",
                 elapsed: 0,
                 except: null,
                 inline_traces: [],
                 producer_block_id: "",
                 trx_id: body.id,
-                notified: action.notified
+                notified: a.notified
             };
             let hash = createHash('sha256');
-            hash.update(JSON.stringify(action.act));
+            hash.update(JSON.stringify(a.act));
             trace.receipt.act_digest = hash.digest('hex');
-            traces[action.global_sequence] = trace;
+            traces[a.global_sequence] = trace;
         }
 
-        actions.forEach(action => {
-            action = action._source;
-            for (let i = 0; i < traces[action.global_sequence].notified.length; i++) {
-                if (traces[action.global_sequence].notified[i] === action.act.account) {
-                    traces[action.global_sequence].notified.splice(i, 1);
+        actions.forEach((action: any) => {
+            const a = action._source;
+            for (let i = 0; i < traces[a.global_sequence].notified.length; i++) {
+                if (traces[a.global_sequence].notified[i] === a.act.account) {
+                    traces[a.global_sequence].notified.splice(i, 1);
                     break;
                 }
             }
-            if (action.parent !== 0 && action.parent) {
-                if (traces[action.parent]) {
-                    for (let i = 0; i < traces[action.parent].notified.length; i++) {
-                        if (traces[action.parent].notified[i] === action.act.account) {
-                            traces[action.parent].notified.splice(i, 1);
+            if (a.parent !== 0 && a.parent) {
+                if (traces[a.parent]) {
+                    for (let i = 0; i < traces[a.parent].notified.length; i++) {
+                        if (traces[a.parent].notified[i] === a.act.account) {
+                            traces[a.parent].notified.splice(i, 1);
                             break;
                         }
                     }
-                    traces[action.parent].inline_traces.push(traces[action.global_sequence]);
+                    traces[a.parent].inline_traces.push(traces[a.global_sequence]);
                 }
             }
         });
 
-        actions.forEach(action => {
-            action = action._source;
-            response.traces.push(traces[action.global_sequence]);
-            if (traces[action.global_sequence] && traces[action.global_sequence].notified) {
-                traces[action.global_sequence].notified.forEach((note, index) => {
+        actions.forEach((action: any) => {
+            const a = action._source;
+            response.traces.push(traces[a.global_sequence]);
+            if (traces[a.global_sequence] && traces[a.global_sequence].notified) {
+                traces[a.global_sequence].notified.forEach((notifiedAcc: string, index: number) => {
                     seqNum += 1;
                     let trace = {
                         receipt: {
-                            receiver: note,
-                            global_sequence: String(action.global_sequence + index + 1),
-                            auth_sequence: [
-                                action.act.authorization[0].actor,
-                                seqNum
-                            ],
-                            act_digest: traces[action.global_sequence].receipt.act_digest,
+                            receiver: notifiedAcc,
+                            global_sequence: String(a.global_sequence + index + 1),
+                            auth_sequence: [a.act.authorization[0].actor, seqNum],
+                            act_digest: traces[a.global_sequence].receipt.act_digest,
                             recv_sequence: seqNum,
                             code_sequence: 1,
                             abi_sequence: 1
                         },
-                        account_ram_deltas: action.account_ram_deltas || [],
-                        act: action.act,
-                        block_num: action.block_num,
-                        block_time: action['@timestamp'],
+                        account_ram_deltas: a.account_ram_deltas || [],
+                        act: a.act,
+                        block_num: a.block_num,
+                        block_time: a['@timestamp'],
                         console: "",
                         context_free: false,
                         elapsed: 0,
@@ -227,10 +213,10 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
                         producer_block_id: "",
                         trx_id: body.id,
                     };
-                    traces[action.global_sequence].inline_traces.unshift(trace);
+                    traces[a.global_sequence].inline_traces.unshift(trace);
                     response.traces.push(trace);
                 });
-                delete traces[action.global_sequence].notified;
+                delete traces[a.global_sequence].notified;
             }
         });
     } else {

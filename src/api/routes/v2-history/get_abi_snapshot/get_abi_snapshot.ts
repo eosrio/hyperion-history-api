@@ -2,45 +2,35 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 
 async function getAbiSnapshot(fastify: FastifyInstance, request: FastifyRequest) {
-
-    const response = {
+    const response: Record<string, any> = {
         block_num: null
     };
-
     const query: any = request.query;
-
     const code = query.contract;
     const block = query.block;
     const should_fetch = query.fetch;
-
-    const mustArray:any[] = [];
-
-    mustArray.push({"term": {"account": code}});
-
+    const mustArray: any[] = [];
+    mustArray.push({term: {account: code}});
     if (block) {
-        mustArray.push({"range": {"block": {"lte": parseInt(block)}}});
+        mustArray.push({range: {block: {lte: parseInt(block)}}});
     }
-
-    const results = await fastify.elastic.search({
+    const results = await fastify.elastic.search<any>({
         index: fastify.manager.chain + '-abi-*',
         size: 1,
-        body: {
-            query: {bool: {must: mustArray}},
-            sort: [{block: {order: "desc"}}]
-        }
+        query: {bool: {must: mustArray}},
+        sort: [{block: {order: "desc"}}]
     });
-    if (results['body']['hits']['hits'].length > 0) {
+    if (results.hits.hits.length > 0) {
         if (should_fetch) {
-            response['abi'] = JSON.parse(results['body']['hits']['hits'][0]['_source']['abi']);
+            response.abi = JSON.parse(results.hits.hits[0]._source.abi);
         } else {
-            response['present'] = true;
+            response.present = true;
         }
-        response.block_num = results['body']['hits']['hits'][0]['_source']['block'];
+        response.block_num = results.hits.hits[0]._source.block;
     } else {
-        response['present'] = false;
-        response['error'] = 'abi not found for ' + code + ' until block ' + block;
+        response.present = false;
+        response.error = 'abi not found for ' + code + ' until block ' + block;
     }
-
     return response;
 }
 

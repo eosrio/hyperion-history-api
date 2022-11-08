@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {getKeyAccountsHandler} from "./get_key_accounts.js";
 import {addApiRoute, extendQueryStringSchema, getRouteName} from "../../../helpers/functions.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
 
     // GET
     const getSchema = {

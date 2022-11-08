@@ -8,6 +8,9 @@ import {HyperionConfig} from "../interfaces/hyperionConfig.js";
 import {HyperionAction} from "../interfaces/hyperion-action.js";
 import {Cluster} from "cluster";
 import {Serializable} from "child_process";
+import {JsonRpc} from "enf-eosjs";
+import {Abieos} from "@eosrio/node-abieos";
+import {FastifyInstance} from "fastify";
 
 let config: HyperionConfig | undefined;
 let confPath = process.env.CONFIG_JSON as PathLike;
@@ -281,3 +284,161 @@ export function getPackageJson(): any {
 }
 
 export const __filename = () => fileURLToPath(import.meta.url);
+
+export async function getAbiFromHeadBlock(rpc: JsonRpc, code: string) {
+    let _abi;
+    try {
+        _abi = (await rpc.get_abi(code)).abi;
+    } catch (e) {
+        hLog(e);
+    }
+    return {
+        abi: _abi,
+        valid_until: null,
+        valid_from: null
+    };
+}
+
+export async function fetchAbiAtBlock(client: Client,
+                                      chain: string,
+                                      contractName: string,
+                                      lastBlock: number,
+                                      getJson: boolean): Promise<any> {
+    try {
+        const t_start = process.hrtime.bigint();
+        const _includes = ["actions", "tables", "block"];
+        if (getJson) {
+            _includes.push("abi");
+        } else {
+            _includes.push("abi_hex");
+        }
+        const contractTerm = {term: {account: contractName}};
+        const lteQuery = {
+            bool: {must: [contractTerm, {range: {block: {lte: lastBlock}}}]}
+        };
+        const gteQuery = {
+            bool: {must: [contractTerm, {range: {block: {gte: lastBlock}}}]}
+        };
+        const queryResult = await client.search<any>({
+            index: `${chain}-abi-*`,
+            size: 1,
+            query: lteQuery,
+            sort: [{block: {order: "desc"}}],
+            _source: {includes: _includes}
+        });
+        const results = queryResult.hits.hits;
+        if (results.length > 0) {
+            const nextRefResponse = await client.search<any>({
+                index: `${chain}-abi-*`,
+                size: 1,
+                query: gteQuery,
+                sort: [{block: {order: "asc"}}],
+                _source: {includes: ["block"]}
+            });
+            const nextRef = nextRefResponse.hits.hits;
+            const t_end = process.hrtime.bigint();
+            const results = queryResult.hits.hits;
+            const duration = (Number(t_end - t_start) / 1000 / 1000).toFixed(2);
+            hLog(`fetchAbiAtBlock took: ${duration} ms`);
+            const from = results[0]._source.block;
+            let until = -1;
+            if (nextRef.length > 0) {
+                until = nextRef[0]._source.block;
+            }
+            return {
+                valid_from: from,
+                valid_until: until,
+                ...results[0]._source
+            };
+        } else {
+            return null;
+        }
+    } catch (e: any) {
+        hLog(e);
+        return null;
+    }
+}
+
+const abiRemapping: Record<string, any> = {
+    "_Bool": "bool"
+};
+
+export async function getContractAtBlock(
+    esClient: Client,
+    rpc: JsonRpc,
+    chain: string,
+    accountName: string,
+    blockNum: number,
+    check_action?: string
+) {
+    let savedAbi, abi;
+    savedAbi = await fetchAbiAtBlock(esClient, chain, accountName, blockNum, true);
+    if (savedAbi === null || (savedAbi.actions && !savedAbi.actions.includes(check_action))) {
+        savedAbi = await getAbiFromHeadBlock(rpc, accountName);
+        if (!savedAbi) return [null, null];
+        abi = savedAbi.abi;
+    } else {
+        try {
+            abi = JSON.parse(savedAbi.abi);
+        } catch (e) {
+            hLog(e);
+            return [null, null];
+        }
+    }
+    if (!abi) return [null, null];
+    const initialTypes = Serialize.createInitialTypes();
+    let types: Map<string, Serialize.Type> | undefined
+    try {
+        types = Serialize.getTypesFromAbi(initialTypes, abi);
+    } catch (e) {
+        let remapped = false;
+        for (const struct of abi.structs) {
+            for (const field of struct.fields) {
+                if (abiRemapping[field.type]) {
+                    field.type = abiRemapping[field.type];
+                    remapped = true;
+                }
+            }
+        }
+        if (remapped) {
+            try {
+                types = Serialize.getTypesFromAbi(initialTypes, abi);
+            } catch (e) {
+                hLog('failed after remapping abi');
+                hLog(accountName, blockNum, check_action);
+                hLog(e);
+            }
+        } else {
+            hLog(accountName, blockNum);
+            hLog(e);
+        }
+    }
+    const actions = new Map();
+    for (const {name, type} of abi.actions) {
+        if (types) {
+            actions.set(name, Serialize.getType(types, type));
+        }
+    }
+    const result = {types, actions, tables: abi.tables};
+    if (check_action) {
+        if (actions.has(check_action)) {
+            try {
+                Abieos.getInstance().loadAbi(accountName, JSON.stringify(abi));
+            } catch (e) {
+                hLog(e);
+            }
+        }
+    }
+    return [result, abi];
+}
+
+export function getIndexPatternFromBlockHint(blockNumHint: string, fastify: FastifyInstance): string {
+    const b = parseInt(blockNumHint, 10);
+    const s = fastify.manager.config.settings;
+    if (b) {
+        const idxPart = Math.ceil(b / s.index_partition_size).toString().padStart(6, '0');
+        return fastify.manager.chain + `-action-${s.index_version}-${idxPart}`;
+    } else {
+        return fastify.manager.chain + '-action-*';
+    }
+}

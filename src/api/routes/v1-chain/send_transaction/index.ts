@@ -1,7 +1,7 @@
 import {FastifyInstance} from "fastify";
 import {addApiRoute, chainApiHandler, getRouteName} from "../../../helpers/functions.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     addApiRoute(
         fastify,
         'POST',

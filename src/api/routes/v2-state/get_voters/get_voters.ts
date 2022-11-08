@@ -1,6 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 import {getSkipLimit} from "../../v2-history/get_actions/functions.js";
+import {estypes} from "@elastic/elasticsearch";
 
 async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
     if (!request.query) {
@@ -36,23 +37,25 @@ async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     const maxDocs = fastify.manager.config.api.limits.get_voters ?? 100;
-    const results = await fastify.elastic.search({
+    const results = await fastify.elastic.search<any>({
         index: fastify.manager.chain + '-table-voters-*',
         from: skip || 0,
         size: (limit > maxDocs ? maxDocs : limit) || 10,
         query: queryStruct,
         sort: [{"last_vote_weight": "desc"}]
     });
-    const hits = results['body']['hits']['hits'];
+    const hits = results.hits.hits;
     for (const hit of hits) {
-        const voter = hit._source;
-        response.voters.push({
-            account: voter.voter,
-            weight: voter.last_vote_weight,
-            last_vote: voter.block_num
-        });
+        if(hit._source) {
+            const voter = hit._source;
+            response.voters.push({
+                account: voter.voter,
+                weight: voter.last_vote_weight,
+                last_vote: voter.block_num
+            });
+        }
     }
-    response.voter_count = results['body']['hits']['total']['value'];
+    response.voter_count = (results.hits.total as estypes.SearchTotalHits).value;
     return response;
 }
 

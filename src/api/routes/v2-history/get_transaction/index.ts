@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {getTransactionHandler} from "./get_transaction.js";
 import {addApiRoute, getRouteName} from "../../../helpers/functions.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     const schema = {
         description: 'get all actions belonging to the same transaction',
         summary: 'get transaction by id',

@@ -236,11 +236,11 @@ async function streamPastActions(
     const responseQueue: estypes.SearchResponse<any>[] = [];
     let counter = 0;
 
-    const init_response = await fastify.elastic.search({
+    const init_response = await fastify.elastic.search<any>({
         index: fastify.manager.chain + '-action-*',
         scroll: '30s',
         size: 20,
-        body: search_body,
+        ...search_body,
     });
     responseQueue.push(init_response);
     while (responseQueue.length > 0) {

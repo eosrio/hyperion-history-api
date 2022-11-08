@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {addApiRoute, getRouteName} from "../../../helpers/functions.js";
 import {getTransactionHandler} from "./get_transaction.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     addApiRoute(fastify, 'POST', getRouteName(import.meta.url), getTransactionHandler, {
         description: 'get all actions belonging to the same transaction',
         summary: 'get transaction by id',

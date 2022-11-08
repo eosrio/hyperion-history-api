@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {addApiRoute, extendQueryStringSchema, getRouteName} from "../../../helpers/functions.js";
 import {getTokensHandler} from "./get_tokens.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     const schema = {
         description: 'get tokens from an account',
         summary: 'get all tokens',

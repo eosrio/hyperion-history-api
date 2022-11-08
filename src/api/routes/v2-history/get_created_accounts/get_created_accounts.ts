@@ -3,12 +3,10 @@ import {timedQuery} from "../../../helpers/functions.js";
 import {getSkipLimit} from "../get_actions/functions.js";
 
 async function getCreatedAccounts(fastify: FastifyInstance, request: FastifyRequest) {
-
-
     const query: any = request.query;
     const {skip, limit} = getSkipLimit(query);
     const maxActions = fastify.manager.config.api.limits.get_created_accounts;
-    const results = await fastify.elastic.search({
+    const results = await fastify.elastic.search<any>({
         index: fastify.manager.chain + '-action-*',
         from: skip || 0,
         size: (maxActions && (limit > maxActions) ? maxActions : limit) || 100,
@@ -22,29 +20,24 @@ async function getCreatedAccounts(fastify: FastifyInstance, request: FastifyRequ
             }
         },
         sort: ["global_sequence:desc"]
-
     });
-
-    const response = {accounts: [] as any[]};
-
-    if (results['body']['hits']['hits'].length > 0) {
-        const actions = results['body']['hits']['hits'];
-        for (let action of actions) {
-            action = action._source;
-            const _tmp = {};
-            if (action['act']['data']['newact']) {
-                _tmp['name'] = action['act']['data']['newact'];
-            } else if (action['@newaccount']['newact']) {
-                _tmp['name'] = action['@newaccount']['newact'];
-            } else {
-                console.log(action);
+    const response = {
+        accounts: [] as any[]
+    };
+    if (results.hits.hits.length > 0) {
+        for (let action of results.hits.hits) {
+            const a = action._source;
+            const _tmp: Record<string, any> = {};
+            if (a.act.data.newact) {
+                _tmp.name = a.act.data.newact;
+            } else if (a['@newaccount'].newact) {
+                _tmp.name = a['@newaccount'].newact;
             }
-            _tmp['trx_id'] = action['trx_id'];
-            _tmp['timestamp'] = action['@timestamp'];
+            _tmp.trx_id = a.trx_id;
+            _tmp.timestamp = a['@timestamp'];
             response.accounts.push(_tmp);
         }
     }
-
     return response;
 }
 

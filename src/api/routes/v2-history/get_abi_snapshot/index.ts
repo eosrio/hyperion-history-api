@@ -2,7 +2,7 @@ import {FastifyInstance} from "fastify";
 import {addApiRoute, getRouteName} from "../../../helpers/functions.js";
 import {getAbiSnapshotHandler} from "./get_abi_snapshot.js";
 
-export default function (fastify: FastifyInstance, opts: any, next) {
+export default function (fastify: FastifyInstance, opts: any, next: (err?: Error) => void) {
     const schema = {
         description: 'fetch contract abi at specific block',
         summary: 'fetch abi at specific block',
