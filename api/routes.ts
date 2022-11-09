@@ -2,7 +2,7 @@ import {join} from "path";
 import {FastifyError, FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {createReadStream} from "fs";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
-import autoLoad from 'fastify-autoload';
+import autoLoad from '@fastify/autoload';
 import got from "got";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {

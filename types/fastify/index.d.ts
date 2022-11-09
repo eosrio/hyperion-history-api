@@ -2,7 +2,7 @@ import {Client} from "@elastic/elasticsearch";
 import {ConnectionManager} from "../../connections/manager.class";
 import {Api, JsonRpc} from "eosjs";
 import {CacheManager} from "../../api/helpers/cacheManager";
-import {FastifyRedis} from "fastify-redis";
+import {FastifyRedis} from "@fastify/redis";
 
 declare module 'fastify' {
     export interface FastifyInstance {

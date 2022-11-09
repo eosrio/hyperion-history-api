@@ -4,10 +4,10 @@ import {IncomingMessage, Server, ServerResponse} from "http";
 // fastify plugins
 import * as fastifyElasticsearch from 'fastify-elasticsearch';
 import fastifySwagger from '@fastify/swagger';
-import fastifyCors from 'fastify-cors';
-import formBodyPlugin from 'fastify-formbody';
-import fastifyRedis from 'fastify-redis';
-import fastifyRateLimit from 'fastify-rate-limit';
+import fastifyCors from '@fastify/cors';
+import formBodyPlugin from '@fastify/formbody';
+import fastifyRedis from '@fastify/redis';
+import fastifyRateLimit from '@fastify/rate-limit';
 
 // custom plugins
 import fastify_eosjs from "./plugins/fastify-eosjs";
