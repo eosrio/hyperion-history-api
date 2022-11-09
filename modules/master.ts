@@ -702,7 +702,8 @@ export class HyperionMaster {
             }
         } else {
             if (this.conf.indexer.rewrite) {
-                this.starting_block = 0;
+                hLog(`WARNING! "indexer.rewrite: true" If you want to reindex from a specific block, "indexer.start_on" must be greater than zero!`);
+                hLog(`The indexer will start from ${this.starting_block}`);
             }
             // Auto Mode
             if (this.conf.indexer.abi_scan_mode) {

@@ -84,7 +84,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
                         action.act.data = action.act.data.data;
                     }
                 }
-            } catch (e:any) {
+            } catch (e: any) {
                 console.log(e);
             }
 
