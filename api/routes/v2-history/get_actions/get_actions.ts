@@ -76,12 +76,17 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
     if (results['hits'].length > 0) {
         const actions = results['hits'];
-        for (let action of actions) {
-            action = action._source;
+        for (let action of actions.map(a => a._source)) {
 
-			if (action.act.data.account && action.act.data.name && action.act.data.authorization) {
-				action.act.data = action.act.data.data;
-			}
+            try {
+                if (action.act.data) {
+                    if (action.act.data.account && action.act.data.name && action.act.data.authorization) {
+                        action.act.data = action.act.data.data;
+                    }
+                }
+            } catch (e:any) {
+                console.log(e);
+            }
 
             mergeActionMeta(action);
 
