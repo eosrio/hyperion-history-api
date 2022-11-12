@@ -1,6 +1,7 @@
 import {existsSync, readFileSync, writeFileSync} from "node:fs";
 import {HyperionConnections} from "../interfaces/hyperionConnections.js";
 import {HyperionConfig} from "../interfaces/hyperionConfig.js";
+import {config} from "../helpers/config.js";
 
 export interface Filters {
     action_blacklist: Set<string>;
@@ -98,27 +99,13 @@ export class ConfigurationModule {
     }
 
     loadConfigJson() {
-        if (process.env.CONFIG_JSON) {
-            const data = readFileSync(process.env.CONFIG_JSON).toString();
-            try {
-                this.config = JSON.parse(data);
-                this.processConfig();
-                this.activeConfigPath = process.env.CONFIG_JSON;
-            } catch (e: any) {
-                console.log(`Failed to Load configuration file ${process.env.CONFIG_JSON}`);
-                console.log(e);
-                process.exit(1);
-            }
-        } else {
-            // TODO: use single chain config
-            console.error('Configuration file not specified!');
-            process.exit(1);
-        }
+        this.config = config;
+        this.processConfig();
     }
 
     setAbiScanMode(value: boolean) {
-        if(this.activeConfigPath) {
-            const data = readFileSync(this.activeConfigPath).toString();
+        if (this.config.activeConfigPath) {
+            const data = readFileSync(this.config.activeConfigPath).toString();
             const tempConfig: HyperionConfig = JSON.parse(data);
             tempConfig.indexer.abi_scan_mode = value;
             writeFileSync(process.env.CONFIG_JSON as string, JSON.stringify(tempConfig, null, 2));

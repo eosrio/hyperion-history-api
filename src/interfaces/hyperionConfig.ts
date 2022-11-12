@@ -1,4 +1,5 @@
 import {AlertManagerOptions} from "../modules/alertsManager.js";
+import {PathLike} from "node:fs";
 
 export interface ScalingConfigs {
     polling_interval: number;
@@ -186,4 +187,6 @@ export interface HyperionConfig {
     };
 
     alerts: AlertManagerOptions;
+
+    activeConfigPath?: PathLike;
 }

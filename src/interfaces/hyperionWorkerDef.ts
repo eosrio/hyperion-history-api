@@ -1,5 +1,10 @@
 import * as cluster from "cluster";
 
+export interface WorkerEnv {
+    worker_role: string;
+    worker_id: string;
+}
+
 export interface HyperionWorkerDef {
     worker_id?: number;
     failures?: number;

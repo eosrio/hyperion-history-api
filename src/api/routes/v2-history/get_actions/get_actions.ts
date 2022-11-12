@@ -80,39 +80,48 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     if (results.hits.length > 0) {
-        const actions = results.hits;
+        const actions = results.hits.map(a => a._source);
         for (let action of actions) {
-            if (action._source) {
-                const source = action._source;
-                mergeActionMeta(action);
-                if (query.noBinary === true) {
-                    for (const key in source.act.data) {
-                        if (source.act.data.hasOwnProperty(key)) {
-                            if (typeof source.act.data[key] === 'string' && source.act.data[key].length > 256) {
-                                source.act.data[key] = source.act.data[key].slice(0, 32) + "...";
-                            }
+            if (!action) {
+                continue;
+            }
+
+            try {
+                if (action.act.data) {
+                    if (action.act.data.account && action.act.data.name && action.act.data.authorization) {
+                        action.act.data = action.act.data.data;
+                    }
+                }
+            } catch (e: any) {
+                console.log(e);
+            }
+
+            mergeActionMeta(action);
+            if (query.noBinary === true) {
+                for (const key in action.act.data) {
+                    if (action.act.data.hasOwnProperty(key)) {
+                        if (typeof action.act.data[key] === 'string' && action.act.data[key].length > 256) {
+                            action.act.data[key] = action.act.data[key].slice(0, 32) + "...";
                         }
                     }
                 }
-
-                if (query.simple) {
-                    response.simple_actions.push({
-                        block: source.block_num,
-                        irreversible: response.lib !== 0 ? source.block_num < response.lib : undefined,
-                        timestamp: source["@timestamp"],
-                        transaction_id: source.trx_id,
-                        actors: source.act.authorization.map((a: Serialize.Authorization) => {
-                            return `${a.actor}@${a.permission}`;
-                        }).join(","),
-                        notified: source.notified.join(','),
-                        contract: source.act.account,
-                        action: source.act.name,
-                        data: source.act.data
-                    });
-
-                } else {
-                    response.actions.push(source);
-                }
+            }
+            if (query.simple) {
+                response.simple_actions.push({
+                    block: action.block_num,
+                    irreversible: response.lib !== 0 ? action.block_num < response.lib : undefined,
+                    timestamp: action["@timestamp"],
+                    transaction_id: action.trx_id,
+                    actors: action.act.authorization.map((a: Serialize.Authorization) => {
+                        return `${a.actor}@${a.permission}`;
+                    }).join(","),
+                    notified: action.notified.join(','),
+                    contract: action.act.account,
+                    action: action.act.name,
+                    data: action.act.data
+                });
+            } else {
+                response.actions.push(action);
             }
         }
     }

@@ -1,8 +1,8 @@
-import {ConfigurationModule} from "./config.js";
-import {ConnectionManager} from "../connections/manager.class.js";
+import {ConfigurationModule} from "./modules/config.js";
+import {ConnectionManager} from "./connections/manager.class.js";
 import {JsonRpc, RpcInterfaces} from "enf-eosjs";
 import {Client} from "@elastic/elasticsearch";
-import {HyperionModuleLoader} from "./loader.js";
+import {HyperionModuleLoader} from "./modules/loader.js";
 
 import {
     debugLog,
@@ -13,7 +13,7 @@ import {
     getLastIndexedBlockFromRange,
     hLog,
     messageAllWorkers
-} from "../helpers/common_functions.js";
+} from "./helpers/common_functions.js";
 
 import pm2io from '@pm2/io';
 
@@ -22,12 +22,12 @@ import {createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unl
 import path from "node:path";
 import cluster, {Worker} from "node:cluster";
 import {io, Socket} from 'socket.io-client';
-import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef.js";
-import {HyperionConfig} from "../interfaces/hyperionConfig.js";
+import {HyperionWorkerDef} from "./interfaces/hyperionWorkerDef.js";
+import {HyperionConfig} from "./interfaces/hyperionConfig.js";
 
 import {queue, QueueObject} from "async";
 import {Numeric} from "eosjs";
-import AlertsManager from "./alertsManager.js";
+import AlertsManager from "./modules/alertsManager.js";
 import {default as IORedis, Redis} from 'ioredis';
 import moment from "moment";
 import Timeout = NodeJS.Timeout;
@@ -1774,7 +1774,7 @@ export class HyperionMaster {
             }
         ];
 
-        const indexConfig = await import('../definitions/index-templates.js');
+        const indexConfig = await import('./definitions/index-templates.js');
 
         const indicesList = [
             {name: "action", type: "action"},
