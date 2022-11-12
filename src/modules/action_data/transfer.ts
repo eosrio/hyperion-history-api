@@ -1,13 +1,6 @@
-import {readFileSync} from "node:fs";
-import {resolve, join} from "node:path";
 import {HyperionActionTransform} from "../../interfaces/hyperion-action-transform.js";
-import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 import {HyperionAction} from "../../interfaces/hyperion-action.js";
-
-let config = {} as HyperionConfig;
-if (process.env.CONFIG_JSON) {
-    config = JSON.parse(readFileSync(join(resolve(), process.env.CONFIG_JSON)).toString());
-}
+import {config} from "../../helpers/config.js";
 
 export const hyperionModule: HyperionActionTransform = {
     chain: '*',

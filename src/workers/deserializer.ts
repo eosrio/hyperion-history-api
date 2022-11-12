@@ -11,6 +11,7 @@ import {index_queues} from '../definitions/index-queues.js';
 import {HyperionDelta} from "../interfaces/hyperion-delta.js";
 import {HyperionActionAct} from "../interfaces/hyperion-action.js";
 import {Message} from "amqplib";
+import {ShipGetBlocksPayload} from "../interfaces/ship.js";
 
 const abi_remapping: Record<string, string> = {
     "_Bool": "bool"
@@ -268,7 +269,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async processBlock(res: any, block: any, traces: any[], deltas: any[]) {
+    async processBlock(res: ShipGetBlocksPayload, block: any, traces: any[], deltas: any[]) {
         if (!res['this_block']) {
             // missing current block data
             hLog(res);
@@ -278,7 +279,7 @@ export default class MainDSWorker extends HyperionWorker {
             let ts = '';
             const block_num = res['this_block']['block_num'];
             const block_id = res['this_block']['block_id'].toLowerCase();
-            let block_ts = res['this_time'];
+            let block_ts = '';
             let light_block: HyperionLightBlock | undefined;
 
             if (this.conf.indexer.fetch_block) {

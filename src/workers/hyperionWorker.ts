@@ -28,7 +28,6 @@ export abstract class HyperionWorker {
 
     rpc: JsonRpc;
     client: Client;
-    ship: StateHistorySocket;
 
     txEnc = new TextEncoder();
     txDec = new TextDecoder();
@@ -54,7 +53,6 @@ export abstract class HyperionWorker {
         this.chainId = this.manager.conn.chains[this.chain].chain_id;
         this.rpc = this.manager.nodeosJsonRPC;
         this.client = this.manager.elasticsearchClient;
-        this.ship = this.manager.shipClient;
         this.events = new EventEmitter();
 
         this.mLoader.init().then(() => {

@@ -1,17 +1,29 @@
 // noinspection JSUnusedGlobalSymbols
 
-import {BaseParser, timedFunction} from "./base-parser.js";
+import {BaseParser} from "./base-parser.js";
 import MainDSWorker from "../../workers/deserializer.js";
 import {Message} from "amqplib";
 import DSPoolWorker from "../../workers/ds-pool.js";
 import {TrxMetadata} from "../../interfaces/trx-metadata.js";
 import {ActionTrace} from "../../interfaces/action-trace.js";
 import {deserialize, hLog} from "../../helpers/common_functions.js";
-import {appendFileSync} from "fs";
+import {ShipGetBlocksPayload} from "../../interfaces/ship.js";
 
 export default class HyperionParser extends BaseParser {
 
     flatten = false;
+
+    // totalDsTime: bigint = BigInt(0);
+    // totalDsCounter: bigint = BigInt(0);
+
+    // constructor(cm: ConfigurationModule) {
+    //     super(cm);
+    //     setInterval(() => {
+    //         if (this.totalDsCounter > BigInt(0)) {
+    //             hLog(`Average DS Time: ${Number(this.totalDsTime / this.totalDsCounter) / 1000000}ms`);
+    //         }
+    //     }, 5000);
+    // }
 
     public async parseAction(
         worker: DSPoolWorker,
@@ -66,38 +78,16 @@ export default class HyperionParser extends BaseParser {
     }
 
     public async parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void> {
-        const dsProfiling = worker.conf.settings.ds_profiling;
         for (const message of messages) {
 
-            // profile deserialization
-            const ds_times: any = {
-                size: message.content.length,
-                eosjs: {
-                    result: undefined,
-                    signed_block: undefined,
-                    transaction_trace: undefined,
-                    table_delta: undefined
-                },
-                abieos: {
-                    result: undefined,
-                    signed_block: undefined,
-                    transaction_trace: undefined,
-                    table_delta: undefined
-                }
-            };
+            // const tRef = process.hrtime.bigint();
 
             let allowProcessing = true;
-            let ds_msg;
+            let ds_msg = deserialize('result', message.content, this.txEnc, this.txDec, worker.types);
 
-            // deserialize result using abieos
-            // ds_times.abieos.result = timedFunction(dsProfiling,() => {
-            //     ds_msg = worker.deserializeNative('result', message.content);
-            // });
-
-            // deserialize result using eosjs (faster)
-            ds_times.eosjs.result = timedFunction(dsProfiling, () => {
-                ds_msg = deserialize('result', message.content, this.txEnc, this.txDec, worker.types);
-            });
+            // let ds_msg = worker.deserializeNative('result', message.content);
+            // this.totalDsTime += process.hrtime.bigint() - tRef;
+            // this.totalDsCounter++;
 
             if (!ds_msg) {
                 if (worker.ch_ready) {
@@ -107,41 +97,22 @@ export default class HyperionParser extends BaseParser {
             }
 
             if (ds_msg) {
-                const res: any = ds_msg[1];
+                const res: ShipGetBlocksPayload = ds_msg[1];
                 let block: any = null;
                 let traces: any[] = [];
                 let deltas: any[] = [];
-
                 if (res.block && res.block.length) {
-
-                    // deserialize signed_block using abieos (faster)
-                    ds_times.abieos.signed_block = timedFunction(dsProfiling, () => {
-                        block = worker.deserializeNative('signed_block', res.block);
-                    });
-
-                    // deserialize signed_block using eosjs
-                    // ds_times.eosjs.signed_block = timedFunction(dsProfiling,() => {
-                    //     block = deserialize('signed_block', res.block, this.txEnc, this.txDec, worker.types);
-                    // });
-
+                    block = worker.deserializeNative('signed_block', res.block);
                     if (block === null) {
                         hLog('incompatible block');
                         process.exit(1);
                     }
-
                     // verify for whitelisted contracts (root actions only)
                     if (worker.conf.whitelists.root_only) {
                         try {
-
-                            // get time reference for profiling
-                            if (worker.conf.settings.ds_profiling) ds_times['packed_trx'] = process.hrtime.bigint();
-
                             if (worker.conf.whitelists &&
-                                (worker.conf.whitelists.actions.length > 0 ||
-                                    worker.conf.whitelists.deltas.length > 0)) {
-
+                                (worker.conf.whitelists.actions.length > 0 || worker.conf.whitelists.deltas.length > 0)) {
                                 allowProcessing = false;
-
                                 for (const transaction of block.transactions) {
                                     if (transaction.status === 0 && transaction.trx[1] && transaction.trx[1].packed_trx) {
                                         const unpacked_trx = worker.api.deserializeTransaction(Buffer.from(transaction.trx[1].packed_trx, 'hex'));
@@ -151,13 +122,12 @@ export default class HyperionParser extends BaseParser {
                                                 break;
                                             }
                                         }
-                                        if (allowProcessing) break;
+                                        if (allowProcessing) {
+                                            break;
+                                        }
                                     }
                                 }
                             }
-
-                            // store time diff
-                            if (worker.conf.settings.ds_profiling) ds_times['packed_trx'] = Number(process.hrtime.bigint() - ds_times['packed_trx']) / 1000;
 
                         } catch (e: any) {
                             console.log(e);
@@ -167,45 +137,17 @@ export default class HyperionParser extends BaseParser {
                 }
 
                 if (allowProcessing && res.traces && res.traces.length) {
-
-                    // deserialize transaction_trace using abieos (faster)
-                    ds_times.abieos.transaction_trace = timedFunction(dsProfiling, () => {
-                        traces = worker.deserializeNative('transaction_trace[]', res.traces);
-                    });
-
-                    // deserialize transaction_trace using eosjs
-                    // ds_times.eosjs.transaction_trace = timedFunction(dsProfiling, () => {
-                    //     traces = deserialize('transaction_trace[]', res.traces, this.txEnc, this.txDec, worker.types);
-                    // });
-
+                    traces = worker.deserializeNative('transaction_trace[]', res.traces);
                     if (!traces) {
-                        hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res['this_block']['block_num']}`);
+                        hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res.this_block?.block_num}`);
                     }
                 }
 
                 if (allowProcessing && res.deltas && res.deltas.length) {
-
-                    // deserialize table_delta using abieos
-                    // ds_times.abieos.table_delta = timedFunction(dsProfiling, () => {
-                    //     worker.deserializeNative('table_delta[]', res.deltas);
-                    // });
-
-                    // deserialize table_delta using eosjs (faster)
-                    ds_times.eosjs.table_delta = timedFunction(dsProfiling, () => {
-                        deltas = deserialize('table_delta[]', res.deltas, this.txEnc, this.txDec, worker.types);
-                    });
-
+                    deltas = deserialize('table_delta[]', res.deltas, this.txEnc, this.txDec, worker.types);
                     if (!deltas) {
-                        hLog(`[WARNING] table_delta[] deserialization failed on block ${res['this_block']['block_num']}`);
+                        hLog(`[WARNING] table_delta[] deserialization failed on block ${res.this_block?.block_num}`);
                     }
-                }
-
-                if (worker.conf.settings.ds_profiling) {
-                    hLog(ds_times);
-                    const line: any[] = [ds_times.size];
-                    line.push(...[ds_times.eosjs.result, ds_times.eosjs.signed_block, ds_times.eosjs.transaction_trace, ds_times.eosjs.table_delta]);
-                    line.push(...[ds_times.abieos.result, ds_times.abieos.signed_block, ds_times.abieos.transaction_trace, ds_times.abieos.table_delta]);
-                    appendFileSync('ds_profiling.csv', line.join(',') + "\n");
                 }
 
                 let result;
@@ -226,7 +168,9 @@ export default class HyperionParser extends BaseParser {
                         }
                         process.send?.(evPayload);
                     } else {
-                        hLog(`ERROR: Block data not found for #${res['this_block']['block_num']}`);
+                        if (res.this_block?.block_num) {
+                            hLog(`ERROR: Block data not found for #${res.this_block?.block_num}`);
+                        }
                     }
                     if (worker.ch_ready) {
                         worker.ch.ack(message);

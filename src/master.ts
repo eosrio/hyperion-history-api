@@ -19,7 +19,7 @@ import pm2io from '@pm2/io';
 
 import {createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, WriteStream} from "fs";
 
-import path from "node:path";
+import path, {resolve} from "node:path";
 import cluster, {Worker} from "node:cluster";
 import {io, Socket} from 'socket.io-client';
 import {HyperionWorkerDef} from "./interfaces/hyperionWorkerDef.js";
@@ -31,6 +31,8 @@ import AlertsManager from "./modules/alertsManager.js";
 import {default as IORedis, Redis} from 'ioredis';
 import moment from "moment";
 import Timeout = NodeJS.Timeout;
+import {fastify, FastifyInstance} from "fastify";
+import {writeFileSync} from "node:fs";
 
 interface RevBlock {
     num: number;
@@ -155,6 +157,11 @@ export class HyperionMaster {
     // pm2 custom metrics/gauges
     private metrics: Record<string, any> = {};
     private shouldCountIPCMessages = false;
+    private controller: FastifyInstance = fastify();
+    private indexerStarted = false;
+    private starting = false;
+    private monitorReferenceTime = 0;
+    private monitorLoopId?: NodeJS.Timer;
 
     constructor() {
         this.cm = new ConfigurationModule();
@@ -1416,7 +1423,8 @@ export class HyperionMaster {
                 this.resumeReaders();
             }
         }
-        this.metrics.queuedMessages?.set(queuedMessages);
+
+        // this.metrics.queuedMessages?.set(queuedMessages);
     }
 
     private monitorIndexingQueues() {
@@ -1435,92 +1443,88 @@ export class HyperionMaster {
         }
     }
 
-    private startIndexMonitoring() {
-        let reference_time = Date.now();
+    private monitoringRoutine() {
+        // console.log(this.producedBlocks);
+        // console.log(this.missedRounds);
 
-        setInterval(() => {
+        if (!cluster.workers) return;
 
-            // console.log(this.producedBlocks);
-            // console.log(this.missedRounds);
-
-            if (!cluster.workers) return;
-
-            const _workers = Object.keys(cluster.workers).length;
-            const tScale = (this.log_interval / 1000);
-            this.total_read += this.pushedBlocks;
-            this.total_blocks += this.consumedBlocks;
-            this.total_actions += this.deserializedActions;
-            this.total_deltas += this.deserializedDeltas;
-            const consume_rate = this.consumedBlocks / tScale;
-            this.consume_rates.push(consume_rate);
-            if (this.consume_rates.length > 20) {
-                this.consume_rates.splice(0, 1);
+        const _workers = Object.keys(cluster.workers).length;
+        const tScale = (this.log_interval / 1000);
+        this.total_read += this.pushedBlocks;
+        this.total_blocks += this.consumedBlocks;
+        this.total_actions += this.deserializedActions;
+        this.total_deltas += this.deserializedDeltas;
+        const consume_rate = this.consumedBlocks / tScale;
+        this.consume_rates.push(consume_rate);
+        if (this.consume_rates.length > 20) {
+            this.consume_rates.splice(0, 1);
+        }
+        let avg_consume_rate = 0;
+        if (this.consume_rates.length > 0) {
+            for (const r of this.consume_rates) {
+                avg_consume_rate += r;
             }
-            let avg_consume_rate = 0;
-            if (this.consume_rates.length > 0) {
-                for (const r of this.consume_rates) {
-                    avg_consume_rate += r;
-                }
-                avg_consume_rate = avg_consume_rate / this.consume_rates.length;
-            } else {
-                avg_consume_rate = consume_rate;
-            }
-            const log_msg: string[] = [];
-            log_msg.push(`W:${_workers}`);
+            avg_consume_rate = avg_consume_rate / this.consume_rates.length;
+        } else {
+            avg_consume_rate = consume_rate;
+        }
+        const log_msg: string[] = [];
+        log_msg.push(`W:${_workers}`);
 
-            const _r = (this.pushedBlocks + this.livePushedBlocks) / tScale;
-            log_msg.push(`R:${_r}`);
-            this.metrics.readingRate?.set(_r);
+        const _r = (this.pushedBlocks + this.livePushedBlocks) / tScale;
+        log_msg.push(`R:${_r}`);
+        // this.metrics.readingRate?.set(_r);
 
-            const _c = (this.liveConsumedBlocks + this.consumedBlocks) / tScale;
-            log_msg.push(`C:${_c}`);
-            this.metrics.consumeRate?.set(_c);
+        const _c = (this.liveConsumedBlocks + this.consumedBlocks) / tScale;
+        log_msg.push(`C:${_c}`);
+        // this.metrics.consumeRate?.set(_c);
 
-            const _a = (this.deserializedActions) / tScale;
-            log_msg.push(`A:${_a}`);
-            this.metrics.actionDSRate?.set(_a);
+        const _a = (this.deserializedActions) / tScale;
+        log_msg.push(`A:${_a}`);
+        // this.metrics.actionDSRate?.set(_a);
 
-            const _dds = (this.deserializedDeltas) / tScale
-            log_msg.push(`D:${_dds}`);
-            this.metrics.deltaDSRate?.set(_dds);
+        const _dds = (this.deserializedDeltas) / tScale
+        log_msg.push(`D:${_dds}`);
+        // this.metrics.deltaDSRate?.set(_dds);
 
-            const _ir = (this.indexedObjects) / tScale
-            log_msg.push(`I:${_ir}`);
-            this.metrics.indexingRate?.set(_ir);
+        const _ir = (this.indexedObjects) / tScale
+        log_msg.push(`I:${_ir}`);
+        // this.metrics.indexingRate?.set(_ir);
 
-            if (this.total_blocks < this.total_range && !this.conf.indexer.live_only_mode) {
-                const remaining = this.total_range - this.total_blocks;
-                const estimated_time = Math.round(remaining / avg_consume_rate);
-                const time_string = moment().add(estimated_time, 'seconds').fromNow(false);
-                const pct_parsed = ((this.total_blocks / this.total_range) * 100).toFixed(1);
-                const pct_read = ((this.total_read / this.total_range) * 100).toFixed(1);
-                log_msg.push(`${this.total_blocks}/${this.total_read}/${this.total_range}`);
-                log_msg.push(`syncs ${time_string} (${pct_parsed}% ${pct_read}%)`);
-                this.metrics.syncEta.set(time_string);
-            }
+        if (this.total_blocks < this.total_range && !this.conf.indexer.live_only_mode) {
+            const remaining = this.total_range - this.total_blocks;
+            const estimated_time = Math.round(remaining / avg_consume_rate);
+            const time_string = moment().add(estimated_time, 'seconds').fromNow(false);
+            const pct_parsed = ((this.total_blocks / this.total_range) * 100).toFixed(1);
+            const pct_read = ((this.total_read / this.total_range) * 100).toFixed(1);
+            log_msg.push(`${this.total_blocks}/${this.total_read}/${this.total_range}`);
+            log_msg.push(`syncs ${time_string} (${pct_parsed}% ${pct_read}%)`);
+            // this.metrics.syncEta.set(time_string);
+        }
 
-            // publish last processed block to pm2
-            this.metrics.lastProcessedBlockNum.set(this.lastProcessedBlockNum);
+        // publish last processed block to pm2
+        // this.metrics.lastProcessedBlockNum.set(this.lastProcessedBlockNum);
 
-            // publish log to hub
-            if (this.conf.hub && this.conf.hub.inform_url) {
-                this.hub.emit('hyp_ev', {
-                    e: 'rates',
-                    d: {r: _r, c: _c, a: _a}
-                });
-            }
+        // publish log to hub
+        if (this.conf.hub && this.conf.hub.inform_url) {
+            this.hub.emit('hyp_ev', {
+                e: 'rates',
+                d: {r: _r, c: _c, a: _a}
+            });
+        }
 
-            // print monitoring log
-            if (this.conf.settings.rate_monitoring && !this.mode_transition) {
-                hLog(log_msg.join(' | '));
-            }
+        // print monitoring log
+        if (this.conf.settings.rate_monitoring && !this.mode_transition) {
+            hLog(log_msg.join(' | '));
+        }
 
-            if (this.indexedObjects === 0 && this.deserializedActions === 0 && this.consumedBlocks === 0 && !this.mode_transition) {
+        if (this.indexedObjects === 0 && this.deserializedActions === 0 && this.consumedBlocks === 0 && !this.mode_transition) {
 
-                // Report completed range (parallel reading)
-                if (this.total_blocks === this.total_range && !this.range_completed) {
-                    const ttime = (Date.now() - reference_time) / 1000;
-                    hLog(`\n
+            // Report completed range (parallel reading)
+            if (this.total_blocks === this.total_range && !this.range_completed) {
+                const ttime = (Date.now() - this.monitorReferenceTime) / 1000;
+                hLog(`\n
         -------- BLOCK RANGE COMPLETED -------------
         | Range: ${this.starting_block} >> ${this.head}
         | Total time: ${ttime} seconds
@@ -1529,72 +1533,82 @@ export class HyperionMaster {
         | Deltas: ${this.total_deltas}
         | ABIs: ${this.total_abis}
         --------------------------------------------\n`);
-                    this.range_completed = true;
-                    if (this.conf.indexer.abi_scan_mode) {
-                        if (this.conf.settings.auto_mode_switch) {
-                            this.mode_transition = true;
-                            hLog('Auto switching to full indexing mode in 10 seconds...');
-                            setTimeout(() => {
-                                reference_time = Date.now();
-                                this.startFullIndexing().catch(console.log);
-                            });
-                        }
+                this.range_completed = true;
+                if (this.conf.indexer.abi_scan_mode) {
+                    if (this.conf.settings.auto_mode_switch) {
+                        this.mode_transition = true;
+                        hLog('Auto switching to full indexing mode in 10 seconds...');
+                        setTimeout(() => {
+                            this.monitorReferenceTime = Date.now();
+                            this.startFullIndexing().catch(console.log);
+                        });
+                    }
+                } else {
+                    // if the live reader is disabled stop the indexer
+                    if (!this.conf.indexer.live_reader) {
+                        this.stopIndexer().catch(console.log);
                     }
                 }
-                if (!this.mode_transition) {
 
-                    // Allow 10s threshold before shutting down the process
-                    this.shutdownTimer = setTimeout(() => {
-                        this.allowShutdown = true;
-                    }, 10000);
+            }
+            if (!this.mode_transition) {
+                // Allow 10s threshold before shutting down the process
+                this.shutdownTimer = setTimeout(() => {
+                    this.allowShutdown = true;
+                }, 10000);
 
-                    // Auto-Stop
-                    if (this.pushedBlocks === 0) {
-                        this.idle_count++;
-                        if (this.auto_stop > 0) {
-                            if ((tScale * this.idle_count) >= this.auto_stop) {
-                                hLog("Reached limit for no blocks processed, stopping now...");
-                                process.exit(1);
-                            } else {
-                                const idleMsg = `No blocks processed! Indexer will stop in ${this.auto_stop - (tScale * this.idle_count)} seconds!`;
-                                if (this.idle_count === 1) {
-                                    this.emitAlert('warning', idleMsg);
-                                }
-                                hLog(idleMsg);
-                            }
+                // Auto-Stop
+                if (this.pushedBlocks === 0) {
+                    this.idle_count++;
+                    if (this.auto_stop > 0) {
+                        if ((tScale * this.idle_count) >= this.auto_stop) {
+                            hLog("Reached limit for no blocks processed, stopping now...");
+                            process.exit(1);
                         } else {
-                            if (!this.shutdownStarted) {
-                                const idleMsg = 'No blocks are being processed, please check your state-history node!';
-                                if (this.idle_count === 2) {
-                                    this.emitAlert('warning', idleMsg);
-                                }
-                                hLog(idleMsg);
+                            const idleMsg = `No blocks processed! Indexer will stop in ${this.auto_stop - (tScale * this.idle_count)} seconds!`;
+                            if (this.idle_count === 1) {
+                                this.emitAlert('warning', idleMsg);
                             }
+                            hLog(idleMsg);
+                        }
+                    } else {
+                        if (!this.shutdownStarted) {
+                            const idleMsg = 'No blocks are being processed, please check your state-history node!';
+                            if (this.idle_count === 2) {
+                                this.emitAlert('warning', idleMsg);
+                            }
+                            hLog(idleMsg);
                         }
                     }
+                }
 
-                }
-            } else {
-                if (this.idle_count > 1) {
-                    this.emitAlert('info', '✅ Data processing resumed!');
-                    hLog('Processing resumed!');
-                }
-                this.idle_count = 0;
-                if (this.shutdownTimer) {
-                    clearTimeout(this.shutdownTimer);
-                    this.shutdownTimer = undefined;
-                }
             }
-
-            // reset counters
-            this.resetMonitoringCounters();
-
-
-            if (_workers === 0 && !this.mode_transition) {
-                hLog('FATAL ERROR - All Workers have stopped!');
-                process.exit(1);
+        } else {
+            if (this.idle_count > 1) {
+                this.emitAlert('info', '✅ Data processing resumed!');
+                hLog('Processing resumed!');
             }
+            this.idle_count = 0;
+            if (this.shutdownTimer) {
+                clearTimeout(this.shutdownTimer);
+                this.shutdownTimer = undefined;
+            }
+        }
 
+        // reset counters
+        this.resetMonitoringCounters();
+
+
+        if (_workers === 0 && !this.mode_transition) {
+            hLog('FATAL ERROR - All Workers have stopped!');
+            process.exit(1);
+        }
+    }
+
+    private startIndexMonitoring() {
+        this.monitorReferenceTime = Date.now();
+        this.monitorLoopId = setInterval(() => {
+            this.monitoringRoutine();
         }, this.log_interval);
     }
 
@@ -1823,83 +1837,15 @@ export class HyperionMaster {
             await this.startRepairMode();
         }
 
+        await this.startController();
+
         // Quit App if on preview mode
         if (preview) {
             HyperionMaster.printWorkerMap(this.workerMap);
-            await this.waitForLaunch();
-        }
-
-        // Setup Error Logging
-        this.setupDSElogs();
-
-        // Start Monitoring
-        this.startIndexMonitoring();
-
-        // handle worker disconnection events
-        cluster.on('disconnect', (worker) => {
-            if (!this.mode_transition && !this.shutdownStarted) {
-                hLog(`The worker #${worker.id} has disconnected, attempting to re-launch in 5 seconds...`);
-                const workerReference = this.workerMap.find(value => value.worker_id === worker.id);
-                if (workerReference) {
-                    workerReference.wref = undefined;
-                    if (workerReference.failures) {
-                        workerReference.failures++;
-                    }
-                    hLog(`New worker defined: ${workerReference.worker_role} for ${workerReference.worker_queue}`);
-                    setTimeout(() => {
-                        this.launchWorkers();
-                        setTimeout(() => {
-                            if (workerReference.worker_role === 'deserializer' && workerReference.wref) {
-                                workerReference.wref.send({
-                                    event: 'initialize_abi',
-                                    data: this.cachedInitABI
-                                });
-                            }
-                        }, 1000);
-                    }, 5000);
-                } else {
-                    console.log(`Worker #${worker.id} not found in map!`);
-                }
-            }
-        });
-
-        // Launch all workers
-        this.launchWorkers();
-
-        // enable ipc msg rate monitoring
-        let ipcDebugRate = this.conf.settings.ipc_debug_rate;
-        if (ipcDebugRate && ipcDebugRate > 0 && ipcDebugRate < 1000) {
-            hLog(`settings.ipc_debug_rate was set too low (${this.conf.settings.ipc_debug_rate}) using 1000 instead!`);
-            ipcDebugRate = 1000;
+            hLog(`Hyperion is on preview mode, the controller API /start command can be called to start the indexer!`);
         } else {
-            ipcDebugRate = 1000;
+            await this.start();
         }
-        this.shouldCountIPCMessages = ipcDebugRate >= 1000;
-        if (this.conf.settings.debug) {
-            if (this.shouldCountIPCMessages) {
-                const rate = ipcDebugRate;
-                this.totalMessages = 0;
-                setInterval(() => {
-                    hLog(`IPC Messaging Rate: ${(this.totalMessages / (rate / 1000)).toFixed(2)} msg/s`);
-                    this.totalMessages = 0;
-                }, ipcDebugRate);
-            }
-        }
-
-        // load hyperion hub connection
-        if (this.conf.hub) {
-            try {
-                this.startHyperionHub();
-            } catch (e: any) {
-                hLog(e);
-            }
-        }
-
-        // Actions that can be triggered via pm2 trigger <action> <process> or on the pm2 dashboard
-        this.addPm2Actions();
-
-        // Add custom metrics
-        this.addPm2Metrics();
     }
 
     async streamBlockHeaders(startOn: number, stopOn: number, func: (data: any) => void) {
@@ -2287,90 +2233,16 @@ export class HyperionMaster {
         this.alerts.emitAlert({type: msgType, process: process.title, content: msgContent});
     }
 
-    private addPm2Metrics() {
-        this.metrics.readingRate = pm2io.metric({name: 'Block Reading (blocks/s)'});
-        this.metrics.consumeRate = pm2io.metric({name: 'Block Processing (blocks/s)'});
-        this.metrics.actionDSRate = pm2io.metric({name: 'Action Deserialization (actions/s)'});
-        this.metrics.deltaDSRate = pm2io.metric({name: 'Delta Deserialization (deltas/s)'});
-        this.metrics.indexingRate = pm2io.metric({name: 'Indexing Rate (docs/s)'});
-        this.metrics.queuedMessages = pm2io.metric({name: 'Queued Messages'});
-        this.metrics.lastProcessedBlockNum = pm2io.metric({name: 'Last Block'});
-        this.metrics.syncEta = pm2io.metric({name: 'Time to sync'});
-    }
-
-    private addPm2Actions() {
-
-        // const ioConfig: IOConfig = {
-        //     apmOptions: {
-        //         appName: this.chain + " indexer",
-        //         publicKey: '',
-        //         secretKey: '',
-        //         sendLogs: true
-        //     },
-        //     metrics: {
-        //         v8: true,
-        //         http: false,
-        //         network: false,
-        //         runtime: true,
-        //         eventLoop: true
-        //     }
-        // };
-        //
-        // pm2io.init(ioConfig);
-
-
-        // pm2io.action('stop', (reply) => {
-        //     try {
-        //         this.shutdownStarted = true;
-        //         this.allowMoreReaders = false;
-        //         const stopMsg = 'Stop signal received. Shutting down readers immediately!';
-        //         hLog(stopMsg);
-        //         this.emitAlert('warning', stopMsg);
-        //         messageAllWorkers(cluster, {
-        //             event: 'stop'
-        //         });
-        //         setInterval(() => {
-        //             if (this.allowShutdown) {
-        //                 getLastIndexedBlockFromRange(this.client, this.chain, this.starting_block, this.head).then((value: number) => {
-        //                     hLog(`Last Indexed Block: ${value}`);
-        //                     writeFileSync(`./chains/.${this.chain}_lastblock.txt`, value.toString());
-        //                     hLog('Shutting down master...');
-        //                     reply({ack: true});
-        //                     process.exit(1);
-        //                 });
-        //             }
-        //         }, 100);
-        //     } catch (e: any) {
-        //         reply({ack: false, error: e.message});
-        //     }
-        // });
-
-        // pm2io.action('get_usage_map', (reply) => {
-        //     reply(this.globalUsageMap);
-        // });
-        //
-        // pm2io.action('get_memory_usage', (reply) => {
-        //     this.requestDataFromWorkers(
-        //         {
-        //             event: 'request_memory_usage'
-        //         },
-        //         'memory_report'
-        //     ).then(value => {
-        //         reply(value);
-        //     });
-        // });
-        //
-        // pm2io.action('get_heap', (reply) => {
-        //     this.requestDataFromWorkers(
-        //         {
-        //             event: 'request_v8_heap_stats'
-        //         },
-        //         'v8_heap_report'
-        //     ).then(value => {
-        //         reply(value);
-        //     });
-        // });
-    }
+    // private addPm2Metrics() {
+    //     this.metrics.readingRate = pm2io.metric({name: 'Block Reading (blocks/s)'});
+    //     this.metrics.consumeRate = pm2io.metric({name: 'Block Processing (blocks/s)'});
+    //     this.metrics.actionDSRate = pm2io.metric({name: 'Action Deserialization (actions/s)'});
+    //     this.metrics.deltaDSRate = pm2io.metric({name: 'Delta Deserialization (deltas/s)'});
+    //     this.metrics.indexingRate = pm2io.metric({name: 'Indexing Rate (docs/s)'});
+    //     this.metrics.queuedMessages = pm2io.metric({name: 'Queued Messages'});
+    //     this.metrics.lastProcessedBlockNum = pm2io.metric({name: 'Last Block'});
+    //     this.metrics.syncEta = pm2io.metric({name: 'Time to sync'});
+    // }
 
     async requestDataFromWorkers(requestEvent: { event: string, data?: any }, responseEventType: string, timeoutSec: number = 1000) {
         const requests: any[] = [];
@@ -2404,6 +2276,181 @@ export class HyperionMaster {
             }
         }
         return responses;
+    }
+
+    private async startController() {
+
+        this.controller.get('/status', (request, reply) => {
+            reply.send({
+                status: true,
+                data: {
+                    started: this.indexerStarted,
+                    startingBlock: this.starting_block,
+                    abiScan: this.conf.indexer.abi_scan_mode
+                }
+            });
+        });
+
+        this.controller.get('/usageMap', (request, reply) => {
+            reply.send(this.globalUsageMap);
+        });
+
+        this.controller.get('/memoryUsage', async (request, reply) => {
+            reply.send(await this.requestDataFromWorkers(
+                {event: 'request_memory_usage'},
+                'memory_report'
+            ));
+        });
+
+        this.controller.get('/heap', async (request, reply) => {
+            reply.send(await this.requestDataFromWorkers(
+                {event: 'request_v8_heap_stats'},
+                'v8_heap_report'
+            ));
+        });
+
+        this.controller.post('/start', async (request, reply) => {
+            if (this.starting) {
+                reply.send({status: false, error: 'INDEXER_STARTING'});
+            } else {
+                if (this.indexerStarted) {
+                    reply.send({status: false, error: 'INDEXER_RUNNING'});
+                } else {
+                    await this.start();
+                    reply.send({status: true});
+                }
+            }
+        });
+
+        this.controller.post('/stop', async (request, reply) => {
+            const shutdownStatus = await this.stopIndexer();
+            if (shutdownStatus) {
+                reply.send(shutdownStatus);
+            }
+        });
+
+        await this.controller.listen({
+            host: '127.0.0.1',
+            port: 50100
+        });
+    }
+
+    private async start() {
+
+        this.starting = true;
+
+        // Setup Error Logging
+        this.setupDSElogs();
+
+        // Start Monitoring
+        this.startIndexMonitoring();
+
+        // handle worker disconnection events
+        cluster.on('disconnect', (worker) => {
+            if (!this.mode_transition && !this.shutdownStarted) {
+                hLog(`The worker #${worker.id} has disconnected, attempting to re-launch in 5 seconds...`);
+                const workerReference = this.workerMap.find(value => value.worker_id === worker.id);
+                if (workerReference) {
+                    workerReference.wref = undefined;
+                    if (workerReference.failures) {
+                        workerReference.failures++;
+                    }
+                    hLog(`New worker defined: ${workerReference.worker_role} for ${workerReference.worker_queue}`);
+                    setTimeout(() => {
+                        this.launchWorkers();
+                        setTimeout(() => {
+                            if (workerReference.worker_role === 'deserializer' && workerReference.wref) {
+                                workerReference.wref.send({
+                                    event: 'initialize_abi',
+                                    data: this.cachedInitABI
+                                });
+                            }
+                        }, 1000);
+                    }, 5000);
+                } else {
+                    console.log(`Worker #${worker.id} not found in map!`);
+                }
+            }
+        });
+
+        // Launch all workers
+        this.launchWorkers();
+
+        // enable ipc msg rate monitoring
+        let ipcDebugRate = this.conf.settings.ipc_debug_rate;
+        if (ipcDebugRate && ipcDebugRate > 0 && ipcDebugRate < 1000) {
+            hLog(`settings.ipc_debug_rate was set too low (${this.conf.settings.ipc_debug_rate}) using 1000 instead!`);
+            ipcDebugRate = 1000;
+        } else {
+            ipcDebugRate = 1000;
+        }
+        this.shouldCountIPCMessages = ipcDebugRate >= 1000;
+        if (this.conf.settings.debug) {
+            if (this.shouldCountIPCMessages) {
+                const rate = ipcDebugRate;
+                this.totalMessages = 0;
+                setInterval(() => {
+                    hLog(`IPC Messaging Rate: ${(this.totalMessages / (rate / 1000)).toFixed(2)} msg/s`);
+                    this.totalMessages = 0;
+                }, ipcDebugRate);
+            }
+        }
+
+        // load hyperion hub connection
+        if (this.conf.hub) {
+            try {
+                this.startHyperionHub();
+            } catch (e: any) {
+                hLog(e);
+            }
+        }
+
+        // Add custom metrics
+        // this.addPm2Metrics();
+
+        this.starting = false;
+        this.indexerStarted = true;
+    }
+
+    private async stopIndexer() {
+        try {
+            this.shutdownStarted = true;
+            this.allowMoreReaders = false;
+            const stopMsg = 'Stop signal received. Shutting down readers immediately!';
+            hLog(stopMsg);
+            this.emitAlert('warning', stopMsg);
+            messageAllWorkers(cluster, {event: 'stop'});
+            return await new Promise((resolvePromise) => {
+                let localExecution = false;
+                const loopId = setInterval(async () => {
+                    if (this.allowShutdown && !localExecution) {
+                        localExecution = true;
+                        try {
+                            const lastBlock = await getLastIndexedBlockFromRange(
+                                this.client,
+                                this.chain,
+                                this.starting_block,
+                                this.head
+                            );
+                            hLog(`Last Indexed Block: ${lastBlock}`);
+                            writeFileSync(
+                                resolve('state', `${this.chain}.lastblock`),
+                                lastBlock.toString()
+                            );
+                            hLog('Indexer stopped');
+                            clearInterval(this.monitorLoopId);
+                            clearInterval(loopId);
+                            resolvePromise({status: true});
+                        } catch (e: any) {
+                            clearInterval(loopId);
+                            resolvePromise({status: false, error: e.message});
+                        }
+                    }
+                }, 200);
+            })
+        } catch (e: any) {
+            return {status: false, error: e.message};
+        }
     }
 }
 

@@ -13,7 +13,9 @@ export function getChainConfig(): HyperionConfig {
             process.exit(1);
         }
         const chainFiles = readdirSync(chainsDirPath);
-        const userChains = chainFiles.filter(value => value !== 'example.config.json');
+        const userChains = chainFiles.filter(value => {
+            return value !== 'example.config.json' && value.endsWith('.config.json');
+        });
         if (process.env.CONFIG_NAME) {
             confPath = resolve(chainsDirPath, `${process.env.CONFIG_NAME}.config.json`);
         } else {

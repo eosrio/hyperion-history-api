@@ -10,7 +10,7 @@
     "tsc": "tsc",
     "build": "tsc",
     "build:watch": "tsc --watch",
-    "postinstall": "npm run build && npm run fix-permissions",
+    "postinstall2": "npm run build && npm run fix-permissions",
     "fix-permissions": "node scripts/fix-permissions.js"
   },
   "engines": {
@@ -29,7 +29,7 @@
   "dependencies": {
     "@elastic/elasticsearch": "8.5.0",
     "@eosrio/hyperion-stream-client": "^1.0.3",
-    "@eosrio/node-abieos": "3.1.0",
+    "@eosrio/node-abieos": "3.2.0",
     "@fastify/autoload": "^5.4.1",
     "@fastify/cors": "8.2.0",
     "@fastify/formbody": "^7.3.0",

@@ -1,0 +1,189 @@
+_type: export
+__export_format: 4
+__export_date: 2022-11-12T08:09:59.202Z
+__export_source: insomnia.desktop.app:v2022.7.0-beta.4
+resources:
+  - _id: req_57615581761a46529c50a465ef87bf88
+    parentId: wrk_e7768d9e550a4ba09f7ad049d2ce92bc
+    modified: 1668219050980
+    created: 1668218572120
+    url: "{{ _.server }}/status"
+    name: status
+    description: ""
+    method: GET
+    body: {}
+    parameters: []
+    headers: []
+    authentication: {}
+    metaSortKey: -1668218572120
+    isPrivate: false
+    settingStoreCookies: true
+    settingSendCookies: true
+    settingDisableRenderRequestBody: false
+    settingEncodeUrl: true
+    settingRebuildPath: true
+    settingFollowRedirects: global
+    _type: request
+  - _id: wrk_e7768d9e550a4ba09f7ad049d2ce92bc
+    parentId: null
+    modified: 1668218528507
+    created: 1668218528507
+    name: Controller API
+    description: ""
+    scope: collection
+    _type: workspace
+  - _id: req_128de1616d2e4b44ba3810f9552db4c6
+    parentId: wrk_e7768d9e550a4ba09f7ad049d2ce92bc
+    modified: 1668220995528
+    created: 1668220892364
+    url: "{{ _.server }}/usageMap"
+    name: getUsageMap
+    description: ""
+    method: GET
+    body: {}
+    parameters: []
+    headers: []
+    authentication: {}
+    metaSortKey: -1667999043717.5
+    isPrivate: false
+    settingStoreCookies: true
+    settingSendCookies: true
+    settingDisableRenderRequestBody: false
+    settingEncodeUrl: true
+    settingRebuildPath: true
+    settingFollowRedirects: global
+    _type: request
+  - _id: req_e3596d151e9a4d24be9f6d19c9feb449
+    parentId: wrk_e7768d9e550a4ba09f7ad049d2ce92bc
+    modified: 1668221194541
+    created: 1668220973319
+    url: "{{ _.server }}/memoryUsage"
+    name: getMemoryUsage
+    description: ""
+    method: GET
+    body: {}
+    parameters: []
+    headers: []
+    authentication: {}
+    metaSortKey: -1667889279516.25
+    isPrivate: false
+    settingStoreCookies: true
+    settingSendCookies: true
+    settingDisableRenderRequestBody: false
+    settingEncodeUrl: true
+    settingRebuildPath: true
+    settingFollowRedirects: global
+    _type: request
+  - _id: req_5144691bb4d541389d348a277077fc67
+    parentId: wrk_e7768d9e550a4ba09f7ad049d2ce92bc
+    modified: 1668221190029
+    created: 1668221190029
+    url: "{{ _.server }}/heap"
+    name: get heap
+    description: ""
+    method: GET
+    body: {}
+    parameters: []
+    headers: []
+    authentication: {}
+    metaSortKey: -1667834397415.625
+    isPrivate: false
+    settingStoreCookies: true
+    settingSendCookies: true
+    settingDisableRenderRequestBody: false
+    settingEncodeUrl: true
+    settingRebuildPath: true
+    settingFollowRedirects: global
+    _type: request
+  - _id: req_16b41619839c414f93c1e6801dd84d23
+    parentId: wrk_e7768d9e550a4ba09f7ad049d2ce92bc
+    modified: 1668218687306
+    created: 1668218682510
+    url: "{{ _.server }}/start"
+    name: start
+    description: ""
+    method: POST
+    body: {}
+    parameters: []
+    headers: []
+    authentication: {}
+    metaSortKey: -1667779515315
+    isPrivate: false
+    settingStoreCookies: true
+    settingSendCookies: true
+    settingDisableRenderRequestBody: false
+    settingEncodeUrl: true
+    settingRebuildPath: true
+    settingFollowRedirects: global
+    _type: request
+  - _id: req_49dccfcb148b4f689c97928f5f4f1cb5
+    parentId: wrk_e7768d9e550a4ba09f7ad049d2ce92bc
+    modified: 1668220830284
+    created: 1668220825867
+    url: "{{ _.server }}/pause"
+    name: pause
+    description: ""
+    method: POST
+    body: {}
+    parameters: []
+    headers: []
+    authentication: {}
+    metaSortKey: -1667669751113.75
+    isPrivate: false
+    settingStoreCookies: true
+    settingSendCookies: true
+    settingDisableRenderRequestBody: false
+    settingEncodeUrl: true
+    settingRebuildPath: true
+    settingFollowRedirects: global
+    _type: request
+  - _id: req_edf49c3a87444e16a4b0f591fcd2ca64
+    parentId: wrk_e7768d9e550a4ba09f7ad049d2ce92bc
+    modified: 1668219328564
+    created: 1668219326176
+    url: "{{ _.server }}/stop"
+    name: stop
+    description: ""
+    method: POST
+    body: {}
+    parameters: []
+    headers: []
+    authentication: {}
+    metaSortKey: -1667559986912.5
+    isPrivate: false
+    settingStoreCookies: true
+    settingSendCookies: true
+    settingDisableRenderRequestBody: false
+    settingEncodeUrl: true
+    settingRebuildPath: true
+    settingFollowRedirects: global
+    _type: request
+  - _id: env_44d91b37cf246b12552fedc1d59505140ebfab3e
+    parentId: wrk_e7768d9e550a4ba09f7ad049d2ce92bc
+    modified: 1668218641636
+    created: 1668218528510
+    name: Base Environment
+    data:
+      server: http://127.0.0.1:50100
+    dataPropertyOrder:
+      "&":
+        - server
+    color: null
+    isPrivate: false
+    metaSortKey: 1668218528510
+    _type: environment
+  - _id: jar_44d91b37cf246b12552fedc1d59505140ebfab3e
+    parentId: wrk_e7768d9e550a4ba09f7ad049d2ce92bc
+    modified: 1668218528512
+    created: 1668218528512
+    name: Default Jar
+    cookies: []
+    _type: cookie_jar
+  - _id: spc_c9023cba6cc947e99c97c184fdfca6ff
+    parentId: wrk_e7768d9e550a4ba09f7ad049d2ce92bc
+    modified: 1668218528508
+    created: 1668218528508
+    fileName: Controller API
+    contents: ""
+    contentType: yaml
+    _type: api_spec

@@ -33,3 +33,6 @@ config
 
 # logging
 logs
+
+# chain state temp files
+state

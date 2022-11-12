@@ -4,16 +4,47 @@ import WebSocket, {RawData, ErrorEvent} from 'ws';
 
 export class StateHistorySocket {
     private ws?: WebSocket;
-    private readonly shipUrl;
+    private shipUrl;
     private readonly max_payload_mb;
+    private shipUrls: string[];
+    public activeShipIndex = 0;
 
-    constructor(ship_url: string, max_payload_mb: number) {
-        this.shipUrl = ship_url;
+    constructor(shipUrl: string | string[], max_payload_mb: number) {
+
+        if (shipUrl instanceof Array) {
+            this.shipUrl = shipUrl[this.activeShipIndex];
+            this.shipUrls = shipUrl;
+        } else {
+            this.shipUrl = shipUrl;
+            this.shipUrls = [shipUrl];
+        }
+
         if (max_payload_mb) {
             this.max_payload_mb = max_payload_mb;
         } else {
             this.max_payload_mb = 256;
         }
+    }
+
+    setShipUrls(urls: string[]) {
+        this.shipUrls = urls;
+    }
+
+    setActiveIndex(idx: number) {
+        if (idx < this.shipUrls.length) {
+            if (this.shipUrls[idx]) {
+                this.shipUrl = this.shipUrls[idx];
+                hLog(`Setting ship url to: ${this.shipUrl}`);
+            }
+        }
+    }
+
+    useNextShip() {
+        this.activeShipIndex++;
+        if (this.activeShipIndex >= this.shipUrls.length) {
+            this.activeShipIndex = 0;
+        }
+        this.setActiveIndex(this.activeShipIndex);
     }
 
     connect(
@@ -23,9 +54,11 @@ export class StateHistorySocket {
         onConnected: () => void
     ) {
         debugLog(`Connecting to ${this.shipUrl}...`);
+        hLog(`Connecting to ${this.shipUrl}...`);
         this.ws = new WebSocket(this.shipUrl, {
             perMessageDeflate: false,
             maxPayload: this.max_payload_mb * 1024 * 1024,
+            handshakeTimeout: 1000,
         });
         this.ws.on('open', () => {
             hLog('Websocket connected!');

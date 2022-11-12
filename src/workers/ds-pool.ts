@@ -352,7 +352,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 } else {
                     debugLog('ignore reloading of current abi for', accountName);
                 }
-                console.log(`Saving ${accountName}@${block_num} - from: ${savedAbi.valid_from} - until: ${savedAbi.valid_until}`);
+                hLog(`Saving ${accountName}@${block_num} - from: ${savedAbi.valid_from} - until: ${savedAbi.valid_until}`);
                 this.contracts.set(accountName, {
                     contract: result,
                     valid_until: savedAbi.valid_until,

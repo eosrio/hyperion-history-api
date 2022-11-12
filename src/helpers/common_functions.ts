@@ -171,16 +171,33 @@ export function deserialize(
     array: Uint8Array,
     txtEnc: TextEncoder,
     txtDec: TextDecoder,
-    types: Map<string, Serialize.Type>
+    types: Map<string, Serialize.Type>,
+    state?: Serialize.SerializerState,
 ): any {
-    const buffer = new Serialize.SerialBuffer({
-        textEncoder: txtEnc,
-        textDecoder: txtDec,
-        array
-    });
-    return Serialize
-        .getType(types, typeName)
-        .deserialize(buffer, new Serialize.SerializerState({bytesAsUint8Array: true}));
+    if (state) {
+        return Serialize.getType(types, typeName)
+            .deserialize(
+                new Serialize.SerialBuffer({
+                    textEncoder: txtEnc,
+                    textDecoder: txtDec,
+                    array
+                }),
+                state
+            );
+    } else {
+        return Serialize.getType(types, typeName)
+            .deserialize(
+                new Serialize.SerialBuffer({
+                    textEncoder: txtEnc,
+                    textDecoder: txtDec,
+                    array
+                }),
+                new Serialize.SerializerState({
+                        bytesAsUint8Array: true
+                    }
+                )
+            );
+    }
 }
 
 function getNested(path_array: string[], jsonObj: Record<string, any>): any {

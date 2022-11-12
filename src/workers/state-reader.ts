@@ -3,8 +3,10 @@
 import {HyperionWorker} from "./hyperionWorker.js";
 import {cargo, ErrorCallback, QueueObject} from "async";
 import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions.js";
-import {Serialize, RpcInterfaces} from "enf-eosjs";
-import { ConfirmChannel } from "amqplib/callback_api.js";
+import {RpcInterfaces, Serialize} from "enf-eosjs";
+import {ConfirmChannel} from "amqplib/callback_api.js";
+import {ShipGetBlocksPayload, StageOneTaskPayload} from "../interfaces/ship.js";
+import {StateHistorySocket} from "../connections/state-history.js";
 
 export default class StateReader extends HyperionWorker {
 
@@ -17,7 +19,7 @@ export default class StateReader extends HyperionWorker {
     private allowRequests = true;
     private pendingRequest: any[] | null = null;
     private completionSignaled = false;
-    private stageOneDistQueue: QueueObject<any>;
+    private stageOneDistQueue: QueueObject<StageOneTaskPayload>;
     private blockReadingQueue: QueueObject<any>;
     private range_size = parseInt(process.env.last_block as string) - parseInt(process.env.first_block as string);
     private completionMonitoring!: NodeJS.Timer | undefined;
@@ -37,21 +39,33 @@ export default class StateReader extends HyperionWorker {
     private block_processing_delay = 100;
     private readonly shipRev: string = 'v0';
 
+    // totalDsTime: bigint = BigInt(0);
+    // totalDsCounter: bigint = BigInt(0);
+
     // private tempBlockSizeSum = 0;
     private shipInitStatus: any;
+    private ship: StateHistorySocket;
 
     constructor() {
         super();
+
+        this.ship = this.manager.shipClient;
+
+        // setInterval(() => {
+        //     if (this.totalDsCounter > BigInt(0)) {
+        //         hLog(`Average DS Time: ${Number(this.totalDsTime / this.totalDsCounter) / 1000000}ms`);
+        //     }
+        // }, 5000);
 
         if (this.isLiveReader) {
             this.local_block_num = parseInt(process.env.worker_last_processed_block as string, 10) - 1;
         }
 
-        this.stageOneDistQueue = cargo((tasks: any[], callback: ErrorCallback) => {
+        this.stageOneDistQueue = cargo((tasks: StageOneTaskPayload[], callback: ErrorCallback) => {
             this.distribute(tasks, callback);
         }, this.conf.prefetch.read);
 
-        this.blockReadingQueue = cargo((tasks: any[], next:ErrorCallback) => {
+        this.blockReadingQueue = cargo((tasks: any[], next: ErrorCallback) => {
             this.processIncomingBlocks(tasks).then(() => {
                 next();
             }).catch((err) => {
@@ -93,11 +107,11 @@ export default class StateReader extends HyperionWorker {
         // }, 10000);
     }
 
-    distribute(data: any[], cb: ErrorCallback) {
+    distribute(data: StageOneTaskPayload[], cb: ErrorCallback) {
         this.recursiveDistribute(data, this.cch, cb);
     }
 
-    recursiveDistribute(data: any[], channel: ConfirmChannel, cb: ErrorCallback) {
+    recursiveDistribute(data: StageOneTaskPayload[], channel: ConfirmChannel, cb: ErrorCallback) {
         if (data.length > 0) {
             const q = this.isLiveReader ? this.chain + ':live_blocks' : this.chain + ":blocks:" + this.currentIdx;
             if (!this.qStatusMap[q]) {
@@ -106,44 +120,51 @@ export default class StateReader extends HyperionWorker {
             if (this.qStatusMap[q]) {
                 if (this.cch_ready) {
                     const d = data.pop();
-                    const result = channel.sendToQueue(q, d.content, {
-                        persistent: true,
-                        mandatory: true,
-                    }, (err: any) => {
-                        if (err !== null) {
-                            console.log('Message nacked!');
-                            console.log(err.message);
-                        } else {
-                            process.send?.({event: 'read_block', live: this.isLiveReader});
-                        }
-                    });
 
-                    if (!this.isLiveReader) {
-                        this.local_distributed_count++;
-
-                        // debugLog(`Block Number: ${d.num} - Range progress: ${this.local_distributed_count}/${this.range_size}`);
-
-                        if (this.local_distributed_count === this.range_size) {
-                            this.signalReaderCompletion();
-                        }
-                        this.currentIdx++;
-                        if (this.currentIdx > this.conf.scaling.ds_queues) {
-                            this.currentIdx = 1;
-                        }
-                    }
-                    if (result) {
-                        if (data.length > 0) {
-                            this.recursiveDistribute(data, channel, cb);
-                        } else {
-                            cb();
-                        }
+                    if (!d) {
+                        hLog('No task data');
                     } else {
-                        // Send failed
-                        this.qStatusMap[q] = false;
-                        this.drainCount++;
-                        setTimeout(() => {
-                            this.recursiveDistribute(data, channel, cb);
-                        }, 500);
+
+                        const result = channel.sendToQueue(q, d.content, {
+                            persistent: true,
+                            mandatory: true,
+                        }, (err: any) => {
+                            if (err !== null) {
+                                console.log('Message nacked!');
+                                console.log(err.message);
+                            } else {
+                                process.send?.({event: 'read_block', live: this.isLiveReader});
+                            }
+                        });
+
+                        if (!this.isLiveReader) {
+                            this.local_distributed_count++;
+
+                            // debugLog(`Block Number: ${d.num} - Range progress: ${this.local_distributed_count}/${this.range_size}`);
+
+                            if (this.local_distributed_count === this.range_size) {
+                                this.signalReaderCompletion();
+                            }
+                            this.currentIdx++;
+                            if (this.currentIdx > this.conf.scaling.ds_queues) {
+                                this.currentIdx = 1;
+                            }
+                        }
+                        if (result) {
+                            if (data.length > 0) {
+                                this.recursiveDistribute(data, channel, cb);
+                            } else {
+                                cb();
+                            }
+                        } else {
+                            // Send failed
+                            hLog('Data task sending failed');
+                            this.qStatusMap[q] = false;
+                            this.drainCount++;
+                            setTimeout(() => {
+                                this.recursiveDistribute(data, channel, cb);
+                            }, 500);
+                        }
                     }
                 } else {
                     console.log('channel is not ready!');
@@ -240,6 +261,8 @@ export default class StateReader extends HyperionWorker {
     async run(): Promise<void> {
         // this.startQueueWatcher();
         this.events.once('ready', () => {
+            this.ship.activeShipIndex = parseInt(process.env.worker_id as string, 10) - 1;
+            this.ship.setActiveIndex(this.ship.activeShipIndex);
             this.startWS();
         });
     }
@@ -315,7 +338,15 @@ export default class StateReader extends HyperionWorker {
 
         // NORMAL OPERATION MODE
         if (!this.recovery) {
+
+            // const tRef = process.hrtime.bigint();
+
             const result = deserialize('result', data, this.txEnc, this.txDec, this.types);
+
+            // const result = this.abieos.binToJson('0', 'result', data);
+            // this.totalDsTime += process.hrtime.bigint() - tRef;
+            // this.totalDsCounter++;
+
             if (result[0] === 'get_status_result_v0') {
                 this.shipInitStatus = result[1];
                 hLog(`\n| SHIP Status Report\n| Init block: ${this.shipInitStatus['chain_state_begin_block']}\n| Head block: ${this.shipInitStatus['chain_state_end_block']}`);
@@ -361,28 +392,25 @@ export default class StateReader extends HyperionWorker {
                     process.exit(1);
                 }
             } else {
-                const res = result[1];
+                const res: ShipGetBlocksPayload = result[1];
+                if (res.this_block) {
+                    const blk_num = res.this_block.block_num;
+                    const lib = res.last_irreversible;
+                    const taskPayload: StageOneTaskPayload = {num: blk_num, content: data};
 
-                if (res['this_block']) {
-                    const blk_num = res['this_block']['block_num'];
-                    const lib = res['last_irreversible'];
-                    const task_payload = {num: blk_num, content: data};
-
-                    if (!this.conf.indexer.abi_scan_mode) {
-                        if (this.conf.indexer.fetch_traces && !res.traces) {
-                            hLog('missing traces field');
-                        }
-                        if (this.conf.indexer.fetch_block && !res.block) {
-                            hLog('missing traces field');
-                        }
-                    }
-
-                    if (!res.deltas) {
-                        hLog('missing deltas field');
-                    }
+                    // if (!this.conf.indexer.abi_scan_mode) {
+                    //     if (this.conf.indexer.fetch_traces && !res.traces) {
+                    //         hLog('missing traces field');
+                    //     }
+                    //     if (this.conf.indexer.fetch_block && !res.block) {
+                    //         hLog('missing traces field');
+                    //     }
+                    // }
+                    // if (!res.deltas) {
+                    //     hLog('missing deltas field');
+                    // }
 
                     if (this.isLiveReader) {
-
                         // LIVE READER MODE
                         if (blk_num !== this.local_block_num + 1) {
                             hLog(`Expected: ${this.local_block_num + 1}, received: ${blk_num}`);
@@ -395,14 +423,12 @@ export default class StateReader extends HyperionWorker {
                         } else {
                             this.local_block_num = blk_num;
                         }
-
                         if (lib.block_num > this.local_lib) {
                             this.local_lib = lib.block_num;
                             // emit lib update event
                             process.send?.({event: 'lib_update', data: lib});
                         }
-
-                        await this.stageOneDistQueue.push(task_payload);
+                        await this.stageOneDistQueue.push(taskPayload);
                         return 1;
                     } else {
 
@@ -425,12 +451,12 @@ export default class StateReader extends HyperionWorker {
 
                         if (blk_num === this.local_block_num + 1) {
                             this.local_block_num = blk_num;
-                            if (res['block'] || res['traces'] || res['deltas']) {
-                                await this.stageOneDistQueue.push(task_payload);
+                            if (res.this_block) {
+                                await this.stageOneDistQueue.push(taskPayload);
                                 return 1;
                             } else {
                                 if (blk_num === 1) {
-                                    await this.stageOneDistQueue.push(task_payload);
+                                    await this.stageOneDistQueue.push(taskPayload);
                                     return 1;
                                 } else {
                                     return 0;
@@ -490,8 +516,20 @@ export default class StateReader extends HyperionWorker {
         this.abi = JSON.parse(abiString);
         if (this.abi) {
             this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
+
+            // remove unused types for the state reader deserializer
+            const resultTypes = this.types.get('result')?.fields[1].type.fields;
+            if (resultTypes) {
+                // remove deltas
+                resultTypes.pop();
+                // remove traces
+                resultTypes.pop();
+                // remove block
+                resultTypes.pop();
+            }
+
             this.abi.tables.map(table => this.tables.set(table.name, table.type));
-            // notify master about first abi
+            // notify main about first abi
             process.send?.({event: 'init_abi', data: abiString});
             // request status
             this.send(['get_status_request_v0', {}]);
@@ -525,34 +563,27 @@ export default class StateReader extends HyperionWorker {
         this.send([reqType, request]);
     }
 
-    private async handleFork(data: any) {
-        const this_block = data['this_block'];
-        await this.logForkEvent(this_block['block_num'], this.local_block_num, this_block['block_id']);
-        hLog(`Handling fork event: new block ${this_block['block_num']} has id ${this_block['block_id']}`);
-        const rangeStruct = {
-            block_num: {
-                gte: this_block['block_num'],
-                lte: this.local_block_num
+    private async handleFork(data: ShipGetBlocksPayload) {
+        const thisBlock = data.this_block;
+        if (thisBlock) {
+            await this.logForkEvent(
+                thisBlock.block_num,
+                this.local_block_num,
+                thisBlock.block_id
+            );
+            hLog(`Handling fork event: new block ${thisBlock.block_num} has id ${thisBlock.block_id}`);
+            const rangeStruct = {block_num: {gte: thisBlock.block_num, lte: this.local_block_num}};
+            const tRef = Date.now();
+            try {
+                const dbqResult = await this.client.deleteByQuery({
+                    index: this.chain + '-delta-' + this.conf.settings.index_version + '-*',
+                    refresh: true,
+                    query: {bool: {must: [{range: rangeStruct}]}}
+                });
+                hLog(`${dbqResult.deleted} deltas removed from ${thisBlock.block_num} to ${this.local_block_num} in ${Date.now() - tRef} ms`);
+            } catch (e: any) {
+                hLog('Operation failed', e);
             }
-        };
-        const tRef = Date.now();
-        try {
-            const dbqResult = await this.client.deleteByQuery({
-                index: this.chain + '-delta-' + this.conf.settings.index_version + '-*',
-                refresh: true,
-                query: {
-                    bool: {
-                        must: [
-                            {
-                                range: rangeStruct
-                            }
-                        ]
-                    }
-                }
-            });
-            hLog(`${dbqResult.deleted} deltas removed from ${this_block['block_num']} to ${this.local_block_num} in ${Date.now() - tRef} ms`);
-        } catch (e: any) {
-            hLog('Operation failed', e);
         }
     }
 
@@ -638,6 +669,7 @@ export default class StateReader extends HyperionWorker {
         debugLog(`LOCAL BLOCK:', ${this.local_block_num}`);
         setTimeout(() => {
             this.reconnectCount++;
+            this.ship.useNextShip();
             this.startWS();
         }, 5000);
     }
