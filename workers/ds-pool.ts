@@ -256,7 +256,7 @@ export default class DSPoolWorker extends HyperionWorker {
         const [_status, actionType] = await self.verifyLocalType(_action.account, _action.name, block_num, "action");
         if (_status) {
             try {
-                return JSON.parse(AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex')));
+                return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
             } catch (e) {
                 debugLog(`(abieos) ${_action.account}::${_action.name} @ ${block_num} >>> ${e.message}`);
             }
