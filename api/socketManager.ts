@@ -118,14 +118,14 @@ export class SocketManager {
         });
 
         try {
-            const port = this.server.manager.config.api.stream_port;
+            const port = this.server.manager.config.api.stream_port || 1234;
             this.uwsApp.listen(port, () => {
                 hLog(`Socket.IO via uWS started on port ${port}`);
             });
         } catch (e) {
             hLog(e.message);
         }
-        
+
         hLog('Websocket manager loaded!');
     }
 
