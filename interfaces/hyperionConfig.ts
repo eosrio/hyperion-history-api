@@ -103,6 +103,7 @@ interface ApiConfigs {
     access_log: boolean;
     chain_name: string;
     server_port: number;
+    stream_port: number;
     server_addr: string;
     server_name: string;
     provider_name: string;
