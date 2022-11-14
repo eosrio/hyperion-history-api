@@ -23,7 +23,7 @@ function addIndexer(chainName, heap) {
         watch: false,
         time: true,
         env: {
-            CONFIG_JSON: 'chains/' + chainName + '.config.json',
+            CONFIG_JSON: 'config/chains/' + chainName + '.config.json',
             TRACE_LOGS: 'false',
         },
     };
@@ -43,7 +43,7 @@ function addApiServer(chainName, threads, heap) {
         watch: false,
         time: true,
         env: {
-            CONFIG_JSON: 'chains/' + chainName + '.config.json',
+            CONFIG_JSON: 'config/chains/' + chainName + '.config.json',
         },
     };
 }

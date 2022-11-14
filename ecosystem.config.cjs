@@ -1,11 +1,11 @@
-const {addApiServer, addIndexer} = require('./scripts/ecosystem.helpers.js');
+const {addApiServer, addIndexer} = require('./scripts/ecosystem.helpers.cjs');
 const {readdirSync, readFileSync} = require("node:fs");
 const path = require('node:path');
 
 const apps = [];
 const chainsRoot = path.join(path.resolve(), 'config', 'chains');
 readdirSync(chainsRoot)
-    .filter(f => f.endsWith('.config.json'))
+    .filter(f => f.endsWith('.config.json') && !f.startsWith('example'))
     .forEach(value => {
         const configFile = readFileSync(path.join(chainsRoot, value))
         const config = JSON.parse(configFile.toString());
@@ -20,4 +20,5 @@ readdirSync(chainsRoot)
         }
     });
 
+console.log(apps);
 module.exports = {apps};
