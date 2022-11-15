@@ -15,8 +15,6 @@ import {
     messageAllWorkers
 } from "./helpers/common_functions.js";
 
-import pm2io from '@pm2/io';
-
 import {createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, WriteStream} from "fs";
 
 import path, {resolve} from "node:path";
@@ -30,9 +28,9 @@ import {Numeric} from "eosjs";
 import AlertsManager from "./modules/alertsManager.js";
 import {default as IORedis, Redis} from 'ioredis';
 import moment from "moment";
-import Timeout = NodeJS.Timeout;
 import {fastify, FastifyInstance} from "fastify";
 import {writeFileSync} from "node:fs";
+import Timeout = NodeJS.Timeout;
 
 interface RevBlock {
     num: number;

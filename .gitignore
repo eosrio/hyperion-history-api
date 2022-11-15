@@ -14,9 +14,7 @@ api_access.log
 api_error.log
 
 # plugins
-plugins/.state.json
-plugins/repos
-plugins/*.js
+plugins
 
 # docker storage
 docker/redis/data

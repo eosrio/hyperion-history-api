@@ -1,15 +1,24 @@
 import {Command, InvalidArgumentError} from 'commander';
-import path from 'node:path'
-import {readdir, rm} from "node:fs/promises";
+import path, {join, resolve} from 'node:path'
+import {readdir, readFile, rm} from "node:fs/promises";
 import fs, {existsSync, readdirSync, readFileSync, writeFileSync} from "node:fs";
 import {execSync, spawn} from "node:child_process";
 import crypto from "node:crypto";
+import {mkdirSync} from "fs";
+import {HyperionPlugin} from "../interfaces/hyperion-plugin.js";
+import {FastifyInstance} from "fastify";
 
-const package_json = JSON.parse(readFileSync('./package.json').toString());
+const pluginDirAbsolutePath = resolve('plugins');
+
+// create plugin dir if it doesn't exist
+if (!existsSync(pluginDirAbsolutePath)) {
+    mkdirSync(pluginDirAbsolutePath);
+}
+
+const package_json = JSON.parse(readFileSync(resolve('package.json')).toString());
 const debug = process.env.HPM_DEBUG;
 const program = new Command();
-const pluginDirAbsolutePath = path.join(path.resolve(), 'plugins', 'repos');
-const pluginStatePath = path.join(path.resolve(), 'plugins', '.state.json');
+const pluginStatePath = resolve(pluginDirAbsolutePath, '.state.json');
 
 let stateJson: any;
 
@@ -305,9 +314,9 @@ async function uninstall(plugin: string) {
 async function listPlugins() {
     const dirs = await readdir(pluginDirAbsolutePath);
     const results: any[] = [];
-    for (const dir of dirs) {
+    for (const dir of dirs.filter(value => !value.endsWith('.json'))) {
         try {
-            const packageJsonPath = path.join(pluginDirAbsolutePath, dir, 'package.json');
+            const packageJsonPath = join(pluginDirAbsolutePath, dir, 'package.json');
             const package_json = JSON.parse(readFileSync(packageJsonPath).toString());
             const {name, version, description} = package_json;
             // console.table([dir, name, version, description].join('\t'));
@@ -385,6 +394,40 @@ async function updatePlugin(name: string) {
     await buildPlugin(name, {});
 }
 
+class DummyHyperionPlugin extends HyperionPlugin {
+    constructor() {
+        super();
+    }
+
+    addRoutes(server: FastifyInstance): void {
+    }
+}
+
+async function testPlugin(name: string): Promise<void> {
+    const plugins = await readdir(pluginDirAbsolutePath);
+    const testList = [];
+    for (const plugin of plugins) {
+        if (!plugin.endsWith('.json')) {
+            if (name === 'all' || name === plugin) {
+                testList.push(plugin);
+            }
+        }
+    }
+    if (testList.length === 0) {
+        console.log('No plugin selected to test, please use a valid plugin name or [all] to test all');
+        return;
+    }
+    console.log('Running tests for [' + testList.join(',') + ']');
+    for (const plugin of testList) {
+        const testedPluginDir = join(pluginDirAbsolutePath, plugin);
+        const pPackage = JSON.parse((await readFile(join(testedPluginDir, 'package.json'))).toString());
+        const pMod = (await import(join(testedPluginDir, 'lib', 'index.js'))).default;
+        const pInstance = new pMod({}) as HyperionPlugin;
+        console.log(`------ ${pInstance.internalPluginName} | ${pPackage.version} -------`);
+        pInstance.printName();
+    }
+}
+
 (() => {
 
     init();
@@ -409,6 +452,10 @@ async function updatePlugin(name: string) {
     program.command('state')
         .description('print current state file')
         .action(printState);
+
+    program.command('test <plugin>')
+        .description('run internal plugin tests')
+        .action(testPlugin);
 
     program.command('list').alias('ls')
         .description('list installed plugins')

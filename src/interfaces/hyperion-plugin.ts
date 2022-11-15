@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {FastifyInstance} from "fastify";
 import {HyperionAction} from "./hyperion-action.js";
 import {HyperionDelta} from "./hyperion-delta.js";
@@ -46,6 +48,10 @@ export abstract class HyperionPlugin {
         if (config) {
             this.baseConfig = config;
         }
+    }
+
+    public printName(): void {
+        console.log(`Plugin Name: ${this.internalPluginName}`);
     }
 
     abstract addRoutes(server: FastifyInstance): void;

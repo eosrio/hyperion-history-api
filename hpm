@@ -1,5 +1,5 @@
 #!/bin/bash
 
-node ./scripts/hpm.js "$@"
+node ./dist/tools/hpm.js "$@"
 
-# HPM_DEBUG=1 node ./scripts/hpm.js "$@"
+# HPM_DEBUG=1 node ./dist/tools/hpm.js "$@"
