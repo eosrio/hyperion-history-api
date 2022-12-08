@@ -50,6 +50,16 @@ if (cm.config.settings.hot_warm_policy) {
 	actionSettings["routing"] = {"allocation": {"exclude": {"data": "warm"}}};
 }
 
+const transferProps = {
+	"properties": {
+		"from": {"type": "keyword"},
+		"to": {"type": "keyword"},
+		"amount": {"type": "float"},
+		"symbol": {"type": "keyword"},
+		"memo": {"type": "text"}
+	}
+};
+
 export const action = {
 	order: 0,
 	index_patterns: [
@@ -78,7 +88,6 @@ export const action = {
 			"abi_sequence": {"type": "integer"},
 			"trx_id": {"type": "keyword"},
 			"producer": {"type": "keyword"},
-			"notified": {"type": "keyword"},
 			"signatures": {"enabled": false},
 			"inline_count": {"type": "short"},
 			"max_inline": {"type": "short"},
@@ -116,15 +125,7 @@ export const action = {
 			},
 
 			// *::transfer
-			"@transfer": {
-				"properties": {
-					"from": {"type": "keyword"},
-					"to": {"type": "keyword"},
-					"amount": {"type": "float"},
-					"symbol": {"type": "keyword"},
-					"memo": {"type": "text"}
-				}
-			},
+			"@transfer": transferProps,
 
 			// eosio::unstaketorex
 			"@unstaketorex": {

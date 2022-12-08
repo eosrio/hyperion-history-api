@@ -63,7 +63,7 @@
     "preview": false,
     "chain": "eos",
     "eosio_alias": "eosio",
-    "parser": "2.1",
+    "parser": "3.2",
     "auto_stop": 0,
     "index_version": "v1",
     "debug": false,
@@ -120,7 +120,7 @@
       "voters": true
     },
     "index_deltas": true,
-    "index_transfer_memo": false,
+    "index_transfer_memo": true,
     "index_all_deltas": true,
     "deferred_trx": false,
     "failed_trx": false,

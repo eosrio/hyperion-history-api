@@ -1724,6 +1724,7 @@ export class HyperionMaster {
             hLog(`Elasticsearch: ${esInfo.body.version.number} | Lucene: ${esInfo.body.version.lucene_version}`);
             this.emitAlert('info', `Indexer started using ES v${esInfo.body.version.number}`);
         } catch (e) {
+            console.log(e);
             hLog('Failed to check elasticsearch version!');
             process.exit();
         }

@@ -2,7 +2,7 @@ const hyperionModule = {
     chain: "*",
     contract: 'eosio',
     action: 'newaccount',
-    parser_version: ['2.1','1.8','1.7'],
+    parser_version: ['3.2', '2.1','1.8','1.7'],
     defineQueryPrefix: 'newaccount',
     handler: (action) => {
         let name = null;

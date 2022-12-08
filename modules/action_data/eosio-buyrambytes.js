@@ -3,7 +3,7 @@ const hyperionModule = {
     contract: 'eosio',
     action: 'buyrambytes',
     defineQueryPrefix: 'buyrambytes',
-    parser_version: ['2.1','1.8','1.7'],
+    parser_version: ['3.2', '2.1','1.8','1.7'],
     handler: (action) => {
         const data = action['act']['data'];
         action['@buyrambytes'] = {

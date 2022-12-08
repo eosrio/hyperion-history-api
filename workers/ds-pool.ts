@@ -21,6 +21,48 @@ interface CustomAbiDef {
     endingBlock: number;
 }
 
+function cleanActionTrace(t: any) {
+    try {
+        if (t.return_value === '') {
+            delete t.return_value;
+        }
+        if (t.context_free === false) {
+            delete t.context_free;
+        }
+        if (t.elapsed === '0') {
+            delete t.elapsed;
+        }
+
+        // remove act_digest from grouped receipts since it was written to the action
+        if (t.receipts && t.receipts.length > 0) {
+            t.act_digest = t.receipts[0].act_digest;
+            for (let receipt of t.receipts) {
+                delete receipt.act_digest;
+            }
+        } else {
+            delete t.receipts;
+        }
+
+        delete t.console;
+        delete t.receiver;
+
+        // onblock action case
+        if (t.signatures && t.signatures.length === 0) {
+            delete t.signatures;
+        }
+
+        if (t.inline_count === 0) {
+            delete t.inline_count;
+        }
+
+        if (t.net_usage_words === 0) {
+            delete t.net_usage_words;
+        }
+    } catch (e) {
+        console.log(e);
+    }
+}
+
 export default class DSPoolWorker extends HyperionWorker {
 
     abi;
@@ -464,20 +506,12 @@ export default class DSPoolWorker extends HyperionWorker {
             }
 
             const _finalTraces = [];
+
             if (_processedTraces.length > 1) {
                 const act_digests = {};
 
                 // collect digests & receipts
                 for (const _trace of _processedTraces) {
-
-                    if (this.conf.settings.dsp_parser) {
-                        if (_trace.console !== '') {
-                            await parseDSPEvent(this, _trace);
-                        }
-                    } else {
-                        delete _trace.console;
-                    }
-
                     if (act_digests[_trace.receipt.act_digest]) {
                         act_digests[_trace.receipt.act_digest].push(_trace.receipt);
                     } else {
@@ -488,18 +522,17 @@ export default class DSPoolWorker extends HyperionWorker {
                 // Apply notified accounts to first trace instance
                 for (const _trace of _processedTraces) {
                     if (act_digests[_trace.receipt.act_digest]) {
-                        const notifiedSet = new Set();
+                        // const notifiedSet = new Set();
                         _trace['receipts'] = [];
                         for (const _receipt of act_digests[_trace.receipt.act_digest]) {
-                            notifiedSet.add(_receipt.receiver);
+                            // notifiedSet.add(_receipt.receiver);
                             _trace['code_sequence'] = _receipt['code_sequence'];
                             delete _receipt['code_sequence'];
                             _trace['abi_sequence'] = _receipt['abi_sequence'];
                             delete _receipt['abi_sequence'];
-                            delete _receipt['act_digest'];
                             _trace['receipts'].push(_receipt);
                         }
-                        _trace['notified'] = [...notifiedSet];
+                        // _trace['notified'] = [...notifiedSet];
                         delete act_digests[_trace.receipt.act_digest];
                         delete _trace['receipt'];
                         delete _trace['receiver'];
@@ -514,10 +547,12 @@ export default class DSPoolWorker extends HyperionWorker {
                 _trace['code_sequence'] = _trace['receipt'].code_sequence;
                 _trace['abi_sequence'] = _trace['receipt'].abi_sequence;
                 _trace['act_digest'] = _trace['receipt'].act_digest;
-                _trace['notified'] = [_trace['receipt'].receiver];
+
+                // notified array is not required since receipts.receiver can be indexed directly
+                // _trace['notified'] = [_trace['receipt'].receiver];
+
                 delete _trace['receipt']['code_sequence'];
                 delete _trace['receipt']['abi_sequence'];
-                delete _trace['receipt']['act_digest'];
                 _trace['receipts'] = [_trace['receipt']];
                 delete _trace['receipt'];
                 _finalTraces.push(_trace);
@@ -528,6 +563,7 @@ export default class DSPoolWorker extends HyperionWorker {
             const redisPayload = new Map<string, IORedis.ValueType>();
 
             for (const uniqueAction of _finalTraces) {
+                cleanActionTrace(uniqueAction);
                 const payload = Buffer.from(flatstr(JSON.stringify(uniqueAction)));
                 redisPayload.set(uniqueAction.global_sequence.toString(), payload);
                 this.actionDsCounter++;

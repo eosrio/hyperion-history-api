@@ -22,11 +22,17 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     };
 
     const {skip, limit} = getSkipLimit(query, maxActions);
+
     const sort_direction = getSortDir(query);
+
     applyAccountFilters(query, queryStruct);
+
     applyGenericFilters(query, queryStruct, fastify.allowedActionQueryParamSet);
+
     applyTimeFilter(query, queryStruct);
+
     applyCodeActionFilters(query, queryStruct);
+
     // allow precise counting of total hits
     const trackTotalHits = getTrackTotalHits(query);
 

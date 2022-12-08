@@ -529,6 +529,7 @@ export default class StateReader extends HyperionWorker {
             refresh: true,
             body: searchBody
         });
+
         if (dbqResultDelta.body && dbqResultDelta.statusCode === 200) {
             hLog(`${dbqResultDelta.body.deleted} deltas removed from ${block_id}`);
         } else {
@@ -541,6 +542,7 @@ export default class StateReader extends HyperionWorker {
             refresh: true,
             body: searchBody
         });
+
         if (dbqResultAction.body && dbqResultAction.statusCode === 200) {
             hLog(`${dbqResultAction.body.deleted} traces removed from ${block_id}`);
         } else {

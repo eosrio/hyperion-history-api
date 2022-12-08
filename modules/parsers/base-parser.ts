@@ -70,7 +70,13 @@ export abstract class BaseParser {
         return this.filters.action_whitelist.has(this.codeActionPair(act));
     }
 
-    protected extendFirstAction(worker: DSPoolWorker, action: ActionTrace, trx_data: TrxMetadata, full_trace: any, usageIncluded) {
+    protected extendFirstAction(
+        worker: DSPoolWorker,
+        action: ActionTrace,
+        trx_data: TrxMetadata,
+        full_trace: any,
+        usageIncluded: { status: boolean }
+    ) {
         action.cpu_usage_us = trx_data.cpu_usage_us;
         action.net_usage_words = trx_data.net_usage_words;
         action.signatures = trx_data.signatures;
