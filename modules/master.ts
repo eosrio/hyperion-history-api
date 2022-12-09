@@ -287,6 +287,16 @@ export class HyperionMaster {
                     this.total_range = this.head - msg.block_num;
                 }
             },
+            'kill_worker': (msg: any) => {
+                for (let workersKey in cluster.workers) {
+                    const w = cluster.workers[workersKey];
+                    if (w.id === parseInt(msg.id)) {
+                        const idx = this.workerMap.findIndex(value => value.worker_id === w.id);
+                        this.workerMap.splice(idx, 1);
+                        w.kill();
+                    }
+                }
+            },
             'completed': (msg: any) => {
                 if (msg.id === this.doctorId.toString()) {
                     hLog('repair worker completed', msg);
@@ -645,7 +655,7 @@ export class HyperionMaster {
                             index: new_index
                         });
                     } catch (e) {
-                        console.log(e);
+                        hLog(e);
                         process.exit(1);
                     }
 
@@ -657,7 +667,7 @@ export class HyperionMaster {
                             name: `${queue_prefix}-${index.type}`
                         });
                     } catch (e) {
-                        console.log(e);
+                        hLog(e);
                         process.exit(1);
                     }
 
@@ -1500,7 +1510,11 @@ export class HyperionMaster {
                 hLog(log_msg.join(' | '));
             }
 
-            if (this.indexedObjects === 0 && this.deserializedActions === 0 && this.consumedBlocks === 0 && !this.mode_transition) {
+            if(this.liveConsumedBlocks > 0 && this.consumedBlocks === 0 && this.conf.indexer.abi_scan_mode) {
+                hLog('Warning: Live reading on ABI SCAN mode')
+            }
+
+            if (this.liveConsumedBlocks + this.indexedObjects + this.deserializedActions + this.consumedBlocks === 0 && !this.mode_transition) {
 
                 // Report completed range (parallel reading)
                 if (this.total_blocks === this.total_range && !this.range_completed) {
@@ -1549,6 +1563,13 @@ export class HyperionMaster {
                             }
                         } else {
                             if (!this.shutdownStarted) {
+                                const readers = this.workerMap.filter(value => {
+                                    return value.worker_role === 'reader' || value.worker_role === 'continuous_reader';
+                                });
+                                if (readers.length === 0) {
+                                    hLog(`No more active workers, stopping now...`);
+                                    process.exit();
+                                }
                                 const idleMsg = 'No blocks are being processed, please check your state-history node!';
                                 if (this.idle_count === 2) {
                                     this.emitAlert('warning', idleMsg);
@@ -1715,7 +1736,16 @@ export class HyperionMaster {
         this.ioRedisClient = new IORedis(this.manager.conn.redis);
 
         // Remove first indexed block from cache (v2/health)
-        await this.ioRedisClient.del(`${this.manager.chain}::fib`)
+        await this.ioRedisClient.del(`${this.manager.chain}::fib`);
+
+        // check nodeos
+        try {
+            const info = await this.rpc.get_info();
+            hLog(`Nodeos version: ${info.server_version_string}`);
+        } catch (e) {
+            hLog(`Chain API Error: ${e.message}`);
+            process.exit();
+        }
 
         // Elasticsearch
         this.client = this.manager.elasticsearchClient;
@@ -1822,9 +1852,9 @@ export class HyperionMaster {
         // handle worker disconnection events
         cluster.on('disconnect', (worker) => {
             if (!this.mode_transition && !this.shutdownStarted) {
-                hLog(`The worker #${worker.id} has disconnected, attempting to re-launch in 5 seconds...`);
                 const workerReference = this.workerMap.find(value => value.worker_id === worker.id);
                 if (workerReference) {
+                    hLog(`The worker #${worker.id} has disconnected, attempting to re-launch in 5 seconds...`);
                     workerReference.wref = null;
                     workerReference.failures++;
                     hLog(`New worker defined: ${workerReference.worker_role} for ${workerReference.worker_queue}`);
@@ -1840,7 +1870,7 @@ export class HyperionMaster {
                         }, 1000);
                     }, 5000);
                 } else {
-                    console.log(`Worker #${worker.id} not found in map!`);
+                    hLog(`The worker #${worker.id} has disconnected`);
                 }
             }
         });
@@ -2216,9 +2246,7 @@ export class HyperionMaster {
         await this.setupIndexers();
         await this.setupStreaming();
         await this.setupDSPool();
-        this.addWorker({
-            worker_role: "delta_updater"
-        });
+        this.addWorker({worker_role: "delta_updater"});
     }
 
     private async findRange() {
@@ -2244,8 +2272,7 @@ export class HyperionMaster {
         try {
             this.chain_data = await this.rpc.get_info();
         } catch (e) {
-            console.log(e.message);
-            console.error('failed to connect to chain api');
+            hLog('Failed to connect to chain api: ' + e.message);
             process.exit(1);
         }
         this.head = this.chain_data.head_block_num;

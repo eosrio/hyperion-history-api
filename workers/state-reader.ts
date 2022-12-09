@@ -317,46 +317,55 @@ export default class StateReader extends HyperionWorker {
 
         // NORMAL OPERATION MODE
         if (!this.recovery) {
+
             const result = deserialize('result', data, this.txEnc, this.txDec, this.types);
+
+            // ship status message
             if (result[0] === 'get_status_result_v0') {
                 this.shipInitStatus = result[1];
                 hLog(`\n| SHIP Status Report\n| Init block: ${this.shipInitStatus['chain_state_begin_block']}\n| Head block: ${this.shipInitStatus['chain_state_end_block']}`);
                 const chain_state_begin_block = this.shipInitStatus['chain_state_begin_block'];
                 if (!this.conf.indexer.disable_reading) {
+
                     switch (process.env['worker_role']) {
+
+                        // range reader setup
                         case 'reader': {
                             if (chain_state_begin_block > process.env.first_block) {
+
+                                // skip snapshot block until a solution to parse it is found
+                                const nextBlock = chain_state_begin_block + 2;
                                 hLog(`First saved block is ahead of requested range! - Req: ${process.env.first_block} | First: ${chain_state_begin_block}`);
-                                hLog('Requesting a single block');
-                                if (this.conf.settings.ignore_snapshot) {
-                                    this.local_block_num = chain_state_begin_block;
-                                    process.send({event: 'update_init_block', block_num: chain_state_begin_block + 2,});
-                                    this.newRange({
-                                        first_block: chain_state_begin_block + 1,
-                                        last_block: chain_state_begin_block + this.conf.scaling.batch_size
-                                    });
-                                } else {
-                                    process.send({event: 'update_init_block', block_num: chain_state_begin_block + 1});
-                                    this.newRange({
-                                        first_block: chain_state_begin_block,
-                                        last_block: chain_state_begin_block + 1
-                                    });
-                                }
+                                this.local_block_num = nextBlock - 1;
+                                process.send({
+                                    event: 'update_init_block',
+                                    block_num: nextBlock
+                                });
+                                this.newRange({
+                                    first_block: nextBlock,
+                                    last_block: nextBlock + this.conf.scaling.batch_size
+                                });
                             } else {
                                 this.requestBlocks(0);
                             }
                             break;
                         }
+
+                        // live reader setup
                         case 'continuous_reader': {
                             this.requestBlocks(parseInt(process.env['worker_last_processed_block'], 10));
                             break;
                         }
+
                     }
                 } else {
                     this.ship.close();
                     process.exit(1);
                 }
+
             } else {
+
+                // ship block message
                 const res = result[1];
 
                 if (res['this_block']) {
@@ -440,7 +449,12 @@ export default class StateReader extends HyperionWorker {
                         }
                     }
                 } else {
-                    return 0;
+                    hLog(`Reader is idle! - Head at: ${result[1].head.block_num}`);
+                    this.ship.close();
+                    process.send({
+                        event: 'kill_worker',
+                        id: process.env['worker_id']
+                    });
                 }
             }
 

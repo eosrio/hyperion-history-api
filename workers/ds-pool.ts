@@ -602,20 +602,24 @@ export default class DSPoolWorker extends HyperionWorker {
 
     pushToActionStreamingQueue(payload, uniqueAction) {
         if (this.allowStreaming && this.conf.features['streaming'].traces) {
-            const notifArray = new Set();
-            uniqueAction.act.authorization.forEach(auth => {
-                notifArray.add(auth.actor);
-            });
-            uniqueAction.notified.forEach(acc => {
-                notifArray.add(acc);
-            });
-            const headers = {
-                event: 'trace',
-                account: uniqueAction['act']['account'],
-                name: uniqueAction['act']['name'],
-                notified: [...notifArray].join(",")
-            };
-            this.ch.publish('', this.chain + ':stream', payload, {headers});
+            try {
+                const notifArray = new Set();
+                uniqueAction.act.authorization.forEach(auth => {
+                    notifArray.add(auth.actor);
+                });
+                uniqueAction.receipts.forEach(rec => {
+                    notifArray.add(rec.receiver);
+                });
+                const headers = {
+                    event: 'trace',
+                    account: uniqueAction['act']['account'],
+                    name: uniqueAction['act']['name'],
+                    notified: [...notifArray].join(",")
+                };
+                this.ch.publish('', this.chain + ':stream', payload, {headers});
+            } catch (e) {
+                hLog(e);
+            }
         }
     }
 
