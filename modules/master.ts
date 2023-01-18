@@ -234,6 +234,8 @@ export class HyperionMaster {
                         tx: msg.trx_ids
                     });
 
+                    this.lastProducedBlockNum = msg.block_num;
+
                     if (this.conf.settings.bp_monitoring && !this.conf.indexer.abi_scan_mode) {
                         this.liveBlockQueue.push(msg).catch(reason => {
                             hLog('Error handling consumed_block:', reason);
@@ -326,17 +328,38 @@ export class HyperionMaster {
                         if (end > this.head) {
                             end = this.head;
                         }
-                        this.lastAssignedBlock += this.maxBatchSize;
                         const def = {
                             first_block: start,
                             last_block: end
                         };
+                        this.lastAssignedBlock = def.last_block;
                         this.activeReadersCount++;
                         messageAllWorkers(cluster, {
                             event: 'new_range',
                             target: msg.id,
                             data: def
                         });
+                    } else {
+                        if (this.lastAssignedBlock >= this.head) {
+                            hLog(`Parallel readers finished the requested range`);
+                            const readers = this.workerMap.filter(value => value.worker_role === 'reader');
+                            this.workerMap = this.workerMap.filter(value => value.worker_role !== 'reader');
+                            readers.forEach(value => value.wref.kill());
+                            // for (let hyperionWorkerDef of this.workerMap) {
+                            //     if (hyperionWorkerDef.worker_role === 'reader') {
+                            //         hyperionWorkerDef.wref.kill();
+                            //     }
+                            // }
+                            // for (let workersKey in cluster.workers) {
+                            //     const w = cluster.workers[workersKey];
+                            //     console.log(w);
+                            //     if (w.id === parseInt(msg.id)) {
+                            //         const idx = this.workerMap.findIndex(value => value.worker_id === w.id);
+                            //         this.workerMap.splice(idx, 1);
+                            //         w.kill();
+                            //     }
+                            // }
+                        }
                     }
                 }
             },
@@ -1461,6 +1484,12 @@ export class HyperionMaster {
                 avg_consume_rate = consume_rate;
             }
             const log_msg = [];
+
+            // print current head for live reading
+            if (this.lastProducedBlockNum > 0) {
+                log_msg.push(`#${this.lastProducedBlockNum}`);
+            }
+
             log_msg.push(`W:${_workers}`);
 
             const _r = (this.pushedBlocks + this.livePushedBlocks) / tScale;
@@ -1484,9 +1513,12 @@ export class HyperionMaster {
             this.metrics.indexingRate?.set(_ir);
 
             if (this.total_blocks < this.total_range && !this.conf.indexer.live_only_mode) {
-                const remaining = this.total_range - this.total_blocks;
-                const estimated_time = Math.round(remaining / avg_consume_rate);
-                const time_string = moment().add(estimated_time, 'seconds').fromNow(false);
+                let time_string = 'waiting for indexer';
+                if (avg_consume_rate > 0) {
+                    const remaining = this.total_range - this.total_blocks;
+                    const estimated_time = Math.round(remaining / avg_consume_rate);
+                    time_string = moment().add(estimated_time, 'seconds').fromNow(false);
+                }
                 const pct_parsed = ((this.total_blocks / this.total_range) * 100).toFixed(1);
                 const pct_read = ((this.total_read / this.total_range) * 100).toFixed(1);
                 log_msg.push(`${this.total_blocks}/${this.total_read}/${this.total_range}`);
@@ -1510,7 +1542,7 @@ export class HyperionMaster {
                 hLog(log_msg.join(' | '));
             }
 
-            if(this.liveConsumedBlocks > 0 && this.consumedBlocks === 0 && this.conf.indexer.abi_scan_mode) {
+            if (this.liveConsumedBlocks > 0 && this.consumedBlocks === 0 && this.conf.indexer.abi_scan_mode) {
                 hLog('Warning: Live reading on ABI SCAN mode')
             }
 

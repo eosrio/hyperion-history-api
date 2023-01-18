@@ -40,6 +40,7 @@ export default class StateReader extends HyperionWorker {
     private shipInitStatus: any;
 
     private forkedBlocks = new Map<string, number>();
+    private idle = true;
 
     constructor() {
         super();
@@ -122,7 +123,7 @@ export default class StateReader extends HyperionWorker {
                             console.log('Message nacked!');
                             console.log(err.message);
                         } else {
-                            process.send({event: 'read_block', live: this.isLiveReader});
+                            process.send({event: 'read_block', live: this.isLiveReader, block_num: d.num});
                         }
                     });
 
@@ -231,7 +232,7 @@ export default class StateReader extends HyperionWorker {
             case 'stop': {
                 if (this.isLiveReader) {
                     console.log('[LIVE READER] Closing Websocket');
-                    this.ship.close();
+                    this.ship.close(true);
                     setTimeout(() => {
                         console.log('[LIVE READER] Process killed');
                         process.exit(1);
@@ -262,9 +263,7 @@ export default class StateReader extends HyperionWorker {
                             pending++;
                         }
                     });
-                    if (pending === this.lastPendingCount && pending > 0) {
-                        // console.log(`[${process.env['worker_id']}] Pending blocks: ${pending}`);
-                    } else {
+                    if (!(pending === this.lastPendingCount && pending > 0)) {
                         this.lastPendingCount = pending;
                     }
                 }
@@ -310,7 +309,7 @@ export default class StateReader extends HyperionWorker {
 
         if (!process.env.worker_role) {
             console.log("[FATAL ERROR] undefined role! Exiting now!");
-            this.ship.close();
+            this.ship.close(false);
             process.exit(1);
             return;
         }
@@ -359,7 +358,7 @@ export default class StateReader extends HyperionWorker {
 
                     }
                 } else {
-                    this.ship.close();
+                    this.ship.close(true);
                     process.exit(1);
                 }
 
@@ -369,6 +368,7 @@ export default class StateReader extends HyperionWorker {
                 const res = result[1];
 
                 if (res['this_block']) {
+                    this.idle = false;
                     const blk_num = res['this_block']['block_num'];
                     const lib = res['last_irreversible'];
                     const task_payload = {num: blk_num, content: data};
@@ -449,12 +449,15 @@ export default class StateReader extends HyperionWorker {
                         }
                     }
                 } else {
-                    hLog(`Reader is idle! - Head at: ${result[1].head.block_num}`);
-                    this.ship.close();
-                    process.send({
-                        event: 'kill_worker',
-                        id: process.env['worker_id']
-                    });
+                    this.idle = true;
+                    // hLog(`Reader is idle! - Head at: ${result[1].head.block_num}`);
+                    // this.ship.close(true);
+                    // const queueSize = [this.stageOneDistQueue.length(), this.blockReadingQueue.length()];
+                    // hLog(queueSize);
+                    // process.send({
+                    //     event: 'kill_worker',
+                    //     id: process.env['worker_id']
+                    // });
                 }
             }
 
@@ -514,8 +517,12 @@ export default class StateReader extends HyperionWorker {
         request.start_block_num = parseInt(first_block > 0 ? first_block.toString() : '1', 10);
         request.end_block_num = parseInt(last_block.toString(), 10);
         const reqType = 'get_blocks_request_' + this.shipRev;
-        debugLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
-        this.send([reqType, request]);
+        if (this.ship.connected) {
+            debugLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
+            this.send([reqType, request]);
+        } else {
+            hLog('[Warning] Request failed - SHIP is not online!');
+        }
     }
 
     private send(req_data: (string | any)[]) {
@@ -528,8 +535,12 @@ export default class StateReader extends HyperionWorker {
         this.local_block_num = request.start_block_num - 1;
         request.end_block_num = parseInt(last, 10);
         const reqType = 'get_blocks_request_' + this.shipRev;
-        debugLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
-        this.send([reqType, request]);
+        if (this.ship.connected) {
+            debugLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
+            this.send([reqType, request]);
+        } else {
+            hLog('[Warning] Request failed - SHIP is not online!');
+        }
     }
 
     private async deleteForkedBlock(block_id: string) {
@@ -577,6 +588,7 @@ export default class StateReader extends HyperionWorker {
                 id: targetBlock
             });
             targetBlock++;
+            console.log(blockData);
             if (blockData.body) {
                 const targetBlockId = blockData.body._source.block_id;
                 this.forkedBlocks.set(targetBlockId, Date.now());
@@ -659,7 +671,7 @@ export default class StateReader extends HyperionWorker {
 
     private handleLostConnection() {
         this.recovery = true;
-        this.ship.close();
+        this.ship.close(false);
         hLog(`Retrying connection in 5 seconds... [attempt: ${this.reconnectCount + 1}]`);
         debugLog(`PENDING REQUESTS:', ${this.pendingRequest}`);
         debugLog(`LOCAL BLOCK:', ${this.local_block_num}`);
