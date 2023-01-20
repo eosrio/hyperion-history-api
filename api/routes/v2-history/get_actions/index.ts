@@ -3,6 +3,7 @@ import {getActionsHandler} from "./get_actions";
 import {addApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName} from "../../../helpers/functions";
 
 export const getActionResponseSchema = {
+    "@timestamp": {type: "string"},
     "timestamp": {type: "string"},
     "block_num": {type: "number"},
     "block_id": {type: "string"},
