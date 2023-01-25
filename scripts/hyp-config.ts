@@ -519,6 +519,12 @@ async function testConnections() {
 
 async function resetConnections() {
     try {
+
+        // create backups
+        if (!existsSync(backupDir)) {
+            await mkdir(backupDir);
+        }
+
         if (existsSync(connectionsPath)) {
             const rl = readline.createInterface({input: process.stdin, output: process.stdout});
             const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
