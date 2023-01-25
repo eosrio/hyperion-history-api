@@ -13,13 +13,14 @@ import IORedis from "ioredis";
 import {Client} from "@elastic/elasticsearch";
 
 const program = new Command();
-const configDir = path.join(path.resolve(), 'config');
 const chainsDir = path.join(path.resolve(), 'chains');
+const connectionsPath = path.join(path.resolve(), 'connections.json');
+const exampleConnectionsPath = path.join(path.resolve(), 'example-connections.json');
+const backupDir = path.join(path.resolve(), 'configuration_backups');
 
 async function getConnections(): Promise<HyperionConnections> {
-    const configPath = path.join(path.resolve(), 'connections.json');
-    if(existsSync(configPath)) {
-        const connectionsJsonFile = await readFile(configPath);
+    if (existsSync(connectionsPath)) {
+        const connectionsJsonFile = await readFile(connectionsPath);
         return JSON.parse(connectionsJsonFile.toString());
     } else {
         return null;
@@ -95,7 +96,7 @@ async function listChains(flags) {
                     ...common,
                     nodeos_http: chainConn?.http,
                     nodeos_ship: chainConn?.ship,
-                    chain_id: chainConn?.chain_id.substr(0,16) + '...'
+                    chain_id: chainConn?.chain_id.substr(0, 16) + '...'
                 });
             } else {
                 pendingTable.push(common);
@@ -162,7 +163,9 @@ async function newChain(shortName, options) {
         jsonData.api.chain_api = options.http;
         connections.chains[shortName].chain_id = info.chain_id;
         connections.chains[shortName].http = options.http;
-        if (info.server_version_string.includes('2.1')) {
+        if (info.server_version_string.includes('v3')) {
+            jsonData.settings.parser = '3.2';
+        } else if (info.server_version_string.includes('v2.1')) {
             jsonData.settings.parser = '2.1';
         } else {
             jsonData.settings.parser = '1.8';
@@ -214,7 +217,7 @@ async function newChain(shortName, options) {
     const fullNameArr = [];
     shortName.split('-').forEach((word: string) => {
         fullNameArr.push(word[0].toUpperCase() + word.substr(1));
-        });
+    });
     const fullChainName = fullNameArr.join(' ');
 
     jsonData.api.chain_name = fullChainName;
@@ -223,7 +226,7 @@ async function newChain(shortName, options) {
     console.log(connections.chains[shortName]);
 
     console.log('Saving connections.json...');
-    await writeFile(path.join(path.resolve(), 'connections.json'), JSON.stringify(connections, null, 2));
+    await writeFile(connectionsPath, JSON.stringify(connections, null, 2));
     console.log(`Saving chains/${shortName}.config.json...`);
     await writeFile(targetPath, JSON.stringify(jsonData, null, 2));
 }
@@ -238,7 +241,6 @@ async function rmChain(shortName) {
     }
 
     // create backups
-    const backupDir = path.join(path.resolve(), 'configuration_backups');
     if (!existsSync(backupDir)) {
         await mkdir(backupDir);
     }
@@ -264,13 +266,13 @@ async function rmChain(shortName) {
     await rm(targetPath);
     delete connections.chains[shortName];
     console.log('Saving connections.json...');
-    await writeFile(path.join(path.resolve(), 'connections.json'), JSON.stringify(connections, null, 2));
+    await writeFile(connectionsPath, JSON.stringify(connections, null, 2));
     console.log(`✅ ${shortName} removal completed!`);
 }
 
 async function getExampleConnections(): Promise<HyperionConnections | null> {
     try {
-        const connectionsJsonFile = await readFile(path.join(configDir, 'example-connections.json'));
+        const connectionsJsonFile = await readFile(exampleConnectionsPath);
         return JSON.parse(connectionsJsonFile.toString());
     } catch (e: any) {
         return null;
@@ -383,7 +385,10 @@ async function initConfig() {
 
     const conn = exampleConn;
 
-    if (!conn) return;
+    if (!conn) {
+        console.log('No example-connections.json to use as reference!');
+        process.exit(1);
+    }
     conn.chains = {};
 
     // check rabbitmq
@@ -483,15 +488,14 @@ async function initConfig() {
 
     console.log('Init completed! Saving configuration...');
 
-    await writeFile(path.join(configDir, 'connections.json'), JSON.stringify(conn, null, 2));
+    await writeFile(connectionsPath, JSON.stringify(conn, null, 2));
 
     console.log('✅ ✅');
     rl.close();
 }
 
 async function testConnections() {
-    const connPath = path.join(configDir, 'connections.json');
-    if (existsSync(connPath)) {
+    if (existsSync(connectionsPath)) {
         try {
             const conn = await getConnections();
             if (conn) {
@@ -514,15 +518,14 @@ async function testConnections() {
 }
 
 async function resetConnections() {
-    const connPath = path.join(configDir, 'connections.json');
     try {
-        if (existsSync(connPath)) {
+        if (existsSync(connectionsPath)) {
             const rl = readline.createInterface({input: process.stdin, output: process.stdout});
             const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
             const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n');
             if (confirmation === 'YES') {
-                copyFileSync(connPath, path.join(configDir, 'connections.json.bak'));
-                rmSync(connPath);
+                copyFileSync(connectionsPath, path.join(backupDir, 'connections.json.bak'));
+                rmSync(connectionsPath);
                 console.log('connections.json removed, please use "./hyp-config connections init" to reconfigure');
             } else {
                 console.log('Operation canceled. No files were removed.');

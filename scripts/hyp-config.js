@@ -34,12 +34,13 @@ const amqp = __importStar(require("amqplib"));
 const ioredis_1 = __importDefault(require("ioredis"));
 const elasticsearch_1 = require("@elastic/elasticsearch");
 const program = new commander_1.Command();
-const configDir = path_1.default.join(path_1.default.resolve(), 'config');
 const chainsDir = path_1.default.join(path_1.default.resolve(), 'chains');
+const connectionsPath = path_1.default.join(path_1.default.resolve(), 'connections.json');
+const exampleConnectionsPath = path_1.default.join(path_1.default.resolve(), 'example-connections.json');
+const backupDir = path_1.default.join(path_1.default.resolve(), 'configuration_backups');
 async function getConnections() {
-    const configPath = path_1.default.join(path_1.default.resolve(), 'connections.json');
-    if ((0, fs_1.existsSync)(configPath)) {
-        const connectionsJsonFile = await (0, promises_1.readFile)(configPath);
+    if ((0, fs_1.existsSync)(connectionsPath)) {
+        const connectionsJsonFile = await (0, promises_1.readFile)(connectionsPath);
         return JSON.parse(connectionsJsonFile.toString());
     }
     else {
@@ -170,7 +171,10 @@ async function newChain(shortName, options) {
         jsonData.api.chain_api = options.http;
         connections.chains[shortName].chain_id = info.chain_id;
         connections.chains[shortName].http = options.http;
-        if (info.server_version_string.includes('2.1')) {
+        if (info.server_version_string.includes('v3')) {
+            jsonData.settings.parser = '3.2';
+        }
+        else if (info.server_version_string.includes('v2.1')) {
             jsonData.settings.parser = '2.1';
         }
         else {
@@ -229,7 +233,7 @@ async function newChain(shortName, options) {
     connections.chains[shortName].name = fullChainName;
     console.log(connections.chains[shortName]);
     console.log('Saving connections.json...');
-    await (0, promises_1.writeFile)(path_1.default.join(path_1.default.resolve(), 'connections.json'), JSON.stringify(connections, null, 2));
+    await (0, promises_1.writeFile)(connectionsPath, JSON.stringify(connections, null, 2));
     console.log(`Saving chains/${shortName}.config.json...`);
     await (0, promises_1.writeFile)(targetPath, JSON.stringify(jsonData, null, 2));
 }
@@ -241,7 +245,6 @@ async function rmChain(shortName) {
         process.exit(0);
     }
     // create backups
-    const backupDir = path_1.default.join(path_1.default.resolve(), 'configuration_backups');
     if (!(0, fs_1.existsSync)(backupDir)) {
         await (0, promises_1.mkdir)(backupDir);
     }
@@ -263,12 +266,12 @@ async function rmChain(shortName) {
     await (0, promises_1.rm)(targetPath);
     delete connections.chains[shortName];
     console.log('Saving connections.json...');
-    await (0, promises_1.writeFile)(path_1.default.join(path_1.default.resolve(), 'connections.json'), JSON.stringify(connections, null, 2));
+    await (0, promises_1.writeFile)(connectionsPath, JSON.stringify(connections, null, 2));
     console.log(`✅ ${shortName} removal completed!`);
 }
 async function getExampleConnections() {
     try {
-        const connectionsJsonFile = await (0, promises_1.readFile)(path_1.default.join(configDir, 'example-connections.json'));
+        const connectionsJsonFile = await (0, promises_1.readFile)(exampleConnectionsPath);
         return JSON.parse(connectionsJsonFile.toString());
     }
     catch (e) {
@@ -379,8 +382,10 @@ async function initConfig() {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const prompt = (query) => new Promise((resolve) => rl.question(query, resolve));
     const conn = exampleConn;
-    if (!conn)
-        return;
+    if (!conn) {
+        console.log('No example-connections.json to use as reference!');
+        process.exit(1);
+    }
     conn.chains = {};
     // check rabbitmq
     let amqp_state = false;
@@ -469,13 +474,12 @@ async function initConfig() {
     }
     console.log(`\n Redis ✅`);
     console.log('Init completed! Saving configuration...');
-    await (0, promises_1.writeFile)(path_1.default.join(configDir, 'connections.json'), JSON.stringify(conn, null, 2));
+    await (0, promises_1.writeFile)(connectionsPath, JSON.stringify(conn, null, 2));
     console.log('✅ ✅');
     rl.close();
 }
 async function testConnections() {
-    const connPath = path_1.default.join(configDir, 'connections.json');
-    if ((0, fs_1.existsSync)(connPath)) {
+    if ((0, fs_1.existsSync)(connectionsPath)) {
         try {
             const conn = await getConnections();
             if (conn) {
@@ -500,15 +504,14 @@ async function testConnections() {
     }
 }
 async function resetConnections() {
-    const connPath = path_1.default.join(configDir, 'connections.json');
     try {
-        if ((0, fs_1.existsSync)(connPath)) {
+        if ((0, fs_1.existsSync)(connectionsPath)) {
             const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
             const prompt = (query) => new Promise((resolve) => rl.question(query, resolve));
             const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n');
             if (confirmation === 'YES') {
-                (0, fs_1.copyFileSync)(connPath, path_1.default.join(configDir, 'connections.json.bak'));
-                (0, fs_1.rmSync)(connPath);
+                (0, fs_1.copyFileSync)(connectionsPath, path_1.default.join(backupDir, 'connections.json.bak'));
+                (0, fs_1.rmSync)(connectionsPath);
                 console.log('connections.json removed, please use "./hyp-config connections init" to reconfigure');
             }
             else {
