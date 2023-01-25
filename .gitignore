@@ -91,3 +91,5 @@ docker/rabbitmq/data
 docker/eosio/data
 
 configuration_backups
+scripts/hyp-config.js
+scripts/hyp-config.js.map
