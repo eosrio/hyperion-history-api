@@ -130,6 +130,11 @@ async function newChain(shortName, options) {
     // read connections.json
     const connections = await getConnections();
 
+    if(!connections) {
+        console.log(`The connections.json file is not present, please run "./hyp-config connections init" to configure it.`);
+        process.exit(1);
+    }
+
     if (connections.chains[shortName]) {
         console.log('Connections already defined!');
         console.log(connections.chains[shortName]);
@@ -158,20 +163,25 @@ async function newChain(shortName, options) {
         }
 
         // test nodeos availability
-        const jsonRpc = new JsonRpc(options.http, {fetch});
-        const info = await jsonRpc.get_info();
-        jsonData.api.chain_api = options.http;
-        connections.chains[shortName].chain_id = info.chain_id;
-        connections.chains[shortName].http = options.http;
-        if (info.server_version_string.includes('v3')) {
-            jsonData.settings.parser = '3.2';
-        } else if (info.server_version_string.includes('v2.1')) {
-            jsonData.settings.parser = '2.1';
-        } else {
-            jsonData.settings.parser = '1.8';
+        try {
+            const jsonRpc = new JsonRpc(options.http, {fetch});
+            const info = await jsonRpc.get_info();
+            jsonData.api.chain_api = options.http;
+            connections.chains[shortName].chain_id = info.chain_id;
+            connections.chains[shortName].http = options.http;
+            if (info.server_version_string.includes('v3')) {
+                jsonData.settings.parser = '3.2';
+            } else if (info.server_version_string.includes('v2.1')) {
+                jsonData.settings.parser = '2.1';
+            } else {
+                jsonData.settings.parser = '1.8';
+            }
+            console.log(`Parser version set to ${jsonData.settings.parser}`);
+            console.log(`Chain ID: ${info.chain_id}`);
+        } catch (e) {
+            console.error(`Invalid HTTP Endpoint [${options.http}] - ${e.message}`);
+            process.exit(1);
         }
-        console.log(`Parser version set to ${jsonData.settings.parser}`);
-        console.log(`Chain ID: ${info.chain_id}`)
     }
 
     if (options.ship) {
