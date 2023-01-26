@@ -5,7 +5,7 @@ const path = require('path');
 const apps = [];
 const chainsRoot = path.join(path.resolve(), 'chains');
 readdirSync(chainsRoot)
-    .filter(f => f.endsWith('.config.json'))
+    .filter(f => f.endsWith('.config.json') && !f.startsWith('example'))
     .forEach(value => {
         const configFile = readFileSync(path.join(chainsRoot, value))
         const config = JSON.parse(configFile.toString());
