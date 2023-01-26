@@ -20,6 +20,7 @@ export interface ScalingConfigs {
 }
 
 export interface MainSettings {
+    use_global_agent?: boolean;
     process_prefix?: string;
     ignore_snapshot?: boolean;
     ship_request_rev: string;

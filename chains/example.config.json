@@ -77,6 +77,7 @@
     "auto_mode_switch": false,
     "hot_warm_policy": false,
     "custom_policy": "",
+    "use_global_agent": false,
     "bypass_index_map": false,
     "index_partition_size": 10000000,
     "es_replicas": 0

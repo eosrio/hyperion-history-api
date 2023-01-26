@@ -16,7 +16,6 @@ import {io, Socket} from "socket.io-client";
 import {CacheManager} from "./helpers/cacheManager";
 
 import {bootstrap} from 'global-agent';
-bootstrap();
 
 class HyperionApiServer {
 
@@ -37,6 +36,11 @@ class HyperionApiServer {
 
         const cm = new ConfigurationModule();
         this.conf = cm.config;
+
+        if(this.conf.settings.use_global_agent) {
+            bootstrap();
+        }
+
         this.chain = this.conf.settings.chain;
         process.title = `hyp-${this.chain}-api`;
         this.manager = new ConnectionManager(cm);

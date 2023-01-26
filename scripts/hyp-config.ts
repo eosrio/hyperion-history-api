@@ -130,7 +130,7 @@ async function newChain(shortName, options) {
     // read connections.json
     const connections = await getConnections();
 
-    if(!connections) {
+    if (!connections) {
         console.log(`The connections.json file is not present, please run "./hyp-config connections init" to configure it.`);
         process.exit(1);
     }
@@ -346,13 +346,14 @@ async function checkES(conn: HyperionConnections): Promise<boolean> {
     } else {
         es_url = `${_es.protocol}://${_es.host}`
     }
+    // console.log(`Prepared client: ${es_url}`);
     const client = new Client({
         node: es_url,
         ssl: {rejectUnauthorized: false}
     });
     try {
         const result = await client.cat.health();
-        console.log(`[info] [ES] - ${result}`.trim());
+        console.log(`[info] [ES] - ${result.body.trim()}`);
         console.log('[info] [ES] - Connection established!');
         return true;
     } catch (reason: any) {

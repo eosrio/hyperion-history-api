@@ -41,12 +41,10 @@ import AlertsManager from "./alertsManager";
 import IORedis from "ioredis";
 import {IOConfig} from "@pm2/io/build/main/pmx";
 import Gauge from "@pm2/io/build/main/utils/metrics/gauge";
-import moment = require("moment");
-import Timeout = NodeJS.Timeout;
 
 import {bootstrap} from 'global-agent';
-
-bootstrap();
+import moment = require("moment");
+import Timeout = NodeJS.Timeout;
 
 interface RevBlock {
     num: number;
@@ -175,6 +173,11 @@ export class HyperionMaster {
     constructor() {
         this.cm = new ConfigurationModule();
         this.conf = this.cm.config;
+
+        if (this.conf.settings.use_global_agent) {
+            bootstrap();
+        }
+
         this.alerts = new AlertsManager(this.conf.alerts);
         this.manager = new ConnectionManager(this.cm);
         this.mLoader = new HyperionModuleLoader(this.cm);
@@ -1786,7 +1789,7 @@ export class HyperionMaster {
             hLog(`Elasticsearch: ${esInfo.body.version.number} | Lucene: ${esInfo.body.version.lucene_version}`);
             this.emitAlert('info', `Indexer started using ES v${esInfo.body.version.number}`);
         } catch (e) {
-            console.log(e);
+            console.log(e.message);
             hLog('Failed to check elasticsearch version!');
             process.exit();
         }
@@ -2406,7 +2409,10 @@ export class HyperionMaster {
         });
     }
 
-    async requestDataFromWorkers(requestEvent: { event: string, data?: any }, responseEventType: string, timeoutSec: number = 1000) {
+    async requestDataFromWorkers(requestEvent: {
+        event: string,
+        data?: any
+    }, responseEventType: string, timeoutSec: number = 1000) {
         const requests = [];
         for (const id in cluster.workers) {
             if (cluster.workers.hasOwnProperty(id)) {
