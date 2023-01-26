@@ -367,7 +367,8 @@ function bigint2Milliseconds(input: bigint) {
 
 const defaultRouteCacheMap = {
     get_resource_usage: 3600,
-    get_creator: 3600 * 24
+    get_creator: 3600 * 24,
+    health: 10
 }
 
 export async function timedQuery(
