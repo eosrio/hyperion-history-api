@@ -63,7 +63,14 @@ interface ServiceResponse<T> {
 
 async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<ESService>> {
     try {
-        let esStatus = await fastify.elastic.cat.health({format: 'json', v: true});
+        const esStatusCache = await fastify.redis.get(`${fastify.manager.chain}::es_status`);
+        let esStatus;
+        if (esStatusCache) {
+            esStatus = JSON.parse(esStatusCache);
+        } else {
+            esStatus = await fastify.elastic.cat.health({format: 'json', v: true});
+            await fastify.redis.set(`${fastify.manager.chain}::es_status`, JSON.stringify(esStatus), 'EX', 30 * 60);
+        }
         let firstIndexedBlock: number;
         const fib = await fastify.redis.get(`${fastify.manager.chain}::fib`);
         if (fib) {
