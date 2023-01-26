@@ -107,13 +107,14 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             }
 
             if (query.simple) {
+                let notified = new Set(action.receipts.map(r => r.receiver));
                 response.simple_actions.push({
                     block: action['block_num'],
                     irreversible: response.lib !== 0 ? action['block_num'] < response.lib : undefined,
                     timestamp: action['@timestamp'],
                     transaction_id: action['trx_id'],
                     actors: action['act']['authorization'].map(a => `${a.actor}@${a.permission}`).join(","),
-                    notified: action['notified'].join(','),
+                    notified: [...notified].join(','),
                     contract: action['act']['account'],
                     action: action['act']['name'],
                     data: action['act']['data']
