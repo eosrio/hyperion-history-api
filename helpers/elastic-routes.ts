@@ -193,21 +193,13 @@ const generatorsMap = {
     },
 };
 
-interface IndexDist {
-    index: string;
-    first_block: number;
-    last_block: number;
-}
-
 export class ElasticRoutes {
     public routes: any;
     cm: ConnectionManager;
     chain: string;
     ingestNodeCounters = {};
-    distributionMap: IndexDist[];
 
-    constructor(connectionManager: ConnectionManager, distributionMap: IndexDist[]) {
-        this.distributionMap = distributionMap;
+    constructor(connectionManager: ConnectionManager) {
         this.routes = {generic: this.handleGenericRoute.bind(this)};
         this.cm = connectionManager;
         this.chain = this.cm.chain;
@@ -382,27 +374,27 @@ export class ElasticRoutes {
         return Math.ceil(blockNum / this.cm.config.settings.index_partition_size).toString().padStart(6, '0');
     }
 
-    getIndexNameByBlock(block_num) {
-        if (!this.distributionMap) {
-            return null;
-        }
-        for (let i = this.distributionMap.length - 1; i >= 0; i--) {
-            const test = this.distributionMap[i].first_block <= block_num && this.distributionMap[i].last_block >= block_num;
-            if (test) {
-                return this.distributionMap[i].index;
-            }
-        }
-        return null;
-    }
-
-    addToIndexMap(map, idx, payload) {
-        if (idx) {
-            if (!map[idx]) {
-                map[idx] = [];
-            }
-            map[idx].push(payload);
-        }
-    }
+    // getIndexNameByBlock(block_num) {
+    //     if (!this.distributionMap) {
+    //         return null;
+    //     }
+    //     for (let i = this.distributionMap.length - 1; i >= 0; i--) {
+    //         const test = this.distributionMap[i].first_block <= block_num && this.distributionMap[i].last_block >= block_num;
+    //         if (test) {
+    //             return this.distributionMap[i].index;
+    //         }
+    //     }
+    //     return null;
+    // }
+    //
+    // addToIndexMap(map, idx, payload) {
+    //     if (idx) {
+    //         if (!map[idx]) {
+    //             map[idx] = [];
+    //         }
+    //         map[idx].push(payload);
+    //     }
+    // }
 
     private routeFactory(indexName: string, bulkGenerator, routerFunction) {
         return async (payloads, channel, cb) => {

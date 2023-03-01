@@ -839,69 +839,69 @@ export class HyperionMaster {
         }
     }
 
-    async getFirstBlock(index_name) {
-        const firstBlockSearch = await this.manager.elasticsearchClient.search({
-            index: index_name,
-            size: 1,
-            _source: "block_num",
-            body: {
-                "query": {"match_all": {}},
-                sort: [{"block_num": {"order": "asc"}}]
-            }
-        });
-        if (firstBlockSearch.body.hits.hits[0]) {
-            return firstBlockSearch.body.hits.hits[0]._source.block_num;
-        } else {
-            return null;
-        }
-    }
+    // async getFirstBlock(index_name) {
+    //     const firstBlockSearch = await this.manager.elasticsearchClient.search({
+    //         index: index_name,
+    //         size: 1,
+    //         _source: "block_num",
+    //         body: {
+    //             "query": {"match_all": {}},
+    //             sort: [{"block_num": {"order": "asc"}}]
+    //         }
+    //     });
+    //     if (firstBlockSearch.body.hits.hits[0]) {
+    //         return firstBlockSearch.body.hits.hits[0]._source.block_num;
+    //     } else {
+    //         return null;
+    //     }
+    // }
 
     private async setupIndexers() {
 
-        const indexDist = {
-            action: [],
-            delta: []
-        };
+        // const indexDist = {
+        //     action: [],
+        //     delta: []
+        // };
 
-        hLog(`Loading indices...`);
+        // hLog(`Loading indices...`);
 
-        if (!this.conf.settings.bypass_index_map) {
-            const getIndicesResponse = await this.manager.elasticsearchClient.cat.indices({
-                index: this.chain + "-*",
-                format: 'json'
-            });
-
-            if (getIndicesResponse && getIndicesResponse.statusCode === 200 && getIndicesResponse.body) {
-                const indices = getIndicesResponse.body;
-                const actionIndices = indices.filter(k => k.index.startsWith(this.chain + "-action"));
-                for (const actionIndex of actionIndices) {
-                    const last_block = await this.getLastBlock(actionIndex.index);
-                    const first_block = await this.getFirstBlock(actionIndex.index);
-                    hLog(`ActionIndex: ${actionIndex.index} | First: ${first_block} | Last: ${last_block}`);
-                    indexDist.action.push({
-                        index: actionIndex.index,
-                        first_block,
-                        last_block
-                    });
-                }
-
-                const deltaIndices = indices.filter(k => k.index.startsWith(this.chain + "-delta"));
-                for (const deltaIndex of deltaIndices) {
-                    const last_block = await this.getLastBlock(deltaIndex.index);
-                    const first_block = await this.getFirstBlock(deltaIndex.index);
-                    hLog(`DeltaIndex: ${deltaIndex.index} | First: ${first_block} | Last: ${last_block}`);
-                    indexDist.delta.push({
-                        index: deltaIndex.index,
-                        first_block,
-                        last_block
-                    });
-                }
-            } else {
-                console.log(JSON.stringify(getIndicesResponse, null, 2));
-                hLog(`Failed to load all indices!`);
-                process.exit();
-            }
-        }
+        // if (!this.conf.settings.bypass_index_map) {
+        //     const getIndicesResponse = await this.manager.elasticsearchClient.cat.indices({
+        //         index: this.chain + "-*",
+        //         format: 'json'
+        //     });
+        //
+        //     if (getIndicesResponse && getIndicesResponse.statusCode === 200 && getIndicesResponse.body) {
+        //         const indices = getIndicesResponse.body;
+        //         const actionIndices = indices.filter(k => k.index.startsWith(this.chain + "-action"));
+        //         for (const actionIndex of actionIndices) {
+        //             const last_block = await this.getLastBlock(actionIndex.index);
+        //             const first_block = await this.getFirstBlock(actionIndex.index);
+        //             hLog(`ActionIndex: ${actionIndex.index} | First: ${first_block} | Last: ${last_block}`);
+        //             indexDist.action.push({
+        //                 index: actionIndex.index,
+        //                 first_block,
+        //                 last_block
+        //             });
+        //         }
+        //
+        //         const deltaIndices = indices.filter(k => k.index.startsWith(this.chain + "-delta"));
+        //         for (const deltaIndex of deltaIndices) {
+        //             const last_block = await this.getLastBlock(deltaIndex.index);
+        //             const first_block = await this.getFirstBlock(deltaIndex.index);
+        //             hLog(`DeltaIndex: ${deltaIndex.index} | First: ${first_block} | Last: ${last_block}`);
+        //             indexDist.delta.push({
+        //                 index: deltaIndex.index,
+        //                 first_block,
+        //                 last_block
+        //             });
+        //         }
+        //     } else {
+        //         console.log(JSON.stringify(getIndicesResponse, null, 2));
+        //         hLog(`Failed to load all indices!`);
+        //         process.exit();
+        //     }
+        // }
 
 
         if (this.conf.indexer.rewrite || this.conf.settings.preview) {
@@ -924,8 +924,7 @@ export class HyperionMaster {
                 this.addWorker({
                     worker_role: 'ingestor',
                     queue: q.name + ":" + (qIdx + 1),
-                    type: q.type,
-                    distribution: JSON.stringify(indexDist[q.type])
+                    type: q.type
                 });
                 qIdx++;
             }
