@@ -52,12 +52,15 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         indexPattern = fastify.manager.chain + '-action';
     }
 
-    const esResults = await fastify.elastic.search({
+    const esOpts = {
         "index": indexPattern,
         "from": skip || 0,
         "size": (limit > maxActions ? maxActions : limit) || 10,
         "body": query_body
-    });
+    };
+
+    // console.log(JSON.stringify(esOpts, null, 2));
+    const esResults = await fastify.elastic.search(esOpts);
 
     const results = esResults['body']['hits'];
     const response: any = {

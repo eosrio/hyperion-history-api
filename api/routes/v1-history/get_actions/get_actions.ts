@@ -6,6 +6,7 @@ import * as AbiEOS from "@eosrio/node-abieos";
 import {ApiResponse} from "@elastic/elasticsearch";
 import {TextDecoder, TextEncoder} from "util";
 import {JsonRpc} from "eosjs/dist";
+import {terms} from "../../v2-history/get_actions/definitions";
 
 const abi_remapping = {
     "_Bool": "bool"
@@ -144,7 +145,6 @@ async function getContractAtBlock(esClient, rpc, chain, accountName: string, blo
 }
 
 
-const terms = ["notified", "act.authorization.actor"];
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
 async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
@@ -182,8 +182,8 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
     pos = parseInt(reqBody.pos || 0, 10);
     offset = parseInt(reqBody.offset || 20, 10);
-    let from, size;
-    from = size = 0;
+    let from = 0;
+    let size = 0;
     if (pos === -1) {
         if (offset < 0) {
             from = 0;
@@ -272,6 +272,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             }
         }
     };
+    // console.log(JSON.stringify(esOpts, null, 2));
     const pResults = await Promise.all([fastify.eosjs.rpc.get_info(), fastify.elastic['search'](esOpts)]);
     const results = pResults[1];
     const response = {
