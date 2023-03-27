@@ -5,6 +5,7 @@ from subprocess import Popen, PIPE, STDOUT
 from sh import tail
 import time
 import sys
+import shutil
 
 
 # Import that you stop the indexer before you start running this script
@@ -41,28 +42,71 @@ live_reader = '.live_reader.*'
 rewrite = '.rewrite.*'
 
 
-shutting_down = r'.*Shutting down master.*'
+#shutting_down = r'.*Shutting down master.*'
+
 offline = r'.*(offline or unexistent)'
 lastblock_indexed = r'.*Last Indexed Block:.* (\d*)'  #group the last block indexed for reference.
 
 
 # Config
-hyperionfolder="/home/charles/hyperion-history-api/"
+hyperionfolder="/home/charles/hyperion/"
 indexer_log_file = "/home/charles/.pm2/logs/wax-indexer-out.log"
+ecosystem_file_location = f'{hyperionfolder}ecosystem.config.js'
 
 chain = "wax"  #set the Chain name eos or wax
 filepath=hyperionfolder+"chains/wax.config.json"
 indexer_stop = ["pm2", "trigger", "wax-indexer", "stop"]
-indexer_start = [hyperionfolder+"./run.sh", "wax-indexer"]
+indexer_start = [f"{hyperionfolder}./run.sh", f'{ecosystem_file_location}', "wax-indexer"]
+#indexer_start = ['/usr/bin/pm2', 'start', {ecosystem_file_location}, '--only', 'wax-indexer', '--update-env', '--silent']
 tail_indexer_logs = ["tail","-f", indexer_log_file]
-hyperion_version = '3.3'  #'3.1' or '3.3'
+hyperion_version = '3.7'  #'3.1' or '3.3'
 
 
 # No blocks being processed differs between 3.3 and 3.1
-if hyperion_version == '3.3':
-    no_blocks_processed = r'.*No blocks are being processed.*'
-else:
+if hyperion_version == '3.7':
+    no_blocks_processed = r'.*-------- BLOCK RANGE COMPLETED -------------.*'
+    shutting_down = r'.*No more active workers, stopping now...*'
+    
+elif hyperion_version == '3.1':
     no_blocks_processed = r'.*No blocks processed.*'
+    shutting_down = r'.*Shutting down master.*'
+else:
+    no_blocks_processed = r'.*-------- BLOCK RANGE COMPLETED -------------.*'
+    shutting_down = r'.*No more active workers, stopping now...*'
+    
+
+def update_run_script():
+    # Copy the original run.sh to run.bak
+    shutil.copy2(f"{hyperionfolder}/run.sh", f"{hyperionfolder}/run.bak")
+    
+    # Update the contents of run.sh with the new command
+    with open("run.sh", "w") as f:
+        f.write(f'''#!/usr/bin/env bash
+if [ $# -lt 2 ]; then
+  echo "Please inform the app name and ecosystem file location. ex: './run.sh indexer /path/to/ecosystem.config.js'"
+  exit 1
+fi
+echo -e "\n-->> Starting $1..."
+(
+  set -x
+  pm2 start "$2" --only "$1" --update-env --silent
+)
+echo -e "\n-->> Saving pm2 state..."
+(
+  set -x
+  pm2 save
+)
+echo -e "\n-->> Reading $2 logs..."
+(
+  set -x
+  pm2 logs --raw --lines 10 "$2"
+)''')
+
+def restore_run_script():
+    # Restore the original run.sh from run.bak
+    shutil.copy2(f"{hyperionfolder}/run.bak", f"{hyperionfolder}/run.sh")
+
+
 
 # Set ES index pattern
 es_index = f'{chain}-block-*'
@@ -208,8 +252,8 @@ def spinning_cursor(run):
       sys.stdout.flush()
 
 def startRewrite(gt,lt):
-    run = Popen(indexer_start,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(10)
+    Popen(indexer_start,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(2)
     logtail = Popen(tail_indexer_logs, stdin=PIPE, stdout=PIPE, stderr=STDOUT) 
     completedcount = 0
     for linenum, line in enumerate(logtail.stdout):
