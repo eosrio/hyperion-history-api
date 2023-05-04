@@ -317,7 +317,7 @@ export class HyperionMaster {
                 }
             },
             'completed': (msg: any) => {
-                if (msg.id === this.repairReader.worker_id.toString()) {
+                if (this.repairReader && msg.id === this.repairReader.worker_id.toString()) {
                     console.log('Repair completed!', msg);
                     this.sendPendingRepairRanges();
                 } else {
