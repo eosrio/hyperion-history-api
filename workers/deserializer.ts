@@ -1612,31 +1612,34 @@ export default class MainDSWorker extends HyperionWorker {
 
         this.tableHandlers[EOSIO_ALIAS + ':userres'] = (delta) => {
             const data = delta['data'];
-            const net = parseFloat(data['net_weight'].split(" ")[0]);
-            const cpu = parseFloat(data['cpu_weight'].split(" ")[0]);
-            delta['@userres'] = {
-                owner: data['owner'],
-                net_weight: net,
-                cpu_weight: cpu,
-                total_weight: parseFloat((net + cpu).toFixed(4)),
-                ram_bytes: parseInt(data['ram_bytes'])
-            };
-            delete delta['data'];
+            if (data['net_weight'] && data['cpu_weight']) {
+                const net = parseFloat(data['net_weight'].split(" ")[0]);
+                const cpu = parseFloat(data['cpu_weight'].split(" ")[0]);
+                delta['@userres'] = {
+                    owner: data['owner'],
+                    net_weight: net,
+                    cpu_weight: cpu,
+                    total_weight: parseFloat((net + cpu).toFixed(4)),
+                    ram_bytes: parseInt(data['ram_bytes'])
+                };
+                delete delta['data'];
+            }
         };
 
         this.tableHandlers[EOSIO_ALIAS + ':delband'] = (delta) => {
             const data = delta['data'];
-            const net = parseFloat(data['net_weight'].split(" ")[0]);
-            const cpu = parseFloat(data['cpu_weight'].split(" ")[0]);
-            delta['@delband'] = {
-                from: data['from'],
-                to: data['to'],
-                net_weight: net,
-                cpu_weight: cpu,
-                total_weight: parseFloat((net + cpu).toFixed(4))
-            };
-            delete delta['data'];
-            // hLog(delta);
+            if (data['net_weight'] && data['cpu_weight']) {
+                const net = parseFloat(data['net_weight'].split(" ")[0]);
+                const cpu = parseFloat(data['cpu_weight'].split(" ")[0]);
+                delta['@delband'] = {
+                    from: data['from'],
+                    to: data['to'],
+                    net_weight: net,
+                    cpu_weight: cpu,
+                    total_weight: parseFloat((net + cpu).toFixed(4))
+                };
+                delete delta['data'];
+            }
         };
 
         this.tableHandlers[EOSIO_ALIAS + '.msig:proposal'] = async (delta) => {
