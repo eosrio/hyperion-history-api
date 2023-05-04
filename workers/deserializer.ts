@@ -1604,12 +1604,14 @@ export default class MainDSWorker extends HyperionWorker {
 
         this.tableHandlers[EOSIO_ALIAS + ':producers'] = (delta) => {
             const data = delta['data'];
-            delta['@producers'] = {
-                total_votes: parseFloat(data['total_votes']),
-                is_active: data['is_active'],
-                unpaid_blocks: data['unpaid_blocks']
-            };
-            delete delta['data'];
+            if(data) {
+                delta['@producers'] = {
+                    total_votes: parseFloat(data['total_votes']),
+                    is_active: data['is_active'],
+                    unpaid_blocks: data['unpaid_blocks']
+                };
+                delete delta['data'];
+            }
         };
 
         this.tableHandlers[EOSIO_ALIAS + ':userres'] = (delta) => {
