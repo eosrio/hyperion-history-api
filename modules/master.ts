@@ -45,6 +45,7 @@ import Gauge from "@pm2/io/build/main/utils/metrics/gauge";
 import {bootstrap} from 'global-agent';
 import moment = require("moment");
 import Timeout = NodeJS.Timeout;
+import {App, TemplatedApp, WebSocket} from "uWebSockets.js";
 
 interface RevBlock {
     num: number;
@@ -170,6 +171,16 @@ export class HyperionMaster {
     private metrics: Record<string, Gauge> = {};
     private shouldCountIPCMessages = false;
 
+    // local websocket server
+    private localController: TemplatedApp;
+    private liveReader?: HyperionWorkerDef;
+    private repairReader?: HyperionWorkerDef;
+    private pendingRepairRanges: {
+        start: number,
+        end: number
+    }[] = [];
+    private connectedController?: WebSocket;
+
     constructor() {
         this.cm = new ConfigurationModule();
         this.conf = this.cm.config;
@@ -292,6 +303,9 @@ export class HyperionMaster {
                     this.total_range = this.head - msg.block_num;
                 }
             },
+            'repair_reader_ready': () => {
+                this.sendPendingRepairRanges();
+            },
             'kill_worker': (msg: any) => {
                 for (let workersKey in cluster.workers) {
                     const w = cluster.workers[workersKey];
@@ -303,25 +317,9 @@ export class HyperionMaster {
                 }
             },
             'completed': (msg: any) => {
-                if (msg.id === this.doctorId.toString()) {
-                    hLog('repair worker completed', msg);
-                    hLog('queue size [before]:', this.missingRanges.length);
-                    if (this.missingRanges.length > 0) {
-                        const range_data = this.missingRanges.shift();
-                        hLog('New repair range', range_data);
-                        hLog('queue size [after]:', this.missingRanges.length);
-                        this.doctorIdle = false;
-                        messageAllWorkers(cluster, {
-                            event: 'new_range',
-                            target: msg.id,
-                            data: {
-                                first_block: range_data.start,
-                                last_block: range_data.end
-                            }
-                        });
-                    } else {
-                        this.doctorIdle = true;
-                    }
+                if (msg.id === this.repairReader.worker_id.toString()) {
+                    console.log('Repair completed!', msg);
+                    this.sendPendingRepairRanges();
                 } else {
                     this.activeReadersCount--;
                     if (this.activeReadersCount < this.max_readers && this.lastAssignedBlock < this.head && this.allowMoreReaders) {
@@ -944,11 +942,12 @@ export class HyperionMaster {
         }
     }
 
-    private addWorker(def: HyperionWorkerDef) {
+    private addWorker(def: HyperionWorkerDef): HyperionWorkerDef {
         this.worker_index++;
         def.worker_id = this.worker_index;
         def.failures = 0;
         this.workerMap.push(def);
+        return def;
     }
 
     private async setupDSPool() {
@@ -1111,7 +1110,7 @@ export class HyperionMaster {
             hLog(`Setting live reader at head = ${_head}`);
 
             // live block reader
-            this.addWorker({
+            this.liveReader = this.addWorker({
                 worker_role: 'continuous_reader',
                 worker_last_processed_block: _head,
                 ws_router: ''
@@ -1729,6 +1728,47 @@ export class HyperionMaster {
         }
     }
 
+    async fillMissingBlocks(data: any, ws: WebSocket) {
+        this.pendingRepairRanges = data.filter((range: any) => {
+            return range.end - range.start >= 0;
+        });
+        this.pendingRepairRanges.reverse();
+        console.log(this.pendingRepairRanges);
+        this.repairReader = this.addWorker({
+            worker_role: 'repair_reader'
+        });
+        this.launchWorkers();
+        this.connectedController = ws;
+        // for (const blockRange of data) {
+        //     console.log(`Filling missing blocks ${blockRange.start} - ${blockRange.end}`);
+        //     ws.send(JSON.stringify({
+        //         event: 'received_range',
+        //         data: blockRange
+        //     }));
+        // }
+    }
+
+    private createLocalController() {
+        this.localController = App().ws('/local', {
+            open: (ws) => {
+                hLog(`Local controller connected!`);
+            },
+            message: (ws, msg) => {
+                const buffer = Buffer.from(msg);
+                const message = JSON.parse(buffer.toString());
+                if (message.event === 'fill_missing_blocks') {
+                    this.fillMissingBlocks(message.data, ws).catch(console.log);
+                }
+            },
+            close: (ws) => {
+                hLog(`Local controller disconnected!`);
+            }
+        });
+        this.localController.listen(4321, (listenSocket) => {
+            hLog(`Local controller listening on port 4321`);
+        });
+    }
+
     async runMaster() {
 
         // config checks
@@ -1753,6 +1793,8 @@ export class HyperionMaster {
         }
 
         this.printMode();
+
+        this.createLocalController();
 
         // Preview mode - prints only the proposed worker map
         let preview = this.conf.settings.preview;
@@ -2441,6 +2483,26 @@ export class HyperionMaster {
             }
         }
         return responses;
+    }
+
+    private sendPendingRepairRanges() {
+        if (this.pendingRepairRanges.length > 0) {
+            const nextRange = this.pendingRepairRanges.shift();
+            console.log('NEXT RANGE FOR REPAIR: ', nextRange);
+            this.repairReader.wref.send({
+                event: 'new_range',
+                target: this.repairReader.worker_id.toString(),
+                data: {
+                    first_block: nextRange.start,
+                    last_block: nextRange.end + 1
+                }
+            });
+        } else {
+            console.log('Repair completed!');
+            this.connectedController.send(JSON.stringify({
+                event: 'repair_completed'
+            }));
+        }
     }
 }
 

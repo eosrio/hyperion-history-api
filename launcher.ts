@@ -13,6 +13,7 @@ const hyperionWorkers = {
 	reader: 'state-reader',
 	deserializer: 'deserializer',
 	continuous_reader: 'state-reader',
+	repair_reader: 'state-reader',
 	ingestor: 'indexer',
 	router: 'ws-router',
 	delta_updater: 'delta-updater'

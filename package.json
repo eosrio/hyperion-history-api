@@ -1,6 +1,6 @@
 {
   "name": "hyperion-history",
-  "version": "3.3.9-4",
+  "version": "3.3.9-5",
   "description": "Scalable Full History API Solution for EOSIO based blockchains",
   "main": "launcher.js",
   "scripts": {

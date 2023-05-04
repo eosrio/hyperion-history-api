@@ -41,6 +41,7 @@ export default class StateReader extends HyperionWorker {
 
     private forkedBlocks = new Map<string, number>();
     private idle = true;
+    private repairMode = false;
 
     constructor() {
         super();
@@ -190,6 +191,9 @@ export default class StateReader extends HyperionWorker {
 
     newRange(data: any) {
         debugLog(`new_range [${data.first_block},${data.last_block}]`);
+        if (this.repairMode) {
+            hLog(`Received Repair request [${data.first_block},${data.last_block}]`);
+        }
         this.local_distributed_count = 0;
         clearInterval(this.completionMonitoring);
         this.completionMonitoring = null;
@@ -206,6 +210,11 @@ export default class StateReader extends HyperionWorker {
 
     onIpcMessage(msg: any): void {
         switch (msg.event) {
+            case 'pull_range': {
+                console.log(msg.data);
+                this.requestBlockRange(msg.data.start, msg.data.end);
+                break;
+            }
             case 'new_range': {
                 if (msg.target === process.env.worker_id) {
                     this.newRange(msg.data);
@@ -356,6 +365,15 @@ export default class StateReader extends HyperionWorker {
                             break;
                         }
 
+                        case 'repair_reader': {
+                            this.repairMode = true;
+                            console.log('Waiting for operations...');
+                            process.send({
+                                event: 'repair_reader_ready'
+                            });
+                            break;
+                        }
+
                     }
                 } else {
                     this.ship.close(true);
@@ -374,6 +392,11 @@ export default class StateReader extends HyperionWorker {
                     const task_payload = {num: blk_num, content: data};
 
                     if (res.block && res.traces && res.deltas) {
+
+                        if (this.repairMode) {
+                            hLog("Repaired block: " + blk_num);
+                        }
+
                         debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
                     } else {
                         if (!res.traces) {
@@ -668,6 +691,7 @@ export default class StateReader extends HyperionWorker {
             }
         );
     }
+
 
     private handleLostConnection() {
         this.recovery = true;
