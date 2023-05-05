@@ -495,6 +495,7 @@ export default class MainDSWorker extends HyperionWorker {
             return {
                 block_num: res['this_block']['block_num'],
                 block_id: res['this_block']['block_id'],
+                block_ts,
                 trx_ids: onBlockTransactions,
                 size: _traces.length
             };
@@ -1605,7 +1606,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         this.tableHandlers[EOSIO_ALIAS + ':producers'] = (delta) => {
             const data = delta['data'];
-            if(data) {
+            if (data) {
                 delta['@producers'] = {
                     total_votes: parseFloat(data['total_votes']),
                     is_active: data['is_active'],

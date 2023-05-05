@@ -137,6 +137,7 @@ export default class HyperionParser extends BaseParser {
                         event: 'consumed_block',
                         block_num: result['block_num'],
                         block_id: result['block_id'],
+                        block_ts: result['block_ts'],
                         trx_ids: result['trx_ids'],
                         lib: res.last_irreversible.block_num,
                         live: process.env.live_mode

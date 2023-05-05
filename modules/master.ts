@@ -179,7 +179,7 @@ export class HyperionMaster {
         start: number,
         end: number
     }[] = [];
-    private connectedController?: WebSocket;
+    private connectedController?: WebSocket<any>;
 
     constructor() {
         this.cm = new ConfigurationModule();
@@ -225,6 +225,12 @@ export class HyperionMaster {
 
     initHandlerMap() {
         this.msgHandlerMap = {
+            'skipped_block': (msg: any) => {
+                this.consumedBlocks++;
+                if (msg.block_num > this.lastProcessedBlockNum) {
+                    this.lastProcessedBlockNum = msg.block_num;
+                }
+            },
             'consumed_block': (msg: any) => {
                 if (msg.live === 'false') {
                     this.consumedBlocks++;
@@ -232,8 +238,12 @@ export class HyperionMaster {
                         this.lastProcessedBlockNum = msg.block_num;
                     }
                 } else {
+
                     // LIVE READER
                     this.liveConsumedBlocks++;
+
+                    // cache the last block number for quick api access
+                    this.ioRedisClient.set(`${this.chain}:last_idx_block`, `${msg.block_num}@${msg.block_ts}`).catch(console.log);
 
                     if (this.revBlockArray.length > 0) {
                         if (this.revBlockArray[this.revBlockArray.length - 1].num === msg.block_num) {
@@ -1728,7 +1738,7 @@ export class HyperionMaster {
         }
     }
 
-    async fillMissingBlocks(data: any, ws: WebSocket) {
+    async fillMissingBlocks(data: any, ws: WebSocket<any>) {
         this.pendingRepairRanges = data.filter((range: any) => {
             return range.end - range.start >= 0;
         });
@@ -1794,7 +1804,7 @@ export class HyperionMaster {
 
         this.printMode();
 
-        this.createLocalController();
+        // this.createLocalController();
 
         // Preview mode - prints only the proposed worker map
         let preview = this.conf.settings.preview;

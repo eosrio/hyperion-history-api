@@ -217,6 +217,8 @@ export function extendResponseSchema(responseProps: any) {
         cached: {type: "boolean"},
         hot_only: {type: "boolean"},
         lib: {type: "number"},
+        last_indexed_block: {type: "number"},
+        last_indexed_block_time: {type: "string"},
         total: {
             type: "object",
             properties: {
@@ -385,16 +387,31 @@ export async function timedQuery(
         request.method === 'POST' ? request.body : request.query
     );
 
+    let lastIndexedBlockNumber = null;
+    let lastIndexedBlockTime = null;
+    const lastIndexedBlock = await fastify.redis.get(`${fastify.manager.chain}:last_idx_block`);
+    if (lastIndexedBlock) {
+        const arr = lastIndexedBlock.split("@");
+        if (arr.length === 2) {
+            lastIndexedBlockNumber = parseInt(arr[0], 10);
+            lastIndexedBlockTime = arr[1];
+        }
+    }
+
     if (cachedResponse && !request.query["ignoreCache"]) {
         // add cached query time
         cachedResponse['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
+        if (lastIndexedBlock) {
+            cachedResponse['last_indexed_block'] = lastIndexedBlockNumber;
+            cachedResponse['last_indexed_block_time'] = lastIndexedBlockTime;
+        }
         return cachedResponse;
     }
 
     // call query function
     const response = await queryFunction(fastify, request);
 
-    // save response to cash
+    // save response to cache
     if (hash) {
         let EX = null;
         if (defaultRouteCacheMap[route]) {
@@ -406,6 +423,10 @@ export async function timedQuery(
     // add normal query time
     if (response) {
         response['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
+        if (lastIndexedBlock) {
+            response['last_indexed_block'] = lastIndexedBlockNumber;
+            response['last_indexed_block_time'] = lastIndexedBlockTime;
+        }
         return response;
     } else {
         return {};

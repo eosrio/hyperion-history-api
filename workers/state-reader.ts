@@ -22,6 +22,7 @@ export default class StateReader extends HyperionWorker {
     private completionMonitoring: NodeJS.Timeout;
     private types: Map<string, Type>;
     private local_block_num = parseInt(process.env.first_block, 10) - 1;
+    private local_block_id = '';
     private queueSizeCheckInterval = 5000;
     private local_distributed_count = 0;
     private lastPendingCount = 0;
@@ -42,6 +43,7 @@ export default class StateReader extends HyperionWorker {
     private forkedBlocks = new Map<string, number>();
     private idle = true;
     private repairMode = false;
+
 
     constructor() {
         super();
@@ -294,7 +296,7 @@ export default class StateReader extends HyperionWorker {
                 try {
                     await this.onMessage(block);
                 } catch (e) {
-                    console.log(e);
+                    hLog(e);
                 }
             }
             this.ackBlockRange(block_array.length);
@@ -317,7 +319,7 @@ export default class StateReader extends HyperionWorker {
         }
 
         if (!process.env.worker_role) {
-            console.log("[FATAL ERROR] undefined role! Exiting now!");
+            hLog("[FATAL ERROR] undefined role! Exiting now!");
             this.ship.close(false);
             process.exit(1);
             return;
@@ -367,7 +369,7 @@ export default class StateReader extends HyperionWorker {
 
                         case 'repair_reader': {
                             this.repairMode = true;
-                            console.log('Waiting for operations...');
+                            hLog('Waiting for operations...');
                             process.send({
                                 event: 'repair_reader_ready'
                             });
@@ -388,6 +390,8 @@ export default class StateReader extends HyperionWorker {
                 if (res['this_block']) {
                     this.idle = false;
                     const blk_num = res['this_block']['block_num'];
+                    const blk_id = res['this_block']['block_id'];
+
                     const lib = res['last_irreversible'];
                     const task_payload = {num: blk_num, content: data};
 
@@ -413,8 +417,14 @@ export default class StateReader extends HyperionWorker {
                     if (this.isLiveReader) {
 
                         // LIVE READER MODE
-                        if (blk_num !== this.local_block_num + 1) {
-                            hLog(`Expected: ${this.local_block_num + 1}, received: ${blk_num}`);
+                        let prev_id;
+                        if (res['prev_block'] && res['prev_block']['block_id']) {
+                            prev_id = res['prev_block']['block_id'];
+                        }
+
+                        if ((this.local_block_id && prev_id && this.local_block_id !== prev_id) || (blk_num !== this.local_block_num + 1)) {
+                            hLog(`Unlinked block at ${prev_id} with previous block ${this.local_block_id}`);
+                            hLog(`Forked block: ${blk_num}`);
                             try {
                                 // delete all previously stored data for the forked blocks
                                 await this.handleFork(res);
@@ -423,7 +433,21 @@ export default class StateReader extends HyperionWorker {
                             }
                         } else {
                             this.local_block_num = blk_num;
+                            this.local_block_id = blk_id;
                         }
+
+                        // if (blk_num !== this.local_block_num + 1) {
+                        //     hLog(`Expected: ${this.local_block_num + 1}, received: ${blk_num}`);
+                        //     try {
+                        //         // delete all previously stored data for the forked blocks
+                        //         await this.handleFork(res);
+                        //     } catch (e) {
+                        //         hLog(`Failed to handle fork during live reading! - Error: ${e.message}`);
+                        //     }
+                        // } else {
+                        //     this.local_block_num = blk_num;
+                        //     this.local_block_id = blk_id;
+                        // }
 
                         if (lib.block_num > this.local_lib) {
                             this.local_lib = lib.block_num;
@@ -438,16 +462,24 @@ export default class StateReader extends HyperionWorker {
                         // Detect skipped first block
                         if (!this.receivedFirstBlock) {
                             if (blk_num !== this.local_block_num + 1) {
-                                hLog(`WARNING: First block received was #${blk_num}, but #${this.local_block_num + 1} was expected!`);
-                                hLog(`Make sure the block.log file contains the requested range, check with "eosio-blocklog --smoke-test"`);
+                                // Special case for block 2 that is actually the first block on ship
+                                if (blk_num !== 2) {
+                                    hLog(`WARNING: First block received was #${blk_num}, but #${this.local_block_num + 1} was expected!`);
+                                    hLog(`Make sure the block.log file contains the requested range, check with "eosio-blocklog --smoke-test"`);
+                                }
                                 this.local_block_num = blk_num - 1;
+                                this.local_distributed_count++;
+                                process.send({
+                                    event: 'skipped_block',
+                                    block_num: this.local_block_num + 1
+                                })
                             }
                             this.receivedFirstBlock = true;
                         }
 
                         // BACKLOG MODE
                         if (this.future_block !== 0 && this.future_block === blk_num) {
-                            console.log('Missing block ' + blk_num + ' received!');
+                            hLog('Missing block ' + blk_num + ' received!');
                         } else {
                             this.future_block = 0;
                         }
@@ -611,11 +643,14 @@ export default class StateReader extends HyperionWorker {
                 id: targetBlock
             });
             targetBlock++;
-            console.log(blockData);
             if (blockData.body) {
                 const targetBlockId = blockData.body._source.block_id;
                 this.forkedBlocks.set(targetBlockId, Date.now());
-                this.deleteForkedBlock(targetBlockId).catch(console.log);
+                try {
+                    await this.deleteForkedBlock(targetBlockId);
+                } catch (e: any) {
+                    hLog(`Error deleting forked block ${targetBlockId}: ${e.message}`);
+                }
             }
         }
     }
