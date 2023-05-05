@@ -1149,6 +1149,7 @@ export default class MainDSWorker extends HyperionWorker {
                 let jsonRow = await this.processContractRowNative(payload, block_num);
 
                 if (jsonRow?.value && !jsonRow['_blacklisted']) {
+                    console.log(jsonRow);
                     debugLog('Delta DS failed ->>', jsonRow);
                     jsonRow = await this.processContractRowNative(payload, block_num - 1);
                     debugLog('Retry with previous ABI ->>', jsonRow);
