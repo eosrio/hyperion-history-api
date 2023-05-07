@@ -431,6 +431,7 @@ export default class StateReader extends HyperionWorker {
                             } catch (e) {
                                 hLog(`Failed to handle fork during live reading! - Error: ${e.message}`);
                             }
+                            this.local_block_id = '';
                         } else {
                             this.local_block_num = blk_num;
                             this.local_block_id = blk_id;

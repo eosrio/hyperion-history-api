@@ -40,16 +40,12 @@ export class SocketManager {
     private readonly url;
     private readonly server: FastifyInstance;
     private readonly uwsApp: TemplatedApp;
+    private chainId: string;
 
     constructor(fastify: FastifyInstance, url, redisOptions) {
         this.server = fastify;
         this.url = url;
         this.uwsApp = App({});
-
-        // this.io = new Server(fastify.server, {
-        // 	allowEIO3: true,
-        // 	transports: ['websocket', 'polling'],
-        // });
 
         // WS Server for public access
         this.io = new Server({
@@ -59,9 +55,11 @@ export class SocketManager {
 
         this.io.attachApp(this.uwsApp);
 
+        this.chainId = this.server.manager.conn.chains[this.server.manager.chain].chain_id
+        hLog(`[SocketManager] chain_id: ${this.chainId}`);
         const pubClient = new IORedis(redisOptions);
         const subClient = pubClient.duplicate();
-        this.io.adapter(createAdapter({pubClient, subClient}));
+        this.io.adapter(createAdapter({pubClient, subClient, key: this.chainId}));
 
         this.io.on('connection', (socket: Socket) => {
 
@@ -160,18 +158,30 @@ export class SocketManager {
             this.emitToClient(traceData, 'action_trace');
         });
 
-        // Relay LIB info to clients;
-        this.relay.on('lib_update', (data) => {
-            if (this.server.manager.conn.chains[this.server.manager.chain].chain_id === data.chain_id) {
-                this.io.emit('lib_update', data);
-            }
-        });
 
-        // Relay LIB info to clients;
-        this.relay.on('fork_event', (data) => {
-            hLog(data);
-            if (this.server.manager.conn.chains[this.server.manager.chain].chain_id === data.chain_id) {
-                this.io.emit('fork_event', data);
+        this.addRelayForwarding('lib_update');
+        this.addRelayForwarding('fork_event');
+
+        // // Relay LIB info to clients;
+        // this.relay.on('lib_update', (data) => {
+        //     if (this.server.manager.conn.chains[this.server.manager.chain].chain_id === data.chain_id) {
+        //         this.io.emit('lib_update', data);
+        //     }
+        // });
+        //
+        // // Relay fork info to clients;
+        // this.relay.on('fork_event', (data) => {
+        //     if (this.server.manager.conn.chains[this.server.manager.chain].chain_id === data.chain_id) {
+        //         this.io.emit('fork_event', data);
+        //     }
+        // });
+    }
+
+    // Relay events to clients
+    addRelayForwarding(event: string) {
+        this.relay.on(event, (data: any) => {
+            if (data.chain_id && this.chainId === data.chain_id) {
+                this.io.emit(event, data);
             }
         });
     }

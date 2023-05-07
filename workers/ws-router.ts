@@ -34,21 +34,21 @@ export default class WSRouter extends HyperionWorker {
         this.ch.consume(this.q, this.onConsume.bind(this));
     }
 
+    appendIdAndEmit(event, data) {
+        this.io.emit(event, {
+            chain_id: this.manager.conn.chains[this.chain]?.chain_id,
+            ...data
+        });
+    };
 
     onIpcMessage(msg: any): void {
         switch (msg.event) {
             case 'lib_update': {
-                this.io.emit('lib_update', {
-                    chain_id: this.manager.conn.chains[this.chain]?.chain_id,
-                    ...msg.data
-                });
+                this.appendIdAndEmit('lib_update', msg.data);
                 break;
             }
             case 'fork_event': {
-                this.io.emit('fork_event', {
-                    chain_id: this.manager.conn.chains[this.chain]?.chain_id,
-                    ...msg.data
-                });
+                this.appendIdAndEmit('fork_event', msg.data);
                 break;
             }
         }

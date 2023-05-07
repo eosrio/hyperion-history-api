@@ -420,6 +420,7 @@ export class HyperionMaster {
                     if (this.conf.hub && this.conf.hub.inform_url) {
                         this.hub.emit('hyp_ev', {e: 'lib', d: msg.data});
                     }
+                    // forward LIB to streaming router
                     if (this.conf.features.streaming.enable) {
                         debugLog(`Live Reader reported LIB update: ${msg.data.block_num} | ${msg.data.block_id}`);
                         this.wsRouterWorker.send(msg);

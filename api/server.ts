@@ -37,7 +37,7 @@ class HyperionApiServer {
         const cm = new ConfigurationModule();
         this.conf = cm.config;
 
-        if(this.conf.settings.use_global_agent) {
+        if (this.conf.settings.use_global_agent) {
             bootstrap();
         }
 
@@ -150,20 +150,21 @@ class HyperionApiServer {
     }
 
     activateStreaming() {
-        console.log('Importing stream module');
+        console.log('Importing stream module...');
         import('./socketManager').then((mod) => {
             const connOpts = this.manager.conn.chains[this.chain];
-
             let _port = 57200;
             if (connOpts.WS_ROUTER_PORT) {
                 _port = connOpts.WS_ROUTER_PORT;
             }
-
             let _host = "127.0.0.1";
             if (connOpts.WS_ROUTER_HOST) {
                 _host = connOpts.WS_ROUTER_HOST;
             }
-
+            if (_host === "0.0.0.0") {
+                hLog(`[ERROR] WS Router Host is set to 0.0.0.0, please use a fixed IP address instead. Can't start streaming.`);
+                return;
+            }
             this.socketManager = new mod.SocketManager(
                 this.fastify,
                 `http://${_host}:${_port}`,
