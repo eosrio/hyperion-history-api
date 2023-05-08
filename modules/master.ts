@@ -104,11 +104,6 @@ export class HyperionMaster {
     // IPC Messaging
     private totalMessages = 0;
 
-    // Repair
-    private doctorId = 0;
-    private missingRanges = [];
-    private doctorIdle = true;
-
     // Indexer Monitoring
     private lastProcessedBlockNum = 0;
     private allowMoreReaders = true;
@@ -147,7 +142,8 @@ export class HyperionMaster {
     private wsRouterWorker: Worker;
     private liveBlockQueue: QueueObject<any>;
     private readingPaused = false;
-    private readingLimited = false;
+
+    // private readingLimited = false;
 
     // Hyperion Hub Socket
     private hub: Socket;
@@ -186,25 +182,20 @@ export class HyperionMaster {
     constructor() {
         this.cm = new ConfigurationModule();
         this.conf = this.cm.config;
-
         if (this.conf.settings.use_global_agent) {
             bootstrap();
         }
-
         this.alerts = new AlertsManager(this.conf.alerts);
         this.manager = new ConnectionManager(this.cm);
         this.mLoader = new HyperionModuleLoader(this.cm);
         this.mLoader.init().then(() => {
-
             this.mLoader.plugins.forEach(value => {
                 value.initOnce();
                 hLog(`Plugin loaded: ${value.internalPluginName}`);
             })
-
             this.chain = this.conf.settings.chain;
             this.alerts.chainName = this.chain;
             this.initHandlerMap();
-
             this.mLoader.plugins.forEach(value => {
                 const pluginHandlerMap = value.initHandlerMap();
                 hLog(`Plugin IPC handlers loaded: ${Object.keys(pluginHandlerMap)}`);
@@ -213,11 +204,9 @@ export class HyperionMaster {
                         hLog(`Handler already mapped, cannot load ${handler} from plugin ${value.internalPluginName}`);
                         return;
                     }
-
                     this.msgHandlerMap[handler] = pluginHandlerMap[handler];
                 }
             })
-
             this.liveBlockQueue = queue((task, callback) => {
                 this.onLiveBlock(task);
                 callback();
@@ -670,63 +659,7 @@ export class HyperionMaster {
         hLog(`${updateCounter} index templates updated`);
     }
 
-    private async createIndices(indicesList: { name: string, type: string }[]) {
-        // Create indices
-        const queue_prefix = this.conf.settings.chain;
-        if (this.conf.settings.index_version) {
-
-            // Start with version=1 if none is defined
-            let version = 'v1';
-            if (this.conf.settings.index_version) {
-                version = this.conf.settings.index_version;
-            }
-
-            for (const index of indicesList) {
-
-                // check for existing first index in the sequence
-                const new_index = `${queue_prefix}-${index.type}-${version}-000001`;
-                const exists = await this.client.indices.exists({index: new_index});
-
-                if (!exists.body) {
-
-                    // create index
-                    try {
-                        hLog(`Creating index ${new_index}...`);
-                        await this.client.indices.create({
-                            index: new_index
-                        });
-                    } catch (e) {
-                        hLog(e);
-                        process.exit(1);
-                    }
-
-                    // create alias pointing to the new index
-                    try {
-                        hLog(`Creating alias ${queue_prefix}-${index.type} >> ${new_index}`);
-                        await this.client.indices.putAlias({
-                            index: new_index,
-                            name: `${queue_prefix}-${index.type}`
-                        });
-                    } catch (e) {
-                        hLog(e);
-                        process.exit(1);
-                    }
-
-                }
-            }
-        }
-
-        // Check for indexes
-        for (const index of indicesList) {
-            const status = await this.client.indices.existsAlias({
-                name: `${queue_prefix}-${index.type}`
-            });
-            if (!status) {
-                hLog('Alias ' + `${queue_prefix}-${index.type}` + ' not found! Aborting!');
-                process.exit(1);
-            }
-        }
-    }
+    // ------ START OF WORKER MANAGEMENT METHODS ------ //
 
     private async defineBlockRange() {
         // Define block range
@@ -765,6 +698,43 @@ export class HyperionMaster {
         // print results
         hLog(' |>> First Block: ' + this.starting_block);
         hLog(' >>| Last  Block: ' + this.head);
+    }
+
+    private async findRange() {
+        // Auto-stop
+        if (this.conf.settings.auto_stop) {
+            this.auto_stop = this.conf.settings.auto_stop;
+        }
+
+        // Find last indexed block
+        let lastIndexedBlock;
+        if (this.conf.features.index_deltas) {
+            lastIndexedBlock = await getLastIndexedBlockByDelta(this.client, this.chain);
+            hLog(`Last indexed block (deltas): ${lastIndexedBlock}`);
+        } else {
+            lastIndexedBlock = await getLastIndexedBlock(this.client, this.chain);
+            hLog(`Last indexed block (blocks): ${lastIndexedBlock}`);
+        }
+
+        // Start from the last indexed block
+        this.starting_block = 1;
+
+        // Fecth chain lib
+        try {
+            this.chain_data = await this.rpc.get_info();
+        } catch (e) {
+            hLog('Failed to connect to chain api: ' + e.message);
+            process.exit(1);
+        }
+        this.head = this.chain_data.head_block_num;
+
+        if (lastIndexedBlock > 0) {
+            this.starting_block = lastIndexedBlock;
+        }
+
+        if (this.conf.indexer.stop_on !== 0) {
+            this.head = this.conf.indexer.stop_on;
+        }
     }
 
     private static printWorkerMap(wmp) {
@@ -825,6 +795,56 @@ export class HyperionMaster {
         hLog('--------------------------------------------------');
     }
 
+    private async setupReaders() {
+        // Setup Readers
+
+        this.lastAssignedBlock = this.starting_block;
+
+        this.activeReadersCount = 0;
+
+        // Setup parallel readers unless explicitly disabled
+        if (!this.conf.indexer.live_only_mode) {
+            // console.log(this.activeReadersCount, this.max_readers, this.lastAssignedBlock, this.head)
+            while (this.activeReadersCount < this.max_readers && this.lastAssignedBlock < this.head) {
+                const start = this.lastAssignedBlock;
+                let end = this.lastAssignedBlock + this.maxBatchSize;
+                if (end > this.head) {
+                    end = this.head;
+                }
+                this.lastAssignedBlock += this.maxBatchSize;
+                this.addWorker({
+                    worker_role: 'reader',
+                    first_block: start,
+                    last_block: end
+                });
+                this.activeReadersCount++;
+                hLog(`Setting parallel reader [${this.worker_index}] from block ${start} to ${end}`);
+            }
+        }
+
+        // Setup live workers
+        if (this.conf.indexer.live_reader) {
+            const _head = this.chain_data.head_block_num;
+            hLog(`Setting live reader at head = ${_head}`);
+
+            // live block reader
+            this.liveReader = this.addWorker({
+                worker_role: 'continuous_reader',
+                worker_last_processed_block: _head,
+                ws_router: ''
+            });
+
+            // live deserializers
+            for (let j = 0; j < this.conf.scaling.ds_threads; j++) {
+                this.addWorker({
+                    worker_role: 'deserializer',
+                    worker_queue: this.chain + ':live_blocks',
+                    live_mode: 'true'
+                });
+            }
+        }
+    }
+
     private async setupDeserializers() {
         for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
             for (let j = 0; j < this.conf.scaling.ds_threads; j++) {
@@ -837,93 +857,10 @@ export class HyperionMaster {
         }
     }
 
-    async getLastBlock(index_name) {
-        const lastBlockSearch = await this.manager.elasticsearchClient.search({
-            index: index_name,
-            size: 1,
-            _source: "block_num",
-            body: {
-                "query": {"match_all": {}},
-                sort: [{"block_num": {"order": "desc"}}]
-            }
-        });
-        if (lastBlockSearch.body.hits.hits[0]) {
-            return lastBlockSearch.body.hits.hits[0]._source.block_num;
-        } else {
-            return null;
-        }
-    }
-
-    // async getFirstBlock(index_name) {
-    //     const firstBlockSearch = await this.manager.elasticsearchClient.search({
-    //         index: index_name,
-    //         size: 1,
-    //         _source: "block_num",
-    //         body: {
-    //             "query": {"match_all": {}},
-    //             sort: [{"block_num": {"order": "asc"}}]
-    //         }
-    //     });
-    //     if (firstBlockSearch.body.hits.hits[0]) {
-    //         return firstBlockSearch.body.hits.hits[0]._source.block_num;
-    //     } else {
-    //         return null;
-    //     }
-    // }
-
     private async setupIndexers() {
-
-        // const indexDist = {
-        //     action: [],
-        //     delta: []
-        // };
-
-        // hLog(`Loading indices...`);
-
-        // if (!this.conf.settings.bypass_index_map) {
-        //     const getIndicesResponse = await this.manager.elasticsearchClient.cat.indices({
-        //         index: this.chain + "-*",
-        //         format: 'json'
-        //     });
-        //
-        //     if (getIndicesResponse && getIndicesResponse.statusCode === 200 && getIndicesResponse.body) {
-        //         const indices = getIndicesResponse.body;
-        //         const actionIndices = indices.filter(k => k.index.startsWith(this.chain + "-action"));
-        //         for (const actionIndex of actionIndices) {
-        //             const last_block = await this.getLastBlock(actionIndex.index);
-        //             const first_block = await this.getFirstBlock(actionIndex.index);
-        //             hLog(`ActionIndex: ${actionIndex.index} | First: ${first_block} | Last: ${last_block}`);
-        //             indexDist.action.push({
-        //                 index: actionIndex.index,
-        //                 first_block,
-        //                 last_block
-        //             });
-        //         }
-        //
-        //         const deltaIndices = indices.filter(k => k.index.startsWith(this.chain + "-delta"));
-        //         for (const deltaIndex of deltaIndices) {
-        //             const last_block = await this.getLastBlock(deltaIndex.index);
-        //             const first_block = await this.getFirstBlock(deltaIndex.index);
-        //             hLog(`DeltaIndex: ${deltaIndex.index} | First: ${first_block} | Last: ${last_block}`);
-        //             indexDist.delta.push({
-        //                 index: deltaIndex.index,
-        //                 first_block,
-        //                 last_block
-        //             });
-        //         }
-        //     } else {
-        //         console.log(JSON.stringify(getIndicesResponse, null, 2));
-        //         hLog(`Failed to load all indices!`);
-        //         process.exit();
-        //     }
-        // }
-
-
         if (this.conf.indexer.rewrite || this.conf.settings.preview) {
             hLog(`Indexer rewrite enabled (${this.conf.indexer.start_on} - ${this.conf.indexer.stop_on})`);
         }
-
-
         let qIdx = 0;
         this.IndexingQueues.forEach((q) => {
             let n = this.conf.scaling.indexing_queues;
@@ -976,233 +913,40 @@ export class HyperionMaster {
         }
     }
 
-    private async waitForLaunch(): Promise<void> {
+    private async setupWorkers() {
+        this.lastIndexedABI = await getLastIndexedABI(this.client, this.chain);
+        await this.defineBlockRange();
+        this.total_range = this.head - this.starting_block;
+        await this.setupReaders();
+        await this.setupDeserializers();
+        await this.setupIndexers();
+        await this.setupStreaming();
+        await this.setupDSPool();
+        this.addWorker({worker_role: "delta_updater"});
+    }
 
-        return new Promise(resolve => {
-
-            hLog(`Use "pm2 trigger ${pm2io.getConfig()['module_name']} start" to start the indexer now or restart without preview mode.`);
-
-            const idleTimeout = setTimeout(() => {
-                hLog('No command received after 10 minutes.');
-                hLog('Exiting now! Disable the PREVIEW mode to continue.');
-                process.exit(1);
-            }, 60000 * 10);
-
-            pm2io.action('start', (reply) => {
-                resolve();
-                reply({ack: true});
-                clearTimeout(idleTimeout);
-            });
-
+    private launchWorkers() {
+        let launchedCount = 0;
+        this.workerMap.forEach((wrk: HyperionWorkerDef) => {
+            if (!wrk.wref) {
+                wrk.wref = cluster.fork(wrk);
+                wrk.wref.id = wrk.worker_id;
+                wrk.wref.on('message', (msg) => {
+                    this.handleMessage(msg);
+                });
+                if (wrk.worker_role === 'ds_pool_worker') {
+                    this.dsPoolMap.set(wrk.local_id, wrk.wref);
+                }
+                if (wrk.worker_role === 'router') {
+                    this.wsRouterWorker = wrk.wref;
+                }
+                launchedCount++;
+            }
         });
+        hLog(`${launchedCount} workers launched`);
     }
 
-    setupDSElogs() {
-        const logPath = path.join(path.resolve(), 'logs', this.chain);
-        if (!existsSync(logPath)) mkdirSync(logPath, {recursive: true});
-        const dsLogFileName = (new Date().toISOString()) + "_ds_err_" + this.starting_block + "_" + this.head + ".log";
-        const dsErrorsLog = logPath + '/' + dsLogFileName;
-        if (existsSync(dsErrorsLog)) unlinkSync(dsErrorsLog);
-        const symbolicLink = logPath + '/deserialization_errors.log';
-        if (existsSync(symbolicLink)) unlinkSync(symbolicLink);
-        symlinkSync(dsLogFileName, symbolicLink);
-        this.dsErrorStream = createWriteStream(dsErrorsLog, {flags: 'a'});
-        hLog(`📣️  Deserialization errors are being logged in:\n[${symbolicLink}]`);
-        this.dsErrorStream.write(`begin ${this.chain} error logs\n`);
-    }
-
-    onLiveBlock(msg) {
-        if (this.proposedSchedule && this.proposedSchedule.version) {
-            if (msg.schedule_version >= this.proposedSchedule.version) {
-                hLog(`Active producers changed!`);
-                this.printActiveProds();
-                this.activeSchedule = this.proposedSchedule;
-                this.printActiveProds();
-                this.proposedSchedule = null;
-                this.producedBlocks = {};
-            }
-        }
-        if ((msg.block_num === this.lastProducedBlockNum + 1) || this.lastProducedBlockNum === 0) {
-            const prod = msg.producer;
-            if (this.producedBlocks[prod]) {
-                this.producedBlocks[prod]++;
-            } else {
-                this.producedBlocks[prod] = 1;
-            }
-            if (this.lastProducer !== prod) {
-                this.handoffCounter++;
-                if (this.lastProducer && this.handoffCounter > 2) {
-                    const activeProds = this.activeSchedule.producers;
-                    const newIdx = activeProds.findIndex(p => p['producer_name'] === prod) + 1;
-                    const oldIdx = activeProds.findIndex(p => p['producer_name'] === this.lastProducer) + 1;
-                    if ((newIdx === oldIdx + 1) || (newIdx === 1 && oldIdx === activeProds.length)) {
-                        if (this.conf.settings.bp_logs) {
-                            hLog(`[${msg.block_num}] producer handoff: ${this.lastProducer} [${oldIdx}] -> ${prod} [${newIdx}]`);
-                        }
-                    } else {
-                        let cIdx = oldIdx + 1;
-                        while (cIdx !== newIdx) {
-                            try {
-                                if (activeProds[cIdx - 1]) {
-                                    const missingProd = activeProds[cIdx - 1]['producer_name'];
-                                    this.reportMissedBlocks(missingProd, this.lastProducedBlockNum, 12);
-                                    if (this.missedRounds[missingProd]) {
-                                        this.missedRounds[missingProd]++;
-                                    } else {
-                                        this.missedRounds[missingProd] = 1;
-                                    }
-                                    hLog(`${missingProd} missed a round [${this.missedRounds[missingProd]}]`);
-                                }
-                            } catch (e) {
-                                hLog(activeProds);
-                                hLog(e);
-                            }
-                            cIdx++;
-                            if (cIdx === activeProds.length) {
-                                cIdx = 0;
-                            }
-                        }
-                    }
-                    if (this.producedBlocks[this.lastProducer]) {
-                        if (this.producedBlocks[this.lastProducer] < 12) {
-                            const _size = 12 - this.producedBlocks[this.lastProducer];
-                            this.reportMissedBlocks(this.lastProducer, this.lastProducedBlockNum, _size);
-                        }
-                    }
-                    this.producedBlocks[this.lastProducer] = 0;
-                }
-                this.lastProducer = prod;
-            }
-            if (this.conf.settings.bp_logs) {
-                if (this.proposedSchedule) {
-                    hLog(`received block ${msg.block_num} from ${prod} [${this.activeSchedule.version} >> ${this.proposedSchedule.version}]`);
-                } else {
-                    hLog(`received block ${msg.block_num} from ${prod} [${this.activeSchedule.version}]`);
-                }
-            }
-        }
-        this.lastProducedBlockNum = msg.block_num;
-    }
-
-    handleMessage(msg) {
-        if (this.shouldCountIPCMessages) {
-            this.totalMessages++;
-        }
-
-        if (this.msgHandlerMap[msg.event]) {
-            this.msgHandlerMap[msg.event](msg);
-        }
-    }
-
-    private async setupReaders() {
-        // Setup Readers
-
-        this.lastAssignedBlock = this.starting_block;
-
-        this.activeReadersCount = 0;
-
-        // Setup parallel readers unless explicitly disabled
-        if (!this.conf.indexer.live_only_mode) {
-            // console.log(this.activeReadersCount, this.max_readers, this.lastAssignedBlock, this.head)
-            while (this.activeReadersCount < this.max_readers && this.lastAssignedBlock < this.head) {
-                const start = this.lastAssignedBlock;
-                let end = this.lastAssignedBlock + this.maxBatchSize;
-                if (end > this.head) {
-                    end = this.head;
-                }
-                this.lastAssignedBlock += this.maxBatchSize;
-                this.addWorker({
-                    worker_role: 'reader',
-                    first_block: start,
-                    last_block: end
-                });
-                this.activeReadersCount++;
-                hLog(`Setting parallel reader [${this.worker_index}] from block ${start} to ${end}`);
-            }
-        }
-
-        // Setup live workers
-        if (this.conf.indexer.live_reader) {
-            const _head = this.chain_data.head_block_num;
-            hLog(`Setting live reader at head = ${_head}`);
-
-            // live block reader
-            this.liveReader = this.addWorker({
-                worker_role: 'continuous_reader',
-                worker_last_processed_block: _head,
-                ws_router: ''
-            });
-
-            // live deserializers
-            for (let j = 0; j < this.conf.scaling.ds_threads; j++) {
-                this.addWorker({
-                    worker_role: 'deserializer',
-                    worker_queue: this.chain + ':live_blocks',
-                    live_mode: 'true'
-                });
-            }
-        }
-    }
-
-    private reportMissedBlocks(missingProd: any, lastProducedBlockNum: number, size: number) {
-        hLog(`${missingProd} missed ${size} ${size === 1 ? "block" : "blocks"} after ${lastProducedBlockNum}`);
-        const _body = {
-            type: 'missed_blocks',
-            '@timestamp': new Date().toISOString(),
-            'missed_blocks': {
-                'producer': missingProd,
-                'last_block': lastProducedBlockNum,
-                'size': size,
-                'schedule_version': this.activeSchedule.version
-            }
-        };
-        this.client.index({
-            index: this.chain + '-logs-' + this.conf.settings.index_version,
-            body: _body
-        }).catch(hLog);
-    }
-
-    // private startRepairMode() {
-    //     let doctorStarted = false;
-    //     let doctorId = 0;
-    //     doctor.run(this.missingRanges as any).then(() => {
-    //         hLog('repair completed!');
-    //     });
-    //     setInterval(() => {
-    //         if (this.missingRanges.length > 0 && !doctorStarted) {
-    //             doctorStarted = true;
-    //             hLog('repair worker launched');
-    //             const range_data = this.missingRanges.shift();
-    //             this.worker_index++;
-    //             const def = {
-    //                 worker_id: this.worker_index,
-    //                 worker_role: 'reader',
-    //                 first_block: range_data.start,
-    //                 last_block: range_data.end
-    //             };
-    //             const self = cluster.fork(def);
-    //             doctorId = def.worker_id;
-    //             hLog('repair id =', doctorId);
-    //             self.on('message', (msg) => {
-    //                 this.handleMessage(msg);
-    //             });
-    //         } else {
-    //             if (this.missingRanges.length > 0 && this.doctorIdle) {
-    //                 const range_data = this.missingRanges.shift();
-    //                 messageAllWorkers(cluster, {
-    //                     event: 'new_range',
-    //                     target: doctorId.toString(),
-    //                     data: {
-    //                         first_block: range_data.start,
-    //                         last_block: range_data.end
-    //                     }
-    //                 });
-    //             }
-    //         }
-    //     }, 1000);
-    // }
-
-    updateWorkerAssignments() {
+    private updateWorkerAssignments() {
         const pool_size = this.conf.scaling.ds_pool_size;
         const worker_max_pct = 1 / pool_size;
 
@@ -1302,6 +1046,145 @@ export class HyperionMaster {
         }
     }
 
+    private sendToRole(role: string, payload: any) {
+        this.workerMap.filter(value => value.worker_role === role).forEach(value => value.wref.send(payload));
+    }
+
+    private async waitForLaunch(): Promise<void> {
+        return new Promise(resolve => {
+            hLog(`Use "pm2 trigger ${pm2io.getConfig()['module_name']} start" to start the indexer now or restart without preview mode.`);
+            const idleTimeout = setTimeout(() => {
+                hLog('No command received after 10 minutes.');
+                hLog('Exiting now! Disable the PREVIEW mode to continue.');
+                process.exit(1);
+            }, 60000 * 10);
+            pm2io.action('start', (reply) => {
+                resolve();
+                reply({ack: true});
+                clearTimeout(idleTimeout);
+            });
+        });
+    }
+
+    // ------ END OF WORKER MANAGEMENT METHODS ------ //
+
+    setupDeserializationErrorLogger() {
+        const logPath = path.join(path.resolve(), 'logs', this.chain);
+        if (!existsSync(logPath)) mkdirSync(logPath, {recursive: true});
+        const dsLogFileName = (new Date().toISOString()) + "_ds_err_" + this.starting_block + "_" + this.head + ".log";
+        const dsErrorsLog = logPath + '/' + dsLogFileName;
+        if (existsSync(dsErrorsLog)) unlinkSync(dsErrorsLog);
+        const symbolicLink = logPath + '/deserialization_errors.log';
+        if (existsSync(symbolicLink)) unlinkSync(symbolicLink);
+        symlinkSync(dsLogFileName, symbolicLink);
+        this.dsErrorStream = createWriteStream(dsErrorsLog, {flags: 'a'});
+        hLog(`📣️  Deserialization errors are being logged in:\n[${symbolicLink}]`);
+        this.dsErrorStream.write(`begin ${this.chain} error logs\n`);
+    }
+
+    onLiveBlock(msg) {
+        if (this.proposedSchedule && this.proposedSchedule.version) {
+            if (msg.schedule_version >= this.proposedSchedule.version) {
+                hLog(`Active producers changed!`);
+                this.printActiveProds();
+                this.activeSchedule = this.proposedSchedule;
+                this.printActiveProds();
+                this.proposedSchedule = null;
+                this.producedBlocks = {};
+            }
+        }
+        if ((msg.block_num === this.lastProducedBlockNum + 1) || this.lastProducedBlockNum === 0) {
+            const prod = msg.producer;
+            if (this.producedBlocks[prod]) {
+                this.producedBlocks[prod]++;
+            } else {
+                this.producedBlocks[prod] = 1;
+            }
+            if (this.lastProducer !== prod) {
+                this.handoffCounter++;
+                if (this.lastProducer && this.handoffCounter > 2) {
+                    const activeProds = this.activeSchedule.producers;
+                    const newIdx = activeProds.findIndex(p => p['producer_name'] === prod) + 1;
+                    const oldIdx = activeProds.findIndex(p => p['producer_name'] === this.lastProducer) + 1;
+                    if ((newIdx === oldIdx + 1) || (newIdx === 1 && oldIdx === activeProds.length)) {
+                        if (this.conf.settings.bp_logs) {
+                            hLog(`[${msg.block_num}] producer handoff: ${this.lastProducer} [${oldIdx}] -> ${prod} [${newIdx}]`);
+                        }
+                    } else {
+                        let cIdx = oldIdx + 1;
+                        while (cIdx !== newIdx) {
+                            try {
+                                if (activeProds[cIdx - 1]) {
+                                    const missingProd = activeProds[cIdx - 1]['producer_name'];
+                                    this.reportMissedBlocks(missingProd, this.lastProducedBlockNum, 12);
+                                    if (this.missedRounds[missingProd]) {
+                                        this.missedRounds[missingProd]++;
+                                    } else {
+                                        this.missedRounds[missingProd] = 1;
+                                    }
+                                    hLog(`${missingProd} missed a round [${this.missedRounds[missingProd]}]`);
+                                }
+                            } catch (e) {
+                                hLog(activeProds);
+                                hLog(e);
+                            }
+                            cIdx++;
+                            if (cIdx === activeProds.length) {
+                                cIdx = 0;
+                            }
+                        }
+                    }
+                    if (this.producedBlocks[this.lastProducer]) {
+                        if (this.producedBlocks[this.lastProducer] < 12) {
+                            const _size = 12 - this.producedBlocks[this.lastProducer];
+                            this.reportMissedBlocks(this.lastProducer, this.lastProducedBlockNum, _size);
+                        }
+                    }
+                    this.producedBlocks[this.lastProducer] = 0;
+                }
+                this.lastProducer = prod;
+            }
+            if (this.conf.settings.bp_logs) {
+                if (this.proposedSchedule) {
+                    hLog(`received block ${msg.block_num} from ${prod} [${this.activeSchedule.version} >> ${this.proposedSchedule.version}]`);
+                } else {
+                    hLog(`received block ${msg.block_num} from ${prod} [${this.activeSchedule.version}]`);
+                }
+            }
+        }
+        this.lastProducedBlockNum = msg.block_num;
+    }
+
+    handleMessage(msg) {
+        if (this.shouldCountIPCMessages) {
+            this.totalMessages++;
+        }
+
+        if (this.msgHandlerMap[msg.event]) {
+            this.msgHandlerMap[msg.event](msg);
+        }
+    }
+
+    private reportMissedBlocks(missingProd: any, lastProducedBlockNum: number, size: number) {
+        hLog(`${missingProd} missed ${size} ${size === 1 ? "block" : "blocks"} after ${lastProducedBlockNum}`);
+        const _body = {
+            type: 'missed_blocks',
+            '@timestamp': new Date().toISOString(),
+            'missed_blocks': {
+                'producer': missingProd,
+                'last_block': lastProducedBlockNum,
+                'size': size,
+                'schedule_version': this.activeSchedule.version
+            }
+        };
+        this.client.index({
+            index: this.chain + '-logs-' + this.conf.settings.index_version,
+            body: _body
+        }).catch(hLog);
+    }
+
+    // ------- START OF MONITORING AND CONTROL METHODS -------- //
+
     private startContractMonitoring() {
         if (!this.contractMonitoringInterval) {
             // Monitor Global Contract Usage
@@ -1332,10 +1215,6 @@ export class HyperionMaster {
                 // clearUsageMap();
             }, 5000);
         }
-    }
-
-    private sendToRole(role: string, payload: any) {
-        this.workerMap.filter(value => value.worker_role === role).forEach(value => value.wref.send(payload));
     }
 
     private pauseReaders() {
@@ -1398,7 +1277,6 @@ export class HyperionMaster {
                         }
                         if (autoscaleConsumers[queue] < this.conf.scaling.max_autoscale) {
                             hLog(`${queue} is above the limit (${size}/${limit}). Launching consumer...`);
-                            // TODO: scale down automatically
                             this.addWorker({queue: queue, type: worker.type, worker_role: 'ingestor'});
                             this.launchWorkers();
                             autoscaleConsumers[queue]++;
@@ -1664,32 +1542,13 @@ export class HyperionMaster {
         this.indexedObjects = 0;
     }
 
+    // ------ END OF MONITORING AND CONTROL METHODS ------ //
+
     private onScheduleUpdate(msg: any) {
         if (msg.live === 'true') {
             hLog(`Producer schedule updated at block ${msg.block_num}. Waiting version update...`);
             this.proposedSchedule = msg.new_producers;
         }
-    }
-
-    private launchWorkers() {
-        let launchedCount = 0;
-        this.workerMap.forEach((wrk: HyperionWorkerDef) => {
-            if (!wrk.wref) {
-                wrk.wref = cluster.fork(wrk);
-                wrk.wref.id = wrk.worker_id;
-                wrk.wref.on('message', (msg) => {
-                    this.handleMessage(msg);
-                });
-                if (wrk.worker_role === 'ds_pool_worker') {
-                    this.dsPoolMap.set(wrk.local_id, wrk.wref);
-                }
-                if (wrk.worker_role === 'router') {
-                    this.wsRouterWorker = wrk.wref;
-                }
-                launchedCount++;
-            }
-        });
-        hLog(`${launchedCount} workers launched`);
     }
 
     printActiveProds() {
@@ -1702,6 +1561,8 @@ export class HyperionMaster {
             console.log(`\n ⛏  Active Producers\n┌${div}┐\n${arr.join('\n')}\n└${div}┘`);
         }
     }
+
+    // ------- START OF HYPERION HUB METHODS -------
 
     private emitHubUpdate() {
         this.hub.emit('hyp_info', {
@@ -1745,6 +1606,10 @@ export class HyperionMaster {
         }
     }
 
+    // ------- END OF HYPERION HUB METHODS -------
+
+    // --------- START OF REPAIR METHODS ------------
+
     async fillMissingBlocks(data: any, ws: WebSocket<any>) {
         this.pendingRepairRanges = data.filter((range: any) => {
             return range.end - range.start >= 0;
@@ -1765,7 +1630,7 @@ export class HyperionMaster {
 
     private createLocalController(controlPort: number) {
         this.localController = App().ws('/local', {
-            open: (ws) => {
+            open: () => {
                 hLog(`Local controller connected!`);
             },
             message: (ws, msg) => {
@@ -1775,7 +1640,7 @@ export class HyperionMaster {
                     this.fillMissingBlocks(message.data, ws).catch(console.log);
                 }
             },
-            close: (ws) => {
+            close: () => {
                 hLog(`Local controller disconnected!`);
             }
         });
@@ -1785,6 +1650,30 @@ export class HyperionMaster {
             }
         });
     }
+
+    private sendPendingRepairRanges() {
+        if (this.pendingRepairRanges.length > 0) {
+            const nextRange = this.pendingRepairRanges.shift();
+            console.log('NEXT RANGE FOR REPAIR: ', nextRange);
+            this.repairReader.wref.send({
+                event: 'new_range',
+                target: this.repairReader.worker_id.toString(),
+                data: {
+                    first_block: nextRange.start,
+                    last_block: nextRange.end + 1
+                }
+            });
+        } else {
+            console.log('Repair completed!');
+            this.connectedController.send(JSON.stringify({
+                event: 'repair_completed'
+            }));
+        }
+    }
+
+    // --------- END OF REPAIR FUNCTIONS ------------
+
+    // Main start function
 
     async runMaster() {
 
@@ -1928,12 +1817,6 @@ export class HyperionMaster {
 
         await this.setupWorkers();
 
-        // TODO: fix repair mode
-        // Run and wait for repair
-        if (this.conf.indexer.repair_mode) {
-            await this.startRepairMode();
-        }
-
         // Quit App if on preview mode
         if (preview) {
             HyperionMaster.printWorkerMap(this.workerMap);
@@ -1941,7 +1824,7 @@ export class HyperionMaster {
         }
 
         // Setup Error Logging
-        this.setupDSElogs();
+        this.setupDeserializationErrorLogger();
 
         // Start Monitoring
         this.startIndexMonitoring();
@@ -2054,65 +1937,6 @@ export class HyperionMaster {
                 responseQueue.push(next_response);
             }
         }
-    }
-
-    async collectBlockHistogram() {
-        const min_interval = 25000;
-        const missed_ranges = [];
-        const response = await this.client.search({
-            index: this.chain + '-block-*',
-            track_total_hits: true,
-            body: {
-                aggs: {
-                    "blocks": {
-                        "histogram": {
-                            "field": "block_num",
-                            "interval": min_interval,
-                            "min_doc_count": 1
-                        }
-                    }
-                },
-                size: 0,
-                _source: {
-                    excludes: []
-                },
-                query: {
-                    match_all: {}
-                }
-            }
-        });
-        const totalBlockCount = response.body.hits.total.value;
-        hLog('Total indexed blocks: ' + totalBlockCount);
-        hLog('Last indexed block: ' + this.head);
-        hLog(`Total missing blocks: ${this.head - totalBlockCount}`);
-        let lastKey = 0;
-        for (const bucket of response.body.aggregations.blocks.buckets) {
-            if (lastKey !== 0 && bucket.key !== lastKey + min_interval) {
-                hLog(`All blocks missing from ${lastKey + min_interval} to ${bucket.key}`);
-                missed_ranges.push([lastKey + min_interval, bucket.key]);
-            }
-            if (bucket.doc_count < min_interval) {
-                const missed_on_range = min_interval - bucket.doc_count;
-                hLog(`${missed_on_range} blocks missing from ${bucket.key} to ${bucket.key + min_interval}`);
-                let lastBlock = bucket.key;
-                await this.streamBlockHeaders(bucket.key, bucket.key + min_interval, (data) => {
-                    if (data.block_num !== lastBlock + 1) {
-                        hLog(`Missing range from ${lastBlock} to ${data.block_num}`);
-                        missed_ranges.push([lastBlock, data.block_num]);
-                    }
-                    lastBlock = data.block_num;
-                });
-            }
-            lastKey = bucket.key;
-        }
-        hLog(missed_ranges);
-    }
-
-    async startRepairMode() {
-        hLog("-------->> REPAIR MODE ACTIVATED <<------------");
-        const t0 = Date.now();
-        await this.collectBlockHistogram();
-        hLog(`Block index analysis completed in ${(Date.now() - t0) / 1000} seconds`);
     }
 
     async processAccount(accountName: string) {
@@ -2334,58 +2158,11 @@ export class HyperionMaster {
         this.mode_transition = false;
     }
 
-    private async setupWorkers() {
-        this.lastIndexedABI = await getLastIndexedABI(this.client, this.chain);
-        await this.defineBlockRange();
-        this.total_range = this.head - this.starting_block;
-        await this.setupReaders();
-        await this.setupDeserializers();
-        await this.setupIndexers();
-        await this.setupStreaming();
-        await this.setupDSPool();
-        this.addWorker({worker_role: "delta_updater"});
-    }
-
-    private async findRange() {
-        // Auto-stop
-        if (this.conf.settings.auto_stop) {
-            this.auto_stop = this.conf.settings.auto_stop;
-        }
-
-        // Find last indexed block
-        let lastIndexedBlock;
-        if (this.conf.features.index_deltas) {
-            lastIndexedBlock = await getLastIndexedBlockByDelta(this.client, this.chain);
-            hLog(`Last indexed block (deltas): ${lastIndexedBlock}`);
-        } else {
-            lastIndexedBlock = await getLastIndexedBlock(this.client, this.chain);
-            hLog(`Last indexed block (blocks): ${lastIndexedBlock}`);
-        }
-
-        // Start from the last indexed block
-        this.starting_block = 1;
-
-        // Fecth chain lib
-        try {
-            this.chain_data = await this.rpc.get_info();
-        } catch (e) {
-            hLog('Failed to connect to chain api: ' + e.message);
-            process.exit(1);
-        }
-        this.head = this.chain_data.head_block_num;
-
-        if (lastIndexedBlock > 0) {
-            this.starting_block = lastIndexedBlock;
-        }
-
-        if (this.conf.indexer.stop_on !== 0) {
-            this.head = this.conf.indexer.stop_on;
-        }
-    }
-
     private emitAlert(msgType: string, msgContent: string) {
         this.alerts.emitAlert({type: msgType, process: process.title, content: msgContent});
     }
+
+    // ------- START OF PM2 METRICS AND ACTIONS ------- //
 
     private addPm2Metrics() {
         this.metrics.readingRate = pm2io.metric({name: 'Block Reading (blocks/s)'});
@@ -2399,7 +2176,6 @@ export class HyperionMaster {
     }
 
     private addPm2Actions() {
-
         const ioConfig: IOConfig = {
             apmOptions: {
                 appName: this.chain + " indexer",
@@ -2506,24 +2282,6 @@ export class HyperionMaster {
         return responses;
     }
 
-    private sendPendingRepairRanges() {
-        if (this.pendingRepairRanges.length > 0) {
-            const nextRange = this.pendingRepairRanges.shift();
-            console.log('NEXT RANGE FOR REPAIR: ', nextRange);
-            this.repairReader.wref.send({
-                event: 'new_range',
-                target: this.repairReader.worker_id.toString(),
-                data: {
-                    first_block: nextRange.start,
-                    last_block: nextRange.end + 1
-                }
-            });
-        } else {
-            console.log('Repair completed!');
-            this.connectedController.send(JSON.stringify({
-                event: 'repair_completed'
-            }));
-        }
-    }
+    // ------- END OF PM2 METRICS AND ACTIONS ------- //
 }
 
