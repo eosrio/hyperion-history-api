@@ -1787,7 +1787,8 @@ export class HyperionMaster {
             {name: 'resourceLimits', type: 'reslimits'},
             {name: 'resourceUsage', type: 'userres'},
             {name: 'generatedTransaction', type: 'gentrx'},
-            {name: 'failedTransaction', type: 'trxerr'}
+            {name: 'failedTransaction', type: 'trxerr'},
+            {name: 'schedule', type: 'schedule'}
         ];
 
         this.addStateTables(indicesList, this.IndexingQueues);

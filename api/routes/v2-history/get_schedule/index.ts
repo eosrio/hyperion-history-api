@@ -15,7 +15,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                     type: 'string'
                 },
                 "key": {
-                    description: 'search by key',
+                    description: 'search by signing key',
                     type: 'string'
                 },
                 "after": {
@@ -25,6 +25,10 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 "before": {
                     description: 'filter before specified date (ISO8601)',
                     type: 'string'
+                },
+                "mode": {
+                    description: 'search mode (activated or proposed)',
+                    type: 'string',
                 },
                 "version": {
                     description: 'schedule version',
@@ -36,6 +40,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         response: extendResponseSchema({
             "timestamp": {type: "string"},
             "block_num": {type: "number"},
+            "proposed_block_num": {type: "number"},
             "version": {type: "number"},
             "producers": {
                 type: "array",
@@ -43,8 +48,10 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                     type: "object",
                     properties: {
                         "producer_name": {type: "string"},
+                        "name": {type: "string"},
                         "block_signing_key": {type: "string"},
-                        "legacy_key": {type: "string"}
+                        "legacy_key": {type: "string"},
+                        "keys": {type: "array", items: {type: "string"}}
                     }
                 }
             },

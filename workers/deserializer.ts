@@ -403,6 +403,7 @@ export default class MainDSWorker extends HyperionWorker {
                 }
 
                 if (light_block.new_producers) {
+
                     process.send({
                         event: 'new_schedule',
                         block_num: light_block.block_num,
@@ -1391,9 +1392,33 @@ export default class MainDSWorker extends HyperionWorker {
         },
 
         // Global Chain configuration update
-        // "global_property": async (global_property, block_num, block_ts, row, block_id) => {
-        //     hLog(block_num, global_property);
-        // },
+        "global_property": async (global_property, block_num, block_ts, row, block_id) => {
+            if (global_property.proposed_schedule.version !== 0) {
+                hLog("Proposed Schedule version: " + global_property.proposed_schedule.version + " at block: " + global_property.proposed_schedule_block_num);
+                try {
+                    const payload = {
+                        block_num: global_property.proposed_schedule_block_num,
+                        '@timestamp': block_ts,
+                        version: global_property.proposed_schedule.version,
+                        producers: global_property.proposed_schedule.producers
+                    };
+                    payload.producers.forEach((producer: any) => {
+                        producer.name = producer.producer_name;
+                        delete producer.producer_name;
+                        if (producer.authority[0] === 'block_signing_authority_v0') {
+                            producer.authority = producer.authority[1];
+                            producer.keys = producer.authority.keys.map((key: any) => {
+                                return key.key;
+                            });
+                            delete producer.authority;
+                        }
+                    });
+                    await this.pushToIndexQueue(payload, 'schedule');
+                } catch (e) {
+                    hLog("Failed to parse proposed schedule: " + e.message);
+                }
+            }
+        },
 
         // Activated Protocol features
         // "protocol_state": async (protocol_state, block_num, block_ts, row, block_id) => {

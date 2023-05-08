@@ -145,6 +145,14 @@ function buildResUsageBulk(payloads, messageMap: MMap) {
     });
 }
 
+function buildScheduleBulk(payloads, messageMap: MMap) {
+    return flatMap(payloads, (payload, body) => {
+        const id = `${body.version}`;
+        messageMap.set(id, _.omit(payload, ['content']));
+        return makeScriptedOp(id, body);
+    });
+}
+
 function buildGenTrxBulk(payloads, messageMap: MMap) {
     return flatMap(payloads, (payload, body) => {
         const hash = createHash('sha256')
@@ -182,6 +190,10 @@ const generatorsMap = {
     resource_usage: {
         index_name: 'userres',
         func: buildResUsageBulk
+    },
+    schedule: {
+        index_name: 'schedule',
+        func: buildScheduleBulk
     },
     generated_transaction: {
         index_name: 'gentrx',
