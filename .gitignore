@@ -91,3 +91,9 @@ configuration_backups
 
 scripts/hyp-config.js
 scripts/hyp-config.js.map
+
+scripts/hyp-repair.js
+scripts/hyp-repair.js.map
+
+scripts/repair-cli/*.js
+scripts/repair-cli/*.js.map
