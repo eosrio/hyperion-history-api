@@ -1761,14 +1761,6 @@ export class HyperionMaster {
         });
         this.launchWorkers();
         this.connectedController = ws;
-
-        // for (const blockRange of data) {
-        //     console.log(`Filling missing blocks ${blockRange.start} - ${blockRange.end}`);
-        //     ws.send(JSON.stringify({
-        //         event: 'received_range',
-        //         data: blockRange
-        //     }));
-        // }
     }
 
     private createLocalController(controlPort: number) {
@@ -1818,7 +1810,12 @@ export class HyperionMaster {
         }
 
         this.printMode();
-        this.createLocalController(this.manager.conn.chains[this.conf.settings.chain].control_port);
+        let controlPort = this.manager.conn.chains[this.conf.settings.chain].control_port;
+        if (!controlPort) {
+            controlPort = 7002;
+            hLog(`control_port not defined in connections.json, using default: ${controlPort}`);
+        }
+        this.createLocalController(controlPort);
 
         // Preview mode - prints only the proposed worker map
         let preview = this.conf.settings.preview;
