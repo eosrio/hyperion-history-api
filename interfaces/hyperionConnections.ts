@@ -23,6 +23,7 @@ interface HyperionChainData {
     ship: string;
     WS_ROUTER_PORT: number;
     WS_ROUTER_HOST: string;
+    control_port: number;
 }
 
 interface RedisConfig {

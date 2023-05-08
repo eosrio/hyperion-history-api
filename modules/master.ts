@@ -177,9 +177,11 @@ export class HyperionMaster {
     private repairReader?: HyperionWorkerDef;
     private pendingRepairRanges: {
         start: number,
-        end: number
+        end: number,
+        size?: number
     }[] = [];
     private connectedController?: WebSocket<any>;
+    private lastIrreversibleBlock: number = 0;
 
     constructor() {
         this.cm = new ConfigurationModule();
@@ -336,19 +338,19 @@ export class HyperionMaster {
                         // Assign next range
                         const start = this.lastAssignedBlock;
                         let end = this.lastAssignedBlock + this.maxBatchSize;
+                        // Check if we are not exceeding the head block
                         if (end > this.head) {
                             end = this.head;
                         }
-                        const def = {
-                            first_block: start,
-                            last_block: end
-                        };
-                        this.lastAssignedBlock = def.last_block;
+                        this.lastAssignedBlock = end;
                         this.activeReadersCount++;
                         messageAllWorkers(cluster, {
                             event: 'new_range',
                             target: msg.id,
-                            data: def
+                            data: {
+                                first_block: start,
+                                last_block: end
+                            }
                         });
                     } else {
                         if (this.lastAssignedBlock >= this.head) {
@@ -416,6 +418,10 @@ export class HyperionMaster {
             'lib_update': (msg: any) => {
                 // publish LIB to hub
                 if (msg.data) {
+
+                    // save local lib
+                    this.lastIrreversibleBlock = msg.data.block_num;
+
                     this.revBlockArray = this.revBlockArray.filter(item => item.num > msg.data.block_num);
                     if (this.conf.hub && this.conf.hub.inform_url) {
                         this.hub.emit('hyp_ev', {e: 'lib', d: msg.data});
@@ -1498,8 +1504,8 @@ export class HyperionMaster {
             const log_msg = [];
 
             // print current head for live reading
-            if (this.lastProducedBlockNum > 0) {
-                log_msg.push(`#${this.lastProducedBlockNum}`);
+            if (this.lastProducedBlockNum > 0 && this.lastIrreversibleBlock > 0) {
+                log_msg.push(`H:${this.lastProducedBlockNum} L:${this.lastIrreversibleBlock}`);
             }
 
             log_msg.push(`W:${_workers}`);
@@ -1744,12 +1750,18 @@ export class HyperionMaster {
             return range.end - range.start >= 0;
         });
         this.pendingRepairRanges.reverse();
-        console.log(this.pendingRepairRanges);
+        let totalBlocks = 0;
+        this.pendingRepairRanges.forEach(value => {
+            value["size"] = value.end - value.start + 1;
+            totalBlocks += value.size;
+        });
+        hLog(`Filling ${totalBlocks} missing blocks...`);
         this.repairReader = this.addWorker({
             worker_role: 'repair_reader'
         });
         this.launchWorkers();
         this.connectedController = ws;
+
         // for (const blockRange of data) {
         //     console.log(`Filling missing blocks ${blockRange.start} - ${blockRange.end}`);
         //     ws.send(JSON.stringify({
@@ -1759,7 +1771,7 @@ export class HyperionMaster {
         // }
     }
 
-    private createLocalController() {
+    private createLocalController(controlPort: number) {
         this.localController = App().ws('/local', {
             open: (ws) => {
                 hLog(`Local controller connected!`);
@@ -1775,8 +1787,10 @@ export class HyperionMaster {
                 hLog(`Local controller disconnected!`);
             }
         });
-        this.localController.listen(4321, (listenSocket) => {
-            hLog(`Local controller listening on port 4321`);
+        this.localController.listen(controlPort, (token) => {
+            if (token) {
+                hLog(`Local controller listening on port ${controlPort}`);
+            }
         });
     }
 
@@ -1804,8 +1818,7 @@ export class HyperionMaster {
         }
 
         this.printMode();
-
-        // this.createLocalController();
+        this.createLocalController(this.manager.conn.chains[this.conf.settings.chain].control_port);
 
         // Preview mode - prints only the proposed worker map
         let preview = this.conf.settings.preview;

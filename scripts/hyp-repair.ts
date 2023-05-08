@@ -48,7 +48,7 @@ async function run(client: Client, rpc: JsonRpc, indexName: string, blockInit: n
             blockFinal = blockInitial - qtdTotal;
             progressBar.update(i);
         } catch (e: any) {
-            console.log("Error: ", e.message);
+            console.log("Error: ", e);
             process.exit(1);
         }
     }
@@ -66,7 +66,7 @@ async function findForksOnRange(blocks: HyperionBlock[], rpc: JsonRpc) {
     const removals: Set<string> = new Set();
     let start = null;
     let end = null;
-    if (pendingBlock && blocks[0].block_num !== pendingBlock.block_num) {
+    if (blocks.length > 0 && pendingBlock && blocks[0].block_num !== pendingBlock.block_num) {
         blocks.unshift(pendingBlock);
     }
 
@@ -197,9 +197,7 @@ async function scanChain(chain: string, args: any) {
 }
 
 async function repairMissing(chain: string, file: string, args: any) {
-    console.log(chain, file, args);
     const chainConfig = readChainConfig(chain);
-    console.log(chainConfig.settings.index_version);
     const config = readConnectionConfig();
     const client = initESClient(config);
     const ping = await client.ping();
@@ -208,9 +206,11 @@ async function repairMissing(chain: string, file: string, args: any) {
         process.exit();
     }
 
-    let hyperionIndexer = 'ws://localhost:4321';
+    const controlPort = config.chains[chain].control_port;
+
+    let hyperionIndexer = `ws://localhost:${controlPort}`;
     if (args.host) {
-        hyperionIndexer = args.host;
+        hyperionIndexer = 'ws://' + args.host + ':' + controlPort;
     }
     const controller = new WebSocket(hyperionIndexer + '/local');
 
@@ -218,11 +218,16 @@ async function repairMissing(chain: string, file: string, args: any) {
         console.log('Connected to Hyperion Controller');
         const missingBlocks = JSON.parse(readFileSync(file).toString());
         console.log(missingBlocks);
-        const payload = {
-            "event": "fill_missing_blocks",
-            "data": missingBlocks
-        };
-        controller.send(JSON.stringify(payload));
+        if (!args.dry) {
+            const payload = {
+                "event": "fill_missing_blocks",
+                "data": missingBlocks
+            };
+            controller.send(JSON.stringify(payload));
+        } else {
+            console.log('Dry run, skipping repair');
+            controller.close();
+        }
     });
     controller.on('message', (data) => {
         const parsed = JSON.parse(data.toString());
@@ -499,6 +504,7 @@ program.command('repair <chain> <file>')
 
 program.command('fill-missing <chain> <file>')
     .description('write missing blocks')
+    .option('-h, --host <host>', 'Hyperion local control api')
     .option('-d, --dry', 'dry-run, do not delete or repair blocks')
     .action(repairMissing);
 
@@ -530,7 +536,7 @@ program.command('connect')
                 console.log(`Failed to connect on Hyperion Indexer at ${hyperionIndexer}, please use "--host ws://ADDRESS:PORT" to specify a remote indexer connection`);
             });
         } catch (e) {
-            console.log(e.message);
+            console.log(e);
         }
     });
 

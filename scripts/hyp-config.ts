@@ -146,7 +146,8 @@ async function newChain(shortName, options) {
             http: '',
             chain_id: '',
             WS_ROUTER_HOST: '127.0.0.1',
-            WS_ROUTER_PORT: 7001
+            WS_ROUTER_PORT: 7001,
+            control_port: 7002
         };
     }
 

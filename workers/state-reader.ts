@@ -43,6 +43,7 @@ export default class StateReader extends HyperionWorker {
     private forkedBlocks = new Map<string, number>();
     private idle = true;
     private repairMode = false;
+    private internalPendingRanges = [];
 
 
     constructor() {
@@ -193,30 +194,64 @@ export default class StateReader extends HyperionWorker {
 
     newRange(data: any) {
         debugLog(`new_range [${data.first_block},${data.last_block}]`);
+
         if (this.repairMode) {
             hLog(`Received Repair request [${data.first_block},${data.last_block}]`);
         }
+
         this.local_distributed_count = 0;
         clearInterval(this.completionMonitoring);
         this.completionMonitoring = null;
         this.completionSignaled = false;
         this.local_last_block = data.last_block;
+
+        // make sure no data is requested from before the first indexed block on ship
+
+        console.log(this.shipInitStatus);
+
+        if (parseInt(data.first_block) < this.shipInitStatus['trace_begin_block']) {
+            data.first_block = this.shipInitStatus['trace_begin_block'];
+            hLog("Impossible to repair requested range, first block is before the first indexed block on ship, trimming to " + data.first_block);
+        }
+
         this.range_size = parseInt(data.last_block) - parseInt(data.first_block);
-        if (this.allowRequests) {
-            this.requestBlockRange(data.first_block, data.last_block);
-            this.pendingRequest = null;
+
+        // if range size is not positive we need to immediately signal completion to master
+        if (this.range_size <= 0) {
+            this.emitCompletedSignal();
+        }
+
+        // make sure the range doesn't exceed the batch size
+        if (this.range_size > this.conf.scaling.batch_size) {
+            // split the range into multiple ranges
+            const ranges = [];
+            let start = parseInt(data.first_block);
+            let end = parseInt(data.last_block);
+            while (start < end) {
+                const s = start;
+                const e = start + this.conf.scaling.batch_size;
+                ranges.push({
+                    first_block: s,
+                    last_block: e > end ? end : e
+                });
+                start = e + 1;
+            }
+            console.log(`Splitting range [${data.first_block},${data.last_block}] into ${ranges.length} ranges`);
+            this.internalPendingRanges = ranges;
+            const next = this.internalPendingRanges.shift();
+            this.newRange(next);
         } else {
-            this.pendingRequest = [data.first_block, data.last_block];
+            if (this.allowRequests) {
+                this.requestBlockRange(data.first_block, data.last_block);
+                this.pendingRequest = null;
+            } else {
+                this.pendingRequest = [data.first_block, data.last_block];
+            }
         }
     }
 
     onIpcMessage(msg: any): void {
         switch (msg.event) {
-            case 'pull_range': {
-                console.log(msg.data);
-                this.requestBlockRange(msg.data.start, msg.data.end);
-                break;
-            }
             case 'new_range': {
                 if (msg.target === process.env.worker_id) {
                     this.newRange(msg.data);
@@ -281,10 +316,18 @@ export default class StateReader extends HyperionWorker {
                 if (pending === 0) {
                     debugLog(`Reader completed - ${this.range_size} - ${this.local_distributed_count}`);
                     clearInterval(this.completionMonitoring);
-                    process.send({
-                        event: 'completed',
-                        id: process.env['worker_id']
-                    });
+
+                    // check if there are any pending ranges, then signal completion to master
+                    if (this.internalPendingRanges.length === 0) {
+                        process.send({
+                            event: 'completed',
+                            id: process.env['worker_id']
+                        });
+                    } else {
+                        // process next range in queue
+                        const next = this.internalPendingRanges.shift();
+                        this.newRange(next);
+                    }
                 }
             }, 200);
         }
@@ -422,7 +465,17 @@ export default class StateReader extends HyperionWorker {
                             prev_id = res['prev_block']['block_id'];
                         }
 
+                        // // 2% chance to modify the previous block id to simulate a fork
+                        // if (Math.random() < 0.02) {
+                        //     // prev_id = prev_id + 'a';
+                        //     this.local_block_num = this.local_block_num - 1;
+                        // }
+
                         if ((this.local_block_id && prev_id && this.local_block_id !== prev_id) || (blk_num !== this.local_block_num + 1)) {
+
+                            console.log((this.local_block_id && prev_id && this.local_block_id !== prev_id), (blk_num !== this.local_block_num + 1));
+                            console.log(blk_num, this.local_block_num + 1);
+
                             hLog(`Unlinked block at ${prev_id} with previous block ${this.local_block_id}`);
                             hLog(`Forked block: ${blk_num}`);
                             try {
@@ -431,24 +484,10 @@ export default class StateReader extends HyperionWorker {
                             } catch (e) {
                                 hLog(`Failed to handle fork during live reading! - Error: ${e.message}`);
                             }
-                            this.local_block_id = '';
-                        } else {
-                            this.local_block_num = blk_num;
-                            this.local_block_id = blk_id;
                         }
 
-                        // if (blk_num !== this.local_block_num + 1) {
-                        //     hLog(`Expected: ${this.local_block_num + 1}, received: ${blk_num}`);
-                        //     try {
-                        //         // delete all previously stored data for the forked blocks
-                        //         await this.handleFork(res);
-                        //     } catch (e) {
-                        //         hLog(`Failed to handle fork during live reading! - Error: ${e.message}`);
-                        //     }
-                        // } else {
-                        //     this.local_block_num = blk_num;
-                        //     this.local_block_id = blk_id;
-                        // }
+                        this.local_block_num = blk_num;
+                        this.local_block_id = blk_id;
 
                         if (lib.block_num > this.local_lib) {
                             this.local_lib = lib.block_num;
@@ -457,7 +496,9 @@ export default class StateReader extends HyperionWorker {
                         }
 
                         await this.stageOneDistQueue.push(task_payload);
+
                         return 1;
+
                     } else {
 
                         // Detect skipped first block
@@ -505,6 +546,9 @@ export default class StateReader extends HyperionWorker {
                         }
                     }
                 } else {
+                    if (this.repairMode) {
+                        hLog("No data on requested block!");
+                    }
                     this.idle = true;
                     // hLog(`Reader is idle! - Head at: ${result[1].head.block_num}`);
                     // this.ship.close(true);
@@ -591,6 +635,7 @@ export default class StateReader extends HyperionWorker {
         this.local_block_num = request.start_block_num - 1;
         request.end_block_num = parseInt(last, 10);
         const reqType = 'get_blocks_request_' + this.shipRev;
+        console.log(request);
         if (this.ship.connected) {
             debugLog(`Reader ${process.env.worker_id} sending ${reqType} from: ${request.start_block_num} to: ${request.end_block_num}`);
             this.send([reqType, request]);
@@ -739,5 +784,12 @@ export default class StateReader extends HyperionWorker {
             this.reconnectCount++;
             this.startWS();
         }, 5000);
+    }
+
+    private emitCompletedSignal() {
+        process.send({
+            event: 'completed',
+            id: process.env['worker_id']
+        });
     }
 }
