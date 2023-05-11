@@ -12,7 +12,7 @@ import {
     getLastIndexedBlockByDeltaFromRange,
     getLastIndexedBlockFromRange,
     hLog,
-    messageAllWorkers
+    messageAllWorkers, waitUntilReady
 } from "../helpers/common_functions";
 
 import {GetInfoResult} from "eosjs/dist/eosjs-rpc-interfaces";
@@ -46,6 +46,7 @@ import {bootstrap} from 'global-agent';
 import moment = require("moment");
 import Timeout = NodeJS.Timeout;
 import {App, TemplatedApp, WebSocket} from "uWebSockets.js";
+import {checkQueueSize} from "../connections/amqp";
 
 interface RevBlock {
     num: number;
@@ -1721,43 +1722,60 @@ export class HyperionMaster {
         // Redis
         this.ioRedisClient = new IORedis(this.manager.conn.redis);
 
+        // Wait for Redis availability
+        await waitUntilReady(async () => {
+            try {
+                await this.ioRedisClient.ping();
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }, 10, 5000, () => {
+            hLog(`Redis not available, exiting...`);
+            process.exit();
+        });
+
         // Remove first indexed block from cache (v2/health)
         await this.ioRedisClient.del(`${this.manager.chain}::fib`);
 
-        // wait for nodoes to be available, limit retries to 10 with a 5 seconds interval
-        // sleep function
-        const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-        let retries = 0;
-        while (true) {
+        // Wait for Nodeos Chain API availability
+        await waitUntilReady(async () => {
             try {
                 const info = await this.rpc.get_info();
                 if (info.server_version_string) {
                     hLog(`Nodeos version: ${info.server_version_string}`);
-                    break;
+                    return true;
+                } else {
+                    return false;
                 }
             } catch (e) {
                 hLog(`Chain API Error: ${e.message}`);
-                retries++;
-                if (retries > 10) {
-                    hLog(`Chain API not available, exiting...`);
-                    process.exit();
-                }
-                await sleep(5000);
+                return false;
             }
-        }
+        }, 10, 5000, () => {
+            hLog(`Chain API not available, exiting...`);
+            process.exit();
+        });
 
-        // Elasticsearch
+        // Wait for Elasticsearch availability
         this.client = this.manager.elasticsearchClient;
-        try {
-            const esInfo = await this.client.info();
-            hLog(`Elasticsearch: ${esInfo.body.version.number} | Lucene: ${esInfo.body.version.lucene_version}`);
-            this.emitAlert('info', `Indexer started using ES v${esInfo.body.version.number}`);
-        } catch (e) {
-            console.log(e.message);
+        await waitUntilReady(async () => {
+            try {
+                const esInfo = await this.client.info();
+                hLog(`Elasticsearch: ${esInfo.body.version.number} | Lucene: ${esInfo.body.version.lucene_version}`);
+                this.emitAlert('info', `Indexer started using ES v${esInfo.body.version.number}`);
+                return true;
+            } catch (e) {
+                console.log(e.message);
+                return false;
+            }
+        }, 10, 5000, () => {
             hLog('Failed to check elasticsearch version!');
             process.exit();
-        }
+        });
+
         await this.verifyIngestClients();
+
         this.max_readers = this.conf.scaling.readers;
         if (this.conf.indexer.disable_reading) {
             this.max_readers = 1;
