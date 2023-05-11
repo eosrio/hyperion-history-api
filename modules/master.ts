@@ -1724,13 +1724,26 @@ export class HyperionMaster {
         // Remove first indexed block from cache (v2/health)
         await this.ioRedisClient.del(`${this.manager.chain}::fib`);
 
-        // check nodeos
-        try {
-            const info = await this.rpc.get_info();
-            hLog(`Nodeos version: ${info.server_version_string}`);
-        } catch (e) {
-            hLog(`Chain API Error: ${e.message}`);
-            process.exit();
+        // wait for nodoes to be available, limit retries to 10 with a 5 seconds interval
+        // sleep function
+        const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+        let retries = 0;
+        while (true) {
+            try {
+                const info = await this.rpc.get_info();
+                if (info.server_version_string) {
+                    hLog(`Nodeos version: ${info.server_version_string}`);
+                    break;
+                }
+            } catch (e) {
+                hLog(`Chain API Error: ${e.message}`);
+                retries++;
+                if (retries > 10) {
+                    hLog(`Chain API not available, exiting...`);
+                    process.exit();
+                }
+                await sleep(5000);
+            }
         }
 
         // Elasticsearch
