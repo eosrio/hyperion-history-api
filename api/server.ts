@@ -1,4 +1,4 @@
-import {hLog} from "../helpers/common_functions";
+import {hLog, waitUntilReady} from "../helpers/common_functions";
 import {ConfigurationModule} from "../modules/config";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
@@ -16,6 +16,7 @@ import {io, Socket} from "socket.io-client";
 import {CacheManager} from "./helpers/cacheManager";
 
 import {bootstrap} from 'global-agent';
+import {Api} from "eosjs";
 
 class HyperionApiServer {
 
@@ -28,6 +29,7 @@ class HyperionApiServer {
 
     socketManager: SocketManager;
     mLoader: HyperionModuleLoader;
+    private pluginParams: any;
 
     constructor() {
 
@@ -115,6 +117,7 @@ class HyperionApiServer {
             },
             fastify_redis: this.manager.conn.redis,
             fastify_eosjs: this.manager,
+            chain_id: '',
         } as any;
 
         if (!this.conf.api.disable_rate_limit) {
@@ -144,9 +147,7 @@ class HyperionApiServer {
             pluginParams.fastify_swagger = docsConfig;
         }
 
-        registerPlugins(this.fastify, pluginParams);
-
-        this.addGenericTypeParsing();
+        this.pluginParams = pluginParams;
     }
 
     activateStreaming() {
@@ -191,6 +192,30 @@ class HyperionApiServer {
     }
 
     async init() {
+
+        const rpc = this.manager.nodeosJsonRPC;
+        await waitUntilReady(async () => {
+            try {
+                const chain_data = await rpc.get_info();
+                if (chain_data && chain_data.chain_id) {
+                    this.pluginParams.chain_id = chain_data.chain_id;
+                    return true;
+                } else {
+                    return false;
+                }
+            } catch (e) {
+                hLog(e.message);
+                return false;
+            }
+        }, 5, 5000, () => {
+            hLog('Failed to validate chain api!');
+            process.exit(1);
+        });
+
+        hLog('Chain API validated!');
+        hLog('Registering plugins...');
+        registerPlugins(this.fastify, this.pluginParams);
+        this.addGenericTypeParsing();
 
         await this.mLoader.init();
 
