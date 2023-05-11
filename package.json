@@ -69,7 +69,7 @@
     "@types/global-agent": "^2.1.1",
     "@types/ioredis": "^4.28.10",
     "@types/lodash": "^4.14.191",
-    "@types/node": "^18.11.18",
+    "@types/node": "^20.1.2",
     "@types/nodemailer": "^6.4.7",
     "@types/ws": "^8.5.4"
   },

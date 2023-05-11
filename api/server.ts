@@ -207,13 +207,30 @@ class HyperionApiServer {
                 hLog(e.message);
                 return false;
             }
-        }, 5, 5000, () => {
+        }, 20, 5000, () => {
             hLog('Failed to validate chain api!');
             process.exit(1);
         });
-
         hLog('Chain API validated!');
+
+        // Wait for Elasticsearch availability
+        await waitUntilReady(async () => {
+            try {
+                const esInfo = await this.manager.elasticsearchClient.info();
+                hLog(`Elasticsearch: ${esInfo.body.version.number} | Lucene: ${esInfo.body.version.lucene_version}`);
+                return true;
+            } catch (e) {
+                console.log(e.message);
+                return false;
+            }
+        }, 10, 5000, () => {
+            hLog('Failed to check elasticsearch version!');
+            process.exit();
+        });
+        hLog('Elasticsearch validated!');
+
         hLog('Registering plugins...');
+
         registerPlugins(this.fastify, this.pluginParams);
         this.addGenericTypeParsing();
 
