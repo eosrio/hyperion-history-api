@@ -16,14 +16,36 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
         addTermMatch(data, search_body, f);
     });
     const responseQueue = [];
+
     let counter = 0;
+    let total = 0;
+    let longScroll = false;
+
+
     const init_response = await fastify.elastic.search({
         index: fastify.manager.chain + '-delta-*',
-        scroll: '30s',
-        size: 20,
+        scroll: '600s',
+        size: fastify.manager.config.api.stream_scroll_batch || 500,
         body: search_body,
     });
+
     responseQueue.push(init_response);
+
+    const scrollLimit = fastify.manager.config.api.stream_scroll_limit;
+    if (scrollLimit && scrollLimit !== -1 && init_response.body.hits.total.value > scrollLimit) {
+        socket.emit('message', {
+            type: 'delta_trace', mode: 'history', messages: [],
+            error: `Requested ${init_response.body.hits.total.value} deltas, limit is ${scrollLimit}`
+        });
+        return false;
+    }
+
+    if (init_response.body.hits.total.value > 10000) {
+        total = init_response.body.hits.total.value;
+        longScroll = true;
+        hLog(`Attention! Long scroll is running!`);
+    }
+
     while (responseQueue.length) {
         const {body} = responseQueue.shift();
         counter += body['hits']['hits'].length;
@@ -37,6 +59,11 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
             hLog('LOST CLIENT');
             break;
         }
+
+        if (longScroll) {
+            hLog(`Progress: ${counter}/${total}`);
+        }
+
         if (body['hits'].total.value === counter) {
             hLog(`${counter} past deltas streamed to ${socket.id}`);
             break;
@@ -45,14 +72,16 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
         const next_response = await fastify.elastic.scroll({
             body: {
                 scroll_id: body['_scroll_id'],
-                scroll: '30s'
+                scroll: '600s'
             }
         });
+
         responseQueue.push(next_response);
     }
 }
 
 export async function streamPastActions(fastify: FastifyInstance, socket, data) {
+
     const search_body = {
         query: {bool: {must: []}},
         sort: {global_sequence: 'asc'},
@@ -96,16 +125,53 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
 
     const responseQueue = [];
     let counter = 0;
+    let total = 0;
+    let longScroll = false;
+
+    // console.log(JSON.stringify(search_body.query.bool.must[0], null, 2));
 
     const init_response = await fastify.elastic.search({
         index: fastify.manager.chain + '-action-*',
         scroll: '30s',
-        size: 20,
+        size: fastify.manager.config.api.stream_scroll_batch || 500,
         body: search_body,
     });
+
+    const scrollLimit = fastify.manager.config.api.stream_scroll_limit;
+    if (scrollLimit && scrollLimit !== -1 && init_response.body.hits.total.value > scrollLimit) {
+        const errorMsg = `Requested ${init_response.body.hits.total.value} actions, limit is ${scrollLimit}.`;
+        socket.emit('message', {
+            reqUUID: socket.data.reqUUID,
+            type: 'action_trace', mode: 'history', messages: [],
+            error: `Requested ${init_response.body.hits.total.value} actions, limit is ${scrollLimit}.`
+        });
+        return {status: false, error: errorMsg};
+    }
+
+    if (init_response.body.hits.total.value > 10000) {
+        total = init_response.body.hits.total.value;
+        longScroll = true;
+        hLog(`Attention! Long scroll is running!`);
+    }
+
+    // emit first block
+    if (init_response.body.hits.hits.length > 0) {
+        socket.emit('message', {
+            reqUUID: socket.data.reqUUID,
+            type: 'action_trace_init',
+            mode: 'history',
+            first_block: init_response.body.hits.hits[0]._source.block_num,
+            results: init_response.body.hits.total.value
+        });
+    }
+
     responseQueue.push(init_response);
+
+    let lastTransmittedBlock = 0;
+    let pendingScrollId = '';
     while (responseQueue.length) {
         const {body} = responseQueue.shift();
+        pendingScrollId = body['_scroll_id'];
         const enqueuedMessages = [];
         counter += body['hits']['hits'].length;
         for (const doc of body['hits']['hits']) {
@@ -119,28 +185,40 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
             }
             if (allow) {
                 enqueuedMessages.push(doc._source);
+                if (doc._source.block_num > lastTransmittedBlock) {
+                    lastTransmittedBlock = doc._source.block_num;
+                }
             }
         }
         if (socket.connected) {
-            socket.emit('message', {type: 'action_trace', mode: 'history', messages: enqueuedMessages});
+            socket.emit('message', {
+                reqUUID: socket.data.reqUUID,
+                type: 'action_trace',
+                mode: 'history', messages: enqueuedMessages
+            });
         } else {
             hLog('LOST CLIENT');
             break;
         }
+
+        if (longScroll) {
+            hLog(`Progress: ${counter}/${total}`);
+        }
+
         if (body['hits'].total.value === counter) {
             hLog(`${counter} past actions streamed to ${socket.id}`);
             break;
         }
-        if (init_response.body.hits.total.value < 1000) {
-            const next_response = await fastify.elastic.scroll({
-                body: {scroll_id: body['_scroll_id'], scroll: '30s'}
-            });
-            responseQueue.push(next_response);
-        } else {
-            hLog('Request too large!');
-            socket.emit('message', {type: 'action_trace', mode: 'history', messages: []});
-        }
+        const next_response = await fastify.elastic.scroll({
+            body: {scroll_id: body['_scroll_id'], scroll: '30s'}
+        });
+        responseQueue.push(next_response);
     }
+
+    // destroy scroll context
+    await fastify.elastic.clearScroll({scroll_id: pendingScrollId});
+    return {status: true, lastTransmittedBlock};
+
 }
 
 export function addTermMatch(data, search_body, field) {

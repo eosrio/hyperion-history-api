@@ -403,12 +403,21 @@ export default class MainDSWorker extends HyperionWorker {
                 }
 
                 if (light_block.new_producers) {
-
                     process.send({
                         event: 'new_schedule',
                         block_num: light_block.block_num,
                         new_producers: light_block.new_producers,
                         live: process.env.live_mode
+                    });
+                }
+
+                // stream light block
+                if (this.allowStreaming) {
+                    this.ch.publish('', this.chain + ':stream', Buffer.from(JSON.stringify(light_block)), {
+                        headers: {
+                            event: 'block',
+                            blockNum: light_block.block_num
+                        }
                     });
                 }
             }

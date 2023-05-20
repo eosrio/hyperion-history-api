@@ -7,6 +7,8 @@
     "server_addr": "127.0.0.1",
     "server_port": 7000,
     "stream_port": 1234,
+    "stream_scroll_limit": -1,
+    "stream_scroll_batch": 500,
     "server_name": "127.0.0.1:7000",
     "provider_name": "Example Provider",
     "provider_url": "https://example.com",
