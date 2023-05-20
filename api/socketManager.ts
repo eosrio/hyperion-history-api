@@ -41,7 +41,7 @@ export class SocketManager {
     private readonly url;
     private readonly server: FastifyInstance;
     private readonly uwsApp: TemplatedApp;
-    private chainId: string;
+    private readonly chainId: string;
     private currentBlockNum: number;
 
     constructor(fastify: FastifyInstance, url, redisOptions) {
@@ -84,13 +84,42 @@ export class SocketManager {
             socket.on('delta_stream_request', async (data: StreamDeltasRequest, callback) => {
                 if (typeof callback === 'function' && data) {
                     try {
+                        // generate random uuid
+                        socket.data.reqUUID = randomUUID();
+                        const lastHistoryBlock = await new Promise<number>((resolve) => {
+                            // start sending realtime data
+                            this.emitToRelay(data, 'delta_request', socket, (emissionResult) => {
+                                callback(emissionResult);
+                                resolve(emissionResult.currentBlockNum);
+                            });
+                        });
+                        // push history data
                         if (data.start_from) {
+                            data.read_until = lastHistoryBlock;
+                            console.log('Performing primary scroll request...');
+                            let ltb = 0;
                             const hStreamResult = await streamPastDeltas(this.server, socket, data);
-                            if (hStreamResult === false) {
+                            if (hStreamResult.status === false) {
                                 return;
+                            } else {
+                                ltb = hStreamResult.lastTransmittedBlock;
+                                let attempts = 0;
+                                await sleep(500);
+                                while (ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
+                                    attempts++;
+                                    console.log(`Performing fill request from ${ltb}...`);
+                                    data.start_from = hStreamResult.lastTransmittedBlock + 1;
+                                    data.read_until = lastHistoryBlock;
+                                    const r = await streamPastDeltas(this.server, socket, data);
+                                    if (r.status === false) {
+                                        console.log(r);
+                                        return;
+                                    } else {
+                                        ltb = r.lastTransmittedBlock;
+                                    }
+                                }
                             }
                         }
-                        this.emitToRelay(data, 'delta_request', socket, callback);
                     } catch (e) {
                         console.log(e);
                     }
@@ -102,7 +131,6 @@ export class SocketManager {
                     try {
                         // generate random uuid
                         socket.data.reqUUID = randomUUID();
-
                         const lastHistoryBlock = await new Promise<number>((resolve) => {
                             // start sending realtime data
                             this.emitToRelay(data, 'action_request', socket, (emissionResult) => {
@@ -110,12 +138,11 @@ export class SocketManager {
                                 resolve(emissionResult.currentBlockNum);
                             });
                         });
-
                         // push history data
                         if (data.start_from) {
                             data.read_until = lastHistoryBlock;
                             console.log('Performing primary scroll request...');
-                            let ltb;
+                            let ltb = 0;
                             const hStreamResult = await streamPastActions(this.server, socket, data);
                             if (hStreamResult.status === false) {
                                 return;
@@ -123,7 +150,7 @@ export class SocketManager {
                                 ltb = hStreamResult.lastTransmittedBlock;
                                 let attempts = 0;
                                 await sleep(500);
-                                while (lastHistoryBlock > ltb && attempts < 3) {
+                                while (ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
                                     attempts++;
                                     console.log(`Performing fill request from ${hStreamResult.lastTransmittedBlock}...`);
                                     data.start_from = hStreamResult.lastTransmittedBlock + 1;
@@ -138,7 +165,6 @@ export class SocketManager {
                                 }
                             }
                         }
-
                     } catch (e) {
                         console.log(e);
                     }

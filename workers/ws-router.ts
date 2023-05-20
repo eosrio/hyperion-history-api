@@ -1,7 +1,7 @@
 import {HyperionWorker} from "./hyperionWorker";
 
 import {Server, Socket} from "socket.io";
-import {checkFilter, hLog} from "../helpers/common_functions";
+import {checkDeltaFilter, checkFilter, hLog} from "../helpers/common_functions";
 import {createServer} from "http";
 
 const greylist = ['eosio.token'];
@@ -448,13 +448,13 @@ export default class WSRouter extends HyperionWorker {
             } else {
                 allow = true;
             }
-            // if (link.filters?.length > 0) {
-            //     // check filters
-            //     const _parsedMsg = JSON.parse(msg);
-            //     allow = link.filters.every(filter => {
-            //         return checkDeltaFilter(filter, _parsedMsg);
-            //     });
-            // }
+            if (link.filters?.length > 0) {
+                // check filters
+                const _parsedMsg = JSON.parse(msg);
+                allow = link.filters.every(filter => {
+                    return checkDeltaFilter(filter, _parsedMsg);
+                });
+            }
             if (allow) {
                 relay.emit('delta', {client: link.client, req: link.reqUUID, message: msg});
                 this.totalRoutedMessages++;
