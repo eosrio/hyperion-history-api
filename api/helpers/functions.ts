@@ -24,7 +24,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
 
     const init_response = await fastify.elastic.search({
         index: fastify.manager.chain + '-delta-*',
-        scroll: '600s',
+        scroll: '30s',
         size: fastify.manager.config.api.stream_scroll_batch || 500,
         body: search_body,
     });
@@ -72,7 +72,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
         const next_response = await fastify.elastic.scroll({
             body: {
                 scroll_id: body['_scroll_id'],
-                scroll: '600s'
+                scroll: '30s'
             }
         });
 
