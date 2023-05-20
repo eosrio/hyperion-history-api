@@ -70,6 +70,15 @@ function addRangeQuery(queryStruct, prop, pkey, query) {
 
 export function applyTimeFilter(query, queryStruct) {
     if (query['after'] || query['before']) {
+
+        if (query['after']?.includes(' ')) {
+            query['after'] = query['after'].replace(' ', 'T');
+        }
+
+        if (query['before']?.includes(' ')) {
+            query['before'] = query['before'].replace(' ', 'T');
+        }
+
         if (query['after']?.includes('T') || query['before']?.includes('T')) {
             let _lte = "now";
             let _gte = "0";
