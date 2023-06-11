@@ -11,36 +11,36 @@ import flatstr from 'flatstr';
 
 const FJS = require('fast-json-stringify');
 
-const lightBlockSerializer = FJS({
-    title: 'Light Block',
-    type: 'object',
-    properties: {
-        '@timestamp': {type: 'string'},
-        block_num: {type: 'integer'},
-        block_id: {type: 'string'},
-        prev_id: {type: 'string'},
-        producer: {type: 'string'},
-        new_producers: {
-            type: 'object',
-            nullable: true,
-            properties: {
-                version: {type: 'integer'},
-                producers: {
-                    type: 'array',
-                    items: {
-                        properties: {
-                            block_signing_key: {type: 'string'},
-                            producer_name: {type: 'string'}
-                        }
-                    }
-                }
-            }
-        },
-        schedule_version: {type: 'integer'},
-        cpu_usage: {type: 'integer'},
-        net_usage: {type: 'integer'}
-    }
-});
+// const lightBlockSerializer = FJS({
+//     title: 'Light Block',
+//     type: 'object',
+//     properties: {
+//         '@timestamp': {type: 'string'},
+//         block_num: {type: 'integer'},
+//         block_id: {type: 'string'},
+//         prev_id: {type: 'string'},
+//         producer: {type: 'string'},
+//         new_producers: {
+//             type: 'object',
+//             nullable: true,
+//             properties: {
+//                 version: {type: 'integer'},
+//                 producers: {
+//                     type: 'array',
+//                     items: {
+//                         properties: {
+//                             block_signing_key: {type: 'string'},
+//                             producer_name: {type: 'string'}
+//                         }
+//                     }
+//                 }
+//             }
+//         },
+//         schedule_version: {type: 'integer'},
+//         cpu_usage: {type: 'integer'},
+//         net_usage: {type: 'integer'}
+//     }
+// });
 
 const index_queues = require('../definitions/index-queues').index_queues;
 const {AbiDefinitions} = require("../definitions/abi_def");
@@ -403,12 +403,21 @@ export default class MainDSWorker extends HyperionWorker {
                 }
 
                 if (light_block.new_producers) {
-
                     process.send({
                         event: 'new_schedule',
                         block_num: light_block.block_num,
                         new_producers: light_block.new_producers,
                         live: process.env.live_mode
+                    });
+                }
+
+                // stream light block
+                if (this.allowStreaming) {
+                    this.ch.publish('', this.chain + ':stream', Buffer.from(JSON.stringify(light_block)), {
+                        headers: {
+                            event: 'block',
+                            blockNum: light_block.block_num
+                        }
                     });
                 }
             }
@@ -1392,7 +1401,7 @@ export default class MainDSWorker extends HyperionWorker {
         },
 
         // Global Chain configuration update
-        "global_property": async (global_property, block_num, block_ts, row, block_id) => {
+        "global_property": async (global_property, block_num, block_ts) => {
             if (global_property.proposed_schedule.version !== 0) {
                 hLog("Proposed Schedule version: " + global_property.proposed_schedule.version + " at block: " + global_property.proposed_schedule_block_num);
                 try {

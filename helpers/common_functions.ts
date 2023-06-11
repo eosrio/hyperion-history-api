@@ -191,6 +191,33 @@ function getNested(path_array, jsonObj) {
     }
 }
 
+export function checkDeltaFilter(filter, _source) {
+    if (filter.field && filter.value) {
+        let fieldValue = getNested(filter.field.split("."), _source);
+        if (!fieldValue) {
+            const fArray = filter.field.split(".");
+            if (fArray[0].startsWith('@')) {
+                const tableName = fArray[0].replace('@', '');
+                if (_source.table === tableName) {
+                    fArray[0] = 'data';
+                    fieldValue = getNested(fArray, _source);
+                }
+            }
+        }
+        if (fieldValue) {
+            if (Array.isArray(fieldValue)) {
+                return fieldValue.indexOf(filter.value) !== -1;
+            } else {
+                return fieldValue === filter.value;
+            }
+        } else {
+            return !filter.value;
+        }
+    } else {
+        return false;
+    }
+}
+
 export function checkFilter(filter, _source) {
     if (filter.field && filter.value) {
         let fieldValue = getNested(filter.field.split("."), _source);

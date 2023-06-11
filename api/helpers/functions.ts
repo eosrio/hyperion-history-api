@@ -2,7 +2,8 @@ import {createHash} from "crypto";
 import * as _ from "lodash";
 import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethods} from "fastify";
 import got from "got";
-import {checkFilter, hLog} from "../../helpers/common_functions";
+import {checkDeltaFilter, checkFilter, hLog} from "../../helpers/common_functions";
+import {Socket} from "socket.io";
 
 const deltaQueryFields = ['code', 'table', 'scope', 'payer'];
 
@@ -15,51 +16,141 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
     deltaQueryFields.forEach(f => {
         addTermMatch(data, search_body, f);
     });
+
+    const onDemandDeltaFilters = [];
+    if (data.filters.length > 0) {
+        data.filters.forEach(f => {
+            if (f.field && f.value) {
+                if (f.field.startsWith('@') && !f.field.startsWith('data')) {
+                    const _q = {};
+                    _q[f.field] = f.value;
+                    search_body.query.bool.must.push({'term': _q});
+                } else {
+                    onDemandDeltaFilters.push(f);
+                }
+            }
+        });
+    }
+
     const responseQueue = [];
+
     let counter = 0;
+    let total = 0;
+    let totalFiltered = 0;
+    let longScroll = false;
+
+    // console.log(JSON.stringify(search_body, null, 2));
+
     const init_response = await fastify.elastic.search({
         index: fastify.manager.chain + '-delta-*',
         scroll: '30s',
-        size: 20,
+        size: fastify.manager.config.api.stream_scroll_batch || 500,
         body: search_body,
     });
+
+    const scrollLimit = fastify.manager.config.api.stream_scroll_limit;
+    if (scrollLimit && scrollLimit !== -1 && init_response.body.hits.total.value > scrollLimit) {
+        const errorMsg = `Requested ${init_response.body.hits.total.value} deltas, limit is ${scrollLimit}.`;
+        socket.emit('message', {
+            reqUUID: socket.data.reqUUID,
+            type: 'delta_trace', mode: 'history', messages: [],
+            error: errorMsg
+        });
+        return {status: false, error: errorMsg};
+    }
+
+    if (init_response.body.hits.total.value > 10000) {
+        total = init_response.body.hits.total.value;
+        longScroll = true;
+        hLog(`Attention! Long scroll (deltas) is running!`);
+    }
+
+    // emit first block
+    if (init_response.body.hits.hits.length > 0) {
+        emitTraceInit(socket, init_response.body.hits.hits[0]._source.block_num, init_response.body.hits.total.value);
+    }
+
     responseQueue.push(init_response);
+
+    let lastTransmittedBlock = 0;
+    let pendingScrollId = '';
     while (responseQueue.length) {
+        let filterCount = 0;
         const {body} = responseQueue.shift();
+        pendingScrollId = body['_scroll_id'];
+        const enqueuedMessages = [];
         counter += body['hits']['hits'].length;
+
+        for (const doc of body['hits']['hits']) {
+            let allow = false;
+            if (onDemandDeltaFilters.length > 0) {
+                allow = onDemandDeltaFilters.every(filter => {
+                    return checkDeltaFilter(filter, doc._source);
+                });
+            } else {
+                allow = true;
+            }
+            if (allow) {
+                enqueuedMessages.push(doc._source);
+            } else {
+                filterCount++;
+            }
+            // set last block
+            if (doc._source.block_num > lastTransmittedBlock) {
+                lastTransmittedBlock = doc._source.block_num;
+            }
+        }
+
+        totalFiltered += filterCount;
+
         if (socket.connected) {
-            socket.emit('message', {
-                type: 'delta_trace',
-                mode: 'history',
-                messages: body['hits']['hits'].map(doc => doc._source),
-            });
+            if (enqueuedMessages.length > 0) {
+                socket.emit('message', {
+                    reqUUID: socket.data.reqUUID,
+                    type: 'delta_trace',
+                    mode: 'history',
+                    messages: enqueuedMessages,
+                    filtered: filterCount
+                });
+            }
         } else {
             hLog('LOST CLIENT');
             break;
         }
+
+        if (longScroll) {
+            hLog(`Progress: ${counter + totalFiltered}/${total}`);
+        }
+
         if (body['hits'].total.value === counter) {
-            hLog(`${counter} past deltas streamed to ${socket.id}`);
+            hLog(`${counter} past deltas streamed to ${socket.id} (${totalFiltered} filtered)`);
             break;
         }
 
         const next_response = await fastify.elastic.scroll({
-            body: {
-                scroll_id: body['_scroll_id'],
-                scroll: '30s'
-            }
+            body: {scroll_id: body['_scroll_id'], scroll: '30s'}
         });
         responseQueue.push(next_response);
     }
+
+    // destroy scroll context
+    await fastify.elastic.clearScroll({scroll_id: pendingScrollId});
+    return {status: true, lastTransmittedBlock};
+}
+
+export function emitTraceInit(socket: Socket, firstBlock: number, totalResults: number) {
+    socket.emit('message', {
+        reqUUID: socket.data.reqUUID,
+        type: 'trace_init',
+        mode: 'history',
+        first_block: firstBlock,
+        results: totalResults
+    });
 }
 
 export async function streamPastActions(fastify: FastifyInstance, socket, data) {
-    const search_body = {
-        query: {bool: {must: []}},
-        sort: {global_sequence: 'asc'},
-    };
-
+    const search_body = {query: {bool: {must: []}}, sort: {global_sequence: 'asc'}};
     await addBlockRangeOpts(data, search_body, fastify);
-
     if (data.account !== '') {
         search_body.query.bool.must.push({
             bool: {
@@ -96,18 +187,50 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
 
     const responseQueue = [];
     let counter = 0;
+    let total = 0;
+    let totalFiltered = 0;
+    let longScroll = false;
 
     const init_response = await fastify.elastic.search({
         index: fastify.manager.chain + '-action-*',
         scroll: '30s',
-        size: 20,
+        size: fastify.manager.config.api.stream_scroll_batch || 500,
         body: search_body,
     });
+
+    const scrollLimit = fastify.manager.config.api.stream_scroll_limit;
+    if (scrollLimit && scrollLimit !== -1 && init_response.body.hits.total.value > scrollLimit) {
+        const errorMsg = `Requested ${init_response.body.hits.total.value} actions, limit is ${scrollLimit}.`;
+        socket.emit('message', {
+            reqUUID: socket.data.reqUUID,
+            type: 'action_trace', mode: 'history', messages: [],
+            error: `Requested ${init_response.body.hits.total.value} actions, limit is ${scrollLimit}.`
+        });
+        return {status: false, error: errorMsg};
+    }
+
+    if (init_response.body.hits.total.value > 10000) {
+        total = init_response.body.hits.total.value;
+        longScroll = true;
+        hLog(`Attention! Long scroll (actions) is running!`);
+    }
+
+    // emit first block
+    if (init_response.body.hits.hits.length > 0) {
+        emitTraceInit(socket, init_response.body.hits.hits[0]._source.block_num, init_response.body.hits.total.value);
+    }
+
     responseQueue.push(init_response);
+
+    let lastTransmittedBlock = 0;
+    let pendingScrollId = '';
     while (responseQueue.length) {
+        let filterCount = 0;
         const {body} = responseQueue.shift();
+        pendingScrollId = body['_scroll_id'];
         const enqueuedMessages = [];
         counter += body['hits']['hits'].length;
+
         for (const doc of body['hits']['hits']) {
             let allow = false;
             if (onDemandFilters.length > 0) {
@@ -119,32 +242,55 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
             }
             if (allow) {
                 enqueuedMessages.push(doc._source);
+            } else {
+                filterCount++;
+            }
+            // set last block
+            if (doc._source.block_num > lastTransmittedBlock) {
+                lastTransmittedBlock = doc._source.block_num;
             }
         }
+
+        totalFiltered += filterCount;
+
         if (socket.connected) {
-            socket.emit('message', {type: 'action_trace', mode: 'history', messages: enqueuedMessages});
+            if (enqueuedMessages.length > 0) {
+                socket.emit('message', {
+                    reqUUID: socket.data.reqUUID,
+                    type: 'action_trace',
+                    mode: 'history',
+                    messages: enqueuedMessages,
+                    filtered: filterCount
+                });
+            }
         } else {
             hLog('LOST CLIENT');
             break;
         }
+
+        if (longScroll) {
+            hLog(`Progress: ${counter + totalFiltered}/${total}`);
+        }
+
         if (body['hits'].total.value === counter) {
-            hLog(`${counter} past actions streamed to ${socket.id}`);
+            hLog(`${counter} past actions streamed to ${socket.id} (${totalFiltered} filtered)`);
             break;
         }
-        if (init_response.body.hits.total.value < 1000) {
-            const next_response = await fastify.elastic.scroll({
-                body: {scroll_id: body['_scroll_id'], scroll: '30s'}
-            });
-            responseQueue.push(next_response);
-        } else {
-            hLog('Request too large!');
-            socket.emit('message', {type: 'action_trace', mode: 'history', messages: []});
-        }
+
+        const next_response = await fastify.elastic.scroll({
+            body: {scroll_id: body['_scroll_id'], scroll: '30s'}
+        });
+        responseQueue.push(next_response);
     }
+
+    // destroy scroll context
+    await fastify.elastic.clearScroll({scroll_id: pendingScrollId});
+    return {status: true, lastTransmittedBlock};
+
 }
 
 export function addTermMatch(data, search_body, field) {
-    if (data[field] !== '*' && data[field] !== '') {
+    if (data[field] && data[field] !== '*' && data[field] !== '') {
         const termQuery = {};
         termQuery[field] = data[field];
         search_body.query.bool.must.push({'term': termQuery});

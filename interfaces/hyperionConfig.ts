@@ -89,6 +89,8 @@ interface CachedRouteConfig {
 }
 
 interface ApiConfigs {
+    stream_scroll_batch?: number;
+    stream_scroll_limit?: number;
     enabled?: boolean;
     pm2_scaling?: number;
     node_max_old_space_size?: number;

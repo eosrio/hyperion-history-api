@@ -205,49 +205,12 @@ async function repairMissing(chain: string, file: string, args: any) {
         console.log('Could not connect to ElasticSearch');
         process.exit();
     }
-
-    const controlPort = config.chains[chain].control_port;
-
-    let hyperionIndexer = `ws://localhost:${controlPort}`;
-    if (args.host) {
-        hyperionIndexer = 'ws://' + args.host + ':' + controlPort;
-    }
-    const controller = new WebSocket(hyperionIndexer + '/local');
-
-    controller.on('open', async () => {
-        console.log('Connected to Hyperion Controller');
-        const missingBlocks = JSON.parse(readFileSync(file).toString());
-        console.log(missingBlocks);
-        if (!args.dry) {
-            const payload = {
-                "event": "fill_missing_blocks",
-                "data": missingBlocks
-            };
-            controller.send(JSON.stringify(payload));
-        } else {
-            console.log('Dry run, skipping repair');
-            controller.close();
-        }
-    });
-    controller.on('message', (data) => {
-        const parsed = JSON.parse(data.toString());
-        if (parsed.event === 'repair_completed') {
-            console.log(`Hyperion repair completed!`);
-            controller.close();
-        }
-    });
-    controller.on('close', () => {
-        console.log('Disconnected from Hyperion Controller');
-    });
-    controller.on('error', (err) => {
-        console.log(err);
-    });
+    await fillMissingBlocksFromFile(args.host, chain, file, args.dry);
 }
 
 async function repairChain(chain: string, file: string, args: any) {
-    console.log(chain, file, args);
+
     const chainConfig = readChainConfig(chain);
-    console.log(chainConfig.settings.index_version);
     const config = readConnectionConfig();
     const client = initESClient(config);
     const ping = await client.ping();
@@ -255,12 +218,29 @@ async function repairChain(chain: string, file: string, args: any) {
         console.log('Could not connect to ElasticSearch');
         process.exit();
     }
+
+    if (args.checkTasks) {
+        const tasks = await client.tasks.list();
+        if (tasks.body && tasks.body.nodes) {
+            for (let node in tasks.body.nodes) {
+                const nodeTasks = tasks.body.nodes[node].tasks;
+                console.log(nodeTasks);
+            }
+        }
+        process.exit(0);
+    }
+
     const forkedBlocks = JSON.parse(readFileSync(file).toString());
     const blockIndex = `${chain}-block-${chainConfig.settings.index_version}`;
     let deleteBlocks = 0;
     let deleteActions = 0;
     let deleteDeltas = 0;
     let deleteAbis = 0;
+    let deleteAccounts = 0;
+    let deleteVoters = 0;
+    let deleteProposals = 0;
+    let deleteLinks = 0;
+    let deletePermissions = 0;
 
     for (const range of forkedBlocks) {
 
@@ -284,8 +264,11 @@ async function repairChain(chain: string, file: string, args: any) {
                 deleteActions += (resultActions.body.hits.total as estypes.SearchTotalHits)?.value;
             }
         } else {
+            delete searchActions.size;
             const deletedActionsResult = await client.deleteByQuery(searchActions);
-            console.log(deletedActionsResult);
+            if (deletedActionsResult && deletedActionsResult.body.deleted && deletedActionsResult.body.deleted > 0) {
+                deleteActions += deletedActionsResult.body.deleted;
+            }
         }
 
         // DELTAS
@@ -308,8 +291,11 @@ async function repairChain(chain: string, file: string, args: any) {
                 deleteDeltas += (resultDeltas.body.hits.total as estypes.SearchTotalHits)?.value;
             }
         } else {
+            delete searchDeltas.size;
             const deletedDeltasResult = await client.deleteByQuery(searchDeltas);
-            console.log(deletedDeltasResult);
+            if (deletedDeltasResult && deletedDeltasResult.body.deleted && deletedDeltasResult.body.deleted > 0) {
+                deleteDeltas += deletedDeltasResult.body.deleted;
+            }
         }
 
         // ABIS
@@ -333,6 +319,7 @@ async function repairChain(chain: string, file: string, args: any) {
                 console.log('ABIs', {lte: range.start, gte: range.end});
             }
         } else {
+            delete searchAbis.size;
             const deletedAbisResult = await client.deleteByQuery(searchAbis);
             if (deletedAbisResult && deletedAbisResult.body.deleted && deletedAbisResult.body.deleted > 0) {
                 deleteAbis += deletedAbisResult.body.deleted;
@@ -342,7 +329,7 @@ async function repairChain(chain: string, file: string, args: any) {
         // ACCOUNTS
         const searchAccounts = {
             index: `${chain}-table-accounts-${chainConfig.settings.index_version}`,
-            size: 10000,
+            size: 0,
             track_total_hits: true,
             body: {
                 query: {
@@ -357,14 +344,20 @@ async function repairChain(chain: string, file: string, args: any) {
             const resultAccounts = await client.search<any>(searchAccounts);
             if ((resultAccounts.body.hits.total as estypes.SearchTotalHits)?.value > 0) {
                 console.log('[WARNING]', (resultAccounts.body.hits.total as estypes.SearchTotalHits)?.value, 'accounts needs to be updated');
-                console.log({lte: range.start, gte: range.end});
+                deleteAccounts += (resultAccounts.body.hits.total as estypes.SearchTotalHits)?.value;
+            }
+        } else {
+            delete searchAccounts.size;
+            const deletedAccountsResult = await client.deleteByQuery(searchAccounts);
+            if (deletedAccountsResult && deletedAccountsResult.body.deleted && deletedAccountsResult.body.deleted > 0) {
+                deleteAccounts += deletedAccountsResult.body.deleted;
             }
         }
 
         // VOTERS
         const searchVoters = {
             index: `${chain}-table-voters-${chainConfig.settings.index_version}`,
-            size: 10000,
+            size: 0,
             track_total_hits: true,
             body: {
                 query: {
@@ -379,14 +372,20 @@ async function repairChain(chain: string, file: string, args: any) {
             const resultVoters = await client.search<any>(searchVoters);
             if ((resultVoters.body.hits.total as estypes.SearchTotalHits)?.value > 0) {
                 console.log('[WARNING]', (resultVoters.body.hits.total as estypes.SearchTotalHits)?.value, 'voters needs to be updated');
-                console.log({lte: range.start, gte: range.end});
+                deleteVoters += (resultVoters.body.hits.total as estypes.SearchTotalHits)?.value;
+            }
+        } else {
+            delete searchVoters.size;
+            const deletedVotersResult = await client.deleteByQuery(searchVoters);
+            if (deletedVotersResult && deletedVotersResult.body.deleted && deletedVotersResult.body.deleted > 0) {
+                deleteVoters += deletedVotersResult.body.deleted;
             }
         }
 
         // PROPOSALS
         const searchProposals = {
             index: `${chain}-table-proposals-${chainConfig.settings.index_version}`,
-            size: 10000,
+            size: 0,
             track_total_hits: true,
             body: {
                 query: {
@@ -401,14 +400,20 @@ async function repairChain(chain: string, file: string, args: any) {
             const resultProposals = await client.search<any>(searchProposals);
             if ((resultProposals.body.hits.total as estypes.SearchTotalHits)?.value > 0) {
                 console.log('[WARNING]', (resultProposals.body.hits.total as estypes.SearchTotalHits)?.value, 'proposals needs to be updated');
-                console.log({lte: range.start, gte: range.end});
+                deleteProposals += (resultProposals.body.hits.total as estypes.SearchTotalHits)?.value;
+            }
+        } else {
+            delete searchProposals.size;
+            const deletedProposalsResult = await client.deleteByQuery(searchProposals);
+            if (deletedProposalsResult && deletedProposalsResult.body.deleted && deletedProposalsResult.body.deleted > 0) {
+                deleteProposals += deletedProposalsResult.body.deleted;
             }
         }
 
         // LINKS
         const searchLinks = {
             index: `${chain}-link-${chainConfig.settings.index_version}`,
-            size: 10000,
+            size: 0,
             track_total_hits: true,
             body: {
                 query: {
@@ -423,14 +428,20 @@ async function repairChain(chain: string, file: string, args: any) {
             const resultLinks = await client.search<any>(searchLinks);
             if ((resultLinks.body.hits.total as estypes.SearchTotalHits)?.value > 0) {
                 console.log('[WARNING]', (resultLinks.body.hits.total as estypes.SearchTotalHits)?.value, 'links needs to be updated');
-                console.log({lte: range.start, gte: range.end});
+                deleteLinks += (resultLinks.body.hits.total as estypes.SearchTotalHits)?.value;
+            }
+        } else {
+            delete searchLinks.size;
+            const deletedLinksResult = await client.deleteByQuery(searchLinks);
+            if (deletedLinksResult && deletedLinksResult.body.deleted && deletedLinksResult.body.deleted > 0) {
+                deleteLinks += deletedLinksResult.body.deleted;
             }
         }
 
         // PERMISSIONS
         const searchPermissions = {
             index: `${chain}-perm-${chainConfig.settings.index_version}`,
-            size: 10000,
+            size: 0,
             track_total_hits: true,
             body: {
                 query: {
@@ -446,6 +457,13 @@ async function repairChain(chain: string, file: string, args: any) {
             if ((resultPermissions.body.hits.total as estypes.SearchTotalHits)?.value > 0) {
                 console.log('[WARNING]', (resultPermissions.body.hits.total as estypes.SearchTotalHits)?.value, 'permissions needs to be updated');
                 console.log({lte: range.start, gte: range.end});
+                deletePermissions += (resultPermissions.body.hits.total as estypes.SearchTotalHits)?.value;
+            }
+        } else {
+            delete searchPermissions.size;
+            const deletedPermissionsResult = await client.deleteByQuery(searchPermissions);
+            if (deletedPermissionsResult && deletedPermissionsResult.body.deleted && deletedPermissionsResult.body.deleted > 0) {
+                deletePermissions += deletedPermissionsResult.body.deleted;
             }
         }
 
@@ -457,21 +475,75 @@ async function repairChain(chain: string, file: string, args: any) {
                 }
             };
             if (args.dry) {
+                console.log(`Deleting block ${id}...`);
                 const resultBlocks = await client.search<SearchResponse<HyperionBlock>>(searchBlocks);
-                if (resultBlocks.body.hits.hits[0]._source) {
+                if (resultBlocks.body.hits.hits.length > 0 && resultBlocks.body.hits.hits[0]._source) {
                     deleteBlocks++;
                 }
             } else {
                 const result = await client.deleteByQuery(searchBlocks);
+                if (result && result.body.deleted && result.body.deleted > 0) {
+                    deleteBlocks += result.body.deleted;
+                }
             }
         }
     }
 
     if (args.dry) {
         console.log(`DRY-RUN: Would have deleted ${deleteBlocks} blocks, ${deleteActions} actions, ${deleteDeltas} deltas and ${deleteAbis} ABIs`);
+        console.dir({
+            blocks: deleteBlocks,
+            actions: deleteActions,
+            deltas: deleteDeltas,
+            abis: deleteAbis,
+            accounts: deleteAccounts,
+            voters: deleteVoters,
+            proposals: deleteProposals,
+            links: deleteLinks,
+            permissions: deletePermissions
+        });
     } else {
         console.log(`Deleted ${deleteBlocks} blocks, ${deleteActions} actions, ${deleteDeltas} deltas and ${deleteAbis} ABIs`);
     }
+
+    await fillMissingBlocksFromFile(args.host, chain, file, args.dry);
+}
+
+async function fillMissingBlocksFromFile(host: string, chain: string, file: string, dryRun: string) {
+    const config = readConnectionConfig();
+    const controlPort = config.chains[chain].control_port;
+    let hyperionIndexer = `ws://localhost:${controlPort}`;
+    if (host) {
+        hyperionIndexer = 'ws://' + host + ':' + controlPort;
+    }
+    const controller = new WebSocket(hyperionIndexer + '/local');
+    controller.on('open', async () => {
+        console.log('Connected to Hyperion Controller');
+        const parsedFile = JSON.parse(readFileSync(file).toString());
+        if (!dryRun) {
+            const payload = {
+                "event": "fill_missing_blocks",
+                "data": parsedFile
+            };
+            controller.send(JSON.stringify(payload));
+        } else {
+            console.log('Dry run, skipping repair');
+            controller.close();
+        }
+    });
+    controller.on('message', (data) => {
+        const parsed = JSON.parse(data.toString());
+        if (parsed.event === 'repair_completed') {
+            console.log(`Hyperion repair completed!`);
+            controller.close();
+        }
+    });
+    controller.on('close', () => {
+        console.log('Disconnected from Hyperion Controller');
+    });
+    controller.on('error', (err) => {
+        console.log(err);
+    });
 }
 
 function viewFile(file: string) {
@@ -485,7 +557,7 @@ function viewFile(file: string) {
 program
     .name('Hyperion Repair CLI')
     .description('CLI to find and repair forked and missing blocks on Hyperion')
-    .version('0.2.1');
+    .version('0.2.2');
 
 
 program.command('scan <chain>')
@@ -499,7 +571,9 @@ program.command('scan <chain>')
 
 program.command('repair <chain> <file>')
     .description('repair forked blocks')
+    .option('-h, --host <host>', 'Hyperion local control api')
     .option('-d, --dry', 'dry-run, do not delete or repair blocks')
+    .option('-t, --check-tasks', 'check for running tasks')
     .action(repairChain);
 
 program.command('fill-missing <chain> <file>')

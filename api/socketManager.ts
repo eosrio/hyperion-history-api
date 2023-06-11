@@ -1,4 +1,4 @@
-import {hLog} from '../helpers/common_functions';
+import {hLog, sleep} from '../helpers/common_functions';
 import {Server, Socket} from 'socket.io';
 import {createAdapter} from 'socket.io-redis';
 import {io} from 'socket.io-client';
@@ -6,6 +6,7 @@ import {FastifyInstance} from "fastify";
 import IORedis from "ioredis";
 import {App, TemplatedApp} from 'uWebSockets.js';
 import {streamPastActions, streamPastDeltas} from "./helpers/functions";
+import {randomUUID} from "crypto";
 
 export interface StreamDeltasRequest {
     code: string;
@@ -40,7 +41,8 @@ export class SocketManager {
     private readonly url;
     private readonly server: FastifyInstance;
     private readonly uwsApp: TemplatedApp;
-    private chainId: string;
+    private readonly chainId: string;
+    private currentBlockNum: number;
 
     constructor(fastify: FastifyInstance, url, redisOptions) {
         this.server = fastify;
@@ -82,10 +84,42 @@ export class SocketManager {
             socket.on('delta_stream_request', async (data: StreamDeltasRequest, callback) => {
                 if (typeof callback === 'function' && data) {
                     try {
+                        // generate random uuid
+                        socket.data.reqUUID = randomUUID();
+                        const lastHistoryBlock = await new Promise<number>((resolve) => {
+                            // start sending realtime data
+                            this.emitToRelay(data, 'delta_request', socket, (emissionResult) => {
+                                callback(emissionResult);
+                                resolve(emissionResult.currentBlockNum);
+                            });
+                        });
+                        // push history data
                         if (data.start_from) {
-                            await streamPastDeltas(this.server, socket, data);
+                            data.read_until = lastHistoryBlock;
+                            console.log('Performing primary scroll request...');
+                            let ltb = 0;
+                            const hStreamResult = await streamPastDeltas(this.server, socket, data);
+                            if (hStreamResult.status === false) {
+                                return;
+                            } else {
+                                ltb = hStreamResult.lastTransmittedBlock;
+                                let attempts = 0;
+                                await sleep(500);
+                                while (ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
+                                    attempts++;
+                                    console.log(`Performing fill request from ${ltb}...`);
+                                    data.start_from = hStreamResult.lastTransmittedBlock + 1;
+                                    data.read_until = lastHistoryBlock;
+                                    const r = await streamPastDeltas(this.server, socket, data);
+                                    if (r.status === false) {
+                                        console.log(r);
+                                        return;
+                                    } else {
+                                        ltb = r.lastTransmittedBlock;
+                                    }
+                                }
+                            }
                         }
-                        this.emitToRelay(data, 'delta_request', socket, callback);
                     } catch (e) {
                         console.log(e);
                     }
@@ -95,10 +129,42 @@ export class SocketManager {
             socket.on('action_stream_request', async (data: StreamActionsRequest, callback) => {
                 if (typeof callback === 'function' && data) {
                     try {
+                        // generate random uuid
+                        socket.data.reqUUID = randomUUID();
+                        const lastHistoryBlock = await new Promise<number>((resolve) => {
+                            // start sending realtime data
+                            this.emitToRelay(data, 'action_request', socket, (emissionResult) => {
+                                callback(emissionResult);
+                                resolve(emissionResult.currentBlockNum);
+                            });
+                        });
+                        // push history data
                         if (data.start_from) {
-                            await streamPastActions(this.server, socket, data);
+                            data.read_until = lastHistoryBlock;
+                            console.log('Performing primary scroll request...');
+                            let ltb = 0;
+                            const hStreamResult = await streamPastActions(this.server, socket, data);
+                            if (hStreamResult.status === false) {
+                                return;
+                            } else {
+                                ltb = hStreamResult.lastTransmittedBlock;
+                                let attempts = 0;
+                                await sleep(500);
+                                while (ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
+                                    attempts++;
+                                    console.log(`Performing fill request from ${hStreamResult.lastTransmittedBlock}...`);
+                                    data.start_from = hStreamResult.lastTransmittedBlock + 1;
+                                    data.read_until = lastHistoryBlock;
+                                    const r = await streamPastActions(this.server, socket, data);
+                                    if (r.status === false) {
+                                        console.log(r);
+                                        return;
+                                    } else {
+                                        ltb = r.lastTransmittedBlock;
+                                    }
+                                }
+                            }
                         }
-                        this.emitToRelay(data, 'action_request', socket, callback);
                     } catch (e) {
                         console.log(e);
                     }
@@ -158,8 +224,18 @@ export class SocketManager {
             this.emitToClient(traceData, 'action_trace');
         });
 
+        this.relay.on('block', (blockData) => {
+            try {
+                // const decodedBlock = JSON.parse(blockData.content.toString());
+                // console.log(blockData.serverTime, blockData.blockNum, decodedBlock);
+                this.currentBlockNum = blockData.blockNum;
+            } catch (e) {
+                hLog(`Failed to decode incoming live block ${blockData.blockNum}: ${e.message}`);
+            }
+        });
 
         this.addRelayForwarding('lib_update');
+
         this.addRelayForwarding('fork_event');
 
         // // Relay LIB info to clients;
@@ -190,6 +266,7 @@ export class SocketManager {
         if (this.io.sockets.sockets.has(traceData.client)) {
             this.io.sockets.sockets.get(traceData.client).emit('message', {
                 type: type,
+                reqUUID: traceData.req,
                 mode: 'live',
                 message: traceData.message,
             });
@@ -199,10 +276,13 @@ export class SocketManager {
     emitToRelay(data, type, socket, callback) {
         if (this.relay.connected) {
             this.relay.emit('event', {
+                reqUUID: socket.data.reqUUID,
                 type: type,
                 client_socket: socket.id,
                 request: data,
             }, (response) => {
+                response['reqUUID'] = socket.data.reqUUID;
+                response['currentBlockNum'] = this.currentBlockNum;
                 callback(response);
             });
         } else {
