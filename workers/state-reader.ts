@@ -375,7 +375,7 @@ export default class StateReader extends HyperionWorker {
                 this.shipInitStatus = result[1];
                 hLog(`\n| SHIP Status Report\n| Init block: ${this.shipInitStatus['chain_state_begin_block']}\n| Head block: ${this.shipInitStatus['chain_state_end_block']}`);
                 const chain_state_begin_block = this.shipInitStatus['chain_state_begin_block'];
-                if (!this.conf.indexer.disable_reading) {
+                if (!this.conf.indexer.disable_reading || process.env['worker_role'] === 'repair_reader') {
 
                     switch (process.env['worker_role']) {
 
