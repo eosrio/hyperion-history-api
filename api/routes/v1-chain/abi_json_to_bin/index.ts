@@ -7,13 +7,14 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         getRouteName(__filename),
         'Convert JSON object to binary',
         {
-            "binargs": {
-                "type": "string",
-                "pattern": "^(0x)(([0-9a-f][0-9a-f])+)?$",
-                "title": "Hex"
+            "code": {$ref: 'AccountName#'},
+            "action": {$ref: 'AccountName#'},
+            "args": {
+                type: 'object',
+                additionalProperties: true
             }
         },
-        ["binargs"]
+        ["code", "action", "args"]
     );
     next();
 }
