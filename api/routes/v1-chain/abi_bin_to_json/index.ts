@@ -9,11 +9,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         {
             "code": {$ref: 'AccountName#'},
             "action": {$ref: 'AccountName#'},
-            "binargs": {
-                "type": "string",
-                "pattern": "^(0x)(([0-9a-f][0-9a-f])+)?$",
-                "title": "Hex"
-            }
+            "binargs": {"type": "string"}
         },
         ["code", "action", "binargs"]
     );
