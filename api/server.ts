@@ -16,7 +16,6 @@ import {io, Socket} from "socket.io-client";
 import {CacheManager} from "./helpers/cacheManager";
 
 import {bootstrap} from 'global-agent';
-import {Api} from "eosjs";
 
 class HyperionApiServer {
 
@@ -227,8 +226,8 @@ class HyperionApiServer {
             hLog('Failed to check elasticsearch version!');
             process.exit();
         });
-        hLog('Elasticsearch validated!');
 
+        hLog('Elasticsearch validated!');
         hLog('Registering plugins...');
 
         registerPlugins(this.fastify, this.pluginParams);

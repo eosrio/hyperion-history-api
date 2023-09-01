@@ -62,7 +62,7 @@ export function registerRoutes(server: FastifyInstance) {
     // chain api redirects
     addRoute(server, 'v1-chain', '/v1/chain');
 
-	// other v1 requests
+    // other v1 requests
     server.route({
         url: '/v1/chain/*',
         method: ["GET", "POST"],
@@ -93,6 +93,25 @@ export function registerRoutes(server: FastifyInstance) {
                 reply.send({apis: [...server.routeSet], error: 'nodeos did not send any data'});
             }
         }
+    });
+
+    // global onRequest hook to collect hourly statistics for each path on redis
+    server.addHook('onResponse', (request: FastifyRequest, reply: FastifyReply, done) => {
+        const path = request.url.split('?')[0].replace(/\/$/, '');
+        const now = new Date();
+        const ts = now.getTime();
+        // normalized time in hours
+        const factor = 1000 * 60 * 60;
+        const ts_hour_unix = Math.floor(ts / factor) * factor;
+        const key = `stats:${server.manager.chain}:H:${ts_hour_unix}`;
+        // console.log(reply.statusCode, key, new Date(ts_hour_unix));
+        server.redis.multi()
+            .incr(`stats:${server.manager.chain}:total:${reply.statusCode}:${path}`)
+            .zincrby(key, 1, `[${reply.statusCode}]${path}`)
+            .expire(key, 60 * 60 * 24 * 7)
+            .exec()
+            .catch(console.log);
+        done();
     });
 
     server.addHook('onError', (request: FastifyRequest, reply: FastifyReply, error: FastifyError, done) => {

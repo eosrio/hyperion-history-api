@@ -28,19 +28,19 @@ export class CacheManager {
         setInterval(() => {
             try {
                 // remove expired entries
-                let removeCount = 0;
+                // let removeCount = 0;
                 const now = Date.now();
                 this.v1Caches.forEach((pathCacheMap: Map<string, CachedEntry>, pathKey: string) => {
                     pathCacheMap.forEach((cache: CachedEntry, entryKey: string, map: Map<string, CachedEntry>) => {
                         if (cache.exp < now) {
                             map.delete(entryKey);
-                            removeCount++;
+                            // removeCount++;
                         }
                     });
                 });
-                if (removeCount > 0) {
-                    console.log(`${removeCount} expired cache entries removed`);
-                }
+                // if (removeCount > 0) {
+                //     console.log(`${removeCount} expired cache entries removed`);
+                // }
             } catch (e) {
                 console.log(e);
             }
