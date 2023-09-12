@@ -509,42 +509,72 @@ async function repairChain(chain: string, file: string, args: any) {
     await fillMissingBlocksFromFile(args.host, chain, file, args.dry);
 }
 
-async function fillMissingBlocksFromFile(host: string, chain: string, file: string, dryRun: string) {
+async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
     const config = readConnectionConfig();
     const controlPort = config.chains[chain].control_port;
     let hyperionIndexer = `ws://localhost:${controlPort}`;
     if (host) {
-        hyperionIndexer = 'ws://' + host + ':' + controlPort;
+        hyperionIndexer = `ws://${host}:${controlPort}`;
     }
     const controller = new WebSocket(hyperionIndexer + '/local');
+
+    // Function to send Chunk
+    async function sendChunk(chunk): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const payload = {
+                "event": "fill_missing_blocks",
+                "data": chunk
+            };
+            controller.send(JSON.stringify(payload));
+            
+            // Wait repair_completed confirmation
+            controller.once('message', (data) => {
+                const parsed = JSON.parse(data.toString());
+                if (parsed.event === 'repair_completed') {
+                    // console.log(`Hyperion repair completed for chunk!`);
+                    resolve();
+                }
+            });
+        });
+    }
+
     controller.on('open', async () => {
         console.log('Connected to Hyperion Controller');
         const parsedFile = JSON.parse(readFileSync(file).toString());
+        const chunkSize = 20; // Chunk size
+        
         if (!dryRun) {
-            const payload = {
-                "event": "fill_missing_blocks",
-                "data": parsedFile
-            };
-            controller.send(JSON.stringify(payload));
+            const totalChunks = Math.ceil(parsedFile.length / chunkSize);
+            let completedChunks = 0;
+            for (let i = 0; i < parsedFile.length; i += chunkSize) {
+                const progress = (completedChunks / totalChunks) * 100;
+                const progressBar = Array(Math.round(progress / 2)).fill('#').join('');
+                process.stdout.write(`Progress: [${progressBar}] ${progress.toFixed(2)}%     \r`);
+                //  console.log(`Progress: [${progressBar}] ${progress.toFixed(2)}%`);
+
+                const chunk = parsedFile.slice(i, i + chunkSize);
+                await sendChunk(chunk);
+
+                 // Update progess bar
+                 completedChunks++;
+            }
+            console.log();
+            controller.close();
         } else {
             console.log('Dry run, skipping repair');
             controller.close();
         }
     });
-    controller.on('message', (data) => {
-        const parsed = JSON.parse(data.toString());
-        if (parsed.event === 'repair_completed') {
-            console.log(`Hyperion repair completed!`);
-            controller.close();
-        }
-    });
+
     controller.on('close', () => {
         console.log('Disconnected from Hyperion Controller');
     });
+
     controller.on('error', (err) => {
         console.log(err);
     });
 }
+
 
 function viewFile(file: string) {
     const data = readFileSync(file, 'utf8');
