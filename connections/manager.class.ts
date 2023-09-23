@@ -20,8 +20,8 @@ export class ConnectionManager {
     last_commit_hash: string;
     current_version: string;
 
-    private readonly esIngestClients: Client[];
-    private esIngestClient: Client;
+    esIngestClients: Client[];
+    esIngestClient: Client;
 
     constructor(private cm: ConfigurationModule) {
         this.config = cm.config;
