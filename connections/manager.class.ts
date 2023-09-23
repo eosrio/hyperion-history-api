@@ -9,7 +9,6 @@ import {StateHistorySocket} from "./state-history";
 import fetch from 'cross-fetch';
 import {exec} from "child_process";
 import {hLog} from "../helpers/common_functions";
-import {readFileSync} from "fs";
 
 export class ConnectionManager {
 
