@@ -23,10 +23,10 @@ export function getAmpqUrl(config): string {
 	}
 	const u = encodeURIComponent(config.user);
 	const p = encodeURIComponent(config.pass);
-	const v = encodeURIComponent(config.vhost)
+	const v = encodeURIComponent(config.vhost);
+	console.log(`max frame: ${frameMaxValue}`);
 	return `amqp://${u}:${p}@${config.host}/${v}?frameMax=${frameMaxValue}`;
 }
-
 
 async function createChannels(connection) {
 	try {

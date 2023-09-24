@@ -529,6 +529,8 @@ export default class MainDSWorker extends HyperionWorker {
 
     routeToPool(trace, headers) {
 
+        console.log(headers.block_num, headers.signatures);
+
         let first_action;
         if (trace['action_traces'][0] && trace['action_traces'][0].length === 2) {
             first_action = trace['action_traces'][0][1];
