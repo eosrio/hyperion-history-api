@@ -478,6 +478,7 @@ export default class MainDSWorker extends HyperionWorker {
                                 hLog(`${block_num} was filtered with ${inline_count} actions!`);
                             }
                             try {
+                                trace[1].signatures = signatures;
                                 this.routeToPool(trace[1], {
                                     block_num,
                                     block_id,
@@ -485,8 +486,7 @@ export default class MainDSWorker extends HyperionWorker {
                                     ts,
                                     inline_count,
                                     filtered,
-                                    live: process.env['live_mode'],
-                                    signatures
+                                    live: process.env['live_mode']
                                 });
                             } catch (e) {
                                 hLog(e);
@@ -528,10 +528,6 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     routeToPool(trace, headers) {
-
-        if(headers.signatures.length > 5) {
-            console.log(headers.block_num, headers.signatures);
-        }
 
         let first_action;
         if (trace['action_traces'][0] && trace['action_traces'][0].length === 2) {
