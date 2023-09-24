@@ -623,11 +623,11 @@ export default class MainDSWorker extends HyperionWorker {
 
         const pool_queue = `${this.chain}:ds_pool:${selected_q}`;
         if (this.ch_ready) {
-            // console.log('selected_q', pool_queue);
             const enqueueResult = this.ch.sendToQueue(pool_queue, bufferFromJson(trace, true), {headers});
             if (!enqueueResult) {
                 hLog("Failed to send trace!");
                 console.log("Header size: " + JSON.stringify(headers).length);
+                console.log(headers);
             }
             return true;
         } else {
