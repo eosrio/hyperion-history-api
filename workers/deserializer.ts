@@ -659,7 +659,6 @@ export default class MainDSWorker extends HyperionWorker {
         const enqueueResult = this.ch.sendToQueue(pool_queue, payload, options);
         if (!enqueueResult) {
             this.waitToSend = true;
-            hLog("Backpressure");
         }
         return enqueueResult;
     }
@@ -1193,7 +1192,7 @@ export default class MainDSWorker extends HyperionWorker {
                 let jsonRow = await this.processContractRowNative(payload, block_num);
 
                 if (jsonRow?.value && !jsonRow['_blacklisted']) {
-                    console.log(jsonRow);
+                    debugLog(jsonRow);
                     debugLog('Delta DS failed ->>', jsonRow);
                     jsonRow = await this.processContractRowNative(payload, block_num - 1);
                     debugLog('Retry with previous ABI ->>', jsonRow);
