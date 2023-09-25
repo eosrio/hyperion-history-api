@@ -16,20 +16,21 @@ class DspEventConsumer {
         console.log('Starting DSP Consumer...');
         [this.ch] = await this.manager.createAMQPChannels((channels) => {
             [this.ch] = channels;
-            this.onConnect();
+            this.onConnect().catch(console.log);
         }, () => {
             this.ch_ready = false;
         });
-        this.onConnect();
+        this.onConnect().catch(console.log);
     }
-    onConnect() {
+    async onConnect() {
         if (this.conf.settings.dsp_parser) {
             const q = `${this.manager.chain}:dsp`;
             console.log(q);
-            this.ch.prefetch(100);
-            this.ch.assertQueue(q, { durable: true });
-            this.ch.consume(q, (data) => {
+            await this.ch.assertQueue(q, { durable: true });
+            await this.ch.consume(q, (data) => {
                 this.onMessage(data);
+            }, {
+                prefetch: 100
             });
         }
     }

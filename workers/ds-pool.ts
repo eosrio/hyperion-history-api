@@ -625,12 +625,11 @@ export default class DSPoolWorker extends HyperionWorker {
 
     initConsumer() {
         if (this.ch_ready) {
-            this.ch.prefetch(this.conf.prefetch.block);
             this.ch.consume(this.local_queue, (data) => {
                 this.consumerQueue.push(data);
-            }, {}, (err, ok) => {
-                hLog(err, ok);
-            });
+            }, {
+                prefetch: this.conf.prefetch.block
+            }).catch(console.log);
             debugLog(`started consuming from ${this.local_queue}`);
         }
     }
@@ -694,13 +693,14 @@ export default class DSPoolWorker extends HyperionWorker {
             this.ch_ready = true;
             this.ch.assertQueue(this.local_queue, {
                 durable: true
-            });
-            this.initConsumer();
+            }).then(() => {
+                this.initConsumer();
+            }).catch(console.log);
         }
         if (this.conf.settings.dsp_parser) {
             this.ch.assertQueue(`${queue_prefix}:dsp`, {
                 durable: true
-            });
+            }).catch(console.log);
         }
     }
 

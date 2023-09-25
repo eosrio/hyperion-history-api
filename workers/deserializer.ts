@@ -286,10 +286,11 @@ export default class MainDSWorker extends HyperionWorker {
 
     private initConsumer() {
         if (this.ch_ready) {
-            this.ch.prefetch(this.conf.prefetch.block);
             this.ch.consume(process.env['worker_queue'], (data) => {
                 this.consumerQueue.push(data).catch(console.log);
-            });
+            }, {
+                prefetch: this.conf.prefetch.block
+            }).catch(console.log);
         }
     }
 
@@ -625,7 +626,7 @@ export default class MainDSWorker extends HyperionWorker {
         if (this.ch_ready) {
             const enqueueResult = this.ch.sendToQueue(pool_queue, bufferFromJson(trace, true), {headers});
             if (!enqueueResult) {
-                hLog("Failed to send trace!");
+                hLog("Backpressure");
                 console.log("Header size: " + JSON.stringify(headers).length);
                 console.log(headers);
             }

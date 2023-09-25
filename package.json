@@ -35,6 +35,7 @@
     "@fastify/redis": "^5.0.0",
     "@fastify/swagger": "6.1.0",
     "@pm2/io": "^5.0.0",
+    "amqp-connection-manager": "^4.1.14",
     "amqplib": "^0.10.3",
     "async": "^3.2.4",
     "base-x": "^4.0.0",

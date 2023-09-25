@@ -9,6 +9,7 @@ import {StateHistorySocket} from "./state-history";
 import fetch from 'cross-fetch';
 import {exec} from "child_process";
 import {hLog} from "../helpers/common_functions";
+import {ChannelWrapper} from "amqp-connection-manager";
 
 export class ConnectionManager {
 
@@ -131,7 +132,7 @@ export class ConnectionManager {
         }
     }
 
-    async createAMQPChannels(onReconnect, onClose) {
+    async createAMQPChannels(onReconnect, onClose): Promise<ChannelWrapper[]> {
         return await amqpConnect(onReconnect, this.conn.amqp, onClose);
     }
 
