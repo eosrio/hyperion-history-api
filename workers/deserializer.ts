@@ -8,6 +8,7 @@ import {Type} from "../addons/eosjs-native/eosjs-serialize";
 import {debugLog, hLog} from "../helpers/common_functions";
 import {createHash} from "crypto";
 import flatstr from 'flatstr';
+import {Options} from "amqplib";
 
 const FJS = require('fast-json-stringify');
 
@@ -123,6 +124,9 @@ export default class MainDSWorker extends HyperionWorker {
     deltaRemovalQueue: string;
 
     allowedDynamicContracts: Set<string> = new Set<string>();
+
+    backpressureQueue: any[] = [];
+    waitToSend = false;
 
     constructor() {
 
@@ -289,6 +293,16 @@ export default class MainDSWorker extends HyperionWorker {
             this.ch.prefetch(this.conf.prefetch.block);
             this.ch.consume(process.env['worker_queue'], (data) => {
                 this.consumerQueue.push(data).catch(console.log);
+            });
+            this.ch.on('drain', args => {
+                this.waitToSend = false;
+                while (this.backpressureQueue.length > 0) {
+                    const msg = this.backpressureQueue.shift();
+                    const status = this.controlledSendToQueue(msg.queue, msg.payload, msg.options);
+                    if (!status) {
+                        break;
+                    }
+                }
             });
         }
     }
@@ -622,17 +636,32 @@ export default class MainDSWorker extends HyperionWorker {
         }
 
         const pool_queue = `${this.chain}:ds_pool:${selected_q}`;
-        if (this.ch_ready) {
-            const enqueueResult = this.ch.sendToQueue(pool_queue, bufferFromJson(trace, true), {headers});
-            if (!enqueueResult) {
-                hLog("Backpressure");
-                console.log("Header size: " + JSON.stringify(headers).length);
-                console.log(headers);
+        const payload = bufferFromJson(trace, true);
+
+        if (!this.waitToSend) {
+            if (this.ch_ready) {
+                this.controlledSendToQueue(pool_queue, payload, {headers});
+                return true;
+            } else {
+                return false;
             }
-            return true;
         } else {
+            this.backpressureQueue.push({
+                queue: pool_queue,
+                payload: payload,
+                options: {headers}
+            });
             return false;
         }
+    }
+
+    controlledSendToQueue(pool_queue: string, payload: Buffer, options: Options.Publish): boolean {
+        const enqueueResult = this.ch.sendToQueue(pool_queue, payload, options);
+        if (!enqueueResult) {
+            this.waitToSend = true;
+            hLog("Backpressure");
+        }
+        return enqueueResult;
     }
 
     createSerialBuffer(inputArray) {
