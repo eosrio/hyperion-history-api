@@ -624,12 +624,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         const pool_queue = `${this.chain}:ds_pool:${selected_q}`;
         if (this.ch_ready) {
-            const enqueueResult = this.ch.sendToQueue(pool_queue, bufferFromJson(trace, true), {headers});
-            if (!enqueueResult) {
-                hLog("Backpressure");
-                console.log("Header size: " + JSON.stringify(headers).length);
-                console.log(headers);
-            }
+            this.ch.sendToQueue(pool_queue, bufferFromJson(trace, true), {headers}).catch(console.log);
             return true;
         } else {
             return false;
@@ -1165,7 +1160,7 @@ export default class MainDSWorker extends HyperionWorker {
                 let jsonRow = await this.processContractRowNative(payload, block_num);
 
                 if (jsonRow?.value && !jsonRow['_blacklisted']) {
-                    console.log(jsonRow);
+                    debugLog(jsonRow);
                     debugLog('Delta DS failed ->>', jsonRow);
                     jsonRow = await this.processContractRowNative(payload, block_num - 1);
                     debugLog('Retry with previous ABI ->>', jsonRow);
@@ -1500,7 +1495,7 @@ export default class MainDSWorker extends HyperionWorker {
                             } catch (e) {
                                 hLog(`Delta struct [${key}] processing error: ${e.message}`);
                                 hLog(e);
-                                console.log(data[1]);
+                                hLog(data[1]);
                             }
                         }
                     }
