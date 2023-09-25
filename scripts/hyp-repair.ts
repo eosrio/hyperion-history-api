@@ -542,23 +542,24 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
         console.log('Connected to Hyperion Controller');
         const parsedFile = JSON.parse(readFileSync(file).toString());
         const chunkSize = 20; // Chunk size
+        const totalLines = parsedFile.length;
         
         if (!dryRun) {
-            const totalChunks = Math.ceil(parsedFile.length / chunkSize);
-            let completedChunks = 0;
+            let completedLines = 0;
+            
             for (let i = 0; i < parsedFile.length; i += chunkSize) {
-                const progress = (completedChunks / totalChunks) * 100;
-                const progressBar = Array(Math.round(progress / 2)).fill('#').join('');
-                process.stdout.write(`Progress: [${progressBar}] ${progress.toFixed(2)}%     \r`);
-                //  console.log(`Progress: [${progressBar}] ${progress.toFixed(2)}%`);
-
                 const chunk = parsedFile.slice(i, i + chunkSize);
                 await sendChunk(chunk);
-
-                 // Update progess bar
-                 completedChunks++;
+               
+                // Atualizar o progresso com base no número total de linhas
+                completedLines += chunk.length;
+                const progress = (completedLines / totalLines) * 100;
+                const progressBar = Array(Math.round(progress / 2)).fill('#').join('');
+                process.stdout.clearLine(0); // Limpar a linha anterior
+                process.stdout.cursorTo(0); // Mover o cursor para o início da linha
+                process.stdout.write(`Progress: [${progressBar}] ${progress.toFixed(2)}%`);
             }
-            console.log();
+            console.log(); // Pule para a próxima linha após a conclusão
             controller.close();
         } else {
             console.log('Dry run, skipping repair');
