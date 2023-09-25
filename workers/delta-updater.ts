@@ -29,11 +29,9 @@ export default class MainDSWorker extends HyperionWorker {
 		if (this.ch) {
 			this.queueName = this.chain + ":delta_rm";
 			hLog(`Launched delta updater, consuming from ${this.queueName}`);
-			this.ch.assertQueue(this.queueName, {durable: true}).then(() => {
-				this.ch.consume(this.queueName, this.onConsume.bind(this),{
-					prefetch: 1
-				}).catch(console.log);
-			});
+			this.ch.assertQueue(this.queueName, {durable: true});
+			this.ch.prefetch(1);
+			this.ch.consume(this.queueName, this.onConsume.bind(this));
 		}
 	}
 

@@ -1,14 +1,13 @@
 import {ConfigurationModule} from "../modules/config";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
-import {Message} from "amqplib/callback_api";
-import {ChannelWrapper} from "amqp-connection-manager";
+import {Channel, Message} from "amqplib/callback_api";
 
 class DspEventConsumer {
 
     private conf: HyperionConfig;
     private manager: ConnectionManager;
-    private ch: ChannelWrapper;
+    private ch: Channel;
     private ch_ready: boolean = false;
     private lastBlock = 0;
     private lastGS = 0;
@@ -24,22 +23,21 @@ class DspEventConsumer {
         console.log('Starting DSP Consumer...');
         [this.ch] = await this.manager.createAMQPChannels((channels) => {
             [this.ch] = channels;
-            this.onConnect().catch(console.log);
+            this.onConnect();
         }, () => {
             this.ch_ready = false;
         });
-        this.onConnect().catch(console.log);
+        this.onConnect();
     }
 
-    private async onConnect(): Promise<void> {
+    private onConnect() {
         if (this.conf.settings.dsp_parser) {
             const q = `${this.manager.chain}:dsp`;
             console.log(q);
-            await this.ch.assertQueue(q, {durable: true});
-            await this.ch.consume(q, (data) => {
+            this.ch.prefetch(100);
+            this.ch.assertQueue(q, {durable: true});
+            this.ch.consume(q, (data) => {
                 this.onMessage(data);
-            }, {
-                prefetch: 100
             });
         }
     }

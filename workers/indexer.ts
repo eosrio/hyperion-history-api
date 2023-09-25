@@ -48,11 +48,9 @@ export default class IndexerWorker extends HyperionWorker {
                     this.indexQueue.pause();
                     this.ch_ready = false;
                 });
-                this.ch.assertQueue(process.env.queue, {durable: true}).then(r => {
-                    this.ch.consume(process.env.queue, this.indexQueue.push, {
-                        prefetch: this.conf.prefetch.index
-                    }).catch(console.log);
-                });
+                this.ch.assertQueue(process.env.queue, {durable: true});
+                this.ch.prefetch(this.conf.prefetch.index);
+                this.ch.consume(process.env.queue, this.indexQueue.push);
             }
         } catch (e) {
             console.error('rabbitmq error!');
