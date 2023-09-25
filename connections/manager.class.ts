@@ -9,7 +9,6 @@ import {StateHistorySocket} from "./state-history";
 import fetch from 'cross-fetch';
 import {exec} from "child_process";
 import {hLog} from "../helpers/common_functions";
-import {readFileSync} from "fs";
 
 export class ConnectionManager {
 
@@ -20,8 +19,8 @@ export class ConnectionManager {
     last_commit_hash: string;
     current_version: string;
 
-    private readonly esIngestClients: Client[];
-    private esIngestClient: Client;
+    esIngestClients: Client[];
+    esIngestClient: Client;
 
     constructor(private cm: ConfigurationModule) {
         this.config = cm.config;

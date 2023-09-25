@@ -20,4 +20,11 @@ readdirSync(chainsRoot)
         }
     });
 
+apps.push({
+    name: 'hyperion-governor',
+    namespace: 'hyperion',
+    script: 'governor/server/index.js',
+    watch: false,
+});
+
 module.exports = {apps};

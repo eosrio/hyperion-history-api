@@ -8,6 +8,7 @@ import {Type} from "../addons/eosjs-native/eosjs-serialize";
 import {debugLog, hLog} from "../helpers/common_functions";
 import {createHash} from "crypto";
 import flatstr from 'flatstr';
+import {Options} from "amqplib";
 
 const FJS = require('fast-json-stringify');
 
@@ -123,6 +124,9 @@ export default class MainDSWorker extends HyperionWorker {
     deltaRemovalQueue: string;
 
     allowedDynamicContracts: Set<string> = new Set<string>();
+
+    backpressureQueue: any[] = [];
+    waitToSend = false;
 
     constructor() {
 
@@ -289,6 +293,16 @@ export default class MainDSWorker extends HyperionWorker {
             this.ch.prefetch(this.conf.prefetch.block);
             this.ch.consume(process.env['worker_queue'], (data) => {
                 this.consumerQueue.push(data).catch(console.log);
+            });
+            this.ch.on('drain', args => {
+                this.waitToSend = false;
+                while (this.backpressureQueue.length > 0) {
+                    const msg = this.backpressureQueue.shift();
+                    const status = this.controlledSendToQueue(msg.queue, msg.payload, msg.options);
+                    if (!status) {
+                        break;
+                    }
+                }
             });
         }
     }
@@ -478,6 +492,7 @@ export default class MainDSWorker extends HyperionWorker {
                                 hLog(`${block_num} was filtered with ${inline_count} actions!`);
                             }
                             try {
+                                trace[1].signatures = signatures;
                                 this.routeToPool(trace[1], {
                                     block_num,
                                     block_id,
@@ -485,8 +500,7 @@ export default class MainDSWorker extends HyperionWorker {
                                     ts,
                                     inline_count,
                                     filtered,
-                                    live: process.env['live_mode'],
-                                    signatures
+                                    live: process.env['live_mode']
                                 });
                             } catch (e) {
                                 hLog(e);
@@ -622,13 +636,31 @@ export default class MainDSWorker extends HyperionWorker {
         }
 
         const pool_queue = `${this.chain}:ds_pool:${selected_q}`;
-        if (this.ch_ready) {
-            // console.log('selected_q', pool_queue);
-            this.ch.sendToQueue(pool_queue, bufferFromJson(trace, true), {headers});
-            return true;
+        const payload = bufferFromJson(trace, true);
+
+        if (!this.waitToSend) {
+            if (this.ch_ready) {
+                this.controlledSendToQueue(pool_queue, payload, {headers});
+                return true;
+            } else {
+                return false;
+            }
         } else {
+            this.backpressureQueue.push({
+                queue: pool_queue,
+                payload: payload,
+                options: {headers}
+            });
             return false;
         }
+    }
+
+    controlledSendToQueue(pool_queue: string, payload: Buffer, options: Options.Publish): boolean {
+        const enqueueResult = this.ch.sendToQueue(pool_queue, payload, options);
+        if (!enqueueResult) {
+            this.waitToSend = true;
+        }
+        return enqueueResult;
     }
 
     createSerialBuffer(inputArray) {
@@ -1160,7 +1192,7 @@ export default class MainDSWorker extends HyperionWorker {
                 let jsonRow = await this.processContractRowNative(payload, block_num);
 
                 if (jsonRow?.value && !jsonRow['_blacklisted']) {
-                    console.log(jsonRow);
+                    debugLog(jsonRow);
                     debugLog('Delta DS failed ->>', jsonRow);
                     jsonRow = await this.processContractRowNative(payload, block_num - 1);
                     debugLog('Retry with previous ABI ->>', jsonRow);
@@ -1495,7 +1527,7 @@ export default class MainDSWorker extends HyperionWorker {
                             } catch (e) {
                                 hLog(`Delta struct [${key}] processing error: ${e.message}`);
                                 hLog(e);
-                                console.log(data[1]);
+                                hLog(data[1]);
                             }
                         }
                     }
