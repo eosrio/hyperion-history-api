@@ -297,23 +297,15 @@ export default class StateReader extends HyperionWorker {
             this.completionSignaled = true;
             debugLog(`Reader completion signal - ${this.range_size} - ${this.local_distributed_count}`);
             this.local_distributed_count = 0;
+
             this.completionMonitoring = setInterval(() => {
+
+
                 let pending = 0;
-                const unconfirmed = this.cch['unconfirmed'];
-                if (unconfirmed.length > 0) {
-                    unconfirmed.forEach((elem) => {
-                        if (elem) {
-                            pending++;
-                        }
-                    });
-                    if (!(pending === this.lastPendingCount && pending > 0)) {
-                        this.lastPendingCount = pending;
-                    }
-                }
-                if (pending === 0) {
+
+                if (this.cch.queueLength() === 0) {
                     debugLog(`Reader completed - ${this.range_size} - ${this.local_distributed_count}`);
                     clearInterval(this.completionMonitoring);
-
                     // check if there are any pending ranges, then signal completion to master
                     if (this.internalPendingRanges.length === 0) {
                         process.send({
@@ -325,7 +317,42 @@ export default class StateReader extends HyperionWorker {
                         const next = this.internalPendingRanges.shift();
                         this.newRange(next);
                     }
+                } else {
+                    pending = this.cch.queueLength();
+                    if (!(pending === this.lastPendingCount && pending > 0)) {
+                        this.lastPendingCount = pending;
+                    }
                 }
+
+                // const unconfirmed = this.cch['unconfirmed'];
+                // if (unconfirmed.length > 0) {
+                //     unconfirmed.forEach((elem) => {
+                //         if (elem) {
+                //             pending++;
+                //         }
+                //     });
+                //     if (!(pending === this.lastPendingCount && pending > 0)) {
+                //         this.lastPendingCount = pending;
+                //     }
+                // }
+                //
+                // if (pending === 0) {
+                //     debugLog(`Reader completed - ${this.range_size} - ${this.local_distributed_count}`);
+                //     clearInterval(this.completionMonitoring);
+                //
+                //     // check if there are any pending ranges, then signal completion to master
+                //     if (this.internalPendingRanges.length === 0) {
+                //         process.send({
+                //             event: 'completed',
+                //             id: process.env['worker_id']
+                //         });
+                //     } else {
+                //         // process next range in queue
+                //         const next = this.internalPendingRanges.shift();
+                //         this.newRange(next);
+                //     }
+                // }
+
             }, 200);
         }
     }
