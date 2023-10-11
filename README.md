@@ -91,7 +91,7 @@ to collect action traces and state deltas. Provides data via websocket to the in
 #### 2.7 Hyperion Stream Client (optional)
 
 Web and Node.js client for real-time streaming on enabled hyperion
-providers. [Documentation](https://hyperion.docs.eosrio.io/stream_client/)
+providers. [Documentation](https://hyperion.docs.eosrio.io/dev/stream_client/)
 
 #### 2.8 Hyperion Plugins (optional)
 
