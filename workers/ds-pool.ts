@@ -4,7 +4,6 @@ import * as AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "../addons/eosjs-native";
 import {debugLog, hLog} from "../helpers/common_functions";
 import {Message} from "amqplib";
-import {parseDSPEvent} from "../modules/custom/dsp-parser";
 import {join, resolve} from "path";
 import {existsSync, readdirSync, readFileSync} from "fs";
 import flatstr from 'flatstr';
@@ -248,7 +247,7 @@ export default class DSPoolWorker extends HyperionWorker {
                         return entry.startingBlock < block_num && entry.endingBlock > block_num;
                     });
                     if (matchingAbi.abi) {
-                        _status = AbiEOS.load_abi(contract, matchingAbi.abi);
+                        _status = this.abieos.loadAbi(contract, matchingAbi.abi);
                     }
                 }
             }
@@ -293,17 +292,17 @@ export default class DSPoolWorker extends HyperionWorker {
         return [_status, resultType];
     }
 
-    async deserializeActionAtBlockNative(self, _action, block_num): Promise<any> {
-        self.recordContractUsage(_action.account);
-        const [_status, actionType] = await self.verifyLocalType(_action.account, _action.name, block_num, "action");
+    async deserializeActionAtBlockNative(self, action, block_num): Promise<any> {
+        self.recordContractUsage(action.account);
+        const [_status, actionType] = await self.verifyLocalType(action.account, action.name, block_num, "action");
         if (_status) {
             try {
-                return AbiEOS.bin_to_json(_action.account, actionType, Buffer.from(_action.data, 'hex'));
+                return this.abieos.binToJson(action.account, actionType, Buffer.from(action.data, 'hex'));
             } catch (e) {
-                debugLog(`(abieos) ${_action.account}::${_action.name} @ ${block_num} >>> ${e.message}`);
+                debugLog(`(abieos) ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
             }
         }
-        return self.deserializeActionAtBlock(_action, block_num);
+        return self.deserializeActionAtBlock(action, block_num);
     }
 
     async getAbiFromHeadBlock(code) {
@@ -392,7 +391,7 @@ export default class DSPoolWorker extends HyperionWorker {
             if (actions.has(check_action)) {
                 if (!this.failedAbiMap.has(accountName) || !this.failedAbiMap.get(accountName).has(-1)) {
                     try {
-                        AbiEOS.load_abi(accountName, JSON.stringify(abi));
+                        this.abieos.loadAbi(accountName, JSON.stringify(abi));
                     } catch (e) {
                         hLog(e);
                     }
@@ -637,7 +636,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     deleteCache(contract) {
         // delete cache contract on abieos context
-        const status = AbiEOS.delete_contract(contract);
+        const status = this.abieos.deleteContract(contract);
         if (!status) {
             debugLog('Contract not found on cache!');
         } else {
@@ -676,10 +675,10 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    initializeShipAbi(data) {
+    initializeShipAbi(data: string) {
         debugLog(`state history abi ready on ds_worker ${process.env.local_id}`);
         this.abi = JSON.parse(data);
-        AbiEOS.load_abi("0", data);
+        this.abieos.loadAbi("0", data);
         const initialTypes = Serialize.createInitialTypes();
         this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
         this.abi.tables.map(table => this.tables.set(table.name, table.type));
