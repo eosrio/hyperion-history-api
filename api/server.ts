@@ -21,14 +21,14 @@ class HyperionApiServer {
 
     private hub: Socket;
     private readonly fastify;
+    private readonly pluginParams: any;
     private readonly chain: string;
     private readonly conf: HyperionConfig;
     private readonly manager: ConnectionManager;
-    private readonly cacheManager: CacheManager;
 
+    private readonly cacheManager: CacheManager;
     socketManager: SocketManager;
     mLoader: HyperionModuleLoader;
-    private pluginParams: any;
 
     constructor() {
 
@@ -61,12 +61,12 @@ class HyperionApiServer {
             level: 'info',
             prettyPrint: true,
             serializers: {
-                res: (reply) => {
+                res: (reply: { statusCode: any; }) => {
                     return {
                         statusCode: reply.statusCode
                     };
                 },
-                req: (request) => {
+                req: (request: any) => {
                     return {
                         method: request.method,
                         url: request.url,
@@ -183,7 +183,7 @@ class HyperionApiServer {
             payload.on('end', () => {
                 done(null, data);
             });
-            payload.on('error', (err) => {
+            payload.on('error', (err: any) => {
                 console.log('---- Content Parsing Error -----');
                 console.log(err);
             });
@@ -249,7 +249,7 @@ class HyperionApiServer {
         // register documentation when ready
         this.fastify.ready().then(async () => {
             await this.fastify.swagger();
-        }, (err) => {
+        }, (err: any) => {
             hLog('an error happened', err)
         });
 

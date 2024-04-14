@@ -89,6 +89,7 @@ interface CachedRouteConfig {
 }
 
 interface ApiConfigs {
+    log_errors?: boolean;
     stream_scroll_batch?: number;
     stream_scroll_limit?: number;
     enabled?: boolean;
