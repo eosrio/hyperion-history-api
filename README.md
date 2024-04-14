@@ -22,7 +22,7 @@ Made with ♥ by [Rio Blocks / EOS Rio](https://rioblocks.io/?lang=en)
 
 ### [Official documentation](https://hyperion.docs.eosrio.io)
 
-### How to use
+### How to use:
 
  - [For Providers](https://hyperion.docs.eosrio.io/manual_installation/)
 
