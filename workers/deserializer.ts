@@ -197,16 +197,14 @@ export default class MainDSWorker extends HyperionWorker {
             });
         }
 
-        this.ch.assertQueue(this.deltaRemovalQueue, {durable: true});
+        this.ch.assertQueue(this.deltaRemovalQueue, {durable: false, arguments: {"x-queue-version": 2}});
 
         // make sure the input queue is ready if the deserializer launches too early
-        this.ch.assertQueue(process.env['worker_queue']);
+        this.ch.assertQueue(process.env['worker_queue'], {durable: false, arguments: {"x-queue-version": 2}});
 
         if (process.env['live_mode'] === 'false') {
             for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {
-                    durable: true
-                });
+                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {durable: false, arguments: {"x-queue-version": 2}});
             }
         }
 
@@ -223,7 +221,7 @@ export default class MainDSWorker extends HyperionWorker {
                 n = 1;
             }
             for (let i = 0; i < n; i++) {
-                this.ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: true});
+                this.ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: false, arguments: {"x-queue-version": 2}});
                 qIdx++;
             }
         });

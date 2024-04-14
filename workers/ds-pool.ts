@@ -691,15 +691,11 @@ export default class DSPoolWorker extends HyperionWorker {
         this.local_queue = queue_prefix + ':ds_pool:' + process.env.local_id;
         if (this.ch) {
             this.ch_ready = true;
-            this.ch.assertQueue(this.local_queue, {
-                durable: true
-            });
+            this.ch.assertQueue(this.local_queue, {durable: false, arguments: {"x-queue-version": 2}});
             this.initConsumer();
         }
         if (this.conf.settings.dsp_parser) {
-            this.ch.assertQueue(`${queue_prefix}:dsp`, {
-                durable: true
-            });
+            this.ch.assertQueue(`${queue_prefix}:dsp`, {durable: false, arguments: {"x-queue-version": 2}});
         }
     }
 

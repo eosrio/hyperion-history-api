@@ -1,8 +1,8 @@
-import {ConfigurationModule} from "./config";
-import {ConnectionManager} from "../connections/manager.class";
-import {JsonRpc} from "eosjs/dist";
-import {ApiResponse, Client} from "@elastic/elasticsearch";
-import {HyperionModuleLoader} from "./loader";
+import { ApiResponse, Client } from "@elastic/elasticsearch";
+import { JsonRpc } from "eosjs/dist";
+import { ConnectionManager } from "../connections/manager.class";
+import { ConfigurationModule } from "./config";
+import { HyperionModuleLoader } from "./loader";
 
 import {
     debugLog,
@@ -15,8 +15,8 @@ import {
     messageAllWorkers, waitUntilReady
 } from "../helpers/common_functions";
 
-import {GetInfoResult} from "eosjs/dist/eosjs-rpc-interfaces";
 import pm2io from '@pm2/io';
+import { GetInfoResult } from "eosjs/dist/eosjs-rpc-interfaces";
 
 import {
     createWriteStream,
@@ -29,24 +29,23 @@ import {
     WriteStream
 } from "fs";
 
+import cluster, { Worker } from "cluster";
 import path from "path";
-import cluster, {Worker} from "cluster";
-import {io, Socket} from 'socket.io-client';
-import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef";
-import {HyperionConfig} from "../interfaces/hyperionConfig";
+import { io, Socket } from 'socket.io-client';
+import { HyperionConfig } from "../interfaces/hyperionConfig";
+import { HyperionWorkerDef } from "../interfaces/hyperionWorkerDef";
 
-import {queue, QueueObject} from "async";
-import {convertLegacyPublicKey} from "eosjs/dist/eosjs-numeric";
-import AlertsManager from "./alertsManager";
-import IORedis from "ioredis";
-import {IOConfig} from "@pm2/io/build/main/pmx";
+import { IOConfig } from "@pm2/io/build/main/pmx";
 import Gauge from "@pm2/io/build/main/utils/metrics/gauge";
+import { queue, QueueObject } from "async";
+import { convertLegacyPublicKey } from "eosjs/dist/eosjs-numeric";
+import IORedis from "ioredis";
+import AlertsManager from "./alertsManager";
 
-import {bootstrap} from 'global-agent';
+import { bootstrap } from 'global-agent';
+import { App, TemplatedApp, WebSocket } from "uWebSockets.js";
 import moment = require("moment");
 import Timeout = NodeJS.Timeout;
-import {App, TemplatedApp, WebSocket} from "uWebSockets.js";
-import {checkQueueSize} from "../connections/amqp";
 
 interface RevBlock {
     num: number;

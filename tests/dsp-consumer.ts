@@ -35,7 +35,7 @@ class DspEventConsumer {
             const q = `${this.manager.chain}:dsp`;
             console.log(q);
             this.ch.prefetch(100);
-            this.ch.assertQueue(q, {durable: true});
+            this.ch.assertQueue(q, {durable: false, arguments: {"x-queue-version": 2}});
             this.ch.consume(q, (data) => {
                 this.onMessage(data);
             });

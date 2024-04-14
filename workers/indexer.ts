@@ -48,7 +48,7 @@ export default class IndexerWorker extends HyperionWorker {
                     this.indexQueue.pause();
                     this.ch_ready = false;
                 });
-                this.ch.assertQueue(process.env.queue, {durable: true});
+                this.ch.assertQueue(process.env.queue, {durable: false, arguments: {"x-queue-version": 2}});
                 this.ch.prefetch(this.conf.prefetch.index);
                 this.ch.consume(process.env.queue, this.indexQueue.push);
             }
