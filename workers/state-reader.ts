@@ -1,6 +1,7 @@
 import {HyperionWorker} from "./hyperionWorker";
 import {cargo, QueueObject} from "async";
 import {Serialize} from "../addons/eosjs-native";
+import {Abi} from "../addons/eosjs-native/eosjs-rpc-interfaces";
 import {Type} from "eosjs/dist/eosjs-serialize";
 import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions";
 import {parseInt} from "lodash";
@@ -15,19 +16,19 @@ export default class StateReader extends HyperionWorker {
 
     private readonly isLiveReader = process.env['worker_role'] === 'continuous_reader';
     private readonly baseRequest: any;
-    private abi: any;
+    private abi?: Abi;
     private qStatusMap = {};
     private recovery = false;
     private tables = new Map();
     private allowRequests = true;
-    private pendingRequest: RequestRange = null;
+    private pendingRequest: [number, number] | null = null;
     private completionSignaled = false;
     private stageOneDistQueue: QueueObject<any>;
     private blockReadingQueue: QueueObject<WebSocket.MessageEvent>;
-    private range_size = parseInt(process.env.last_block) - parseInt(process.env.first_block);
+    private range_size = parseInt(process.env.last_block ?? "0") - parseInt(process.env.first_block ?? "0");
     private completionMonitoring: NodeJS.Timeout | null | undefined;
     private types?: Map<string, Type>;
-    private local_block_num = parseInt(process.env.first_block, 10) - 1;
+    private local_block_num = parseInt(process.env.first_block ?? "0", 10) - 1;
     private local_block_id = '';
 
     // private queueSizeCheckInterval = 5000;
@@ -51,12 +52,12 @@ export default class StateReader extends HyperionWorker {
     private forkedBlocks = new Map<string, number>();
     private idle = true;
     private repairMode = false;
-    private internalPendingRanges: any[] = [];
+    private internalPendingRanges: RequestRange[] = [];
 
     constructor() {
         super();
 
-        if (this.isLiveReader) {
+        if (this.isLiveReader && process.env.worker_last_processed_block) {
             this.local_block_num = parseInt(process.env.worker_last_processed_block, 10) - 1;
         }
 
@@ -315,7 +316,10 @@ export default class StateReader extends HyperionWorker {
             this.local_distributed_count = 0;
             this.completionMonitoring = setInterval(() => {
                 let pending = 0;
+
+                // @ts-ignore
                 const unconfirmed = this.cch['unconfirmed'];
+
                 if (unconfirmed.length > 0) {
                     unconfirmed.forEach((elem) => {
                         if (elem) {
@@ -328,11 +332,14 @@ export default class StateReader extends HyperionWorker {
                 }
                 if (pending === 0) {
                     debugLog(`Reader completed - ${this.range_size} - ${this.local_distributed_count}`);
-                    clearInterval(this.completionMonitoring);
+
+                    if (this.completionMonitoring) {
+                        clearInterval(this.completionMonitoring);
+                    }
 
                     // check if there are any pending ranges, then signal completion to master
                     if (this.internalPendingRanges.length === 0) {
-                        process.send({
+                        process.send?.({
                             event: 'completed',
                             id: process.env['worker_id']
                         });
@@ -397,13 +404,13 @@ export default class StateReader extends HyperionWorker {
 
                         // range reader setup
                         case 'reader': {
-                            if (chain_state_begin_block > process.env.first_block) {
+                            if (process.env.first_block && chain_state_begin_block > process.env.first_block) {
 
                                 // skip snapshot block until a solution to parse it is found
                                 const nextBlock = chain_state_begin_block + 2;
                                 hLog(`First saved block is ahead of requested range! - Req: ${process.env.first_block} | First: ${chain_state_begin_block}`);
                                 this.local_block_num = nextBlock - 1;
-                                process.send({
+                                process.send?.({
                                     event: 'update_init_block',
                                     block_num: nextBlock
                                 });
@@ -419,14 +426,16 @@ export default class StateReader extends HyperionWorker {
 
                         // live reader setup
                         case 'continuous_reader': {
-                            this.requestBlocks(parseInt(process.env['worker_last_processed_block'], 10));
+                            if (process.env.worker_last_processed_block) {
+                                this.requestBlocks(parseInt(process.env.worker_last_processed_block, 10));
+                            }
                             break;
                         }
 
                         case 'repair_reader': {
                             this.repairMode = true;
                             hLog('Waiting for operations...');
-                            process.send({
+                            process.send?.({
                                 event: 'repair_reader_ready'
                             });
                             break;
@@ -494,7 +503,7 @@ export default class StateReader extends HyperionWorker {
                             try {
                                 // delete all previously stored data for the forked blocks
                                 await this.handleFork(res);
-                            } catch (e) {
+                            } catch (e: any) {
                                 hLog(`Failed to handle fork during live reading! - Error: ${e.message}`);
                             }
                         }
@@ -505,7 +514,7 @@ export default class StateReader extends HyperionWorker {
                         if (lib.block_num > this.local_lib) {
                             this.local_lib = lib.block_num;
                             // emit lib update event
-                            process.send({event: 'lib_update', data: lib});
+                            process.send?.({event: 'lib_update', data: lib});
                         }
 
                         await this.stageOneDistQueue.push(task_payload);
@@ -524,7 +533,7 @@ export default class StateReader extends HyperionWorker {
                                 }
                                 this.local_block_num = blk_num - 1;
                                 this.local_distributed_count++;
-                                process.send({
+                                process.send?.({
                                     event: 'skipped_block',
                                     block_num: this.local_block_num + 1
                                 })
@@ -586,11 +595,15 @@ export default class StateReader extends HyperionWorker {
                     let first = this.local_block_num;
                     let last = this.local_last_block;
                     if (last === 0) {
-                        last = parseInt(process.env.last_block, 10);
+                        if (process.env.last_block) {
+                            last = parseInt(process.env.last_block, 10);
+                        }
                     }
                     last = last - 1;
                     if (first === 0) {
-                        first = parseInt(process.env.first_block, 10);
+                        if (process.env.first_block) {
+                            first = parseInt(process.env.first_block, 10);
+                        }
                     }
                     if (first > last) {
                         last = first + 1;
@@ -614,18 +627,20 @@ export default class StateReader extends HyperionWorker {
     private processFirstABI(data: Buffer) {
         const abiString = data.toString();
         this.abieos.loadAbi("0", abiString);
-        this.abi = JSON.parse(abiString);
+        this.abi = JSON.parse(abiString) as Abi;
         this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
-        this.abi.tables.map(table => this.tables.set(table.name, table.type));
+        this.abi.tables.map((table) => {
+            return this.tables.set(table.name, table.type);
+        });
         // notify master about first abi
-        process.send({event: 'init_abi', data: abiString});
+        process.send?.({event: 'init_abi', data: abiString});
         // request status
         this.send(['get_status_request_v0', {}]);
     }
 
     private requestBlocks(start: number) {
-        let first_block: string | number = start > 0 ? start : process.env.first_block;
-        const last_block = start > 0 ? 0xffffffff : process.env.last_block;
+        let first_block: string | number = (start > 0) ? start : (process.env.first_block ? process.env.first_block : 1);
+        const last_block = (start > 0) ? 0xffffffff : (process.env.last_block ? process.env.last_block : 0xffffffff);
         const request = this.baseRequest;
         if (typeof first_block === 'string') {
             request.start_block_num = parseInt(first_block, 10);
@@ -721,8 +736,8 @@ export default class StateReader extends HyperionWorker {
         }
     }
 
-    private async logForkEvent(starting_block, ending_block, new_id) {
-        process.send({event: 'fork_event', data: {starting_block, ending_block, new_id}});
+    private async logForkEvent(starting_block: number, ending_block: number, new_id: string) {
+        process.send?.({event: 'fork_event', data: {starting_block, ending_block, new_id}});
         await this.client.index({
             index: this.chain + '-logs-' + this.conf.settings.index_version,
             body: {
@@ -777,7 +792,9 @@ export default class StateReader extends HyperionWorker {
     // }
 
     private processPending() {
-        this.requestBlockRange(this.pendingRequest[0], this.pendingRequest[1]);
+        if (this.pendingRequest) {
+            this.requestBlockRange(this.pendingRequest[0], this.pendingRequest[1]);
+        }
         this.pendingRequest = null;
     }
 
@@ -807,7 +824,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private emitCompletedSignal() {
-        process.send({
+        process.send?.({
             event: 'completed',
             id: process.env['worker_id']
         });
