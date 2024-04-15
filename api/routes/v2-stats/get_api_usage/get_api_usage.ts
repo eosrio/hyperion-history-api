@@ -37,7 +37,9 @@ async function getApiUsage(fastify: FastifyInstance, request: FastifyRequest) {
                     response.total.responses[statusCode] = {};
                 }
                 const value = await fastify.redis.get(key);
-                response.total.responses[statusCode][parts[4]] = parseInt(value);
+                if (value) {
+                    response.total.responses[statusCode][parts[4]] = parseInt(value);
+                }
             }
         }
     }
