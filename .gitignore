@@ -31,7 +31,6 @@ node_modules/
 
 .idea
 *.pem
-package-lock.json
 connections.json
 connections.json2
 api_access.log
