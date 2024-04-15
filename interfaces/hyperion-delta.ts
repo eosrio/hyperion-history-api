@@ -10,3 +10,11 @@ export interface HyperionDelta {
 	block_id: string;
 	data: any;
 }
+
+export interface BasicDelta {
+	code: string;
+	table: string;
+	scope: string;
+	primary_key: string;
+	payer: string;
+}

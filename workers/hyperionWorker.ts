@@ -11,6 +11,7 @@ import {HeapInfo} from "v8";
 import {debugLog, hLog} from "../helpers/common_functions";
 import {StateHistorySocket} from "../connections/state-history";
 import {Abieos} from "@eosrio/node-abieos";
+import {BasicDelta} from "../interfaces/hyperion-delta";
 
 export abstract class HyperionWorker {
 
@@ -21,8 +22,8 @@ export abstract class HyperionWorker {
     chainId: string;
 
     // AMQP Channels
-    ch: Channel;
-    cch: ConfirmChannel;
+    ch?: Channel;
+    cch?: ConfirmChannel;
 
     rpc: JsonRpc;
     client: Client;
@@ -75,25 +76,29 @@ export abstract class HyperionWorker {
                 case 'request_v8_heap_stats': {
                     const report: HeapInfo = v8.getHeapStatistics();
                     const used_pct = report.used_heap_size / report.heap_size_limit;
-                    process.send({
-                        event: 'v8_heap_report',
-                        id: process.env.worker_role + ':' + process.env.worker_id,
-                        data: {
-                            heap_usage: (used_pct * 100).toFixed(2) + "%",
-                            ...report
-                        }
-                    });
+                    if (process.send) {
+                        process.send({
+                            event: 'v8_heap_report',
+                            id: process.env.worker_role + ':' + process.env.worker_id,
+                            data: {
+                                heap_usage: (used_pct * 100).toFixed(2) + "%",
+                                ...report
+                            }
+                        });
+                    }
                     break;
                 }
                 case 'request_memory_usage': {
                     const report = process.memoryUsage();
-                    process.send({
-                        event: 'memory_report',
-                        id: process.env.worker_role + ':' + process.env.worker_id,
-                        data: {
-                            resident: bytesToString(report.rss),
-                        }
-                    });
+                    if (process.send) {
+                        process.send({
+                            event: 'memory_report',
+                            id: process.env.worker_role + ':' + process.env.worker_id,
+                            data: {
+                                resident: bytesToString(report.rss),
+                            }
+                        });
+                    }
                     break;
                 }
                 default: {
@@ -104,7 +109,7 @@ export abstract class HyperionWorker {
     }
 
     async connectAMQP() {
-        [this.ch, this.cch] = await this.manager.createAMQPChannels((channels) => {
+        const channels = await this.manager.createAMQPChannels((channels: [Channel, ConfirmChannel]) => {
             [this.ch, this.cch] = channels;
             hLog('AMQP Reconnecting...');
             this.onConnect();
@@ -112,19 +117,29 @@ export abstract class HyperionWorker {
             this.ch_ready = false;
             this.cch_ready = false;
         });
+
+        if (channels) {
+            [this.ch, this.cch] = channels;
+        } else {
+            hLog('AMQP Failed to create channels!');
+        }
     }
 
     onConnect() {
         this.ch_ready = true;
         this.cch_ready = true;
         this.assertQueues();
-        this.ch.on('close', () => {
-            this.ch_ready = false;
-        });
-        this.cch.on('close', () => {
-            this.cch_ready = false;
-        });
-        this.events.emit('ready');
+        if (this.ch && this.cch) {
+            this.ch.on('close', () => {
+                this.ch_ready = false;
+            });
+            this.cch.on('close', () => {
+                this.cch_ready = false;
+            });
+            this.events.emit('ready');
+        } else {
+            hLog("onConnect was called before channels are instantiated!");
+        }
     }
 
     checkDebugger() {
@@ -190,7 +205,7 @@ export abstract class HyperionWorker {
         return this.filters.action_whitelist.has(this.codeActionPair(act));
     }
 
-    protected checkDeltaBlacklist(delta) {
+    protected checkDeltaBlacklist(delta: BasicDelta) {
 
         // test blacklist for chain::code::*
         if (this.filters.delta_blacklist.has(this.anyFromDeltaCode(delta))) {
@@ -206,7 +221,7 @@ export abstract class HyperionWorker {
         return this.filters.delta_blacklist.has(this.codeDeltaPair(delta));
     }
 
-    protected checkDeltaWhitelist(delta) {
+    protected checkDeltaWhitelist(delta: BasicDelta) {
 
         // test whitelist for chain::code::*
         if (this.filters.delta_whitelist.has(this.anyFromDeltaCode(delta))) {
@@ -222,10 +237,10 @@ export abstract class HyperionWorker {
         return this.filters.delta_whitelist.has(this.codeDeltaPair(delta));
     }
 
-    loadAbiHex(contract: string, block_num, abi_hex) {
-        // check local blacklist for corrupted abis that failed to load before
+    loadAbiHex(contract: string, block_num: number, abi_hex: string) {
+        // check local blacklist for corrupted ABIs that failed to load before
         let _status;
-        if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract).has(block_num)) {
+        if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract)?.has(block_num)) {
             _status = false;
             debugLog('ignore saved abi for', contract, block_num);
         } else {
@@ -233,7 +248,7 @@ export abstract class HyperionWorker {
             if (!_status) {
                 hLog(`Abieos::loadAbiHex error for ${contract} at ${block_num}`);
                 if (this.failedAbiMap.has(contract)) {
-                    this.failedAbiMap.get(contract).add(block_num);
+                    this.failedAbiMap.get(contract)?.add(block_num);
                 } else {
                     this.failedAbiMap.set(contract, new Set([block_num]));
                 }
@@ -260,11 +275,12 @@ export abstract class HyperionWorker {
                 return this.abieos.getTypeForTable(contract, type);
             }
         }
+        return "";
     }
 
-    async loadCurrentAbiHex(contract: string) {
+    async loadCurrentAbiHex(contract: string): Promise<boolean> {
         let _status: boolean;
-        if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract).has(-1)) {
+        if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract)?.has(-1)) {
             _status = false;
             debugLog('ignore current abi for', contract);
         } else {
@@ -275,7 +291,7 @@ export abstract class HyperionWorker {
                 if (!_status) {
                     hLog(`Abieos::loadAbiHex error for ${contract} at head`);
                     if (this.failedAbiMap.has(contract)) {
-                        this.failedAbiMap.get(contract).add(-1);
+                        this.failedAbiMap.get(contract)?.add(-1);
                     } else {
                         this.failedAbiMap.set(contract, new Set([-1]));
                     }

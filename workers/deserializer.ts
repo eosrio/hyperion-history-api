@@ -13,6 +13,10 @@ import flatstr from 'flatstr';
 import {index_queues} from "../definitions/index-queues";
 import {AbiDefinitions} from "../definitions/abi_def";
 import {Abi} from "../addons/eosjs-native/eosjs-rpc-interfaces";
+import {BasicDelta, HyperionDelta} from "../interfaces/hyperion-delta";
+import {TableDelta} from "../interfaces/table-delta";
+import {JsSignatureProvider} from "../addons/eosjs-native/eosjs-jssig";
+import {HyperionAbi} from "../interfaces/hyperion-abi";
 
 const abi_remapping = {
     "_Bool": "bool"
@@ -24,7 +28,7 @@ interface QueuePayload {
     headers?: any;
 }
 
-function extractDeltaStruct(deltas) {
+function extractDeltaStruct(deltas: [string, TableDelta][]) {
     const deltaStruct = {};
     for (const table_delta of deltas) {
         if (table_delta[0] === "table_delta_v0" || table_delta[0] === "table_delta_v1") {
@@ -85,7 +89,7 @@ export default class MainDSWorker extends HyperionWorker {
     tbl_prop_emit_idx = 1;
     delta_emit_idx = 1;
     temp_delta_counter = 0;
-    private monitoringLoop: NodeJS.Timeout;
+    private monitoringLoop: NodeJS.Timeout | undefined;
 
     autoBlacklist: Map<string, any[]> = new Map();
 
@@ -108,14 +112,14 @@ export default class MainDSWorker extends HyperionWorker {
                 cb();
             }).catch((err) => {
                 hLog('NACK ALL', err.message);
-                if (this.ch_ready) {
+                if (this.ch && this.ch_ready) {
                     this.ch.nackAll();
                 }
             });
         }, this.conf.prefetch.block);
 
         this.preIndexingQueue = queue((data: any, cb) => {
-            if (this.ch_ready) {
+            if (this.ch && this.ch_ready) {
                 this.ch.sendToQueue(data.queue, data.content, {headers: data.headers});
                 cb();
             } else {
@@ -125,7 +129,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         this.api = new Api({
             rpc: this.rpc,
-            signatureProvider: null,
+            signatureProvider: new JsSignatureProvider([]),
             chainId: this.chainId,
             textDecoder: this.txDec,
             textEncoder: this.txEnc,
@@ -204,7 +208,10 @@ export default class MainDSWorker extends HyperionWorker {
 
         if (process.env['live_mode'] === 'false') {
             for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {durable: false, arguments: {"x-queue-version": 2}});
+                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {
+                    durable: false,
+                    arguments: {"x-queue-version": 2}
+                });
             }
         }
 
@@ -634,7 +641,7 @@ export default class MainDSWorker extends HyperionWorker {
         return new Serialize.SerialBuffer({textEncoder: this.txEnc, textDecoder: this.txDec, array: inputArray});
     }
 
-    async fetchAbiHexAtBlockElastic(contract_name, last_block, get_json) {
+    async fetchAbiHexAtBlockElastic(contract_name, last_block, get_json): Promise<HyperionAbi | null> {
         try {
             const _includes = ["actions", "tables", "block"];
             if (get_json) {
@@ -714,8 +721,8 @@ export default class MainDSWorker extends HyperionWorker {
         } catch {
             abiStatus = false;
         }
-        let savedAbi = null;
-        let valid_until;
+        let savedAbi: HyperionAbi | null = null;
+        let valid_until: number;
         let valid_from = block_num;
         if (!abiStatus) {
             savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
@@ -760,10 +767,12 @@ export default class MainDSWorker extends HyperionWorker {
         return [abiStatus, resultType, valid_from, valid_until];
     }
 
-    async processContractRowNative(row, block) {
+    async processContractRowNative(row: HyperionDelta, block) {
 
         // check dynamic blacklist
         if (this.autoBlacklist.has(row.code)) {
+
+
             const info = this.autoBlacklist.get(row.code).find(v => {
                 if (v.field === "table" && v.type === row.table) {
                     if (v.block <= block) {

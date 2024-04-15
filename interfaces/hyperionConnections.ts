@@ -1,4 +1,4 @@
-interface AmqpConfig {
+export interface AmqpConfig {
     host: string;
     api: string;
     protocol: string;
@@ -8,7 +8,7 @@ interface AmqpConfig {
     frameMax: string;
 }
 
-interface ESConfig {
+export interface ESConfig {
     protocol: string;
     host: string;
     ingest_nodes: string[];
@@ -16,7 +16,7 @@ interface ESConfig {
     pass: string;
 }
 
-interface HyperionChainData {
+export interface HyperionChainData {
     name: string;
     chain_id: string;
     http: string;
@@ -26,7 +26,7 @@ interface HyperionChainData {
     control_port: number;
 }
 
-interface RedisConfig {
+export interface RedisConfig {
     host: string;
     port: number;
 }

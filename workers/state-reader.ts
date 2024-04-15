@@ -4,6 +4,12 @@ import {Serialize} from "../addons/eosjs-native";
 import {Type} from "eosjs/dist/eosjs-serialize";
 import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions";
 import {parseInt} from "lodash";
+import WebSocket from "ws";
+
+interface RequestRange {
+    first_block: number;
+    last_block: number;
+}
 
 export default class StateReader extends HyperionWorker {
 
@@ -14,13 +20,13 @@ export default class StateReader extends HyperionWorker {
     private recovery = false;
     private tables = new Map();
     private allowRequests = true;
-    private pendingRequest = null;
+    private pendingRequest: RequestRange = null;
     private completionSignaled = false;
     private stageOneDistQueue: QueueObject<any>;
-    private blockReadingQueue: QueueObject<any>;
+    private blockReadingQueue: QueueObject<WebSocket.MessageEvent>;
     private range_size = parseInt(process.env.last_block) - parseInt(process.env.first_block);
-    private completionMonitoring: NodeJS.Timeout;
-    private types: Map<string, Type>;
+    private completionMonitoring: NodeJS.Timeout | null | undefined;
+    private types?: Map<string, Type>;
     private local_block_num = parseInt(process.env.first_block, 10) - 1;
     private local_block_id = '';
 
@@ -45,7 +51,7 @@ export default class StateReader extends HyperionWorker {
     private forkedBlocks = new Map<string, number>();
     private idle = true;
     private repairMode = false;
-    private internalPendingRanges = [];
+    private internalPendingRanges: any[] = [];
 
     constructor() {
         super();
@@ -128,7 +134,9 @@ export default class StateReader extends HyperionWorker {
                             console.log('Message nacked!');
                             console.log(err.message);
                         } else {
-                            process.send({event: 'read_block', live: this.isLiveReader, block_num: d.num});
+                            if (process.send) {
+                                process.send({event: 'read_block', live: this.isLiveReader, block_num: d.num});
+                            }
                         }
                     });
 
@@ -171,19 +179,19 @@ export default class StateReader extends HyperionWorker {
     assertQueues(): void {
         if (this.isLiveReader) {
             const live_queue = this.chain + ':live_blocks';
-            this.ch.assertQueue(live_queue, {durable: false, arguments: {"x-queue-version": 2}});
-            this.ch.on('drain', () => {
+            this.ch?.assertQueue(live_queue, {durable: false, arguments: {"x-queue-version": 2}});
+            this.ch?.on('drain', () => {
                 this.qStatusMap[live_queue] = true;
             });
         } else {
             for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {
+                this.ch?.assertQueue(this.chain + ":blocks:" + (i + 1), {
                     durable: false,
                     arguments: {
                         "x-queue-version": 2
                     }
                 });
-                this.ch.on('drain', () => {
+                this.ch?.on('drain', () => {
                     this.qStatusMap[this.chain + ":blocks:" + (i + 1)] = true;
                 });
             }
@@ -206,7 +214,9 @@ export default class StateReader extends HyperionWorker {
         }
 
         this.local_distributed_count = 0;
-        clearInterval(this.completionMonitoring);
+        if (this.completionMonitoring) {
+            clearInterval(this.completionMonitoring);
+        }
         this.completionMonitoring = null;
         this.completionSignaled = false;
         this.local_last_block = data.last_block;
@@ -227,7 +237,7 @@ export default class StateReader extends HyperionWorker {
         // make sure the range doesn't exceed the batch size
         if (this.range_size > this.conf.scaling.batch_size) {
             // split the range into multiple ranges
-            const ranges = [];
+            const ranges: any[] = [];
             let start = parseInt(data.first_block);
             let end = parseInt(data.last_block);
             while (start < end) {
