@@ -3,7 +3,7 @@ import {ConfigurationModule} from "../modules/config";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import IORedis from 'ioredis';
-import fastify from 'fastify'
+import fastify, {FastifyReply, FastifyRequest} from 'fastify'
 import {registerPlugins} from "./plugins";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes";
@@ -21,14 +21,14 @@ class HyperionApiServer {
 
     private hub: Socket;
     private readonly fastify;
+    private readonly pluginParams: any;
     private readonly chain: string;
     private readonly conf: HyperionConfig;
     private readonly manager: ConnectionManager;
-    private readonly cacheManager: CacheManager;
 
+    private readonly cacheManager: CacheManager;
     socketManager: SocketManager;
     mLoader: HyperionModuleLoader;
-    private pluginParams: any;
 
     constructor() {
 
@@ -61,12 +61,12 @@ class HyperionApiServer {
             level: 'info',
             prettyPrint: true,
             serializers: {
-                res: (reply) => {
+                res: (reply: { statusCode: any; }) => {
                     return {
                         statusCode: reply.statusCode
                     };
                 },
-                req: (request) => {
+                req: (request: any) => {
                     return {
                         method: request.method,
                         url: request.url,
@@ -183,7 +183,7 @@ class HyperionApiServer {
             payload.on('end', () => {
                 done(null, data);
             });
-            payload.on('error', (err) => {
+            payload.on('error', (err: any) => {
                 console.log('---- Content Parsing Error -----');
                 console.log(err);
             });
@@ -244,12 +244,14 @@ class HyperionApiServer {
             }
         }
 
+        this.registerHomeRoute();
+
         registerRoutes(this.fastify);
 
         // register documentation when ready
         this.fastify.ready().then(async () => {
             await this.fastify.swagger();
-        }, (err) => {
+        }, (err: any) => {
             hLog('an error happened', err)
         });
 
@@ -258,12 +260,25 @@ class HyperionApiServer {
                 host: this.conf.api.server_addr,
                 port: this.conf.api.server_port
             });
-            hLog(`${this.chain} hyperion api ready and listening on port ${(this.fastify.server.address() as AddressInfo).port}`);
+            const listeningAddress = this.fastify.server.address() as AddressInfo;
+            hLog(`${this.chain} Hyperion API ready and listening on http://${listeningAddress.address}:${listeningAddress.port}`);
+            hLog(`API Should be externally accessible at: http://${this.conf.api.server_name}`);
             this.startHyperionHub();
         } catch (err) {
             hLog(err);
             process.exit(1)
         }
+    }
+
+    registerHomeRoute() {
+        this.fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
+            reply.send({
+                version: this.manager.current_version,
+                version_hash: this.manager.getServerHash(),
+                chain: this.chain,
+                chain_id: this.manager.conn.chains[this.chain].chain_id
+            });
+        });
     }
 
     startHyperionHub() {

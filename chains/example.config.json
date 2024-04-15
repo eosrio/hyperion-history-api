@@ -26,6 +26,7 @@
     },
     "access_log": false,
     "chain_api_error_log": false,
+    "log_errors": false,
     "custom_core_token": "",
     "enable_export_action": false,
     "disable_rate_limit": false,

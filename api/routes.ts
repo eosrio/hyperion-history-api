@@ -114,10 +114,12 @@ export function registerRoutes(server: FastifyInstance) {
         done();
     });
 
-    server.addHook('onError', (request: FastifyRequest, reply: FastifyReply, error: FastifyError, done) => {
-        console.log(`[${request.headers['x-real-ip'] || request.ip}] ${request.method} ${request.url} failed >> ${error.message}`);
-        done();
-    });
+    if (server.manager.config.api.log_errors) {
+        server.addHook('onError', (request: FastifyRequest, reply: FastifyReply, error: FastifyError, done) => {
+            console.log(`[${request.headers['x-real-ip'] || request.ip}] ${request.method} ${request.url} failed >> ${error.message}`);
+            done();
+        });
+    }
 
     if (server.manager.config.features.streaming) {
         // steam client lib

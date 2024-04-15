@@ -3,7 +3,7 @@ import {cargo, QueueObject} from "async";
 import {Serialize} from "../addons/eosjs-native";
 import {Type} from "eosjs/dist/eosjs-serialize";
 import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions";
-import * as AbiEOS from "@eosrio/node-abieos";
+import {parseInt} from "lodash";
 
 export default class StateReader extends HyperionWorker {
 
@@ -23,7 +23,9 @@ export default class StateReader extends HyperionWorker {
     private types: Map<string, Type>;
     private local_block_num = parseInt(process.env.first_block, 10) - 1;
     private local_block_id = '';
-    private queueSizeCheckInterval = 5000;
+
+    // private queueSizeCheckInterval = 5000;
+
     private local_distributed_count = 0;
     private lastPendingCount = 0;
     private local_last_block = 0;
@@ -44,7 +46,6 @@ export default class StateReader extends HyperionWorker {
     private idle = true;
     private repairMode = false;
     private internalPendingRanges = [];
-
 
     constructor() {
         super();
@@ -170,13 +171,18 @@ export default class StateReader extends HyperionWorker {
     assertQueues(): void {
         if (this.isLiveReader) {
             const live_queue = this.chain + ':live_blocks';
-            this.ch.assertQueue(live_queue, {durable: true});
+            this.ch.assertQueue(live_queue, {durable: false, arguments: {"x-queue-version": 2}});
             this.ch.on('drain', () => {
                 this.qStatusMap[live_queue] = true;
             });
         } else {
             for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {durable: true});
+                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {
+                    durable: false,
+                    arguments: {
+                        "x-queue-version": 2
+                    }
+                });
                 this.ch.on('drain', () => {
                     this.qStatusMap[this.chain + ":blocks:" + (i + 1)] = true;
                 });
@@ -597,7 +603,7 @@ export default class StateReader extends HyperionWorker {
 
     private processFirstABI(data: Buffer) {
         const abiString = data.toString();
-        AbiEOS.load_abi("0", abiString);
+        this.abieos.loadAbi("0", abiString);
         this.abi = JSON.parse(abiString);
         this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
         this.abi.tables.map(table => this.tables.set(table.name, table.type));
@@ -608,10 +614,18 @@ export default class StateReader extends HyperionWorker {
     }
 
     private requestBlocks(start: number) {
-        const first_block = start > 0 ? start : process.env.first_block;
+        let first_block: string | number = start > 0 ? start : process.env.first_block;
         const last_block = start > 0 ? 0xffffffff : process.env.last_block;
         const request = this.baseRequest;
-        request.start_block_num = parseInt(first_block > 0 ? first_block.toString() : '1', 10);
+        if (typeof first_block === 'string') {
+            request.start_block_num = parseInt(first_block, 10);
+        } else {
+            if (first_block > 0) {
+                request.start_block_num = first_block;
+            } else {
+                request.start_block_num = 1;
+            }
+        }
         request.end_block_num = parseInt(last_block.toString(), 10);
         const reqType = 'get_blocks_request_' + this.shipRev;
         if (this.ship.connected) {

@@ -30,7 +30,7 @@ export default class WSRouter extends HyperionWorker {
     }
 
     assertQueues(): void {
-        this.ch.assertQueue(this.q);
+        this.ch.assertQueue(this.q, {durable: false, arguments: {"x-queue-version": 2}});
         this.ch.consume(this.q, this.onConsume.bind(this));
     }
 
