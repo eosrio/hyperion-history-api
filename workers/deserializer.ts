@@ -10,7 +10,7 @@ import {Message, Options} from "amqplib";
 
 import flatstr from 'flatstr';
 
-import {index_queues} from "../definitions/index-queues";
+import {index_queues, RabbitQueueDef} from "../definitions/index-queues";
 import {AbiDefinitions} from "../definitions/abi_def";
 import {Abi} from "../addons/eosjs-native/eosjs-rpc-interfaces";
 import {BasicDelta, HyperionDelta} from "../interfaces/hyperion-delta";
@@ -190,6 +190,7 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     assertQueues(): void {
+
         if (this.ch) {
             this.ch_ready = true;
             if (this.preIndexingQueue.paused) {
@@ -199,19 +200,19 @@ export default class MainDSWorker extends HyperionWorker {
                 this.ch_ready = false;
                 this.preIndexingQueue.pause();
             });
+        } else {
+            hLog("Channel was not created! Something went wrong!");
+            process.exit(1);
         }
 
-        this.ch.assertQueue(this.deltaRemovalQueue, {durable: false, arguments: {"x-queue-version": 2}});
+        this.ch.assertQueue(this.deltaRemovalQueue, RabbitQueueDef);
 
         // make sure the input queue is ready if the deserializer launches too early
-        this.ch.assertQueue(process.env['worker_queue'], {durable: false, arguments: {"x-queue-version": 2}});
+        this.ch.assertQueue(process.env['worker_queue'], RabbitQueueDef);
 
         if (process.env['live_mode'] === 'false') {
             for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), {
-                    durable: false,
-                    arguments: {"x-queue-version": 2}
-                });
+                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), RabbitQueueDef);
             }
         }
 
@@ -228,7 +229,7 @@ export default class MainDSWorker extends HyperionWorker {
                 n = 1;
             }
             for (let i = 0; i < n; i++) {
-                this.ch.assertQueue(q.name + ":" + (qIdx + 1), {durable: false, arguments: {"x-queue-version": 2}});
+                this.ch?.assertQueue(q.name + ":" + (qIdx + 1), RabbitQueueDef);
                 qIdx++;
             }
         });
@@ -242,7 +243,7 @@ export default class MainDSWorker extends HyperionWorker {
     sendDsCounterReport() {
         // send ds counters
         if (this.temp_delta_counter > 0) {
-            process.send({
+            process.send?.({
                 event: 'ds_report',
                 deltas: this.temp_delta_counter
             });
@@ -749,7 +750,7 @@ export default class MainDSWorker extends HyperionWorker {
                 }
             }
             abiStatus = await this.loadCurrentAbiHex(contract);
-            if (abiStatus === true) {
+            if (abiStatus) {
                 try {
                     resultType = this.getAbiDataType(field, contract, type);
                     abiStatus = true;

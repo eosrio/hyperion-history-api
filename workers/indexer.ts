@@ -4,6 +4,7 @@ import {ElasticRoutes} from '../helpers/elastic-routes';
 
 import {hLog} from "../helpers/common_functions";
 import {Message} from "amqplib";
+import {RabbitQueueDef} from "../definitions/index-queues";
 
 export default class IndexerWorker extends HyperionWorker {
 
@@ -15,9 +16,19 @@ export default class IndexerWorker extends HyperionWorker {
     constructor() {
         super();
 
+        if (!process.env.type) {
+            hLog("[FATAL] env.type is not defined!");
+            process.exit(1);
+        }
+
+        if (!process.env.queue) {
+            hLog("[FATAL] env.queue is not defined!");
+            process.exit(1);
+        }
+
         this.esRoutes = new ElasticRoutes(this.manager);
         this.indexQueue = cargo((payload: Message[], callback) => {
-            if (this.ch_ready && payload) {
+            if (this.ch_ready && payload && process.env.type) {
                 if (this.esRoutes.routes[process.env.type]) {
 
                     // call route type
@@ -27,7 +38,7 @@ export default class IndexerWorker extends HyperionWorker {
                         }
                         try {
                             callback();
-                        } catch (e) {
+                        } catch (e: any) {
                             hLog(`${e.message} on ${process.env.type}`);
                         }
                     });
@@ -42,13 +53,13 @@ export default class IndexerWorker extends HyperionWorker {
 
     assertQueues(): void {
         try {
-            if (this.ch) {
+            if (this.ch && process.env.queue) {
                 this.ch_ready = true;
                 this.ch.on('close', () => {
                     this.indexQueue.pause();
                     this.ch_ready = false;
                 });
-                this.ch.assertQueue(process.env.queue, {durable: false, arguments: {"x-queue-version": 2}});
+                this.ch.assertQueue(process.env.queue, RabbitQueueDef);
                 this.ch.prefetch(this.conf.prefetch.index);
                 this.ch.consume(process.env.queue, this.indexQueue.push);
             }
@@ -62,7 +73,7 @@ export default class IndexerWorker extends HyperionWorker {
     startMonitoring() {
         setInterval(() => {
             if (this.temp_indexed_count > 0) {
-                process.send({event: 'add_index', size: this.temp_indexed_count});
+                process.send?.({event: 'add_index', size: this.temp_indexed_count});
             }
             this.temp_indexed_count = 0;
         }, 1000);

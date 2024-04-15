@@ -10,3 +10,11 @@ export const index_queues = [
     {type: 'delta', name: index_queue_prefix + "_deltas"},
     {type: 'abi', name: index_queue_prefix + "_abis"}
 ];
+
+// Global Queue Definitions
+export const RabbitQueueDef = {
+    durable: false,
+    arguments: {
+        "x-queue-version": 2
+    }
+};

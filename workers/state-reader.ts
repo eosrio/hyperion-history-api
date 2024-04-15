@@ -6,6 +6,7 @@ import {Type} from "eosjs/dist/eosjs-serialize";
 import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions";
 import {parseInt} from "lodash";
 import WebSocket from "ws";
+import {RabbitQueueDef} from "../definitions/index-queues";
 
 interface RequestRange {
     first_block: number;
@@ -180,18 +181,13 @@ export default class StateReader extends HyperionWorker {
     assertQueues(): void {
         if (this.isLiveReader) {
             const live_queue = this.chain + ':live_blocks';
-            this.ch?.assertQueue(live_queue, {durable: false, arguments: {"x-queue-version": 2}});
+            this.ch?.assertQueue(live_queue, RabbitQueueDef);
             this.ch?.on('drain', () => {
                 this.qStatusMap[live_queue] = true;
             });
         } else {
             for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                this.ch?.assertQueue(this.chain + ":blocks:" + (i + 1), {
-                    durable: false,
-                    arguments: {
-                        "x-queue-version": 2
-                    }
-                });
+                this.ch?.assertQueue(this.chain + ":blocks:" + (i + 1), RabbitQueueDef);
                 this.ch?.on('drain', () => {
                     this.qStatusMap[this.chain + ":blocks:" + (i + 1)] = true;
                 });

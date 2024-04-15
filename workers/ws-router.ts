@@ -3,6 +3,7 @@ import {HyperionWorker} from "./hyperionWorker";
 import {Server, Socket} from "socket.io";
 import {checkDeltaFilter, checkFilter, hLog} from "../helpers/common_functions";
 import {createServer} from "http";
+import {RabbitQueueDef} from "../definitions/index-queues";
 
 const greylist = ['eosio.token'];
 
@@ -18,7 +19,7 @@ export default class WSRouter extends HyperionWorker {
     codeDeltaMap = new Map();
     payerMap = new Map();
     activeRequests = new Map();
-    private io: Server;
+    private io?: Server;
     private totalClients = 0;
 
     constructor() {
@@ -30,12 +31,14 @@ export default class WSRouter extends HyperionWorker {
     }
 
     assertQueues(): void {
-        this.ch.assertQueue(this.q, {durable: false, arguments: {"x-queue-version": 2}});
-        this.ch.consume(this.q, this.onConsume.bind(this));
+        if (this.ch) {
+            this.ch.assertQueue(this.q, RabbitQueueDef);
+            this.ch.consume(this.q, this.onConsume.bind(this));
+        }
     }
 
     appendIdAndEmit(event, data) {
-        this.io.emit(event, {
+        this.io?.emit(event, {
             chain_id: this.manager.conn.chains[this.chain]?.chain_id,
             ...data
         });
@@ -72,7 +75,7 @@ export default class WSRouter extends HyperionWorker {
         switch (msg.properties.headers.event) {
             case 'block': {
                 // forward block events to all APIs
-                this.io.of('/').emit('block', {
+                this.io?.of('/').emit('block', {
                     serverTime: Date.now(),
                     blockNum: msg.properties.headers.blockNum,
                     content: msg.content
@@ -160,7 +163,8 @@ export default class WSRouter extends HyperionWorker {
                 console.log(msg);
             }
         }
-        this.ch.ack(msg);
+
+        this.ch?.ack(msg);
     }
 
     startRoutingRateMonitor() {
@@ -413,10 +417,16 @@ export default class WSRouter extends HyperionWorker {
     }
 
     ready() {
-        process.send({event: 'router_ready'});
+        process.send?.({event: 'router_ready'});
     }
 
     private forwardActionMessage(msg: any, link: any, notified: string[]) {
+
+        if (!this.io) {
+            hLog("Websocket server was not started!");
+            return;
+        }
+
         let allow = false;
         const relay = this.io.of('/').sockets.get(link.relay);
         if (relay) {
@@ -440,6 +450,12 @@ export default class WSRouter extends HyperionWorker {
     }
 
     private forwardDeltaMessage(msg, link, payer) {
+
+        if (!this.io) {
+            hLog("Websocket server was not started!");
+            return;
+        }
+
         let allow = false;
         const relay = this.io.of('/').sockets.get(link.relay);
         if (relay) {

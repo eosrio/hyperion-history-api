@@ -7,6 +7,7 @@ import {join, resolve} from "path";
 import {existsSync, readdirSync, readFileSync} from "fs";
 import flatstr from 'flatstr';
 import IORedis from "ioredis";
+import {RabbitQueueDef} from "../definitions/index-queues";
 
 const abi_remapping = {
     "_Bool": "bool",
@@ -438,7 +439,7 @@ export default class DSPoolWorker extends HyperionWorker {
             const parsedData = JSON.parse(Buffer.from(data.content).toString());
             await this.processTraces(parsedData, data.properties.headers);
             // ack message
-            if (this.ch_ready) {
+            if (this.ch_ready && this.ch) {
                 // console.log(data.fields.deliveryTag);
                 try {
                     this.ch.ack(data);
@@ -447,6 +448,8 @@ export default class DSPoolWorker extends HyperionWorker {
                     console.log(parsedData);
                     console.log(data.properties.headers);
                 }
+            } else {
+                hLog("Channel is not ready!");
             }
         }
     }
@@ -599,20 +602,20 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     pushToActionStreamingQueue(payload, uniqueAction) {
-        if (this.allowStreaming && this.conf.features['streaming'].traces) {
+        if (this.allowStreaming && this.conf.features['streaming'].traces && this.ch) {
             try {
-                const notifArray = new Set();
-                uniqueAction.act.authorization.forEach(auth => {
-                    notifArray.add(auth.actor);
+                const notificationArray = new Set();
+                uniqueAction.act.authorization.forEach((auth) => {
+                    notificationArray.add(auth.actor);
                 });
-                uniqueAction.receipts.forEach(rec => {
-                    notifArray.add(rec.receiver);
+                uniqueAction.receipts.forEach((rec) => {
+                    notificationArray.add(rec.receiver);
                 });
                 const headers = {
                     event: 'trace',
                     account: uniqueAction['act']['account'],
                     name: uniqueAction['act']['name'],
-                    notified: [...notifArray].join(",")
+                    notified: [...notificationArray].join(",")
                 };
                 this.ch.publish('', this.chain + ':stream', payload, {headers});
             } catch (e) {
@@ -622,7 +625,7 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     initConsumer() {
-        if (this.ch_ready) {
+        if (this.ch_ready && this.ch) {
             this.ch.prefetch(this.conf.prefetch.block);
             this.ch.consume(this.local_queue, (data) => {
                 this.consumerQueue.push(data);
@@ -648,13 +651,13 @@ export default class DSPoolWorker extends HyperionWorker {
         if (!this.monitoringLoop) {
             this.monitoringLoop = setInterval(() => {
                 if (this.totalHits > 0) {
-                    process.send({
+                    process.send?.({
                         event: 'contract_usage_report',
                         data: this.contractUsage,
                         total_hits: this.totalHits
                     });
                     // hLog(`${this.local_queue} ->> ${this.actionDsCounter} actions`);
-                    process.send({
+                    process.send?.({
                         event: 'ds_report',
                         actions: this.actionDsCounter
                     });
@@ -690,11 +693,13 @@ export default class DSPoolWorker extends HyperionWorker {
         this.local_queue = queue_prefix + ':ds_pool:' + process.env.local_id;
         if (this.ch) {
             this.ch_ready = true;
-            this.ch.assertQueue(this.local_queue, {durable: false, arguments: {"x-queue-version": 2}});
+            this.ch.assertQueue(this.local_queue, RabbitQueueDef);
+
+            if (this.conf.settings.dsp_parser) {
+                this.ch.assertQueue(`${queue_prefix}:dsp`, RabbitQueueDef);
+            }
+
             this.initConsumer();
-        }
-        if (this.conf.settings.dsp_parser) {
-            this.ch.assertQueue(`${queue_prefix}:dsp`, {durable: false, arguments: {"x-queue-version": 2}});
         }
     }
 
