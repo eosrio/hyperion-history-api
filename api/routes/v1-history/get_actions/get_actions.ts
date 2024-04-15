@@ -2,7 +2,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
 import {Serialize} from "eosjs";
 import {hLog} from "../../../../helpers/common_functions";
-import * as AbiEOS from "@eosrio/node-abieos";
+import {Abieos} from "@eosrio/node-abieos";
 import {ApiResponse} from "@elastic/elasticsearch";
 import {TextDecoder, TextEncoder} from "util";
 import {JsonRpc} from "eosjs/dist";
@@ -135,7 +135,8 @@ async function getContractAtBlock(esClient, rpc, chain, accountName: string, blo
     if (check_action) {
         if (actions.has(check_action)) {
             try {
-                AbiEOS['load_abi'](accountName, JSON.stringify(abi));
+                const abieos = Abieos.getInstance();
+                abieos.loadAbi(accountName, JSON.stringify(abi));
             } catch (e) {
                 hLog(e);
             }

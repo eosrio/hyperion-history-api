@@ -705,17 +705,6 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    getAbiDataType(field: string, contract: string, type: string): string {
-        switch (field) {
-            case "action": {
-                return this.abieos.getTypeForAction(contract, type);
-            }
-            case "table": {
-                return this.abieos.getTypeForTable(contract, type);
-            }
-        }
-    }
-
     async verifyLocalType(contract: string, type: string, block_num, field: string) {
         let abiStatus: boolean;
         let resultType: string;

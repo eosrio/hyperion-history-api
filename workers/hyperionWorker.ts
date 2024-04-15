@@ -231,7 +231,7 @@ export abstract class HyperionWorker {
         } else {
             _status = this.abieos.loadAbiHex(contract, abi_hex);
             if (!_status) {
-                hLog(`AbiEOS.load_abi_hex error for ${contract} at ${block_num}`);
+                hLog(`Abieos::loadAbiHex error for ${contract} at ${block_num}`);
                 if (this.failedAbiMap.has(contract)) {
                     this.failedAbiMap.get(contract).add(block_num);
                 } else {
@@ -251,8 +251,19 @@ export abstract class HyperionWorker {
         }
     }
 
-    async loadCurrentAbiHex(contract) {
-        let _status;
+    getAbiDataType(field: string, contract: string, type: string): string {
+        switch (field) {
+            case "action": {
+                return this.abieos.getTypeForAction(contract, type);
+            }
+            case "table": {
+                return this.abieos.getTypeForTable(contract, type);
+            }
+        }
+    }
+
+    async loadCurrentAbiHex(contract: string) {
+        let _status: boolean;
         if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract).has(-1)) {
             _status = false;
             debugLog('ignore current abi for', contract);
@@ -262,7 +273,7 @@ export abstract class HyperionWorker {
                 const abi_hex = Buffer.from(currentAbi.abi).toString('hex');
                 _status = this.abieos.loadAbiHex(contract, abi_hex);
                 if (!_status) {
-                    hLog(`AbiEOS.load_abi_hex error for ${contract} at head`);
+                    hLog(`Abieos::loadAbiHex error for ${contract} at head`);
                     if (this.failedAbiMap.has(contract)) {
                         this.failedAbiMap.get(contract).add(-1);
                     } else {

@@ -1,6 +1,5 @@
 import {HyperionWorker} from "./hyperionWorker";
 import {cargo, queue} from "async";
-import * as AbiEOS from "@eosrio/node-abieos";
 import {Serialize} from "../addons/eosjs-native";
 import {debugLog, hLog} from "../helpers/common_functions";
 import {Message} from "amqplib";
@@ -233,7 +232,7 @@ export default class DSPoolWorker extends HyperionWorker {
         let _status;
         let resultType;
         try {
-            resultType = AbiEOS['get_type_for_' + field](contract, type);
+            resultType = this.getAbiDataType(field, contract, type);
             _status = true;
         } catch {
             _status = false;
@@ -267,7 +266,7 @@ export default class DSPoolWorker extends HyperionWorker {
             // successful load from ES cache
             if (_status) {
                 try {
-                    resultType = AbiEOS['get_type_for_' + field](contract, type);
+                    resultType = this.getAbiDataType(field, contract, type);
                     _status = true;
                     return [_status, resultType];
                 } catch (e) {
@@ -281,7 +280,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
             if (_status === true) {
                 try {
-                    resultType = AbiEOS['get_type_for_' + field](contract, type);
+                    resultType = this.getAbiDataType(field, contract, type);
                     _status = true;
                 } catch (e) {
                     debugLog(`(abieos/current) >> ${e.message}`);
@@ -297,7 +296,7 @@ export default class DSPoolWorker extends HyperionWorker {
         const [_status, actionType] = await self.verifyLocalType(action.account, action.name, block_num, "action");
         if (_status) {
             try {
-                return this.abieos.binToJson(action.account, actionType, Buffer.from(action.data, 'hex'));
+                return self.abieos.binToJson(action.account, actionType, Buffer.from(action.data, 'hex'));
             } catch (e) {
                 debugLog(`(abieos) ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
             }
