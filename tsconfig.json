@@ -9,6 +9,7 @@
     "noEmitOnError": true,
     "sourceMap": true,
     "allowJs": false,
+    "strict": true,
     "typeRoots": [
       "node_modules/@types",
       "types"

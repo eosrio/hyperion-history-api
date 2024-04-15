@@ -222,7 +222,7 @@ export abstract class HyperionWorker {
         return this.filters.delta_whitelist.has(this.codeDeltaPair(delta));
     }
 
-    loadAbiHex(contract, block_num, abi_hex) {
+    loadAbiHex(contract: string, block_num, abi_hex) {
         // check local blacklist for corrupted abis that failed to load before
         let _status;
         if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract).has(block_num)) {
