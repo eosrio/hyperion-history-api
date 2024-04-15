@@ -14,7 +14,7 @@
     "fix-permissions": "node scripts/fix-permissions.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "author": {
     "name": "EOS Rio",

@@ -3,7 +3,7 @@ import {ConfigurationModule} from "../modules/config";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import IORedis from 'ioredis';
-import fastify from 'fastify'
+import fastify, {FastifyReply, FastifyRequest} from 'fastify'
 import {registerPlugins} from "./plugins";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes";
@@ -244,6 +244,8 @@ class HyperionApiServer {
             }
         }
 
+        this.registerHomeRoute();
+
         registerRoutes(this.fastify);
 
         // register documentation when ready
@@ -258,12 +260,27 @@ class HyperionApiServer {
                 host: this.conf.api.server_addr,
                 port: this.conf.api.server_port
             });
-            hLog(`${this.chain} hyperion api ready and listening on port ${(this.fastify.server.address() as AddressInfo).port}`);
+            const listeningAddress = this.fastify.server.address() as AddressInfo;
+            const internal = `http://${listeningAddress.address}:${listeningAddress.port}`;
+            const external = `http://${this.conf.api.server_name}`;
+            hLog(`${this.chain} Hyperion API ready and listening on ${internal}`);
+            hLog(`API Should be externally accessible at: http://${this.conf.api.server_name}`);
             this.startHyperionHub();
         } catch (err) {
             hLog(err);
             process.exit(1)
         }
+    }
+
+    registerHomeRoute() {
+        this.fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
+            reply.send({
+                version: this.manager.current_version,
+                version_hash: this.manager.getServerHash(),
+                chain: this.chain,
+                chain_id: this.manager.conn.chains[this.chain].chain_id
+            });
+        });
     }
 
     startHyperionHub() {

@@ -5,7 +5,9 @@ import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {copyFileSync, existsSync, rmSync} from "fs";
 import {JsonRpc} from "eosjs";
-import fetch from "cross-fetch";
+
+// import fetch from "cross-fetch";
+
 import WebSocket from 'ws';
 import * as readline from "readline";
 import * as amqp from "amqplib";
