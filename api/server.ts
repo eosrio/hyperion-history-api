@@ -261,9 +261,7 @@ class HyperionApiServer {
                 port: this.conf.api.server_port
             });
             const listeningAddress = this.fastify.server.address() as AddressInfo;
-            const internal = `http://${listeningAddress.address}:${listeningAddress.port}`;
-            const external = `http://${this.conf.api.server_name}`;
-            hLog(`${this.chain} Hyperion API ready and listening on ${internal}`);
+            hLog(`${this.chain} Hyperion API ready and listening on http://${listeningAddress.address}:${listeningAddress.port}`);
             hLog(`API Should be externally accessible at: http://${this.conf.api.server_name}`);
             this.startHyperionHub();
         } catch (err) {
