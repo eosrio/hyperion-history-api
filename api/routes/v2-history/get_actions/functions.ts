@@ -236,6 +236,9 @@ export function getSkipLimit(query, max?: number) {
     if (skip < 0) {
         throw new Error('invalid skip parameter');
     }
+    if (skip > 10000) {
+        throw new Error('skip is above maximum internal limit: 10000. please limit your search scope or use pagination with before/after parameters');
+    }
     limit = parseInt(query.limit, 10);
     if (limit < 1) {
         throw new Error('invalid limit parameter');
