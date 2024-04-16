@@ -4,7 +4,6 @@ import {Serialize} from "eosjs";
 import {hLog} from "../../../../helpers/common_functions";
 import {Abieos} from "@eosrio/node-abieos";
 import {ApiResponse} from "@elastic/elasticsearch";
-import {TextDecoder, TextEncoder} from "util";
 import {JsonRpc} from "eosjs/dist";
 import {terms} from "../../v2-history/get_actions/definitions";
 
@@ -155,7 +154,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     const reqBody = request.body as any;
-    const should_array = [];
+    const should_array:any = [];
     for (const entry of terms) {
         const tObj = {term: {}};
         tObj.term[entry] = reqBody.account_name;
@@ -163,11 +162,11 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
     let code, method, pos, offset;
     let sort_direction = 'desc';
-    let filterObj = [];
+    let filterObj:any = [];
     if (reqBody.filter) {
         const filters = reqBody.filter.split(',');
         for (const filter of filters) {
-            const obj = {bool: {must: []}};
+            const obj:any = {bool: {must: []}};
             const parts = filter.split(':');
             if (parts.length === 2) {
                 [code, method] = parts;
@@ -210,7 +209,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         }
     }
 
-    const queryStruct = {
+    const queryStruct:any = {
         "bool": {
             must: [],
             boost: 1.0
@@ -262,10 +261,11 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         queryStruct.bool['should'] = filterObj;
         queryStruct.bool['minimum_should_match'] = 1;
     }
+    const getActionsLimit = fastify.manager.config.api.limits.get_actions ?? 1000;
     const esOpts = {
         "index": fastify.manager.chain + '-action-*',
         "from": from || 0,
-        "size": (size > fastify.manager.config.api.limits.get_actions ? fastify.manager.config.api.limits.get_actions : size),
+        "size": (size > getActionsLimit ? getActionsLimit : size),
         "body": {
             "query": queryStruct,
             "sort": {
@@ -274,9 +274,9 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         }
     };
     // console.log(JSON.stringify(esOpts, null, 2));
-    const pResults = await Promise.all([fastify.eosjs.rpc.get_info(), fastify.elastic['search'](esOpts)]);
+    const pResults = await Promise.all([fastify.eosjs.rpc.get_info(), fastify.elastic.search(esOpts)]);
     const results = pResults[1];
-    const response = {
+    const response:any = {
         actions: [],
         last_irreversible_block: pResults[0].last_irreversible_block_num
     };
