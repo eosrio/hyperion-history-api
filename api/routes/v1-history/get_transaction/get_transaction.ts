@@ -43,7 +43,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
     let hits;
 
     // build get_info request with caching
-    const $getInfo = new Promise<GetInfoResult>(resolve => {
+    const $getInfo = new Promise<GetInfoResult | null>(resolve => {
         const key = `${fastify.manager.chain}_get_info`;
         fastify.redis.get(key).then(value => {
             if (value) {
@@ -63,7 +63,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 
     // reconstruct hits from cached data
     if (cachedData && Object.keys(cachedData).length > 0) {
-        const gsArr = [];
+        const gsArr: any[] = [];
         for (let cachedDataKey in cachedData) {
             gsArr.push(cachedData[cachedDataKey]);
         }
@@ -80,7 +80,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             $getInfo
         ]);
         response.cache_expires_in = promiseResults[0];
-        response.last_irreversible_block = promiseResults[1].last_irreversible_block_num;
+        response.last_irreversible_block = promiseResults[1]?.last_irreversible_block_num;
     }
 
     // search on ES if cache is not present
@@ -109,7 +109,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 
             // execute in parallel
             pResults = await Promise.all([$getInfo, $search]);
-        } catch (e) {
+        } catch (e: any) {
             console.log(e.message);
             if (e.meta.statusCode === 404) {
                 return response;

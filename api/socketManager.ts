@@ -42,7 +42,7 @@ export class SocketManager {
     private readonly server: FastifyInstance;
     private readonly uwsApp: TemplatedApp;
     private readonly chainId: string;
-    private currentBlockNum: number;
+    private currentBlockNum = 0;
 
     constructor(fastify: FastifyInstance, url, redisOptions) {
         this.server = fastify;
@@ -97,21 +97,21 @@ export class SocketManager {
                         if (data.start_from) {
                             data.read_until = lastHistoryBlock;
                             console.log('Performing primary scroll request...');
-                            let ltb = 0;
+                            let ltb: number | undefined = 0;
                             const hStreamResult = await streamPastDeltas(this.server, socket, data);
-                            if (hStreamResult.status === false) {
+                            if (!hStreamResult.status) {
                                 return;
                             } else {
                                 ltb = hStreamResult.lastTransmittedBlock;
                                 let attempts = 0;
                                 await sleep(500);
-                                while (ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
+                                while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
                                     attempts++;
                                     console.log(`Performing fill request from ${ltb}...`);
-                                    data.start_from = hStreamResult.lastTransmittedBlock + 1;
+                                    data.start_from = (hStreamResult.lastTransmittedBlock ?? 0) + 1;
                                     data.read_until = lastHistoryBlock;
                                     const r = await streamPastDeltas(this.server, socket, data);
-                                    if (r.status === false) {
+                                    if (!r.status) {
                                         console.log(r);
                                         return;
                                     } else {
@@ -142,21 +142,21 @@ export class SocketManager {
                         if (data.start_from) {
                             data.read_until = lastHistoryBlock;
                             console.log('Performing primary scroll request...');
-                            let ltb = 0;
+                            let ltb: number | undefined = 0;
                             const hStreamResult = await streamPastActions(this.server, socket, data);
-                            if (hStreamResult.status === false) {
+                            if (!hStreamResult.status) {
                                 return;
                             } else {
                                 ltb = hStreamResult.lastTransmittedBlock;
                                 let attempts = 0;
                                 await sleep(500);
-                                while (ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
+                                while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
                                     attempts++;
                                     console.log(`Performing fill request from ${hStreamResult.lastTransmittedBlock}...`);
-                                    data.start_from = hStreamResult.lastTransmittedBlock + 1;
+                                    data.start_from = (hStreamResult.lastTransmittedBlock ?? 0) + 1;
                                     data.read_until = lastHistoryBlock;
                                     const r = await streamPastActions(this.server, socket, data);
-                                    if (r.status === false) {
+                                    if (!r.status) {
                                         console.log(r);
                                         return;
                                     } else {
@@ -186,7 +186,7 @@ export class SocketManager {
             this.uwsApp.listen(port, () => {
                 hLog(`Socket.IO via uWS started on port ${port}`);
             });
-        } catch (e) {
+        } catch (e: any) {
             hLog(e.message);
         }
 
@@ -229,7 +229,7 @@ export class SocketManager {
                 // const decodedBlock = JSON.parse(blockData.content.toString());
                 // console.log(blockData.serverTime, blockData.blockNum, decodedBlock);
                 this.currentBlockNum = blockData.blockNum;
-            } catch (e) {
+            } catch (e: any) {
                 hLog(`Failed to decode incoming live block ${blockData.blockNum}: ${e.message}`);
             }
         });
@@ -264,7 +264,7 @@ export class SocketManager {
 
     emitToClient(traceData, type) {
         if (this.io.sockets.sockets.has(traceData.client)) {
-            this.io.sockets.sockets.get(traceData.client).emit('message', {
+            this.io.sockets.sockets.get(traceData.client)?.emit('message', {
                 type: type,
                 reqUUID: traceData.req,
                 mode: 'live',

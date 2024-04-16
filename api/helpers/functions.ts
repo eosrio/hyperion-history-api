@@ -8,7 +8,7 @@ import {ApiResponse} from "@elastic/elasticsearch";
 
 const deltaQueryFields = ['code', 'table', 'scope', 'payer'];
 
-export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
+export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket, data: any) {
     const search_body: any = {
         query: {bool: {must: []}},
         sort: {block_num: 'asc'},

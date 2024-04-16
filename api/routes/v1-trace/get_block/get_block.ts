@@ -51,7 +51,9 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
         }
     }
 
-    const response = {transactions: []} as getBlockTraceResponse;
+    const response = {
+        transactions: []
+    } as unknown as getBlockTraceResponse;
 
     if (searchBody) {
 
@@ -92,7 +94,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
             const hits = getActionsResponse.body.hits.hits;
             if (hits.length > 0) {
                 _.forEach(_.groupBy(hits, (v) => v['_source']['trx_id']), (value, key) => {
-                    const actArray = [];
+                    const actArray: any[] = [];
                     for (const act of value) {
                         const action = act['_source']
                         for (const receipt of action.receipts) {

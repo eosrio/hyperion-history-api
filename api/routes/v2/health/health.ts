@@ -51,7 +51,7 @@ interface ESService {
     active_shards: string;
     missing_blocks: number;
     missing_pct: string;
-    head_offset: number;
+    head_offset: number | null;
 }
 
 interface ServiceResponse<T> {
@@ -119,7 +119,13 @@ function createHealth(name: string, status, data?: any): ServiceResponse<any> {
 }
 
 async function getHealthQuery(fastify: FastifyInstance) {
-    let response = {
+    let response: {
+        version?: string,
+        version_hash?: string,
+        host: string,
+        health: ServiceResponse<any>[],
+        features: any
+    } = {
         version: fastify.manager.current_version,
         version_hash: fastify.manager.getServerHash(),
         host: fastify.manager.config.api.server_name,
@@ -131,9 +137,11 @@ async function getHealthQuery(fastify: FastifyInstance) {
         checkNodeos(fastify),
         checkElastic(fastify)
     ]);
-    const es = response.health.find(value => value.service === 'Elasticsearch');
-    const nodeos = response.health.find(value => value.service === 'NodeosRPC');
-    es.service_data.head_offset = nodeos.service_data.head_block_num - es.service_data.last_indexed_block;
+    const es = response.health.find(value => value.service === 'Elasticsearch') as ServiceResponse<ESService>;
+    const nodeos = response.health.find(value => value.service === 'NodeosRPC') as ServiceResponse<NodeosService>;
+    if (nodeos && nodeos.service_data && es && es.service_data) {
+        es.service_data.head_offset = nodeos.service_data.head_block_num - es.service_data.last_indexed_block;
+    }
     return response;
 }
 
