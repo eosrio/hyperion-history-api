@@ -7,7 +7,6 @@ import {copyFileSync, existsSync, rmSync} from "fs";
 import {JsonRpc} from "eosjs";
 
 // import fetch from "cross-fetch";
-
 import WebSocket from 'ws';
 import * as readline from "readline";
 import * as amqp from "amqplib";
@@ -20,7 +19,7 @@ const connectionsPath = path.join(path.resolve(), 'connections.json');
 const exampleConnectionsPath = path.join(path.resolve(), 'example-connections.json');
 const backupDir = path.join(path.resolve(), 'configuration_backups');
 
-async function getConnections(): Promise<HyperionConnections> {
+async function getConnections(): Promise<HyperionConnections | null> {
     if (existsSync(connectionsPath)) {
         const connectionsJsonFile = await readFile(connectionsPath);
         return JSON.parse(connectionsJsonFile.toString());
@@ -39,10 +38,16 @@ async function listChains(flags) {
 
     const dirdata = await readdir(chainsDir);
     const connections = await getConnections();
+
+    if (!connections) {
+        console.log(`The connections.json file is not present, please run "./hyp-config connections init" to configure it.`);
+        process.exit(1);
+    }
+
     const exampleChain = await getExampleConfig();
 
-    const configuredTable = [];
-    const pendingTable = [];
+    const configuredTable: any[] = [];
+    const pendingTable: any[] = [];
     for (const file of dirdata.filter(f => f.endsWith('.json'))) {
         if (file === 'example.config.json') {
             continue;
@@ -103,7 +108,7 @@ async function listChains(flags) {
             } else {
                 pendingTable.push(common);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.log(`Failed to parse ${file} - ${e.message}`);
         }
     }
@@ -172,16 +177,20 @@ async function newChain(shortName, options) {
             jsonData.api.chain_api = options.http;
             connections.chains[shortName].chain_id = info.chain_id;
             connections.chains[shortName].http = options.http;
-            if (info.server_version_string.includes('v3')) {
-                jsonData.settings.parser = '3.2';
-            } else if (info.server_version_string.includes('v2.1')) {
-                jsonData.settings.parser = '2.1';
+            if (info.server_version_string) {
+                if (info.server_version_string.includes('v3')) {
+                    jsonData.settings.parser = '3.2';
+                } else if (info.server_version_string.includes('v2.1')) {
+                    jsonData.settings.parser = '2.1';
+                } else {
+                    jsonData.settings.parser = '3.2';
+                }
             } else {
-                jsonData.settings.parser = '1.8';
+                jsonData.settings.parser = '3.2';
             }
             console.log(`Parser version set to ${jsonData.settings.parser}`);
             console.log(`Chain ID: ${info.chain_id}`);
-        } catch (e) {
+        } catch (e: any) {
             console.error(`Invalid HTTP Endpoint [${options.http}] - ${e.message}`);
             process.exit(1);
         }
@@ -208,7 +217,7 @@ async function newChain(shortName, options) {
                     } else {
                         resolve(false);
                     }
-                } catch (e) {
+                } catch (e: any) {
                     console.log(e.message);
                     resolve(false);
                 }
@@ -227,10 +236,11 @@ async function newChain(shortName, options) {
         }
     }
 
-    const fullNameArr = [];
+    const fullNameArr: any[] = [];
     shortName.split('-').forEach((word: string) => {
-        fullNameArr.push(word[0].toUpperCase() + word.substr(1));
+        fullNameArr.push(word[0].toUpperCase() + word.substring(1));
     });
+
     const fullChainName = fullNameArr.join(' ');
 
     jsonData.api.chain_name = fullChainName;
@@ -244,7 +254,7 @@ async function newChain(shortName, options) {
     await writeFile(targetPath, JSON.stringify(jsonData, null, 2));
 }
 
-async function rmChain(shortName) {
+async function rmChain(shortName: string) {
     console.log(`Removing config for ${shortName}...`);
     const targetPath = path.join(chainsDir, `${shortName}.config.json`);
 
@@ -259,6 +269,12 @@ async function rmChain(shortName) {
     }
 
     const connections = await getConnections();
+
+    if (!connections) {
+        console.log(`The connections.json file is not present, please run "./hyp-config connections init" to configure it.`);
+        process.exit(1);
+    }
+
     try {
         const chainConn = connections.chains[shortName];
         const now = Date.now();
@@ -269,7 +285,7 @@ async function rmChain(shortName) {
             );
         }
         await cp(targetPath, path.join(backupDir, `${shortName}_${now}_config.json`));
-    } catch (e) {
+    } catch (e: any) {
         console.log(e.message);
         console.log('Failed to create backups! Aborting!');
         process.exit(1);

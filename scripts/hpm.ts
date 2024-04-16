@@ -84,7 +84,7 @@ async function buildPlugin(name, flags) {
             npmInstall.on('close', (code) => {
                 if (code !== 0) {
                     console.log(`process exited with code ${code}`);
-                    process.exit(code);
+                    process.exit(code ?? 0);
                 }
                 resolve(true);
             });
@@ -100,7 +100,7 @@ async function buildPlugin(name, flags) {
         npmInstall.on('close', (code) => {
             if (code !== 0) {
                 console.log(`process exited with code ${code}`);
-                process.exit(code);
+                process.exit(code ?? 0);
             }
             resolve(true);
         });
@@ -145,7 +145,7 @@ async function verifyInstalledPlugin(pluginName: string, options: any): Promise<
     }
 }
 
-async function hashItem(item) {
+async function hashItem(item: any): Promise<any> {
     if (fs.lstatSync(item).isDirectory()) {
         const dir = fs.readdirSync(item);
         const sha = crypto.createHash('sha1');
@@ -172,7 +172,7 @@ async function hashItem(item) {
     }
 }
 
-async function verifyInstallation(installPath, pluginName, opts) {
+async function verifyInstallation(installPath: any, pluginName: string | number, opts: any) {
     console.log('Verifying integrity...');
     const hash = await hashItem(installPath);
     console.log(`SHA1 Hash: ${hash}`);
@@ -293,7 +293,7 @@ async function uninstall(plugin) {
             saveState();
         }
         console.log(`${plugin} removed!`);
-    } catch (e) {
+    } catch (e: any) {
         throwAndQuit(e.message);
     }
 }
@@ -326,7 +326,7 @@ async function listPlugins() {
                 branch,
                 description
             });
-        } catch (e) {
+        } catch (e: any) {
             console.log(e.message);
         }
     }

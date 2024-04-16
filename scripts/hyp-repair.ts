@@ -82,8 +82,8 @@ async function run(
 
 async function findForksOnRange(blocks: HyperionBlock[], rpc: JsonRpc) {
     const removals: Set<string> = new Set();
-    let start = null;
-    let end = null;
+    let start: number | null = null;
+    let end: number | null = null;
     if (
         blocks.length > 0 &&
         pendingBlock &&
@@ -281,7 +281,7 @@ async function repairChain(chain: string, file: string, args: any) {
 
     for (const range of forkedBlocks) {
         // ACTIONS
-        const searchActions = {
+        const searchActions: any = {
             index: `${chain}-action-${chainConfig.settings.index_version}-*`,
             size: 0,
             track_total_hits: true,
@@ -338,7 +338,7 @@ async function repairChain(chain: string, file: string, args: any) {
         }
 
         // DELTAS
-        const searchDeltas = {
+        const searchDeltas: any = {
             index: `${chain}-delta-${chainConfig.settings.index_version}-*`,
             size: 0,
             track_total_hits: true,
@@ -394,7 +394,7 @@ async function repairChain(chain: string, file: string, args: any) {
         }
 
         // ABIS
-        const searchAbis = {
+        const searchAbis: any = {
             index: `${chain}-abi-${chainConfig.settings.index_version}`,
             size: 0,
             track_total_hits: true,

@@ -18,7 +18,7 @@ import {Serialize} from "eosjs";
 import {Abi} from "eosjs/dist/eosjs-rpc-interfaces";
 import {Action, Type as EOSJSType} from "eosjs/dist/eosjs-serialize";
 import {JsSignatureProvider} from "eosjs/dist/eosjs-jssig";
-import {HyperionBlock} from "../scripts/repair-cli/interfaces";
+import {HyperionSignedBlock} from "../interfaces/signed-block";
 
 
 const abi_remapping = {
@@ -285,7 +285,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async processBlock(res, block: HyperionBlock, traces: [string, TransactionTrace][], deltas: [string, TableDelta][]) {
+    async processBlock(res, block: HyperionSignedBlock, traces: [string, TransactionTrace][], deltas: [string, TableDelta][]) {
         if (!res['this_block']) {
             // missing current block data
             hLog(res);
