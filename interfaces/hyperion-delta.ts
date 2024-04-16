@@ -9,6 +9,7 @@ export interface HyperionDelta {
 	block_num: number;
 	block_id: string;
 	data: any;
+	value: any;
 }
 
 export interface BasicDelta {

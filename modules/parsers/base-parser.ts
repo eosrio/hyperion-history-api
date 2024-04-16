@@ -104,7 +104,7 @@ export abstract class BaseParser {
         // simple assets
         this.actionReinterpretMap.set('*::saecreate', (act) => {
             const _sb = this.createSerialBuffer(act.data);
-            const result = {owner: "", assetid: null};
+            const result: any = {owner: "", assetid: null};
             result.owner = _sb.getName();
             result.assetid = _sb.getUint64AsNumber()
             return result;
@@ -112,7 +112,7 @@ export abstract class BaseParser {
 
         this.actionReinterpretMap.set('*::saetransfer', (act) => {
             const _sb = this.createSerialBuffer(act.data);
-            const result = {from: "", to: "", assetids: [], memo: ""};
+            const result: any = {from: "", to: "", assetids: [], memo: ""};
             result.from = _sb.getName();
             result.to = _sb.getName();
             const len = _sb.getVaruint32();
@@ -125,7 +125,7 @@ export abstract class BaseParser {
 
         this.actionReinterpretMap.set('*::saeclaim', (act) => {
             const _sb = this.createSerialBuffer(act.data);
-            const result = {who: "", assetids: {}};
+            const result: any = {who: "", assetids: {}};
             result.who = _sb.getName();
             const len = _sb.getVaruint32();
             for (let i = 0; i < len; i++) {
@@ -136,7 +136,7 @@ export abstract class BaseParser {
 
         this.actionReinterpretMap.set('*::saeburn', (act) => {
             const _sb = this.createSerialBuffer(act.data);
-            const result = {who: "", assetids: [], memo: ""};
+            const result: any = {who: "", assetids: [], memo: ""};
             result.who = _sb.getName();
             const len = _sb.getVaruint32();
             for (let i = 0; i < len; i++) {
@@ -150,24 +150,28 @@ export abstract class BaseParser {
     async reinterpretActionData(act: HyperionActionAct) {
         if (this.actionReinterpretMap.has(`${act.account}::${act.name}`)) {
             // code and action
-            return await this.actionReinterpretMap.get(`${act.account}::${act.name}`)(act);
-
+            const fn = this.actionReinterpretMap.get(`${act.account}::${act.name}`);
+            if (fn) {
+                return fn(act);
+            }
         } else if (this.actionReinterpretMap.has(`*::${act.name}`)) {
             // wildcard action
-            return await this.actionReinterpretMap.get(`*::${act.name}`)(act);
-
-        } else {
-            return;
+            const fn = this.actionReinterpretMap.get(`*::${act.name}`);
+            if (fn) {
+                return fn(act);
+            }
         }
+        return;
     }
 
     async deserializeActionData(worker: DSPoolWorker, action: ActionTrace, trx_data) {
         let act = action.act;
         const original_act = Object.assign({}, act);
-        let ds_act, error_message;
+        let ds_act;
+        let error_message;
         try {
             ds_act = await worker.common.deserializeActionAtBlockNative(worker, act, trx_data.block_num);
-        } catch (e) {
+        } catch (e: any) {
             console.log(e);
             error_message = e.message;
         }
@@ -199,7 +203,7 @@ export abstract class BaseParser {
             action.act.data = ds_act;
             try {
                 worker.common.attachActionExtras(worker, action);
-            } catch (e) {
+            } catch (e: any) {
                 hLog('Failed to call attachActionExtras:', e.message);
                 hLog(action?.act?.account, action?.act?.name, action?.act?.data);
             }
@@ -209,7 +213,7 @@ export abstract class BaseParser {
                 action.act.data = Buffer.from(action.act.data).toString('hex');
             }
             action['ds_error'] = true;
-            process.send({
+            process.send?.({
                 event: 'ds_error',
                 data: {
                     type: 'action_ds_error',

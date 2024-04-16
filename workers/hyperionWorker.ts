@@ -12,6 +12,7 @@ import {debugLog, hLog} from "../helpers/common_functions";
 import {StateHistorySocket} from "../connections/state-history";
 import {Abieos} from "@eosrio/node-abieos";
 import {BasicDelta} from "../interfaces/hyperion-delta";
+import {Abi} from "eosjs/dist/eosjs-rpc-interfaces";
 
 export abstract class HyperionWorker {
 
@@ -235,6 +236,23 @@ export abstract class HyperionWorker {
 
         // test whitelist for chain::code::table
         return this.filters.delta_whitelist.has(this.codeDeltaPair(delta));
+    }
+
+    async getAbiFromHeadBlock(code: string) {
+        let currentAbi: Abi | undefined = undefined;
+        try {
+            const result = await this.rpc.get_abi(code);
+            if (result && result.abi) {
+                currentAbi = result.abi;
+            }
+        } catch (e) {
+            hLog(e);
+        }
+        return {
+            abi: currentAbi,
+            valid_until: null,
+            valid_from: null
+        };
     }
 
     loadAbiHex(contract: string, block_num: number, abi_hex: string) {

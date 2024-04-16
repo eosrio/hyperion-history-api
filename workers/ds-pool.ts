@@ -310,23 +310,6 @@ export default class DSPoolWorker extends HyperionWorker {
         return self.deserializeActionAtBlock(action, block_num);
     }
 
-    async getAbiFromHeadBlock(code: string) {
-        let currentAbi: Abi | undefined = undefined;
-        try {
-            const result = await this.rpc.get_abi(code);
-            if (result && result.abi) {
-                currentAbi = result.abi;
-            }
-        } catch (e) {
-            hLog(e);
-        }
-        return {
-            abi: currentAbi,
-            valid_until: null,
-            valid_from: null
-        };
-    }
-
     async getContractAtBlock(accountName: string, block_num: number, check_action: string) {
         if (this.contracts.has(accountName)) {
             let _sc = this.contracts.get(accountName);

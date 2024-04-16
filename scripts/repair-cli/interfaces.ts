@@ -8,4 +8,5 @@ export interface HyperionBlock {
     "cpu_usage": number,
     "net_usage": number,
     "prev_id": string
+    transactions: any[]
 }
