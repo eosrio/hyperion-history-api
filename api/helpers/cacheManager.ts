@@ -30,7 +30,7 @@ export class CacheManager {
                 // remove expired entries
                 // let removeCount = 0;
                 const now = Date.now();
-                this.v1Caches.forEach((pathCacheMap: Map<string, CachedEntry>, pathKey: string) => {
+                this.v1Caches.forEach((pathCacheMap: Map<string, CachedEntry>) => {
                     pathCacheMap.forEach((cache: CachedEntry, entryKey: string, map: Map<string, CachedEntry>) => {
                         if (cache.exp < now) {
                             map.delete(entryKey);
@@ -53,10 +53,13 @@ export class CacheManager {
 
     setCachedData(hash: string, path: string, payload: any): void {
         if (this.v1CacheConfigs.has(path) && this.v1Caches.has(path)) {
-            this.v1Caches.get(path).set(hash, {
-                data: payload,
-                exp: this.v1CacheConfigs.get(path).ttl + Date.now()
-            });
+            const exp = this.v1CacheConfigs.get(path);
+            if (exp && exp.ttl) {
+                this.v1Caches.get(path)?.set(hash, {
+                    data: payload,
+                    exp: exp.ttl + Date.now()
+                });
+            }
         }
     }
 
@@ -71,15 +74,15 @@ export class CacheManager {
             payload = request.url;
         }
         const hashedString = this.hashPayload(payload);
-        if (this.v1Caches.has(path)) {
-            const entry = this.v1Caches.get(path).get(hashedString);
+        if (path && this.v1Caches.has(path)) {
+            const entry = this.v1Caches.get(path)?.get(hashedString);
             if (entry && entry.exp > Date.now()) {
                 return [entry.data, hashedString, path];
             } else {
                 return [null, hashedString, path];
             }
         } else {
-            return [null, hashedString, path];
+            return [null, hashedString, path ?? ''];
         }
     }
 

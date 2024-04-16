@@ -4,11 +4,12 @@ import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethod
 import got from "got";
 import {checkDeltaFilter, checkFilter, hLog} from "../../helpers/common_functions";
 import {Socket} from "socket.io";
+import {ApiResponse} from "@elastic/elasticsearch";
 
 const deltaQueryFields = ['code', 'table', 'scope', 'payer'];
 
 export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
-    const search_body = {
+    const search_body: any = {
         query: {bool: {must: []}},
         sort: {block_num: 'asc'},
     };
@@ -17,7 +18,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
         addTermMatch(data, search_body, f);
     });
 
-    const onDemandDeltaFilters = [];
+    const onDemandDeltaFilters: any[] = [];
     if (data.filters.length > 0) {
         data.filters.forEach(f => {
             if (f.field && f.value) {
@@ -32,7 +33,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
         });
     }
 
-    const responseQueue = [];
+    const responseQueue: ApiResponse<Record<string, any>, unknown>[] = [];
 
     let counter = 0;
     let total = 0;
@@ -76,61 +77,65 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
     let pendingScrollId = '';
     while (responseQueue.length) {
         let filterCount = 0;
-        const {body} = responseQueue.shift();
-        pendingScrollId = body['_scroll_id'];
-        const enqueuedMessages = [];
-        counter += body['hits']['hits'].length;
+        const rp = responseQueue.shift();
+        if (rp && rp.body) {
+            const body = rp.body;
 
-        for (const doc of body['hits']['hits']) {
-            let allow = false;
-            if (onDemandDeltaFilters.length > 0) {
-                allow = onDemandDeltaFilters.every(filter => {
-                    return checkDeltaFilter(filter, doc._source);
-                });
+            pendingScrollId = body['_scroll_id'];
+            const enqueuedMessages: any[] = [];
+            counter += body['hits']['hits'].length;
+
+            for (const doc of body['hits']['hits']) {
+                let allow = false;
+                if (onDemandDeltaFilters.length > 0) {
+                    allow = onDemandDeltaFilters.every(filter => {
+                        return checkDeltaFilter(filter, doc._source);
+                    });
+                } else {
+                    allow = true;
+                }
+                if (allow) {
+                    enqueuedMessages.push(doc._source);
+                } else {
+                    filterCount++;
+                }
+                // set last block
+                if (doc._source.block_num > lastTransmittedBlock) {
+                    lastTransmittedBlock = doc._source.block_num;
+                }
+            }
+
+            totalFiltered += filterCount;
+
+            if (socket.connected) {
+                if (enqueuedMessages.length > 0) {
+                    socket.emit('message', {
+                        reqUUID: socket.data.reqUUID,
+                        type: 'delta_trace',
+                        mode: 'history',
+                        messages: enqueuedMessages,
+                        filtered: filterCount
+                    });
+                }
             } else {
-                allow = true;
+                hLog('LOST CLIENT');
+                break;
             }
-            if (allow) {
-                enqueuedMessages.push(doc._source);
-            } else {
-                filterCount++;
+
+            if (longScroll) {
+                hLog(`Progress: ${counter + totalFiltered}/${total}`);
             }
-            // set last block
-            if (doc._source.block_num > lastTransmittedBlock) {
-                lastTransmittedBlock = doc._source.block_num;
+
+            if (body['hits'].total.value === counter) {
+                hLog(`${counter} past deltas streamed to ${socket.id} (${totalFiltered} filtered)`);
+                break;
             }
+
+            const next_response = await fastify.elastic.scroll({
+                body: {scroll_id: body['_scroll_id'], scroll: '30s'}
+            });
+            responseQueue.push(next_response);
         }
-
-        totalFiltered += filterCount;
-
-        if (socket.connected) {
-            if (enqueuedMessages.length > 0) {
-                socket.emit('message', {
-                    reqUUID: socket.data.reqUUID,
-                    type: 'delta_trace',
-                    mode: 'history',
-                    messages: enqueuedMessages,
-                    filtered: filterCount
-                });
-            }
-        } else {
-            hLog('LOST CLIENT');
-            break;
-        }
-
-        if (longScroll) {
-            hLog(`Progress: ${counter + totalFiltered}/${total}`);
-        }
-
-        if (body['hits'].total.value === counter) {
-            hLog(`${counter} past deltas streamed to ${socket.id} (${totalFiltered} filtered)`);
-            break;
-        }
-
-        const next_response = await fastify.elastic.scroll({
-            body: {scroll_id: body['_scroll_id'], scroll: '30s'}
-        });
-        responseQueue.push(next_response);
     }
 
     // destroy scroll context
@@ -149,7 +154,7 @@ export function emitTraceInit(socket: Socket, firstBlock: number, totalResults: 
 }
 
 export async function streamPastActions(fastify: FastifyInstance, socket, data) {
-    const search_body = {query: {bool: {must: []}}, sort: {global_sequence: 'asc'}};
+    const search_body: any = {query: {bool: {must: []}}, sort: {global_sequence: 'asc'}};
     await addBlockRangeOpts(data, search_body, fastify);
     if (data.account !== '') {
         search_body.query.bool.must.push({
@@ -170,7 +175,7 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
         search_body.query.bool.must.push({'term': {'act.name': data.action}});
     }
 
-    const onDemandFilters = [];
+    const onDemandFilters: any[] = [];
     if (data.filters.length > 0) {
         data.filters.forEach(f => {
             if (f.field && f.value) {
@@ -185,7 +190,7 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
         });
     }
 
-    const responseQueue = [];
+    const responseQueue: ApiResponse<Record<string, any>, unknown>[] = [];
     let counter = 0;
     let total = 0;
     let totalFiltered = 0;
@@ -226,61 +231,64 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
     let pendingScrollId = '';
     while (responseQueue.length) {
         let filterCount = 0;
-        const {body} = responseQueue.shift();
-        pendingScrollId = body['_scroll_id'];
-        const enqueuedMessages = [];
-        counter += body['hits']['hits'].length;
+        const rp = responseQueue.shift();
+        if (rp && rp.body) {
+            const body = rp.body;
+            pendingScrollId = body['_scroll_id'];
+            const enqueuedMessages: any[] = [];
+            counter += body['hits']['hits'].length;
 
-        for (const doc of body['hits']['hits']) {
-            let allow = false;
-            if (onDemandFilters.length > 0) {
-                allow = onDemandFilters.every(filter => {
-                    return checkFilter(filter, doc._source);
-                });
+            for (const doc of body['hits']['hits']) {
+                let allow = false;
+                if (onDemandFilters.length > 0) {
+                    allow = onDemandFilters.every(filter => {
+                        return checkFilter(filter, doc._source);
+                    });
+                } else {
+                    allow = true;
+                }
+                if (allow) {
+                    enqueuedMessages.push(doc._source);
+                } else {
+                    filterCount++;
+                }
+                // set last block
+                if (doc._source.block_num > lastTransmittedBlock) {
+                    lastTransmittedBlock = doc._source.block_num;
+                }
+            }
+
+            totalFiltered += filterCount;
+
+            if (socket.connected) {
+                if (enqueuedMessages.length > 0) {
+                    socket.emit('message', {
+                        reqUUID: socket.data.reqUUID,
+                        type: 'action_trace',
+                        mode: 'history',
+                        messages: enqueuedMessages,
+                        filtered: filterCount
+                    });
+                }
             } else {
-                allow = true;
+                hLog('LOST CLIENT');
+                break;
             }
-            if (allow) {
-                enqueuedMessages.push(doc._source);
-            } else {
-                filterCount++;
+
+            if (longScroll) {
+                hLog(`Progress: ${counter + totalFiltered}/${total}`);
             }
-            // set last block
-            if (doc._source.block_num > lastTransmittedBlock) {
-                lastTransmittedBlock = doc._source.block_num;
+
+            if (body['hits'].total.value === counter) {
+                hLog(`${counter} past actions streamed to ${socket.id} (${totalFiltered} filtered)`);
+                break;
             }
+
+            const next_response = await fastify.elastic.scroll({
+                body: {scroll_id: body['_scroll_id'], scroll: '30s'}
+            });
+            responseQueue.push(next_response);
         }
-
-        totalFiltered += filterCount;
-
-        if (socket.connected) {
-            if (enqueuedMessages.length > 0) {
-                socket.emit('message', {
-                    reqUUID: socket.data.reqUUID,
-                    type: 'action_trace',
-                    mode: 'history',
-                    messages: enqueuedMessages,
-                    filtered: filterCount
-                });
-            }
-        } else {
-            hLog('LOST CLIENT');
-            break;
-        }
-
-        if (longScroll) {
-            hLog(`Progress: ${counter + totalFiltered}/${total}`);
-        }
-
-        if (body['hits'].total.value === counter) {
-            hLog(`${counter} past actions streamed to ${socket.id} (${totalFiltered} filtered)`);
-            break;
-        }
-
-        const next_response = await fastify.elastic.scroll({
-            body: {scroll_id: body['_scroll_id'], scroll: '30s'}
-        });
-        responseQueue.push(next_response);
     }
 
     // destroy scroll context
@@ -523,6 +531,8 @@ export async function timedQuery(
     queryFunction: (fastify: FastifyInstance, request: FastifyRequest) => Promise<any>,
     fastify: FastifyInstance, request: FastifyRequest, route: string): Promise<any> {
 
+    const query = request.query as any;
+
     // get reference time in nanoseconds
     const t0 = process.hrtime.bigint();
 
@@ -530,11 +540,11 @@ export async function timedQuery(
     const [cachedResponse, hash] = await getCachedResponse(
         fastify,
         route,
-        request.method === 'POST' ? request.body : request.query
+        request.method === 'POST' ? request.body : query
     );
 
-    let lastIndexedBlockNumber = null;
-    let lastIndexedBlockTime = null;
+    let lastIndexedBlockNumber: number | null = null;
+    let lastIndexedBlockTime: string | null = null;
     const lastIndexedBlock = await fastify.redis.get(`${fastify.manager.chain}:last_idx_block`);
     if (lastIndexedBlock) {
         const arr = lastIndexedBlock.split("@");
@@ -544,7 +554,7 @@ export async function timedQuery(
         }
     }
 
-    if (cachedResponse && !request.query["ignoreCache"]) {
+    if (cachedResponse && !query["ignoreCache"]) {
         // add cached query time
         cachedResponse['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
         if (lastIndexedBlock) {
@@ -559,7 +569,7 @@ export async function timedQuery(
 
     // save response to cache
     if (hash) {
-        let EX = null;
+        let EX: number | undefined = undefined;
         if (defaultRouteCacheMap[route]) {
             EX = defaultRouteCacheMap[route];
         }
@@ -638,12 +648,12 @@ export async function handleChainApiRedirect(
             reply.send(apiResponse.body);
             return apiResponse.body;
         }
-    } catch (error) {
+    } catch (error: any) {
 
         if (error.response) {
             reply.status(error.response.statusCode).send(error.response.body);
         } else {
-            console.log(error);
+            hLog(error);
             reply.status(500).send();
         }
 
@@ -651,9 +661,9 @@ export async function handleChainApiRedirect(
             try {
                 if (error.response) {
                     const error_msg = JSON.parse(error.response.body).error.details[0].message;
-                    console.log(`endpoint: ${request.raw.url} | status: ${error.response.statusCode} | error: ${error_msg}`);
+                    hLog(`endpoint: ${request.raw.url} | status: ${error.response.statusCode} | error: ${error_msg}`);
                 } else {
-                    console.log(error);
+                    hLog(error);
                 }
                 // if (request.req.url === '/v1/chain/push_transaction') {
                 //     const packedTrx = JSON.parse(opts['body']).packed_trx;
@@ -662,7 +672,7 @@ export async function handleChainApiRedirect(
                 //     console.log(trxData);
                 // }
             } catch (e) {
-                console.log(e);
+                hLog(e);
             }
         }
 
