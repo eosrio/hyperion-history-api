@@ -13,10 +13,12 @@ import flatstr from 'flatstr';
 import {index_queues, RabbitQueueDef} from "../definitions/index-queues";
 import {AbiDefinitions} from "../definitions/abi_def";
 import {Abi} from "../addons/eosjs-native/eosjs-rpc-interfaces";
-import {BasicDelta, HyperionDelta} from "../interfaces/hyperion-delta";
+import {HyperionDelta} from "../interfaces/hyperion-delta";
 import {TableDelta} from "../interfaces/table-delta";
 import {JsSignatureProvider} from "../addons/eosjs-native/eosjs-jssig";
 import {HyperionAbi} from "../interfaces/hyperion-abi";
+import {ActionTrace} from "../interfaces/action-trace";
+import {TransactionTrace} from "eosjs/dist/eosjs-api-interfaces";
 
 const abi_remapping = {
     "_Bool": "bool"
@@ -69,8 +71,8 @@ export default class MainDSWorker extends HyperionWorker {
     ch_ready = false;
     private consumerQueue;
     private preIndexingQueue;
-    private abi: any;
-    public types: Map<string, Type>;
+    private abi?: Abi;
+    public types?: Map<string, Type>;
     private tables = new Map();
     private allowStreaming = false;
     private dsPoolMap = {};
@@ -158,7 +160,7 @@ export default class MainDSWorker extends HyperionWorker {
     onIpcMessage(msg: any): void {
         switch (msg.event) {
             case 'initialize_abi': {
-                this.abi = JSON.parse(msg.data);
+                this.abi = JSON.parse(msg.data) as Abi;
                 this.abieos.loadAbi("0", msg.data);
                 const initialTypes = Serialize.createInitialTypes();
                 this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
@@ -264,9 +266,9 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     private initConsumer() {
-        if (this.ch_ready) {
+        if (this.ch_ready && this.ch && process.env.worker_queue) {
             this.ch.prefetch(this.conf.prefetch.block);
-            this.ch.consume(process.env['worker_queue'], (data) => {
+            this.ch.consume(process.env.worker_queue, (data) => {
                 this.consumerQueue.push(data).catch(console.log);
             });
             this.ch.on('drain', () => {
@@ -282,7 +284,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    async processBlock(res, block, traces, deltas) {
+    async processBlock(res, block, traces: [string, TransactionTrace][], deltas) {
         if (!res['this_block']) {
             // missing current block data
             hLog(res);
@@ -308,7 +310,7 @@ export default class MainDSWorker extends HyperionWorker {
                 let total_cpu = 0;
                 let total_net = 0;
 
-                const failedTrx = [];
+                const failedTrx: any[] = [];
 
                 block.transactions.forEach((trx) => {
 
@@ -392,7 +394,7 @@ export default class MainDSWorker extends HyperionWorker {
                 }
 
                 if (light_block.new_producers) {
-                    process.send({
+                    process.send?.({
                         event: 'new_schedule',
                         block_num: light_block.block_num,
                         new_producers: light_block.new_producers,
@@ -401,7 +403,7 @@ export default class MainDSWorker extends HyperionWorker {
                 }
 
                 // stream light block
-                if (this.allowStreaming) {
+                if (this.allowStreaming && this.ch) {
                     this.ch.publish('', this.chain + ':stream', Buffer.from(JSON.stringify(light_block)), {
                         headers: {
                             event: 'block',
@@ -417,7 +419,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
 
             // Process Action Traces
-            let _traces = [];
+            let _traces: [string, TransactionTrace][] = [];
             const onBlockTransactions = [];
             if (traces && this.conf.indexer.fetch_traces) {
 

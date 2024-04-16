@@ -223,9 +223,11 @@ export abstract class BaseParser {
         }
     }
 
-    abstract parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace, usageIncluded: { status: boolean }): Promise<boolean>
+    abstract parseAction(worker: DSPoolWorker, ts, action: ActionTrace, trx_data: TrxMetadata, _actDataArray, _processedTraces: ActionTrace[], full_trace, usageIncluded: {
+        status: boolean
+    }): Promise<boolean>
 
     abstract parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void>
 
-    abstract flattenInlineActions(action_traces: any[], level?: number, trace_counter?: any, parent_index?: number): Promise<any[]>
+    abstract flattenInlineActions(action_traces: ActionTrace[], level?: number, trace_counter?: any, parent_index?: number): Promise<ActionTrace[]>
 }
