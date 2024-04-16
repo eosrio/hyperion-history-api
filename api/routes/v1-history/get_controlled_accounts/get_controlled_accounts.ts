@@ -3,10 +3,11 @@ import {timedQuery} from "../../../helpers/functions";
 import {ApiResponse} from "@elastic/elasticsearch";
 
 async function getControlledAccounts(fastify: FastifyInstance, request: FastifyRequest) {
-	if (typeof request.body === 'string') {
-		request.body = JSON.parse(request.body)
+	let body = request.body as any;
+	if (typeof body === 'string') {
+		body = JSON.parse(body)
 	}
-	let controlling_account = request.body["controlling_account"];
+	let controlling_account = body["controlling_account"];
 	const results: ApiResponse = await fastify.elastic.search({
 		index: fastify.manager.chain + '-action-*',
 		size: 100,
