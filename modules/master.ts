@@ -734,10 +734,10 @@ export class HyperionMaster {
         }
     }
 
-    private static printWorkerMap(wmp) {
+    private static printWorkerMap(wmp: HyperionWorkerDef[]): void {
         hLog('---------------- PROPOSED WORKER LIST ----------------------');
         for (const w of wmp) {
-            const str = [];
+            const str: string[] = [];
             for (const key in w) {
                 if (w.hasOwnProperty(key) && key !== 'worker_id') {
                     switch (key) {
@@ -795,7 +795,7 @@ export class HyperionMaster {
     private async setupReaders() {
         // Setup Readers
 
-        this.lastAssignedBlock = this.starting_block;
+        this.lastAssignedBlock = this.starting_block ?? 0;
 
         this.activeReadersCount = 0;
 
@@ -820,7 +820,7 @@ export class HyperionMaster {
         }
 
         // Setup live workers
-        if (this.conf.indexer.live_reader) {
+        if (this.conf.indexer.live_reader && this.chain_data) {
             const _head = this.chain_data.head_block_num;
             hLog(`Setting live reader at head = ${_head}`);
 
@@ -913,7 +913,7 @@ export class HyperionMaster {
     private async setupWorkers() {
         this.lastIndexedABI = await getLastIndexedABI(this.esClient, this.chain);
         await this.defineBlockRange();
-        this.total_range = this.head - this.starting_block;
+        this.total_range = this.head - (this.starting_block ?? 0);
         await this.setupReaders();
         await this.setupDeserializers();
         await this.setupIndexers();
@@ -925,18 +925,21 @@ export class HyperionMaster {
     private launchWorkers() {
         let launchedCount = 0;
         this.workerMap.forEach((wrk: HyperionWorkerDef) => {
-            if (!wrk.wref) {
+            if (!wrk.wref && wrk.worker_id) {
                 wrk.wref = cluster.fork(wrk);
                 wrk.wref.id = wrk.worker_id;
                 wrk.wref.on('message', (msg) => {
                     this.handleMessage(msg);
                 });
-                if (wrk.worker_role === 'ds_pool_worker') {
+
+                if (wrk.worker_role === 'ds_pool_worker' && wrk.local_id) {
                     this.dsPoolMap.set(wrk.local_id, wrk.wref);
                 }
+
                 if (wrk.worker_role === 'router') {
                     this.wsRouterWorker = wrk.wref;
                 }
+
                 launchedCount++;
             }
         });
@@ -963,7 +966,7 @@ export class HyperionMaster {
         for (const code in this.globalUsageMap) {
             const _pct = this.globalUsageMap[code][0] / this.totalContractHits;
             let used_pct = 0;
-            const proposedWorkers = [];
+            const proposedWorkers: number[] = [];
             for (let i = 0; i < pool_size; i++) {
                 if (worker_shares[i] < worker_max_pct) {
                     const rem_pct = (_pct - used_pct);
@@ -993,7 +996,7 @@ export class HyperionMaster {
         // phase 2 - re-balance
         const totalContracts = Object.keys(this.globalUsageMap).length;
         const desiredCodeCount = totalContracts / pool_size;
-        const ignoreList = [];
+        const ignoreList: number[] = [];
         for (let i = 0; i < pool_size; i++) {
             if (worker_counters[i] > desiredCodeCount * 1.1) {
                 ignoreList.push(i);
@@ -1032,7 +1035,7 @@ export class HyperionMaster {
                 this.globalUsageMap[code][2].forEach(w_id => {
                     // hLog(`>>>> Worker ${this.globalUsageMap[code][2]} removed from ${code}!`);
                     if (this.dsPoolMap.has(w_id)) {
-                        this.dsPoolMap.get(w_id).send({
+                        this.dsPoolMap.get(w_id)?.send({
                             event: "remove_contract",
                             contract: code
                         });
@@ -1044,7 +1047,11 @@ export class HyperionMaster {
     }
 
     private sendToRole(role: string, payload: any) {
-        this.workerMap.filter(value => value.worker_role === role).forEach(value => value.wref.send(payload));
+        this.workerMap
+            .filter(value => value.worker_role === role)
+            .forEach(value => {
+                value.wref?.send(payload);
+            });
     }
 
     private async waitForLaunch(): Promise<void> {
@@ -1353,10 +1360,11 @@ export class HyperionMaster {
 
         setInterval(() => {
 
-            // console.log(this.producedBlocks);
-            // console.log(this.missedRounds);
+            let _workers = 0;
+            if (cluster.workers) {
+                _workers = Object.keys(cluster.workers).length;
+            }
 
-            const _workers = Object.keys(cluster.workers).length;
             const tScale = (this.log_interval / 1000);
             this.total_read += this.pushedBlocks;
             this.total_blocks += this.consumedBlocks;
@@ -1376,7 +1384,7 @@ export class HyperionMaster {
             } else {
                 avg_consume_rate = consume_rate;
             }
-            const log_msg = [];
+            const log_msg: string[] = [];
 
             // print current head for live reading
             if (this.lastProducedBlockNum > 0 && this.lastIrreversibleBlock > 0) {
@@ -1423,7 +1431,7 @@ export class HyperionMaster {
             this.metrics.lastProcessedBlockNum.set(this.lastProcessedBlockNum);
 
             // publish log to hub
-            if (this.conf.hub && this.conf.hub.inform_url) {
+            if (this.conf.hub && this.conf.hub.inform_url && this.hub) {
                 this.hub.emit('hyp_ev', {
                     e: 'rates',
                     d: {r: _r, c: _c, a: _a}
@@ -1513,7 +1521,7 @@ export class HyperionMaster {
                 this.idle_count = 0;
                 if (this.shutdownTimer) {
                     clearTimeout(this.shutdownTimer);
-                    this.shutdownTimer = null;
+                    this.shutdownTimer = undefined;
                 }
             }
 
@@ -1562,11 +1570,11 @@ export class HyperionMaster {
     // ------- START OF HYPERION HUB METHODS -------
 
     private emitHubUpdate() {
-        this.hub.emit('hyp_info', {
+        this.hub?.emit('hyp_info', {
             type: 'indexer',
             production: this.conf.hub.production,
             location: this.conf.hub.location,
-            chainId: this.chain_data.chain_id,
+            chainId: this.chain_data?.chain_id,
             chainLogo: this.conf.api.chain_logo_url,
             providerName: this.conf.api.provider_name,
             providerUrl: this.conf.api.provider_url,
@@ -1652,17 +1660,19 @@ export class HyperionMaster {
         if (this.pendingRepairRanges.length > 0) {
             const nextRange = this.pendingRepairRanges.shift();
             console.log('NEXT RANGE FOR REPAIR: ', nextRange);
-            this.repairReader.wref.send({
-                event: 'new_range',
-                target: this.repairReader.worker_id.toString(),
-                data: {
-                    first_block: nextRange.start,
-                    last_block: nextRange.end + 1
-                }
-            });
+            if (this.repairReader && this.repairReader.wref && this.repairReader.worker_id && nextRange) {
+                this.repairReader.wref.send({
+                    event: 'new_range',
+                    target: this.repairReader.worker_id.toString(),
+                    data: {
+                        first_block: nextRange.start,
+                        last_block: nextRange.end + 1
+                    }
+                });
+            }
         } else {
             console.log('Repair completed!');
-            this.connectedController.send(JSON.stringify({
+            this.connectedController?.send(JSON.stringify({
                 event: 'repair_completed'
             }));
         }
