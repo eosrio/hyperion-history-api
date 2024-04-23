@@ -23,6 +23,13 @@ function filterToObj(chain: string, type: string, filters: string[]): {
                         table: parts[2]
                     }
                 }
+                default: {
+                    return {
+                        contract: "",
+                        table: "",
+                        action: ""
+                    }
+                }
             }
         });
 }
@@ -32,7 +39,7 @@ async function getFilters(fastify: FastifyInstance) {
     const whitelists = fastify.manager.config.whitelists;
     let isWhitelisted = false;
 
-    let includes = {
+    let includes: any = {
         actions: [],
         deltas: []
     };
@@ -47,7 +54,7 @@ async function getFilters(fastify: FastifyInstance) {
         includes.deltas = filterToObj(fastify.manager.chain, 'delta', whitelists.deltas);
     }
 
-    let excludes = {
+    let excludes: any = {
         actions: [],
         deltas: []
     };

@@ -3,9 +3,10 @@ import {mergeDeltaMeta, timedQuery} from "../../../helpers/functions";
 import {applyTimeFilter} from "../get_actions/functions";
 
 async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
-    let skip, limit;
+    let skip: number | undefined;
+    let limit: number = 10;
     let sort_direction = 'desc';
-    const mustArray = [];
+    const mustArray: any[] = [];
     const query: any = request.query;
     for (const param in query) {
         if (Object.prototype.hasOwnProperty.call(query, param)) {

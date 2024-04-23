@@ -81,7 +81,7 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
         }
     });
 
-    const response = {
+    const response: any = {
         query_time: null,
         cached: false,
         total: results['body']['hits']['total'],

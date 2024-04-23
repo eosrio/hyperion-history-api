@@ -219,8 +219,8 @@ export class ElasticRoutes {
         this.resetCounters();
     }
 
-    createGenericBuilder(collection, channel, counter, index_name, method) {
-        return new Promise((resolve) => {
+    createGenericBuilder(collection, channel, counter, index_name, method): Promise<number> {
+        return new Promise<number>((resolve) => {
             const messageMap = new Map();
             let maxBlockNum;
             this.bulkAction({
@@ -252,14 +252,16 @@ export class ElasticRoutes {
     async handleGenericRoute(payload: Message[], ch: Channel, cb: (indexed_size: number) => void): Promise<void> {
         const coll = {};
         for (const message of payload) {
-            const type = message.properties.headers.type;
-            if (!coll[type]) {
-                coll[type] = [];
+            const type = message.properties.headers?.type;
+            if (type) {
+                if (!coll[type]) {
+                    coll[type] = [];
+                }
+                coll[type].push(message);
             }
-            coll[type].push(message);
         }
 
-        const queue = [];
+        const queue: Promise<any>[] = [];
         const v = this.cm.config.settings.index_version;
         let counter = 0;
 
@@ -516,12 +518,12 @@ export class ElasticRoutes {
                     properties: payload.properties
                 };
                 if (contractMap.has(headers.code)) {
-                    contractMap.get(headers.code).push(item);
+                    contractMap.get(headers.code)?.push(item);
                 } else {
                     contractMap.set(headers.code, [item]);
                 }
             }
-            const processingQueue = [];
+            const processingQueue: Promise<number>[] = [];
             for (const entry of contractMap.entries()) {
                 processingQueue.push(
                     this.createGenericBuilder(
@@ -540,7 +542,7 @@ export class ElasticRoutes {
     }
 
     private static reportMaxBlock(maxBlockNum: number, index_name: string) {
-        process.send({
+        process.send?.({
             event: 'ingestor_block_report',
             index: index_name,
             proc: process.env.worker_role,

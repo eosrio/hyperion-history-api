@@ -13,7 +13,7 @@ async function getAbiSnapshot(fastify: FastifyInstance, request: FastifyRequest)
     const block = query.block;
     const should_fetch = query.fetch;
 
-    const mustArray = [];
+    const mustArray: any[] = [];
 
     mustArray.push({"term": {"account": code}});
 

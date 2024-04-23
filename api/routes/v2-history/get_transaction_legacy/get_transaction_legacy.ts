@@ -46,7 +46,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
     const results = pResults[1];
     const genTrxRes = pResults[2];
 
-    const response = {
+    const response: any = {
         "executed": false,
         "hot_only": false,
         "trx_id": query.id,

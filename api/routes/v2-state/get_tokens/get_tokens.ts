@@ -7,7 +7,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 
     const query: any = request.query;
 
-    const response = {
+    const response: any = {
         account: query.account,
         tokens: []
     };
@@ -61,7 +61,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
                         fastify.tokenCache.set(key, {precision});
                     }
                 }
-            } catch (e) {
+            } catch (e: any) {
                 errorMsg = e.message;
             }
         }

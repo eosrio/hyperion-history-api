@@ -3,9 +3,9 @@ import {mergeActionMeta, timedQuery} from "../../../helpers/functions";
 import {Serialize} from "eosjs";
 import {hLog} from "../../../../helpers/common_functions";
 import {Abieos} from "@eosrio/node-abieos";
-import {ApiResponse} from "@elastic/elasticsearch";
 import {JsonRpc} from "eosjs/dist";
 import {terms} from "../../v2-history/get_actions/definitions";
+import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
 
 const abi_remapping = {
     "_Bool": "bool"
@@ -30,7 +30,7 @@ async function fetchAbiHexAtBlockElastic(client, chain, contract_name, last_bloc
                 ]
             }
         };
-        const queryResult: ApiResponse = await client.search({
+        const queryResult: SearchResponse<any, any> = await client.search({
             index: `${chain}-abi-*`,
             body: {
                 size: 1, query,
@@ -38,9 +38,9 @@ async function fetchAbiHexAtBlockElastic(client, chain, contract_name, last_bloc
                 _source: {includes: _includes}
             }
         });
-        const results = queryResult.body.hits.hits;
+        const results = queryResult.hits.hits;
         if (results.length > 0) {
-            const nextRefResponse: ApiResponse = await client.search({
+            const nextRefResponse: SearchResponse<any, any> = await client.search({
                 index: `${chain}-abi-*`,
                 body: {
                     size: 1,
@@ -56,7 +56,7 @@ async function fetchAbiHexAtBlockElastic(client, chain, contract_name, last_bloc
                     _source: {includes: ["block"]}
                 }
             });
-            const nextRef = nextRefResponse.body.hits.hits;
+            const nextRef = nextRefResponse.hits.hits;
             if (nextRef.length > 0) {
                 return {
                     valid_until: nextRef[0]._source.block,
@@ -154,7 +154,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     const reqBody = request.body as any;
-    const should_array:any = [];
+    const should_array: any = [];
     for (const entry of terms) {
         const tObj = {term: {}};
         tObj.term[entry] = reqBody.account_name;
@@ -162,11 +162,11 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
     let code, method, pos, offset;
     let sort_direction = 'desc';
-    let filterObj:any = [];
+    let filterObj: any = [];
     if (reqBody.filter) {
         const filters = reqBody.filter.split(',');
         for (const filter of filters) {
-            const obj:any = {bool: {must: []}};
+            const obj: any = {bool: {must: []}};
             const parts = filter.split(':');
             if (parts.length === 2) {
                 [code, method] = parts;
@@ -209,7 +209,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         }
     }
 
-    const queryStruct:any = {
+    const queryStruct: any = {
         "bool": {
             must: [],
             boost: 1.0
@@ -276,7 +276,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     // console.log(JSON.stringify(esOpts, null, 2));
     const pResults = await Promise.all([fastify.eosjs.rpc.get_info(), fastify.elastic.search(esOpts)]);
     const results = pResults[1];
-    const response:any = {
+    const response: any = {
         actions: [],
         last_irreversible_block: pResults[0].last_irreversible_block_num
     };

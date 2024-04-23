@@ -85,9 +85,9 @@ export default class MainDSWorker extends HyperionWorker {
             const searchResult = await this.manager.elasticsearchClient.updateByQuery({
                 index: this.chain + '-delta-*',
                 conflicts: "proceed",
-                body: updateByQuery
+                ...updateByQuery
             });
-            if (searchResult.body.total === 0) {
+            if (searchResult.total === 0) {
 
                 if (!this.retryUpdates) {
                     // hLog(`Skipping ${identifier}`);
@@ -113,8 +113,8 @@ export default class MainDSWorker extends HyperionWorker {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 return false;
             } else {
-                if (searchResult.body.took > 500) {
-                    hLog(`Updated Deltas: ${searchResult.body.updated} | Took: ${searchResult.body.took} ms`);
+                if (searchResult.took && searchResult.took > 500) {
+                    hLog(`Updated Deltas: ${searchResult.updated} | Took: ${searchResult.took} ms`);
                     hLog(identifier);
                 }
                 return true;

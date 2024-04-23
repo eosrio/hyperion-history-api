@@ -4,9 +4,21 @@ import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethod
 import got from "got";
 import {checkDeltaFilter, checkFilter, hLog} from "../../helpers/common_functions";
 import {Socket} from "socket.io";
-import {ApiResponse} from "@elastic/elasticsearch";
+import {ScrollId, SearchResponse} from "@elastic/elasticsearch/lib/api/types";
 
 const deltaQueryFields = ['code', 'table', 'scope', 'payer'];
+
+export function getTotalValue(searchResponse: SearchResponse): number {
+    if (searchResponse.hits.total) {
+        if (typeof searchResponse.hits.total === 'number') {
+            return searchResponse.hits.total;
+        } else {
+            return searchResponse.hits.total.value;
+        }
+    } else {
+        return 0;
+    }
+}
 
 export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket, data: any) {
     const search_body: any = {
@@ -33,7 +45,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
         });
     }
 
-    const responseQueue: ApiResponse<Record<string, any>, unknown>[] = [];
+    const responseQueue: SearchResponse<any, any>[] = [];
 
     let counter = 0;
     let total = 0;
@@ -42,16 +54,18 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
 
     // console.log(JSON.stringify(search_body, null, 2));
 
-    const init_response = await fastify.elastic.search({
+    const init_response: SearchResponse<any, any> = await fastify.elastic.search({
         index: fastify.manager.chain + '-delta-*',
         scroll: '30s',
         size: fastify.manager.config.api.stream_scroll_batch || 500,
         body: search_body,
     });
 
+    const totalHits = getTotalValue(init_response);
+
     const scrollLimit = fastify.manager.config.api.stream_scroll_limit;
-    if (scrollLimit && scrollLimit !== -1 && init_response.body.hits.total.value > scrollLimit) {
-        const errorMsg = `Requested ${init_response.body.hits.total.value} deltas, limit is ${scrollLimit}.`;
+    if (scrollLimit && scrollLimit !== -1 && totalHits > scrollLimit) {
+        const errorMsg = `Requested ${totalHits} deltas, limit is ${scrollLimit}.`;
         socket.emit('message', {
             reqUUID: socket.data.reqUUID,
             type: 'delta_trace', mode: 'history', messages: [],
@@ -60,32 +74,30 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
         return {status: false, error: errorMsg};
     }
 
-    if (init_response.body.hits.total.value > 10000) {
-        total = init_response.body.hits.total.value;
+    if (totalHits > 10000) {
+        total = totalHits;
         longScroll = true;
         hLog(`Attention! Long scroll (deltas) is running!`);
     }
 
     // emit first block
-    if (init_response.body.hits.hits.length > 0) {
-        emitTraceInit(socket, init_response.body.hits.hits[0]._source.block_num, init_response.body.hits.total.value);
+    if (init_response.hits.hits.length > 0) {
+        emitTraceInit(socket, init_response.hits.hits[0]._source.block_num, totalHits);
     }
 
     responseQueue.push(init_response);
 
     let lastTransmittedBlock = 0;
-    let pendingScrollId = '';
+    let pendingScrollId: ScrollId | undefined = '';
     while (responseQueue.length) {
         let filterCount = 0;
         const rp = responseQueue.shift();
-        if (rp && rp.body) {
-            const body = rp.body;
-
-            pendingScrollId = body['_scroll_id'];
+        if (rp) {
+            pendingScrollId = rp._scroll_id;
             const enqueuedMessages: any[] = [];
-            counter += body['hits']['hits'].length;
+            counter += rp.hits.hits.length;
 
-            for (const doc of body['hits']['hits']) {
+            for (const doc of rp.hits.hits) {
                 let allow = false;
                 if (onDemandDeltaFilters.length > 0) {
                     allow = onDemandDeltaFilters.every(filter => {
@@ -126,13 +138,13 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
                 hLog(`Progress: ${counter + totalFiltered}/${total}`);
             }
 
-            if (body['hits'].total.value === counter) {
+            if (getTotalValue(rp) === counter) {
                 hLog(`${counter} past deltas streamed to ${socket.id} (${totalFiltered} filtered)`);
                 break;
             }
 
             const next_response = await fastify.elastic.scroll({
-                body: {scroll_id: body['_scroll_id'], scroll: '30s'}
+                body: {scroll_id: rp._scroll_id ?? "", scroll: '30s'}
             });
             responseQueue.push(next_response);
         }
@@ -190,55 +202,55 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
         });
     }
 
-    const responseQueue: ApiResponse<Record<string, any>, unknown>[] = [];
+    const responseQueue: SearchResponse<any, any>[] = [];
     let counter = 0;
     let total = 0;
     let totalFiltered = 0;
     let longScroll = false;
 
-    const init_response = await fastify.elastic.search({
+    const init_response: SearchResponse<any, any> = await fastify.elastic.search({
         index: fastify.manager.chain + '-action-*',
         scroll: '30s',
         size: fastify.manager.config.api.stream_scroll_batch || 500,
         body: search_body,
     });
 
+    const totalHits = getTotalValue(init_response);
+
     const scrollLimit = fastify.manager.config.api.stream_scroll_limit;
-    if (scrollLimit && scrollLimit !== -1 && init_response.body.hits.total.value > scrollLimit) {
-        const errorMsg = `Requested ${init_response.body.hits.total.value} actions, limit is ${scrollLimit}.`;
+    if (scrollLimit && scrollLimit !== -1 && totalHits > scrollLimit) {
+        const errorMsg = `Requested ${totalHits} actions, limit is ${scrollLimit}.`;
         socket.emit('message', {
             reqUUID: socket.data.reqUUID,
             type: 'action_trace', mode: 'history', messages: [],
-            error: `Requested ${init_response.body.hits.total.value} actions, limit is ${scrollLimit}.`
+            error: `Requested ${totalHits} actions, limit is ${scrollLimit}.`
         });
         return {status: false, error: errorMsg};
     }
 
-    if (init_response.body.hits.total.value > 10000) {
-        total = init_response.body.hits.total.value;
+    if (totalHits > 10000) {
+        total = totalHits;
         longScroll = true;
         hLog(`Attention! Long scroll (actions) is running!`);
     }
 
     // emit first block
-    if (init_response.body.hits.hits.length > 0) {
-        emitTraceInit(socket, init_response.body.hits.hits[0]._source.block_num, init_response.body.hits.total.value);
+    if (init_response.hits.hits.length > 0) {
+        emitTraceInit(socket, init_response.hits.hits[0]._source.block_num, totalHits);
     }
 
     responseQueue.push(init_response);
 
     let lastTransmittedBlock = 0;
-    let pendingScrollId = '';
+    let pendingScrollId: ScrollId | undefined = '';
     while (responseQueue.length) {
         let filterCount = 0;
         const rp = responseQueue.shift();
-        if (rp && rp.body) {
-            const body = rp.body;
-            pendingScrollId = body['_scroll_id'];
+        if (rp) {
+            pendingScrollId = rp._scroll_id;
             const enqueuedMessages: any[] = [];
-            counter += body['hits']['hits'].length;
-
-            for (const doc of body['hits']['hits']) {
+            counter += rp.hits.hits.length;
+            for (const doc of rp.hits.hits) {
                 let allow = false;
                 if (onDemandFilters.length > 0) {
                     allow = onDemandFilters.every(filter => {
@@ -279,13 +291,13 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
                 hLog(`Progress: ${counter + totalFiltered}/${total}`);
             }
 
-            if (body['hits'].total.value === counter) {
+            if (getTotalValue(rp) === counter) {
                 hLog(`${counter} past actions streamed to ${socket.id} (${totalFiltered} filtered)`);
                 break;
             }
 
             const next_response = await fastify.elastic.scroll({
-                body: {scroll_id: body['_scroll_id'], scroll: '30s'}
+                body: {scroll_id: rp._scroll_id ?? "", scroll: '30s'}
             });
             responseQueue.push(next_response);
         }
@@ -595,7 +607,7 @@ export function chainApiHandler(fastify: FastifyInstance) {
         const [cachedData, hash, path] = fastify.cacheManager.getCachedData(request);
         if (cachedData) {
             console.log('cache hit:', path, hash);
-            reply.headers({'hyperion-cached': true}).send(cachedData);
+            reply.header('hyperion-cached', true).send(cachedData);
         } else {
             // call actual request
             const apiResponse = await handleChainApiRedirect(request, reply, fastify);

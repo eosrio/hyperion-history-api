@@ -7,7 +7,7 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
 
     const query: any = request.query;
 
-    const response = {
+    const response: any = {
         account: null,
         actions: null,
         total_actions: 0,
@@ -16,7 +16,7 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     };
 
     const account = query.account;
-    const reqQueue = [];
+    const reqQueue: Promise<any>[] = [];
 
     try {
         response.account = await fastify.eosjs.rpc.get_account(account);

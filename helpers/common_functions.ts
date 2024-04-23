@@ -1,14 +1,16 @@
-import {ApiResponse, Client} from "@elastic/elasticsearch";
+import {Client} from "@elastic/elasticsearch";
 import {Serialize} from "../addons/eosjs-native";
 import {existsSync} from "fs";
 import {join} from "path";
+import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
+import {getTotalValue} from "../api/helpers/functions";
 
 let config;
 const conf_path = join(__dirname, `../${process.env.CONFIG_JSON}`);
 if (existsSync(conf_path)) {
     try {
         config = require(conf_path);
-    } catch (e) {
+    } catch (e: any) {
         console.log(e.message);
         process.exit(1);
     }
@@ -19,116 +21,102 @@ if (!config) {
     process.exit(1);
 }
 
-function getLastResult(results: ApiResponse) {
-    if (results.body.hits?.hits?.length > 0) {
-        return parseInt(results.body.hits.hits[0].sort[0], 10);
+function getLastResult(results: SearchResponse<any, any>) {
+    if (results.hits?.hits?.length > 0) {
+        return parseInt(results.hits.hits[0].sort[0], 10);
     } else {
         return 1;
     }
 }
 
 export async function getLastIndexedBlockByDelta(es_client: Client, chain: string) {
-    const results: ApiResponse = await es_client.search({
+    const results = await es_client.search<any>({
         index: chain + '-delta-*',
         size: 1,
-        body: {
-            query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "desc"}}]
-        }
+        query: {bool: {filter: {match_all: {}}}},
+        sort: [{block_num: {order: "desc"}}]
     });
     return getLastResult(results);
 }
 
 export async function getLastIndexedBlock(es_client: Client, chain: string) {
-    const results: ApiResponse = await es_client.search({
+    const results = await es_client.search<any>({
         index: chain + '-block-*',
         size: 1,
-        body: {
-            query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "desc"}}]
-        }
+        query: {bool: {filter: {match_all: {}}}},
+        sort: [{block_num: {order: "desc"}}]
     });
     return getLastResult(results);
 }
 
 export async function getLastIndexedBlockWithTotalBlocks(es_client: Client, chain: string): Promise<[number, number]> {
-    const results: ApiResponse = await es_client.search({
+    const results = await es_client.search<any>({
         index: chain + '-block-*',
         size: 1,
-        body: {
-            query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "desc"}}],
-            track_total_hits: true
-        }
+        query: {bool: {filter: {match_all: {}}}},
+        sort: [{block_num: {order: "desc"}}],
+        track_total_hits: true
     });
     let lastBlock = getLastResult(results);
-    let totalBlocks = results.body.hits.total.value || 1;
+    let totalBlocks = getTotalValue(results) || 1;
     return [lastBlock, totalBlocks];
 }
 
 export async function getFirstIndexedBlock(es_client: Client, chain: string): Promise<number> {
-    const results: ApiResponse = await es_client.search({
+    const results = await es_client.search<any>({
         index: chain + '-block-*',
         size: 1,
-        body: {
-            query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "asc"}}]
-        }
+        query: {bool: {filter: {match_all: {}}}},
+        sort: [{block_num: {order: "asc"}}]
     });
     return getLastResult(results);
 }
 
 
 export async function getLastIndexedABI(es_client: Client, chain: string) {
-    const results: ApiResponse = await es_client.search({
+    const results = await es_client.search<any>({
         index: chain + '-abi-*',
         size: 1,
-        body: {
-            query: {
-                match_all: {}
-            },
-            sort: [{block: {order: "desc"}}]
-        }
+        query: {
+            match_all: {}
+        },
+        sort: [{block: {order: "desc"}}]
     });
     return getLastResult(results);
 }
 
 export async function getLastIndexedBlockByDeltaFromRange(es_client: Client, chain: string, first: number, last: number) {
-    const results: ApiResponse = await es_client.search({
+    const results = await es_client.search<any>({
         index: chain + '-delta-*',
         size: 1,
-        body: {
-            query: {
-                range: {
-                    block_num: {
-                        "gte": first,
-                        "lt": last,
-                        "boost": 2
-                    }
+        query: {
+            range: {
+                block_num: {
+                    "gte": first,
+                    "lt": last,
+                    "boost": 2
                 }
-            },
-            sort: [{block_num: {order: "desc"}}]
-        }
+            }
+        },
+        sort: [{block_num: {order: "desc"}}]
     });
     return getLastResult(results);
 }
 
 export async function getLastIndexedBlockFromRange(es_client: Client, chain: string, first: number, last: number) {
-    const results = await es_client.search({
+    const results = await es_client.search<any>({
         index: chain + '-block-*',
         size: 1,
-        body: {
-            query: {
-                range: {
-                    block_num: {
-                        "gte": first,
-                        "lt": last,
-                        "boost": 2
-                    }
+        query: {
+            range: {
+                block_num: {
+                    "gte": first,
+                    "lt": last,
+                    "boost": 2
                 }
-            },
-            sort: [{block_num: {order: "desc"}}]
-        }
+            }
+        },
+        sort: [{block_num: {order: "desc"}}]
     });
     return getLastResult(results);
 }
@@ -247,9 +235,9 @@ export function checkFilter(filter, _source) {
 }
 
 export function hLog(input: any, ...extra: any[]) {
-    let role;
+    let role: string;
     if (process.env.worker_role) {
-        const id = parseInt(process.env.worker_id);
+        const id = parseInt(process.env.worker_id ?? "");
         role = `[${process.pid} - ${(id < 10 ? '0' : '') + id.toString()}_${process.env.worker_role}]`;
     } else {
         if (process.env.script && process.env.script === './api/server.js') {
@@ -260,12 +248,14 @@ export function hLog(input: any, ...extra: any[]) {
     }
     if (process.env.TRACE_LOGS === 'true') {
         const e = new Error();
-        const frame = e.stack.split("\n")[2];
-        const where = frame.split(" ")[6].split(/[:()]/);
-        const arr = where[1].split("/");
-        const fileName = arr[arr.length - 1];
-        const lineNumber = where[2];
-        role += ` ${fileName}:${lineNumber}`;
+        if (e && e.stack) {
+            const frame = e.stack.split("\n")[2];
+            const where = frame.split(" ")[6].split(/[:()]/);
+            const arr = where[1].split("/");
+            const fileName = arr[arr.length - 1];
+            const lineNumber = where[2];
+            role += ` ${fileName}:${lineNumber}`;
+        }
     }
     console.log(role, input, ...extra);
 }

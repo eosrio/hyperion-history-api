@@ -36,7 +36,7 @@ export default class HyperionParser extends BaseParser {
 		action.producer = trx_data.producer;
 		action.trx_id = trx_data.trx_id;
 
-		if (action.account_ram_deltas.length === 0) {
+		if (action.account_ram_deltas && action.account_ram_deltas.length === 0) {
 			delete action.account_ram_deltas;
 		}
 
@@ -70,7 +70,7 @@ export default class HyperionParser extends BaseParser {
 		for (const message of messages) {
 
 			// profile deserialization
-			const ds_times = {
+			const ds_times: any = {
 				size: message.content.length,
 				eosjs: {
 					result: undefined,
@@ -100,14 +100,14 @@ export default class HyperionParser extends BaseParser {
 			});
 
 			if (!ds_msg) {
-				if (worker.ch_ready) {
+				if (worker.ch && worker.ch_ready) {
 					worker.ch.nack(message);
 					throw new Error('failed to deserialize datatype=result');
 				}
 			}
 
 			const res = ds_msg[1];
-			let block = null;
+			let block: any = null;
 			let traces = [];
 			let deltas = [];
 
@@ -224,16 +224,16 @@ export default class HyperionParser extends BaseParser {
 						evPayload["producer"] = block['producer'];
 						evPayload["schedule_version"] = block['schedule_version'];
 					}
-					process.send(evPayload);
+					process.send?.(evPayload);
 				} else {
 					hLog(`ERROR: Block data not found for #${res['this_block']['block_num']}`);
 				}
-				if (worker.ch_ready) {
+				if (worker.ch && worker.ch_ready) {
 					worker.ch.ack(message);
 				}
 			} catch (e) {
 				console.log(e);
-				if (worker.ch_ready) {
+				if (worker.ch && worker.ch_ready) {
 					worker.ch.nack(message);
 				}
 				process.exit(1);
@@ -243,7 +243,7 @@ export default class HyperionParser extends BaseParser {
 
 	async flattenInlineActions(action_traces: any[]): Promise<any[]> {
 		hLog(`Calling undefined flatten operation!`);
-		return Promise.resolve(undefined);
+		return Promise.resolve<any>(undefined);
 	}
 
 }

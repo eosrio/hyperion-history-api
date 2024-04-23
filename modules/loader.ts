@@ -15,11 +15,11 @@ export class HyperionModuleLoader {
 
     chainMappings = new Map();
     extendedActions: Set<string> = new Set();
-    extraMappings = [];
+    extraMappings: any[] = [];
     chainID;
     private conn: HyperionConnections;
     private config: HyperionConfig;
-    public parser: BaseParser;
+    public parser?: BaseParser;
     public plugins: HyperionPlugin[];
 
     constructor(private cm: ConfigurationModule) {
@@ -166,7 +166,7 @@ export class HyperionModuleLoader {
                             this.loadPluginStreamHandlers(pl.streamHandlers);
                         }
                         this.plugins.push(pl);
-                    } catch (e) {
+                    } catch (e: any) {
                         hLog(`Plugin "${key}" failed to load: ${e.message}`);
                     }
                 }

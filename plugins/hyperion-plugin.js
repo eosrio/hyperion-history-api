@@ -4,6 +4,8 @@ exports.HyperionPlugin = void 0;
 class HyperionPlugin {
     constructor(config) {
         this.internalPluginName = '';
+        this.indexerPlugin = false;
+        this.apiPlugin = false;
         this.actionHandlers = [];
         this.deltaHandlers = [];
         this.streamHandlers = [];

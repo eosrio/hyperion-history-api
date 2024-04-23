@@ -21,12 +21,13 @@ const hyperionWorkers = {
 
 async function launch() {
 	const conf = new ConfigurationModule();
-	const chain_name = conf.config.settings.chain;
-	const env: WorkerEnv = {
-		worker_id: process.env.worker_id,
-		worker_role: process.env.worker_role
-	};
 
+	if (!conf.config) {
+		hLog("Configuration not found! Exiting now!");
+		process.exit();
+	}
+
+	const chain_name = conf.config.settings.chain;
 	process.on('SIGINT', function () {
 		hLog("caught interrupt signal. Exiting now!");
 		process.exit();
@@ -40,6 +41,12 @@ async function launch() {
 			console.log(err);
 		});
 	} else {
+
+		const env: WorkerEnv = {
+			worker_id: process.env.worker_id ?? "",
+			worker_role: process.env.worker_role ?? ""
+		};
+
 		if (hyperionWorkers[env.worker_role] && !conf.disabledWorkers.has(env.worker_role)) {
 			process.title = `${conf.proc_prefix}-${chain_name}-${env.worker_role}:${env.worker_id}`;
 			const mod = (await import(`./workers/${hyperionWorkers[env.worker_role]}`)).default;

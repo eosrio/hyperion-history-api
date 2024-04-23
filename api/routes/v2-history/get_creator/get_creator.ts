@@ -19,7 +19,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
             if (genesisBlock) {
                 response.timestamp = genesisBlock.timestamp;
             }
-        } catch (e) {
+        } catch (e: any) {
             console.log(e.message);
         }
         response.creator = '__self__';
@@ -89,7 +89,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
                     }
                 }
                 return response;
-            } catch (e) {
+            } catch (e: any) {
                 console.log(e.message);
                 throw new Error("account creation not found");
             }

@@ -8,7 +8,7 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
 	const {account, code, action, permissions} = query;
 	const {skip, limit} = getSkipLimit(query);
 
-	const queryStruct = {
+	const queryStruct: any = {
 		"bool": {
 			must: [],
 			must_not: []
@@ -41,7 +41,7 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
 		sort: {block_num: 'desc'}
 	};
 
-	const maxLinks = fastify.manager.config.api.limits.get_links;
+	const maxLinks = fastify.manager.config.api.limits.get_links ?? 0;
 	const results: ApiResponse = await fastify.elastic.search({
 		index: fastify.manager.chain + '-link-*',
 		from: skip || 0,

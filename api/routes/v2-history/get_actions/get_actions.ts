@@ -12,7 +12,7 @@ import {
 
 async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
-    const maxActions = fastify.manager.config.api.limits.get_actions;
+    const maxActions = fastify.manager.config.api.limits.get_actions ?? 0;
     const queryStruct = {
         "bool": {
             must: [],

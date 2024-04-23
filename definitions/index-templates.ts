@@ -3,8 +3,6 @@ import {ConfigurationModule} from "../modules/config";
 const shards = 2;
 const refresh = "1s";
 
-export * from './index-lifecycle-policies';
-
 // LZ4 Compression
 // const compression = 'default';
 // DEFLATE

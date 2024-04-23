@@ -32,8 +32,8 @@ export interface HyperionStreamHandler {
 
 export abstract class HyperionPlugin {
     internalPluginName: string = '';
-    indexerPlugin: boolean;
-    apiPlugin: boolean;
+    indexerPlugin = false;
+    apiPlugin = false;
     actionHandlers: HyperionActionHandler[] = [];
     deltaHandlers: HyperionDeltaHandler[] = [];
     streamHandlers: HyperionStreamHandler[] = [];

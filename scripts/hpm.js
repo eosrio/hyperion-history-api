@@ -97,7 +97,7 @@ async function buildPlugin(name, flags) {
             npmInstall.on('close', (code) => {
                 if (code !== 0) {
                     console.log(`process exited with code ${code}`);
-                    process.exit(code);
+                    process.exit(code ?? 0);
                 }
                 resolve(true);
             });
@@ -112,7 +112,7 @@ async function buildPlugin(name, flags) {
         npmInstall.on('close', (code) => {
             if (code !== 0) {
                 console.log(`process exited with code ${code}`);
-                process.exit(code);
+                process.exit(code ?? 0);
             }
             resolve(true);
         });

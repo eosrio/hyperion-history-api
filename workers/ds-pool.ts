@@ -200,24 +200,22 @@ export default class DSPoolWorker extends HyperionWorker {
                 _includes.push("abi_hex");
             }
             // const t_start = process.hrtime.bigint();
-            const queryResult = await this.client.search({
+            const queryResult = await this.client.search<any>({
                 index: `${this.chain}-abi-*`,
-                body: {
-                    size: 1 + fetch_offset,
-                    query: {
-                        bool: {
-                            must: [
-                                {term: {account: contract_name}},
-                                {range: {block: {lte: last_block}}}
-                            ]
-                        }
-                    },
-                    sort: [{block: {order: "desc"}}],
-                    _source: {includes: _includes}
-                }
+                size: 1 + fetch_offset,
+                query: {
+                    bool: {
+                        must: [
+                            {term: {account: contract_name}},
+                            {range: {block: {lte: last_block}}}
+                        ]
+                    }
+                },
+                sort: [{block: {order: "desc"}}],
+                _source: {includes: _includes}
             });
             // const t_end = process.hrtime.bigint();
-            const results = queryResult.body.hits.hits;
+            const results = queryResult.hits.hits;
             // const duration = (Number(t_end - t_start) / 1000 / 1000).toFixed(2);
             if (results.length > 0) {
                 // hLog(`fetch abi from elastic took: ${duration} ms`);
@@ -476,7 +474,7 @@ export default class DSPoolWorker extends HyperionWorker {
             const usageIncluded = {status: false};
 
             // perform action flattening if necessary
-            if (this.mLoader.parser.flatten) {
+            if (this.mLoader.parser?.flatten) {
                 const trace_counters = {trace_index: 0};
                 action_traces = await this.mLoader.parser.flattenInlineActions(action_traces, 0, trace_counters, 0);
                 action_traces.sort((a, b) => {
@@ -486,7 +484,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
             for (const action_trace of action_traces) {
                 if (action_trace[0].startsWith('action_trace_')) {
-                    const ds_status = await this.mLoader.parser.parseAction(this,
+                    const ds_status = await this.mLoader.parser?.parseAction(this,
                         ts,
                         action_trace[1],
                         trx_data,

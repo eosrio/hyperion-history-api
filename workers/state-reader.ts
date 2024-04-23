@@ -684,11 +684,11 @@ export default class StateReader extends HyperionWorker {
         const dbqResultDelta = await this.client.deleteByQuery({
             index: this.chain + '-delta-' + this.conf.settings.index_version + '-*',
             refresh: true,
-            body: searchBody
+            ...searchBody
         });
 
-        if (dbqResultDelta.body && dbqResultDelta.statusCode === 200) {
-            hLog(`${dbqResultDelta.body.deleted} deltas removed from ${block_id}`);
+        if (dbqResultDelta && dbqResultDelta.deleted) {
+            hLog(`${dbqResultDelta} deltas removed from ${block_id}`);
         } else {
             hLog('Operation failed');
         }
@@ -700,8 +700,8 @@ export default class StateReader extends HyperionWorker {
             body: searchBody
         });
 
-        if (dbqResultAction.body && dbqResultAction.statusCode === 200) {
-            hLog(`${dbqResultAction.body.deleted} traces removed from ${block_id}`);
+        if (dbqResultAction && dbqResultAction.deleted) {
+            hLog(`${dbqResultAction.deleted} traces removed from ${block_id}`);
         } else {
             hLog('Operation failed');
         }
@@ -715,13 +715,13 @@ export default class StateReader extends HyperionWorker {
         let targetBlock = this_block['block_num'];
         while (targetBlock < this.local_block_num + 1) {
             // fetch by block number to find the forked block_id
-            const blockData = await this.client.get({
+            const blockData = await this.client.get<any>({
                 index: this.chain + '-block-' + this.conf.settings.index_version,
                 id: targetBlock
             });
             targetBlock++;
-            if (blockData.body) {
-                const targetBlockId = blockData.body._source.block_id;
+            if (blockData) {
+                const targetBlockId = blockData._source.block_id;
                 this.forkedBlocks.set(targetBlockId, Date.now());
                 try {
                     await this.deleteForkedBlock(targetBlockId);

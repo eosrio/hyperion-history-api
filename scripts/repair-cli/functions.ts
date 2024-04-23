@@ -1,5 +1,5 @@
 import {readFileSync} from "node:fs";
-import {Client, estypes} from "@elastic/elasticsearch";
+import {Client} from "@elastic/elasticsearch";
 import {HyperionBlock} from "./interfaces.js";
 
 export function readConnectionConfig() {
@@ -15,7 +15,7 @@ export function initESClient(config: any) {
             username: config.elasticsearch.user,
             password: config.elasticsearch.pass
         },
-        ssl: {
+        tls: {
             rejectUnauthorized: false
         }
     });
@@ -27,15 +27,13 @@ export function readChainConfig(chain: string) {
 }
 
 export async function getFirstIndexedBlock(client: Client, blockIndex: string) {
-    const {body} = await client.search<estypes.SearchResponse<HyperionBlock>>({
+    const result = await client.search<HyperionBlock>({
         index: blockIndex,
         size: 1,
-        body: {
-            sort: [{block_num: {order: 'asc'}}]
-        }
+        sort: [{block_num: {order: 'asc'}}]
     });
-    if (body.hits.hits[0]._source) {
-        return body.hits.hits[0]._source.block_num;
+    if (result.hits.hits[0]._source) {
+        return result.hits.hits[0]._source.block_num;
     } else {
         console.log('No blocks indexed yet');
         process.exit();
@@ -43,36 +41,32 @@ export async function getFirstIndexedBlock(client: Client, blockIndex: string) {
 }
 
 export async function getLastIndexedBlock(client: Client, blockIndex: string) {
-    const {body} = await client.search<estypes.SearchResponse<HyperionBlock>>({
+    const result = await client.search<HyperionBlock>({
         index: blockIndex,
         size: 1,
-        body: {
-            sort: [{block_num: {order: 'desc'}}]
-        }
+        sort: [{block_num: {order: 'desc'}}]
     });
-    if (body.hits.hits[0]._source) {
-        return body.hits.hits[0]._source.block_num;
+    if (result.hits.hits[0]._source) {
+        return result.hits.hits[0]._source.block_num;
     } else {
         console.log('No blocks indexed yet');
         process.exit();
     }
 }
 
-export async function getBlocks(client: any, indexName: string, blocoInicial: any, blocoFinal: any, size: any) {
+export async function getBlocks(client: any, indexName: string, startingBlock: any, finalBlock: any, size: any) {
     return await client.search({
         index: indexName,
         size: size,
-        body: {
-            sort: [{block_num: {order: "desc"}}],
-            query: {
-                range: {
-                    block_num: {
-                        gte: blocoFinal,
-                        lte: blocoInicial,
-                    },
+        sort: [{block_num: {order: "desc"}}],
+        query: {
+            range: {
+                block_num: {
+                    gte: finalBlock,
+                    lte: startingBlock,
                 },
             },
-        }
+        },
     });
 }
 

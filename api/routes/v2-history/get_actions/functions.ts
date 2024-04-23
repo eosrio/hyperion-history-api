@@ -14,8 +14,8 @@ export function addSortedBy(query, queryBody, sort_direction) {
 }
 
 export function processMultiVars(queryStruct, parts, field) {
-    const must = [];
-    const mustNot = [];
+    const must: any[] = [];
+    const mustNot: any[] = [];
 
     parts.forEach(part => {
         if (part.startsWith("!")) {
@@ -85,14 +85,14 @@ export function applyTimeFilter(query, queryStruct) {
             if (query['before']) {
                 try {
                     _lte = new Date(query['before']).toISOString();
-                } catch (e) {
+                } catch (e: any) {
                     throw new Error(e.message + ' [before]');
                 }
             }
             if (query['after']) {
                 try {
                     _gte = new Date(query['after']).toISOString();
-                } catch (e) {
+                } catch (e: any) {
                     throw new Error(e.message + ' [after]');
                 }
             }
@@ -193,7 +193,7 @@ export function applyGenericFilters(query, queryStruct, allowedExtraParams: Set<
 }
 
 export function makeShouldArray(query) {
-    const should_array = [];
+    const should_array: any[] = [];
     for (const entry of terms) {
         const tObj = {term: {}};
         tObj.term[entry] = query.account;
@@ -203,11 +203,11 @@ export function makeShouldArray(query) {
 }
 
 export function applyCodeActionFilters(query, queryStruct) {
-    let filterObj = [];
+    let filterObj: any[] = [];
     if (query.filter) {
         for (const filter of query.filter.split(',')) {
             if (filter !== '*:*') {
-                const _arr = [];
+                const _arr: any[] = [];
                 const parts = filter.split(':');
                 if (parts.length === 2) {
                     const [code, method] = parts;
@@ -231,7 +231,8 @@ export function applyCodeActionFilters(query, queryStruct) {
 }
 
 export function getSkipLimit(query, max?: number) {
-    let skip, limit;
+    let skip = 0;
+    let limit = 0;
     skip = parseInt(query.skip, 10);
     if (skip < 0) {
         throw new Error('invalid skip parameter');
@@ -242,7 +243,7 @@ export function getSkipLimit(query, max?: number) {
     limit = parseInt(query.limit, 10);
     if (limit < 1) {
         throw new Error('invalid limit parameter');
-    } else if (limit > max) {
+    } else if (limit > (max ?? 10000)) {
         throw new Error(`limit too big, maximum: ${max}`);
     }
     return {skip, limit};

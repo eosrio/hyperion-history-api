@@ -368,11 +368,13 @@ async function checkES(conn: HyperionConnections): Promise<boolean> {
     // console.log(`Prepared client: ${es_url}`);
     const client = new Client({
         node: es_url,
-        ssl: {rejectUnauthorized: false}
+        tls: {
+            rejectUnauthorized: false
+        }
     });
     try {
         const result = await client.cat.health();
-        console.log(`[info] [ES] - ${result.body.trim()}`);
+        console.log(`[info] [ES] - ${result}`);
         console.log('[info] [ES] - Connection established!');
         return true;
     } catch (reason: any) {

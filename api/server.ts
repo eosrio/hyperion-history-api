@@ -3,7 +3,7 @@ import {ConfigurationModule} from "../modules/config";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import IORedis from 'ioredis';
-import fastify, {FastifyReply, FastifyRequest} from 'fastify'
+import fastify, {FastifyInstance, FastifyReply, FastifyRequest} from 'fastify'
 import {registerPlugins} from "./plugins";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes";
@@ -19,15 +19,15 @@ import {bootstrap} from 'global-agent';
 
 class HyperionApiServer {
 
-    private hub: Socket;
-    private readonly fastify;
+    private hub?: Socket;
+    private readonly fastify: FastifyInstance;
     private readonly pluginParams: any;
     private readonly chain: string;
     private readonly conf: HyperionConfig;
     private readonly manager: ConnectionManager;
 
     private readonly cacheManager: CacheManager;
-    socketManager: SocketManager;
+    socketManager?: SocketManager;
     mLoader: HyperionModuleLoader;
 
     constructor() {
@@ -77,6 +77,7 @@ class HyperionApiServer {
         };
 
         this.fastify = fastify({
+            exposeHeadRoutes: false,
             ignoreTrailingSlash: false,
             trustProxy: true,
             pluginTimeout: 5000,
@@ -95,7 +96,7 @@ class HyperionApiServer {
         this.fastify.decorate('allowedActionQueryParamSet', extendedActionsSet);
 
         // define chain api url for /v1/chain/ redirects
-        let chainApiUrl: string = this.conf.api.chain_api;
+        let chainApiUrl: string = this.conf.api.chain_api ?? "";
         if (chainApiUrl === null || chainApiUrl === "") {
             chainApiUrl = this.manager.conn.chains[this.chain].http;
         }
@@ -202,7 +203,7 @@ class HyperionApiServer {
                 } else {
                     return false;
                 }
-            } catch (e) {
+            } catch (e: any) {
                 hLog(e.message);
                 return false;
             }
@@ -216,9 +217,9 @@ class HyperionApiServer {
         await waitUntilReady(async () => {
             try {
                 const esInfo = await this.manager.elasticsearchClient.info();
-                hLog(`Elasticsearch: ${esInfo.body.version.number} | Lucene: ${esInfo.body.version.lucene_version}`);
+                hLog(`Elasticsearch: ${esInfo.version.number} | Lucene: ${esInfo.version.lucene_version}`);
                 return true;
-            } catch (e) {
+            } catch (e: any) {
                 console.log(e.message);
                 return false;
             }
@@ -299,7 +300,7 @@ class HyperionApiServer {
     }
 
     private emitHubApiUpdate() {
-        this.hub.emit('hyp_info', {
+        this.hub?.emit('hyp_info', {
             type: 'api',
             production: this.conf.hub.production,
             location: this.conf.hub.location,

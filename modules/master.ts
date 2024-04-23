@@ -1,4 +1,4 @@
-import {ApiResponse, Client} from "@elastic/elasticsearch";
+import {Client} from "@elastic/elasticsearch";
 import {JsonRpc} from "eosjs/dist";
 import {ConnectionManager} from "../connections/manager.class";
 import {ConfigurationModule} from "./config";
@@ -12,7 +12,8 @@ import {
     getLastIndexedBlockByDeltaFromRange,
     getLastIndexedBlockFromRange,
     hLog,
-    messageAllWorkers, waitUntilReady
+    messageAllWorkers,
+    waitUntilReady
 } from "../helpers/common_functions";
 
 import pm2io from '@pm2/io';
@@ -44,8 +45,10 @@ import AlertsManager from "./alertsManager";
 
 import {bootstrap} from 'global-agent';
 import {App, TemplatedApp, WebSocket} from "uWebSockets.js";
-import moment = require("moment");
+import moment from "moment";
 import Timeout = NodeJS.Timeout;
+import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
+import {getTotalValue} from "../api/helpers/functions";
 
 interface RevBlock {
     num: number;
@@ -182,6 +185,12 @@ export class HyperionMaster {
 
     constructor() {
         this.cm = new ConfigurationModule();
+
+        if (!this.cm.config) {
+            hLog("Configuration is not present! Exiting now!");
+            process.exit(1);
+        }
+
         this.conf = this.cm.config;
 
         if (this.conf.settings.use_global_agent) {
@@ -476,9 +485,9 @@ export class HyperionMaster {
     private async verifyIngestClients() {
         for (const ingestClient of this.manager.ingestClients) {
             try {
-                const ping_response: ApiResponse = await ingestClient.ping();
-                if (ping_response.body) {
-                    hLog(`Ingest client ready at ${ping_response.meta.connection.id}`);
+                const ping_response: boolean = await ingestClient.ping();
+                if (!ping_response) {
+                    hLog('Failed to connect to one of the ingestion nodes. Please verify the connections.json file');
                 }
             } catch (e: any) {
                 hLog(e.message);
@@ -545,10 +554,9 @@ export class HyperionMaster {
     private async applyUpdateScript() {
         const script_status = await this.esClient.putScript({
             id: "updateByBlock",
-            body: {
-                script: {
-                    lang: "painless",
-                    source: `
+            script: {
+                lang: "painless",
+                source: `
                     boolean valid = false;
                     if(ctx._source.block_num != null) {
                       if(params.block_num < ctx._source.block_num) {
@@ -570,10 +578,9 @@ export class HyperionMaster {
                       }
                     }
                 `
-                }
             }
         });
-        if (!script_status.body['acknowledged']) {
+        if (!script_status.acknowledged) {
             hLog('Failed to load script updateByBlock. Aborting!');
             process.exit(1);
         } else {
@@ -581,28 +588,28 @@ export class HyperionMaster {
         }
     }
 
-    private async addLifecyclePolicies(indexConfig) {
-        if (indexConfig.ILPs) {
-            for (const ILP of indexConfig.ILPs) {
-                try {
-                    await this.esClient.ilm.getLifecycle({
-                        policy: ILP.policy
-                    });
-                } catch {
-                    try {
-                        const ilm_status: ApiResponse = await this.esClient.ilm.putLifecycle(ILP);
-                        if (!ilm_status.body['acknowledged']) {
-                            hLog(`Failed to create ILM Policy`);
-                        }
-                    } catch (e) {
-                        hLog(`[FATAL] :: Failed to create ILM Policy`);
-                        hLog(e);
-                        process.exit(1);
-                    }
-                }
-            }
-        }
-    }
+    // private async addLifecyclePolicies(indexConfig) {
+    //     if (indexConfig.ILPs) {
+    //         for (const ILP of indexConfig.ILPs) {
+    //             try {
+    //                 await this.esClient.ilm.getLifecycle({
+    //                     policy: ILP.policy
+    //                 });
+    //             } catch {
+    //                 try {
+    //                     const ilm_status = await this.esClient.ilm.putLifecycle(ILP);
+    //                     if (!ilm_status.acknowledged) {
+    //                         hLog(`Failed to create ILM Policy`);
+    //                     }
+    //                 } catch (e) {
+    //                     hLog(`[FATAL] :: Failed to create ILM Policy`);
+    //                     hLog(e);
+    //                     process.exit(1);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 
     private async appendExtraMappings(indexConfig) {
         // Modify mappings
@@ -632,11 +639,11 @@ export class HyperionMaster {
         for (const index of indicesList) {
             try {
                 if (indexConfig[index.name]) {
-                    const creation_status: ApiResponse = await this.esClient['indices'].putTemplate({
+                    const creation_status = await this.esClient['indices'].putTemplate({
                         name: `${this.conf.settings.chain}-${index.type}`,
                         body: indexConfig[index.name]
                     });
-                    if (!creation_status || !creation_status['body']['acknowledged']) {
+                    if (!creation_status || !creation_status.acknowledged) {
                         hLog(`Failed to create template: ${this.conf.settings.chain}-${index}`);
                     } else {
                         updateCounter++;
@@ -1766,8 +1773,8 @@ export class HyperionMaster {
         await waitUntilReady(async () => {
             try {
                 const esInfo = await this.esClient.info();
-                hLog(`Elasticsearch: ${esInfo.body.version.number} | Lucene: ${esInfo.body.version.lucene_version}`);
-                this.emitAlert('info', `Indexer started using ES v${esInfo.body.version.number}`);
+                hLog(`Elasticsearch: ${esInfo.version.number} | Lucene: ${esInfo.version.lucene_version}`);
+                this.emitAlert('info', `Indexer started using ES v${esInfo.version.number}`);
                 return true;
             } catch (e: any) {
                 console.log(e.message);
@@ -1823,7 +1830,9 @@ export class HyperionMaster {
 
         this.addStateTables(indicesList, this.IndexingQueues);
         await this.applyUpdateScript();
-        await this.addLifecyclePolicies(indexConfig);
+
+        // await this.addLifecyclePolicies(indexConfig);
+
         await this.appendExtraMappings(indexConfig);
         await this.updateIndexTemplates(indicesList, indexConfig);
 
@@ -1861,7 +1870,10 @@ export class HyperionMaster {
                 const workerReference = this.workerMap.find(value => value.worker_id === worker.id);
                 if (workerReference) {
                     hLog(`The worker #${worker.id} has disconnected, attempting to re-launch in 5 seconds...`);
-                    workerReference.wref = null;
+                    workerReference.wref = undefined;
+                    if (!workerReference.failures) {
+                        workerReference.failures = 0;
+                    }
                     workerReference.failures++;
                     hLog(`New worker defined: ${workerReference.worker_role} for ${workerReference.worker_queue}`);
                     setTimeout(() => {
@@ -1886,14 +1898,14 @@ export class HyperionMaster {
 
         // enable ipc msg rate monitoring
         let ipcDebugRate = this.conf.settings.ipc_debug_rate;
-        if (ipcDebugRate > 0 && ipcDebugRate < 1000) {
+        if (ipcDebugRate && ipcDebugRate > 0 && ipcDebugRate < 1000) {
             hLog(`settings.ipc_debug_rate was set too low (${this.conf.settings.ipc_debug_rate}) using 1000 instead!`);
             ipcDebugRate = 1000;
         }
-        this.shouldCountIPCMessages = ipcDebugRate && ipcDebugRate >= 1000;
+        this.shouldCountIPCMessages = (ipcDebugRate && ipcDebugRate >= 1000) as boolean;
         if (this.conf.settings.debug) {
             if (this.shouldCountIPCMessages) {
-                const rate = ipcDebugRate;
+                const rate = ipcDebugRate ?? 10000;
                 this.totalMessages = 0;
                 setInterval(() => {
                     hLog(`IPC Messaging Rate: ${(this.totalMessages / (rate / 1000)).toFixed(2)} msg/s`);
@@ -1918,49 +1930,58 @@ export class HyperionMaster {
         this.addPm2Metrics();
     }
 
-    async streamBlockHeaders(start_on, stop_on, func: (data) => void) {
-        const responseQueue = [];
-        const init_response = await this.esClient.search({
+    async streamBlockHeaders(
+        start_on: number,
+        stop_on: number,
+        func: (data: any) => void
+    ) {
+        const responseQueue: SearchResponse<any, any>[] = [];
+        const init_response = await this.esClient.search<any>({
             index: this.chain + '-block-*',
             scroll: '30s',
             size: 1000,
             track_total_hits: true,
-            body: {
-                query: {
-                    bool: {
-                        must: [
-                            {
-                                range: {
-                                    block_num: {
-                                        gte: start_on,
-                                        lte: stop_on
-                                    }
+            query: {
+                bool: {
+                    must: [
+                        {
+                            range: {
+                                block_num: {
+                                    gte: start_on,
+                                    lte: stop_on
                                 }
                             }
-                        ]
-                    }
-                },
-                sort: [{block_num: {order: "asc"}}],
-                _source: {
-                    includes: [
-                        "block_num",
-                        "block_id",
-                        "prev_id"
+                        }
                     ]
                 }
             },
+            sort: [{block_num: {order: "asc"}}],
+            _source: {
+                includes: [
+                    "block_num",
+                    "block_id",
+                    "prev_id"
+                ]
+            },
         });
-        const totalHits = init_response.body.hits.total.value;
+        const totalHits = getTotalValue(init_response);
         hLog(`Total hits in range: ${totalHits}`);
         responseQueue.push(init_response);
         while (responseQueue.length) {
-            const {body} = responseQueue.shift();
-            for (const hit of body['hits']['hits']) {
-                func(hit._source);
-            }
-            const next_response = await this.esClient.scroll({scroll_id: body['_scroll_id'], scroll: '30s'});
-            if (next_response.body['hits']['hits'].length > 0) {
-                responseQueue.push(next_response);
+            const response = responseQueue.shift();
+            if (response) {
+                for (const hit of response.hits.hits) {
+                    func(hit._source);
+                }
+
+                const next_response = await this.esClient.scroll({
+                    scroll_id: response._scroll_id,
+                    scroll: '30s'
+                });
+
+                if (next_response.hits.hits.length > 0) {
+                    responseQueue.push(next_response);
+                }
             }
         }
     }
@@ -1983,8 +2004,7 @@ export class HyperionMaster {
                 await this.manager.elasticsearchClient.index({
                     index: this.chain + '-table-accounts',
                     id: `${payload.code}-${payload.scope}-${payload.symbol}`,
-                    type: '_doc',
-                    body: payload
+                    document: payload,
                 });
                 // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
             } catch (e) {
@@ -2018,8 +2038,7 @@ export class HyperionMaster {
                 await this.manager.elasticsearchClient.index({
                     index: this.chain + '-table-voters',
                     id: `${payload.voter}`,
-                    type: '_doc',
-                    body: payload
+                    document: payload
                 });
                 // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
             } catch (e) {
@@ -2041,10 +2060,12 @@ export class HyperionMaster {
                 };
 
                 if (payload.auth.accounts.length === 0) {
+                    // @ts-ignore
                     delete payload.auth.accounts;
                 }
 
                 if (payload.auth.keys.length === 0) {
+                    // @ts-ignore
                     delete payload.auth.keys;
                 } else {
                     for (const key of payload.auth.keys) {
@@ -2053,6 +2074,7 @@ export class HyperionMaster {
                 }
 
                 if (payload.auth.waits.length === 0) {
+                    // @ts-ignore
                     delete payload.auth.waits;
                 }
 
@@ -2060,8 +2082,7 @@ export class HyperionMaster {
                     await this.manager.elasticsearchClient.index({
                         index: this.chain + '-perm',
                         id: `${payload.owner}-${payload.name}`,
-                        type: '_doc',
-                        body: payload
+                        document: payload
                     });
                     // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
                 } catch (e) {
@@ -2072,7 +2093,7 @@ export class HyperionMaster {
         }
     }
 
-    async getRows(start_at?) {
+    async getRows(start_at?: number | string | null) {
         const data = await this.manager.nodeosJsonRPC.get_table_rows({
             code: this.conf.settings.eosio_alias,
             table: 'voters',
@@ -2205,8 +2226,8 @@ export class HyperionMaster {
         const ioConfig: IOConfig = {
             apmOptions: {
                 appName: this.chain + " indexer",
-                publicKey: undefined,
-                secretKey: undefined,
+                publicKey: "",
+                secretKey: "",
                 sendLogs: true
             },
             metrics: {
