@@ -24,10 +24,8 @@ async function getAbiSnapshot(fastify: FastifyInstance, request: FastifyRequest)
     const results = await fastify.elastic.search({
         index: fastify.manager.chain + '-abi-*',
         size: 1,
-        body: {
-            query: {bool: {must: mustArray}},
-            sort: [{block: {order: "desc"}}]
-        }
+        query: {bool: {must: mustArray}},
+        sort: [{block: {order: "desc"}}]
     });
     if (results['body']['hits']['hits'].length > 0) {
         if (should_fetch) {

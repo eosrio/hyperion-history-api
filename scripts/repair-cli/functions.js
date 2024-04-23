@@ -16,7 +16,7 @@ function initESClient(config) {
             username: config.elasticsearch.user,
             password: config.elasticsearch.pass
         },
-        ssl: {
+        tls: {
             rejectUnauthorized: false
         }
     });
@@ -28,15 +28,13 @@ function readChainConfig(chain) {
 }
 exports.readChainConfig = readChainConfig;
 async function getFirstIndexedBlock(client, blockIndex) {
-    const { body } = await client.search({
+    const result = await client.search({
         index: blockIndex,
         size: 1,
-        body: {
-            sort: [{ block_num: { order: 'asc' } }]
-        }
+        sort: [{ block_num: { order: 'asc' } }]
     });
-    if (body.hits.hits[0]._source) {
-        return body.hits.hits[0]._source.block_num;
+    if (result.hits.hits[0]._source) {
+        return result.hits.hits[0]._source.block_num;
     }
     else {
         console.log('No blocks indexed yet');
@@ -45,15 +43,13 @@ async function getFirstIndexedBlock(client, blockIndex) {
 }
 exports.getFirstIndexedBlock = getFirstIndexedBlock;
 async function getLastIndexedBlock(client, blockIndex) {
-    const { body } = await client.search({
+    const result = await client.search({
         index: blockIndex,
         size: 1,
-        body: {
-            sort: [{ block_num: { order: 'desc' } }]
-        }
+        sort: [{ block_num: { order: 'desc' } }]
     });
-    if (body.hits.hits[0]._source) {
-        return body.hits.hits[0]._source.block_num;
+    if (result.hits.hits[0]._source) {
+        return result.hits.hits[0]._source.block_num;
     }
     else {
         console.log('No blocks indexed yet');
@@ -61,21 +57,19 @@ async function getLastIndexedBlock(client, blockIndex) {
     }
 }
 exports.getLastIndexedBlock = getLastIndexedBlock;
-async function getBlocks(client, indexName, blocoInicial, blocoFinal, size) {
+async function getBlocks(client, indexName, startingBlock, finalBlock, size) {
     return await client.search({
         index: indexName,
         size: size,
-        body: {
-            sort: [{ block_num: { order: "desc" } }],
-            query: {
-                range: {
-                    block_num: {
-                        gte: blocoFinal,
-                        lte: blocoInicial,
-                    },
+        sort: [{ block_num: { order: "desc" } }],
+        query: {
+            range: {
+                block_num: {
+                    gte: finalBlock,
+                    lte: startingBlock,
                 },
             },
-        }
+        },
     });
 }
 exports.getBlocks = getBlocks;

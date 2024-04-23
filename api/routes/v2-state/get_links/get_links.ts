@@ -1,6 +1,5 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {getTrackTotalHits, timedQuery} from "../../../helpers/functions";
-import {ApiResponse} from "@elastic/elasticsearch";
 import {getSkipLimit} from "../../v2-history/get_actions/functions";
 
 async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
@@ -42,16 +41,16 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
 	};
 
 	const maxLinks = fastify.manager.config.api.limits.get_links ?? 0;
-	const results: ApiResponse = await fastify.elastic.search({
+	const results = await fastify.elastic.search<any>({
 		index: fastify.manager.chain + '-link-*',
 		from: skip || 0,
 		size: (limit > maxLinks ? maxLinks : limit) || 50,
 		body: query_body
 	});
-	const hits = results.body.hits.hits;
+	const hits = results.hits.hits;
 	const response: any = {
 		cached: false,
-		total: results.body.hits.total,
+		total: results.hits.total,
 		links: []
 	};
 

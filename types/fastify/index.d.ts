@@ -9,7 +9,6 @@ declare module 'fastify' {
         manager: ConnectionManager;
         cacheManager: CacheManager;
         redis: FastifyRedis;
-        elastic: Client;
         eosjs: {
             rpc: JsonRpc;
             api: Api;

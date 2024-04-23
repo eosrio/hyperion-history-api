@@ -40,7 +40,7 @@ import {IOConfig} from "@pm2/io/build/main/pmx";
 import Gauge from "@pm2/io/build/main/utils/metrics/gauge";
 import {queue, QueueObject} from "async";
 import {convertLegacyPublicKey} from "eosjs/dist/eosjs-numeric";
-import IORedis from "ioredis";
+import IORedis, {Redis} from "ioredis";
 import AlertsManager from "./alertsManager";
 
 import {bootstrap} from 'global-agent';
@@ -160,7 +160,7 @@ export class HyperionMaster {
 
     private readonly cm: ConfigurationModule;
     private alerts: AlertsManager;
-    private ioRedisClient: IORedis.Redis;
+    private ioRedisClient: Redis;
 
     // Reversible Blocks
     private revBlockArray: RevBlock[] = [];

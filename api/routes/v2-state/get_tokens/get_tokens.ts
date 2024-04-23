@@ -15,21 +15,19 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
     const {skip, limit} = getSkipLimit(request.query);
     const maxDocs = fastify.manager.config.api.limits.get_tokens ?? 100;
 
-    const stateResult = await fastify.elastic.search({
+    const stateResult = await fastify.elastic.search<any>({
         "index": fastify.manager.chain + '-table-accounts-*',
         "size": (limit > maxDocs ? maxDocs : limit) || 50,
         "from": skip || 0,
-        "body": {
-            query: {
-                bool: {
-                    filter: [{term: {scope: query.account}}]
-                }
+        query: {
+            bool: {
+                filter: [{term: {scope: query.account}}]
             }
         }
     });
 
     const testSet = new Set();
-    for (const hit of stateResult.body.hits.hits) {
+    for (const hit of stateResult.hits.hits) {
         const data = hit._source;
         if (typeof data.present !== "undefined" && data.present === 0) {
             continue;

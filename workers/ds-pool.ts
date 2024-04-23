@@ -5,7 +5,7 @@ import {Message} from "amqplib";
 import {join, resolve} from "path";
 import {existsSync, readdirSync, readFileSync} from "fs";
 import flatstr from 'flatstr';
-import IORedis from "ioredis";
+import {Redis, RedisValue} from "ioredis";
 import {RabbitQueueDef} from "../definitions/index-queues";
 import {Abi} from "eosjs/dist/eosjs-rpc-interfaces";
 import {Serialize} from "eosjs";
@@ -90,13 +90,13 @@ export default class DSPoolWorker extends HyperionWorker {
     private noActionCounter = 0;
 
     // tx caching layer
-    private readonly ioRedisClient: IORedis.Redis;
+    private readonly ioRedisClient: Redis;
     txCacheExpiration = 3600;
 
     constructor() {
         super();
 
-        this.ioRedisClient = new IORedis(this.manager.conn.redis);
+        this.ioRedisClient = new Redis(this.manager.conn.redis);
         if (this.conf.api.tx_cache_expiration_sec) {
             if (typeof this.conf.api.tx_cache_expiration_sec === 'string') {
                 this.txCacheExpiration = parseInt(this.conf.api.tx_cache_expiration_sec, 10);
@@ -555,7 +555,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
             // Submit Actions after deduplication
 
-            const redisPayload = new Map<string, IORedis.ValueType>();
+            const redisPayload = new Map<string, RedisValue>();
 
             for (const uniqueAction of _finalTraces) {
                 cleanActionTrace(uniqueAction);

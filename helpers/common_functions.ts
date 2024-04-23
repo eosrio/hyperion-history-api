@@ -23,7 +23,12 @@ if (!config) {
 
 function getLastResult(results: SearchResponse<any, any>) {
     if (results.hits?.hits?.length > 0) {
-        return parseInt(results.hits.hits[0].sort[0], 10);
+        const firstHit = results.hits.hits[0];
+        if (firstHit.sort) {
+            return parseInt(firstHit.sort[0], 10);
+        } else {
+            return 1;
+        }
     } else {
         return 1;
     }

@@ -1,11 +1,12 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeDeltaMeta, timedQuery} from "../../../helpers/functions";
 import {applyTimeFilter} from "../get_actions/functions";
+import {SortOrder} from "@elastic/elasticsearch/lib/api/types";
 
 async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
     let skip: number | undefined;
     let limit: number = 10;
-    let sort_direction = 'desc';
+    let sort_direction: SortOrder = 'desc';
     const mustArray: any[] = [];
     const query: any = request.query;
     for (const param in query) {
@@ -72,18 +73,14 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
 
     applyTimeFilter(query, queryStruct);
 
-    const results = await fastify.elastic.search({
+    const results = await fastify.elastic.search<any>({
         "index": fastify.manager.chain + '-delta-*',
         "from": skip || 0,
         "size": (limit > maxDeltas ? maxDeltas : limit) || 10,
-        "body": {
-            query: queryStruct,
-            sort: {
-                "block_num": sort_direction
-            }
-        }
+        query: queryStruct,
+        sort: [{block_num: {order: sort_direction}}]
     });
-    const deltas = results['body']['hits']['hits'].map((d) => {
+    const deltas = results['body']['hits']['hits'].map((d: any) => {
         return mergeDeltaMeta(d._source);
     });
     return {

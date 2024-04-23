@@ -1,6 +1,6 @@
 import {hLog, sleep} from '../helpers/common_functions';
 import {Server, Socket} from 'socket.io';
-import {createAdapter} from 'socket.io-redis';
+import {createAdapter} from "@socket.io/redis-adapter";
 import {io} from 'socket.io-client';
 import {FastifyInstance} from "fastify";
 import IORedis from "ioredis";
@@ -61,7 +61,10 @@ export class SocketManager {
         hLog(`[SocketManager] chain_id: ${this.chainId}`);
         const pubClient = new IORedis(redisOptions);
         const subClient = pubClient.duplicate();
-        this.io.adapter(createAdapter({pubClient, subClient, key: this.chainId}));
+
+        this.io.adapter(createAdapter(pubClient, subClient, {
+            key: this.chainId
+        }));
 
         this.io.on('connection', (socket: Socket) => {
 
