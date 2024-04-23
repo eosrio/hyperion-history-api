@@ -1,7 +1,6 @@
 import {Telegraf} from 'telegraf';
 import * as nodemailer from "nodemailer";
 import Mail from "nodemailer/lib/mailer";
-import got from 'got';
 import {hLog} from "../helpers/common_functions";
 
 export interface AlertManagerOptions {
@@ -130,11 +129,23 @@ export default class AlertsManager {
     async sendHttpPost(data: any) {
         if (this.opts.http && this.opts.http.enabled && this.opts.http.url) {
             try {
-                await got.post(this.opts.http.url, {
-                    json: data,
-                    username: this.opts.http.useAuth ? this.opts.http.user : undefined,
-                    password: this.opts.http.useAuth ? this.opts.http.pass : undefined
-                }).json();
+
+                const headers = new Headers();
+                if (this.opts.http.useAuth) {
+                    const authBuffer = 'Basic ' + Buffer.from(this.opts.http.user + ":" + this.opts.http.pass).toString('base64')
+                    headers.set('Authorization', authBuffer)
+                }
+                const resp = await fetch(this.opts.http.url, {
+                    method: "POST", headers
+                });
+                const result = await resp.json();
+                hLog(result);
+
+                // await got.post(this.opts.http.url, {
+                //     json: data,
+                //     username: this.opts.http.useAuth ? this.opts.http.user : undefined,
+                //     password: this.opts.http.useAuth ? this.opts.http.pass : undefined
+                // }).json();
             } catch (e: any) {
                 hLog('Failed to HTTP Post alert!');
                 hLog(e.message);

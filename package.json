@@ -49,7 +49,6 @@
     "fastify-plugin": "^4.5.1",
     "flatstr": "^1.0.12",
     "global-agent": "^3.0.0",
-    "got": "^14.2.1",
     "ioredis": "^5.4.1",
     "lodash": "^4.17.21",
     "moment": "^2.30.1",

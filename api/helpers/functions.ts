@@ -1,7 +1,6 @@
 import {createHash} from "crypto";
 import * as _ from "lodash";
 import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethods} from "fastify";
-import got from "got";
 import {checkDeltaFilter, checkFilter, hLog} from "../../helpers/common_functions";
 import {Socket} from "socket.io";
 import {ScrollId, SearchResponse} from "@elastic/elasticsearch/lib/api/types";
@@ -633,7 +632,7 @@ export async function handleChainApiRedirect(
         reqUrl = fastify.push_api + urlParts[0];
     }
 
-    const opts = {};
+    const opts: any = {};
 
     if (request.method === 'POST') {
         if (request.body) {
@@ -650,10 +649,26 @@ export async function handleChainApiRedirect(
     }
 
     try {
-        const apiResponse = await got.post(reqUrl, opts);
+
+        // Fetch
+        const apiPostResponse = await fetch(reqUrl, {
+            method: "POST",
+            body: opts['body']
+        });
+        const len = apiPostResponse.headers.get('content-length');
+        const apiResponse = await apiPostResponse.json();
+
+        // Got Impl
+        // const apiResponse = await got.post(reqUrl, opts);
+
         reply.headers({"Content-Type": "application/json"});
         if (request.method === 'HEAD') {
-            reply.headers({"Content-Length": apiResponse.body.length});
+
+            // Fetch
+            reply.headers({"Content-Length": len ?? 0});
+
+            // Got Impl
+            // reply.headers({"Content-Length": apiResponse.body.length});
             reply.send("");
             return '';
         } else {

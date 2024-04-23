@@ -1,5 +1,4 @@
 import {debugLog, hLog} from "../helpers/common_functions";
-import got, {HTTPError} from "got";
 import {connect, Connection} from 'amqplib';
 import {Channel, ConfirmChannel} from "amqplib/callback_api";
 import {AmqpConfig} from "../interfaces/hyperionConnections";
@@ -84,17 +83,31 @@ export async function checkQueueSize(q_name: string, config: AmqpConfig) {
             username: config.user,
             password: config.pass
         };
-        const data = await got.get(apiUrl, opts).json() as any;
+
+        // FETCH
+        const headers = new Headers();
+        const auth = Buffer.from(opts.username + ":" + opts.password).toString('base64')
+        headers.set('Authorization', 'Basic ' + auth);
+        const data = await (await fetch(apiUrl, {
+            headers
+        })).json() as any;
+
+        // GOT
+        // const data = await got.get(apiUrl, opts).json() as any;
+
         return data.messages;
     } catch (e: any) {
+
         hLog(`[WARNING] Checking queue size failed! - ${e.message}`);
-        if (e.response && e.response.body) {
-            if (e instanceof HTTPError) {
-                hLog(e.response.body);
-            } else {
-                hLog(JSON.stringify(e.response.body, null, 2));
-            }
-        }
+
+        // if (e.response && e.response.body) {
+        //     if (e instanceof HTTPError) {
+        //         hLog(e.response.body);
+        //     } else {
+        //         hLog(JSON.stringify(e.response.body, null, 2));
+        //     }
+        // }
+
         return 0;
     }
 }

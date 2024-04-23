@@ -1,6 +1,5 @@
 import {ConfigurationModule} from "../modules/config";
 import {JsonRpc} from "eosjs";
-import got from "got";
 import {Client} from '@elastic/elasticsearch'
 import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
@@ -52,10 +51,16 @@ export class ConnectionManager {
         let result: any[] = [];
 
         try {
-            const data = await got(getAllQueuesFromVHost, opts);
-            if (data) {
-                result = JSON.parse(data.body);
-            }
+
+            const headers = new Headers();
+            headers.set('Authorization', 'Basic ' + Buffer.from(opts.username + ":" + opts.password).toString('base64'));
+            result = await (await fetch(getAllQueuesFromVHost, {headers})).json();
+
+            // Got Impl
+            // const data = await got(getAllQueuesFromVHost, opts);
+            // if (data) {
+            //     result = JSON.parse(data.body);
+            // }
         } catch (e: any) {
             console.log(e.message);
             console.error('failed to connect to rabbitmq http api');
@@ -67,7 +72,16 @@ export class ConnectionManager {
                 const msg_count = parseInt(queue.messages);
                 if (msg_count > 0) {
                     try {
-                        await got.delete(apiUrl + `/api/queues/${vHost}/${queue.name}/contents`, opts);
+
+                        const headers = new Headers();
+                        headers.set('Authorization', 'Basic ' + Buffer.from(opts.username + ":" + opts.password).toString('base64'));
+                        await fetch(apiUrl + `/api/queues/${vHost}/${queue.name}/contents`, {
+                            method: "DELETE",
+                            headers
+                        });
+
+                        // await got.delete(apiUrl + `/api/queues/${vHost}/${queue.name}/contents`, opts);
+
                         hLog(`${queue.messages} messages deleted on queue ${queue.name}`);
                     } catch (e: any) {
                         console.log(e.message);
