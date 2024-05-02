@@ -1,12 +1,12 @@
-import { Command } from 'commander';
-import { readFileSync } from 'node:fs';
-import { Client, estypes } from '@elastic/elasticsearch';
+import {Command} from 'commander';
+import {readFileSync} from 'node:fs';
+import {Client, estypes} from '@elastic/elasticsearch';
 // @ts-ignore
 import cliProgress from 'cli-progress';
-import { JsonRpc } from 'eosjs';
+import {JsonRpc} from 'eosjs';
 import fetch from 'cross-fetch';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { HyperionBlock } from './repair-cli/interfaces.js';
+import {existsSync, mkdirSync, writeFileSync} from 'fs';
+import {HyperionBlock} from './repair-cli/interfaces.js';
 import {
     getBlocks,
     getFirstIndexedBlock,
@@ -15,10 +15,10 @@ import {
     readChainConfig,
     readConnectionConfig,
 } from './repair-cli/functions.js';
-import { SearchResponse } from '@elastic/elasticsearch/api/types';
+import {SearchResponse} from '@elastic/elasticsearch/api/types';
 
-import { WebSocket } from 'ws';
-import { block } from '../definitions/index-templates';
+import {WebSocket} from 'ws';
+import {block} from '../definitions/index-templates';
 
 const progressBar = new cliProgress.SingleBar(
     {},
@@ -51,7 +51,7 @@ async function run(
             blockFinal = firstBlock;
         }
         try {
-            let { body } = await getBlocks(
+            let {body} = await getBlocks(
                 client,
                 indexName,
                 blockInitial,
@@ -59,7 +59,7 @@ async function run(
                 qtdTotal
             );
             let {
-                hits: { hits },
+                hits: {hits},
             } = body;
             const blocks = hits.map((obj: any) => obj._source);
             await findForksOnRange(blocks, rpc);
@@ -133,7 +133,7 @@ async function findForksOnRange(blocks: HyperionBlock[], rpc: JsonRpc) {
                         removals.add(currentBlock.block_id);
                     } else {
                         end = currentBlockNumber + 1;
-                        const range = { start, end, ids: [...removals] };
+                        const range = {start, end, ids: [...removals]};
                         errorRanges.push(range);
                         removals.clear();
                         // console.log(`\n ⚠️⚠️ Forked at ${range.start} to ${range.end}`);
@@ -155,7 +155,7 @@ async function scanChain(chain: string, args: any) {
 
     const client = initESClient(config);
 
-    const jsonRpc = new JsonRpc(config.chains[chain].http, { fetch });
+    const jsonRpc = new JsonRpc(config.chains[chain].http, {fetch});
 
     const ping = await client.ping();
 
@@ -404,7 +404,7 @@ async function repairChain(chain: string, file: string, args: any) {
                         must: [
                             {
                                 range: {
-                                    block: { lte: range.start, gte: range.end },
+                                    block: {lte: range.start, gte: range.end},
                                 },
                             },
                         ],
@@ -422,7 +422,7 @@ async function repairChain(chain: string, file: string, args: any) {
                 deleteAbis += (
                     resultAbis.body.hits.total as estypes.SearchTotalHits
                 )?.value;
-                console.log('ABIs', { lte: range.start, gte: range.end });
+                console.log('ABIs', {lte: range.start, gte: range.end});
             }
         } else {
             const indexExists = await client.indices.exists({
@@ -493,23 +493,23 @@ async function repairChain(chain: string, file: string, args: any) {
             });
 
             if (indexExists.body) {
-            delete searchAccounts.size;
-            const deletedAccountsResult = await client.deleteByQuery(
-                searchAccounts
-            );
-            if (
-                deletedAccountsResult &&
-                deletedAccountsResult.body.deleted &&
-                deletedAccountsResult.body.deleted > 0
-            ) {
-                deleteAccounts += deletedAccountsResult.body.deleted;
+                delete searchAccounts.size;
+                const deletedAccountsResult = await client.deleteByQuery(
+                    searchAccounts
+                );
+                if (
+                    deletedAccountsResult &&
+                    deletedAccountsResult.body.deleted &&
+                    deletedAccountsResult.body.deleted > 0
+                ) {
+                    deleteAccounts += deletedAccountsResult.body.deleted;
+                }
+            } else {
+                console.log(
+                    `Index ${searchAccounts.index} doesn't exist. Unable to delete.`
+                );
             }
-        }else {
-            console.log(
-                `Index ${searchAccounts.index} doesn't exist. Unable to delete.`
-            );
         }
-    }
 
         // VOTERS
         const searchVoters = {
@@ -557,23 +557,23 @@ async function repairChain(chain: string, file: string, args: any) {
 
             if (indexExists.body) {
 
-            delete searchVoters.size;
-            const deletedVotersResult = await client.deleteByQuery(
-                searchVoters
-            );
-            if (
-                deletedVotersResult &&
-                deletedVotersResult.body.deleted &&
-                deletedVotersResult.body.deleted > 0
-            ) {
-                deleteVoters += deletedVotersResult.body.deleted;
+                delete searchVoters.size;
+                const deletedVotersResult = await client.deleteByQuery(
+                    searchVoters
+                );
+                if (
+                    deletedVotersResult &&
+                    deletedVotersResult.body.deleted &&
+                    deletedVotersResult.body.deleted > 0
+                ) {
+                    deleteVoters += deletedVotersResult.body.deleted;
+                }
+            } else {
+                console.log(
+                    `Index ${searchVoters.index} doesn't exist. Unable to delete.`
+                );
             }
-        }else {
-            console.log(
-                `Index ${searchVoters.index} doesn't exist. Unable to delete.`
-            );
         }
-    }
 
         // PROPOSALS
         const searchProposals = {
@@ -620,19 +620,21 @@ async function repairChain(chain: string, file: string, args: any) {
             const indexExists = await client.indices.exists({index: searchProposals.index});
 
             if (indexExists.body) {
-            delete searchProposals.size;
-            const deletedProposalsResult = await client.deleteByQuery(
-                searchProposals
-            );
-            if (
-                deletedProposalsResult &&
-                deletedProposalsResult.body.deleted &&
-                deletedProposalsResult.body.deleted > 0
-            ) {
-                deleteProposals += deletedProposalsResult.body.deleted;
+                delete searchProposals.size;
+                const deletedProposalsResult = await client.deleteByQuery(
+                    searchProposals
+                );
+                if (
+                    deletedProposalsResult &&
+                    deletedProposalsResult.body.deleted &&
+                    deletedProposalsResult.body.deleted > 0
+                ) {
+                    deleteProposals += deletedProposalsResult.body.deleted;
+                }
+            } else {
+                console.log(`Index ${searchProposals.index} doesn't exist. Unable to delete.`);
             }
-        }else { console.log(`Index ${searchProposals.index} doesn't exist. Unable to delete.`);}
-    }
+        }
 
         // LINKS
         const searchLinks = {
@@ -677,17 +679,19 @@ async function repairChain(chain: string, file: string, args: any) {
             const indexExists = await client.indices.exists({index: searchLinks.index});
 
             if (indexExists.body) {
-            delete searchLinks.size;
-            const deletedLinksResult = await client.deleteByQuery(searchLinks);
-            if (
-                deletedLinksResult &&
-                deletedLinksResult.body.deleted &&
-                deletedLinksResult.body.deleted > 0
-            ) {
-                deleteLinks += deletedLinksResult.body.deleted;
+                delete searchLinks.size;
+                const deletedLinksResult = await client.deleteByQuery(searchLinks);
+                if (
+                    deletedLinksResult &&
+                    deletedLinksResult.body.deleted &&
+                    deletedLinksResult.body.deleted > 0
+                ) {
+                    deleteLinks += deletedLinksResult.body.deleted;
+                }
+            } else {
+                console.log(`Index ${searchLinks.index} doesn't exist. Unable to delete.`);
             }
-        }else { console.log(`Index ${searchLinks.index} doesn't exist. Unable to delete.`);}
-    }
+        }
 
         // PERMISSIONS
         const searchPermissions = {
@@ -728,7 +732,7 @@ async function repairChain(chain: string, file: string, args: any) {
                     )?.value,
                     'permissions needs to be updated'
                 );
-                console.log({ lte: range.start, gte: range.end });
+                console.log({lte: range.start, gte: range.end});
                 deletePermissions += (
                     resultPermissions.body.hits.total as estypes.SearchTotalHits
                 )?.value;
@@ -737,26 +741,33 @@ async function repairChain(chain: string, file: string, args: any) {
 
             const indexExists = await client.indices.exists({index: searchPermissions.index});
             if (indexExists.body) {
-            delete searchPermissions.size;
-            const deletedPermissionsResult = await client.deleteByQuery(
-                searchPermissions
-            );
-            if (
-                deletedPermissionsResult &&
-                deletedPermissionsResult.body.deleted &&
-                deletedPermissionsResult.body.deleted > 0
-            ) {
-                deletePermissions += deletedPermissionsResult.body.deleted;
+                delete searchPermissions.size;
+                const deletedPermissionsResult = await client.deleteByQuery(
+                    searchPermissions
+                );
+                if (
+                    deletedPermissionsResult &&
+                    deletedPermissionsResult.body.deleted &&
+                    deletedPermissionsResult.body.deleted > 0
+                ) {
+                    deletePermissions += deletedPermissionsResult.body.deleted;
+                }
+            } else {
+                console.log(`Index ${searchPermissions.index} not present!`);
             }
-        }else { console.log(`Index ${searchPermissions.index} doens't exist. Não foi possível realizar a exclusão.`);}
-    }
+        }
+
+        if (!range.ids) {
+            console.log("Invalid file format! Please check that you are calling the repair tool with the right file.");
+            process.exit(1);
+        }
 
         for (const id of range.ids) {
             const searchBlocks = {
                 index: blockIndex,
                 body: {
                     query: {
-                        bool: { must: [{ term: { block_id: { value: id } } }] },
+                        bool: {must: [{term: {block_id: {value: id}}}]},
                     },
                 },
             };
@@ -813,7 +824,6 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
     }
     const controller = new WebSocket(hyperionIndexer + '/local');
 
-    // Function to send Chunk
     async function sendChunk(chunk): Promise<void> {
         return new Promise((resolve, reject) => {
             const payload = {
@@ -821,12 +831,9 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
                 data: chunk,
             };
             controller.send(JSON.stringify(payload));
-
-            // Wait repair_completed confirmation
             controller.once('message', (data) => {
                 const parsed = JSON.parse(data.toString());
                 if (parsed.event === 'repair_completed') {
-                    // console.log(`Hyperion repair completed for chunk!`);
                     resolve();
                 }
             });
@@ -841,24 +848,21 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
 
         if (!dryRun) {
             let completedLines = 0;
-
             for (let i = 0; i < parsedFile.length; i += chunkSize) {
                 const chunk = parsedFile.slice(i, i + chunkSize);
                 await sendChunk(chunk);
-
-                // Atualizar o progresso com base no número total de linhas
                 completedLines += chunk.length;
                 const progress = (completedLines / totalLines) * 100;
                 const progressBar = Array(Math.round(progress / 2))
                     .fill('#')
                     .join('');
-                process.stdout.clearLine(0); // Limpar a linha anterior
-                process.stdout.cursorTo(0); // Mover o cursor para o início da linha
+                process.stdout.clearLine(0);
+                process.stdout.cursorTo(0);
                 process.stdout.write(
                     `Progress: [${progressBar}] ${progress.toFixed(2)}%`
                 );
             }
-            console.log(); // Pule para a próxima linha após a conclusão
+            console.log();
             controller.close();
         } else {
             console.log('Dry run, skipping repair');
