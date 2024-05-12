@@ -69,7 +69,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
             esStatus = JSON.parse(esStatusCache);
         } else {
             esStatus = await fastify.elastic.cat.health({format: 'json', v: true});
-            await fastify.redis.set(`${fastify.manager.chain}::es_status`, JSON.stringify(esStatus), 'EX', 30 * 60);
+            await fastify.redis.set(`${fastify.manager.chain}::es_status`, JSON.stringify(esStatus), 'EX', 60);
         }
         let firstIndexedBlock: number;
         const fib = await fastify.redis.get(`${fastify.manager.chain}::fib`);
