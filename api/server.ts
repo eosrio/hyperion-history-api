@@ -16,6 +16,8 @@ import {io, Socket} from "socket.io-client";
 import {CacheManager} from "./helpers/cacheManager";
 
 import {bootstrap} from 'global-agent';
+import "@fastify/swagger/index";
+import {FastifySwaggerUiOptions} from "@fastify/swagger-ui";
 
 class HyperionApiServer {
 
@@ -81,7 +83,14 @@ class HyperionApiServer {
             ignoreTrailingSlash: false,
             trustProxy: true,
             pluginTimeout: 5000,
-            logger: this.conf.api.access_log ? loggerOpts : false
+            logger: this.conf.api.access_log ? loggerOpts : false,
+            // logger: true,
+            ajv: {
+                customOptions: {
+                    strict: false,
+                    allowUnionTypes: true
+                }
+            }
         });
 
         this.fastify.decorate('cacheManager', this.cacheManager);
@@ -100,6 +109,7 @@ class HyperionApiServer {
         if (chainApiUrl === null || chainApiUrl === "") {
             chainApiUrl = this.manager.conn.chains[this.chain].http;
         }
+
         this.fastify.decorate('chain_api', chainApiUrl);
 
         // define optional push api url for /v1/chain/push_transaction
@@ -145,6 +155,14 @@ class HyperionApiServer {
         const docsConfig = generateOpenApiConfig(this.manager.config);
         if (docsConfig) {
             pluginParams.fastify_swagger = docsConfig;
+            pluginParams.fastify_swagger_ui = {
+                routePrefix: '/v2/docs',
+                uiConfig: {
+                    docExpansion: "list",
+                    deepLinking: true
+                },
+                staticCSP: false
+            } as FastifySwaggerUiOptions;
         }
 
         this.pluginParams = pluginParams;
@@ -231,7 +249,7 @@ class HyperionApiServer {
         hLog('Elasticsearch validated!');
         hLog('Registering plugins...');
 
-        registerPlugins(this.fastify, this.pluginParams);
+        await registerPlugins(this.fastify, this.pluginParams);
         this.addGenericTypeParsing();
 
         await this.mLoader.init();
@@ -251,7 +269,9 @@ class HyperionApiServer {
 
         // register documentation when ready
         this.fastify.ready().then(async () => {
-            await this.fastify.swagger();
+
+            this.fastify.swagger();
+
         }, (err: any) => {
             hLog('an error happened', err)
         });

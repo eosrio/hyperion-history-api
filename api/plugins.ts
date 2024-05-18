@@ -3,6 +3,7 @@ import {IncomingMessage, Server, ServerResponse} from "http";
 
 // fastify plugins
 import fastifySwagger from '@fastify/swagger';
+import fastifySwaggerUi from '@fastify/swagger-ui';
 import fastifyCors from '@fastify/cors';
 import formBodyPlugin from '@fastify/formbody';
 import fastifyRedis from '@fastify/redis';
@@ -12,11 +13,12 @@ import fastifyRateLimit from '@fastify/rate-limit';
 // custom plugins
 import fastify_eosjs from "./plugins/fastify-eosjs";
 
-export function registerPlugins(server: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>, params: any) {
+export async function registerPlugins(server: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>, params: any) {
     server.register(fastifyElasticsearch, params.fastify_elasticsearch);
 
-    if (params.fastify_swagger) {
-        server.register(fastifySwagger, params.fastify_swagger);
+    if (params.fastify_swagger && params.fastify_swagger_ui) {
+        await server.register(fastifySwagger, params.fastify_swagger);
+        await server.register(fastifySwaggerUi, params.fastify_swagger_ui);
     }
 
     server.register(fastifyCors);

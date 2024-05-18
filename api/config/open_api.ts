@@ -1,6 +1,7 @@
 import {HyperionConfig} from "../../interfaces/hyperionConfig";
+import {SwaggerOptions} from "@fastify/swagger";
 
-export function generateOpenApiConfig(config: HyperionConfig) {
+export function generateOpenApiConfig(config: HyperionConfig): SwaggerOptions {
     const packageData = require('../../package');
     const health_link = `https://${config.api.server_name}/v2/health`;
     const explorer_link = `https://${config.api.server_name}/v2/explore`;
@@ -24,18 +25,33 @@ export function generateOpenApiConfig(config: HyperionConfig) {
     }
 
     return {
-        routePrefix: '/v2/docs',
-        exposeRoute: true,
-        swagger: {
+        mode: "dynamic",
+        openapi: {
             info: {
                 title: `Hyperion History API for ${config.api.chain_name}`,
                 description: description,
-                version: packageData.version
+                version: packageData.version,
             },
-            host: config.api.server_name,
-            schemes: ['https', 'http'],
-            consumes: ['application/json'],
-            produces: ['application/json']
+            servers: ['http','https'].map(value => {
+                return {
+                    url: `${value}://${config.api.server_name}`,
+                    description: value.toUpperCase()
+                }
+            }),
+            externalDocs: {
+                url: "https://hyperion.docs.eosrio.io"
+            }
         }
+        // swagger: {
+        //     info: {
+        //         title: `Hyperion History API for ${config.api.chain_name}`,
+        //         description: description,
+        //         version: packageData.version
+        //     },
+        //     host: config.api.server_name,
+        //     schemes: ['https', 'http'],
+        //     consumes: ['application/json'],
+        //     produces: ['application/json']
+        // }
     };
 }
