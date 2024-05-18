@@ -13,20 +13,22 @@
     <a href="https://antelope.io">
         Antelope
     </a>
-    (former EOSIO) based blockchains
+    (former EOSIO) based blockchains <br>
 </h4>
 
 <br>
 
 Made with ♥ by [Rio Blocks / EOS Rio](https://rioblocks.io/?lang=en)
 
-### [Official documentation](https://hyperion.docs.eosrio.io)
+![CI](https://github.com/eosrio/hyperion-history-api/actions/workflows/build.yml/badge.svg)
+
+### 📖 [Hyperion Docs - Official Documentation](https://hyperion.docs.eosrio.io)
 
 ### How to use:
 
- - [For Providers](https://hyperion.docs.eosrio.io/manual_installation/)
+- [For Providers](https://hyperion.docs.eosrio.io/manual_installation/)
 
- - [For Developers](https://hyperion.docs.eosrio.io/howtouse/)
+- [For Developers](https://hyperion.docs.eosrio.io/howtouse/)
 
 ### Official plugins:
 
@@ -40,10 +42,10 @@ performance indexing and optimized storage and querying solutions. Hyperion is d
 providing open source software to be operated by block producers, infrastructure providers and dApp developers.
 
 Focused on delivering faster search times, lower bandwidth overhead and easier usability for UI/UX developers,
-Hyperion implements an improved data structure. Actions are stored in a flattened format, transaction ids are added to 
-all inline actions, allowing to group by transaction without storing a full transaction index. Besides that if the inline 
+Hyperion implements an improved data structure. Actions are stored in a flattened format, transaction ids are added to
+all inline actions, allowing to group by transaction without storing a full transaction index. Besides that if the inline
 action data is identical to the parent, it is considered a notification and thus removed from the database.
-No full block or transaction data is stored, all information can be reconstructed from actions and deltas, only a block 
+No full block or transaction data is stored, all information can be reconstructed from actions and deltas, only a block
 header index is stored.
 
 ### 2. Architecture
