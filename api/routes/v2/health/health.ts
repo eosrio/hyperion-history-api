@@ -2,6 +2,12 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {connect} from "amqplib";
 import {timedQuery} from "../../../helpers/functions";
 import {getFirstIndexedBlock, getLastIndexedBlockWithTotalBlocks} from "../../../../helpers/common_functions";
+import Cat from "@elastic/elasticsearch/lib/api/api/cat";
+import {
+    ClusterHealthHealthResponseBody,
+    ClusterHealthResponse,
+    HealthReportResponse
+} from "@elastic/elasticsearch/lib/api/types";
 
 
 async function checkRabbit(fastify: FastifyInstance): Promise<ServiceResponse<any>> {
@@ -64,12 +70,13 @@ interface ServiceResponse<T> {
 async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<ESService>> {
     try {
         const esStatusCache = await fastify.redis.get(`${fastify.manager.chain}::es_status`);
-        let esStatus;
+        let esStatus: ClusterHealthResponse;
         if (esStatusCache) {
             esStatus = JSON.parse(esStatusCache);
         } else {
-            esStatus = await fastify.elastic.cat.health({format: 'json', v: true});
-            await fastify.redis.set(`${fastify.manager.chain}::es_status`, JSON.stringify(esStatus), 'EX', 30 * 60);
+            esStatus = await fastify.elastic.cluster.health();
+            // cache for 60 seconds
+            await fastify.redis.set(`${fastify.manager.chain}::es_status`, JSON.stringify(esStatus), 'EX', 60);
         }
         let firstIndexedBlock: number;
         const fib = await fastify.redis.get(`${fastify.manager.chain}::fib`);
@@ -85,7 +92,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
         const missingCounter = (lastIndexedBlock - firstIndexedBlock) - totalIndexed;
         const missingPct = (missingCounter * 100 / indexedBlocks[1]).toFixed(2) + "%";
         const data: ESService = {
-            active_shards: esStatus.body[0]['active_shards_percent'],
+            active_shards: esStatus.active_shards_percent_as_number + "%",
             head_offset: null,
             first_indexed_block: firstIndexedBlock,
             last_indexed_block: lastIndexedBlock,
@@ -94,13 +101,20 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
             missing_pct: missingPct
         };
         let stat = 'OK';
-        esStatus.body.forEach(status => {
-            if (status.status === 'yellow' && stat !== 'Error') {
-                stat = 'Warning'
-            } else if (status.status === 'red') {
-                stat = 'Error'
-            }
-        });
+        switch (esStatus.status) {
+            case "yellow":
+                stat = 'Warning';
+                break;
+            case "YELLOW":
+                stat = 'Warning';
+                break;
+            case "red":
+                stat = 'Error';
+                break;
+            case "RED":
+                stat = 'Error';
+                break;
+        }
         return createHealth('Elasticsearch', stat, data);
     } catch (e) {
         console.log(e, 'Elasticsearch Error');

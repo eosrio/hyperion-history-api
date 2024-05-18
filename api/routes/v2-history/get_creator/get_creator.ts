@@ -28,20 +28,18 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
         return response;
     }
 
-    const results = await fastify.elastic.search({
-        "index": fastify.manager.chain + '-action-*',
-        "body": {
-            size: 1,
-            query: {
-                bool: {
-                    must: [{term: {"@newaccount.newact": query.account}}]
-                }
+    const results = await fastify.elastic.search<any>({
+        index: fastify.manager.chain + '-action-*',
+        size: 1,
+        query: {
+            bool: {
+                must: [{term: {"@newaccount.newact": query.account}}]
             }
         }
     });
 
-    if (results['body']['hits']['hits'].length === 1) {
-        const result = results['body']['hits']['hits'][0]._source;
+    if (results.hits.hits.length === 1) {
+        const result = results.hits.hits[0]._source;
         response.trx_id = result.trx_id;
         response.block_num = result.block_num;
         response.creator = result.act.data.creator;
@@ -57,20 +55,18 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
         if (accountInfo) {
             try {
                 response.timestamp = accountInfo.created;
-                const blockHeader = await fastify.elastic.search({
-                    "index": fastify.manager.chain + '-block-*',
-                    "body": {
-                        size: 1,
-                        query: {
-                            bool: {
-                                must: [{term: {"@timestamp": response.timestamp}}]
-                            }
+                const blockHeader = await fastify.elastic.search<any>({
+                    index: fastify.manager.chain + '-block-*',
+                    size: 1,
+                    query: {
+                        bool: {
+                            must: [{term: {"@timestamp": response.timestamp}}]
                         }
                     }
                 });
-                const hits = blockHeader['body']['hits']['hits'];
+                const hits = blockHeader.hits.hits;
                 if (hits.length > 0 && hits[0]._source) {
-                    const blockId = blockHeader['body']['hits']['hits'][0]._source.block_id;
+                    const blockId = blockHeader.hits.hits[0]._source.block_id;
                     const blockData = await fastify.eosjs.rpc.get_block(blockId);
                     response.block_num = blockData.block_num;
                     for (const transaction of blockData["transactions"]) {

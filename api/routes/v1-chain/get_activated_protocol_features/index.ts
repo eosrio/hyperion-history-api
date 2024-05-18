@@ -5,7 +5,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     addChainApiRoute(
         fastify,
         getRouteName(__filename),
-        'Retreives the activated protocol features for producer node',
+        'Retrieves the activated protocol features for producer node',
         {
             "lower_bound": {
                 "type": "integer",

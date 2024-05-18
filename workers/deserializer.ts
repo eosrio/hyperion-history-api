@@ -747,41 +747,64 @@ export default class MainDSWorker extends HyperionWorker {
         block_num: number,
         field: string
     ): Promise<[boolean, string | undefined, number, number | undefined] | [boolean, string]> {
+
         let abiStatus: boolean;
         let resultType: string | undefined;
+
+        // try to get the type from the loaded contract abi if any
         try {
             resultType = this.getAbiDataType(field, contract, type);
-            abiStatus = true;
-        } catch {
+            abiStatus = !(!resultType || resultType === "");
+        } catch (e:any) {
+            hLog(e.message);
             abiStatus = false;
         }
+
         let savedAbi: HyperionAbi | null = null;
         let valid_until: number | undefined;
         let valid_from = block_num;
+
+
         if (!abiStatus) {
+
+            console.log(`Fetching ABI from ES ${contract}@${block_num}`);
             savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
+
             if (savedAbi) {
+
                 if (savedAbi.valid_until) {
                     valid_until = savedAbi.valid_until;
                 }
+
                 if (savedAbi.block) {
                     valid_from = savedAbi.block;
                 }
+
                 if (savedAbi[field + 's'] && savedAbi[field + 's'].includes(type)) {
+
                     if (savedAbi.abi_hex) {
                         abiStatus = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
                     }
+
                     if (abiStatus) {
                         try {
                             resultType = this.getAbiDataType(field, contract, type);
+                            // console.log(`getAbiDataType (2) ${type} (${field}) >>> "${resultType}"`);
                             abiStatus = true;
                             return [abiStatus, resultType];
-                        } catch {
+                        } catch (e:any) {
+                            console.log(e.message);
                             abiStatus = false;
                         }
+
+                    } else {
+                        console.log("ABI HEX was not loaded!");
                     }
                 }
             }
+
+
+            console.log(`Loading current ABI (${savedAbi?.block} | ${savedAbi?.valid_until}) ${contract}`);
             abiStatus = await this.loadCurrentAbiHex(contract);
             if (abiStatus) {
                 try {
@@ -821,6 +844,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
 
         const [_status, tableType, validFrom, validUntil] = await this.verifyLocalType(row['code'], row['table'], block, "table");
+
         if (_status && tableType) {
             let result: string;
             try {
@@ -836,6 +860,7 @@ export default class MainDSWorker extends HyperionWorker {
                 debugLog(e);
             }
         }
+
         return await this.processContractRow(row, block, validFrom, validUntil);
     }
 
@@ -1003,23 +1028,23 @@ export default class MainDSWorker extends HyperionWorker {
         return fun.constructor.name === 'AsyncFunction';
     }
 
-    async processTableDelta(data) {
+    async processTableDelta(contractRowDelta: any) {
 
-        if (data['table']) {
-            data['primary_key'] = String(data['primary_key']);
-            let allowIndex;
+        if (contractRowDelta['table'] && contractRowDelta['data']) {
+            contractRowDelta['primary_key'] = String(contractRowDelta['primary_key']);
+            let allowIndex: boolean;
             let handled = false;
 
-            const key = `${data.code}:${data.table}`;
-            const key2 = `${data.code}:*`;
-            const key3 = `*:${data.table}`;
+            const key = `${contractRowDelta.code}:${contractRowDelta.table}`;
+            const key2 = `${contractRowDelta.code}:*`;
+            const key3 = `*:${contractRowDelta.table}`;
 
             // strict code::table handlers
             if (this.tableHandlers[key]) {
                 if (this.isAsync(this.tableHandlers[key])) {
-                    await this.tableHandlers[key](data);
+                    await this.tableHandlers[key](contractRowDelta);
                 } else {
-                    this.tableHandlers[key](data);
+                    this.tableHandlers[key](contractRowDelta);
                 }
                 handled = true;
             }
@@ -1027,9 +1052,9 @@ export default class MainDSWorker extends HyperionWorker {
             // generic code handlers
             if (this.tableHandlers[key2]) {
                 if (this.isAsync(this.tableHandlers[key2])) {
-                    await this.tableHandlers[key2](data);
+                    await this.tableHandlers[key2](contractRowDelta);
                 } else {
-                    this.tableHandlers[key2](data);
+                    this.tableHandlers[key2](contractRowDelta);
                 }
                 handled = true;
             }
@@ -1037,9 +1062,9 @@ export default class MainDSWorker extends HyperionWorker {
             // generic table handlers
             if (this.tableHandlers[key3]) {
                 if (this.isAsync(this.tableHandlers[key3])) {
-                    await this.tableHandlers[key3](data);
+                    await this.tableHandlers[key3](contractRowDelta);
                 } else {
-                    this.tableHandlers[key3](data);
+                    this.tableHandlers[key3](contractRowDelta);
                 }
                 handled = true;
             }
@@ -1189,16 +1214,26 @@ export default class MainDSWorker extends HyperionWorker {
                 // decode contract data
                 let jsonRow = await this.processContractRowNative(payload, block_num);
 
+                if (jsonRow?.value) {
+                    hLog(`Deserialization failed for contract row:`, jsonRow);
+                }
+
                 if (jsonRow?.value && !jsonRow['_blacklisted']) {
                     debugLog(jsonRow);
                     debugLog('Delta DS failed ->>', jsonRow);
                     jsonRow = await this.processContractRowNative(payload, block_num - 1);
                     debugLog('Retry with previous ABI ->>', jsonRow);
+                    hLog('Retry with previous ABI ->>', jsonRow);
                 }
 
                 if (jsonRow['_blacklisted']) {
                     delete jsonRow['_blacklisted'];
                 }
+
+                // Print contract row that wasn't deserialized
+                // if (!jsonRow.data) {
+                //     hLog(jsonRow);
+                // }
 
                 if (jsonRow && await this.processTableDelta(jsonRow)) {
                     if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {

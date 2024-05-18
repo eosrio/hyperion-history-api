@@ -1,5 +1,5 @@
 import {join} from "path";
-import {FastifyError, FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
+import {FastifyError, FastifyInstance, FastifyReply, FastifyRequest, FastifySchema} from "fastify";
 import {createReadStream} from "fs";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
 import autoLoad from '@fastify/autoload';
@@ -68,7 +68,7 @@ export function registerRoutes(server: FastifyInstance) {
         schema: {
             summary: "Wildcard chain api handler",
             tags: ["chain"]
-        },
+        } as FastifySchema,
         handler: async (request: FastifyRequest, reply: FastifyReply) => {
             await handleChainApiRedirect(request, reply, server);
         }
@@ -113,6 +113,11 @@ export function registerRoutes(server: FastifyInstance) {
             .catch(console.log);
         done();
     });
+
+    server.addHook('onError', (request, reply, error, done) => {
+        console.log(error);
+        done()
+    })
 
     if (server.manager.config.api.log_errors) {
         server.addHook('onError', (request: FastifyRequest, reply: FastifyReply, error: FastifyError, done) => {

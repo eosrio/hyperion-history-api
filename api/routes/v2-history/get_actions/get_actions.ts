@@ -60,9 +60,9 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     };
 
     // console.log(JSON.stringify(esOpts, null, 2));
-    const esResults = await fastify.elastic.search(esOpts);
+    const esResults = await fastify.elastic.search<any>(esOpts);
 
-    const results = esResults['body']['hits'];
+    const results = esResults.hits;
     const response: any = {
         cached: false,
         lib: 0,
@@ -83,8 +83,8 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         response['actions'] = [];
     }
 
-    if (results['hits'].length > 0) {
-        const actions = results['hits'];
+    if (results.hits.length > 0) {
+        const actions = results.hits;
         for (let action of actions.map(a => a._source)) {
 
             try {

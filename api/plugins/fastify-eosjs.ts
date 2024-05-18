@@ -1,8 +1,7 @@
 import {FastifyInstance, FastifyPluginOptions} from "fastify";
 import {Api} from "eosjs/dist";
 import fp from "fastify-plugin";
-import {SignatureProvider} from "../../addons/eosjs-native/eosjs-api-interfaces";
-import {JsSignatureProvider} from "../../addons/eosjs-native/eosjs-jssig";
+import { JsSignatureProvider } from "eosjs/dist/eosjs-jssig";
 
 export default fp(async (fastify: FastifyInstance, options: FastifyPluginOptions): Promise<void> => {
     const sigProvider = new JsSignatureProvider([]);

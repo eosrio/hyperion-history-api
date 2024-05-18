@@ -8,30 +8,28 @@ async function getCreatedAccounts(fastify: FastifyInstance, request: FastifyRequ
     const query: any = request.query;
     const {skip, limit} = getSkipLimit(query);
     const maxActions = fastify.manager.config.api.limits.get_created_accounts ?? 0;
-    const results = await fastify.elastic.search({
-        "index": fastify.manager.chain + '-action-*',
-        "from": skip || 0,
-        "size": (limit > maxActions ? maxActions : limit) || 100,
-        "body": {
-            "query": {
-                "bool": {
-                    must: [
-                        {term: {"act.authorization.actor": query.account.toLowerCase()}},
-                        {term: {"act.name": "newaccount"}},
-                        {term: {"act.account": "eosio"}}
-                    ]
-                }
-            },
-            sort: {
-                "global_sequence": "desc"
+    const results = await fastify.elastic.search<any>({
+        index: fastify.manager.chain + '-action-*',
+        from: skip || 0,
+        size: (limit > maxActions ? maxActions : limit) || 100,
+        query: {
+            bool: {
+                must: [
+                    {term: {"act.authorization.actor": query.account.toLowerCase()}},
+                    {term: {"act.name": "newaccount"}},
+                    {term: {"act.account": "eosio"}}
+                ]
             }
+        },
+        sort: {
+            global_sequence: "desc"
         }
     });
 
     const response: any = {accounts: []};
 
-    if (results['body']['hits']['hits'].length > 0) {
-        const actions = results['body']['hits']['hits'];
+    if (results.hits.hits.length > 0) {
+        const actions = results.hits.hits;
         for (let action of actions) {
             action = action._source;
             const _tmp = {};

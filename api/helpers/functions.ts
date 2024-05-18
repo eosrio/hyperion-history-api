@@ -484,6 +484,13 @@ export function addApiRoute(
     routeBuilder: (fastify: FastifyInstance, route: string) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>,
     schema: FastifySchema
 ) {
+
+    hLog(`Adding ${method} ${fastifyInstance.prefix}${routeName}`);
+
+    // if (`${fastifyInstance.prefix}${routeName}` === '/v1/chain/get_info') {
+    //     console.log(fastifyInstance.prefix, routeName, method, JSON.stringify(schema, null, 2));
+    // }
+
     fastifyInstance.route({
         url: '/' + routeName,
         method,
@@ -645,7 +652,15 @@ export async function handleChainApiRedirect(
             opts['body'] = "";
         }
     } else if (request.method === 'GET') {
-        opts['json'] = request.query;
+        const query = request.query as any;
+        if (Object.keys(query).length === 0) {
+            opts['json'] = undefined;
+        } else {
+            if (query.json === undefined) {
+                query.json = true;
+            }
+            opts['json'] = JSON.stringify(query);
+        }
     }
 
     try {
@@ -653,28 +668,23 @@ export async function handleChainApiRedirect(
         // Fetch
         const apiPostResponse = await fetch(reqUrl, {
             method: "POST",
-            body: opts['body']
+            body: request.method === 'POST' ? opts['body'] : (opts['json'] ?? JSON.stringify({json:true}))
         });
+
         const len = apiPostResponse.headers.get('content-length');
         const apiResponse = await apiPostResponse.json();
 
-        // Got Impl
-        // const apiResponse = await got.post(reqUrl, opts);
-
         reply.headers({"Content-Type": "application/json"});
+
         if (request.method === 'HEAD') {
-
-            // Fetch
             reply.headers({"Content-Length": len ?? 0});
-
-            // Got Impl
-            // reply.headers({"Content-Length": apiResponse.body.length});
             reply.send("");
             return '';
         } else {
-            reply.send(apiResponse.body);
-            return apiResponse.body;
+            reply.send(apiResponse);
+            return apiResponse;
         }
+
     } catch (error: any) {
 
         if (error.response) {
@@ -708,11 +718,13 @@ export async function handleChainApiRedirect(
 }
 
 export function addChainApiRoute(fastify: FastifyInstance, routeName, description, props?, required?) {
-    const baseSchema = {
+
+    const baseSchema: FastifySchema = {
         description: description,
         summary: description,
         tags: ['chain']
     };
+
     addApiRoute(
         fastify,
         ['GET', 'HEAD'],
@@ -724,9 +736,10 @@ export function addChainApiRoute(fastify: FastifyInstance, routeName, descriptio
                 type: 'object',
                 properties: props,
                 required: required
-            } : undefined
+            } : {}
         }
     );
+
     addApiRoute(
         fastify,
         'POST',
@@ -735,10 +748,14 @@ export function addChainApiRoute(fastify: FastifyInstance, routeName, descriptio
         {
             ...baseSchema,
             body: props ? {
-                type: ['object', 'string'],
-                properties: props,
-                required: required
-            } : undefined
+                anyOf: [{
+                    type: 'object',
+                    properties: props,
+                    required: required
+                },{
+                    type: 'string'
+                }]
+            } : {}
         }
     );
 }
@@ -778,7 +795,7 @@ export function addSharedSchemas(fastify: FastifyInstance) {
     fastify.addSchema({
         $id: "AccountName",
         description: "String representation of an EOSIO compatible account name",
-        "anyOf": [
+        anyOf: [
             {
                 "type": "string",
                 "description": "String representation of privileged EOSIO name type",
@@ -809,37 +826,37 @@ export function addSharedSchemas(fastify: FastifyInstance) {
 
     fastify.addSchema({
         $id: "Expiration",
-        "description": "Time that transaction must be confirmed by.",
-        "type": "string",
-        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$",
-        "title": "DateTime"
+        description: "Time that transaction must be confirmed by.",
+        type: "string",
+        pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$",
+        title: "DateTime"
     });
 
     fastify.addSchema({
         $id: "BlockExtensions",
-        "type": "array",
-        "items": {
-            "anyOf": [
-                {"type": "integer"},
-                {"type": "string"}
+        type: "array",
+        items: {
+            anyOf: [
+                {type: "integer"},
+                {type: "string"}
             ]
         },
-        "title": "Extension"
+        title: "Extension"
     })
 
     fastify.addSchema({
         $id: "ActionItems",
-        "type": "object",
-        "additionalProperties": false,
-        "minProperties": 5,
-        "required": [
+        type: "object",
+        additionalProperties: false,
+        minProperties: 5,
+        required: [
             "account",
             "name",
             "authorization",
             "data",
             "hex_data"
         ],
-        "properties": {
+        properties: {
             "account": {$ref: 'AccountName#'},
             "name": {$ref: 'AccountName#'},
             "authorization": {

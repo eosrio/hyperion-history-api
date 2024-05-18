@@ -3,6 +3,7 @@ import {ConnectionManager} from "../connections/manager.class";
 import _ from "lodash";
 import {hLog} from "./common_functions";
 import {createHash} from "crypto";
+import {BulkRequest, BulkResponse} from "@elastic/elasticsearch/lib/api/types";
 
 type MaxBlockCb = (maxBlock: number) => void;
 type routerFunction = (blockNum: number) => string;
@@ -219,33 +220,40 @@ export class ElasticRoutes {
         this.resetCounters();
     }
 
-    createGenericBuilder(collection, channel, counter, index_name, method): Promise<number> {
+    createGenericBuilder(collection, channel, counter, index_name: string, method: any): Promise<number> {
         return new Promise<number>((resolve) => {
             const messageMap = new Map();
             let maxBlockNum;
-            this.bulkAction({
+
+            const bulkResult = this.bulkAction({
                 index: index_name,
-                body: method(collection, messageMap, (maxBlock) => {
+                operations: method(collection, messageMap, (maxBlock) => {
                     maxBlockNum = maxBlock;
                 })
-            }).then((resp: any) => {
-                if (resp.body.errors) {
-                    this.ackOrNack(resp, messageMap, channel);
-                } else {
-                    if (maxBlockNum > 0) {
-                        ElasticRoutes.reportMaxBlock(maxBlockNum, index_name);
-                    }
-                    channel.ackAll();
-                }
-                resolve(messageMap.size);
-            }).catch((err) => {
-                try {
-                    channel.nackAll();
-                    hLog('NackAll', err);
-                } finally {
-                    resolve(0);
-                }
             });
+
+            if (bulkResult) {
+                bulkResult.then((resp: any) => {
+                    if (resp.errors) {
+                        this.ackOrNack(resp, messageMap, channel);
+                    } else {
+                        if (maxBlockNum > 0) {
+                            ElasticRoutes.reportMaxBlock(maxBlockNum, index_name);
+                        }
+                        channel.ackAll();
+                    }
+                    resolve(messageMap.size);
+                }).catch((err) => {
+                    try {
+                        channel.nackAll();
+                        hLog('NackAll', err);
+                    } finally {
+                        resolve(0);
+                    }
+                });
+            } else {
+                hLog("Unexpected Index Request with no operations!");
+            }
         })
     }
 
@@ -360,7 +368,10 @@ export class ElasticRoutes {
         }
     }
 
-    bulkAction(bulkData) {
+    bulkAction(bulkData: BulkRequest<any, any>): Promise<BulkResponse> | null {
+        if (!bulkData.operations) {
+            return null;
+        }
         let minIdx = 0;
         if (this.cm.ingestClients.length > 1) {
             let min;
@@ -375,13 +386,13 @@ export class ElasticRoutes {
                 }
             });
         }
-        this.ingestNodeCounters[minIdx].docs += bulkData.body.length;
+        this.ingestNodeCounters[minIdx].docs += bulkData.operations.length;
         if (this.ingestNodeCounters[minIdx].docs > 10000) {
             this.resetCounters();
         }
         // print full request
         // console.log(JSON.stringify(bulkData));
-        return this.cm.ingestClients[minIdx]['bulk'](bulkData);
+        return this.cm.ingestClients[minIdx].bulk<any,any>(bulkData);
     }
 
     getIndexPartition(blockNum: number): string {
@@ -417,17 +428,23 @@ export class ElasticRoutes {
 
             // write directly to index
             const messageMap = new Map();
-            let maxBlockNum;
-            this.bulkAction({
+
+            let maxBlockNum = 0;
+
+            const bulkResult = this.bulkAction({
                 index: _index,
-                body: bulkGenerator(payloads, messageMap, (maxBlock) => {
+                operations: bulkGenerator(payloads, messageMap, (maxBlock: number) => {
                     maxBlockNum = maxBlock;
                 }, routerFunction, _index)
-            }).then(resp => {
-                this.onResponse(resp, messageMap, cb, payloads, channel, _index, maxBlockNum);
-            }).catch(err => {
-                this.onError(err, channel, cb);
             });
+
+            if (bulkResult) {
+                bulkResult.then(resp => {
+                    this.onResponse(resp, messageMap, cb, payloads, channel, _index, maxBlockNum);
+                }).catch(err => {
+                    this.onError(err, channel, cb);
+                });
+            }
 
             // if (this.cm.config.indexer.rewrite) {
             //

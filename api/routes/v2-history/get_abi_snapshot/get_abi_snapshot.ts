@@ -21,19 +21,19 @@ async function getAbiSnapshot(fastify: FastifyInstance, request: FastifyRequest)
         mustArray.push({"range": {"block": {"lte": parseInt(block)}}});
     }
 
-    const results = await fastify.elastic.search({
+    const results = await fastify.elastic.search<any>({
         index: fastify.manager.chain + '-abi-*',
         size: 1,
         query: {bool: {must: mustArray}},
         sort: [{block: {order: "desc"}}]
     });
-    if (results['body']['hits']['hits'].length > 0) {
+    if (results.hits.hits.length > 0) {
         if (should_fetch) {
-            response['abi'] = JSON.parse(results['body']['hits']['hits'][0]['_source']['abi']);
+            response['abi'] = JSON.parse(results.hits.hits[0]['_source']['abi']);
         } else {
             response['present'] = true;
         }
-        response.block_num = results['body']['hits']['hits'][0]['_source']['block'];
+        response.block_num = results.hits.hits[0]['_source']['block'];
     } else {
         response['present'] = false;
         response['error'] = 'abi not found for ' + code + ' until block ' + block;

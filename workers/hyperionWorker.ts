@@ -257,7 +257,7 @@ export abstract class HyperionWorker {
 
     loadAbiHex(contract: string, block_num: number, abi_hex: string) {
         // check local blacklist for corrupted ABIs that failed to load before
-        let _status;
+        let _status: boolean;
         if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract)?.has(block_num)) {
             _status = false;
             debugLog('ignore saved abi for', contract, block_num);
@@ -277,7 +277,7 @@ export abstract class HyperionWorker {
         return _status;
     }
 
-    removeFromFailed(contract) {
+    removeFromFailed(contract: string) {
         if (this.failedAbiMap.has(contract)) {
             this.failedAbiMap.delete(contract);
             hLog(`${contract} was removed from the failed map!`);
@@ -285,15 +285,22 @@ export abstract class HyperionWorker {
     }
 
     getAbiDataType(field: string, contract: string, type: string): string {
-        switch (field) {
-            case "action": {
-                return this.abieos.getTypeForAction(contract, type);
+        let dataType = '';
+        try {
+            switch (field) {
+                case "action": {
+                    dataType = this.abieos.getTypeForAction(contract, type);
+                    break;
+                }
+                case "table": {
+                    dataType = this.abieos.getTypeForTable(contract, type);
+                    break;
+                }
             }
-            case "table": {
-                return this.abieos.getTypeForTable(contract, type);
-            }
+        } catch (e: any) {
+            hLog(e.message);
         }
-        return "";
+        return dataType;
     }
 
     async loadCurrentAbiHex(contract: string): Promise<boolean> {

@@ -80,12 +80,12 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
         query: queryStruct,
         sort: [{block_num: {order: sort_direction}}]
     });
-    const deltas = results['body']['hits']['hits'].map((d: any) => {
+    const deltas = results.hits.hits.map((d: any) => {
         return mergeDeltaMeta(d._source);
     });
     return {
         query_time: null,
-        total: results['body']['hits']['total'],
+        total: results.hits.total,
         deltas
     };
 }
