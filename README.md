@@ -13,17 +13,16 @@
     <a href="https://antelope.io">
         Antelope
     </a>
-    (former EOSIO) based blockchains
-
-![CI](https://github.com/eosrio/hyperion-history-api/actions/workflows/build.yml/badge.svg)
-
+    (former EOSIO) based blockchains <br>
 </h4>
 
 <br>
 
 Made with ♥ by [Rio Blocks / EOS Rio](https://rioblocks.io/?lang=en)
 
-### [Official documentation](https://hyperion.docs.eosrio.io)
+![CI](https://github.com/eosrio/hyperion-history-api/actions/workflows/build.yml/badge.svg)
+
+### 📖 [Hyperion Docs - Official Documentation](https://hyperion.docs.eosrio.io)
 
 ### How to use:
 
