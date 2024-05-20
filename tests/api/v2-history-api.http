@@ -1,37 +1,58 @@
 ### get_actions
 GET {{server}}/v2/history/get_actions?limit=1&account={{system_account}}
 
+> assert.js
+
 ### get_deltas
 GET {{server}}/v2/history/get_deltas?limit=1&code={{system_account}}
+
+> assert.js
 
 ### get_creator
 // testing root account
 GET {{server}}/v2/history/get_creator?account={{system_account}}
 
+> assert.js
+
 ### get_creator
 // testing children account
 GET {{server}}/v2/history/get_creator?account={{system_token_account}}
 
+> assert.js
+
 ### get_created_accounts
 GET {{server}}/v2/history/get_created_accounts?account={{system_account}}
+
+> assert.js
 
 ### get_schedule
 GET {{server}}/v2/history/get_schedule
 
+> assert.js
+
 ### get_table_state
 GET {{server}}/v2/history/get_table_state?code={{system_account}}&table=global
+
+> assert.js
 
 ### get_abi_snapshot
 GET {{server}}/v2/history/get_abi_snapshot?contract={{system_account}}
 
+> assert.js
+
 ### get_abi_snapshot - first block with fetch
 GET {{server}}/v2/history/get_abi_snapshot?contract={{system_account}}&fetch=true&block=1
+
+> assert.js
 
 ### get_actions - last action
 // get the last trx id by action
 GET {{server}}/v2/history/get_actions?limit=1
 
 > {%
+    client.test("Request executed successfully", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+    });
     let trx_id = response.body.actions[0].trx_id;
     client.global.set('last_trx_id',trx_id);
 %}
@@ -39,5 +60,9 @@ GET {{server}}/v2/history/get_actions?limit=1
 ### check_transaction
 GET {{server}}/v2/history/check_transaction?id={{last_trx_id}}
 
+> assert.js
+
 ### get_transaction
 GET {{server}}/v2/history/get_transaction?id={{last_trx_id}}
+
+> assert.js

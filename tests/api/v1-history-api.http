@@ -9,6 +9,9 @@ Accept: */*
 }
 
 > {%
+    client.test("Request executed successfully", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+    });
     let trx_id = response.body.actions[0].action_trace.trx_id;
     client.global.set('last_trx_id',trx_id);
 %}
@@ -22,12 +25,17 @@ Accept: */*
   "controlling_account": "eosio"
 }
 
+> assert.js
+
 ### get_account
 // store the public key of the system account, to be used on the get_key_accounts test
 GET {{server}}/v1/chain/get_account?account_name={{system_account}}
 Accept: application/json
 
 > {%
+    client.test("Request executed successfully", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+    });
     let publicKey = response.body.permissions[0].required_auth.keys[0].key;
     client.global.set('test_public_key',publicKey);
 %}
@@ -41,6 +49,8 @@ Accept: */*
   "public_key": "{{test_public_key}}"
 }
 
+> assert.js
+
 ### get_transaction
 POST {{server}}/v1/history/get_transaction
 Content-Type: application/json
@@ -49,4 +59,6 @@ Accept: */*
 {
   "id": "{{last_trx_id}}"
 }
+
+> assert.js
 

@@ -1,0 +1,25 @@
+### get_block (by block_num)
+POST {{server}}/v1/trace_api/get_block
+Content-Type: application/json
+
+{
+  "block_num": "2"
+}
+
+> {%
+    client.test("Request executed successfully", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+    });
+    let block_id = response.body["id"];
+    client.global.set('block_id',block_id);
+%}
+
+### get_block (by id)
+POST {{server}}/v1/trace_api/get_block
+Content-Type: application/json
+
+{
+  "block_id": "{{block_id}}"
+}
+
+> assert.js

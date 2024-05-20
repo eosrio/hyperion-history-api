@@ -1,0 +1,11 @@
+### health
+GET {{server}}/v2/health
+Content-Type: application/json
+
+> assert.js
+
+### get_filters
+GET {{server}}/v2/get_filters
+Content-Type: application/json
+
+> assert.js

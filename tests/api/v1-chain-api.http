@@ -2,6 +2,8 @@
 GET {{server}}/v1/chain/get_abi?account_name={{system_token_account}}
 Accept: application/json
 
+> assert.js
+
 ### get_abi (POST)
 POST {{server}}/v1/chain/get_abi
 Content-Type: application/json
@@ -10,9 +12,13 @@ Content-Type: application/json
   "account_name": "{{system_token_account}}"
 }
 
+> assert.js
+
 ### get_account
 GET {{server}}/v1/chain/get_account?account_name={{test_account}}
 Accept: application/json
+
+> assert.js
 
 ### get_account (POST)
 POST {{server}}/v1/chain/get_account
@@ -22,9 +28,13 @@ Content-Type: application/json
   "account_name": "{{test_account}}"
 }
 
+> assert.js
+
 ### get_activated_protocol_features
 GET {{server}}/v1/chain/get_activated_protocol_features?revese=true
 Accept: application/json
+
+> assert.js
 
 ### get_activated_protocol_features (POST)
 POST {{server}}/v1/chain/get_activated_protocol_features
@@ -34,8 +44,12 @@ Content-Type: application/json
   "reverse": true
 }
 
+> assert.js
+
 ### get_block
 GET {{server}}/v1/chain/get_block?block_num_or_id=2
+
+> assert.js
 
 ### get_block (POST)
 POST {{server}}/v1/chain/get_block
@@ -45,9 +59,13 @@ Content-Type: application/json
   "block_num_or_id": 2
 }
 
+> assert.js
+
 ### get_block_header_state
 GET {{server}}/v1/chain/get_block_header_state?block_num_or_id=1
 Accept: application/json
+
+> assert.js
 
 ### get_block_header_state (POST)
 POST {{server}}/v1/chain/get_block_header_state
@@ -57,9 +75,13 @@ Content-Type: application/json
   "block_num_or_id": 2
 }
 
+> assert.js
+
 ### get_code
 GET {{server}}/v1/chain/get_code?account_name={{system_token_account}}
 Accept: application/json
+
+> assert.js
 
 ### get_code (POST)
 POST {{server}}/v1/chain/get_code
@@ -70,9 +92,13 @@ Content-Type: application/json
   "code_as_wasm": true
 }
 
+> assert.js
+
 ### get_currency_balance
 GET {{server}}/v1/chain/get_currency_balance?code={{system_token_account}}&symbol={{system_token_symbol}}&account={{test_account}}
 Accept: application/json
+
+> assert.js
 
 ### get_currency_balance (POST)
 POST {{server}}/v1/chain/get_currency_balance
@@ -84,9 +110,13 @@ Content-Type: application/json
   "account": "{{test_account}}"
 }
 
+> assert.js
+
 ### get_currency_stats
 GET {{server}}/v1/chain/get_currency_stats?code={{system_token_account}}&symbol={{system_token_symbol}}
 Accept: application/json
+
+> assert.js
 
 ### get_currency_stats (POST)
 POST {{server}}/v1/chain/get_currency_stats
@@ -97,18 +127,26 @@ Content-Type: application/json
   "symbol": "{{system_token_symbol}}"
 }
 
+> assert.js
+
 ### get_info
 GET {{server}}/v1/chain/get_info
 Accept: application/json
+
+> assert.js
 
 ### get_info (POST)
 POST {{server}}/v1/chain/get_info
 Content-Type: application/json
 Accept: */*
 
+> assert.js
+
 ### get_producers
 GET {{server}}/v1/chain/get_producers
 Accept: application/json
+
+> assert.js
 
 ### get_producers (POST)
 POST {{server}}/v1/chain/get_producers
@@ -118,9 +156,13 @@ Content-Type: application/json
   "json": false
 }
 
+> assert.js
+
 ### get_raw_abi
 GET {{server}}/v1/chain/get_raw_abi?account_name={{system_token_account}}
 Accept: application/json
+
+> assert.js
 
 ### get_raw_abi (POST)
 POST {{server}}/v1/chain/get_raw_abi
@@ -130,9 +172,13 @@ Content-Type: application/json
   "account_name": "{{system_token_account}}"
 }
 
+> assert.js
+
 ### get_raw_code_and_abi
 GET {{server}}/v1/chain/get_raw_code_and_abi?account_name={{system_token_account}}
 Accept: application/json
+
+> assert.js
 
 ### get_raw_code_and_abi (POST)
 POST {{server}}/v1/chain/get_raw_code_and_abi
@@ -142,9 +188,13 @@ Content-Type: application/json
   "account_name": "{{system_token_account}}"
 }
 
+> assert.js
+
 ### get_table_by_scope
 GET {{server}}/v1/chain/get_table_by_scope?code={{system_token_account}}&table=accounts
 Accept: application/json
+
+> assert.js
 
 ### get_table_by_scope (POST)
 POST {{server}}/v1/chain/get_table_by_scope
@@ -155,9 +205,13 @@ Content-Type: application/json
   "table": "accounts"
 }
 
+> assert.js
+
 ### get_table_rows
 GET {{server}}/v1/chain/get_table_rows?code={{system_account}}&table=global&scope={{system_account}}
 Accept: application/json
+
+> assert.js
 
 ### get_table_rows (POST)
 POST {{server}}/v1/chain/get_table_rows
@@ -169,3 +223,5 @@ Content-Type: application/json
   "scope": "{{system_account}}",
   "json": true
 }
+
+> assert.js
