@@ -99,3 +99,4 @@ scripts/repair-cli/*.js.map
 
 tests/api/ijhttp
 tests/api/ijhttp.zip
+tests/api/reports
