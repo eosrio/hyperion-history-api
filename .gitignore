@@ -96,3 +96,6 @@ scripts/hyp-repair.js.map
 
 scripts/repair-cli/*.js
 scripts/repair-cli/*.js.map
+
+tests/api/ijhttp
+tests/api/ijhttp.zip
