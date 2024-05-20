@@ -1,0 +1,21 @@
+### get_action_usage
+// 1H
+GET {{server}}/v2/stats/get_action_usage?period=1h
+Content-Type: application/json
+
+### get_action_usage
+// 24H
+GET {{server}}/v2/stats/get_action_usage?period=24h
+Content-Type: application/json
+
+### get_api_usage
+GET {{server}}/v2/stats/get_api_usage
+Content-Type: application/json
+
+### get_missed_blocks
+GET {{server}}/v2/stats/get_missed_blocks
+Content-Type: application/json
+
+### get_resource_usage
+GET {{server}}/v2/stats/get_resource_usage?code={{system_token_account}}&action=transfer
+Content-Type: application/json

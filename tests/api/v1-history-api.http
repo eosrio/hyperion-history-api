@@ -1,0 +1,52 @@
+### get_actions
+POST {{server}}/v1/history/get_actions
+Content-Type: application/json
+Accept: */*
+
+{
+  "account_name": "eosio",
+  "offset": -1
+}
+
+> {%
+    let trx_id = response.body.actions[0].action_trace.trx_id;
+    client.global.set('last_trx_id',trx_id);
+%}
+
+### get_controlled_accounts
+POST {{server}}/v1/history/get_controlled_accounts
+Content-Type: application/json
+Accept: */*
+
+{
+  "controlling_account": "eosio"
+}
+
+### get_account
+// store the public key of the system account, to be used on the get_key_accounts test
+GET {{server}}/v1/chain/get_account?account_name={{system_account}}
+Accept: application/json
+
+> {%
+    let publicKey = response.body.permissions[0].required_auth.keys[0].key;
+    client.global.set('test_public_key',publicKey);
+%}
+
+### get_key_accounts
+POST {{server}}/v1/history/get_key_accounts
+Content-Type: application/json
+Accept: */*
+
+{
+  "public_key": "{{test_public_key}}"
+}
+
+### get_transaction
+POST {{server}}/v1/history/get_transaction
+Content-Type: application/json
+Accept: */*
+
+{
+  "id": "{{last_trx_id}}"
+}
+

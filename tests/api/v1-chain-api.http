@@ -104,6 +104,7 @@ Accept: application/json
 ### get_info (POST)
 POST {{server}}/v1/chain/get_info
 Content-Type: application/json
+Accept: */*
 
 ### get_producers
 GET {{server}}/v1/chain/get_producers
