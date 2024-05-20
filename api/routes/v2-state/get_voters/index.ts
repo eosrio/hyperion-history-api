@@ -16,15 +16,18 @@ export default function (fastify: FastifyInstance, opts: any, next) {
             }
         }),
         response: extendResponseSchema({
-            "voters": {
+            voter_count: {
+                type: "integer"
+            },
+            voters: {
                 type: "array",
                 items: {
                     type: "object",
                     properties: {
-                        "account": {type: "string"},
-                        "weight": {type: "number"},
-                        "last_vote": {type: "number"},
-                        "data": {
+                        account: {type: "string"},
+                        weight: {type: "number"},
+                        last_vote: {type: "number"},
+                        data: {
                             additionalProperties: true
                         }
                     }

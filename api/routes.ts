@@ -3,6 +3,7 @@ import {FastifyError, FastifyInstance, FastifyReply, FastifyRequest, FastifySche
 import {createReadStream} from "fs";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
 import autoLoad from '@fastify/autoload';
+import {Readable} from "node:stream";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     server.route({
@@ -57,6 +58,20 @@ export function registerRoutes(server: FastifyInstance) {
     addRoute(server, 'v1-trace', '/v1/trace_api');
 
     addSharedSchemas(server);
+
+    // special hook to fix cleos empty body POST requests
+    server.addHook("preParsing", (req, _rep, payload, done) => {
+        if (
+            req.method === 'POST' &&
+            req.headers['content-type'] == 'application/json' &&
+            req.headers['content-length'] == '0'
+        ) {
+            req.headers['content-length'] = '2';
+            done(null, Readable.from(['{}']));
+        } else {
+            done(null, payload);
+        }
+    });
 
     // chain api redirects
     addRoute(server, 'v1-chain', '/v1/chain');

@@ -6,6 +6,7 @@ import {Abieos} from "@eosrio/node-abieos";
 import {JsonRpc} from "eosjs/dist";
 import {terms} from "../../v2-history/get_actions/definitions";
 import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
+import {Client} from "@elastic/elasticsearch";
 
 const abi_remapping = {
     "_Bool": "bool"
@@ -14,7 +15,7 @@ const abi_remapping = {
 const txEnc = new TextEncoder();
 const txDec = new TextDecoder();
 
-async function fetchAbiHexAtBlockElastic(client, chain, contract_name, last_block, get_json) {
+async function fetchAbiHexAtBlockElastic(client: Client, chain, contract_name, last_block, get_json) {
     try {
         const _includes = ["actions", "tables", "block"];
         if (get_json) {
@@ -30,31 +31,27 @@ async function fetchAbiHexAtBlockElastic(client, chain, contract_name, last_bloc
                 ]
             }
         };
-        const queryResult: SearchResponse<any, any> = await client.search({
+        const queryResult = await client.search<any>({
             index: `${chain}-abi-*`,
-            body: {
-                size: 1, query,
-                sort: [{block: {order: "desc"}}],
-                _source: {includes: _includes}
-            }
+            size: 1, query,
+            sort: [{block: {order: "desc"}}],
+            _source: {includes: _includes}
         });
         const results = queryResult.hits.hits;
         if (results.length > 0) {
             const nextRefResponse: SearchResponse<any, any> = await client.search({
                 index: `${chain}-abi-*`,
-                body: {
-                    size: 1,
-                    query: {
-                        bool: {
-                            must: [
-                                {term: {account: contract_name}},
-                                {range: {block: {gte: last_block}}}
-                            ]
-                        }
-                    },
-                    sort: [{block: {order: "asc"}}],
-                    _source: {includes: ["block"]}
-                }
+                size: 1,
+                query: {
+                    bool: {
+                        must: [
+                            {term: {account: contract_name}},
+                            {range: {block: {gte: last_block}}}
+                        ]
+                    }
+                },
+                sort: [{block: {order: "asc"}}],
+                _source: {includes: ["block"]}
             });
             const nextRef = nextRefResponse.hits.hits;
             if (nextRef.length > 0) {
@@ -83,7 +80,7 @@ async function getAbiFromHeadBlock(rpc: JsonRpc, code) {
     return {abi: _abi, valid_until: null, valid_from: null};
 }
 
-async function getContractAtBlock(esClient, rpc, chain, accountName: string, block_num: number, check_action?: string) {
+async function getContractAtBlock(esClient: Client, rpc: JsonRpc, chain: string, accountName: string, block_num: number, check_action?: string) {
     let savedAbi, abi;
     savedAbi = await fetchAbiHexAtBlockElastic(esClient, chain, accountName, block_num, true);
     if (savedAbi === null || (savedAbi.actions && !savedAbi.actions.includes(check_action))) {
@@ -266,21 +263,24 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         "index": fastify.manager.chain + '-action-*',
         "from": from || 0,
         "size": (size > getActionsLimit ? getActionsLimit : size),
-        "body": {
-            "query": queryStruct,
-            "sort": {
-                "global_sequence": sort_direction
-            }
+        "query": queryStruct,
+        "sort": {
+            "global_sequence": sort_direction
         }
     };
+
     // console.log(JSON.stringify(esOpts, null, 2));
-    const pResults = await Promise.all([fastify.eosjs.rpc.get_info(), fastify.elastic.search(esOpts)]);
+
+    const pResults = await Promise.all([fastify.eosjs.rpc.get_info(), fastify.elastic.search<any>(esOpts)]);
     const results = pResults[1];
     const response: any = {
         actions: [],
         last_irreversible_block: pResults[0].last_irreversible_block_num
     };
-    const hits = results['body']['hits']['hits'];
+    const hits = results.hits.hits;
+
+
+
     if (hits.length > 0) {
         let actions = hits;
         if (offset < 0) {
@@ -300,7 +300,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         }
 
         for (let i = 0; i < actions.length; i++) {
-            let action = actions[i];
+            let action = actions[i] as any;
             action = action._source;
             let act: any = {
                 "global_action_seq": action.global_sequence,
@@ -343,11 +343,10 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
                 }
             }
 
-            // TODO: Optionally re-encode using the original ABI, will increase query time
-            // act.action_trace.act.hex_data = Buffer.from(flatstr(JSON.stringify(action.act.data))).toString('hex');
             if (action.act.account_ram_deltas) {
                 act.action_trace.account_ram_deltas = action.account_ram_deltas
             }
+
             // include receipt
             const receipt = action.receipts[0];
             act.action_trace.receipt = receipt;

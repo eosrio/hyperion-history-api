@@ -6,7 +6,8 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
 
     // Pagination
-    let skip, limit;
+    let skip: number;
+    let limit: number;
     skip = parseInt(query.skip, 10);
     if (skip < 0) {
         return 'invalid skip parameter';
@@ -70,25 +71,23 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     const maxDocs = fastify.manager.config.api.limits.get_proposals ?? 100;
-    const results = await fastify.elastic.search({
+    const results = await fastify.elastic.search<any>({
         "index": fastify.manager.chain + '-table-proposals-*',
         "from": skip || 0,
         "size": (limit > maxDocs ? maxDocs : limit) || 10,
-        "body": {
-            "track_total_hits": getTrackTotalHits(request.query),
-            "query": queryStruct,
-            "sort": [{"block_num": "desc"}]
-        }
+        "track_total_hits": getTrackTotalHits(request.query),
+        "query": queryStruct,
+        "sort": [{"block_num": "desc"}]
     });
 
     const response: any = {
         query_time: null,
         cached: false,
-        total: results['body']['hits']['total'],
+        total: results.hits.total,
         proposals: []
     };
 
-    const hits = results['body']['hits']['hits'];
+    const hits = results.hits.hits;
     for (const hit of hits) {
         const prop = hit._source;
         response.proposals.push(prop);

@@ -4,6 +4,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethod
 import {checkDeltaFilter, checkFilter, hLog} from "../../helpers/common_functions";
 import {Socket} from "socket.io";
 import {ScrollId, SearchResponse} from "@elastic/elasticsearch/lib/api/types";
+import {Readable} from "node:stream";
 
 const deltaQueryFields = ['code', 'table', 'scope', 'payer'];
 
@@ -485,8 +486,6 @@ export function addApiRoute(
     schema: FastifySchema
 ) {
 
-    hLog(`Adding ${method} ${fastifyInstance.prefix}${routeName}`);
-
     // if (`${fastifyInstance.prefix}${routeName}` === '/v1/chain/get_info') {
     //     console.log(fastifyInstance.prefix, routeName, method, JSON.stringify(schema, null, 2));
     // }
@@ -629,14 +628,15 @@ export async function handleChainApiRedirect(
     fastify: FastifyInstance
 ): Promise<string> {
     const urlParts = request.url.split("?");
-    let reqUrl = fastify.chain_api + urlParts[0];
+    const reqPath = urlParts[0];
+    let reqUrl = fastify.chain_api + reqPath;
 
     // const pathComponents = urlParts[0].split('/');
     // const path = pathComponents.at(-1);
 
 
-    if (urlParts[0] === '/v1/chain/push_transaction' && fastify.push_api && fastify.push_api !== "") {
-        reqUrl = fastify.push_api + urlParts[0];
+    if (reqPath === '/v1/chain/push_transaction' && fastify.push_api && fastify.push_api !== "") {
+        reqUrl = fastify.push_api + reqPath;
     }
 
     const opts: any = {};
@@ -663,12 +663,33 @@ export async function handleChainApiRedirect(
         }
     }
 
+    let bodyData = '';
+    if (request.method === 'POST') {
+        bodyData = opts['body'];
+    } else {
+        if (opts['json']) {
+            bodyData = opts['json'];
+        } else {
+            if (reqPath !== '/v1/chain/get_info') {
+                bodyData = JSON.stringify({json: "true"});
+            }
+        }
+    }
+
+    // let bodyData = request.method === 'POST' ? opts['body'] : (opts['json'] ?? JSON.stringify({json:"true"}));
+
+    if (bodyData) {
+        hLog(`${request.method} >> ${reqPath} with: ${bodyData}`);
+    } else {
+        hLog(`${request.method} >> ${reqPath}`);
+    }
+
     try {
 
         // Fetch
         const apiPostResponse = await fetch(reqUrl, {
             method: "POST",
-            body: request.method === 'POST' ? opts['body'] : (opts['json'] ?? JSON.stringify({json:true}))
+            body: bodyData
         });
 
         const len = apiPostResponse.headers.get('content-length');
@@ -725,6 +746,8 @@ export function addChainApiRoute(fastify: FastifyInstance, routeName, descriptio
         tags: ['chain']
     };
 
+    hLog(`Adding ${fastify.prefix}${routeName}`);
+
     addApiRoute(
         fastify,
         ['GET', 'HEAD'],
@@ -752,7 +775,7 @@ export function addChainApiRoute(fastify: FastifyInstance, routeName, descriptio
                     type: 'object',
                     properties: props,
                     required: required
-                },{
+                }, {
                     type: 'string'
                 }]
             } : {}
