@@ -39,3 +39,9 @@ GET {{server}}/v2/state/get_voters?producer={{test_account}}
 Content-Type: application/json
 
 > assert.js
+
+### get_voter_scopes
+GET {{server}}/v2/state/get_voter_scopes?term={{test_account}}
+Content-Type: application/json
+
+> assert.js

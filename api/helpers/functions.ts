@@ -485,11 +485,6 @@ export function addApiRoute(
     routeBuilder: (fastify: FastifyInstance, route: string) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>,
     schema: FastifySchema
 ) {
-
-    // if (`${fastifyInstance.prefix}${routeName}` === '/v1/chain/get_info') {
-    //     console.log(fastifyInstance.prefix, routeName, method, JSON.stringify(schema, null, 2));
-    // }
-
     fastifyInstance.route({
         url: '/' + routeName,
         method,
