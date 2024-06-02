@@ -80,7 +80,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         try {
 
             // build search request
-            const $search = fastify.elastic.search({
+            const $search = fastify.elastic.search<any>({
                 index: indexPattern,
                 size: _size,
                 body: {
@@ -98,7 +98,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
                 return response;
             }
         }
-        hits = pResults[1]['body']['hits']['hits'];
+        hits = pResults[1].hits.hits;
         response.lib = pResults[0].last_irreversible_block_num;
     }
 
