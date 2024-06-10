@@ -63,6 +63,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket, data) {
         total = init_response.body.hits.total.value;
         longScroll = true;
         hLog(`Attention! Long scroll (deltas) is running!`);
+        hLog(JSON.stringify(search_body, null, 2));
     }
 
     // emit first block
@@ -213,6 +214,7 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
         total = init_response.body.hits.total.value;
         longScroll = true;
         hLog(`Attention! Long scroll (actions) is running!`);
+        hLog(JSON.stringify(search_body, null, 2));
     }
 
     // emit first block
