@@ -73,9 +73,6 @@ modules/**/*.js.map
 addons/**/*.js
 addons/**/*.js.map
 
-scripts/hpm.js
-scripts/hpm.js.map
-
 plugins/.state.json
 plugins/repos
 plugins/*.js
@@ -96,6 +93,9 @@ scripts/hyp-repair.js.map
 
 scripts/repair-cli/*.js
 scripts/repair-cli/*.js.map
+
+scripts/hpm.js
+scripts/hpm.js.map
 
 tests/api/ijhttp
 tests/api/ijhttp.zip
