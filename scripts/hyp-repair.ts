@@ -4,7 +4,6 @@ import {Client, estypes} from '@elastic/elasticsearch';
 // @ts-ignore
 import cliProgress from 'cli-progress';
 import {JsonRpc} from 'eosjs';
-import fetch from 'cross-fetch';
 import {existsSync, mkdirSync, writeFileSync} from 'fs';
 import {HyperionBlock} from './repair-cli/interfaces.js';
 import {

@@ -1,9 +1,9 @@
 import {Client} from "@elastic/elasticsearch";
-import {Serialize} from "../addons/eosjs-native";
 import {existsSync} from "fs";
 import {join} from "path";
 import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
 import {getTotalValue} from "../api/helpers/functions";
+import { Serialize } from "eosjs";
 
 let config;
 const conf_path = join(__dirname, `../${process.env.CONFIG_JSON}`);
