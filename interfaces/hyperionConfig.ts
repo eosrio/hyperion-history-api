@@ -70,6 +70,7 @@ export interface IndexerConfigs {
 }
 
 interface ApiLimits {
+    get_top_holders?: number;
     get_links?: number;
     get_actions?: number;
     get_blocks?: number;
