@@ -1,4 +1,4 @@
-import {AlertManagerOptions} from "../modules/alertsManager";
+import { AlertManagerOptions } from "../modules/alertsManager";
 
 export interface ScalingConfigs {
     polling_interval: number;
@@ -70,18 +70,18 @@ export interface IndexerConfigs {
 }
 
 interface ApiLimits {
-    get_top_holders?: number;
-    get_links?: number;
     get_actions?: number;
     get_blocks?: number;
     get_created_accounts?: number;
     get_deltas?: number;
     get_key_accounts?: number;
+    get_links?: number;
     get_proposals?: number;
-    get_tokens?: number;
     get_transfers?: number;
-    get_voters?: number;
     get_trx_actions?: number;
+    get_tokens?: number;
+    get_top_holders?: number;
+    get_voters?: number;
 }
 
 interface CachedRouteConfig {

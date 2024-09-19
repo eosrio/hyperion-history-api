@@ -7,7 +7,7 @@ async function getTopHolders(fastify: FastifyInstance, request: FastifyRequest) 
     const query: any = request.query;
 
     const response: any = {
-        contract: query.account,
+        contract: query.contract,
         symbol: undefined,
         holders: []
     };
@@ -25,6 +25,7 @@ async function getTopHolders(fastify: FastifyInstance, request: FastifyRequest) 
 
     if (query.symbol) {
         terms.push({ "term": { "symbol": { "value": query.symbol } } });
+        response.symbol = query.symbol;
     }
 
 
