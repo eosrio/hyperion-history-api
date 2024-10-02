@@ -138,12 +138,14 @@ async function getHealthQuery(fastify: FastifyInstance) {
         version_hash?: string,
         host: string,
         health: ServiceResponse<any>[],
+        limits: any
         features: any
     } = {
         version: fastify.manager.current_version,
         version_hash: fastify.manager.getServerHash(),
         host: fastify.manager.config.api.server_name,
         health: [],
+        limits: fastify.manager.config.api.limits,
         features: fastify.manager.config.features
     };
     response.health = await Promise.all([
