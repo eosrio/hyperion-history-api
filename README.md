@@ -14,6 +14,7 @@
         Antelope
     </a>
     (former EOSIO) based blockchains <br>
+    ![CI](https://github.com/eosrio/hyperion-history-api/actions/workflows/build.yml/badge.svg)
 </h4>
 
 <br>
