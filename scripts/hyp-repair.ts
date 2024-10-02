@@ -735,8 +735,13 @@ async function repairChain(chain: string, file: string, args: any) {
                     deletePermissions += deletedPermissionsResult.deleted;
                 }
             } else {
-                console.log(`Index ${searchPermissions.index} doens't exist. Não foi possível realizar a exclusão.`);
+                console.log(`Index ${searchPermissions.index} not present!`);
             }
+        }
+
+        if (!range.ids) {
+            console.log("Invalid file format! Please check that you are calling the repair tool with the right file.");
+            process.exit(1);
         }
 
         for (const id of range.ids) {
@@ -799,7 +804,6 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
     }
     const controller = new WebSocket(hyperionIndexer + '/local');
 
-    // Function to send Chunk
     async function sendChunk(chunk): Promise<void> {
         return new Promise((resolve, reject) => {
             const payload = {
@@ -807,12 +811,9 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
                 data: chunk,
             };
             controller.send(JSON.stringify(payload));
-
-            // Wait repair_completed confirmation
             controller.once('message', (data) => {
                 const parsed = JSON.parse(data.toString());
                 if (parsed.event === 'repair_completed') {
-                    // console.log(`Hyperion repair completed for chunk!`);
                     resolve();
                 }
             });
@@ -827,24 +828,21 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
 
         if (!dryRun) {
             let completedLines = 0;
-
             for (let i = 0; i < parsedFile.length; i += chunkSize) {
                 const chunk = parsedFile.slice(i, i + chunkSize);
                 await sendChunk(chunk);
-
-                // Atualizar o progresso com base no número total de linhas
                 completedLines += chunk.length;
                 const progress = (completedLines / totalLines) * 100;
                 const progressBar = Array(Math.round(progress / 2))
                     .fill('#')
                     .join('');
-                process.stdout.clearLine(0); // Limpar a linha anterior
-                process.stdout.cursorTo(0); // Mover o cursor para o início da linha
+                process.stdout.clearLine(0);
+                process.stdout.cursorTo(0);
                 process.stdout.write(
                     `Progress: [${progressBar}] ${progress.toFixed(2)}%`
                 );
             }
-            console.log(); // Pule para a próxima linha após a conclusão
+            console.log();
             controller.close();
         } else {
             console.log('Dry run, skipping repair');
