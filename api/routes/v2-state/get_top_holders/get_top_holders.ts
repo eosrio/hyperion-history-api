@@ -1,6 +1,6 @@
-import { timedQuery } from "../../../helpers/functions";
-import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { getSkipLimit } from "../../v2-history/get_actions/functions";
+import {timedQuery} from "../../../helpers/functions";
+import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
+import {getSkipLimit} from "../../v2-history/get_actions/functions";
 
 async function getTopHolders(fastify: FastifyInstance, request: FastifyRequest) {
 
@@ -12,7 +12,7 @@ async function getTopHolders(fastify: FastifyInstance, request: FastifyRequest) 
         holders: []
     };
 
-    const { skip, limit } = getSkipLimit(request.query);
+    const {skip, limit} = getSkipLimit(request.query);
 
     const maxDocs = fastify.manager.config.api.limits.get_top_holders ?? 500;
 
@@ -20,11 +20,11 @@ async function getTopHolders(fastify: FastifyInstance, request: FastifyRequest) 
 
 
     if (query.contract) {
-        terms.push({ "term": { "code": { "value": query.contract } } });
+        terms.push({"term": {"code": {"value": query.contract}}});
     }
 
     if (query.symbol) {
-        terms.push({ "term": { "symbol": { "value": query.symbol } } });
+        terms.push({"term": {"symbol": {"value": query.symbol}}});
     }
 
 
@@ -32,17 +32,15 @@ async function getTopHolders(fastify: FastifyInstance, request: FastifyRequest) 
         "index": fastify.manager.chain + '-table-accounts-*',
         "size": (limit > maxDocs ? maxDocs : limit) || 50,
         "from": skip || 0,
-        body: {
-            sort: {
-                amount: {
-                    order: "desc"
-                }
-            },
-            query: { bool: { "must": terms } }
-        }
+        sort: {
+            amount: {
+                order: "desc"
+            }
+        },
+        query: {bool: {"must": terms}}
     });
 
-    response.holders = stateResult.body.hits.hits.map((doc: any) => {
+    response.holders = stateResult.hits.hits.map((doc: any) => {
         return {
             owner: doc._source.scope,
             amount: doc._source.amount,
