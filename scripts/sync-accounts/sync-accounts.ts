@@ -3,6 +3,7 @@ import {APIClient, Serializer} from "@wharfkit/antelope";
 import {Client} from "@elastic/elasticsearch";
 
 const chain = process.argv[2];
+const indexName = `${chain}-table-accounts-v1`;
 
 if (!chain) {
     console.log("Please select a chain run on!");
@@ -41,10 +42,11 @@ const client = new APIClient({
     url: endpoint
 });
 
-const uniqueTokenHolders = new Set();
-let tokenHolderData: any[] = [];
+let totalScopes = 0;
+let processedScopes = 0;
 const contractAccounts: string[] = [];
 const tokenContracts: string[] = [];
+let currentBlock = 0;
 
 async function getAbiHashTable(lb?: any) {
     const data = await client.v1.chain.get_table_rows({
@@ -117,110 +119,81 @@ async function scanABIs() {
     }
 }
 
-async function findScopes(contract: string, accounts: any[], lb?: any) {
-    const scopes = await client.v1.chain.get_table_by_scope({
-        table: "accounts",
-        code: contract,
-        limit: 500,
-        lower_bound: lb
-    });
-    if (scopes.rows && scopes.rows.length > 0) {
-        const rows = scopes.rows;
-        rows.forEach(value => {
-            accounts.push({
-                scope: value.scope.toString()
-            });
-        });
-        if (scopes.more) {
-            await findScopes(contract, accounts, scopes.more);
-        }
-    }
-}
-
-async function fillBalances(contract: string, accounts: any[]) {
-    for (const account of accounts) {
-        try {
-            const balances = await client.v1.chain.get_currency_balance(contract, account.scope);
-            account.balances = Serializer.objectify(balances);
-            uniqueTokenHolders.add(account);
-        } catch (e: any) {
-            console.log(`Failed to check balance ${account.scope}@${contract} - ${e.message}`);
-        }
-    }
-}
-
-async function scanTokenContracts() {
+async function* processContracts(tokenContracts: string[]) {
     for (const contract of tokenContracts) {
-        const accounts = [];
-        await findScopes(contract, accounts);
-        await fillBalances(contract, accounts);
-        tokenHolderData.push([contract, accounts]);
-    }
-}
-
-async function main() {
-    const tRef = Date.now();
-
-    const info = await client.v1.chain.get_info();
-    const currentBlock = info.head_block_num;
-
-    // check account table on ES
-    console.log(await elastic.ping());
-    const indexName = `${chain}-table-accounts-v1`;
-    await getAbiHashTable();
-    console.log(`Number of contract candidates: ${contractAccounts.length}`);
-    await scanABIs();
-    console.log(`Number of validated token contracts: ${tokenContracts.length}`);
-    await scanTokenContracts();
-    console.log(`Unique holders: ${uniqueTokenHolders.size}`);
-
-    try {
-        for (const entry of tokenHolderData) {
-            const contract = entry[0];
-            const data = entry[1];
-
-            if (data.length === 0) {
-                continue;
-            }
-
-            async function* accounts() {
-                for (const account of data) {
+        let more = true;
+        let lowerBound: string = '';
+        while (more) {
+            const scopes = await client.v1.chain.get_table_by_scope({
+                table: "accounts",
+                code: contract,
+                limit: 500,
+                lower_bound: lowerBound
+            });
+            if (scopes.rows && scopes.rows.length > 0) {
+                const rows = scopes.rows;
+                for (const row of rows) {
                     try {
-                        for (const balance of account.balances) {
+                        const result = await client.v1.chain.get_currency_balance(contract, row.scope.toString());
+                        const balances = Serializer.objectify(result);
+                        for (const balance of balances) {
                             const [amount, symbol] = balance.split(' ');
                             const amountFloat = parseFloat(amount);
                             const doc = {
                                 amount: amountFloat,
-                                block_num: currentBlock.toNumber(),
+                                block_num: currentBlock,
                                 code: contract,
                                 present: 1,
-                                scope: account.scope,
+                                scope: row.scope.toString(),
                                 symbol: symbol
                             };
                             yield doc;
                         }
                     } catch (e: any) {
-                        console.log(`Error processing account ${account} on ${contract} - ${e.message}`);
-                        console.log(account);
+                        console.log(`Failed to check balance ${row.scope}@${contract} - ${e.message}`);
                     }
                 }
+                if (scopes.more) {
+                    lowerBound = scopes.more;
+                    more = true;
+                } else {
+                    more = false;
+                }
+            } else {
+                more = false;
             }
-
-            const bulkResponse = await elastic.helpers.bulk({
-                datasource: accounts(),
-                onDocument: (doc) => [{index: {_id: `${doc.code}-${doc.scope}-${doc.symbol}`, _index: indexName}}, doc]
-            });
-
-            console.log(`${contract} ->> ${bulkResponse.successful} accounts`);
         }
+        processedScopes++;
+    }
+}
+
+async function main() {
+    const tRef = Date.now();
+    const info = await client.v1.chain.get_info();
+    currentBlock = info.head_block_num.toNumber();
+    console.log(await elastic.ping());
+    await getAbiHashTable();
+    console.log(`Number of contract candidates: ${contractAccounts.length}`);
+    await scanABIs();
+    console.log(`Number of validated token contracts: ${tokenContracts.length}`);
+    totalScopes += tokenContracts.length;
+    const progress = setInterval(() => {
+        console.log(`Progress: ${processedScopes}/${totalScopes} (${((processedScopes / totalScopes) * 100).toFixed(2)}%)`);
+    }, 1000);
+    try {
+        const bulkResponse = await elastic.helpers.bulk({
+            flushBytes: 5000000,
+            datasource: processContracts(tokenContracts),
+            onDocument: (doc) => [{index: {_id: `${doc.code}-${doc.scope}-${doc.symbol}`, _index: indexName}}, doc]
+        });
+        console.log(`${bulkResponse.successful} accounts`);
     } catch (e) {
         console.log(e);
         process.exit();
     }
-
+    clearInterval(progress);
     const tFinal = Date.now();
     console.log(`Processing took: ${(tFinal - tRef)}ms`);
-
 }
 
 main().catch(console.log);
