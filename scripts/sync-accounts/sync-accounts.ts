@@ -126,7 +126,6 @@ async function* processContracts(tokenContracts: string[]) {
     for (const contract of tokenContracts) {
         currentContract = contract;
         let lowerBound: string = '';
-        const uniqueAccounts = new Set();
         do {
             const scopes = await client.v1.chain.get_table_by_scope({
                 table: "accounts",
@@ -138,12 +137,6 @@ async function* processContracts(tokenContracts: string[]) {
             for (const row of rows) {
                 try {
                     const account = row.scope.toString();
-                    if (uniqueAccounts.has(account)) {
-                        console.error(`Repeated scope = ${row.scope.toString()}`);
-                        lowerBound = '';
-                        break;
-                    }
-                    uniqueAccounts.add(account);
                     const result = await client.v1.chain.get_currency_balance(contract, account);
                     currentScope = account;
                     const balances = Serializer.objectify(result);
