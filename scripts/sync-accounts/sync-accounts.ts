@@ -125,51 +125,48 @@ async function scanABIs() {
 async function* processContracts(tokenContracts: string[]) {
     for (const contract of tokenContracts) {
         currentContract = contract;
-        let more = true;
         let lowerBound: string = '';
-        while (more) {
+        const uniqueAccounts = new Set();
+        do {
             const scopes = await client.v1.chain.get_table_by_scope({
                 table: "accounts",
                 code: contract,
-                limit: 100,
+                limit: 2000,
                 lower_bound: lowerBound
             });
-            if (scopes.rows && scopes.rows.length > 0) {
-                const rows = scopes.rows;
-                for (const row of rows) {
-                    try {
-                        const account = row.scope.toString();
-                        const result = await client.v1.chain.get_currency_balance(contract, account);
-                        currentScope = account;
-                        const balances = Serializer.objectify(result);
-                        for (const balance of balances) {
-                            const [amount, symbol] = balance.split(' ');
-                            const amountFloat = parseFloat(amount);
-                            totalAccounts++;
-                            const doc = {
-                                amount: amountFloat,
-                                block_num: currentBlock,
-                                code: contract,
-                                present: 1,
-                                scope: account,
-                                symbol: symbol
-                            };
-                            yield doc;
-                        }
-                    } catch (e: any) {
-                        console.log(`Failed to check balance ${row.scope}@${contract} - ${e.message}`);
+            const rows = scopes.rows;
+            for (const row of rows) {
+                try {
+                    const account = row.scope.toString();
+                    if (uniqueAccounts.has(account)) {
+                        console.error(`Repeated scope = ${row.scope.toString()}`);
+                        lowerBound = '';
+                        break;
                     }
+                    uniqueAccounts.add(account);
+                    const result = await client.v1.chain.get_currency_balance(contract, account);
+                    currentScope = account;
+                    const balances = Serializer.objectify(result);
+                    for (const balance of balances) {
+                        const [amount, symbol] = balance.split(' ');
+                        const amountFloat = parseFloat(amount);
+                        totalAccounts++;
+                        const doc = {
+                            amount: amountFloat,
+                            block_num: currentBlock,
+                            code: contract,
+                            present: 1,
+                            scope: account,
+                            symbol: symbol
+                        };
+                        yield doc;
+                    }
+                } catch (e: any) {
+                    console.log(`Failed to check balance ${row.scope}@${contract} - ${e.message}`);
                 }
-                if (scopes.more) {
-                    lowerBound = scopes.more;
-                    more = true;
-                } else {
-                    more = false;
-                }
-            } else {
-                more = false;
             }
-        }
+            lowerBound = scopes.more;
+        } while (lowerBound !== '');
         processedScopes++;
     }
 }
