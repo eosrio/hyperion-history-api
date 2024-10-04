@@ -47,6 +47,8 @@ let processedScopes = 0;
 const contractAccounts: string[] = [];
 const tokenContracts: string[] = [];
 let currentBlock = 0;
+let currentContract = '';
+let currentScope = '';
 
 async function getAbiHashTable(lb?: any) {
     const data = await client.v1.chain.get_table_rows({
@@ -121,6 +123,7 @@ async function scanABIs() {
 
 async function* processContracts(tokenContracts: string[]) {
     for (const contract of tokenContracts) {
+        currentContract = contract;
         let more = true;
         let lowerBound: string = '';
         while (more) {
@@ -134,7 +137,9 @@ async function* processContracts(tokenContracts: string[]) {
                 const rows = scopes.rows;
                 for (const row of rows) {
                     try {
-                        const result = await client.v1.chain.get_currency_balance(contract, row.scope.toString());
+                        const account = row.scope.toString();
+                        const result = await client.v1.chain.get_currency_balance(contract, account);
+                        currentScope = account;
                         const balances = Serializer.objectify(result);
                         for (const balance of balances) {
                             const [amount, symbol] = balance.split(' ');
@@ -144,7 +149,7 @@ async function* processContracts(tokenContracts: string[]) {
                                 block_num: currentBlock,
                                 code: contract,
                                 present: 1,
-                                scope: row.scope.toString(),
+                                scope: account,
                                 symbol: symbol
                             };
                             yield doc;
@@ -178,7 +183,7 @@ async function main() {
     console.log(`Number of validated token contracts: ${tokenContracts.length}`);
     totalScopes += tokenContracts.length;
     const progress = setInterval(() => {
-        console.log(`Progress: ${processedScopes}/${totalScopes} (${((processedScopes / totalScopes) * 100).toFixed(2)}%)`);
+        console.log(`Progress: ${processedScopes}/${totalScopes} (${((processedScopes / totalScopes) * 100).toFixed(2)}%) - ${currentScope}@${currentContract}`);
     }, 1000);
     try {
         const bulkResponse = await elastic.helpers.bulk({
