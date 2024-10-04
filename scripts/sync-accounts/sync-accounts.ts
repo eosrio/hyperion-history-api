@@ -95,11 +95,10 @@ async function scanABIs() {
                         const fields = transferType.fields;
                         let valid = true;
                         for (let i = 0; i < transferFields.length; i++) {
-
                             if ((transferFields[i].name === "from" || transferFields[i].name === "to") && transferFields[i].type === 'account_name') {
-                                transferFields[i].type = 'name';
+                                valid = true;
+                                continue;
                             }
-
                             if (fields[i].name !== transferFields[i].name || fields[i].type !== transferFields[i].type) {
                                 console.error(`Invalid token contract ${contract} ->> ${fields.map(f => (f.name + "(" + f.type + ")").padEnd(24, " ")).join('  ')}`);
                                 valid = false;
