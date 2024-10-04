@@ -1,5 +1,5 @@
 import {readFileSync} from "node:fs";
-import {APIClient, Serializer} from "@wharfkit/antelope";
+import {APIClient, Name, Serializer} from "@wharfkit/antelope";
 import {Client} from "@elastic/elasticsearch";
 
 const chain = process.argv[2];
@@ -130,8 +130,8 @@ async function* processContracts(tokenContracts: string[]) {
             const scopes = await client.v1.chain.get_table_by_scope({
                 table: "accounts",
                 code: contract,
-                limit: 2000,
-                lower_bound: lowerBound
+                limit: 1000,
+                lower_bound: Name.from(lowerBound).value.toString()
             });
             const rows = scopes.rows;
             for (const row of rows) {
