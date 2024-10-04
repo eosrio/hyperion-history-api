@@ -46,6 +46,7 @@ let totalScopes = 0;
 let processedScopes = 0;
 const contractAccounts: string[] = [];
 const tokenContracts: string[] = [];
+let totalAccounts = 0;
 let currentBlock = 0;
 let currentContract = '';
 let currentScope = '';
@@ -130,7 +131,7 @@ async function* processContracts(tokenContracts: string[]) {
             const scopes = await client.v1.chain.get_table_by_scope({
                 table: "accounts",
                 code: contract,
-                limit: 500,
+                limit: 100,
                 lower_bound: lowerBound
             });
             if (scopes.rows && scopes.rows.length > 0) {
@@ -144,6 +145,7 @@ async function* processContracts(tokenContracts: string[]) {
                         for (const balance of balances) {
                             const [amount, symbol] = balance.split(' ');
                             const amountFloat = parseFloat(amount);
+                            totalAccounts++;
                             const doc = {
                                 amount: amountFloat,
                                 block_num: currentBlock,
@@ -183,11 +185,11 @@ async function main() {
     console.log(`Number of validated token contracts: ${tokenContracts.length}`);
     totalScopes += tokenContracts.length;
     const progress = setInterval(() => {
-        console.log(`Progress: ${processedScopes}/${totalScopes} (${((processedScopes / totalScopes) * 100).toFixed(2)}%) - ${currentScope}@${currentContract}`);
+        console.log(`Progress: ${processedScopes}/${totalScopes} (${((processedScopes / totalScopes) * 100).toFixed(2)}%) - ${currentScope}@${currentContract} - ${totalAccounts} accounts`);
     }, 1000);
     try {
         const bulkResponse = await elastic.helpers.bulk({
-            flushBytes: 5000000,
+            flushBytes: 1000000,
             datasource: processContracts(tokenContracts),
             onDocument: (doc) => [{index: {_id: `${doc.code}-${doc.scope}-${doc.symbol}`, _index: indexName}}, doc]
         });
