@@ -1,5 +1,6 @@
 function interpreterArgs(heap) {
-    const arr = ['--trace-deprecation', '--trace-warnings'];
+    // const arr = ['--trace-deprecation', '--trace-warnings'];
+    const arr = [];
     if (heap) {
         arr.push('--max-old-space-size=' + heap);
     } else {
