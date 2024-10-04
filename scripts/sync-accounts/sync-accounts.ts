@@ -95,7 +95,7 @@ async function scanABIs() {
                         const fields = transferType.fields;
                         let valid = true;
                         for (let i = 0; i < transferFields.length; i++) {
-                            if ((transferFields[i].name === "from" || transferFields[i].name === "to") && transferFields[i].type === 'account_name') {
+                            if ((fields[i].name === "from" || fields[i].name === "to") && fields[i].type === 'account_name') {
                                 valid = true;
                                 continue;
                             }
