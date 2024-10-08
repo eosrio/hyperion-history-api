@@ -135,5 +135,8 @@
     "block": 100,
     "index": 500
   },
+  "hub": {
+    "instance_key": ""
+  },
   "plugins": {}
 }
