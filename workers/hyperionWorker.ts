@@ -298,7 +298,8 @@ export abstract class HyperionWorker {
                 }
             }
         } catch (e: any) {
-            hLog(e.message);
+            // TODO: check for possible deserialization errors
+            debugLog(e.message);
         }
         return dataType;
     }
