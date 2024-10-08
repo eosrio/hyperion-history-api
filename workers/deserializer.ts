@@ -920,7 +920,7 @@ export default class MainDSWorker extends HyperionWorker {
                 actions.set(name, Serialize.getType(types, type));
             }
         }
-        
+
         const result = { types, actions, tables: abi.tables };
         if (check_action) {
             if (actions.has(check_action)) {
@@ -1224,9 +1224,9 @@ export default class MainDSWorker extends HyperionWorker {
                 // decode contract data
                 let jsonRow = await this.processContractRowNative(payload, block_num);
 
-                if (jsonRow?.value) {
-                    hLog(`Deserialization failed for contract row:`, jsonRow);
-                }
+                // if (jsonRow?.value) {
+                //     hLog(`Deserialization failed for contract row:`, jsonRow);
+                // }
 
                 if (jsonRow?.value && !jsonRow['_blacklisted']) {
                     debugLog(jsonRow);
