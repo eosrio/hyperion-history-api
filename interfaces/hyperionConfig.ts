@@ -121,18 +121,10 @@ interface ApiConfigs {
     v1_chain_cache?: CachedRouteConfig[]
 }
 
-interface HubLocation {
-    city: string,
-    country: string,
-    lat: number,
-    lon: number
-}
-
 interface HyperionHubConfigs {
-    location: HubLocation;
     production: boolean;
-    publisher_key: string;
-    inform_url: string;
+    instance_key: string;
+    hub_url?: string;
 }
 
 export interface HyperionConfig {

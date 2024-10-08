@@ -12,16 +12,17 @@ import {createWriteStream, existsSync, mkdirSync, readFileSync} from "fs";
 import {SocketManager} from "./socketManager";
 import {HyperionModuleLoader} from "../modules/loader";
 import {extendedActions} from "./routes/v2-history/get_actions/definitions";
-import {io, Socket} from "socket.io-client";
 import {CacheManager} from "./helpers/cacheManager";
 
 import {bootstrap} from 'global-agent';
 import "@fastify/swagger/index";
 import {FastifySwaggerUiOptions} from "@fastify/swagger-ui";
+import {QRYBasePublisher} from "./qry-hub/base-publisher";
+import {getApiUsageHistory} from "./helpers/functions";
+import {WebSocket} from "ws";
 
 class HyperionApiServer {
 
-    private hub?: Socket;
     private readonly fastify: FastifyInstance;
     private readonly pluginParams: any;
     private readonly chain: string;
@@ -31,6 +32,12 @@ class HyperionApiServer {
     private readonly cacheManager: CacheManager;
     socketManager?: SocketManager;
     mLoader: HyperionModuleLoader;
+
+    qryPublisher?: QRYBasePublisher;
+
+    lastSentTimestamp = "";
+    private indexerController?: WebSocket;
+
 
     constructor() {
 
@@ -269,9 +276,7 @@ class HyperionApiServer {
 
         // register documentation when ready
         this.fastify.ready().then(async () => {
-
             this.fastify.swagger();
-
         }, (err: any) => {
             hLog('an error happened', err)
         });
@@ -284,7 +289,7 @@ class HyperionApiServer {
             const listeningAddress = this.fastify.server.address() as AddressInfo;
             hLog(`${this.chain} Hyperion API ready and listening on http://${listeningAddress.address}:${listeningAddress.port}`);
             hLog(`API Should be externally accessible at: http://${this.conf.api.server_name}`);
-            this.startHyperionHub();
+            await this.startQRYHub();
         } catch (err) {
             hLog(err);
             process.exit(1)
@@ -302,42 +307,117 @@ class HyperionApiServer {
         });
     }
 
-    startHyperionHub() {
-        if (this.conf.hub) {
-            const url = this.conf.hub.inform_url;
-            hLog(`Connecting API to Hyperion Hub`);
-            this.hub = io(url, {
-                query: {
-                    key: this.conf.hub.publisher_key,
-                    client_mode: 'false'
+    async publishLastApiUsageCount() {
+        const stats = await getApiUsageHistory(this.fastify);
+        let totalValidHits = 0;
+        if (stats.buckets && stats.buckets.length > 1) {
+            const recentBucket = stats.buckets[1];
+            if (recentBucket) {
+                if (this.lastSentTimestamp !== recentBucket.timestamp) {
+                    const validHits = recentBucket.responses["200"];
+                    if (validHits) {
+                        Object.keys(validHits).forEach((k) => {
+                            totalValidHits += validHits[k];
+                        });
+                    }
+                    if (this.qryPublisher) {
+                        this.qryPublisher.publishApiUsage(totalValidHits, recentBucket.timestamp);
+                    }
+                    this.lastSentTimestamp = recentBucket.timestamp;
                 }
-            });
-            this.hub.on('connect', () => {
-                hLog(`Hyperion Hub connected!`);
-                this.emitHubApiUpdate();
-            });
+            }
         }
     }
 
-    private emitHubApiUpdate() {
-        this.hub?.emit('hyp_info', {
-            type: 'api',
-            production: this.conf.hub.production,
-            location: this.conf.hub.location,
-            chainId: this.manager.conn.chains[this.chain].chain_id,
-            providerName: this.conf.api.provider_name,
-            explorerEnabled: this.conf.plugins.explorer?.enabled,
-            providerUrl: this.conf.api.provider_url,
-            providerLogo: this.conf.api.provider_logo,
-            chainLogo: this.conf.api.chain_logo_url,
-            chainCodename: this.chain,
-            chainName: this.conf.api.chain_name,
-            endpoint: this.conf.api.server_name,
-            features: this.conf.features,
-            filters: {
-                blacklists: this.conf.blacklists,
-                whitelists: this.conf.whitelists
+    async publishApiUsage() {
+        const stats = await getApiUsageHistory(this.fastify);
+        const datapoints: any[] = [];
+        if (stats.buckets && stats.buckets.length > 0) {
+            for (const bucket of stats.buckets) {
+                let totalValidHits = 0;
+                const validHits = bucket.responses["200"];
+                if (validHits) {
+                    Object.keys(validHits).forEach((k) => {
+                        totalValidHits += validHits[k];
+                    });
+                }
+                datapoints.push({
+                    ct: totalValidHits,
+                    ts: bucket.timestamp
+                });
             }
+        }
+        if (this.qryPublisher) {
+            datapoints.shift();
+            const reversed = datapoints.reverse();
+            this.lastSentTimestamp = reversed[reversed.length - 1];
+            this.qryPublisher.publishPastApiUsage(reversed);
+        }
+    }
+
+    async startQRYHub() {
+        if (this.conf.hub && this.conf.hub.instance_key) {
+            this.qryPublisher = new QRYBasePublisher({
+                hubUrl: "api.hub.qry.network",
+                instancePrivateKey: this.conf.hub.instance_key
+            });
+            hLog(`Connecting API to QRY Hub...`);
+            console.log('\x1b[36m%s\x1b[0m', `Instance Key: ${this.qryPublisher.publicKey.toString()}`);
+            this.qryPublisher.setMetadata({
+                version: this.manager.current_version,
+                commit_hash: this.manager.last_commit_hash,
+                api: {
+                    limits: this.conf.api.limits,
+                    tx_cache_expiration_sec: this.conf.api.tx_cache_expiration_sec,
+                    disable_tx_cache: this.conf.api.disable_tx_cache
+                },
+                blacklists: this.conf.blacklists,
+                whitelists: this.conf.whitelists,
+                features: this.conf.features,
+            });
+            this.qryPublisher.onConnect = () => {
+                if (this.indexerController?.OPEN) {
+                    this.qryPublisher?.publishIndexerStatus("active");
+                } else {
+                    this.qryPublisher?.publishIndexerStatus("offline");
+                }
+            }
+            await this.qryPublisher.connect();
+            // Check every minute for new buckets of hourly stats
+
+            // connect to indexer
+            this.setupIndexerController();
+
+            await this.publishApiUsage();
+
+            setInterval(async () => {
+                await this.publishLastApiUsageCount();
+            }, 60 * 1000);
+        }
+    }
+
+    setupIndexerController() {
+        let controlPort = this.manager.conn.chains[this.conf.settings.chain].control_port;
+        if (!controlPort) {
+            controlPort = 7002;
+        }
+        this.indexerController = new WebSocket(`ws://localhost:${controlPort}/local`);
+
+        this.indexerController.on('open', async () => {
+            hLog('Connected to Hyperion Controller');
+            this.qryPublisher?.publishIndexerStatus("active");
+        });
+
+        this.indexerController.on('error', (err) => {
+            hLog(`Failed to connect to indexer: ${err.message}`);
+        });
+
+        this.indexerController.on('close', () => {
+            hLog('Disconnected from Hyperion Controller');
+            this.qryPublisher?.publishIndexerStatus("offline");
+            setTimeout(() => {
+                this.setupIndexerController();
+            }, 5000);
         });
     }
 }

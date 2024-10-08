@@ -418,7 +418,7 @@ export class HyperionMaster {
                     this.lastIrreversibleBlock = msg.data.block_num;
 
                     this.revBlockArray = this.revBlockArray.filter(item => item.num > msg.data.block_num);
-                    if (this.conf.hub && this.hub && this.conf.hub.inform_url) {
+                    if (this.conf.hub && this.hub && this.conf.hub.hub_url) {
                         this.hub.emit('hyp_ev', {e: 'lib', d: msg.data});
                     }
                     // forward LIB to streaming router
@@ -1438,7 +1438,7 @@ export class HyperionMaster {
             this.metrics.lastProcessedBlockNum.set(this.lastProcessedBlockNum);
 
             // publish log to hub
-            if (this.conf.hub && this.conf.hub.inform_url && this.hub) {
+            if (this.conf.hub && this.conf.hub.hub_url && this.hub) {
                 this.hub.emit('hyp_ev', {
                     e: 'rates',
                     d: {r: _r, c: _c, a: _a}
@@ -1579,8 +1579,6 @@ export class HyperionMaster {
     private emitHubUpdate() {
         this.hub?.emit('hyp_info', {
             type: 'indexer',
-            production: this.conf.hub.production,
-            location: this.conf.hub.location,
             chainId: this.chain_data?.chain_id,
             chainLogo: this.conf.api.chain_logo_url,
             providerName: this.conf.api.provider_name,
@@ -1600,18 +1598,18 @@ export class HyperionMaster {
 
     startHyperionHub() {
         if (this.conf.hub) {
-            const url = this.conf.hub.inform_url;
-            hLog(`Connecting to Hyperion Hub...`);
-            this.hub = io(url, {
-                query: {
-                    key: this.conf.hub.publisher_key,
-                    client_mode: 'false'
-                }
-            });
-            this.hub.on('connect', () => {
-                hLog(`Hyperion Hub connected!`);
-                this.emitHubUpdate();
-            });
+            // const url = this.conf.hub.hub_url;
+            // hLog(`Connecting to Hyperion Hub...`);
+            // this.hub = io(url, {
+            //     query: {
+            //         key: this.conf.hub.instance_key,
+            //         client_mode: 'false'
+            //     }
+            // });
+            // this.hub.on('connect', () => {
+            //     hLog(`Hyperion Hub connected!`);
+            //     this.emitHubUpdate();
+            // });
             // this.hub.on('reconnect', () => {
             //     this.emitHubUpdate();
             // });
