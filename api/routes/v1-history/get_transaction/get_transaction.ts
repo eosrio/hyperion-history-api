@@ -101,10 +101,8 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             const $search = fastify.elastic.search({
                 index: indexPattern,
                 size: _size,
-                body: {
-                    query: {bool: {must: [{term: {trx_id: trxId}}]}},
-                    sort: {global_sequence: "asc"}
-                }
+                query: {bool: {must: [{term: {trx_id: trxId}}]}},
+                sort: {global_sequence: "asc"}
             });
 
             // execute in parallel
@@ -115,7 +113,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
                 return response;
             }
         }
-        hits = pResults[1]['body']['hits']['hits'];
+        hits = pResults[1].hits.hits;
         response.last_irreversible_block = pResults[0].last_irreversible_block_num;
     }
 

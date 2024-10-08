@@ -104,8 +104,8 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
         sort: [{"global_sequence": {"order": "desc"}}]
     });
 
-    if (results['body']['hits']['hits'].length > 0) {
-        response.account_names = results['body']['hits']['hits'].map((v) => {
+    if (results.hits.hits.length > 0) {
+        response.account_names = results.hits.hits.map((v) => {
             if (v._source.act.name === 'newaccount') {
                 if (v._source['@newaccount'].newact) {
                     return v._source['@newaccount'].newact;

@@ -12,32 +12,28 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 
     const pResults = await Promise.all([
         fastify.eosjs.rpc.get_info(),
-        fastify.elastic.search({
+        fastify.elastic.search<any>({
             index: indexPattern,
             size: _size,
-            body: {
-                query: {
-                    bool: {
-                        must: [
-                            {term: {trx_id: query.id.toLowerCase()}}
-                        ]
-                    }
-                },
-                sort: {
-                    global_sequence: "asc"
+            query: {
+                bool: {
+                    must: [
+                        {term: {trx_id: query.id.toLowerCase()}}
+                    ]
                 }
+            },
+            sort: {
+                global_sequence: "asc"
             }
         }),
-        fastify.elastic.search({
+        fastify.elastic.search<any>({
             index: fastify.manager.chain + '-gentrx-*',
             size: _size,
-            body: {
-                query: {
-                    bool: {
-                        must: [
-                            {term: {trx_id: query.id.toLowerCase()}}
-                        ]
-                    }
+            query: {
+                bool: {
+                    must: [
+                        {term: {trx_id: query.id.toLowerCase()}}
+                    ]
                 }
             }
         })
@@ -59,7 +55,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         response.hot_only = true;
     }
 
-    const hits = results['body']['hits']['hits'];
+    const hits = results.hits.hits;
 
     if (hits.length > 0) {
 
@@ -108,7 +104,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         response.executed = true;
     }
 
-    const hits2 = genTrxRes['body']['hits']['hits'];
+    const hits2 = genTrxRes.hits.hits;
 
     if (hits2 && hits2.length > 0) {
         if (hits2[0]._source['@timestamp']) {

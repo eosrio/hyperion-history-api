@@ -4,6 +4,7 @@ import {createReadStream} from "fs";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
 import autoLoad from '@fastify/autoload';
 import {Readable} from "node:stream";
+import {hLog} from "../helpers/common_functions";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     server.route({
@@ -128,11 +129,6 @@ export function registerRoutes(server: FastifyInstance) {
             .catch(console.log);
         done();
     });
-
-    server.addHook('onError', (request, reply, error, done) => {
-        console.log(error);
-        done()
-    })
 
     if (server.manager.config.api.log_errors) {
         server.addHook('onError', (request: FastifyRequest, reply: FastifyReply, error: FastifyError, done) => {
