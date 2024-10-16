@@ -125,6 +125,7 @@ interface HyperionHubConfigs {
     production: boolean;
     instance_key: string;
     hub_url?: string;
+    custom_indexer_controller?: string;
 }
 
 export interface HyperionConfig {

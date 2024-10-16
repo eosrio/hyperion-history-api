@@ -1,6 +1,6 @@
-import {PrivateKey, PublicKey} from "@wharfkit/antelope";
-import {io, Socket as SocketIO} from "socket.io-client";
-import {hLog} from "../../helpers/common_functions";
+import { PrivateKey, PublicKey } from "@wharfkit/antelope";
+import { io, Socket as SocketIO } from "socket.io-client";
+import { hLog } from "../../helpers/common_functions";
 
 export interface QRYPublisherOptions {
     hubUrl: string;
@@ -154,11 +154,11 @@ export class QRYBasePublisher {
     publishApiUsage(counter: number, timestamp?: string) {
         this.publish({
             type: 'api_usage',
-            data: {counter, timestamp}
+            data: { counter, timestamp }
         });
     }
 
-    publishPastApiUsage(datapoints: {ct: number, ts: string}[]) {
+    publishPastApiUsage(datapoints: { ct: number, ts: string }[]) {
         this.publish({
             type: 'past_api_usage',
             data: datapoints
@@ -169,7 +169,7 @@ export class QRYBasePublisher {
         hLog(`Publishing indexer status to hub: ${status}`);
         this.publish({
             type: 'indexer_status',
-            data: {status}
+            data: { status }
         });
     }
 }

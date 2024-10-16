@@ -136,7 +136,8 @@
     "index": 500
   },
   "hub": {
-    "instance_key": ""
+    "instance_key": "",
+    "custom_indexer_controller": ""
   },
   "plugins": {}
 }

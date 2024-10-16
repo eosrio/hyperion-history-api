@@ -351,7 +351,7 @@ class HyperionApiServer {
             datapoints.shift();
             const reversed = datapoints.reverse();
             this.lastSentTimestamp = reversed[reversed.length - 1];
-            this.qryPublisher.publishPastApiUsage(reversed);
+            this.qryPublisher.publishPastApiUsage([...reversed]);
         }
     }
 
@@ -397,11 +397,15 @@ class HyperionApiServer {
     }
 
     setupIndexerController() {
+        let controllerUrl = this.manager.config.hub.custom_indexer_controller;
         let controlPort = this.manager.conn.chains[this.conf.settings.chain].control_port;
         if (!controlPort) {
             controlPort = 7002;
         }
-        this.indexerController = new WebSocket(`ws://localhost:${controlPort}/local`);
+        if (!controllerUrl || controllerUrl === '') {
+            controllerUrl = `localhost:${controlPort}`;
+        } 
+        this.indexerController = new WebSocket(`ws://${controllerUrl}/local`);
 
         this.indexerController.on('open', async () => {
             hLog('Connected to Hyperion Controller');
