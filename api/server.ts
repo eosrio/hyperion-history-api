@@ -402,10 +402,14 @@ class HyperionApiServer {
         if (!controlPort) {
             controlPort = 7002;
         }
+
         if (!controllerUrl || controllerUrl === '') {
             controllerUrl = `localhost:${controlPort}`;
-        } 
-        this.indexerController = new WebSocket(`ws://${controllerUrl}/local`);
+        }
+        
+        const indexerControlURL = `ws://${controllerUrl}/local`;
+        hLog(`Connecting to Indexer at: ${indexerControlURL}`);
+        this.indexerController = new WebSocket(indexerControlURL);
 
         this.indexerController.on('open', async () => {
             hLog('Connected to Hyperion Controller');
