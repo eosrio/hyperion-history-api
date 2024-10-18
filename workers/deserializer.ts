@@ -766,7 +766,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         if (!abiStatus) {
 
-            console.log(`Fetching ABI from ES ${contract}@${block_num}`);
+            debugLog(`Fetching ABI from ES ${contract}@${block_num}`);
             savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false);
 
             if (savedAbi) {
@@ -803,7 +803,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
 
 
-            console.log(`Loading current ABI (${savedAbi?.block} | ${savedAbi?.valid_until}) ${contract}`);
+            debugLog(`Loading current ABI (${savedAbi?.block} | ${savedAbi?.valid_until}) ${contract}`);
             abiStatus = await this.loadCurrentAbiHex(contract);
             if (abiStatus) {
                 try {
@@ -1232,7 +1232,6 @@ export default class MainDSWorker extends HyperionWorker {
                     debugLog('Delta DS failed ->>', jsonRow);
                     jsonRow = await this.processContractRowNative(payload, block_num - 1);
                     debugLog('Retry with previous ABI ->>', jsonRow);
-                    hLog('Retry with previous ABI ->>', jsonRow);
                 }
 
                 if (jsonRow['_blacklisted']) {
