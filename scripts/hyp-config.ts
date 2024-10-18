@@ -103,7 +103,7 @@ async function listChains(flags) {
                     ...common,
                     nodeos_http: chainConn?.http,
                     nodeos_ship: chainConn?.ship,
-                    chain_id: chainConn?.chain_id.substr(0, 16) + '...'
+                    chain_id: chainConn?.chain_id.substring(0, 16) + '...'
                 });
             } else {
                 pendingTable.push(common);

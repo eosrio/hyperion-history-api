@@ -1,5 +1,5 @@
 import {HyperionActionAct} from "./hyperion-action";
-import {AccountDelta, TransactionReceiptHeader} from "eosjs/dist/eosjs-api-interfaces";
+import {AccountDelta} from "eosjs/dist/eosjs-api-interfaces";
 
 export interface ActionTrace {
     signatures: string[];

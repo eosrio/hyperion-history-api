@@ -32,7 +32,7 @@ import {
 
 import cluster, {Worker} from "cluster";
 import path from "path";
-import {io, Socket} from 'socket.io-client';
+import {Socket} from 'socket.io-client';
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {HyperionWorkerDef} from "../interfaces/hyperionWorkerDef";
 
@@ -46,9 +46,9 @@ import AlertsManager from "./alertsManager";
 import {bootstrap} from 'global-agent';
 import {App, TemplatedApp, WebSocket} from "uWebSockets.js";
 import moment from "moment";
-import Timeout = NodeJS.Timeout;
 import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
 import {getTotalValue} from "../api/helpers/functions";
+import Timeout = NodeJS.Timeout;
 
 interface RevBlock {
     num: number;
@@ -641,7 +641,7 @@ export class HyperionMaster {
                 if (indexConfig[index.name]) {
                     const creation_status = await this.esClient['indices'].putTemplate({
                         name: `${this.conf.settings.chain}-${index.type}`,
-                        body: indexConfig[index.name]
+                        ...indexConfig[index.name]
                     });
                     if (!creation_status || !creation_status.acknowledged) {
                         hLog(`Failed to create template: ${this.conf.settings.chain}-${index}`);
@@ -1190,7 +1190,7 @@ export class HyperionMaster {
         };
         this.esClient.index({
             index: this.chain + '-logs-' + this.conf.settings.index_version,
-            body: _body
+            document: _body
         }).catch(hLog);
     }
 

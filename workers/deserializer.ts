@@ -1,24 +1,24 @@
-import { HyperionWorker } from "./hyperionWorker";
-import { Api } from "eosjs/dist";
-import { cargo, queue } from 'async';
-import { debugLog, hLog } from "../helpers/common_functions";
-import { createHash } from "crypto";
-import { Message, Options } from "amqplib";
+import {HyperionWorker} from "./hyperionWorker";
+import {Api} from "eosjs/dist";
+import {cargo, queue} from 'async';
+import {debugLog, hLog} from "../helpers/common_functions";
+import {createHash} from "crypto";
+import {Message, Options} from "amqplib";
 
 import flatstr from 'flatstr';
 
-import { index_queues, RabbitQueueDef } from "../definitions/index-queues";
-import { AbiDefinitions } from "../definitions/abi_def";
-import { HyperionDelta } from "../interfaces/hyperion-delta";
-import { TableDelta } from "../interfaces/table-delta";
-import { HyperionAbi } from "../interfaces/hyperion-abi";
-import { TransactionTrace } from "../interfaces/action-trace";
-import { Serialize } from "eosjs";
-import { Abi } from "eosjs/dist/eosjs-rpc-interfaces";
-import { Action, Type as EOSJSType } from "eosjs/dist/eosjs-serialize";
-import { JsSignatureProvider } from "eosjs/dist/eosjs-jssig";
-import { HyperionSignedBlock } from "../interfaces/signed-block";
-import { SearchResponse } from "@elastic/elasticsearch/lib/api/types";
+import {index_queues, RabbitQueueDef} from "../definitions/index-queues";
+import {AbiDefinitions} from "../definitions/abi_def";
+import {HyperionDelta} from "../interfaces/hyperion-delta";
+import {TableDelta} from "../interfaces/table-delta";
+import {HyperionAbi} from "../interfaces/hyperion-abi";
+import {TransactionTrace} from "../interfaces/action-trace";
+import {Serialize} from "eosjs";
+import {Abi} from "eosjs/dist/eosjs-rpc-interfaces";
+import {Action, Type as EOSJSType} from "eosjs/dist/eosjs-serialize";
+import {JsSignatureProvider} from "eosjs/dist/eosjs-jssig";
+import {HyperionSignedBlock} from "../interfaces/signed-block";
+import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
 
 
 const abi_remapping = {
@@ -123,7 +123,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         this.preIndexingQueue = queue((data: any, cb) => {
             if (this.ch && this.ch_ready) {
-                this.ch.sendToQueue(data.queue, data.content, { headers: data.headers });
+                this.ch.sendToQueue(data.queue, data.content, {headers: data.headers});
                 cb();
             } else {
                 hLog('Channel is not ready!');
@@ -623,7 +623,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         if (!this.waitToSend) {
             if (this.ch_ready) {
-                this.controlledSendToQueue(pool_queue, payload, { headers });
+                this.controlledSendToQueue(pool_queue, payload, {headers});
                 return true;
             } else {
                 return false;
@@ -632,7 +632,7 @@ export default class MainDSWorker extends HyperionWorker {
             this.backpressureQueue.push({
                 queue: pool_queue,
                 payload: payload,
-                options: { headers }
+                options: {headers}
             });
             return false;
         }
@@ -674,36 +674,35 @@ export default class MainDSWorker extends HyperionWorker {
             const query = {
                 bool: {
                     must: [
-                        { term: { account: contract_name } },
-                        { range: { block: { lte: last_block } } }
+                        {term: {account: contract_name}},
+                        {range: {block: {lte: last_block}}}
                     ]
                 }
             };
             const queryResult: SearchResponse<any, any> = await this.client.search({
                 index: `${this.chain}-abi-*`,
-                body: {
-                    size: 1, query,
-                    sort: [{ block: { order: "desc" } }],
-                    _source: { includes: _includes }
-                }
+                size: 1, query,
+                sort: [{block: {order: "desc"}}],
+                _source: {includes: _includes}
             });
+
+            console.log(queryResult);
+
             const results = queryResult.hits.hits;
             if (results.length > 0) {
                 const nextRefResponse: SearchResponse<any, any> = await this.client.search({
                     index: `${this.chain}-abi-*`,
-                    body: {
-                        size: 1,
-                        query: {
-                            bool: {
-                                must: [
-                                    { term: { account: contract_name } },
-                                    { range: { block: { gte: last_block } } }
-                                ]
-                            }
-                        },
-                        sort: [{ block: { order: "asc" } }],
-                        _source: { includes: ["block"] }
-                    }
+                    size: 1,
+                    query: {
+                        bool: {
+                            must: [
+                                {term: {account: contract_name}},
+                                {range: {block: {gte: last_block}}}
+                            ]
+                        }
+                    },
+                    sort: [{block: {order: "asc"}}],
+                    _source: {includes: ["block"]}
                 });
                 const nextRef = nextRefResponse.hits.hits;
                 if (nextRef.length > 0) {
@@ -729,7 +728,7 @@ export default class MainDSWorker extends HyperionWorker {
         block: number,
         valid_until: number | undefined
     ) {
-        const info = { field, type, block, valid_until };
+        const info = {field, type, block, valid_until};
         if (!info.valid_until) {
             info.valid_until = 0;
         }
@@ -916,12 +915,12 @@ export default class MainDSWorker extends HyperionWorker {
 
         const actions = new Map();
         if (types) {
-            for (const { name, type } of abi.actions) {
+            for (const {name, type} of abi.actions) {
                 actions.set(name, Serialize.getType(types, type));
             }
         }
 
-        const result = { types, actions, tables: abi.tables };
+        const result = {types, actions, tables: abi.tables};
         if (check_action) {
             if (actions.has(check_action)) {
                 try {
@@ -1156,7 +1155,7 @@ export default class MainDSWorker extends HyperionWorker {
         await this.preIndexingQueue.push({
             queue: q,
             content: bufferData,
-            headers: { block_num }
+            headers: {block_num}
         });
         this.delta_emit_idx++;
         if (this.delta_emit_idx > this.conf.scaling.ad_idx_queues) {
@@ -1169,7 +1168,7 @@ export default class MainDSWorker extends HyperionWorker {
         await this.preIndexingQueue.push({
             queue: q,
             content: bufferFromJson(data),
-            headers: { type }
+            headers: {type}
         });
         this.emit_idx++;
         if (this.emit_idx > this.conf.scaling.indexing_queues) {
@@ -1300,7 +1299,7 @@ export default class MainDSWorker extends HyperionWorker {
 
                         debugLog(`[Worker ${process.env.worker_id}] read ${account['name']} ABI at block ${block_num}`);
                         const q = this.chain + ":index_abis:1";
-                        await this.preIndexingQueue.push({ queue: q, content: bufferFromJson(new_abi_object) });
+                        await this.preIndexingQueue.push({queue: q, content: bufferFromJson(new_abi_object)});
 
                         // update locally cached abi
                         if (process.env['live_mode'] === 'true') {
@@ -1799,10 +1798,10 @@ export default class MainDSWorker extends HyperionWorker {
             delta['@approvals'] = {
                 proposal_name: delta['data']['proposal_name'],
                 requested_approvals: delta['data']['requested_approvals'].map((item: any) => {
-                    return { actor: item.level.actor, permission: item.level.permission, time: item.time };
+                    return {actor: item.level.actor, permission: item.level.permission, time: item.time};
                 }),
                 provided_approvals: delta['data']['provided_approvals'].map((item: any) => {
-                    return { actor: item.level.actor, permission: item.level.permission, time: item.time };
+                    return {actor: item.level.actor, permission: item.level.permission, time: item.time};
                 })
             };
             if (this.conf.features.tables.proposals) {

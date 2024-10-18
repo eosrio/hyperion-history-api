@@ -4,7 +4,6 @@ import {createReadStream} from "fs";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions";
 import autoLoad from '@fastify/autoload';
 import {Readable} from "node:stream";
-import {hLog} from "../helpers/common_functions";
 
 function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     server.route({

@@ -9,14 +9,14 @@ type MaxBlockCb = (maxBlock: number) => void;
 type routerFunction = (blockNum: number) => string;
 type MMap = Map<string, any>;
 
-function makeScriptedOp(id, body) {
+function makeScriptedOp(id: string, body: any) {
     return [
         {update: {_id: id, retry_on_conflict: 3}},
         {script: {id: "updateByBlock", params: body}, scripted_upsert: true, upsert: {}}
     ];
 }
 
-function makeDelOp(id) {
+function makeDelOp(id: string) {
     return [
         {delete: {_id: id}}
     ];
@@ -41,6 +41,11 @@ function buildActionBulk(payloads, messageMap: MMap, maxBlockCb: MaxBlockCb, rou
     return flatMap(payloads, (payload, body) => {
         const id = body['global_sequence'];
         messageMap.set(id, _.omit(payload, ['content']));
+
+
+        // const mapItem = messageMap.get(id);
+        // console.log(mapItem);
+
         return [{
             index: {
                 _id: id,
@@ -51,7 +56,7 @@ function buildActionBulk(payloads, messageMap: MMap, maxBlockCb: MaxBlockCb, rou
 }
 
 function buildBlockBulk(payloads, messageMap: MMap, maxBlockCb: MaxBlockCb, routerFunc: routerFunction, indexName: string) {
-    return flatMap(payloads, (payload, body) => {
+    return flatMap(payloads, (payload: any, body: any) => {
         const id = body['block_num'];
         messageMap.set(id, _.omit(payload, ['content']));
         return [{
@@ -294,7 +299,7 @@ export class ElasticRoutes {
     }
 
     ackOrNack(resp, messageMap, channel: Channel) {
-        for (const item of resp.body.items) {
+        for (const item of resp.items) {
             let id, itemBody;
             if (item['index']) {
                 id = item.index._id;
@@ -337,8 +342,8 @@ export class ElasticRoutes {
                     }
                 }
             } else {
-                console.log(item);
-                throw new Error('Message not found');
+                hLog(`Indexing error: ${item.index._index} :: ${item.index._id}`, item?.index?.error);
+                // throw new Error('Message not found');
             }
         }
     }
@@ -358,8 +363,8 @@ export class ElasticRoutes {
     onError(err, channel: Channel, callback) {
         try {
             channel.nackAll();
-            if (err.meta.body) {
-                hLog('NackAll:', JSON.stringify(err.meta.body.error, null, 2));
+            if (err.meta) {
+                hLog('NackAll:', JSON.stringify(err.meta.meta, null, 2));
             } else {
                 hLog('NackAll:', err);
             }
@@ -392,7 +397,7 @@ export class ElasticRoutes {
         }
         // print full request
         // console.log(JSON.stringify(bulkData));
-        return this.cm.ingestClients[minIdx].bulk<any,any>(bulkData);
+        return this.cm.ingestClients[minIdx].bulk<any, any>(bulkData);
     }
 
     getIndexPartition(blockNum: number): string {

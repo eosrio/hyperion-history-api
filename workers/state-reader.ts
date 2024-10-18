@@ -697,7 +697,7 @@ export default class StateReader extends HyperionWorker {
         const dbqResultAction = await this.client.deleteByQuery({
             index: this.chain + '-action-' + this.conf.settings.index_version + '-*',
             refresh: true,
-            body: searchBody
+            ...searchBody
         });
 
         if (dbqResultAction && dbqResultAction.deleted) {
@@ -736,7 +736,7 @@ export default class StateReader extends HyperionWorker {
         process.send?.({event: 'fork_event', data: {starting_block, ending_block, new_id}});
         await this.client.index({
             index: this.chain + '-logs-' + this.conf.settings.index_version,
-            body: {
+            document: {
                 type: 'fork',
                 '@timestamp': new Date().toISOString(),
                 'fork.from_block': starting_block,
