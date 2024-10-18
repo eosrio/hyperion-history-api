@@ -2,12 +2,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {connect} from "amqplib";
 import {timedQuery} from "../../../helpers/functions";
 import {getFirstIndexedBlock, getLastIndexedBlockWithTotalBlocks} from "../../../../helpers/common_functions";
-import Cat from "@elastic/elasticsearch/lib/api/api/cat";
-import {
-    ClusterHealthHealthResponseBody,
-    ClusterHealthResponse,
-    HealthReportResponse
-} from "@elastic/elasticsearch/lib/api/types";
+import {ClusterHealthResponse} from "@elastic/elasticsearch/lib/api/types";
 
 
 async function checkRabbit(fastify: FastifyInstance): Promise<ServiceResponse<any>> {
@@ -92,7 +87,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
         const missingCounter = (lastIndexedBlock - firstIndexedBlock) - totalIndexed;
         const missingPct = (missingCounter * 100 / indexedBlocks[1]).toFixed(2) + "%";
         const data: ESService = {
-            active_shards: esStatus.active_shards_percent_as_number + "%",
+            active_shards: parseFloat(esStatus.active_shards_percent_as_number.toString()).toFixed(1) + "%",
             head_offset: null,
             first_indexed_block: firstIndexedBlock,
             last_indexed_block: lastIndexedBlock,
