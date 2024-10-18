@@ -685,9 +685,6 @@ export default class MainDSWorker extends HyperionWorker {
                 sort: [{block: {order: "desc"}}],
                 _source: {includes: _includes}
             });
-
-            console.log(queryResult);
-
             const results = queryResult.hits.hits;
             if (results.length > 0) {
                 const nextRefResponse: SearchResponse<any, any> = await this.client.search({
