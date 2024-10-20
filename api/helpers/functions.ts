@@ -718,11 +718,13 @@ export async function handleChainApiRedirect(
 
     // let bodyData = request.method === 'POST' ? opts['body'] : (opts['json'] ?? JSON.stringify({json:"true"}));
 
-    if (bodyData) {
-        hLog(`${request.method} >> ${reqPath} with: ${bodyData}`);
-    } else {
-        hLog(`${request.method} >> ${reqPath}`);
-    }
+    // V1 Redirects
+    // if (bodyData) {
+    //     hLog(`${request.method} >> ${reqPath} with: ${bodyData}`);
+    // } else {
+    //     hLog(`${request.method} >> ${reqPath}`);
+    // }
+
 
     try {
 
