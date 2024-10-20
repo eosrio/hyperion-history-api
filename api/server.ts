@@ -1,4 +1,4 @@
-import {getFirstIndexedBlock, hLog, waitUntilReady} from "../helpers/common_functions";
+import {getFirstIndexedBlock, getLastResult, hLog, waitUntilReady} from "../helpers/common_functions";
 import {ConfigurationModule} from "../modules/config";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
@@ -297,7 +297,7 @@ class HyperionApiServer {
         }
     }
 
-    async getPast24HoursUsage(): Promise<{ct: number, ts: string}[]> {
+    async getPast24HoursUsage(): Promise<{ ct: number, ts: string }[]> {
         const stats = await getApiUsageHistory(this.fastify);
         const dataPoints: any[] = [];
         if (stats.buckets && stats.buckets.length > 0) {
@@ -334,6 +334,115 @@ class HyperionApiServer {
                 first: firstBlock
             };
         });
+
+        this.fastify.get('/.qry/get_first_block_histogram', async (request, reply) => {
+            let firstBlock = -1;
+            const tRef = process.hrtime.bigint();
+
+            const times: { name: string, time: number }[] = [];
+
+            const elastic = this.fastify.elastic;
+
+            const indices = await elastic.cat.indices({
+                index: this.chain + '-action-*',
+                s: 'index',
+                v: true,
+                format: 'json'
+            });
+
+            const getIndicesTime = this.logTime(tRef);
+            times.push({name: 'get_indices', time: getIndicesTime});
+            console.log(`Time to get indices: ${getIndicesTime}ms`);
+
+            const firstIndex = indices[0].index;
+
+            if (!firstIndex) {
+                return reply.status(500).send({
+                    first: firstBlock,
+                    times: times,
+                    error: 'No indices found'
+                });
+            }
+
+            const parts = firstIndex.split('-');
+            const blockChunk = parts[parts.length - 1];
+            const blockChunkSize = this.conf.settings.index_partition_size || 10000000;
+            const startBlock = (parseInt(blockChunk) - 1) * blockChunkSize;
+            const endBlock = startBlock + blockChunkSize;
+
+            const histogramInterval = 100000;
+
+            const tRefHistogram = process.hrtime.bigint();
+            const histogramData = await elastic.search<any,any>({
+                index: this.chain + '-block-*',
+                size: 0,
+                query: {
+                    range: {
+                        block_num: {
+                            gte: startBlock,
+                            lte: endBlock
+                        }
+                    }
+                },
+                aggs: {
+                    block_histogram: {
+                        histogram: {
+                            field: 'block_num',
+                            interval: histogramInterval,
+                            min_doc_count:1,
+                            order: {
+                                "_key": "asc"
+                            }
+                        }
+                    }
+                }
+            });
+
+            const histogramTime = this.logTime(tRefHistogram);
+            times.push({name: 'histogram', time: histogramTime});
+            console.log(`Time to get histogram: ${histogramTime}ms`);
+
+            if (!histogramData.aggregations) {
+                return reply.status(500).send({
+                    first: firstBlock,
+                    times: times,
+                    error: 'Failed to calculate histogram'
+                });
+            }
+
+            const buckets = histogramData.aggregations.block_histogram.buckets;
+
+            const firstBucket = buckets[0];
+
+            // perform a search to get the first block in the index using a range query
+            const tRefSearch = process.hrtime.bigint();
+            const results = await elastic.search<any>({
+                index: this.chain + '-block-*',
+                size: 1,
+                query: {range: {block_num: {gte: firstBucket.key, lt: firstBucket.key + histogramInterval}}},
+                sort: [{block_num: {order: "asc"}}]
+            });
+
+            const searchTime = this.logTime(tRefSearch);
+            times.push({name: 'search', time: searchTime});
+            console.log(`Time to search: ${searchTime}ms`);
+
+            firstBlock = getLastResult(results);
+
+            const timeMs = this.logTime(tRef);
+            console.log(`Total request time: ${timeMs}ms`);
+            return {
+                query_time_ms: timeMs,
+                first: firstBlock,
+                times: times,
+            };
+        });
+    }
+
+    logTime(tRef: bigint): number {
+        const tEnd = process.hrtime.bigint();
+        const timeNano = tEnd - tRef;
+        return parseInt(timeNano.toString()) / 1000000;
     }
 
     registerHomeRoute() {

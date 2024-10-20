@@ -21,7 +21,7 @@ if (!config) {
     process.exit(1);
 }
 
-function getLastResult(results: SearchResponse<any, any>) {
+export function getLastResult(results: SearchResponse<any, any>) {
     if (results.hits?.hits?.length > 0) {
         const firstHit = results.hits.hits[0];
         if (firstHit.sort) {
@@ -68,6 +68,7 @@ export async function getLastIndexedBlockWithTotalBlocks(es_client: Client, chai
 }
 
 export async function getFirstIndexedBlock(es_client: Client, chain: string, partition_size?: number): Promise<number> {
+
     const indices = await es_client.cat.indices({
         index: chain + '-action-*',
         s: 'index',
@@ -76,6 +77,7 @@ export async function getFirstIndexedBlock(es_client: Client, chain: string, par
     });
 
     const firstIndex = indices[0].index;
+
     if (firstIndex) {
         const parts = firstIndex.split('-');
         const blockChunk = parts[parts.length - 1];
@@ -90,7 +92,9 @@ export async function getFirstIndexedBlock(es_client: Client, chain: string, par
             query: {range: {block_num: {gte: startBlock, lt: endBlock}}},
             sort: [{block_num: {order: "asc"}}]
         });
+
         return getLastResult(results);
+
     } else {
         // as a fallback, get the first block in the whole index (not recommended)
         const results = await es_client.search<any>({
