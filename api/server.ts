@@ -290,6 +290,7 @@ class HyperionApiServer {
             hLog(`${this.chain} Hyperion API ready and listening on http://${listeningAddress.address}:${listeningAddress.port}`);
             hLog(`API Should be externally accessible at: http://${this.conf.api.server_name}`);
             await this.startQRYHub();
+            this.setupIndexerController();
         } catch (err) {
             hLog(err);
             process.exit(1)
@@ -392,9 +393,12 @@ class HyperionApiServer {
                             await this.publishLastApiUsageCount();
                         }, 60 * 1000);
                     }
-                },
-                onConnect: () => {
-                    this.setupIndexerController();
+
+                    if (this.indexerController?.OPEN) {
+                        this.qryPublisher?.publishIndexerStatus("active");
+                    } else {
+                        this.qryPublisher?.publishIndexerStatus("offline");
+                    }
                 }
             });
             console.log('\x1b[36m%s\x1b[0m', `Instance Key: ${this.qryPublisher.publicKey.toString()}`);
