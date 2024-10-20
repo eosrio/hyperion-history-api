@@ -107,8 +107,8 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
                 phase_time_ms: Number(process.hrtime.bigint() - tRefElastic1) / 1000000,
                 cache: false
             });
-            // cache for 60 seconds
-            await fastify.redis.set(`${fastify.manager.chain}::es_status`, JSON.stringify(esStatus), 'EX', 60);
+            // cache for 30 minutes
+            await fastify.redis.set(`${fastify.manager.chain}::es_status`, JSON.stringify(esStatus), 'EX', 60 * 30);
         }
 
         // First indexed block

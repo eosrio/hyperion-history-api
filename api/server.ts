@@ -289,8 +289,14 @@ class HyperionApiServer {
             const listeningAddress = this.fastify.server.address() as AddressInfo;
             hLog(`${this.chain} Hyperion API ready and listening on http://${listeningAddress.address}:${listeningAddress.port}`);
             hLog(`API Should be externally accessible at: http://${this.conf.api.server_name}`);
+
             await this.startQRYHub();
+
             this.setupIndexerController();
+
+            // remove ES status key
+            await this.fastify.redis.del(`${this.chain}::es_status`);
+
         } catch (err) {
             hLog(err);
             process.exit(1)
