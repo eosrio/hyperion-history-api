@@ -5,6 +5,9 @@ import { hLog } from "../../helpers/common_functions";
 export interface QRYPublisherOptions {
     hubUrl: string;
     instancePrivateKey: string;
+    metadata?: any;
+    onConnect?: () => void;
+    onMetadataRequest?: () => void;
 }
 
 export class QRYBasePublisher {
@@ -13,15 +16,19 @@ export class QRYBasePublisher {
     // instance keys
     private privateKey!: PrivateKey;
     publicKey!: PublicKey;
-    private socket?: SocketIO;
+    socket?: SocketIO;
 
     sessionToken?: string;
-    private metadata: any;
+    metadata?: any;
 
     onConnect?: () => void;
+    onMetadataRequest?: () => void;
 
     constructor(options: QRYPublisherOptions) {
         this.opts = options;
+        this.onConnect = options.onConnect;
+        this.onMetadataRequest = options.onMetadataRequest;
+        this.metadata = options.metadata;
         if (!this.opts.instancePrivateKey) {
             throw new Error('Instance private key is required');
         }
@@ -53,11 +60,15 @@ export class QRYBasePublisher {
             console.log('Failed to get session token from hub');
             return;
         }
+
         this.sessionToken = token;
+
         const protocol = this.opts.hubUrl.startsWith('localhost') ? 'ws' : 'wss';
+
         this.socket = io(`${protocol}://${this.opts.hubUrl}`, {
             path: this.opts.hubUrl.startsWith('localhost') ? undefined : '/ws/providers/socket.io',
             transports: ['websocket'],
+            reconnectionDelay: 3000,
             auth: (cb) => {
                 cb({
                     publicKey: this.publicKey.toString(),
@@ -65,14 +76,40 @@ export class QRYBasePublisher {
                 });
             }
         });
+
         this.socket.on('connect', () => {
             hLog('✅  Connected to QRY Hub');
-            this.sendMetadata(this.metadata);
-            this.onConnect?.();
+            if (typeof this.onConnect === 'function') {
+                this.onConnect();
+            }
         });
+
+        this.socket.on('message', (msg:any) => {
+
+            hLog('Message from hub:', msg);
+
+            switch (msg) {
+                case 'metadata-request': {
+
+                    // send metadata to hub
+                    if (this.metadata) {
+                        this.sendMetadata(this.metadata);
+                    }
+
+                    // call custom metadata request handler
+                    if (typeof this.onMetadataRequest === 'function') {
+                        this.onMetadataRequest();
+                    }
+
+                    break;
+                }
+            }
+        });
+
         this.socket.on('disconnect', (reason) => {
             hLog('Disconnected from hub', reason);
         });
+
         this.socket.on('error', (error: any) => {
             hLog('Socket error:', error);
             if (error === 'INSTANCE_NOT_REGISTERED') {
@@ -136,6 +173,7 @@ export class QRYBasePublisher {
             console.error('Socket not connected');
             return;
         }
+        // hLog(`Sending metadata to hub: ${JSON.stringify(data)}`);
         this.socket.emit('instance-metadata', data);
     }
 
@@ -147,29 +185,17 @@ export class QRYBasePublisher {
         this.socket.emit('instance-data', data);
     }
 
-    setMetadata(meta: any) {
-        this.metadata = meta;
-    }
-
     publishApiUsage(counter: number, timestamp?: string) {
-        this.publish({
-            type: 'api_usage',
-            data: { counter, timestamp }
-        });
+        this.publish({type: 'api_usage', data: { counter, timestamp }});
     }
 
-    publishPastApiUsage(datapoints: { ct: number, ts: string }[]) {
-        this.publish({
-            type: 'past_api_usage',
-            data: datapoints
-        });
+    publishPastApiUsage(dataPoints: { ct: number, ts: string }[]) {
+        hLog(`Publishing past API usage to hub: ${dataPoints.length} data points`);
+        this.publish({type: 'past_api_usage', data: dataPoints});
     }
 
     publishIndexerStatus(status: 'none' | 'offline' | 'delayed' | 'active') {
         hLog(`Publishing indexer status to hub: ${status}`);
-        this.publish({
-            type: 'indexer_status',
-            data: { status }
-        });
+        this.publish({type: 'indexer_status', data: { status }});
     }
 }

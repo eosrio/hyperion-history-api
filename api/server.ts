@@ -271,7 +271,7 @@ class HyperionApiServer {
         }
 
         this.registerHomeRoute();
-
+        this.registerQryHubRoutes();
         registerRoutes(this.fastify);
 
         // register documentation when ready
@@ -294,6 +294,33 @@ class HyperionApiServer {
             hLog(err);
             process.exit(1)
         }
+    }
+
+    async getPast24HoursUsage(): Promise<{ct: number, ts: string}[]> {
+        const stats = await getApiUsageHistory(this.fastify);
+        const dataPoints: any[] = [];
+        if (stats.buckets && stats.buckets.length > 0) {
+            for (const bucket of stats.buckets) {
+                // check if the bucket is older than 1 hour
+                if (bucket.timestamp < (Date.now() - 3600000)) {
+                    let hits = 0;
+                    const responses = bucket.responses["200"];
+                    if (responses) {
+                        Object.keys(responses).forEach((k) => {
+                            hits += responses[k];
+                        });
+                    }
+                    dataPoints.push({ct: hits, ts: bucket.timestamp});
+                }
+            }
+        }
+        return dataPoints;
+    }
+
+    registerQryHubRoutes() {
+        this.fastify.get('/.qry/usage', async () => {
+            return this.getPast24HoursUsage();
+        });
     }
 
     registerHomeRoute() {
@@ -330,28 +357,11 @@ class HyperionApiServer {
     }
 
     async publishApiUsage() {
-        const stats = await getApiUsageHistory(this.fastify);
-        const datapoints: any[] = [];
-        if (stats.buckets && stats.buckets.length > 0) {
-            for (const bucket of stats.buckets) {
-                let totalValidHits = 0;
-                const validHits = bucket.responses["200"];
-                if (validHits) {
-                    Object.keys(validHits).forEach((k) => {
-                        totalValidHits += validHits[k];
-                    });
-                }
-                datapoints.push({
-                    ct: totalValidHits,
-                    ts: bucket.timestamp
-                });
-            }
-        }
+        const dataPoints = await this.getPast24HoursUsage();
         if (this.qryPublisher) {
-            datapoints.shift();
-            const reversed = datapoints.reverse();
-            this.lastSentTimestamp = reversed[reversed.length - 1];
-            this.qryPublisher.publishPastApiUsage([...reversed]);
+            this.lastSentTimestamp = dataPoints[0].ts;
+            console.log(`Last Data Point: ${this.lastSentTimestamp}`);
+            this.qryPublisher.publishPastApiUsage(dataPoints);
         }
     }
 
@@ -359,40 +369,37 @@ class HyperionApiServer {
         if (this.conf.hub && this.conf.hub.instance_key) {
             this.qryPublisher = new QRYBasePublisher({
                 hubUrl: "api.hub.qry.network",
-                instancePrivateKey: this.conf.hub.instance_key
-            });
-            hLog(`Connecting API to QRY Hub...`);
-            console.log('\x1b[36m%s\x1b[0m', `Instance Key: ${this.qryPublisher.publicKey.toString()}`);
-            this.qryPublisher.setMetadata({
-                version: this.manager.current_version,
-                commit_hash: this.manager.last_commit_hash,
-                api: {
-                    limits: this.conf.api.limits,
-                    tx_cache_expiration_sec: this.conf.api.tx_cache_expiration_sec,
-                    disable_tx_cache: this.conf.api.disable_tx_cache
+                instancePrivateKey: this.conf.hub.instance_key,
+                metadata: {
+                    version: this.manager.current_version,
+                    commit_hash: this.manager.last_commit_hash,
+                    api: {
+                        limits: this.conf.api.limits,
+                        tx_cache_expiration_sec: this.conf.api.tx_cache_expiration_sec,
+                        disable_tx_cache: this.conf.api.disable_tx_cache
+                    },
+                    blacklists: this.conf.blacklists,
+                    whitelists: this.conf.whitelists,
+                    features: this.conf.features,
                 },
-                blacklists: this.conf.blacklists,
-                whitelists: this.conf.whitelists,
-                features: this.conf.features,
-            });
-            this.qryPublisher.onConnect = () => {
-                if (this.indexerController?.OPEN) {
-                    this.qryPublisher?.publishIndexerStatus("active");
-                } else {
-                    this.qryPublisher?.publishIndexerStatus("offline");
+                onMetadataRequest: () => {
+                    // publish usage stats only on first connection
+                    if (this.lastSentTimestamp === "") {
+                        // publish past 24 hours of usage
+                        this.publishApiUsage().catch(hLog);
+                        // publish last hour of usage every minute
+                        setInterval(async () => {
+                            await this.publishLastApiUsageCount();
+                        }, 60 * 1000);
+                    }
+                },
+                onConnect: () => {
+                    this.setupIndexerController();
                 }
-            }
+            });
+            console.log('\x1b[36m%s\x1b[0m', `Instance Key: ${this.qryPublisher.publicKey.toString()}`);
+            hLog(`Connecting API to QRY Hub...`);
             await this.qryPublisher.connect();
-            // Check every minute for new buckets of hourly stats
-
-            // connect to indexer
-            this.setupIndexerController();
-
-            await this.publishApiUsage();
-
-            setInterval(async () => {
-                await this.publishLastApiUsageCount();
-            }, 60 * 1000);
         }
     }
 
@@ -406,7 +413,7 @@ class HyperionApiServer {
         if (!controllerUrl || controllerUrl === '') {
             controllerUrl = `localhost:${controlPort}`;
         }
-        
+
         const indexerControlURL = `ws://${controllerUrl}/local`;
         hLog(`Connecting to Indexer at: ${indexerControlURL}`);
         this.indexerController = new WebSocket(indexerControlURL);
