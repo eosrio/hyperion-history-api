@@ -101,7 +101,8 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
                 cache: true
             });
         } else {
-            esStatus = await fastify.elastic.cluster.health();
+            esStatus = await fastify.elastic.cluster.health({index: `${fastify.manager.chain}-*`});
+            console.log(JSON.stringify(esStatus));
             times.push({
                 phase: 'cluster_health',
                 phase_time_ms: Number(process.hrtime.bigint() - tRefElastic1) / 1000000,
