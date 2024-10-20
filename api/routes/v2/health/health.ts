@@ -12,6 +12,11 @@ interface ESService {
     missing_blocks: number;
     missing_pct: string;
     head_offset: number | null;
+    times: {
+        phase: string;
+        phase_time_ms: number;
+        cache: boolean;
+    }[];
 }
 
 interface ServiceResponse<T> {
@@ -80,26 +85,44 @@ async function checkNodeos(fastify: FastifyInstance): Promise<ServiceResponse<No
 
 // Test Elasticsearch connection and indexed range
 async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<ESService>> {
-    const tRefElastic = process.hrtime.bigint();
     try {
+
+        const times: any[] = [];
         const esStatusCache = await fastify.redis.get(`${fastify.manager.chain}::es_status`);
+
+        // Cluster health
         let esStatus: ClusterHealthResponse;
+        const tRefElastic1 = process.hrtime.bigint();
         if (esStatusCache) {
             esStatus = JSON.parse(esStatusCache);
+            times.push({
+                phase: 'cluster_health',
+                phase_time_ms: Number(process.hrtime.bigint() - tRefElastic1) / 1000000,
+                cache: true
+            });
         } else {
             esStatus = await fastify.elastic.cluster.health();
+            times.push({
+                phase: 'cluster_health',
+                phase_time_ms: Number(process.hrtime.bigint() - tRefElastic1) / 1000000,
+                cache: false
+            });
             // cache for 60 seconds
             await fastify.redis.set(`${fastify.manager.chain}::es_status`, JSON.stringify(esStatus), 'EX', 60);
         }
 
+        // First indexed block
         let firstIndexedBlock: number;
-
+        const tRefElastic2 = process.hrtime.bigint();
         const fib = await fastify.redis.get(`${fastify.manager.chain}::fib`);
         if (fib) {
             firstIndexedBlock = parseInt(fib);
-
             console.log(`FIB from cache: ${firstIndexedBlock}`);
-
+            times.push({
+                phase: 'first_indexed_block',
+                phase_time_ms: Number(process.hrtime.bigint() - tRefElastic2) / 1000000,
+                cache: true
+            });
         } else {
             firstIndexedBlock = await getFirstIndexedBlock(
                 fastify.elastic,
@@ -107,23 +130,41 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
                 fastify.manager.config.settings.index_partition_size
             );
             await fastify.redis.set(`${fastify.manager.chain}::fib`, firstIndexedBlock);
-
+            times.push({
+                phase: 'first_indexed_block',
+                phase_time_ms: Number(process.hrtime.bigint() - tRefElastic2) / 1000000,
+                cache: false
+            });
             console.log(`FIB from ES: ${firstIndexedBlock}`);
         }
 
+
+        // Last indexed block
+        const tRefElastic3 = process.hrtime.bigint();
         let indexedBlocks = await getLastIndexedBlockWithTotalBlocks(fastify.elastic, fastify.manager.chain);
+        times.push({
+            phase: 'last_indexed_block',
+            phase_time_ms: Number(process.hrtime.bigint() - tRefElastic3) / 1000000,
+            cache: false
+        });
+
+        // Calculate missing blocks
         const lastIndexedBlock = indexedBlocks[0];
         const totalIndexed = indexedBlocks[1] - 1;
         const missingCounter = (lastIndexedBlock - firstIndexedBlock) - totalIndexed;
         const missingPct = (missingCounter * 100 / indexedBlocks[1]).toFixed(2) + "%";
+        const activeShards = parseFloat(esStatus.active_shards_percent_as_number.toString()).toFixed(1) + "%";
+
+        // Data Response
         const data: ESService = {
-            active_shards: parseFloat(esStatus.active_shards_percent_as_number.toString()).toFixed(1) + "%",
+            active_shards: activeShards,
             head_offset: null,
             first_indexed_block: firstIndexedBlock,
             last_indexed_block: lastIndexedBlock,
             total_indexed_blocks: totalIndexed,
             missing_blocks: missingCounter,
-            missing_pct: missingPct
+            missing_pct: missingPct,
+            times: times
         };
         let stat = 'OK';
         switch (esStatus.status) {
@@ -140,7 +181,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
                 stat = 'Error';
                 break;
         }
-        return createHealth('Elasticsearch', stat, data, tRefElastic);
+        return createHealth('Elasticsearch', stat, data, tRefElastic1);
     } catch (e) {
         console.log(e, 'Elasticsearch Error');
         return createHealth('Elasticsearch', 'Error');
