@@ -1,4 +1,4 @@
-import {hLog, waitUntilReady} from "../helpers/common_functions";
+import {getFirstIndexedBlock, hLog, waitUntilReady} from "../helpers/common_functions";
 import {ConfigurationModule} from "../modules/config";
 import {ConnectionManager} from "../connections/manager.class";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
@@ -321,6 +321,18 @@ class HyperionApiServer {
     registerQryHubRoutes() {
         this.fastify.get('/.qry/usage', async () => {
             return this.getPast24HoursUsage();
+        });
+
+        this.fastify.get('/.qry/first', async () => {
+            const tRef = process.hrtime.bigint();
+            const firstBlock = await getFirstIndexedBlock(this.fastify.elastic, this.chain, this.conf.settings.index_partition_size);
+            const tEnd = process.hrtime.bigint();
+            const timeNano = tEnd - tRef;
+            const timeMs = parseInt(timeNano.toString()) / 1000000;
+            return {
+                query_time_ms: timeMs,
+                first: firstBlock
+            };
         });
     }
 

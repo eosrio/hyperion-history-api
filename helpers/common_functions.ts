@@ -3,7 +3,7 @@ import {existsSync} from "fs";
 import {join} from "path";
 import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
 import {getTotalValue} from "../api/helpers/functions";
-import { Serialize } from "eosjs";
+import {Serialize} from "eosjs";
 
 let config;
 const conf_path = join(__dirname, `../${process.env.CONFIG_JSON}`);
@@ -67,14 +67,40 @@ export async function getLastIndexedBlockWithTotalBlocks(es_client: Client, chai
     return [lastBlock, totalBlocks];
 }
 
-export async function getFirstIndexedBlock(es_client: Client, chain: string): Promise<number> {
-    const results = await es_client.search<any>({
-        index: chain + '-block-*',
-        size: 1,
-        query: {bool: {filter: {match_all: {}}}},
-        sort: [{block_num: {order: "asc"}}]
+export async function getFirstIndexedBlock(es_client: Client, chain: string, partition_size?: number): Promise<number> {
+    const indices = await es_client.cat.indices({
+        index: chain + '-action-*',
+        s: 'index',
+        v: true,
+        format: 'json'
     });
-    return getLastResult(results);
+
+    const firstIndex = indices[0].index;
+    if (firstIndex) {
+        const parts = firstIndex.split('-');
+        const blockChunk = parts[parts.length - 1];
+        const blockChunkSize = partition_size || 10000000;
+        const startBlock = (parseInt(blockChunk) - 1) * blockChunkSize;
+        const endBlock = startBlock + blockChunkSize;
+
+        // perform a search to get the first block in the index using a range query
+        const results = await es_client.search<any>({
+            index: chain + '-block-*',
+            size: 1,
+            query: {range: {block_num: {gte: startBlock, lt: endBlock}}},
+            sort: [{block_num: {order: "asc"}}]
+        });
+        return getLastResult(results);
+    } else {
+        // as a fallback, get the first block in the whole index (not recommended)
+        const results = await es_client.search<any>({
+            index: chain + '-block-*',
+            size: 1,
+            query: {bool: {filter: {match_all: {}}}},
+            sort: [{block_num: {order: "asc"}}]
+        });
+        return getLastResult(results);
+    }
 }
 
 
