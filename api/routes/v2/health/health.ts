@@ -2,13 +2,14 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {connect} from "amqplib";
 import {timedQuery} from "../../../helpers/functions";
 import {getFirstIndexedBlock, getLastIndexedBlockWithTotalBlocks} from "../../../../helpers/common_functions";
-import {ClusterHealthResponse} from "@elastic/elasticsearch/lib/api/types";
+import {ClusterHealthResponse, HealthReportResponse} from "@elastic/elasticsearch/lib/api/types";
 
 interface ESService {
     first_indexed_block: number;
     last_indexed_block: number;
     total_indexed_blocks: number;
     active_shards: string;
+    disk_status?: string;
     missing_blocks: number;
     missing_pct: string;
     head_offset: number | null;
@@ -88,28 +89,58 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
     try {
 
         const times: any[] = [];
-        const esStatusCache = await fastify.redis.get(`${fastify.manager.chain}::es_status`);
+        const esHealthCache = await fastify.redis.get(`${fastify.manager.chain}::es_status`);
 
         // Cluster health
-        let esStatus: ClusterHealthResponse;
+        let esHealth: any | undefined;
         const tRefElastic1 = process.hrtime.bigint();
-        if (esStatusCache) {
-            esStatus = JSON.parse(esStatusCache);
+        if (esHealthCache) {
+            esHealth = JSON.parse(esHealthCache);
             times.push({
                 phase: 'cluster_health',
                 phase_time_ms: Number(process.hrtime.bigint() - tRefElastic1) / 1000000,
                 cache: true
             });
         } else {
-            esStatus = await fastify.elastic.cluster.health({index: `${fastify.manager.chain}-*`});
-            console.log(JSON.stringify(esStatus));
+
+            try {
+                const healthReport = await fastify.elastic.healthReport({verbose: false});
+                esHealth = {
+                    status: healthReport.status
+                }
+                if (healthReport.indicators.shards_availability) {
+                    let status = healthReport.indicators.shards_availability.status;
+                    if (status === 'green') {
+                        esHealth.shards_availability = '100.0%';
+                    } else {
+                        esHealth.shards_availability = status;
+                        esHealth.shards_availability_symptom = healthReport.indicators.shards_availability.symptom;
+                    }
+                }
+                if (healthReport.indicators.disk) {
+                    esHealth.disk = healthReport.indicators.disk.status;
+                }
+            } catch (e:any) {
+                console.log(e);
+            }
+
+            if (!esHealth) {
+                const esStatus = await fastify.elastic.cluster.health({index: `${fastify.manager.chain}-*`});
+                const activeShards = parseFloat(esStatus.active_shards_percent_as_number.toString()).toFixed(1) + "%";
+                esHealth = {
+                    status: esStatus.status,
+                    shards_availability: activeShards
+                };
+            }
+
             times.push({
                 phase: 'cluster_health',
                 phase_time_ms: Number(process.hrtime.bigint() - tRefElastic1) / 1000000,
                 cache: false
             });
+
             // cache for 30 minutes
-            await fastify.redis.set(`${fastify.manager.chain}::es_status`, JSON.stringify(esStatus), 'EX', 60 * 30);
+            await fastify.redis.set(`${fastify.manager.chain}::es_status`, JSON.stringify(esHealth), 'EX', 60 * 30);
         }
 
         // First indexed block
@@ -118,7 +149,6 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
         const fib = await fastify.redis.get(`${fastify.manager.chain}::fib`);
         if (fib) {
             firstIndexedBlock = parseInt(fib);
-            console.log(`FIB from cache: ${firstIndexedBlock}`);
             times.push({
                 phase: 'first_indexed_block',
                 phase_time_ms: Number(process.hrtime.bigint() - tRefElastic2) / 1000000,
@@ -136,7 +166,6 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
                 phase_time_ms: Number(process.hrtime.bigint() - tRefElastic2) / 1000000,
                 cache: false
             });
-            console.log(`FIB from ES: ${firstIndexedBlock}`);
         }
 
 
@@ -154,11 +183,11 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
         const totalIndexed = indexedBlocks[1] - 1;
         const missingCounter = (lastIndexedBlock - firstIndexedBlock) - totalIndexed;
         const missingPct = (missingCounter * 100 / indexedBlocks[1]).toFixed(2) + "%";
-        const activeShards = parseFloat(esStatus.active_shards_percent_as_number.toString()).toFixed(1) + "%";
 
         // Data Response
         const data: ESService = {
-            active_shards: activeShards,
+            active_shards: esHealth.shards_availability,
+            disk_status: esHealth.disk,
             head_offset: null,
             first_indexed_block: firstIndexedBlock,
             last_indexed_block: lastIndexedBlock,
@@ -167,8 +196,9 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
             missing_pct: missingPct,
             times: times
         };
+
         let stat = 'OK';
-        switch (esStatus.status) {
+        switch (esHealth.status) {
             case "yellow":
                 stat = 'Warning';
                 break;
