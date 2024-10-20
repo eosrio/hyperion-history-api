@@ -9,6 +9,7 @@ interface ESService {
     last_indexed_block: number;
     total_indexed_blocks: number;
     active_shards: string;
+    shards_availability_symptom?: string;
     disk_status?: string;
     missing_blocks: number;
     missing_pct: string;
@@ -196,6 +197,10 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
             missing_pct: missingPct,
             times: times
         };
+
+        if (esHealth.shards_availability_symptom) {
+            data.shards_availability_symptom = esHealth.shards_availability_symptom;
+        }
 
         let stat = 'OK';
         switch (esHealth.status) {
