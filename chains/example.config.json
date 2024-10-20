@@ -35,14 +35,8 @@
     "disable_tx_cache": false,
     "tx_cache_expiration_sec": 3600,
     "v1_chain_cache": [
-      {
-        "path": "get_block",
-        "ttl": 3000
-      },
-      {
-        "path": "get_info",
-        "ttl": 500
-      }
+      {"path": "get_block", "ttl": 3000},
+      {"path": "get_info", "ttl": 500}
     ]
   },
   "indexer": {
