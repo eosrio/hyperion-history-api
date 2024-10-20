@@ -4,47 +4,6 @@ import {timedQuery} from "../../../helpers/functions";
 import {getFirstIndexedBlock, getLastIndexedBlockWithTotalBlocks} from "../../../../helpers/common_functions";
 import {ClusterHealthResponse} from "@elastic/elasticsearch/lib/api/types";
 
-
-async function checkRabbit(fastify: FastifyInstance): Promise<ServiceResponse<any>> {
-    try {
-        const connection = await connect(fastify.manager.ampqUrl);
-        await connection.close();
-        return createHealth('RabbitMq', 'OK');
-    } catch (e) {
-        console.log(e);
-        return createHealth('RabbitMq', 'Error');
-    }
-}
-
-interface NodeosService {
-    head_block_num: number;
-    head_block_time: string;
-    time_offset: number;
-    last_irreversible_block: number;
-    chain_id: string;
-}
-
-async function checkNodeos(fastify: FastifyInstance): Promise<ServiceResponse<NodeosService>> {
-    const rpc = fastify.manager.nodeosJsonRPC;
-    try {
-        const results = await rpc.get_info();
-        if (results) {
-            const diff = (new Date().getTime()) - (new Date(results.head_block_time + '+00:00').getTime());
-            return createHealth('NodeosRPC', 'OK', {
-                head_block_num: results.head_block_num,
-                head_block_time: results.head_block_time,
-                time_offset: diff,
-                last_irreversible_block: results.last_irreversible_block_num,
-                chain_id: results.chain_id
-            });
-        } else {
-            return createHealth('NodeosRPC', 'Error');
-        }
-    } catch (e) {
-        return createHealth('NodeosRPC', 'Error');
-    }
-}
-
 interface ESService {
     first_indexed_block: number;
     last_indexed_block: number;
@@ -58,11 +17,70 @@ interface ESService {
 interface ServiceResponse<T> {
     service: string;
     time: number;
+    query_time_ms: number;
     status: any
     service_data?: T;
 }
 
+interface NodeosService {
+    head_block_num: number;
+    head_block_time: string;
+    time_offset: number;
+    last_irreversible_block: number;
+    chain_id: string;
+}
+
+function createHealth(name: string, status, data?: any, refTime?: bigint): ServiceResponse<any> {
+    let time = Date.now();
+    return {
+        service: name,
+        status: status,
+        query_time_ms: refTime ? Number(process.hrtime.bigint() - refTime) / 1000000 : 0,
+        service_data: data,
+        time: time
+    }
+}
+
+
+// Test RabbitMQ connection
+async function checkRabbit(fastify: FastifyInstance): Promise<ServiceResponse<any>> {
+    const tRefRabbit = process.hrtime.bigint();
+    try {
+        const connection = await connect(fastify.manager.ampqUrl);
+        await connection.close();
+        return createHealth('RabbitMq', 'OK', null, tRefRabbit);
+    } catch (e) {
+        console.log(e);
+        return createHealth('RabbitMq', 'Error');
+    }
+}
+
+// Test Nodeos connection and chain info
+async function checkNodeos(fastify: FastifyInstance): Promise<ServiceResponse<NodeosService>> {
+    const tRefNodeos = process.hrtime.bigint();
+    const rpc = fastify.manager.nodeosJsonRPC;
+    try {
+        const results = await rpc.get_info();
+        if (results) {
+            const diff = (new Date().getTime()) - (new Date(results.head_block_time + '+00:00').getTime());
+            return createHealth('NodeosRPC', 'OK', {
+                head_block_num: results.head_block_num,
+                head_block_time: results.head_block_time,
+                time_offset: diff,
+                last_irreversible_block: results.last_irreversible_block_num,
+                chain_id: results.chain_id
+            }, tRefNodeos);
+        } else {
+            return createHealth('NodeosRPC', 'Error');
+        }
+    } catch (e) {
+        return createHealth('NodeosRPC', 'Error');
+    }
+}
+
+// Test Elasticsearch connection and indexed range
 async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<ESService>> {
+    const tRefElastic = process.hrtime.bigint();
     try {
         const esStatusCache = await fastify.redis.get(`${fastify.manager.chain}::es_status`);
         let esStatus: ClusterHealthResponse;
@@ -73,14 +91,26 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
             // cache for 60 seconds
             await fastify.redis.set(`${fastify.manager.chain}::es_status`, JSON.stringify(esStatus), 'EX', 60);
         }
+
         let firstIndexedBlock: number;
+
         const fib = await fastify.redis.get(`${fastify.manager.chain}::fib`);
         if (fib) {
             firstIndexedBlock = parseInt(fib);
+
+            console.log(`FIB from cache: ${firstIndexedBlock}`);
+
         } else {
-            firstIndexedBlock = await getFirstIndexedBlock(fastify.elastic, fastify.manager.chain);
+            firstIndexedBlock = await getFirstIndexedBlock(
+                fastify.elastic,
+                fastify.manager.chain,
+                fastify.manager.config.settings.index_partition_size
+            );
             await fastify.redis.set(`${fastify.manager.chain}::fib`, firstIndexedBlock);
+
+            console.log(`FIB from ES: ${firstIndexedBlock}`);
         }
+
         let indexedBlocks = await getLastIndexedBlockWithTotalBlocks(fastify.elastic, fastify.manager.chain);
         const lastIndexedBlock = indexedBlocks[0];
         const totalIndexed = indexedBlocks[1] - 1;
@@ -110,23 +140,14 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
                 stat = 'Error';
                 break;
         }
-        return createHealth('Elasticsearch', stat, data);
+        return createHealth('Elasticsearch', stat, data, tRefElastic);
     } catch (e) {
         console.log(e, 'Elasticsearch Error');
         return createHealth('Elasticsearch', 'Error');
     }
 }
 
-function createHealth(name: string, status, data?: any): ServiceResponse<any> {
-    let time = Date.now();
-    return {
-        service: name,
-        status: status,
-        service_data: data,
-        time: time
-    }
-}
-
+// Main health check query
 async function getHealthQuery(fastify: FastifyInstance) {
     let response: {
         version?: string,
