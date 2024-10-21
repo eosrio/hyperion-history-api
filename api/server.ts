@@ -243,6 +243,7 @@ class HyperionApiServer {
             try {
                 const esInfo = await this.manager.elasticsearchClient.info();
                 hLog(`Elasticsearch: ${esInfo.version.number} | Lucene: ${esInfo.version.lucene_version}`);
+                this.fastify.decorate('elastic_version', esInfo.version.number);
                 return true;
             } catch (e: any) {
                 console.log(e.message);

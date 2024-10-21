@@ -6,6 +6,7 @@ import {FastifyRedis} from "@fastify/redis";
 declare module 'fastify' {
     export interface FastifyInstance {
         manager: ConnectionManager;
+        elastic_version: string;
         cacheManager: CacheManager;
         redis: FastifyRedis;
         eosjs: {

@@ -1,8 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {connect} from "amqplib";
 import {timedQuery} from "../../../helpers/functions";
-import {getFirstIndexedBlock, getLastIndexedBlockWithTotalBlocks} from "../../../../helpers/common_functions";
-import {ClusterHealthResponse, HealthReportResponse} from "@elastic/elasticsearch/lib/api/types";
+import {getFirstIndexedBlock, getLastIndexedBlockWithTotalBlocks, hLog} from "../../../../helpers/common_functions";
 
 interface ESService {
     first_indexed_block: number;
@@ -104,28 +103,39 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
             });
         } else {
 
-            try {
-                const healthReport = await fastify.elastic.healthReport({verbose: false});
-                esHealth = {
-                    status: healthReport.status
-                }
-                if (healthReport.indicators.shards_availability) {
-                    let status = healthReport.indicators.shards_availability.status;
-                    if (status === 'green') {
-                        esHealth.shards_availability = '100.0%';
-                    } else {
-                        esHealth.shards_availability = status;
-                        esHealth.shards_availability_symptom = healthReport.indicators.shards_availability.symptom;
+            const esVersion = fastify.elastic_version;
+            const [major, minor, rev] = esVersion.split('.').map(Number);
+            // check if version is higher than 8.7
+            if (major > 8 || (major === 8 && minor >= 7)) {
+
+                // console.log('Using new health report');
+
+                try {
+                    const healthReport = await fastify.elastic.healthReport({verbose: false});
+                    esHealth = {
+                        status: healthReport.status
                     }
+                    if (healthReport.indicators.shards_availability) {
+                        let status = healthReport.indicators.shards_availability.status;
+                        if (status === 'green') {
+                            esHealth.shards_availability = '100.0%';
+                        } else {
+                            esHealth.shards_availability = status;
+                            esHealth.shards_availability_symptom = healthReport.indicators.shards_availability.symptom;
+                        }
+                    }
+                    if (healthReport.indicators.disk) {
+                        esHealth.disk = healthReport.indicators.disk.status;
+                    }
+                } catch (e: any) {
+                    hLog(`Failed to get health report: ${e.message}`);
                 }
-                if (healthReport.indicators.disk) {
-                    esHealth.disk = healthReport.indicators.disk.status;
-                }
-            } catch (e:any) {
-                console.log(e);
             }
 
             if (!esHealth) {
+
+                // console.log('Using /_cluster/health');
+
                 const esStatus = await fastify.elastic.cluster.health({index: `${fastify.manager.chain}-*`});
                 const activeShards = parseFloat(esStatus.active_shards_percent_as_number.toString()).toFixed(1) + "%";
                 esHealth = {
