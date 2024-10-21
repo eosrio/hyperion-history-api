@@ -36,7 +36,7 @@ interface NodeosService {
     chain_id: string;
 }
 
-function createHealth(name: string, status, data?: any, refTime?: bigint): ServiceResponse<any> {
+function createHealth(name: string, status: string, data?: any, refTime?: bigint): ServiceResponse<any> {
     let time = Date.now();
     return {
         service: name,
@@ -104,7 +104,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
         } else {
 
             const esVersion = fastify.elastic_version;
-            const [major, minor, rev] = esVersion.split('.').map(Number);
+            const [major, minor, _] = esVersion.split('.').map(Number);
             // check if version is higher than 8.7
             if (major > 8 || (major === 8 && minor >= 7)) {
 
