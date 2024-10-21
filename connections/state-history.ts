@@ -4,17 +4,38 @@ import WebSocket from 'ws';
 
 export class StateHistorySocket {
     private ws;
-    private readonly shipUrl;
+    private shipUrl;
     private readonly max_payload_mb;
     retryOnDisconnect = true;
     connected = false;
 
-    constructor(ship_url: string, max_payload_mb: number) {
-        this.shipUrl = ship_url;
+    selectedUrlIndex = 0;
+    shipEndpoints: string[] = [];
+
+    constructor(ship_url: string | string[], max_payload_mb: number) {
+
+        if (Array.isArray(ship_url)) {
+            this.shipUrl = ship_url[0];
+            this.shipEndpoints = ship_url;
+        } else {
+            this.shipUrl = ship_url;
+        }
+
         if (max_payload_mb) {
             this.max_payload_mb = max_payload_mb;
         } else {
             this.max_payload_mb = 256;
+        }
+    }
+
+    nextUrl() {
+        if(this.shipEndpoints.length > 0) {
+            this.selectedUrlIndex++;
+            if(this.selectedUrlIndex >= this.shipEndpoints.length) {
+                this.selectedUrlIndex = 0;
+            }
+            this.shipUrl = this.shipEndpoints[this.selectedUrlIndex];
+            hLog(`Switching to next endpoint: ${this.shipUrl}`);
         }
     }
 

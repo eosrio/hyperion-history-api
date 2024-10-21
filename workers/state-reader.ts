@@ -813,6 +813,10 @@ export default class StateReader extends HyperionWorker {
         hLog(`Retrying connection in 5 seconds... [attempt: ${this.reconnectCount + 1}]`);
         debugLog(`PENDING REQUESTS:', ${this.pendingRequest}`);
         debugLog(`LOCAL BLOCK:', ${this.local_block_num}`);
+
+        // switch to next endpoint if available
+        this.ship.nextUrl();
+
         setTimeout(() => {
             this.reconnectCount++;
             this.startWS();
