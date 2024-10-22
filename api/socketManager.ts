@@ -3,7 +3,7 @@ import {Server, Socket} from 'socket.io';
 import {createAdapter} from "@socket.io/redis-adapter";
 import {io} from 'socket.io-client';
 import {FastifyInstance} from "fastify";
-import IORedis from "ioredis";
+import IORedis, {RedisOptions} from "ioredis";
 import {App, TemplatedApp} from 'uWebSockets.js';
 import {streamPastActions, streamPastDeltas} from "./helpers/functions";
 import {randomUUID} from "crypto";
@@ -38,13 +38,13 @@ export class SocketManager {
     private relay;
     relay_restored = true;
     relay_down = false;
-    private readonly url;
+    private readonly url: string;
     private readonly server: FastifyInstance;
     private readonly uwsApp: TemplatedApp;
     private readonly chainId: string;
     private currentBlockNum = 0;
 
-    constructor(fastify: FastifyInstance, url, redisOptions) {
+    constructor(fastify: FastifyInstance, url: string, redisOptions: RedisOptions) {
         this.server = fastify;
         this.url = url;
         this.uwsApp = App({});
@@ -56,9 +56,7 @@ export class SocketManager {
         });
 
         this.io.attachApp(this.uwsApp);
-
         this.chainId = this.server.manager.conn.chains[this.server.manager.chain].chain_id
-        hLog(`[SocketManager] chain_id: ${this.chainId}`);
         const pubClient = new IORedis(redisOptions);
         const subClient = pubClient.duplicate();
 

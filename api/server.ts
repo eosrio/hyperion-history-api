@@ -20,6 +20,7 @@ import {FastifySwaggerUiOptions} from "@fastify/swagger-ui";
 import {QRYBasePublisher} from "./qry-hub/base-publisher";
 import {getApiUsageHistory} from "./helpers/functions";
 import {WebSocket} from "ws";
+import {StateHistorySocket} from "../connections/state-history";
 
 class HyperionApiServer {
 
@@ -104,6 +105,10 @@ class HyperionApiServer {
 
         this.fastify.decorate('manager', this.manager);
 
+        const chainConnections = this.manager.conn.chains[this.chain];
+        const shs = new StateHistorySocket(chainConnections.ship);
+        this.fastify.decorate('shs', shs);
+
         // import get_actions query params from custom modules
         const extendedActionsSet: Set<string> = new Set([...extendedActions]);
         for (const qPrefix of this.mLoader.extendedActions) {
@@ -176,28 +181,25 @@ class HyperionApiServer {
     }
 
     activateStreaming() {
-        console.log('Importing stream module...');
-        import('./socketManager').then((mod) => {
-            const connOpts = this.manager.conn.chains[this.chain];
-            let _port = 57200;
-            if (connOpts.WS_ROUTER_PORT) {
-                _port = connOpts.WS_ROUTER_PORT;
-            }
-            let _host = "127.0.0.1";
-            if (connOpts.WS_ROUTER_HOST) {
-                _host = connOpts.WS_ROUTER_HOST;
-            }
-            if (_host === "0.0.0.0") {
-                hLog(`[ERROR] WS Router Host is set to 0.0.0.0, please use a fixed IP address instead. Can't start streaming.`);
-                return;
-            }
-            this.socketManager = new mod.SocketManager(
-                this.fastify,
-                `http://${_host}:${_port}`,
-                this.manager.conn.redis
-            );
-            this.socketManager.startRelay();
-        });
+        const connOpts = this.manager.conn.chains[this.chain];
+        let _port = 57200;
+        if (connOpts.WS_ROUTER_PORT) {
+            _port = connOpts.WS_ROUTER_PORT;
+        }
+        let _host = "127.0.0.1";
+        if (connOpts.WS_ROUTER_HOST) {
+            _host = connOpts.WS_ROUTER_HOST;
+        }
+        if (_host === "0.0.0.0") {
+            hLog(`[ERROR] WS Router Host is set to 0.0.0.0, please use a fixed IP address instead. Can't start streaming.`);
+            return;
+        }
+        this.socketManager = new SocketManager(
+            this.fastify,
+            `http://${_host}:${_port}`,
+            this.manager.conn.redis
+        );
+        this.socketManager.startRelay();
     }
 
     private addGenericTypeParsing() {

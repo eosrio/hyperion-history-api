@@ -22,9 +22,9 @@ interface ESService {
 
 interface ServiceResponse<T> {
     service: string;
-    time: number;
-    query_time_ms: number;
     status: any
+    query_time_ms: number;
+    cached: boolean;
     service_data?: T;
 }
 
@@ -36,28 +36,83 @@ interface NodeosService {
     chain_id: string;
 }
 
-function createHealth(name: string, status: string, data?: any, refTime?: bigint): ServiceResponse<any> {
-    let time = Date.now();
+function createHealth<ResponseType>(
+    cached: boolean,
+    name: string,
+    status: string,
+    data?: ResponseType,
+    refTime?: bigint
+): ServiceResponse<ResponseType> {
     return {
         service: name,
         status: status,
+        cached,
         query_time_ms: refTime ? Number(process.hrtime.bigint() - refTime) / 1000000 : 0,
-        service_data: data,
-        time: time
+        service_data: data
     }
 }
+
+// Test State History connection
+async function checkStateHistory(fastify: FastifyInstance): Promise<ServiceResponse<any>> {
+    const tRefShip = process.hrtime.bigint();
+    try {
+
+        const shipHealthCache = await fastify.redis.get(`${fastify.manager.chain}::ship_status`);
+        if (shipHealthCache) {
+            return createHealth(true, 'StateHistory', 'OK', JSON.parse(shipHealthCache), tRefShip);
+        } else {
+            const chainConnections = fastify.manager.conn.chains[fastify.manager.chain];
+            const data = await fastify.shs.validateShipServers(chainConnections.chain_id);
+            if (data.length === 0) {
+                return createHealth(false, 'StateHistory', 'Error');
+            } else {
+                const response = {
+                    nodes: data.map(s => {
+                        return {
+                            label: s.node.label,
+                            active: s.active,
+                            range: {
+                                from: s.traceBeginBlock,
+                                to: s.traceEndBlock,
+                            }
+                        };
+                    })
+                };
+
+                // cache for 30 minutes
+                await fastify.redis.set(`${fastify.manager.chain}::ship_status`, JSON.stringify(response), 'EX', 60);
+                return createHealth(false, 'StateHistory', 'OK', response, tRefShip);
+            }
+        }
+    } catch (e) {
+        console.log(e);
+        return createHealth(false, 'StateHistory', 'Error');
+    }
+}
+
+const RABBIT_KEY = 'hyperion-global::rabbit_status';
 
 
 // Test RabbitMQ connection
 async function checkRabbit(fastify: FastifyInstance): Promise<ServiceResponse<any>> {
     const tRefRabbit = process.hrtime.bigint();
     try {
-        const connection = await connect(fastify.manager.ampqUrl);
-        await connection.close();
-        return createHealth('RabbitMq', 'OK', null, tRefRabbit);
-    } catch (e) {
-        console.log(e);
-        return createHealth('RabbitMq', 'Error');
+        const rabbitHealthCache = await fastify.redis.get(RABBIT_KEY);
+        if (rabbitHealthCache) {
+            return createHealth(true, 'RabbitMq', 'OK', JSON.parse(rabbitHealthCache), tRefRabbit);
+        } else {
+            const connection = await connect(fastify.manager.ampqUrl);
+            await connection.close();
+            const response = {
+                status: true
+            };
+            // cache for 30 seconds
+            await fastify.redis.set(RABBIT_KEY, JSON.stringify(response), 'EX', 30);
+            return createHealth(false, 'RabbitMq', 'OK', null, tRefRabbit);
+        }
+    } catch (e: any) {
+        console.log(e.message);
+        return createHealth(false, 'RabbitMq', 'Error');
     }
 }
 
@@ -69,7 +124,7 @@ async function checkNodeos(fastify: FastifyInstance): Promise<ServiceResponse<No
         const results = await rpc.get_info();
         if (results) {
             const diff = (new Date().getTime()) - (new Date(results.head_block_time + '+00:00').getTime());
-            return createHealth('NodeosRPC', 'OK', {
+            return createHealth(false, 'NodeosRPC', 'OK', {
                 head_block_num: results.head_block_num,
                 head_block_time: results.head_block_time,
                 time_offset: diff,
@@ -77,10 +132,10 @@ async function checkNodeos(fastify: FastifyInstance): Promise<ServiceResponse<No
                 chain_id: results.chain_id
             }, tRefNodeos);
         } else {
-            return createHealth('NodeosRPC', 'Error');
+            return createHealth(false, 'NodeosRPC', 'Error');
         }
     } catch (e) {
-        return createHealth('NodeosRPC', 'Error');
+        return createHealth(false, 'NodeosRPC', 'Error');
     }
 }
 
@@ -89,6 +144,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
     try {
 
         const times: any[] = [];
+        let cached = false;
         const esHealthCache = await fastify.redis.get(`${fastify.manager.chain}::es_status`);
 
         // Cluster health
@@ -101,6 +157,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
                 phase_time_ms: Number(process.hrtime.bigint() - tRefElastic1) / 1000000,
                 cache: true
             });
+            cached = true;
         } else {
 
             const esVersion = fastify.elastic_version;
@@ -165,6 +222,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
                 phase_time_ms: Number(process.hrtime.bigint() - tRefElastic2) / 1000000,
                 cache: true
             });
+            cached = true;
         } else {
             firstIndexedBlock = await getFirstIndexedBlock(
                 fastify.elastic,
@@ -227,10 +285,10 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
                 stat = 'Error';
                 break;
         }
-        return createHealth('Elasticsearch', stat, data, tRefElastic1);
+        return createHealth(cached, 'Elasticsearch', stat, data, tRefElastic1);
     } catch (e) {
         console.log(e, 'Elasticsearch Error');
-        return createHealth('Elasticsearch', 'Error');
+        return createHealth(false, 'Elasticsearch', 'Error');
     }
 }
 
@@ -252,6 +310,7 @@ async function getHealthQuery(fastify: FastifyInstance) {
         features: fastify.manager.config.features
     };
     response.health = await Promise.all([
+        checkStateHistory(fastify),
         checkRabbit(fastify),
         checkNodeos(fastify),
         checkElastic(fastify)

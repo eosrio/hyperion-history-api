@@ -151,9 +151,11 @@ export class StateHistorySocket {
             if (s.chainId.toLowerCase() === chainId.toLowerCase()) {
                 return true;
             } else {
-                hLog(`⚠️⚠️️ Removing SHIP Server ${s.node.url} :: Chain ID mismatch`);
-                hLog(`⚠️⚠️ Expected: ${chainId}`);
-                hLog(`⚠️⚠️ Found: ${s.chainId}`);
+                if (s.chainId) {
+                    hLog(`⚠️⚠️️ Removing SHIP Server ${s.node.url} :: Chain ID mismatch`);
+                    hLog(`⚠️⚠️ Expected: ${chainId}`);
+                    hLog(`⚠️⚠️ Found: ${s.chainId}`);
+                }
                 return false;
             }
         });
@@ -188,6 +190,12 @@ export class StateHistorySocket {
             const txEnc = new TextEncoder();
             const txDec = new TextDecoder();
 
+            const timeout = setTimeout(() => {
+                server.active = false;
+                hLog(`Testing SHIP Server ${server.node.url} :: Timeout after 5s`);
+                resolve();
+            }, 5000);
+
             hLog(`Testing SHIP Server ${server.node.url}`);
             const tempWS = new WebSocket(server.node.url);
             tempWS.on('message', (data) => {
@@ -211,6 +219,7 @@ export class StateHistorySocket {
                             server.traceBeginBlock = result[1].trace_begin_block;
                             server.traceEndBlock = result[1].trace_end_block;
                             server.active = true;
+                            clearTimeout(timeout);
                             tempWS.close();
                         }
                     }
