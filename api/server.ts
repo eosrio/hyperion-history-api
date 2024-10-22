@@ -537,7 +537,7 @@ class HyperionApiServer {
     }
 
     setupIndexerController() {
-        let controllerUrl = this.manager.config.hub.custom_indexer_controller;
+        let controllerUrl = this.manager.config.hub?.custom_indexer_controller;
         let controlPort = this.manager.conn.chains[this.conf.settings.chain].control_port;
         if (!controlPort) {
             controlPort = 7002;
