@@ -258,6 +258,7 @@ class HyperionApiServer {
         hLog('Registering plugins...');
 
         await registerPlugins(this.fastify, this.pluginParams);
+
         this.addGenericTypeParsing();
 
         await this.mLoader.init();
@@ -275,21 +276,21 @@ class HyperionApiServer {
         this.registerQryHubRoutes();
         registerRoutes(this.fastify);
 
-        // register documentation when ready
-        this.fastify.ready().then(async () => {
-            this.fastify.swagger();
-        }, (err: any) => {
-            hLog('an error happened', err)
-        });
-
         try {
-            await this.fastify.listen({
-                host: this.conf.api.server_addr,
-                port: this.conf.api.server_port
-            });
+
+            try {
+                await this.fastify.ready();
+                this.fastify.swagger();
+            } catch (e: any) {
+                hLog(`Failed to load Swagger UI: ${e.message}`);
+            }
+
+            await this.fastify.listen({host: this.conf.api.server_addr, port: this.conf.api.server_port});
+
             const listeningAddress = this.fastify.server.address() as AddressInfo;
-            hLog(`${this.chain} Hyperion API ready and listening on http://${listeningAddress.address}:${listeningAddress.port}`);
-            hLog(`API Should be externally accessible at: http://${this.conf.api.server_name}`);
+            const apiUrl = `http://${listeningAddress.address}:${listeningAddress.port}`;
+            hLog(`${this.chain} Hyperion API ready and listening on ${apiUrl}`);
+            hLog(`API Public Url: http://${this.conf.api.server_name}`);
 
             await this.startQRYHub();
 
@@ -380,7 +381,7 @@ class HyperionApiServer {
             const histogramInterval = 100000;
 
             const tRefHistogram = process.hrtime.bigint();
-            const histogramData = await elastic.search<any,any>({
+            const histogramData = await elastic.search<any, any>({
                 index: this.chain + '-block-*',
                 size: 0,
                 query: {
@@ -396,7 +397,7 @@ class HyperionApiServer {
                         histogram: {
                             field: 'block_num',
                             interval: histogramInterval,
-                            min_doc_count:1,
+                            min_doc_count: 1,
                             order: {
                                 "_key": "asc"
                             }
