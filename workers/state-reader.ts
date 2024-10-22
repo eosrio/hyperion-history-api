@@ -280,17 +280,22 @@ export default class StateReader extends HyperionWorker {
                 break;
             }
             case 'set_delay': {
-                console.log('received new delay action from master')
+                hLog('received new delay action from master')
                 this.delay_active = msg.data.state;
                 this.block_processing_delay = msg.data.delay;
                 break;
             }
+            case 'next_server': {
+                hLog('received next server action from master');
+                this.ship.close(false);
+                break;
+            }
             case 'stop': {
                 if (this.isLiveReader) {
-                    console.log('[LIVE READER] Closing Websocket');
+                    hLog('[LIVE READER] Closing Websocket');
                     this.ship.close(true);
                     setTimeout(() => {
-                        console.log('[LIVE READER] Process killed');
+                        hLog('[LIVE READER] Process killed');
                         process.exit(1);
                     }, 2000);
                 }
@@ -392,7 +397,9 @@ export default class StateReader extends HyperionWorker {
             // ship status message
             if (result[0] === 'get_status_result_v0') {
                 this.shipInitStatus = result[1];
-                hLog(`\n| SHIP Status Report\n| Init block: ${this.shipInitStatus['chain_state_begin_block']}\n| Head block: ${this.shipInitStatus['chain_state_end_block']}`);
+                const beingBlock = this.shipInitStatus['chain_state_begin_block'];
+                const endBlock = this.shipInitStatus['chain_state_end_block'];
+                hLog(`SHIP Range from ${beingBlock} to ${endBlock}`);
                 const chain_state_begin_block = this.shipInitStatus['chain_state_begin_block'];
                 if (!this.conf.indexer.disable_reading || process.env['worker_role'] === 'repair_reader') {
 

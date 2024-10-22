@@ -48,6 +48,7 @@ import {App, TemplatedApp, WebSocket} from "uWebSockets.js";
 import moment from "moment";
 import {SearchResponse} from "@elastic/elasticsearch/lib/api/types";
 import {getTotalValue} from "../api/helpers/functions";
+import {ShipServer, StateHistorySocket} from "../connections/state-history";
 import Timeout = NodeJS.Timeout;
 
 interface RevBlock {
@@ -182,6 +183,7 @@ export class HyperionMaster {
     }[] = [];
     private connectedController?: WebSocket<any>;
     private lastIrreversibleBlock: number = 0;
+    private validatedShipServers: ShipServer[] = [];
 
     constructor() {
         this.cm = new ConfigurationModule();
@@ -819,7 +821,8 @@ export class HyperionMaster {
                 this.addWorker({
                     worker_role: 'reader',
                     first_block: start,
-                    last_block: end
+                    last_block: end,
+                    validated_ship_servers: JSON.stringify(this.validatedShipServers)
                 });
                 this.activeReadersCount++;
                 hLog(`Setting parallel reader [${this.worker_index}] from block ${start} to ${end}`);
@@ -835,7 +838,8 @@ export class HyperionMaster {
             this.liveReader = this.addWorker({
                 worker_role: 'continuous_reader',
                 worker_last_processed_block: _head,
-                ws_router: ''
+                ws_router: '',
+                validated_ship_servers: JSON.stringify(this.validatedShipServers)
             });
 
             // live deserializers
@@ -1515,6 +1519,10 @@ export class HyperionMaster {
                                     this.emitAlert('warning', idleMsg);
                                 }
                                 hLog(idleMsg);
+                                // attempt to move readers to another server
+                                readers.forEach(w => {
+                                    w.wref?.send({event: 'next_server'});
+                                });
                             }
                         }
                     }
@@ -1632,7 +1640,8 @@ export class HyperionMaster {
         });
         hLog(`Filling ${totalBlocks} missing blocks...`);
         this.repairReader = this.addWorker({
-            worker_role: 'repair_reader'
+            worker_role: 'repair_reader',
+            validated_ship_servers: JSON.stringify(this.validatedShipServers),
         });
         this.launchWorkers();
         this.connectedController = ws;
@@ -1731,7 +1740,6 @@ export class HyperionMaster {
 
         // Redis
 
-
         // Wait for Redis availability
         await waitUntilReady(async () => {
             try {
@@ -1748,12 +1756,16 @@ export class HyperionMaster {
         // Remove first indexed block from cache (v2/health)
         await this.ioRedisClient.del(`${this.manager.chain}::fib`);
 
+        let rpcChainId = '';
+        let configuredChainId = this.manager.conn.chains[this.chain].chain_id;
+
         // Wait for Nodeos Chain API availability
         await waitUntilReady(async () => {
             try {
                 const info = await this.rpc.get_info();
                 if (info.server_version_string) {
                     hLog(`Nodeos version: ${info.server_version_string}`);
+                    rpcChainId = info.chain_id;
                     return true;
                 } else {
                     return false;
@@ -1765,6 +1777,27 @@ export class HyperionMaster {
         }, 10, 5000, () => {
             hLog(`Chain API not available, exiting...`);
             process.exit();
+        });
+
+        if (rpcChainId !== configuredChainId) {
+            hLog(`Chain ID mismatch! Configured: ${configuredChainId} | RPC: ${rpcChainId}`);
+            process.exit();
+        }
+
+        // State History Servers
+        const shipNodes = this.manager.conn.chains[this.chain].ship;
+        const shs = new StateHistorySocket(shipNodes);
+        this.validatedShipServers = await shs.validateShipServers(rpcChainId);
+
+        if (this.validatedShipServers.length === 0) {
+            hLog(`No valid state history servers found!`);
+            process.exit();
+        }
+
+        // pretty print ship nodes
+        hLog('State History Servers:');
+        this.validatedShipServers.forEach((server,index) => {
+            hLog(`#${index + 1} - ${server.node.url} (${server.node.label}) - from: ${server.traceBeginBlock} to: ${server.traceEndBlock}`);
         });
 
         // Wait for Elasticsearch availability

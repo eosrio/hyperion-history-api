@@ -15,4 +15,5 @@ export interface HyperionWorkerDef {
     distribution?: any;
     first_block?: number;
     last_block?: number;
+    validated_ship_servers?: string;
 }

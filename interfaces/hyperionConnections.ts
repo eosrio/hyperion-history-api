@@ -1,3 +1,5 @@
+import {LabelledShipNode} from "../connections/state-history";
+
 export interface AmqpConfig {
     host: string;
     api: string;
@@ -20,7 +22,7 @@ export interface HyperionChainData {
     name: string;
     chain_id: string;
     http: string;
-    ship: string | string[];
+    ship: string | (string | LabelledShipNode)[];
     WS_ROUTER_PORT: number;
     WS_ROUTER_HOST: string;
     control_port: number;

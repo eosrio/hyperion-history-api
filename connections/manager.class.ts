@@ -4,12 +4,13 @@ import {Client} from '@elastic/elasticsearch'
 import {HyperionConnections} from "../interfaces/hyperionConnections";
 import {HyperionConfig} from "../interfaces/hyperionConfig";
 import {amqpConnect, checkQueueSize, getAmpqUrl} from "./amqp";
-import {StateHistorySocket} from "./state-history";
+import {ShipServer, StateHistorySocket} from "./state-history";
 import {exec} from "child_process";
 import {hLog} from "../helpers/common_functions";
 
 export class ConnectionManager {
 
+    cm: ConfigurationModule;
     config: HyperionConfig;
     conn: HyperionConnections;
 
@@ -20,14 +21,19 @@ export class ConnectionManager {
     esIngestClients: Client[];
     esIngestClient!: Client;
 
-    constructor(private cm: ConfigurationModule) {
+    constructor(cm: ConfigurationModule) {
+
+        this.cm = cm;
         this.config = cm.config;
         this.conn = cm.connections;
+
         if (!this.conn.amqp.protocol) {
             this.conn.amqp.protocol = 'http';
         }
+
         this.chain = this.config.settings.chain;
         this.esIngestClients = [];
+
         this.prepareESClient();
         this.prepareIngestClients();
     }
@@ -154,7 +160,10 @@ export class ConnectionManager {
     }
 
     get shipClient(): StateHistorySocket {
-        return new StateHistorySocket(this.conn.chains[this.config.settings.chain]['ship'], this.config.settings.max_ws_payload_mb);
+        return new StateHistorySocket(
+            this.conn.chains[this.config.settings.chain].ship,
+            this.config.settings.max_ws_payload_mb
+        );
     }
 
     get ampqUrl() {

@@ -351,7 +351,7 @@ export default class WSRouter extends HyperionWorker {
         });
 
         this.io.on('connection', (socket: Socket) => {
-            console.log(`[ROUTER] New relay connected with ID = ${socket.id}`);
+            hLog(`New relay connected with ID = ${socket.id}`);
             this.relays[socket.id] = {clients: 0, connected: true};
             socket.on('event', (data, callback) => {
                 switch (data.type) {
