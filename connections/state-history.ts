@@ -67,8 +67,8 @@ export class StateHistorySocket {
             });
         } else {
             this.shipNode = {label: 'primary', url: ship_url};
+            this.shipEndpoints = [this.shipNode];
         }
-
 
         if (max_payload_mb) {
             this.max_payload_mb = max_payload_mb;

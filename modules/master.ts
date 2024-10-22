@@ -1791,6 +1791,7 @@ export class HyperionMaster {
 
         if (this.validatedShipServers.length === 0) {
             hLog(`No valid state history servers found!`);
+            console.log(shipNodes);
             process.exit();
         }
 
