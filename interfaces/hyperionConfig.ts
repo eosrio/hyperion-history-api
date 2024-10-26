@@ -49,8 +49,14 @@ export interface MainSettings {
 
 export interface IndexerConfigs {
     enabled?: boolean;
+
+    // Node.js options
     node_max_old_space_size?: number;
+    node_trace_deprecation?: boolean;
+    node_trace_warnings?: boolean;
+
     fill_state: boolean;
+
     start_on: number;
     stop_on: number;
     rewrite: boolean;
@@ -90,12 +96,17 @@ interface CachedRouteConfig {
 }
 
 interface ApiConfigs {
+    enabled?: boolean;
     log_errors?: boolean;
     stream_scroll_batch?: number;
     stream_scroll_limit?: number;
-    enabled?: boolean;
     pm2_scaling?: number;
+
+    // Node.js options
     node_max_old_space_size?: number;
+    node_trace_deprecation?: boolean;
+    node_trace_warnings?: boolean;
+
     disable_rate_limit?: boolean;
     disable_tx_cache?: boolean;
     tx_cache_expiration_sec?: number | string;

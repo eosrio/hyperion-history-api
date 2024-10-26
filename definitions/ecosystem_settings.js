@@ -1,6 +1,11 @@
-function interpreterArgs(heap) {
-    // const arr = ['--trace-deprecation', '--trace-warnings'];
+function interpreterArgs(heap, traceDeprecation, traceWarnings) {
     const arr = [];
+    if (traceDeprecation) {
+        arr.push('--trace-deprecation');
+    }
+    if (traceWarnings) {
+        arr.push('--trace-warnings');
+    }
     if (heap) {
         arr.push('--max-old-space-size=' + heap);
     } else {
@@ -12,13 +17,13 @@ function interpreterArgs(heap) {
     return arr;
 }
 
-function addIndexer(chainName, heap) {
+function addIndexer(chainName, heap, traceDeprecation, traceWarnings) {
     return {
         script: './launcher.js',
         name: chainName + '-indexer',
         namespace: chainName,
         interpreter: 'node',
-        interpreter_args: interpreterArgs(heap),
+        interpreter_args: interpreterArgs(heap, traceDeprecation, traceWarnings),
         autorestart: false,
         kill_timeout: 3600,
         watch: false,
@@ -30,12 +35,12 @@ function addIndexer(chainName, heap) {
     };
 }
 
-function addApiServer(chainName, threads, heap) {
+function addApiServer(chainName, threads, heap, traceDeprecation, traceWarnings) {
     return {
         script: './api/server.js',
         name: chainName + '-api',
         namespace: chainName,
-        node_args: interpreterArgs(heap),
+        node_args: interpreterArgs(heap, traceDeprecation, traceWarnings),
         exec_mode: 'cluster',
         merge_logs: true,
         instances: threads,

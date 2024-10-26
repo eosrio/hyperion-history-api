@@ -12,11 +12,15 @@ readdirSync(chainsRoot)
         const chainName = config.settings.chain;
         if (config.api.enabled) {
             const apiHeap = config.api.node_max_old_space_size;
-            apps.push(addApiServer(chainName, config.api.pm2_scaling, apiHeap));
+            const traceDeprecation = config.api.node_trace_deprecation;
+            const traceWarnings = config.api.node_trace_warnings;
+            apps.push(addApiServer(chainName, config.api.pm2_scaling, apiHeap, traceDeprecation, traceWarnings));
         }
         if (config.indexer.enabled) {
             const indexerHeap = config.indexer.node_max_old_space_size;
-            apps.push(addIndexer(chainName, indexerHeap));
+            const traceDeprecation = config.indexer.node_trace_deprecation;
+            const traceWarnings = config.indexer.node_trace_warnings;
+            apps.push(addIndexer(chainName, indexerHeap, traceDeprecation, traceWarnings));
         }
     });
 

@@ -2,7 +2,6 @@
   "api": {
     "enabled": true,
     "pm2_scaling": 1,
-    "node_max_old_space_size": 1024,
     "chain_name": "EXAMPLE Chain",
     "server_addr": "127.0.0.1",
     "server_port": 7000,
@@ -35,13 +34,21 @@
     "disable_tx_cache": false,
     "tx_cache_expiration_sec": 3600,
     "v1_chain_cache": [
-      {"path": "get_block", "ttl": 3000},
-      {"path": "get_info", "ttl": 500}
-    ]
+      {
+        "path": "get_block",
+        "ttl": 3000
+      },
+      {
+        "path": "get_info",
+        "ttl": 500
+      }
+    ],
+    "node_max_old_space_size": 1024,
+    "node_trace_deprecation": false,
+    "node_trace_warnings": false
   },
   "indexer": {
     "enabled": true,
-    "node_max_old_space_size": 4096,
     "start_on": 0,
     "stop_on": 0,
     "rewrite": false,
@@ -54,7 +61,10 @@
     "disable_reading": false,
     "disable_indexing": false,
     "process_deltas": true,
-    "disable_delta_rm": true
+    "disable_delta_rm": true,
+    "node_max_old_space_size": 4096,
+    "node_trace_deprecation": false,
+    "node_trace_warnings": false
   },
   "settings": {
     "preview": false,
