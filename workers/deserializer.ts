@@ -1674,6 +1674,9 @@ export default class MainDSWorker extends HyperionWorker {
         if (data['@accounts']) {
             accountDoc['amount'] = data['@accounts']['amount'];
             accountDoc['symbol'] = data['@accounts']['symbol'];
+        } else {
+            debugLog(`${data['code']} is not a valid token contract!`);
+            return;
         }
 
         if (!this.conf.indexer.disable_indexing) {
