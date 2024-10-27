@@ -29,73 +29,32 @@ node_modules/
 # dotenv environment variables file
 .env
 
+# main build directory
+build
+
 .idea
 *.pem
-connections.json
+config/connections.json
 connections.json2
-api_access.log
-api_error.log
+logs/api_access.log
+logs/api_error.log
 explorer
-api/explorer
+src/api/explorer
+
 .ecosystem.config.js.swp
 
-chains/*
-!chains/example.config.json
+config/chains/*
+!config/chains/example.config.json
 
-api/**/*.js
-api/**/*.js.map
-api/tests
+src/api/tests
 
-hyperion-launcher.js
-hyperion-launcher.js.map
+src/plugins/.state.json
+src/plugins/repos
+src/plugins/*.js
 
-launcher.js
-launcher.js.map
-
-connections/**/*.js
-connections/**/*.js.map
-
-definitions/**/*.js
-definitions/**/*.js.map
-
-workers/**/*.js
-workers/**/*.js.map
-
-helpers/**/*.js
-helpers/**/*.js.map
-
-interfaces/**/*.js
-interfaces/**/*.js.map
-
-modules/**/*.js
-modules/**/*.js.map
-
-addons/**/*.js
-addons/**/*.js.map
-
-plugins/.state.json
-plugins/repos
-plugins/*.js
 .gitmodules
 
-docker/redis/data
-docker/elasticsearch/data
-docker/rabbitmq/data
-docker/eosio/data
-
 configuration_backups
-
-scripts/hyp-config.js
-scripts/hyp-config.js.map
-
-scripts/hyp-repair.js
-scripts/hyp-repair.js.map
-
-scripts/repair-cli/*.js
-scripts/repair-cli/*.js.map
-
-scripts/hpm.js
-scripts/hpm.js.map
 
 tests/api/ijhttp
 tests/api/ijhttp.zip

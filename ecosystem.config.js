@@ -1,4 +1,4 @@
-const {addApiServer, addIndexer} = require('./definitions/ecosystem_settings');
+const {addApiServer, addIndexer} = require('./src/indexer/definitions/ecosystem_settings');
 const {readdirSync, readFileSync} = require("fs");
 const path = require('path');
 

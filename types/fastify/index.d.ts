@@ -1,8 +1,8 @@
-import {ConnectionManager} from "../../connections/manager.class";
 import {Api, JsonRpc} from "eosjs";
-import {CacheManager} from "../../api/helpers/cacheManager";
 import {FastifyRedis} from "@fastify/redis";
-import {StateHistorySocket} from "../../connections/state-history";
+import {StateHistorySocket} from "../../src/indexer/connections/state-history.js";
+import {ConnectionManager} from "../../src/indexer/connections/manager.class.js";
+import {CacheManager} from "../../src/api/helpers/cacheManager.js";
 
 declare module 'fastify' {
     export interface FastifyInstance {

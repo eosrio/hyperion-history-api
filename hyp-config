@@ -1,2 +1,2 @@
 #!/bin/bash
-node ./scripts/hyp-config.js "$@"
+node ./build/cli/hyp-config.js "$@"
