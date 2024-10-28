@@ -1,12 +1,11 @@
 import WebSocket from "ws";
 import {cargo, QueueObject} from "async";
-import {parseInt} from "lodash";
-import { Serialize } from "eosjs";
+import {Serialize} from "eosjs";
 import {HyperionWorker} from "./hyperionWorker.js";
 import {Type} from "eosjs/dist/eosjs-serialize.js";
 import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions.js";
 import {RabbitQueueDef} from "../definitions/index-queues.js";
-import { Abi } from "eosjs/dist/eosjs-rpc-interfaces.js";
+import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
 
 interface RequestRange {
     first_block: number;

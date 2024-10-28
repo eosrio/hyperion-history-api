@@ -4,9 +4,11 @@ import {Client} from '@elastic/elasticsearch'
 import {HyperionConnections} from "../../interfaces/hyperionConnections.js";
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 import {amqpConnect, checkQueueSize, getAmpqUrl} from "./amqp.js";
-import {ShipServer, StateHistorySocket} from "./state-history.js";
+import {StateHistorySocket} from "./state-history.js";
 import {exec} from "child_process";
 import {hLog} from "../helpers/common_functions.js";
+import {join} from "node:path";
+import {existsSync, readFileSync} from "fs";
 
 export class ConnectionManager {
 
@@ -189,9 +191,16 @@ export class ConnectionManager {
     }
 
     getHyperionVersion() {
-        this.current_version = require('../../../package.json').version;
-        if (this.last_commit_hash === 'custom') {
-            this.current_version = this.current_version + '-dirty';
+        const packageJsonPath = join(import.meta.dirname, '../../../package.json');
+        if (existsSync(packageJsonPath)) {
+            const packageData = JSON.parse(readFileSync(packageJsonPath).toString()) as any;
+            this.current_version = packageData.version;
+            if (this.last_commit_hash === 'custom') {
+                this.current_version = this.current_version + '-dirty';
+            }
+        } else {
+            console.error('package.json not found');
+            process.exit(1);
         }
     }
 }

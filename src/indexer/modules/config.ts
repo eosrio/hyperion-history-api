@@ -126,7 +126,7 @@ export class ConfigurationModule {
     }
 
     loadConnectionsJson() {
-        const file = './connections.json';
+        const file = './config/connections.json';
         if (existsSync(file)) {
             const data = readFileSync(file).toString();
             try {

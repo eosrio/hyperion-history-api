@@ -20,7 +20,7 @@ function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
 
 function addRoute(server: FastifyInstance, handlersPath: string, prefix: string) {
     server.register(autoLoad, {
-        dir: join(__dirname, 'routes', handlersPath),
+        dir: join(import.meta.dirname, 'routes', handlersPath),
         ignorePattern: /.*(handler|schema).js/,
         dirNameRoutePrefix: false,
         options: {prefix}

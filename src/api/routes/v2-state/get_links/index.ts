@@ -49,7 +49,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     addApiRoute(
         fastify,
         'GET',
-        getRouteName(__filename),
+        getRouteName(import.meta.filename),
         getLinksHandler,
         schema
     );

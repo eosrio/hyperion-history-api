@@ -64,7 +64,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
     addApiRoute(
         fastify,
         'POST',
-        getRouteName(__filename),
+        getRouteName(import.meta.filename),
         getBlockTraceHandler,
         schema
     );

@@ -1,4 +1,4 @@
-import {Numeric} from "eosjs/dist";
+import {Numeric} from "eosjs";
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 import {getSkipLimit} from "../../v2-history/get_actions/functions.js";

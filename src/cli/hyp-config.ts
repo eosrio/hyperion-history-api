@@ -1,18 +1,18 @@
-import { Command } from "commander";
+import {Command} from "commander";
 import path from "path";
-import { cp, mkdir, readdir, readFile, rm, writeFile } from "fs/promises";
-import { HyperionConfig } from "../interfaces/hyperionConfig.js";
-import { HyperionConnections } from "../interfaces/hyperionConnections.js";
-import { copyFileSync, existsSync, rmSync } from "fs";
-import { JsonRpc } from "eosjs";
+import {cp, mkdir, readdir, readFile, rm, writeFile} from "fs/promises";
+import {HyperionConfig, ScalingConfigs} from "../interfaces/hyperionConfig.js";
+import {HyperionConnections} from "../interfaces/hyperionConnections.js";
+import {copyFileSync, existsSync, rmSync} from "fs";
+import {JsonRpc} from "eosjs";
 
 import WebSocket from 'ws';
 import * as readline from "readline";
 import * as amqp from "amqplib";
-import { Redis } from "ioredis";
-import { Client } from "@elastic/elasticsearch";
-import { APIClient } from "@wharfkit/antelope";
-import { StateHistorySocket } from "../indexer/connections/state-history.js";
+import {Redis} from "ioredis";
+import {Client} from "@elastic/elasticsearch";
+import {APIClient} from "@wharfkit/antelope";
+import {StateHistorySocket} from "../indexer/connections/state-history.js";
 
 const program = new Command();
 
@@ -37,10 +37,7 @@ async function getExampleConfig(): Promise<HyperionConfig> {
     return JSON.parse(exampleChainData.toString());
 }
 
-
 async function listChains(flags) {
-
-    const dirdata = await readdir(chainsDir);
     const connections = await getConnections();
 
     if (!connections) {
@@ -52,10 +49,14 @@ async function listChains(flags) {
 
     const configuredTable: any[] = [];
     const pendingTable: any[] = [];
-    for (const file of dirdata.filter(f => f.endsWith('.json'))) {
+    const files = await readdir(chainsDir);
+    for (const file of files.filter(f => f.endsWith('.json'))) {
+
+        // skip example config
         if (file === 'example.config.json') {
             continue;
         }
+
         try {
             const fileData = await readFile(path.join(chainsDir, file));
             const jsonData: HyperionConfig = JSON.parse(fileData.toString());
@@ -99,7 +100,10 @@ async function listChains(flags) {
                 abi_scan: jsonData.indexer.abi_scan_mode,
                 live_reader: jsonData.indexer.live_reader,
                 start_on: jsonData.indexer.start_on,
-                stop_on: jsonData.indexer.stop_on
+                stop_on: jsonData.indexer.stop_on,
+                purge_queues: jsonData.indexer.purge_queues,
+                public_api: jsonData.api.server_name,
+                scaling: jsonData.scaling
             };
 
             if (chainConn) {
@@ -107,7 +111,7 @@ async function listChains(flags) {
                     ...common,
                     nodeos_http: chainConn?.http,
                     nodeos_ship: chainConn?.ship,
-                    chain_id: chainConn?.chain_id.substring(0, 16) + '...'
+                    chain_id: chainConn?.chain_id
                 });
             } else {
                 pendingTable.push(common);
@@ -117,12 +121,102 @@ async function listChains(flags) {
         }
     }
 
-    console.log(' >>>> Fully Configured Chains');
-    console.table(configuredTable);
+    console.log('\n:::: CONFIGURED CHAINS ::::');
+    let idx = 0;
+    const tab = `• `;
+    for (const chain of configuredTable) {
+        idx++;
+        // print header with chain name in cyan
+        const headerString = `#${idx} - ${chain.full_name} - ${chain.chain_id}`;
+        console.log(`\x1b[36m${headerString}\x1b[0m`);
+
+        // Alias
+        console.log(tab + `Alias: ${chain.name}`);
+
+        // Indexer Settings
+        const props = [
+            `Start On: ${chain.start_on}`,
+            `Stop On: ${chain.stop_on}`,
+            `ABI Scan: ${chain.abi_scan}`,
+            `Live Reader: ${chain.live_reader}`,
+            `Purge Queues: ${chain.purge_queues}`
+        ]
+        console.log(`\x1b[33m${tab}${props.join(' | ')}\x1b[0m`);
+
+        // Scaling Settings
+        // "readers": 1,
+        //     "ds_queues": 1,
+        //     "ds_threads": 1,
+        //     "ds_pool_size": 1,
+        //     "indexing_queues": 1,
+        //     "ad_idx_queues": 1,
+        //     "dyn_idx_queues": 1,
+        const scaling: ScalingConfigs = chain.scaling;
+        const scalingProps = [
+            `Readers: ${scaling.readers}`,
+            `DS Threads: ${scaling.ds_threads}`,
+            `DS Pool Size: ${scaling.ds_pool_size}`
+        ];
+        console.log(`\x1b[33m${tab}Scaling -> [${scalingProps.join(' | ')}]\x1b[0m`);
+
+        const queueProps = [
+            `Deserializer: ${scaling.ds_queues}`,
+            `Indexing: ${scaling.indexing_queues}`,
+            `Actions/Deltas Idx: ${scaling.ad_idx_queues}`,
+            `Dynamic Idx: ${scaling.dyn_idx_queues}`
+        ];
+        console.log(`\x1b[33m${tab}Queues --> [${queueProps.join(' | ')}]\x1b[0m`);
+
+        // Public API
+        if (chain.public_api) {
+            console.log(tab + `Public API Endpoint: ${chain.public_api}`);
+        } else {
+            console.log(tab + `Public API Endpoint: \x1b[31mNot Configured\x1b[0m`);
+        }
+
+        // Parser Version
+        if (chain.parser) {
+            console.log(tab + `Parser Version: ${chain.parser}`);
+        } else {
+            console.log(tab + `Parser Version: \x1b[31mNot Configured\x1b[0m`);
+        }
+
+        // HTTP / Chain API Endpoint
+        if (chain.nodeos_http) {
+            console.log(tab + `HTTP: ${chain.nodeos_http}`);
+        } else {
+            console.log(tab + `HTTP: \x1b[31mNot Configured\x1b[0m`);
+        }
+
+        // SHIP / State History Endpoint
+        if (chain.nodeos_ship) {
+            if (Array.isArray(chain.nodeos_ship)) {
+                let j = 0;
+                for (const ship of chain.nodeos_ship) {
+                    j++;
+                    if (typeof ship === 'object') {
+                        console.log(tab.repeat(2) + `SHIP ${j}: ${ship.label} - ${ship.url}`);
+                    } else {
+                        console.log(tab.repeat(2) + `SHIP ${j}: ${ship}`);
+                    }
+                }
+            } else {
+                console.log(tab + `SHIP SERVER: ${chain.nodeos_ship}`);
+            }
+        } else {
+            console.log(tab + `SHIP SERVER: \x1b[31mNot Configured\x1b[0m`);
+        }
+
+        // print chain details in table
+        // console.table(chain);
+        console.log('-'.repeat(headerString.length) + '\n');
+    }
 
     if (!flags.valid) {
-        console.log(' >>>> Pending Configuration Chains');
-        console.table(pendingTable);
+        if (pendingTable.length > 0) {
+            console.log('\n:::: CHAINS PENDING CONFIGURATION ::::');
+            console.table(pendingTable);
+        }
     }
 }
 
@@ -176,7 +270,7 @@ async function newChain(shortName, options) {
 
         // test nodeos availability
         try {
-            const jsonRpc = new JsonRpc(options.http, { fetch });
+            const jsonRpc = new JsonRpc(options.http, {fetch});
             const info = await jsonRpc.get_info();
             jsonData.api.chain_api = options.http;
             connections.chains[shortName].chain_id = info.chain_id;
@@ -276,7 +370,7 @@ async function testChain(shortName: string) {
     console.log(`Checking HTTP endpoint: ${httpEndpoint}`);
     let httpChainId = '';
     try {
-        const apiClient = new APIClient({ url: httpEndpoint });
+        const apiClient = new APIClient({url: httpEndpoint});
         const info = await apiClient.v1.chain.get_info();
         httpChainId = info.chain_id.toString();
     } catch (e: any) {
@@ -479,7 +573,7 @@ async function initConfig() {
 
     const exampleConn = await getExampleConnections();
 
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const rl = readline.createInterface({input: process.stdin, output: process.stdout});
     const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
 
     const conn = exampleConn;
@@ -625,7 +719,7 @@ async function resetConnections() {
         }
 
         if (existsSync(connectionsPath)) {
-            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+            const rl = readline.createInterface({input: process.stdin, output: process.stdout});
             const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
             const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n');
             if (confirmation === 'YES') {

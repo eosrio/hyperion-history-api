@@ -6,6 +6,7 @@
     "allowSyntheticDefaultImports": true,
     "noImplicitAny": false,
     "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
     "noEmitOnError": true,
     "sourceMap": true,
     "allowJs": false,
@@ -18,7 +19,7 @@
     ]
   },
   "include": [
-    "./src/**/*.ts"
+    "./src/**/*.ts",
   ],
   "exclude": [
     "node_modules",

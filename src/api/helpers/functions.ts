@@ -518,6 +518,7 @@ export function setCacheByHash(fastify, hash, response, expiration?: number) {
 }
 
 export function getRouteName(filename: string) {
+    // console.log('getRouteName:', filename);
     const arr = filename.split("/");
     return arr[arr.length - 2];
 }

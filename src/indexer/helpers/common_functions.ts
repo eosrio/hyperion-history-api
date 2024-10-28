@@ -1,5 +1,5 @@
 import {Client, estypes} from "@elastic/elasticsearch";
-import {existsSync} from "fs";
+import {existsSync, readFileSync} from "fs";
 import {join} from "path";
 import {getTotalValue} from "../../api/helpers/functions.js";
 import {Serialize} from "eosjs";
@@ -8,16 +8,16 @@ import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
 let config: HyperionConfig | undefined;
 
 function readConfigFromFile() {
-    const conf_path = join(import.meta.dirname,'../../config', process.env.CONFIG_JSON || "");
+    const conf_path = join(import.meta.dirname,'../../../', process.env.CONFIG_JSON || "");
     if (existsSync(conf_path)) {
         try {
-            config = require(conf_path);
+            config = JSON.parse(readFileSync(conf_path).toString());
         } catch (e: any) {
             console.log(e.message);
             process.exit(1);
         }
     }
-    
+
     if (!config) {
         console.log(`Configuration not found: ${conf_path}`);
         process.exit(1);

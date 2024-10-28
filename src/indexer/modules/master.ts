@@ -2171,6 +2171,55 @@ export class HyperionMaster {
         // this.metrics.syncEta = pm2io.metric({name: 'Time to sync'});
     }
 
+    private gracefulStop(done: (result: any) => void) {
+        try {
+            this.shutdownStarted = true;
+            this.allowMoreReaders = false;
+            const stopMsg = 'Stop signal received. Shutting down readers immediately!';
+            hLog(stopMsg);
+            this.emitAlert('warning', stopMsg);
+            messageAllWorkers(cluster, {
+                event: 'stop'
+            });
+
+            const lastBlockFile = `./config/chains/.${this.chain}_lastblock.txt`;
+
+            const _interval = setInterval(async () => {
+
+                if (this.allowShutdown && this.starting_block) {
+
+                    // prevent multiple calls
+                    clearInterval(_interval);
+
+                    const lastBlock = await getLastIndexedBlockFromRange(this.esClient, this.chain, this.starting_block, this.head);
+                    hLog(`Last Indexed Block: ${lastBlock}`);
+
+                    try {
+                        // write last block to file
+                        writeFileSync(lastBlockFile, lastBlock.toString());
+                    } catch (e: any) {
+                        console.error(`Unable to write last block to file: ${e.message}`);
+                    }
+
+                    try {
+                        // write last block to redis
+                        await this.ioRedisClient.set(`${this.chain}::last_indexed_block`, lastBlock.toString());
+                    } catch (e: any) {
+                        console.error(`Unable to write last block to redis: ${e.message}`);
+                    }
+
+                    hLog('Shutting down master...');
+                    done({ack: true});
+                    process.exit(0);
+
+                }
+            }, 1000);
+
+        } catch (e: any) {
+            done({ack: false, error: e.message});
+        }
+    }
+
     private addPm2Actions() {
         const ioConfig: IOConfig = {
             apmOptions: {
@@ -2190,37 +2239,17 @@ export class HyperionMaster {
         pm2io.init(ioConfig);
 
 
-        pm2io.action('stop', (reply) => {
-            try {
-                this.shutdownStarted = true;
-                this.allowMoreReaders = false;
-                const stopMsg = 'Stop signal received. Shutting down readers immediately!';
-                hLog(stopMsg);
-                this.emitAlert('warning', stopMsg);
-                messageAllWorkers(cluster, {
-                    event: 'stop'
-                });
-                setInterval(() => {
-                    if (this.allowShutdown && this.starting_block) {
-                        getLastIndexedBlockFromRange(this.esClient, this.chain, this.starting_block, this.head).then((value: number) => {
-                            hLog(`Last Indexed Block: ${value}`);
-                            writeFileSync(`./chains/.${this.chain}_lastblock.txt`, value.toString());
-                            hLog('Shutting down master...');
-                            reply({ack: true});
-                            process.exit(1);
-                        });
-                    }
-                }, 100);
-            } catch (e: any) {
-                reply({ack: false, error: e.message});
-            }
+        pm2io.action('stop', (reply: Function) => {
+            this.gracefulStop((result) => {
+                reply(result);
+            });
         });
 
-        pm2io.action('get_usage_map', (reply) => {
+        pm2io.action('get_usage_map', (reply: Function) => {
             reply(this.globalUsageMap);
         });
 
-        pm2io.action('get_memory_usage', (reply) => {
+        pm2io.action('get_memory_usage', (reply: Function) => {
             this.requestDataFromWorkers(
                 {
                     event: 'request_memory_usage'
@@ -2231,7 +2260,7 @@ export class HyperionMaster {
             });
         });
 
-        pm2io.action('get_heap', (reply) => {
+        pm2io.action('get_heap', (reply: Function) => {
             this.requestDataFromWorkers(
                 {
                     event: 'request_v8_heap_stats'

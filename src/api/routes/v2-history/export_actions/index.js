@@ -8,7 +8,7 @@ function default_1(fastify, opts, next) {
         summary: 'request large action data export',
         tags: ['history']
     };
-    (0, functions_1.addApiRoute)(fastify, 'GET', (0, functions_1.getRouteName)(__filename), get_creator_1.getCreatorHandler, schema);
+    (0, functions_1.addApiRoute)(fastify, 'GET', (0, functions_1.getRouteName)(import.meta.filename), get_creator_1.getCreatorHandler, schema);
     next();
 }
 exports.default = default_1;

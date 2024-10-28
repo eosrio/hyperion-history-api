@@ -1,5 +1,5 @@
 import {ConfigurationModule} from "./config.js";
-import {join} from "path";
+import path, {join} from "path";
 import {existsSync, readdirSync, readFileSync} from "fs";
 import {HyperionConnections} from "../../interfaces/hyperionConnections.js";
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
@@ -35,7 +35,7 @@ export class HyperionModuleLoader {
     }
 
     async loadParser() {
-        const path = join(__dirname, 'parsers', this.config.settings.parser + "-parser");
+        const path = join(import.meta.dirname, 'parsers', this.config.settings.parser + "-parser.js");
         const mod = (await import(path)).default;
         this.parser = new mod(this.cm) as BaseParser;
     }
@@ -95,23 +95,28 @@ export class HyperionModuleLoader {
     }
 
     loadActionHandlers() {
-        const files = readdirSync('modules/action_data/');
-        for (const plugin of files) {
-            const _module = require(join(__dirname, 'action_data', plugin)).hyperionModule;
-            if (_module.parser_version.includes(this.config.settings.parser)) {
-                if (_module.chain === this.chainID || _module.chain === '*') {
-                    const key = `${_module.contract}::${_module.action}`;
-                    if (this.chainMappings.has(key)) {
-                        if (this.chainMappings.get(key) === '*' && _module.chain === this.chainID) {
+        const actionDataPath = path.join(import.meta.dirname, 'action_data');
+        const files = readdirSync(actionDataPath);
+        for (const plugin of files.filter(f => f.endsWith('.js'))) {
+            import(join(actionDataPath, plugin)).then(value => {
+                const _module = value.hyperionModule;
+                if (_module.parser_version.includes(this.config.settings.parser)) {
+                    if (_module.chain === this.chainID || _module.chain === '*') {
+                        const key = `${_module.contract}::${_module.action}`;
+                        if (this.chainMappings.has(key)) {
+                            if (this.chainMappings.get(key) === '*' && _module.chain === this.chainID) {
+                                this.includeActionModule(_module);
+                                this.chainMappings.set(key, _module.chain);
+                            }
+                        } else {
                             this.includeActionModule(_module);
                             this.chainMappings.set(key, _module.chain);
                         }
-                    } else {
-                        this.includeActionModule(_module);
-                        this.chainMappings.set(key, _module.chain);
                     }
                 }
-            }
+            }).catch(reason => {
+                console.log(`Error loading action module: ${reason}`);
+            });
         }
     }
 
@@ -127,16 +132,19 @@ export class HyperionModuleLoader {
 
     // main loader function for plugin modules
     private async loadPlugins() {
-        const base = join(__dirname, '..', 'plugins');
+        const base = join(import.meta.dirname, '../../', 'plugins');
         if (!existsSync(base)) {
+            // console.error('Plugin folder not found');
             return;
         }
         const repos = join(base, 'repos');
         if (!existsSync(repos)) {
+            // console.error('Plugin repo folder not found at ' + repos);
             return;
         }
         const state = join(base, '.state.json');
         if (!existsSync(state)) {
+            // console.error('Plugin state file not found');
             return;
         }
 
@@ -149,6 +157,8 @@ export class HyperionModuleLoader {
             hLog('Failed to read plugin state');
             return;
         }
+
+        console.log(JSON.stringify(pState, null, 2));
 
         for (const key in this.config.plugins) {
             if (this.config.plugins.hasOwnProperty(key)) {

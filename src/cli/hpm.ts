@@ -5,13 +5,15 @@ import fs, {existsSync, readdirSync, readFileSync, writeFileSync} from "fs";
 import {execSync, spawn} from "child_process";
 import crypto from "crypto";
 
-const package_json = JSON.parse(readFileSync('./package.json').toString());
+const packageRootDir = path.join(import.meta.dirname, '../../');
+const package_json = JSON.parse(readFileSync(path.join(packageRootDir, 'package.json')).toString());
 const debug = process.env.HPM_DEBUG;
 const program = new Command();
-const pluginDirAbsolutePath = path.join(path.resolve(), 'plugins', 'repos');
-const pluginStatePath = path.join(path.resolve(), 'plugins', '.state.json');
+const buildDir = path.join(packageRootDir, 'build');
+const pluginDirAbsolutePath = path.join(buildDir, 'plugins', 'repos');
+const pluginStatePath = path.join(buildDir, 'plugins', '.state.json');
 
-let stateJson;
+let stateJson: any;
 
 const ignoredDirsForHash = ['.git', 'node_modules'];
 
@@ -278,7 +280,7 @@ async function installPlugin(plugin: string, options: any) {
     });
 }
 
-async function uninstall(plugin) {
+async function uninstall(plugin: string) {
     const pluginDir = path.join(pluginDirAbsolutePath, plugin);
     try {
         if (!existsSync(pluginDir)) {
@@ -298,7 +300,13 @@ async function uninstall(plugin) {
     }
 }
 
-async function listPlugins() {
+async function listPlugins(): Promise<void> {
+
+    if (!existsSync(pluginDirAbsolutePath)) {
+        console.error(`No plugins installed.`);
+        return;
+    }
+
     const dirs = await readdir(pluginDirAbsolutePath);
     const results: any[] = [];
     for (const dir of dirs) {

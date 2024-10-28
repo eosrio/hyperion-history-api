@@ -1,4 +1,4 @@
-const hyperionModule = {
+export const hyperionModule = {
     chain: "*",
     contract: 'eosio',
     action: 'unstaketorex',
@@ -6,8 +6,8 @@ const hyperionModule = {
     defineQueryPrefix: 'unstaketorex',
     handler: (action) => {
         const data = action['act']['data'];
-        let cpu_qtd = null;
-        let net_qtd = null;
+        let cpu_qtd = 0;
+        let net_qtd = 0;
         if (data['from_net'] && data['from_cpu']) {
             cpu_qtd = parseFloat(data['from_cpu'].split(' ')[0]);
             net_qtd = parseFloat(data['from_net'].split(' ')[0]);
@@ -19,5 +19,3 @@ const hyperionModule = {
         };
     }
 };
-
-module.exports = {hyperionModule};

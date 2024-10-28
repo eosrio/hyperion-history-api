@@ -145,8 +145,9 @@ export abstract class HyperionWorker {
 
     checkDebugger() {
         if (/--inspect/.test(process.execArgv.join(' '))) {
-            const inspector = require('inspector');
-            hLog('DEBUGGER ATTACHED', inspector.url());
+            import('node:inspector').then((inspector) => {
+                hLog('DEBUGGER ATTACHED', inspector.url());
+            });
         }
     }
 

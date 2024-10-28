@@ -19,7 +19,7 @@ function interpreterArgs(heap, traceDeprecation, traceWarnings) {
 
 function addIndexer(chainName, heap, traceDeprecation, traceWarnings) {
     return {
-        script: './launcher.js',
+        script: './build/indexer/launcher.js',
         name: chainName + '-indexer',
         namespace: chainName,
         interpreter: 'node',
@@ -29,7 +29,7 @@ function addIndexer(chainName, heap, traceDeprecation, traceWarnings) {
         watch: false,
         time: true,
         env: {
-            CONFIG_JSON: 'chains/' + chainName + '.config.json',
+            CONFIG_JSON: 'config/chains/' + chainName + '.config.json',
             TRACE_LOGS: 'false',
         },
     };
@@ -37,7 +37,7 @@ function addIndexer(chainName, heap, traceDeprecation, traceWarnings) {
 
 function addApiServer(chainName, threads, heap, traceDeprecation, traceWarnings) {
     return {
-        script: './api/server.js',
+        script: './build/api/server.js',
         name: chainName + '-api',
         namespace: chainName,
         node_args: interpreterArgs(heap, traceDeprecation, traceWarnings),
@@ -49,7 +49,7 @@ function addApiServer(chainName, threads, heap, traceDeprecation, traceWarnings)
         watch: false,
         time: true,
         env: {
-            CONFIG_JSON: 'chains/' + chainName + '.config.json',
+            CONFIG_JSON: 'config/chains/' + chainName + '.config.json',
         },
     };
 }

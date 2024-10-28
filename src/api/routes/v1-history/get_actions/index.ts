@@ -5,7 +5,7 @@ import {getActionsHandler} from "./get_actions.js";
 export default function (fastify: FastifyInstance, opts: any, next) {
 
     // POST
-    addApiRoute(fastify, 'POST', getRouteName(__filename), getActionsHandler, {
+    addApiRoute(fastify, 'POST', getRouteName(import.meta.filename), getActionsHandler, {
         description: 'legacy get actions query',
         summary: 'get actions',
         tags: ['history'],

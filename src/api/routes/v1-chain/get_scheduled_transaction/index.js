@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const functions_1 = require("../../../helpers/functions.js");
 function default_1(fastify, opts, next) {
-    (0, functions_1.addChainApiRoute)(fastify, (0, functions_1.getRouteName)(__filename), 'Retrieves the scheduled transaction', {
+    (0, functions_1.addChainApiRoute)(fastify, (0, functions_1.getRouteName)(import.meta.filename), 'Retrieves the scheduled transaction', {
         "lower_bound": {
             "type": "string",
             "description": "Date/time string in the format YYYY-MM-DDTHH:MM:SS.sss",

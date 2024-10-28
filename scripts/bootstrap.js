@@ -8,7 +8,7 @@ const esClient = require('@elastic/elasticsearch');
 
 const outputConnectionsFilename = 'connections-demo.json';
 const basePath = __filename.split('bootstrap.js')[0];
-const ecosystemExPath = path.join(basePath, '..', 'example-ecosystem.config.js');
+const ecosystemExPath = path.join(basePath, '..', 'example-ecosystem.config.cjs');
 if (!fs.existsSync(ecosystemExPath)) {
   console.log('Example Ecosystem File not present');
   process.exit(1);

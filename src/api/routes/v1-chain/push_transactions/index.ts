@@ -5,7 +5,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
 	addApiRoute(
 		fastify,
 		'POST',
-		getRouteName(__filename),
+		getRouteName(import.meta.filename),
 		chainApiHandler,
 		{
 			description: "This method expects a transaction in JSON format and will attempt to apply it to the blockchain.",

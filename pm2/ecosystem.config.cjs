@@ -1,9 +1,12 @@
-const {addApiServer, addIndexer} = require('./src/indexer/definitions/ecosystem_settings');
+const {addApiServer, addIndexer} = require('./ecosystem_settings.cjs');
 const {readdirSync, readFileSync} = require("fs");
 const path = require('path');
 
 const apps = [];
-const chainsRoot = path.join(path.resolve(), 'chains');
+const chainsRoot = path.join(__dirname, '../config', 'chains');
+
+console.log(`Reading chain configs from ${chainsRoot}`);
+
 readdirSync(chainsRoot)
     .filter(f => f.endsWith('.config.json') && !f.startsWith('example'))
     .forEach(value => {
@@ -23,6 +26,8 @@ readdirSync(chainsRoot)
             apps.push(addIndexer(chainName, indexerHeap, traceDeprecation, traceWarnings));
         }
     });
+
+console.log(`${apps.length} chains enabled`);
 
 // apps.push({
 //     name: 'hyperion-governor',

@@ -1,5 +1,5 @@
 import {HyperionWorker} from "./hyperionWorker.js";
-import {Api} from "eosjs/dist";
+import {Api, Serialize} from "eosjs";
 import {cargo, queue} from 'async';
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {createHash} from "crypto";
@@ -13,7 +13,6 @@ import {HyperionDelta} from "../../interfaces/hyperion-delta.js";
 import {TableDelta} from "../../interfaces/table-delta.js";
 import {HyperionAbi} from "../../interfaces/hyperion-abi.js";
 import {TransactionTrace} from "../../interfaces/action-trace.js";
-import {Serialize} from "eosjs";
 import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
 import {Action, Type as EOSJSType} from "eosjs/dist/eosjs-serialize.js";
 import {JsSignatureProvider} from "eosjs/dist/eosjs-jssig.js";

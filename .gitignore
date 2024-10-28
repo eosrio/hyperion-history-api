@@ -1,3 +1,6 @@
+# Dependency directories
+node_modules/
+
 # Logs
 logs
 *.log
@@ -11,20 +14,11 @@ pids
 *.seed
 *.pid.lock
 
-# Dependency directories
-node_modules/
-
 # Optional npm cache directory
 .npm
 
 # Optional eslint cache
 .eslintcache
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
 
 # dotenv environment variables file
 .env
@@ -32,30 +26,23 @@ node_modules/
 # main build directory
 build
 
+# IDE files
 .idea
-*.pem
-config/connections.json
-connections.json2
-logs/api_access.log
-logs/api_error.log
-explorer
-src/api/explorer
+.vscode
 
+# Keys
+*.pem
+
+# Temporary PM2 files
 .ecosystem.config.js.swp
 
+# Configuration files
+config/connections.json
 config/chains/*
 !config/chains/example.config.json
-
-src/api/tests
-
-src/plugins/.state.json
-src/plugins/repos
-src/plugins/*.js
-
-.gitmodules
-
 configuration_backups
 
+# Tests
 tests/api/ijhttp
 tests/api/ijhttp.zip
 tests/api/reports

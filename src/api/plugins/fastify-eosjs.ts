@@ -1,5 +1,5 @@
 import {FastifyInstance, FastifyPluginOptions} from "fastify";
-import {Api} from "eosjs/dist";
+import {Api} from "eosjs";
 import fp from "fastify-plugin";
 import { JsSignatureProvider } from "eosjs/dist/eosjs-jssig.js";
 

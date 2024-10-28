@@ -1,2 +1,2 @@
 #!/bin/bash
-node ./build/cli/hyp-config.js "$@"
+node --enable-source-maps ./build/cli/hyp-config.js "$@"

@@ -1,8 +1,13 @@
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 import {SwaggerOptions} from "@fastify/swagger";
+import {join} from "node:path";
+import {readFileSync} from "fs";
 
 export function generateOpenApiConfig(config: HyperionConfig): SwaggerOptions {
-    const packageData = require('../../package');
+
+    const packageJsonPath = join(import.meta.dirname, '../../../package.json');
+    const packageData = JSON.parse(readFileSync(packageJsonPath).toString()) as any;
+
     const health_link = `https://${config.api.server_name}/v2/health`;
     const explorer_link = `https://${config.api.server_name}/v2/explore`;
 
@@ -32,7 +37,7 @@ export function generateOpenApiConfig(config: HyperionConfig): SwaggerOptions {
                 description: description,
                 version: packageData.version,
             },
-            servers: ['http','https'].map(value => {
+            servers: ['http', 'https'].map(value => {
                 return {
                     url: `${value}://${config.api.server_name}`,
                     description: value.toUpperCase()

@@ -15,7 +15,6 @@ import {extendedActions} from "./routes/v2-history/get_actions/definitions.js";
 import {CacheManager} from "./helpers/cacheManager.js";
 
 import {bootstrap} from 'global-agent';
-import "@fastify/swagger/index";
 import {FastifySwaggerUiOptions} from "@fastify/swagger-ui";
 import {QRYBasePublisher} from "./qry-hub/base-publisher.js";
 import {getApiUsageHistory} from "./helpers/functions.js";

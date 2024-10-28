@@ -5,7 +5,7 @@ import {addApiRoute, getRouteName} from "../../../helpers/functions.js";
 export default function (fastify: FastifyInstance, opts: any, next) {
 
     // POST
-    addApiRoute(fastify, 'POST', getRouteName(__filename), getKeyAccountsHandler, {
+    addApiRoute(fastify, 'POST', getRouteName(import.meta.filename), getKeyAccountsHandler, {
         description: 'get accounts by public key',
         summary: 'get accounts by public key',
         tags: ['accounts'],

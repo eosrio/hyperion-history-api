@@ -40,6 +40,6 @@ export default function (fastify: FastifyInstance, opts: any, next) {
 			}
 		})
 	};
-	addApiRoute(fastify, 'GET', getRouteName(__filename), getCreatorHandler, schema);
+	addApiRoute(fastify, 'GET', getRouteName(import.meta.filename), getCreatorHandler, schema);
 	next();
 }
