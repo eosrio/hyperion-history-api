@@ -140,6 +140,7 @@
     "index": 500
   },
   "hub": {
+    "enabled": false,
     "instance_key": "",
     "custom_indexer_controller": ""
   },
