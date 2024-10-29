@@ -1,8 +1,7 @@
 import {hLog} from "../helpers/common_functions.js";
 import {Client as UndiciClient, Dispatcher, Headers} from "undici";
-import {createTransport} from "nodemailer";
 import Mail from "nodemailer/lib/mailer/index.js";
-import {Bot} from "grammy";
+import {TelegramLightClient} from "./telegram.js";
 
 export interface AlertTriggerOptions {
     enabled: boolean;
@@ -59,7 +58,7 @@ export class AlertsManager {
     triggers: Record<string, AlertTriggerOptions> = {};
 
     // Telegram options
-    telegramBot?: Bot;
+    telegramBot?: TelegramLightClient;
     telegramDestinations: number[] = [];
 
     // Email options
@@ -82,15 +81,12 @@ export class AlertsManager {
         this.ready = true;
         if (this.opts.providers) {
             if (this.opts.providers.telegram) {
-                hLog('Initializing Telegram Alerts');
                 this.initTelegram(this.opts.providers.telegram);
             }
             if (this.opts.providers.email) {
-                hLog('Initializing Email Alerts');
                 this.initEmail(this.opts.providers.email);
             }
             if (this.opts.providers.http) {
-                hLog('Initializing HTTP Alerts');
                 this.initHttpClient(this.opts.providers.http);
             }
         }
@@ -99,32 +95,41 @@ export class AlertsManager {
 
     private initEmail(opts: SmtpProviderOptions) {
         if (!opts.enabled) return;
-        this.smtpTransport = createTransport({
-            host: opts.smtp,
-            port: opts.port,
-            secure: opts.tls,
-            tls: {
-                rejectUnauthorized: false,
-                ciphers: 'SSLv3'
-            },
-            auth: (opts.user && opts.pass) ? {
-                user: opts.user,
-                pass: opts.pass
-            } : undefined,
+        hLog('Initializing Email Alerts...');
+        import('nodemailer').then((mod) => {
+            this.smtpTransport = mod.createTransport({
+                host: opts.smtp,
+                port: opts.port,
+                secure: opts.tls,
+                tls: {
+                    rejectUnauthorized: false,
+                    ciphers: 'SSLv3'
+                },
+                auth: (opts.user && opts.pass) ? {
+                    user: opts.user,
+                    pass: opts.pass
+                } : undefined,
+            });
+            this.smtpTransportOptions = opts;
         });
-        this.smtpTransportOptions = opts;
     }
 
     private initTelegram(opts: TelegramProviderOptions) {
         if (!opts.enabled) return;
-        this.telegramBot = new Bot(opts.botToken);
-        this.telegramDestinations = opts.destinationIds;
+        hLog('Initializing Telegram Alerts...');
+        import('./telegram.js').then((mod) => {
+            this.telegramBot = new mod.TelegramLightClient(opts.botToken);
+            this.telegramDestinations = opts.destinationIds;
+        }).catch(console.error);
     }
 
     private initHttpClient(opts: HttpProviderOptions) {
         if (!opts.enabled) return;
-        this.httpClient = new UndiciClient(opts.server);
-        this.httpOptions = opts;
+        hLog('Initializing HTTP Alerts...');
+        import('undici').then((mod) => {
+            this.httpClient = new mod.Client(opts.server);
+            this.httpOptions = opts;
+        }).catch(console.error);
     }
 
     // emitAlert(input: AlertOptions) {
@@ -166,7 +171,7 @@ export class AlertsManager {
 
             for (const chatId of this.telegramDestinations) {
                 try {
-                    await this.telegramBot.api.sendMessage(chatId, msg, {parse_mode: "MarkdownV2"});
+                    await this.telegramBot.sendMessage(chatId, msg);
                 } catch (e: any) {
                     hLog('Failed to send telegram message!');
                     hLog(e.message);

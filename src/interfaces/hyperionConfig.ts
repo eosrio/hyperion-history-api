@@ -133,6 +133,7 @@ interface ApiConfigs {
 }
 
 interface HyperionHubConfigs {
+    enabled: boolean;
     production: boolean;
     instance_key: string;
     hub_url?: string;
