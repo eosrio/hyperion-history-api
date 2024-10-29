@@ -92,9 +92,18 @@ export async function getFirstIndexedBlock(es_client: Client, chain: string, par
             query: {range: {block_num: {gte: startBlock, lt: endBlock}}},
             sort: [{block_num: {order: "asc"}}]
         });
-
-        return getLastResult(results);
-
+        if (results.hits?.hits?.length > 0) {
+            return getLastResult(results);
+        } else {
+            // as a fallback, get the first block in the whole index (not recommended)
+            const results = await es_client.search<any>({
+                index: chain + '-block-*',
+                size: 1,
+                query: {bool: {filter: {match_all: {}}}},
+                sort: [{block_num: {order: "asc"}}]
+            });
+            return getLastResult(results);
+        }
     } else {
         // as a fallback, get the first block in the whole index (not recommended)
         const results = await es_client.search<any>({
