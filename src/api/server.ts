@@ -20,7 +20,7 @@ import {QRYBasePublisher} from "./qry-hub/base-publisher.js";
 import {getApiUsageHistory} from "./helpers/functions.js";
 import {WebSocket} from "ws";
 import {StateHistorySocket} from "../indexer/connections/state-history.js";
-import AlertsManager from "../indexer/modules/alertsManager.js";
+import {AlertManagerOptions, AlertsManager} from "../indexer/modules/alertsManager.js";
 
 class HyperionApiServer {
 
@@ -38,7 +38,7 @@ class HyperionApiServer {
 
     lastSentTimestamp = "";
     private indexerController?: WebSocket;
-    private alerts: AlertsManager;
+    private alerts?: AlertsManager;
 
     constructor() {
 
@@ -55,10 +55,11 @@ class HyperionApiServer {
         this.chain = this.conf.settings.chain;
         process.title = `hyp-${this.chain}-api`;
 
-        this.alerts = new AlertsManager(this.conf.alerts, this.chain);
-
         this.manager = new ConnectionManager(cm);
         this.manager.calculateServerHash();
+
+        this.initAlerts();
+
         this.mLoader = new HyperionModuleLoader(cm);
         this.cacheManager = new CacheManager(this.conf);
 
@@ -297,7 +298,7 @@ class HyperionApiServer {
             hLog(`${this.chain} Hyperion API ready and listening on ${apiUrl}`);
             hLog(`API Public Url: http://${this.conf.api.server_name}`);
 
-            this.alerts.emit('ApiStart', {
+            this.alerts?.emit('ApiStart', {
                 hyperion_version: this.manager.current_version,
                 public_url: this.conf.api.server_name,
                 chain_id: this.pluginParams.chain_id,
@@ -575,11 +576,30 @@ class HyperionApiServer {
         this.indexerController.on('close', () => {
             hLog('Disconnected from Hyperion Controller');
             this.qryPublisher?.publishIndexerStatus("offline");
-            this.alerts.emit('IndexerError', {message: "Indexer disconnected"});
+            this.alerts?.emit('IndexerError', {message: "Indexer disconnected"});
             setTimeout(() => {
                 this.setupIndexerController();
             }, 5000);
         });
+    }
+
+    private initAlerts() {
+        let alertManagerConf: AlertManagerOptions | null = null;
+        if (this.conf.alerts && this.conf.alerts.enabled) {
+            alertManagerConf = this.conf.alerts;
+        } else {
+            if (this.manager.conn.alerts && this.manager.conn.alerts.enabled) {
+                alertManagerConf = this.manager.conn.alerts;
+            }
+        }
+        if (alertManagerConf) {
+            import('../indexer/modules/alertsManager.js').then((module) => {
+                const AlertsManager = module.AlertsManager;
+                this.alerts = new AlertsManager(alertManagerConf, this.chain);
+            }).catch(reason => {
+                hLog(`Failed to load alerts manager: ${reason}`);
+            });
+        }
     }
 }
 

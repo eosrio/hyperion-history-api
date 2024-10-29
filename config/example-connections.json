@@ -33,5 +33,44 @@
       "WS_ROUTER_PORT": 7001,
       "control_port": 7002
     }
+  },
+  "alerts": {
+    "triggers": {
+      "onApiStart": {
+        "enabled": true,
+        "cooldown": 30,
+        "emitOn": ["http"]
+      },
+      "onIndexerError": {
+        "enabled": true,
+        "cooldown": 30,
+        "emitOn": ["telegram", "email", "http"]
+      }
+    },
+    "providers": {
+      "telegram": {
+        "enabled": false,
+        "botToken": "",
+        "destinationIds": [1]
+      },
+      "http": {
+        "enabled": false,
+        "server": "http://localhost:6200",
+        "path": "/notification",
+        "useAuth": false,
+        "user": "",
+        "pass": ""
+      },
+      "email": {
+        "enabled": false,
+        "sourceEmail": "sender@example.com",
+        "destinationEmails": ["receiverA@example.com","receiverB@example.com"],
+        "smtp": "smtp-relay.gmail.com (UPDATE THIS)",
+        "port": 465,
+        "tls": true,
+        "user": "",
+        "pass": ""
+      }
+    }
   }
 }

@@ -39,16 +39,11 @@ export interface TelegramProviderOptions extends AlertProviderOptions {
     botToken: string;
 }
 
+export type HyperionAlertTypes = 'Fork' | 'IndexerError' | 'IndexerIdle' | 'IndexerResumed' | 'ApiStart' | 'ApiError';
+
 export interface AlertManagerOptions {
-    cases: {
-        alertOnFork: boolean;
-    },
-    triggers: {
-        onFork: AlertTriggerOptions;
-        onIndexerError: AlertTriggerOptions;
-        onApiStart: AlertTriggerOptions;
-        onApiError: AlertTriggerOptions;
-    },
+    enabled: boolean;
+    triggers: Record<HyperionAlertTypes, AlertTriggerOptions>,
     providers: {
         telegram?: TelegramProviderOptions
         email?: SmtpProviderOptions;
@@ -56,13 +51,7 @@ export interface AlertManagerOptions {
     }
 }
 
-interface AlertOptions {
-    type: string;
-    process?: string;
-    content: any;
-}
-
-export default class AlertsManager {
+export class AlertsManager {
 
     opts: AlertManagerOptions;
     chainName: string;
@@ -138,28 +127,28 @@ export default class AlertsManager {
         this.httpOptions = opts;
     }
 
-    emitAlert(input: AlertOptions) {
-        if (this.ready) {
-            switch (input.type) {
-                case 'fork': {
-                    if (this.opts.cases?.alertOnFork) {
-                        let msg = 'New fork detected on ${this.chainName}!\n';
-                        msg += `From block ${input.content.data.starting_block} to ${input.content.data.starting_block}\n`;
-                        msg += `New block id: ${input.content.data.new_id}`;
-                        // this.emitTelegramAlert(msg).catch(console.log);
-                    }
-                    break;
-                }
-                case 'error': {
-                    break;
-                }
-                default: {
-                    console.log(input);
-                    // this.emitTelegramAlert(input.content).catch(console.log);
-                }
-            }
-        }
-    }
+    // emitAlert(input: AlertOptions) {
+    //     if (this.ready) {
+    //         switch (input.type) {
+    //             case 'fork': {
+    //                 if (this.opts.cases?.alertOnFork) {
+    //                     let msg = 'New fork detected on ${this.chainName}!\n';
+    //                     msg += `From block ${input.content.data.starting_block} to ${input.content.data.starting_block}\n`;
+    //                     msg += `New block id: ${input.content.data.new_id}`;
+    //                     // this.emitTelegramAlert(msg).catch(console.log);
+    //                 }
+    //                 break;
+    //             }
+    //             case 'error': {
+    //                 break;
+    //             }
+    //             default: {
+    //                 console.log(input);
+    //                 // this.emitTelegramAlert(input.content).catch(console.log);
+    //             }
+    //         }
+    //     }
+    // }
 
     async emitTelegramAlert(event: string, trigger: AlertTriggerOptions, data: any) {
         if (this.telegramBot && this.telegramDestinations) {

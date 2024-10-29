@@ -40,7 +40,7 @@ import {IOConfig} from "@pm2/io/build/main/pmx.js";
 import {queue, QueueObject} from "async";
 import {convertLegacyPublicKey} from "eosjs/dist/eosjs-numeric.js";
 import {Redis} from "ioredis";
-import AlertsManager from "./alertsManager.js";
+import {AlertManagerOptions, AlertsManager, HyperionAlertTypes} from "./alertsManager.js";
 
 import {bootstrap} from 'global-agent';
 import {App, TemplatedApp, WebSocket} from "uWebSockets.js";
@@ -159,7 +159,7 @@ export class HyperionMaster {
     private mode_transition = false;
 
     private readonly cm: ConfigurationModule;
-    private alerts: AlertsManager;
+    private alerts?: AlertsManager;
     private ioRedisClient: Redis;
 
     // Reversible Blocks
@@ -205,7 +205,6 @@ export class HyperionMaster {
         this.maxBatchSize = this.conf.scaling.batch_size;
 
         this.chain = this.conf.settings.chain;
-        this.alerts = new AlertsManager(this.conf.alerts, this.chain);
         this.manager = new ConnectionManager(this.cm);
 
         this.esClient = this.manager.elasticsearchClient;
@@ -236,6 +235,27 @@ export class HyperionMaster {
                 callback();
             }, 1);
         });
+
+        this.initAlerts();
+    }
+
+    private initAlerts() {
+        let alertManagerConf: AlertManagerOptions | null = null;
+        if (this.conf.alerts && this.conf.alerts.enabled) {
+            alertManagerConf = this.conf.alerts;
+        } else {
+            if (this.manager.conn.alerts && this.manager.conn.alerts.enabled) {
+                alertManagerConf = this.manager.conn.alerts;
+            }
+        }
+        if (alertManagerConf) {
+            import('./alertsManager.js').then((module) => {
+                const AlertsManager = module.AlertsManager;
+                this.alerts = new AlertsManager(alertManagerConf, this.chain);
+            }).catch(reason => {
+                hLog(`Failed to load alerts manager: ${reason}`);
+            });
+        }
     }
 
     initHandlerMap() {
@@ -450,7 +470,7 @@ export class HyperionMaster {
                         }
                     }
                 }
-                this.emitAlert('fork', msg);
+                this.emitAlert('Fork', msg);
                 if (msg.data && this.conf.features.streaming.enable && this.wsRouterWorker) {
                     msg.data.forkedBlocks = forkedBlocks;
                     this.wsRouterWorker.send(msg);
@@ -1508,7 +1528,7 @@ export class HyperionMaster {
                         } else {
                             const idleMsg = `No blocks processed! Indexer will stop in ${this.auto_stop - (this.tScale * this.idle_count)} seconds!`;
                             if (this.idle_count === 1) {
-                                this.emitAlert('warning', idleMsg);
+                                this.emitAlert('IndexerIdle', idleMsg);
                             }
                             hLog(idleMsg);
                         }
@@ -1523,7 +1543,7 @@ export class HyperionMaster {
                             }
                             const idleMsg = 'No blocks are being processed, please check your state-history node!';
                             if (this.idle_count === 2) {
-                                this.emitAlert('warning', idleMsg);
+                                this.emitAlert('IndexerIdle', idleMsg);
                             }
 
                             hLog(idleMsg);
@@ -1540,7 +1560,7 @@ export class HyperionMaster {
             }
         } else {
             if (this.idle_count > 1) {
-                this.emitAlert('info', '✅ Data processing resumed!');
+                this.emitAlert('IndexerResumed', '✅ Data processing resumed!');
                 hLog('Processing resumed!');
             }
             this.idle_count = 0;
@@ -1777,7 +1797,6 @@ export class HyperionMaster {
             try {
                 const esInfo = await this.esClient.info();
                 hLog(`Elasticsearch: ${esInfo.version.number} | Lucene: ${esInfo.version.lucene_version}`);
-                this.emitAlert('info', `Indexer started using ES v${esInfo.version.number}`);
                 return true;
             } catch (e: any) {
                 console.log(e.message);
@@ -1831,12 +1850,6 @@ export class HyperionMaster {
         }
 
         await this.findRange();
-
-        this.emitAlert(
-            'info',
-            `Range defined from ${this.starting_block} to ${this.head}` +
-            (this.conf.indexer.live_reader ? ' with ' : ' without ') +
-            'live reading active');
 
         await this.setupWorkers();
 
@@ -2154,8 +2167,12 @@ export class HyperionMaster {
         this.mode_transition = false;
     }
 
-    private emitAlert(msgType: string, msgContent: string) {
-        this.alerts.emitAlert({type: msgType, process: process.title, content: msgContent});
+    private emitAlert(msgType: HyperionAlertTypes, message: string) {
+        this.alerts?.emit(msgType, {
+            type: msgType,
+            process: process.title,
+            message
+        });
     }
 
     // ------- START OF PM2 METRICS AND ACTIONS ------- //
@@ -2177,10 +2194,7 @@ export class HyperionMaster {
             this.allowMoreReaders = false;
             const stopMsg = 'Stop signal received. Shutting down readers immediately!';
             hLog(stopMsg);
-            this.emitAlert('warning', stopMsg);
-            messageAllWorkers(cluster, {
-                event: 'stop'
-            });
+            messageAllWorkers(cluster, {event: 'stop'});
 
             const lastBlockFile = `./config/chains/.${this.chain}_lastblock.txt`;
 

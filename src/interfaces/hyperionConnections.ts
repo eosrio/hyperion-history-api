@@ -1,4 +1,5 @@
 import {LabelledShipNode} from "../indexer/connections/state-history.js";
+import {AlertManagerOptions} from "../indexer/modules/alertsManager.js";
 
 export interface AmqpConfig {
     host: string;
@@ -38,6 +39,7 @@ export interface HyperionConnections {
     elasticsearch: ESConfig;
     redis: RedisConfig;
     chains: {
-        [key: string]: HyperionChainData
-    }
+        [key: string]: HyperionChainData;
+    },
+    alerts: AlertManagerOptions;
 }
