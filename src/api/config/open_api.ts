@@ -5,15 +5,25 @@ import {readFileSync} from "fs";
 
 export function generateOpenApiConfig(config: HyperionConfig): SwaggerOptions {
 
+    let server = config.api.server_name;
+
+    if (server.startsWith('https://')) {
+        server = server.replace('https://', '');
+    } else if (server.startsWith('http://')) {
+        server = server.replace('http://', '');
+    }
+
     const packageJsonPath = join(import.meta.dirname, '../../../package.json');
     const packageData = JSON.parse(readFileSync(packageJsonPath).toString()) as any;
 
-    const health_link = `https://${config.api.server_name}/v2/health`;
-    const explorer_link = `https://${config.api.server_name}/v2/explore`;
+    const health_link = `https://${server}/v2/health`;
+    const explorer_link = `https://${server}/v2/explore`;
+
+
+    // <img height="64" src="https://${server}/static/hyperion.png">
 
     let description = `
-<img height="64" src="https://eosrio.io/hyperion.png">
-### Scalable Full History API Solution for EOSIO based blockchains
+### Scalable Full History API Solution for Antelope based blockchains
 *Made with ♥️ by [EOS Rio](https://eosrio.io/)*
 ***
 #### Current Chain: ${config.api.chain_name} <img style="transform: translateY(8px)" height="32" src="${config.api.chain_logo_url}">
@@ -35,28 +45,18 @@ export function generateOpenApiConfig(config: HyperionConfig): SwaggerOptions {
             info: {
                 title: `Hyperion History API for ${config.api.chain_name}`,
                 description: description,
-                version: packageData.version,
+                version: packageData.version
             },
-            servers: ['http', 'https'].map(value => {
+            servers: ['https','http'].map(value => {
                 return {
-                    url: `${value}://${config.api.server_name}`,
+                    url: `${value}://${server}`,
                     description: value.toUpperCase()
                 }
             }),
             externalDocs: {
+                description: "Hyperion Documentation",
                 url: "https://hyperion.docs.eosrio.io"
             }
         }
-        // swagger: {
-        //     info: {
-        //         title: `Hyperion History API for ${config.api.chain_name}`,
-        //         description: description,
-        //         version: packageData.version
-        //     },
-        //     host: config.api.server_name,
-        //     schemes: ['https', 'http'],
-        //     consumes: ['application/json'],
-        //     produces: ['application/json']
-        // }
     };
 }

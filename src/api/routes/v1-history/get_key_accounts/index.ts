@@ -10,7 +10,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         summary: 'get accounts by public key',
         tags: ['accounts'],
         body: {
-            type: ['object', 'string'],
+            type: 'object',
             properties: {"public_key": {description: 'public key', type: 'string'}},
             required: ["public_key"]
         },

@@ -1,6 +1,5 @@
 import {join} from "path";
 import {FastifyError, FastifyInstance, FastifyReply, FastifyRequest, FastifySchema} from "fastify";
-import {createReadStream} from "fs";
 import {addSharedSchemas, handleChainApiRedirect} from "./helpers/functions.js";
 import autoLoad from '@fastify/autoload';
 import {Readable} from "node:stream";
@@ -9,9 +8,7 @@ function addRedirect(server: FastifyInstance, url: string, redirectTo: string) {
     server.route({
         url,
         method: 'GET',
-        schema: {
-            hide: true
-        },
+        schema: {hide: true},
         handler: async (request: FastifyRequest, reply: FastifyReply) => {
             reply.redirect(redirectTo);
         }
@@ -81,6 +78,7 @@ export function registerRoutes(server: FastifyInstance) {
         url: '/v1/chain/*',
         method: ["GET", "POST"],
         schema: {
+            hide: true,
             summary: "Wildcard chain api handler",
             tags: ["chain"]
         } as FastifySchema,
@@ -138,6 +136,7 @@ export function registerRoutes(server: FastifyInstance) {
 
     // Redirect routes to documentation
     addRedirect(server, '/v2', '/v2/docs');
+    addRedirect(server, '/v2/docs', '/docs');
     addRedirect(server, '/v2/history', '/v2/docs/index.html#/history');
     addRedirect(server, '/v2/state', '/v2/docs/index.html#/state');
     addRedirect(server, '/v1/chain', '/v2/docs/index.html#/chain');

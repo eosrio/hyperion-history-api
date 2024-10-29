@@ -8,7 +8,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         summary: 'get block traces',
         tags: ['history'],
         body: {
-            type: ['object', 'string'],
+            type: 'object',
             properties: {
                 "block_num": {
                     description: 'block number',

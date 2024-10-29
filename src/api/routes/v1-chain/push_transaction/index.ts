@@ -12,7 +12,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
             summary: "This method expects a transaction in JSON format and will attempt to apply it to the blockchain.",
             tags: ['chain'],
             body: {
-                type: ['object', 'string'],
+                type: 'object',
                 properties: {
                     signatures: {
                         "type": "array",

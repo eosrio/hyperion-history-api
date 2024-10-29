@@ -10,7 +10,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         summary: 'get actions',
         tags: ['history'],
         body: {
-            type: ['object', 'string'],
+            type: 'object',
             properties: {
                 "account_name": {
                     description: 'notified account',

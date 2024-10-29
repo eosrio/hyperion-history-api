@@ -3,12 +3,12 @@ import {existsSync, readFileSync} from "fs";
 import {join} from "path";
 import {getTotalValue} from "../../api/helpers/functions.js";
 import {Serialize} from "eosjs";
-import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
+import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 
 let config: HyperionConfig | undefined;
 
 function readConfigFromFile() {
-    const conf_path = join(import.meta.dirname,'../../../', process.env.CONFIG_JSON || "");
+    const conf_path = join(import.meta.dirname, '../../../', process.env.CONFIG_JSON || "");
     if (existsSync(conf_path)) {
         try {
             config = JSON.parse(readFileSync(conf_path).toString());
@@ -81,6 +81,8 @@ export async function getFirstIndexedBlock(es_client: Client, chain: string, par
 
     const firstIndex = indices[0].index;
 
+    let firstIndexedBlock = 0;
+
     if (firstIndex) {
         const parts = firstIndex.split('-');
         const blockChunk = parts[parts.length - 1];
@@ -92,13 +94,16 @@ export async function getFirstIndexedBlock(es_client: Client, chain: string, par
         const results = await es_client.search<any>({
             index: chain + '-block-*',
             size: 1,
-            query: {range: {block_num: {gte: startBlock, lt: endBlock}}},
+            query: {range: {block_num: {gte: startBlock, lte: endBlock}}},
             sort: [{block_num: {order: "asc"}}]
         });
+        if (results.hits?.hits?.length > 0) {
+            firstIndexedBlock = getLastResult(results);
+        }
+    }
 
-        return getLastResult(results);
-
-    } else {
+    // 2 is the minimum first block in the state history index
+    if (firstIndexedBlock < 2) {
         // as a fallback, get the first block in the whole index (not recommended)
         const results = await es_client.search<any>({
             index: chain + '-block-*',
@@ -106,8 +111,9 @@ export async function getFirstIndexedBlock(es_client: Client, chain: string, par
             query: {bool: {filter: {match_all: {}}}},
             sort: [{block_num: {order: "asc"}}]
         });
-        return getLastResult(results);
+        firstIndexedBlock = getLastResult(results);
     }
+    return firstIndexedBlock;
 }
 
 

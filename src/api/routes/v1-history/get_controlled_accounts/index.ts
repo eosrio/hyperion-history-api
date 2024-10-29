@@ -8,7 +8,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         summary: 'get controlled accounts by controlling accounts',
         tags: ['accounts'],
         body: {
-            type: ['object', 'string'],
+            type: 'object',
             properties: {
                 "controlling_account": {
                     description: 'controlling account',

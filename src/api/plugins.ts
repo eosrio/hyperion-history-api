@@ -12,24 +12,20 @@ import fastifyRateLimit from '@fastify/rate-limit';
 
 // custom plugins
 import fastify_eosjs from "./plugins/fastify-eosjs.js";
+import fastifyStatic from "@fastify/static";
 
 export async function registerPlugins(server: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>, params: any) {
     server.register(fastifyElasticsearch, params.fastify_elasticsearch);
-
+    server.register(fastifyCors);
+    server.register(formBodyPlugin);
+    server.register(fastifyRedis, params.fastify_redis);
+    if (params.fastify_rate_limit) {
+        server.register(fastifyRateLimit, params.fastify_rate_limit);
+    }
+    server.register(fastify_eosjs, params.fastify_eosjs);
     if (params.fastify_swagger && params.fastify_swagger_ui) {
         await server.register(fastifySwagger, params.fastify_swagger);
         await server.register(fastifySwaggerUi, params.fastify_swagger_ui);
     }
-
-    server.register(fastifyCors);
-
-    server.register(formBodyPlugin);
-
-    server.register(fastifyRedis, params.fastify_redis);
-
-    if (params.fastify_rate_limit) {
-        server.register(fastifyRateLimit, params.fastify_rate_limit);
-    }
-
-    server.register(fastify_eosjs, params.fastify_eosjs);
+    await server.register(fastifyStatic, params.fastify_static);
 }

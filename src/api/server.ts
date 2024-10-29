@@ -3,7 +3,7 @@ import {ConfigurationModule} from "../indexer/modules/config.js";
 import {ConnectionManager} from "../indexer/connections/manager.class.js";
 import {HyperionConfig} from "../interfaces/hyperionConfig.js";
 import {Redis} from 'ioredis';
-import fastify, {FastifyInstance, FastifyReply, FastifyRequest} from 'fastify'
+import fastify, {FastifyInstance, FastifyReply} from 'fastify'
 import {registerPlugins} from "./plugins.js";
 import {AddressInfo} from "net";
 import {registerRoutes} from "./routes.js";
@@ -21,6 +21,8 @@ import {getApiUsageHistory} from "./helpers/functions.js";
 import {WebSocket} from "ws";
 import {StateHistorySocket} from "../indexer/connections/state-history.js";
 import {AlertManagerOptions, AlertsManager} from "../indexer/modules/alertsManager.js";
+import {join} from "node:path";
+
 
 class HyperionApiServer {
 
@@ -137,6 +139,10 @@ class HyperionApiServer {
 
         const ioRedisClient = new Redis(this.manager.conn.redis);
 
+        const staticAssetsDir = join(import.meta.dirname, '../../', 'static');
+
+        // hLog(`Static Assets Dir: ${staticAssetsDir}`);
+
         const pluginParams = {
             fastify_elasticsearch: {
                 client: this.manager.elasticsearchClient
@@ -144,6 +150,11 @@ class HyperionApiServer {
             fastify_redis: this.manager.conn.redis,
             fastify_eosjs: this.manager,
             chain_id: '',
+            fastify_static: {
+                root: staticAssetsDir,
+                index: false,
+                prefix: '/static/'
+            }
         } as any;
 
         if (!this.conf.api.disable_rate_limit) {
@@ -168,16 +179,34 @@ class HyperionApiServer {
             this.activateStreaming();
         }
 
+        const headerLogo = readFileSync(join(staticAssetsDir, 'logo-hyperion-white-horz.svg'));
+
+        const customCss = readFileSync(join(staticAssetsDir, 'theme', 'custom-swagger-theme.css')).toString();
+
         const docsConfig = generateOpenApiConfig(this.manager.config);
         if (docsConfig) {
             pluginParams.fastify_swagger = docsConfig;
             pluginParams.fastify_swagger_ui = {
-                routePrefix: '/v2/docs',
+                logo: {
+                    type: 'image/svg+xml',
+                    content: headerLogo,
+                    href: '/docs',
+                    target: '_self'
+                },
+                theme: {
+                    css: [{filename: 'theme.css', content: customCss}]
+                },
+                routePrefix: '/docs',
                 uiConfig: {
                     docExpansion: "list",
                     deepLinking: true
                 },
-                staticCSP: false
+                staticCSP: false,
+                validatorUrl: 'https://validator.swagger.io/validator',
+                transformStaticCSP: (header: string) => {
+                    console.log(header);
+                    return header;
+                },
             } as FastifySwaggerUiOptions;
         }
 
@@ -278,11 +307,13 @@ class HyperionApiServer {
             }
         }
 
+        // FASTIFY ROUTES
         this.registerHomeRoute();
         this.registerQryHubRoutes();
         registerRoutes(this.fastify);
 
         try {
+
 
             try {
                 await this.fastify.ready();
@@ -340,11 +371,11 @@ class HyperionApiServer {
     }
 
     registerQryHubRoutes() {
-        this.fastify.get('/.qry/usage', async () => {
+        this.fastify.get('/.qry/usage', {schema: {hide: true}}, async () => {
             return this.getPast24HoursUsage();
         });
 
-        this.fastify.get('/.qry/first', async () => {
+        this.fastify.get('/.qry/first', {schema: {hide: true}}, async () => {
             const tRef = process.hrtime.bigint();
             const firstBlock = await getFirstIndexedBlock(this.fastify.elastic, this.chain, this.conf.settings.index_partition_size);
             const tEnd = process.hrtime.bigint();
@@ -356,7 +387,7 @@ class HyperionApiServer {
             };
         });
 
-        this.fastify.get('/.qry/get_first_block_histogram', async (request, reply) => {
+        this.fastify.get('/.qry/get_first_block_histogram', {schema: {hide: true}}, async (request, reply) => {
             let firstBlock = -1;
             const tRef = process.hrtime.bigint();
 
@@ -467,7 +498,13 @@ class HyperionApiServer {
     }
 
     registerHomeRoute() {
-        this.fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
+        this.fastify.get('/', {
+            schema: {
+                summary: 'Basic API Status',
+                description: 'Basic API status information',
+                tags: ['status'],
+            }
+        }, (_, reply: FastifyReply) => {
             reply.send({
                 version: this.manager.current_version,
                 version_hash: this.manager.getServerHash(),
@@ -509,7 +546,7 @@ class HyperionApiServer {
     }
 
     async startQRYHub() {
-        if (this.conf.hub && this.conf.hub.instance_key) {
+        if (this.conf.hub && this.conf.hub.instance_key && this.conf.hub.enabled) {
             this.qryPublisher = new QRYBasePublisher({
                 hubUrl: "api.hub.qry.network",
                 instancePrivateKey: this.conf.hub.instance_key,

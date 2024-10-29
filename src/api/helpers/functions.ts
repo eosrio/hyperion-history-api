@@ -788,11 +788,27 @@ export function addChainApiRoute(fastify: FastifyInstance, routeName, descriptio
         tags: ['chain']
     };
 
-    hLog(`Adding ${fastify.prefix}${routeName}`);
+    // hLog(`Adding ${fastify.prefix}${routeName}`);
 
     addApiRoute(
         fastify,
-        ['GET', 'HEAD'],
+        'HEAD',
+        routeName,
+        chainApiHandler,
+        {
+            ...baseSchema,
+            hide: true,
+            querystring: props ? {
+                type: 'object',
+                properties: props,
+                required: required
+            } : {}
+        }
+    );
+
+    addApiRoute(
+        fastify,
+        'GET',
         routeName,
         chainApiHandler,
         {

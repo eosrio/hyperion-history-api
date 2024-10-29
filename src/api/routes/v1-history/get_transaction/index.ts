@@ -8,7 +8,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         summary: 'get transaction by id',
         tags: ['history'],
         body: {
-            type: ['object', 'string'],
+            type: 'object',
             properties: {
                 id: {description: 'transaction id', type: 'string'},
                 block_num_hint: {description: 'block number hint', type: 'integer'},
