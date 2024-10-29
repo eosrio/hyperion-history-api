@@ -18,6 +18,8 @@ export class ConnectionManager {
 
     chain: string;
     last_commit_hash?: string;
+
+    // hyperion version
     current_version?: string;
 
     esIngestClients: Client[];

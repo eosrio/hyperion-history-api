@@ -20,6 +20,7 @@ import {QRYBasePublisher} from "./qry-hub/base-publisher.js";
 import {getApiUsageHistory} from "./helpers/functions.js";
 import {WebSocket} from "ws";
 import {StateHistorySocket} from "../indexer/connections/state-history.js";
+import AlertsManager from "../indexer/modules/alertsManager.js";
 
 class HyperionApiServer {
 
@@ -37,7 +38,7 @@ class HyperionApiServer {
 
     lastSentTimestamp = "";
     private indexerController?: WebSocket;
-
+    private alerts: AlertsManager;
 
     constructor() {
 
@@ -53,6 +54,9 @@ class HyperionApiServer {
 
         this.chain = this.conf.settings.chain;
         process.title = `hyp-${this.chain}-api`;
+
+        this.alerts = new AlertsManager(this.conf.alerts, this.chain);
+
         this.manager = new ConnectionManager(cm);
         this.manager.calculateServerHash();
         this.mLoader = new HyperionModuleLoader(cm);
@@ -293,6 +297,13 @@ class HyperionApiServer {
             hLog(`${this.chain} Hyperion API ready and listening on ${apiUrl}`);
             hLog(`API Public Url: http://${this.conf.api.server_name}`);
 
+            this.alerts.emit('ApiStart', {
+                hyperion_version: this.manager.current_version,
+                public_url: this.conf.api.server_name,
+                chain_id: this.pluginParams.chain_id,
+                message: "API Server Started"
+            });
+
             await this.startQRYHub();
 
             this.setupIndexerController();
@@ -491,7 +502,7 @@ class HyperionApiServer {
         const dataPoints = await this.getPast24HoursUsage();
         if (this.qryPublisher) {
             this.lastSentTimestamp = dataPoints[0].ts;
-            console.log(`Last Data Point: ${this.lastSentTimestamp}`);
+            // console.log(`Last Data Point: ${this.lastSentTimestamp}`);
             this.qryPublisher.publishPastApiUsage(dataPoints);
         }
     }
@@ -564,6 +575,7 @@ class HyperionApiServer {
         this.indexerController.on('close', () => {
             hLog('Disconnected from Hyperion Controller');
             this.qryPublisher?.publishIndexerStatus("offline");
+            this.alerts.emit('IndexerError', {message: "Indexer disconnected"});
             setTimeout(() => {
                 this.setupIndexerController();
             }, 5000);
