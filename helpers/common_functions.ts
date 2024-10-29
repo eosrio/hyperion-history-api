@@ -89,7 +89,7 @@ export async function getFirstIndexedBlock(es_client: Client, chain: string, par
         const results = await es_client.search<any>({
             index: chain + '-block-*',
             size: 1,
-            query: {range: {block_num: {gte: startBlock, lt: endBlock}}},
+            query: {range: {block_num: {gte: startBlock, lte: endBlock}}},
             sort: [{block_num: {order: "asc"}}]
         });
         if (results.hits?.hits?.length > 0) {
