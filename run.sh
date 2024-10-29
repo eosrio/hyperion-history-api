@@ -6,7 +6,7 @@ fi
 echo -e "\n-->> Starting $1..."
 (
   set -x
-  pm2 start --only "$@" --update-env --silent
+  pm2 start pm2/ecosystem.config.cjs --only "$@" --update-env --silent
 )
 echo -e "\n-->> Saving pm2 state..."
 (
