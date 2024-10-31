@@ -4,6 +4,7 @@ import {join} from "path";
 import {getTotalValue} from "../../api/helpers/functions.js";
 import {Serialize} from "eosjs";
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
+import {Cluster} from "node:cluster";
 
 let config: HyperionConfig | undefined;
 
@@ -165,7 +166,11 @@ export async function getLastIndexedBlockFromRange(es_client: Client, chain: str
     return getLastResult(results);
 }
 
-export function messageAllWorkers(cl, payload) {
+export function messageAllWorkers(cl: Cluster, payload: {
+    event: string,
+    target?: string,
+    data?: any
+}) {
     for (const c in cl.workers) {
         if (cl.workers.hasOwnProperty(c)) {
             const _w = cl.workers[c];

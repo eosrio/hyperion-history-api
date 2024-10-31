@@ -6,6 +6,7 @@ import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 import {BaseParser} from "./parsers/base-parser.js";
 import {hLog} from "../helpers/common_functions.js";
 import {HyperionPlugin, HyperionStreamHandler} from "../../plugins/hyperion-plugin.js";
+import {ActionTrace} from "../../interfaces/action-trace.js";
 
 export class HyperionModuleLoader {
 
@@ -40,7 +41,7 @@ export class HyperionModuleLoader {
         this.parser = new mod(this.cm) as BaseParser;
     }
 
-    processActionData(action) {
+    processActionData(action: ActionTrace) {
         const wildcard = this.handledActions.get('*');
         if (wildcard && wildcard.has(action.act.name)) {
             wildcard.get(action.act.name)(action);

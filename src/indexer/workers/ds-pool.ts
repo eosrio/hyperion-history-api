@@ -1,17 +1,19 @@
-import { cargo, queue } from "async";
-import { Message } from "amqplib";
-import { join, resolve } from "path";
-import { existsSync, readdirSync, readFileSync } from "fs";
+import {cargo, queue} from "async";
+import {Message} from "amqplib";
+import {join, resolve} from "path";
+import {existsSync, readdirSync, readFileSync} from "fs";
 import flatstr from 'flatstr';
-import { Redis, RedisValue } from "ioredis";
-import { Serialize } from "eosjs";
+import {Redis, RedisValue} from "ioredis";
+import {Serialize} from "eosjs";
 
-import { debugLog, hLog } from "../helpers/common_functions.js";
-import { RabbitQueueDef } from "../definitions/index-queues.js";
-import { ActionTrace } from "../../interfaces/action-trace.js";
-import { Abi } from "eosjs/dist/eosjs-rpc-interfaces.js";
-import { Type } from "eosjs/dist/eosjs-serialize.js";
-import { HyperionWorker } from "./hyperionWorker.js";
+import {debugLog, hLog} from "../helpers/common_functions.js";
+import {RabbitQueueDef} from "../definitions/index-queues.js";
+import {ActionTrace} from "../../interfaces/action-trace.js";
+import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
+import {Type} from "eosjs/dist/eosjs-serialize.js";
+import {HyperionWorker} from "./hyperionWorker.js";
+import {HyperionActionAct} from "../../interfaces/hyperion-action.js";
+import {ABI, ABIDef} from "@wharfkit/antelope";
 
 const abi_remapping = {
     "_Bool": "bool",
@@ -70,7 +72,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     abi;
     types;
-    tables = new Map();
+    tables: Map<string, string> = new Map();
     local_queue;
     consumerQueue;
     preIndexingQueue;
@@ -105,7 +107,8 @@ export default class DSPoolWorker extends HyperionWorker {
             }
         }
 
-        this.consumerQueue = cargo((payload: any[], cb) => {
+        this.consumerQueue = cargo((payload: Message[], cb) => {
+            // hLog(`Processing ${payload.length} messages`);
             this.processMessages(payload).catch((err) => {
                 hLog('NackAll:', err);
                 if (this.ch && this.ch_ready) {
@@ -123,7 +126,7 @@ export default class DSPoolWorker extends HyperionWorker {
         this.preIndexingQueue = queue((data: any, cb) => {
             if (this.ch_ready && this.ch) {
                 try {
-                    this.ch.sendToQueue(data.queue, data.content, { headers: data.headers });
+                    this.ch.sendToQueue(data.queue, data.content, {headers: data.headers});
                 } catch (e: any) {
                     hLog(e.message);
                 }
@@ -178,11 +181,12 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    attachActionExtras(self, action) {
+    attachActionExtras(self: DSPoolWorker, action: ActionTrace) {
         self.mLoader.processActionData(action);
     }
 
-    recordContractUsage(code) {
+    recordContractUsage(code: string) {
+        // console.log(this.totalHits, this.actionDsCounter, this.monitoringLoop);
         this.totalHits++;
         if (this.contractUsage[code]) {
             this.contractUsage[code]++;
@@ -206,13 +210,13 @@ export default class DSPoolWorker extends HyperionWorker {
                 query: {
                     bool: {
                         must: [
-                            { term: { account: contract_name } },
-                            { range: { block: { lte: last_block } } }
+                            {term: {account: contract_name}},
+                            {range: {block: {lte: last_block}}}
                         ]
                     }
                 },
-                sort: [{ block: { order: "desc" } }],
-                _source: { includes: _includes }
+                sort: [{block: {order: "desc"}}],
+                _source: {includes: _includes}
             });
             // const t_end = process.hrtime.bigint();
             const results = queryResult.hits.hits;
@@ -295,7 +299,7 @@ export default class DSPoolWorker extends HyperionWorker {
         return [_status, resultType];
     }
 
-    async deserializeActionAtBlockNative(self, action, block_num): Promise<any> {
+    async deserializeActionAtBlockNative(self: DSPoolWorker, action: HyperionActionAct, block_num: number): Promise<any> {
         self.recordContractUsage(action.account);
         const [_status, actionType] = await self.verifyLocalType(action.account, action.name, block_num, "action");
         if (_status) {
@@ -373,14 +377,14 @@ export default class DSPoolWorker extends HyperionWorker {
         }
 
         const actions = new Map();
-        for (const { name, type } of abi.actions) {
+        for (const {name, type} of abi.actions) {
             try {
                 actions.set(name, Serialize.getType(types, type));
             } catch {
             }
         }
 
-        const result = { types, actions, tables: abi.tables };
+        const result = {types, actions, tables: abi.tables};
         if (check_action) {
             if (actions.has(check_action)) {
                 if (!this.failedAbiMap.has(accountName) || !this.failedAbiMap.get(accountName)?.has(-1)) {
@@ -428,8 +432,8 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    async processMessages(msg_array: Message[]) {
-        for (const data of msg_array) {
+    async processMessages(messages: Message[]) {
+        for (const data of messages) {
             const parsedData = JSON.parse(Buffer.from(data.content).toString());
             await this.processTraces(parsedData, data.properties.headers);
             // ack message
@@ -449,8 +453,8 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     async processTraces(transaction_trace, extra) {
-        const { cpu_usage_us, net_usage_words, signatures } = transaction_trace;
-        const { block_num, block_id, producer, ts, inline_count, filtered, live } = extra;
+        const {cpu_usage_us, net_usage_words, signatures} = transaction_trace;
+        const {block_num, block_id, producer, ts, inline_count, filtered, live} = extra;
 
         if (transaction_trace.status === 0) {
             let action_count = 0;
@@ -471,11 +475,11 @@ export default class DSPoolWorker extends HyperionWorker {
                 signatures
             };
 
-            const usageIncluded = { status: false };
+            const usageIncluded = {status: false};
 
             // perform action flattening if necessary
             if (this.mLoader.parser?.flatten) {
-                const trace_counters = { trace_index: 0 };
+                const trace_counters = {trace_index: 0};
                 action_traces = await this.mLoader.parser.flattenInlineActions(action_traces, 0, trace_counters, 0);
                 action_traces.sort((a, b) => {
                     return a[1].receipt[1].global_sequence - b[1].receipt[1].global_sequence;
@@ -587,13 +591,13 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    pushToActionsQueue(payload, block_num) {
+    pushToActionsQueue(payload, block_num: number) {
         if (!this.conf.indexer.disable_indexing) {
             const q = this.chain + ":index_actions:" + (this.act_emit_idx);
             this.preIndexingQueue.push({
                 queue: q,
                 content: payload,
-                headers: { block_num }
+                headers: {block_num}
             });
             this.act_emit_idx++;
             if (this.act_emit_idx > (this.conf.scaling.ad_idx_queues)) {
@@ -602,7 +606,7 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    pushToActionStreamingQueue(payload, uniqueAction) {
+    pushToActionStreamingQueue(payload, uniqueAction: any) {
         if (this.allowStreaming && this.conf.features['streaming'].traces && this.ch) {
             try {
                 const notificationArray = new Set();
@@ -618,7 +622,7 @@ export default class DSPoolWorker extends HyperionWorker {
                     name: uniqueAction['act']['name'],
                     notified: [...notificationArray].join(",")
                 };
-                this.ch.publish('', this.chain + ':stream', payload, { headers });
+                this.ch.publish('', this.chain + ':stream', payload, {headers});
             } catch (e) {
                 hLog(e);
             }
@@ -648,6 +652,8 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     startMonitoring() {
+
+        // hLog(`Starting monitoring loop on ds_worker ${process.env.local_id}`);
         // Monitor Contract Usage
         if (!this.monitoringLoop) {
             this.monitoringLoop = setInterval(() => {
@@ -676,16 +682,16 @@ export default class DSPoolWorker extends HyperionWorker {
                 this.actionDsCounter = 0;
             }, 1000);
         }
+        // hLog(`Monitoring loop started on ds_worker ${process.env.local_id}`);
     }
 
     initializeShipAbi(data: string) {
-        debugLog(`state history abi ready on ds_worker ${process.env.local_id}`);
-        this.abi = JSON.parse(data);
+        // hLog(`state history abi ready on ds_worker ${process.env.local_id}`);
+        this.abi = JSON.parse(data) as ABI;
         this.abieos.loadAbi("0", data);
         const initialTypes = Serialize.createInitialTypes();
         this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
-        this.abi.tables.map(table => this.tables.set(table.name, table.type));
-        this.onReady();
+        this.abi.tables.map((table: ABI.Table) => this.tables.set(table.name as string, table.type));
         this.startMonitoring();
     }
 
@@ -695,11 +701,9 @@ export default class DSPoolWorker extends HyperionWorker {
         if (this.ch) {
             this.ch_ready = true;
             this.ch.assertQueue(this.local_queue, RabbitQueueDef);
-
             if (this.conf.settings.dsp_parser) {
                 this.ch.assertQueue(`${queue_prefix}:dsp`, RabbitQueueDef);
             }
-
             this.initConsumer();
         }
     }
@@ -723,13 +727,19 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     onReady() {
-        // process.send({
-        //     event: 'ds_ready',
-        //     id: process.env.local_id
-        // });
+        process.send?.({
+            event: 'ds_ready',
+            id: process.env.worker_id
+        });
     }
 
     async run(): Promise<void> {
         debugLog(`Standalone deserializer launched with id: ${process.env.local_id}`);
+        this.events.once('ready', () => {
+            // check if the ship abi is loaded
+            if (!this.abi) {
+                this.onReady();
+            }
+        });
     }
 }

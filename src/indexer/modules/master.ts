@@ -56,6 +56,29 @@ interface RevBlock {
     tx: string[];
 }
 
+interface WorkerMessage {
+    root_act?: any;
+    signatures?: any;
+    trx_id?: string;
+    total_hits?: number;
+    deltas?: number;
+    actions?: number;
+    size?: number;
+    id?: string;
+    worker_id?: any;
+    trx_ids?: string[];
+    live_mode?: string;
+    block_id?: string;
+    event: string;
+    live?: string;
+    target?: string;
+    data?: any;
+    block_num?: number;
+    block_ts?: string;
+}
+
+type WorkerMessageHandler = (worker: Worker, msg: WorkerMessage) => Promise<void> | void;
+
 export class HyperionMaster {
 
     // global configuration
@@ -134,9 +157,9 @@ export class HyperionMaster {
     private auto_stop = 0;
 
     // IPC Messages Handling
-    private msgHandlerMap: any;
+    private msgHandlerMap: Record<string, WorkerMessageHandler> = {};
 
-    private cachedInitABI = null;
+    private cachedInitABI: string | null = null;
     private activeReadersCount = 0;
     private lastAssignedBlock = 0;
     private lastIndexedABI = 0;
@@ -261,16 +284,23 @@ export class HyperionMaster {
 
     initHandlerMap() {
         this.msgHandlerMap = {
-            'skipped_block': (msg: any) => {
-                this.consumedBlocks++;
-                if (msg.block_num > this.lastProcessedBlockNum) {
-                    this.lastProcessedBlockNum = msg.block_num;
-                }
-            },
-            'consumed_block': (msg: any) => {
-                if (msg.live === 'false') {
+            'skipped_block': (_worker: Worker, msg: WorkerMessage) => {
+                if (msg.block_num) {
                     this.consumedBlocks++;
                     if (msg.block_num > this.lastProcessedBlockNum) {
+                        this.lastProcessedBlockNum = msg.block_num;
+                    }
+                }
+            },
+            'consumed_block': async (_worker: Worker, msg: WorkerMessage) => {
+
+                if (!msg.block_num || !msg.block_id) {
+                    return;
+                }
+
+                if (msg.live === 'false') {
+                    this.consumedBlocks++;
+                    if (msg.block_num && msg.block_num > this.lastProcessedBlockNum) {
                         this.lastProcessedBlockNum = msg.block_num;
                     }
                 } else {
@@ -291,7 +321,7 @@ export class HyperionMaster {
                     this.revBlockArray.push({
                         num: msg.block_num,
                         id: msg.block_id,
-                        tx: msg.trx_ids
+                        tx: msg.trx_ids || []
                     });
 
                     this.lastProducedBlockNum = msg.block_num;
@@ -306,12 +336,12 @@ export class HyperionMaster {
                     }
                 }
             },
-            'new_schedule': (msg: any) => {
+            'new_schedule': (_worker: Worker, msg: WorkerMessage) => {
                 this.onScheduleUpdate(msg);
             },
-            'init_abi': (msg: any) => {
+            'init_abi': (_worker: Worker, msg: WorkerMessage) => {
                 if (!this.cachedInitABI) {
-                    this.cachedInitABI = msg.data;
+                    this.cachedInitABI = msg.data as string;
                     hLog('received ship abi for distribution');
                     messageAllWorkers(cluster, {
                         event: 'initialize_abi',
@@ -319,6 +349,8 @@ export class HyperionMaster {
                     });
                     this.monitorIndexingQueues();
                     this.startContractMonitoring();
+                } else {
+                    hLog('received ship abi for distribution AGAIN!!');
                 }
             },
             'router_ready': () => {
@@ -329,7 +361,7 @@ export class HyperionMaster {
             'ingestor_block_report': () => {
                 // console.log(data);
             },
-            'save_abi': (msg: any) => {
+            'save_abi': (_worker: Worker, msg: WorkerMessage) => {
                 this.total_abis++;
                 if (msg.live_mode === 'true') {
                     hLog(`deserializer ${msg.worker_id} received new abi! propagating changes to other workers...`);
@@ -340,7 +372,7 @@ export class HyperionMaster {
                     }
                 }
             },
-            'update_init_block': (msg: any) => {
+            'update_init_block': (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.block_num && this.head) {
                     this.lastAssignedBlock = msg.block_num;
                     this.total_range = this.head - msg.block_num;
@@ -349,17 +381,17 @@ export class HyperionMaster {
             'repair_reader_ready': () => {
                 this.sendPendingRepairRanges();
             },
-            'kill_worker': (msg: any) => {
+            'kill_worker': (_worker: Worker, msg: WorkerMessage) => {
                 for (let workersKey in cluster.workers) {
                     const w = cluster.workers[workersKey];
-                    if (w && w.id === parseInt(msg.id)) {
+                    if (msg.id && w && w.id === parseInt(msg.id)) {
                         const idx = this.workerMap.findIndex(value => value.worker_id === w.id);
                         this.workerMap.splice(idx, 1);
                         w.kill();
                     }
                 }
             },
-            'completed': (msg: any) => {
+            'completed': (_worker: Worker, msg: WorkerMessage) => {
                 if (this.repairReader && msg.id === this.repairReader.worker_id?.toString()) {
                     console.log('Repair completed!', msg);
                     this.sendPendingRepairRanges();
@@ -393,10 +425,12 @@ export class HyperionMaster {
                     }
                 }
             },
-            'add_index': (msg: any) => {
-                this.indexedObjects += msg.size;
+            'add_index': (_worker: Worker, msg: WorkerMessage) => {
+                if (msg.size) {
+                    this.indexedObjects += msg.size;
+                }
             },
-            'ds_report': (msg: any) => {
+            'ds_report': (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.actions) {
                     this.deserializedActions += msg.actions;
                 }
@@ -404,21 +438,24 @@ export class HyperionMaster {
                     this.deserializedDeltas += msg.deltas;
                 }
             },
-            'ds_error': (msg: any) => {
+            'ds_error': (_worker: Worker, msg: WorkerMessage) => {
                 this.dsErrorStream?.write(JSON.stringify(msg.data) + '\n');
             },
-            'read_block': (msg: any) => {
+            'read_block': (_worker: Worker, msg: WorkerMessage) => {
                 if (!msg.live) {
                     this.pushedBlocks++;
                 } else {
                     this.livePushedBlocks++;
                 }
             },
-            // 'ds_ready': (msg: any) => {
-            //     hLog(msg);
-            // },
-            'contract_usage_report': (msg: any) => {
-                if (msg.data) {
+            'ds_ready': (worker: Worker, msg: WorkerMessage) => {
+                // send the ship abi to the deserializer
+                if (this.cachedInitABI) {
+                    worker.send({event: 'initialize_abi', data: this.cachedInitABI});
+                }
+            },
+            'contract_usage_report': (_worker: Worker, msg: WorkerMessage) => {
+                if (msg.data && msg.total_hits) {
                     this.totalContractHits += msg.total_hits;
                     for (const contract in msg.data) {
                         if (msg.data.hasOwnProperty(contract)) {
@@ -431,7 +468,7 @@ export class HyperionMaster {
                     }
                 }
             },
-            'lib_update': (msg: any) => {
+            'lib_update': (_worker: Worker, msg: WorkerMessage) => {
                 // publish LIB to hub
                 if (msg.data) {
 
@@ -449,8 +486,8 @@ export class HyperionMaster {
                     }
                 }
             },
-            'included_trx': (msg: any) => {
-                if (this.ioRedisClient) {
+            'included_trx': (_worker: Worker, msg: WorkerMessage) => {
+                if (this.ioRedisClient && msg.trx_id) {
                     this.ioRedisClient.set(msg.trx_id, JSON.stringify({
                         status: 'executed',
                         b: msg.block_num,
@@ -459,7 +496,7 @@ export class HyperionMaster {
                     }), "EX", 3600).catch(console.log);
                 }
             },
-            'fork_event': async (msg: any) => {
+            'fork_event': async (_worker: Worker, msg: WorkerMessage) => {
                 const forkedBlocks = this.revBlockArray.filter(item => item.num >= msg.data.starting_block && item.id !== msg.data.new_id);
                 this.revBlockArray = this.revBlockArray.filter(item => item.num < msg.data.starting_block);
                 if (this.ioRedisClient) {
@@ -934,17 +971,16 @@ export class HyperionMaster {
                 wrk.wref = cluster.fork(wrk);
                 wrk.wref.id = wrk.worker_id;
                 wrk.wref.on('message', (msg) => {
-                    this.handleMessage(msg);
+                    if (wrk.wref) {
+                        this.handleMessage(wrk.wref, msg);
+                    }
                 });
-
                 if (wrk.worker_role === 'ds_pool_worker' && wrk.local_id) {
                     this.dsPoolMap.set(wrk.local_id, wrk.wref);
                 }
-
                 if (wrk.worker_role === 'router') {
                     this.wsRouterWorker = wrk.wref;
                 }
-
                 launchedCount++;
             }
         });
@@ -1164,13 +1200,22 @@ export class HyperionMaster {
         this.lastProducedBlockNum = msg.block_num;
     }
 
-    handleMessage(msg) {
+    handleMessage(worker: Worker, msg: WorkerMessage): void {
+        if (!msg.event) {
+            return;
+        }
         if (this.shouldCountIPCMessages) {
             this.totalMessages++;
         }
-
-        if (this.msgHandlerMap[msg.event]) {
-            this.msgHandlerMap[msg.event](msg);
+        const func = this.msgHandlerMap[msg.event];
+        if (!func) {
+            hLog(`No handler for event ${msg.event}`);
+            return;
+        }
+        if (func.constructor.name === 'AsyncFunction') {
+            (func(worker, msg) as Promise<void>).catch(hLog);
+        } else {
+            func(worker, msg);
         }
     }
 
@@ -2180,7 +2225,7 @@ export class HyperionMaster {
         this.mode_transition = false;
     }
 
-    private emitAlert(msgType: HyperionAlertTypes, message: string) {
+    private emitAlert(msgType: HyperionAlertTypes, message: WorkerMessage | string) {
         this.alerts?.emit(msgType, {
             type: msgType,
             process: process.title,
