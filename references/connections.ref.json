@@ -23,8 +23,8 @@
   },
   "chains": {
     "eos": {
-      "name": "EOS Mainnet",
-      "chain_id": "aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906",
+      "name": "",
+      "chain_id": "",
       "http": "http://127.0.0.1:8888",
       "ship": [
         {"label": "primary", "url": "ws://127.0.0.1:8080"}
@@ -55,17 +55,17 @@
       },
       "http": {
         "enabled": false,
-        "server": "http://localhost:6200",
-        "path": "/notification",
+        "server": "",
+        "path": "",
         "useAuth": false,
         "user": "",
         "pass": ""
       },
       "email": {
         "enabled": false,
-        "sourceEmail": "sender@example.com",
-        "destinationEmails": ["receiverA@example.com","receiverB@example.com"],
-        "smtp": "smtp-relay.gmail.com (UPDATE THIS)",
+        "sourceEmail": "",
+        "destinationEmails": [],
+        "smtp": "",
         "port": 465,
         "tls": true,
         "user": "",
