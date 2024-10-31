@@ -1,0 +1,76 @@
+{
+  "amqp": {
+    "host": "127.0.0.1:5672",
+    "api": "127.0.0.1:15672",
+    "protocol": "http",
+    "user": "username",
+    "pass": "password",
+    "vhost": "hyperion",
+    "frameMax": "0x10000"
+  },
+  "elasticsearch": {
+    "protocol": "http",
+    "host": "127.0.0.1:9200",
+    "ingest_nodes": [
+      "127.0.0.1:9200"
+    ],
+    "user": "elastic",
+    "pass": "password"
+  },
+  "redis": {
+    "host": "127.0.0.1",
+    "port": "6379"
+  },
+  "chains": {
+    "eos": {
+      "name": "EOS Mainnet",
+      "chain_id": "aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906",
+      "http": "http://127.0.0.1:8888",
+      "ship": [
+        {"label": "primary", "url": "ws://127.0.0.1:8080"}
+      ],
+      "WS_ROUTER_HOST": "127.0.0.1",
+      "WS_ROUTER_PORT": 7001,
+      "control_port": 7002
+    }
+  },
+  "alerts": {
+    "triggers": {
+      "onApiStart": {
+        "enabled": true,
+        "cooldown": 30,
+        "emitOn": ["http"]
+      },
+      "onIndexerError": {
+        "enabled": true,
+        "cooldown": 30,
+        "emitOn": ["telegram", "email", "http"]
+      }
+    },
+    "providers": {
+      "telegram": {
+        "enabled": false,
+        "botToken": "",
+        "destinationIds": [1]
+      },
+      "http": {
+        "enabled": false,
+        "server": "http://localhost:6200",
+        "path": "/notification",
+        "useAuth": false,
+        "user": "",
+        "pass": ""
+      },
+      "email": {
+        "enabled": false,
+        "sourceEmail": "sender@example.com",
+        "destinationEmails": ["receiverA@example.com","receiverB@example.com"],
+        "smtp": "smtp-relay.gmail.com (UPDATE THIS)",
+        "port": 465,
+        "tls": true,
+        "user": "",
+        "pass": ""
+      }
+    }
+  }
+}
