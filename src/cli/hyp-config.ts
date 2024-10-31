@@ -773,8 +773,8 @@ async function resetConnections() {
     // ./hyp-config chains new <shortName>
     chains.command('new <shortName>')
         .description('initialize new chain config based on example')
-        .option('--http <http_endpoint>', 'define chain api http endpoint')
-        .option('--ship <ship_endpoint>', 'define state history ws endpoint')
+        .requiredOption('--http <http_endpoint>', 'define chain api http endpoint')
+        .requiredOption('--ship <ship_endpoint>', 'define state history ws endpoint')
         .action(newChain)
 
     // ./hyp-config chains remove <shortName>
@@ -805,8 +805,8 @@ async function resetConnections() {
     }).alias('n');
     newCmd.command('chain <shortName>')
         .description('initialize new chain config based on example')
-        .option('--http <http_endpoint>', 'define chain api http endpoint')
-        .option('--ship <ship_endpoint>', 'define state history ws endpoint')
+        .requiredOption('--http <http_endpoint>', 'define chain api http endpoint')
+        .requiredOption('--ship <ship_endpoint>', 'define state history ws endpoint')
         .action(newChain)
 
     // DEPRECATED ./hyp-config remove chain <shortName>

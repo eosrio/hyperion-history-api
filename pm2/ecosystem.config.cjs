@@ -7,6 +7,9 @@ const chainsRoot = path.join(__dirname, '../config', 'chains');
 
 console.log(`Reading chain configs from ${chainsRoot}`);
 
+let apiCount = 0;
+let indexerCount = 0;
+
 readdirSync(chainsRoot)
     .filter(f => f.endsWith('.config.json') && !f.startsWith('example'))
     .forEach(value => {
@@ -18,22 +21,17 @@ readdirSync(chainsRoot)
             const traceDeprecation = config.api.node_trace_deprecation;
             const traceWarnings = config.api.node_trace_warnings;
             apps.push(addApiServer(chainName, config.api.pm2_scaling, apiHeap, traceDeprecation, traceWarnings));
+            apiCount++;
         }
         if (config.indexer.enabled) {
             const indexerHeap = config.indexer.node_max_old_space_size;
             const traceDeprecation = config.indexer.node_trace_deprecation;
             const traceWarnings = config.indexer.node_trace_warnings;
             apps.push(addIndexer(chainName, indexerHeap, traceDeprecation, traceWarnings));
+            indexerCount++;
         }
     });
 
-console.log(`${apps.length} chains enabled`);
-
-// apps.push({
-//     name: 'hyperion-governor',
-//     namespace: 'hyperion',
-//     script: 'governor/server/index.js',
-//     watch: false,
-// });
+console.log(`${indexerCount} chain indexers and ${apiCount} APIs enabled`);
 
 module.exports = {apps};
