@@ -220,7 +220,7 @@ async function listChains(flags) {
     }
 }
 
-async function newChain(shortName, options) {
+async function newChain(shortName: string, options) {
     console.log(`Creating new config for ${shortName}...`);
     const targetPath = path.join(chainsDir, `${shortName}.config.json`);
 
@@ -241,7 +241,7 @@ async function newChain(shortName, options) {
     }
 
     if (connections.chains[shortName]) {
-        console.log('Connections already defined!');
+        console.error('Connections already defined!');
         console.log(connections.chains[shortName]);
         process.exit(0);
     } else {
@@ -721,8 +721,8 @@ async function resetConnections() {
         if (existsSync(connectionsPath)) {
             const rl = readline.createInterface({input: process.stdin, output: process.stdout});
             const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
-            const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n');
-            if (confirmation === 'YES') {
+            const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n') as string;
+            if (confirmation.toUpperCase() === 'YES') {
                 copyFileSync(connectionsPath, path.join(backupDir, 'connections.json.bak'));
                 rmSync(connectionsPath);
                 console.log('connections.json removed, please use "./hyp-config connections init" to reconfigure');

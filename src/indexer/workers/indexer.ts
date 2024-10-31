@@ -2,7 +2,7 @@ import {cargo, QueueObject} from "async";
 import {Message} from "amqplib";
 
 import {HyperionWorker} from "./hyperionWorker.js";
-import {ElasticRoutes} from '../helpers/elastic-routes.js';
+import {ElasticRoutes, RouteFunction} from '../helpers/elastic-routes.js';
 import {hLog} from "../helpers/common_functions.js";
 import {RabbitQueueDef} from "../definitions/index-queues.js";
 
@@ -10,29 +10,26 @@ export default class IndexerWorker extends HyperionWorker {
 
     private indexQueue: QueueObject<any>;
     private temp_indexed_count = 0;
-
     esRoutes: ElasticRoutes;
 
     constructor() {
         super();
-
         if (!process.env.type) {
             hLog("[FATAL] env.type is not defined!");
             process.exit(1);
         }
-
         if (!process.env.queue) {
             hLog("[FATAL] env.queue is not defined!");
             process.exit(1);
         }
-
         this.esRoutes = new ElasticRoutes(this.manager);
-        this.indexQueue = cargo((payload: Message[], callback) => {
-            if (this.ch_ready && payload && process.env.type) {
-                if (this.esRoutes.routes[process.env.type]) {
 
+        this.indexQueue = cargo((payload: Message[], callback) => {
+            if (this.ch_ready && payload && process.env.type && this.ch) {
+                // find route for the worker type
+                if (this.esRoutes.routes[process.env.type]) {
                     // call route type
-                    this.esRoutes.routes[process.env.type](payload, this.ch, (indexed_size) => {
+                    (this.esRoutes.routes[process.env.type] as RouteFunction)(payload, this.ch, (indexed_size?: number) => {
                         if (indexed_size) {
                             this.temp_indexed_count += indexed_size;
                         }
@@ -42,13 +39,15 @@ export default class IndexerWorker extends HyperionWorker {
                             hLog(`${e.message} on ${process.env.type}`);
                         }
                     });
-
                 } else {
                     hLog(`No route for type: ${process.env.type}`);
                     process.exit(1);
                 }
             }
-        })
+            if (this.conf.prefetch.index === payload.length) {
+                hLog(`Max index prefetch reached on ${process.env.type} = ${payload.length}`);
+            }
+        }, this.conf.prefetch.index);
     }
 
     assertQueues(): void {

@@ -131,7 +131,7 @@ export class ConnectionManager {
         if (_es.ingest_nodes) {
             if (_es.ingest_nodes.length > 0) {
                 for (const node of _es.ingest_nodes) {
-                    this.esIngestClient = new Client({
+                    this.esIngestClients.push(new Client({
                         node: `${_es.protocol}://${_es.host}`,
                         auth: {
                             username: _es.user,
@@ -141,7 +141,7 @@ export class ConnectionManager {
                         tls: _es.protocol === 'https' ? {
                             rejectUnauthorized: false
                         } : undefined
-                    });
+                    }));
                 }
             }
         }

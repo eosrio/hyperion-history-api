@@ -43,10 +43,11 @@ import {Redis} from "ioredis";
 import {AlertManagerOptions, AlertsManager, HyperionAlertTypes} from "./alertsManager.js";
 
 import {bootstrap} from 'global-agent';
-import {App, TemplatedApp, WebSocket} from "uWebSockets.js";
+import {App, HttpRequest, HttpResponse, TemplatedApp, WebSocket} from "uWebSockets.js";
 import moment from "moment";
 import {getTotalValue} from "../../api/helpers/functions.js";
 import {ShipServer, StateHistorySocket} from "../connections/state-history.js";
+import {updateByBlock} from "../definitions/updateByBlock.painless.js";
 import Timeout = NodeJS.Timeout;
 
 interface RevBlock {
@@ -574,34 +575,7 @@ export class HyperionMaster {
     }
 
     private async applyUpdateScript() {
-        const script_status = await this.esClient.putScript({
-            id: "updateByBlock",
-            script: {
-                lang: "painless",
-                source: `
-                    boolean valid = false;
-                    if(ctx._source.block_num != null) {
-                      if(params.block_num < ctx._source.block_num) {
-                        ctx['op'] = 'none';
-                        valid = false;
-                      } else {
-                        valid = true;
-                      } 
-                    } else {
-                      valid = true;
-                    }
-                    if(valid == true) {
-                      for (entry in params.entrySet()) {
-                        if(entry.getValue() != null) {
-                          ctx._source[entry.getKey()] = entry.getValue();
-                        } else {
-                          ctx._source.remove(entry.getKey());
-                        }
-                      }
-                    }
-                `
-            }
-        });
+        const script_status = await this.esClient.putScript(updateByBlock);
         if (!script_status.acknowledged) {
             hLog('Failed to load script updateByBlock. Aborting!');
             process.exit(1);
@@ -1639,21 +1613,60 @@ export class HyperionMaster {
     }
 
     private createLocalController(controlPort: number) {
-        this.localController = App().ws('/local', {
+
+        const formatWorkerMap = () => {
+            return this.workerMap.map((worker: HyperionWorkerDef) => {
+                return {
+                    worker_id: worker.worker_id,
+                    worker_role: worker.worker_role,
+                    queue: worker.queue,
+                    local_id: worker.local_id,
+                    worker_queue: worker.worker_queue,
+                    live_mode: worker.live_mode
+                };
+            })
+        };
+
+        this.localController = App();
+        this.localController.ws('/local', {
             open: () => {
                 hLog(`Local controller connected!`);
             },
             message: (ws, msg) => {
+                console.log(msg);
                 const buffer = Buffer.from(msg);
-                const message = JSON.parse(buffer.toString());
-                if (message.event === 'fill_missing_blocks') {
-                    this.fillMissingBlocks(message.data, ws).catch(console.log);
+                const rawMessage = buffer.toString();
+                try {
+                    switch (rawMessage) {
+                        case 'list_workers': {
+                            ws.send(JSON.stringify(formatWorkerMap()));
+                            break;
+                        }
+                        default: {
+                            // parse message as json
+                            const message = JSON.parse(rawMessage);
+                            if (message.event === 'fill_missing_blocks') {
+                                this.fillMissingBlocks(message.data, ws).catch(console.log);
+                            }
+                        }
+                    }
+                } catch (e: any) {
+                    console.error(e);
+                    ws.send(JSON.stringify({error: e.message}));
+                    ws.send("Invalid message format!");
+                    ws.end();
                 }
             },
             close: () => {
                 hLog(`Local controller disconnected!`);
             }
         });
+
+        this.localController.get('/list_workers', (res: HttpResponse, req: HttpRequest) => {
+            res.writeHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(formatWorkerMap()));
+        });
+
         this.localController.listen(controlPort, (token) => {
             if (token) {
                 hLog(`Local controller listening on port ${controlPort}`);

@@ -1189,7 +1189,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     deltaStructHandlers = {
 
-        "contract_row": async (payload, block_num, block_ts, row, block_id) => {
+        "contract_row": async (payload: any, block_num: number, block_ts: string, row: any, block_id: string) => {
 
             if (this.conf.indexer.abi_scan_mode) {
                 return false;
@@ -1268,7 +1268,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         },
 
-        "account": async (account, block_num, block_ts) => {
+        "account": async (account: any, block_num: number, block_ts: string) => {
             if (account['abi'] !== '') {
                 try {
                     const abiHex = account['abi'];
@@ -1328,7 +1328,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         },
 
-        "permission_link": async (link, block_num, block_ts, row) => {
+        "permission_link": async (link: any, block_num: number, block_ts: string, row: any) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
                 await this.pushToIndexQueue({
                     "@timestamp": block_ts,
@@ -1342,7 +1342,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         },
 
-        "permission": async (perm, block_num, block_ts, row) => {
+        "permission": async (perm: any, block_num: number, block_ts: string, row: any) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
 
                 if (perm.auth.accounts.length === 0) {
@@ -1365,7 +1365,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         },
 
-        // "account_metadata": async (account_metadata, block_num, block_ts, row, block_id) => {
+        // "account_metadata": async (account_metadata: any, block_num: number, block_ts: string, row: any, block_id: string) => {
         //     console.log(account_metadata);
         //     if (account_metadata.code) {
         //         hLog(`new code hash ${account_metadata.code.code_hash} on ${account_metadata.name}`);
@@ -1373,7 +1373,7 @@ export default class MainDSWorker extends HyperionWorker {
         // },
 
         // Deferred Transactions
-        "generated_transaction": async (generated_transaction: any, block_num, block_ts) => {
+        "generated_transaction": async (generated_transaction: any, block_num: number, block_ts: string) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.deferred_trx) {
 
                 // check delta blacklist chain::code::table
@@ -1413,7 +1413,7 @@ export default class MainDSWorker extends HyperionWorker {
 
 
         // Account resource updates
-        "resource_limits": async (resource_limits, block_num, block_ts) => {
+        "resource_limits": async (resource_limits: any, block_num: string, block_ts: string) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.resource_limits) {
                 const cpu = parseInt(resource_limits.cpu_weight);
                 const net = parseInt(resource_limits.net_weight);
@@ -1437,22 +1437,26 @@ export default class MainDSWorker extends HyperionWorker {
         //     hLog(block_num, resource_limits_state);
         // },
 
-        "resource_usage": async (resource_usage, block_num, block_ts) => {
+        // Resource usage updates
+        "resource_usage": async (resource_usage: any, block_num: number, block_ts: string) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas && this.conf.features.resource_usage) {
+                // ignore eosio system resource usage
+                if (resource_usage.owner === this.conf.settings.eosio_alias) {
+                    return;
+                }
+
                 const net_used = parseInt(resource_usage.net_usage[1].consumed);
                 const net_total = parseInt(resource_usage.net_usage[1].value_ex);
                 let net_pct = 0.0;
                 if (net_total > 0) {
                     net_pct = net_used / net_total;
                 }
-
                 const cpu_used = parseInt(resource_usage.cpu_usage[1].consumed);
                 const cpu_total = parseInt(resource_usage.cpu_usage[1].value_ex);
                 let cpu_pct = 0.0;
                 if (cpu_total > 0) {
                     cpu_pct = cpu_used / cpu_total;
                 }
-
                 const payload = {
                     block_num: block_num,
                     '@timestamp': block_ts,
@@ -1470,7 +1474,7 @@ export default class MainDSWorker extends HyperionWorker {
         },
 
         // Global Chain configuration update
-        "global_property": async (global_property, block_num: number, block_ts: string) => {
+        "global_property": async (global_property: any, block_num: number, block_ts: string) => {
             if (global_property.proposed_schedule.version !== 0) {
                 hLog("Proposed Schedule version: " + global_property.proposed_schedule.version + " at block: " + global_property.proposed_schedule_block_num);
                 try {
@@ -1563,7 +1567,13 @@ export default class MainDSWorker extends HyperionWorker {
                                 } else if (row.present === false) {
                                     row.present = 0;
                                 }
-                                await this.deltaStructHandlers[key](data[1], block_num, block_ts, row, block_id);
+                                await this.deltaStructHandlers[key](
+                                    data[1],
+                                    block_num,
+                                    block_ts,
+                                    row,
+                                    block_id
+                                );
                             } catch (e: any) {
                                 hLog(`Delta struct [${key}] processing error: ${e.message}`);
                                 hLog(e);
