@@ -186,5 +186,5 @@ export interface HyperionConfig {
     plugins: {
         [key: string]: any;
     };
-    alerts: AlertManagerOptions;
+    alerts?: AlertManagerOptions;
 }

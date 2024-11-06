@@ -41,5 +41,5 @@ export interface HyperionConnections {
     chains: {
         [key: string]: HyperionChainData;
     },
-    alerts: AlertManagerOptions;
+    alerts?: AlertManagerOptions;
 }
