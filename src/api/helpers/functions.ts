@@ -1,4 +1,4 @@
-import * as _ from "lodash";
+import _ from "lodash";
 import {Socket} from "socket.io";
 import {createHash} from "crypto";
 import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethods} from "fastify";
