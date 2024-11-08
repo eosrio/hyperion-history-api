@@ -9,13 +9,15 @@ import formBodyPlugin from '@fastify/formbody';
 import fastifyRedis from '@fastify/redis';
 import fastifyElasticsearch from "@fastify/elasticsearch";
 import fastifyRateLimit from '@fastify/rate-limit';
+import fastifyStatic from "@fastify/static";
+import fastifyMongodb from "@fastify/mongodb";
 
 // custom plugins
 import fastify_eosjs from "./plugins/fastify-eosjs.js";
-import fastifyStatic from "@fastify/static";
 
 export async function registerPlugins(server: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>, params: any) {
     server.register(fastifyElasticsearch, params.fastify_elasticsearch);
+    server.register(fastifyMongodb, params.fastify_mongo);
     server.register(fastifyCors);
     server.register(formBodyPlugin);
     server.register(fastifyRedis, params.fastify_redis);

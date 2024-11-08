@@ -1,6 +1,11 @@
 import {readFileSync} from "node:fs";
 import {APIClient, Name, Serializer} from "@wharfkit/antelope";
 import {Client} from "@elastic/elasticsearch";
+import {join} from "node:path";
+import {Collection, MongoClient} from "mongodb";
+import {HyperionConnections} from "../../interfaces/hyperionConnections.js";
+import {IAccount} from "../../interfaces/table-account.js";
+import {cargo} from "async";
 
 const chain = process.argv[2];
 const indexName = `${chain}-table-accounts-v1`;
@@ -12,7 +17,9 @@ if (!chain) {
 
 console.log('Hyperion Account State Synchronizer');
 
-const connections = JSON.parse(readFileSync("./connections.json").toString());
+const configDir = join(import.meta.dirname, '../../../config');
+
+const connections = JSON.parse(readFileSync(join(configDir, "connections.json")).toString()) as HyperionConnections;
 
 const _es = connections.elasticsearch;
 
@@ -27,6 +34,25 @@ const elastic = new Client({
         rejectUnauthorized: false
     } : undefined
 });
+
+const _mongo = connections.mongodb;
+let mongoClient: MongoClient | undefined;
+let accountCollection: Collection<IAccount> | undefined;
+if (_mongo) {
+    let uri = "mongodb://";
+    if (_mongo.user && _mongo.pass) {
+        uri += `${_mongo.user}:${_mongo.pass}@${_mongo.host}:${_mongo.port}`;
+    } else {
+        uri += `${_mongo.host}:${_mongo.port}`;
+    }
+    mongoClient = new MongoClient(uri);
+    accountCollection = mongoClient.db(`${_mongo.database_prefix}_${chain}`).collection('accounts');
+    await accountCollection.createIndex({code: 1}, {unique: false});
+    await accountCollection.createIndex({scope: 1}, {unique: false});
+    await accountCollection.createIndex({symbol: 1}, {unique: false});
+    await accountCollection.createIndex({code: 1, scope: 1, symbol: 1}, {unique: true});
+}
+
 
 let endpoint: string = '';
 if (connections && connections.chains) {
@@ -174,20 +200,58 @@ async function main() {
     await scanABIs();
     console.log(`Number of validated token contracts: ${tokenContracts.length}`);
     totalScopes += tokenContracts.length;
+
     const progress = setInterval(() => {
         console.log(`Progress: ${processedScopes}/${totalScopes} (${((processedScopes / totalScopes) * 100).toFixed(2)}%) - ${currentScope}@${currentContract} - ${totalAccounts} accounts`);
     }, 1000);
+
     try {
-        const bulkResponse = await elastic.helpers.bulk({
-            flushBytes: 1000000,
-            datasource: processContracts(tokenContracts),
-            onDocument: (doc) => [{index: {_id: `${doc.code}-${doc.scope}-${doc.symbol}`, _index: indexName}}, doc]
-        });
-        console.log(`${bulkResponse.successful} accounts`);
+        if (accountCollection) {
+
+            const cargoQueue = cargo((docs: any[], cb) => {
+                accountCollection.bulkWrite(docs.map(doc => {
+                    return {
+                        updateOne: {
+                            filter: {
+                                code: doc.code,
+                                scope: doc.scope,
+                                symbol: doc.symbol
+                            },
+                            update: {
+                                $set: {
+                                    block_num: doc.block_num,
+                                    amount: doc.amount
+                                }
+                            },
+                            upsert: true
+                        }
+                    };
+                })).finally(() => {
+                    cb();
+                });
+            }, 1000);
+
+            for await (const doc of processContracts(tokenContracts)) {
+                cargoQueue.push(doc).catch(console.log);
+            }
+
+            console.log(`Processed ${totalAccounts} accounts`);
+            await mongoClient?.close();
+
+        } else {
+            const bulkResponse = await elastic.helpers.bulk({
+                flushBytes: 1000000,
+                datasource: processContracts(tokenContracts),
+                onDocument: (doc) => [{index: {_id: `${doc.code}-${doc.scope}-${doc.symbol}`, _index: indexName}}, doc]
+            });
+            console.log(`${bulkResponse.successful} accounts`);
+        }
+
     } catch (e) {
         console.log(e);
         process.exit();
     }
+
     clearInterval(progress);
     const tFinal = Date.now();
     console.log(`Processing took: ${(tFinal - tRef)}ms`);

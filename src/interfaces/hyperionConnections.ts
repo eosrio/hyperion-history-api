@@ -34,10 +34,19 @@ export interface RedisConfig {
     port: number;
 }
 
+export interface MongoDbConfig {
+    host: string;
+    port: string;
+    database_prefix: string;
+    user: string;
+    pass: string;
+}
+
 export interface HyperionConnections {
     amqp: AmqpConfig;
     elasticsearch: ESConfig;
     redis: RedisConfig;
+    mongodb?: MongoDbConfig;
     chains: {
         [key: string]: HyperionChainData;
     },

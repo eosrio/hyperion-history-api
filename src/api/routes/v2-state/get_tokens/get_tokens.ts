@@ -1,6 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 import {getSkipLimit} from "../../v2-history/get_actions/functions.js";
+import {IAccount} from "../../../../interfaces/table-account.js";
 
 
 async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
@@ -15,23 +16,32 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
     const {skip, limit} = getSkipLimit(request.query);
     const maxDocs = fastify.manager.config.api.limits.get_tokens ?? 100;
 
-    const stateResult = await fastify.elastic.search<any>({
-        "index": fastify.manager.chain + '-table-accounts-*',
-        "size": (limit > maxDocs ? maxDocs : limit) || 50,
-        "from": skip || 0,
-        query: {
-            bool: {
-                filter: [{term: {scope: query.account}}]
+    let stateResult: IAccount[];
+
+    if (fastify.manager.config.indexer.experimental_mongodb_state && fastify.manager.conn.mongodb && query.useMongo === 'true') {
+        const dbName = `${fastify.manager.conn.mongodb.database_prefix}_${fastify.manager.chain}`;
+        const collection = fastify.mongo.client.db(dbName).collection<IAccount>('accounts');
+        stateResult = await collection
+            .find({scope: query.account}, {projection: {_id: 0, code: 1, symbol: 1, amount: 1}})
+            .skip(skip || 0)
+            .limit(limit || 50)
+            .toArray();
+    } else {
+        const esResult = await fastify.elastic.search<any>({
+            "index": fastify.manager.chain + '-table-accounts-*',
+            "size": (limit > maxDocs ? maxDocs : limit) || 50,
+            "from": skip || 0,
+            query: {
+                bool: {
+                    filter: [{term: {scope: query.account}}]
+                }
             }
-        }
-    });
+        });
+        stateResult = esResult.hits.hits.map(v => v._source).filter(v => v.present !== 0);
+    }
 
     const testSet = new Set();
-    for (const hit of stateResult.hits.hits) {
-        const data = hit._source;
-        if (typeof data.present !== "undefined" && data.present === 0) {
-            continue;
-        }
+    for (const data of stateResult) {
         let precision;
         let token_data;
         let errorMsg;
@@ -67,7 +77,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
         const resp: Record<string, any> = {
             symbol: data.symbol,
             precision: precision,
-            amount: parseFloat(data.amount),
+            amount: parseFloat(data.amount as string),
             contract: data.code,
         };
 

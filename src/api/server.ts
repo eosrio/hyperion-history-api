@@ -22,6 +22,7 @@ import {WebSocket} from "ws";
 import {StateHistorySocket} from "../indexer/connections/state-history.js";
 import {AlertManagerOptions, AlertsManager} from "../indexer/modules/alertsManager.js";
 import {join} from "node:path";
+import {FastifyMongodbOptions} from "@fastify/mongodb";
 
 
 class HyperionApiServer {
@@ -59,6 +60,10 @@ class HyperionApiServer {
 
         this.manager = new ConnectionManager(cm);
         this.manager.calculateServerHash();
+
+        if (this.manager.config.indexer.experimental_mongodb_state) {
+            this.manager.prepareMongoClient();
+        }
 
         this.initAlerts();
 
@@ -156,6 +161,12 @@ class HyperionApiServer {
                 prefix: '/static/'
             }
         } as any;
+
+        if (this.conf.indexer.experimental_mongodb_state) {
+            pluginParams.fastify_mongo = {
+                client: this.manager.mongodbClient
+            } as FastifyMongodbOptions;
+        }
 
         if (!this.conf.api.disable_rate_limit) {
             let rateLimiterWhitelist = ['127.0.0.1'];

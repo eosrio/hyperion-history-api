@@ -9,6 +9,7 @@ import {exec} from "child_process";
 import {hLog} from "../helpers/common_functions.js";
 import {join} from "node:path";
 import {existsSync, readFileSync} from "fs";
+import {MongoClient} from "mongodb";
 
 export class ConnectionManager {
 
@@ -24,6 +25,8 @@ export class ConnectionManager {
 
     esIngestClients: Client[];
     esIngestClient!: Client;
+
+    mongodbClient?: MongoClient;
 
     constructor(cm: ConfigurationModule) {
 
@@ -204,5 +207,18 @@ export class ConnectionManager {
             console.error('package.json not found');
             process.exit(1);
         }
+    }
+
+    prepareMongoClient() {
+        if (!this.conn.mongodb) {
+            return;
+        }
+        let uri = "mongodb://";
+        if (this.conn.mongodb.user && this.conn.mongodb.pass) {
+            uri += `${this.conn.mongodb.user}:${this.conn.mongodb.pass}@${this.conn.mongodb.host}:${this.conn.mongodb.port}`;
+        } else {
+            uri += `${this.conn.mongodb.host}:${this.conn.mongodb.port}`;
+        }
+        this.mongodbClient = new MongoClient(uri);
     }
 }
