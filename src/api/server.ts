@@ -61,7 +61,7 @@ class HyperionApiServer {
         this.manager = new ConnectionManager(cm);
         this.manager.calculateServerHash();
 
-        if (this.manager.config.indexer.experimental_mongodb_state) {
+        if (this.manager.config.indexer.experimental_mongodb_state && this.manager.conn.mongodb) {
             this.manager.prepareMongoClient();
         }
 
@@ -162,7 +162,7 @@ class HyperionApiServer {
             }
         } as any;
 
-        if (this.conf.indexer.experimental_mongodb_state) {
+        if (this.conf.indexer.experimental_mongodb_state && this.manager.conn.mongodb && this.manager.mongodbClient) {
             this.pluginParams.fastify_mongo = {client: this.manager.mongodbClient} as FastifyMongodbOptions;
         }
 
