@@ -148,7 +148,7 @@ class HyperionApiServer {
 
         // hLog(`Static Assets Dir: ${staticAssetsDir}`);
 
-        const pluginParams = {
+        this.pluginParams = {
             fastify_elasticsearch: {
                 client: this.manager.elasticsearchClient
             },
@@ -163,9 +163,7 @@ class HyperionApiServer {
         } as any;
 
         if (this.conf.indexer.experimental_mongodb_state) {
-            pluginParams.fastify_mongo = {
-                client: this.manager.mongodbClient
-            } as FastifyMongodbOptions;
+            this.pluginParams.fastify_mongo = {client: this.manager.mongodbClient} as FastifyMongodbOptions;
         }
 
         if (!this.conf.api.disable_rate_limit) {
@@ -178,7 +176,7 @@ class HyperionApiServer {
             if (this.conf.api.rate_limit_rpm) {
                 rateLimiterRPM = this.conf.api.rate_limit_rpm;
             }
-            pluginParams.fastify_rate_limit = {
+            this.pluginParams.fastify_rate_limit = {
                 max: rateLimiterRPM,
                 allowList: rateLimiterWhitelist,
                 timeWindow: '1 minute',
@@ -196,8 +194,8 @@ class HyperionApiServer {
 
         const docsConfig = generateOpenApiConfig(this.manager.config);
         if (docsConfig) {
-            pluginParams.fastify_swagger = docsConfig;
-            pluginParams.fastify_swagger_ui = {
+            this.pluginParams.fastify_swagger = docsConfig;
+            this.pluginParams.fastify_swagger_ui = {
                 logo: {
                     type: 'image/svg+xml',
                     content: headerLogo,
@@ -220,8 +218,6 @@ class HyperionApiServer {
                 },
             } as FastifySwaggerUiOptions;
         }
-
-        this.pluginParams = pluginParams;
     }
 
     activateStreaming() {

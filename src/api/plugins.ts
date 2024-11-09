@@ -17,7 +17,11 @@ import fastify_eosjs from "./plugins/fastify-eosjs.js";
 
 export async function registerPlugins(server: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>, params: any) {
     server.register(fastifyElasticsearch, params.fastify_elasticsearch);
-    server.register(fastifyMongodb, params.fastify_mongo);
+
+    if (params.fastify_mongo) {
+        server.register(fastifyMongodb, params.fastify_mongo);
+    }
+
     server.register(fastifyCors);
     server.register(formBodyPlugin);
     server.register(fastifyRedis, params.fastify_redis);
