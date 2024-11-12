@@ -151,12 +151,17 @@ export class StateHistorySocket {
             if (s.chainId.toLowerCase() === chainId.toLowerCase()) {
                 return true;
             } else {
-                if (s.chainId) {
-                    hLog(`⚠️⚠️️ Removing SHIP Server ${s.node.url} :: Chain ID mismatch`);
-                    hLog(`⚠️⚠️ Expected: ${chainId}`);
-                    hLog(`⚠️⚠️ Found: ${s.chainId}`);
+                if (s.chainId === 'N/A') {
+                    hLog(`⚠️⚠️️ SHIP Server ${s.node.url} :: Chain ID not available`);
+                    return true;
+                } else {
+                    if (s.chainId) {
+                        hLog(`⚠️⚠️️ Removing SHIP Server ${s.node.url} :: Chain ID mismatch`);
+                        hLog(`⚠️⚠️ Expected: ${chainId}`);
+                        hLog(`⚠️⚠️ Found: ${s.chainId}`);
+                    }
+                    return false;
                 }
-                return false;
             }
         });
 
@@ -219,9 +224,15 @@ export class StateHistorySocket {
                             server.traceBeginBlock = result[1].trace_begin_block;
                             server.traceEndBlock = result[1].trace_end_block;
                             server.active = true;
-                            clearTimeout(timeout);
-                            tempWS.close();
+                        } else {
+                            hLog(`[WARNING] ${server.node.url} didn't respond chain_id on get_status_result_v0 :: Cannot guarantee data integrity`);
+                            server.chainId = 'N/A';
+                            server.active = true;
+                            server.traceBeginBlock = result[1].trace_begin_block;
+                            server.traceEndBlock = result[1].trace_end_block;
                         }
+                        clearTimeout(timeout);
+                        tempWS.close();
                     }
                 }
             });
