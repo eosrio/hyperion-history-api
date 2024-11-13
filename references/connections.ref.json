@@ -1,4 +1,12 @@
 {
+  "mongodb": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 27017,
+    "database_prefix": "hyperion",
+    "user": "",
+    "pass": ""
+  },
   "amqp": {
     "host": "127.0.0.1:5672",
     "api": "127.0.0.1:15672",
