@@ -12,7 +12,6 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 description: 'filter by voted producer (comma separated)',
                 type: 'string',
                 minLength: 1,
-                maxLength: 12
             }
         }),
         response: extendResponseSchema({

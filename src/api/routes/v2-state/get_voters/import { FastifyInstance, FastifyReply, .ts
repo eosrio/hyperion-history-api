@@ -18,7 +18,7 @@ async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
 
     let stateResult: IVoter[];
 
-    if (fastify.manager.config.indexer.experimental_mongodb_state && fastify.manager.conn.mongodb  && query.useMongo === 'true') {
+    if (fastify.manager.config.indexer.experimental_mongodb_state && fastify.manager.conn.mongodb) {
         const dbName = `${fastify.manager.conn.mongodb.database_prefix}_${fastify.manager.chain}`;
         const collection = fastify.mongo.client.db(dbName).collection<IVoter>('voters');
 
@@ -29,8 +29,6 @@ async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
         if (query.proxy === 'true') {
             mongoQuery.is_proxy = true;
         }
-
-        response.voter_count = await collection.countDocuments(mongoQuery);
 
         stateResult = await collection
             .find(mongoQuery, { projection: { _id: 0, voter: 1, last_vote_weight: 1, block_num: 1 } })
@@ -56,7 +54,7 @@ async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
         const esResult = await fastify.elastic.search<any>({
             index: `${fastify.manager.chain}-table-voters-*`,
             from: skip || 0,
-            size: (limit > maxDocs ? maxDocs : limit) || 10,
+            size: Math.min(limit, maxDocs) || 10,
             query: queryStruct,
             sort: [{ last_vote_weight: "desc" }]
         });
