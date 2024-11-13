@@ -1,6 +1,6 @@
-import {FastifyInstance} from "fastify";
-import {addApiRoute, extendQueryStringSchema, getRouteName} from "../../../helpers/functions.js";
-import {getTokensHandler} from "./get_tokens.js";
+import { FastifyInstance } from "fastify";
+import { addApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName } from "../../../helpers/functions.js";
+import { getTokensHandler } from "./get_tokens.js";
 
 export default function (fastify: FastifyInstance, opts: any, next) {
     const schema = {
@@ -14,7 +14,23 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 minLength: 1,
                 maxLength: 12
             }
-        }, ["account"])
+        },
+            ["account"]),
+        response: extendResponseSchema({
+            account: {type: "string"},
+            tokens: {
+                type: "array",
+                items: {
+                    type: "object",
+                    properties: {
+                        symbol: { type: "string" },
+                        precision: { type: "number" },
+                        amount: { type: "number" },
+                        contract: { type: "string" },
+                    }
+                }
+            }
+        })
     };
     addApiRoute(
         fastify,

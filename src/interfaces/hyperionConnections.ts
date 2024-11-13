@@ -35,6 +35,7 @@ export interface RedisConfig {
 }
 
 export interface MongoDbConfig {
+    enabled?: boolean;
     host: string;
     port: string;
     database_prefix: string;

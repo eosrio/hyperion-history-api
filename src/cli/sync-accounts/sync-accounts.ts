@@ -38,7 +38,7 @@ const elastic = new Client({
 const _mongo = connections.mongodb;
 let mongoClient: MongoClient | undefined;
 let accountCollection: Collection<IAccount> | undefined;
-if (_mongo) {
+if (_mongo && _mongo.enabled) {
     let uri = "mongodb://";
     if (_mongo.user && _mongo.pass) {
         uri += `${_mongo.user}:${_mongo.pass}@${_mongo.host}:${_mongo.port}`;
