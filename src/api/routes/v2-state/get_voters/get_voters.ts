@@ -6,7 +6,6 @@ import { estypes } from "@elastic/elasticsearch";
 import { IVoter } from "../../../../interfaces/table-voter.js";
 
 async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
-    console.log(`Entrei  no getVoters`);
     const query: any = request.query;
     const { skip, limit } = getSkipLimit(request.query);
     const maxDocs = fastify.manager.config.api.limits.get_voters ?? 100;
@@ -38,7 +37,6 @@ async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
             .limit(limit || 50)
             .toArray();
 
-            console.log(`State Result mongo:`);
     } else {
         let queryStruct: any = { bool: { must: [] } };
         if (query.producer) {
@@ -61,7 +59,6 @@ async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
             sort: [{ last_vote_weight: "desc" }]
         });
         stateResult = esResult.hits.hits.map((hit: any) => hit._source);
-        console.log(`State Result elastic:`);
         response.voter_count = (esResult.hits.total as estypes.SearchTotalHits).value;
     }
 
