@@ -1,12 +1,4 @@
 {
-  "mongodb": {
-    "enabled": true,
-    "host": "127.0.0.1",
-    "port": 27017,
-    "database_prefix": "hyperion",
-    "user": "",
-    "pass": ""
-  },
   "amqp": {
     "host": "127.0.0.1:5672",
     "api": "127.0.0.1:15672",
@@ -28,6 +20,14 @@
   "redis": {
     "host": "127.0.0.1",
     "port": "6379"
+  },
+  "mongodb": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 27017,
+    "database_prefix": "hyperion",
+    "user": "",
+    "pass": ""
   },
   "chains": {
     "eos": {
