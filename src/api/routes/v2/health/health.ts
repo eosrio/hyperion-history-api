@@ -250,8 +250,9 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
         // Calculate missing blocks
         const lastIndexedBlock = indexedBlocks[0];
         const totalIndexed = indexedBlocks[1] - 1;
-        const missingCounter = (lastIndexedBlock - firstIndexedBlock) - totalIndexed;
-        const missingPct = (missingCounter * 100 / indexedBlocks[1]).toFixed(2) + "%";
+        const expectedBlocks = lastIndexedBlock - firstIndexedBlock;
+        const missingCounter = expectedBlocks - totalIndexed;
+        const missingPct = (missingCounter * 100 / expectedBlocks).toFixed(2) + "%";
 
         // Data Response
         const data: ESService = {
