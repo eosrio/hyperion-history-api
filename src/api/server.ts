@@ -545,7 +545,7 @@ class HyperionApiServer {
 
     async publishApiUsage() {
         const dataPoints = await this.getPast24HoursUsage();
-        if (this.qryPublisher) {
+        if (this.qryPublisher && dataPoints && dataPoints[0]) {
             this.lastSentTimestamp = dataPoints[0].ts;
             // console.log(`Last Data Point: ${this.lastSentTimestamp}`);
             this.qryPublisher.publishPastApiUsage(dataPoints);
