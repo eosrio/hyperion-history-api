@@ -2,6 +2,7 @@ import {readFileSync} from "node:fs";
 import {Client} from "@elastic/elasticsearch";
 import {HyperionBlock} from "./interfaces.js";
 import path from "path";
+import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 
 export function readConnectionConfig() {
     const connectionsConfigPath = path.join(import.meta.dirname, '../../../', 'config/connections.json');
@@ -23,7 +24,7 @@ export function initESClient(config: any) {
     });
 }
 
-export function readChainConfig(chain: string) {
+export function readChainConfig(chain: string): HyperionConfig {
     const chainConfigPath = path.join(import.meta.dirname, '../../../', `config/chains/${chain}.config.json`);
     const file = readFileSync(chainConfigPath, 'utf8');
     return JSON.parse(file);
