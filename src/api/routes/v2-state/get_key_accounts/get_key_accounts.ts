@@ -48,20 +48,6 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
         invalidKey();
     }
 
-
-    // if (public_Key.startsWith("PUB_")) {
-    //     pubKey = PublicKey.fromString(public_Key);
-    // } else if (public_Key.startsWith("EOS")) {
-    //     try {
-    //         publicKey = Numeric.convertLegacyPublicKey(public_Key);
-    //     } catch (e: any) {
-    //         hLog(e.message);
-    //         invalidKey();
-    //     }
-    // } else {
-    //     invalidKey();
-    // }
-
     const response = {
         public_key: pubKeyString,
         cv: pubKeyLegacy,

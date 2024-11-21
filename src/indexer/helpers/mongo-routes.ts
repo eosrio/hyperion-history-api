@@ -1,7 +1,6 @@
 import {Collection, Db} from "mongodb";
 import {ConnectionManager} from "../connections/manager.class.js";
 import {Message} from "amqplib";
-import _ from "lodash";
 import {hLog} from "./common_functions.js";
 import {IAccount} from "../../interfaces/table-account.js";
 
