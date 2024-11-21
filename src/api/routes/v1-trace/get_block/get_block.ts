@@ -1,6 +1,6 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
-import * as _ from "lodash";
+import _ from "lodash";
 
 interface getBlockTraceResponse {
     id: string;
