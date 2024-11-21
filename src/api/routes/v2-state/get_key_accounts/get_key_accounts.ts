@@ -1,8 +1,10 @@
-import {Numeric} from "eosjs";
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 import {getSkipLimit} from "../../v2-history/get_actions/functions.js";
 import {hLog} from "../../../../indexer/helpers/common_functions.js";
+import {PublicKey} from "@wharfkit/antelope";
+import {request as undiciRequest} from "undici";
+
 
 function invalidKey() {
     const err: any = new Error();
@@ -13,7 +15,9 @@ function invalidKey() {
 
 async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest) {
 
-    let publicKey;
+    let pubKey: PublicKey;
+    let pubKeyString: string = '';
+    let pubKeyLegacy: string = '';
     if (typeof request.body === 'string' && request.method === 'POST') {
         request.body = JSON.parse(request.body);
     }
@@ -26,20 +30,41 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
 
     const public_Key = request.method === 'POST' ? body.public_key : query.public_key;
 
-    if (public_Key.startsWith("PUB_")) {
-        publicKey = public_Key;
-    } else if (public_Key.startsWith("EOS")) {
-        try {
-            publicKey = Numeric.convertLegacyPublicKey(public_Key);
-        } catch (e: any) {
-            hLog(e.message);
-            invalidKey();
-        }
-    } else {
+    if (!public_Key) {
         invalidKey();
     }
 
+    try {
+        pubKey = PublicKey.from(public_Key);
+        pubKeyString = pubKey.toString();
+        let chainToken = fastify.manager.config.api.custom_core_token ?? 'EOS';
+        pubKeyLegacy = pubKey.toLegacyString(chainToken || 'EOS');
+    } catch (e: any) {
+        hLog(e.message);
+        invalidKey();
+    }
+
+    if (!pubKeyString) {
+        invalidKey();
+    }
+
+
+    // if (public_Key.startsWith("PUB_")) {
+    //     pubKey = PublicKey.fromString(public_Key);
+    // } else if (public_Key.startsWith("EOS")) {
+    //     try {
+    //         publicKey = Numeric.convertLegacyPublicKey(public_Key);
+    //     } catch (e: any) {
+    //         hLog(e.message);
+    //         invalidKey();
+    //     }
+    // } else {
+    //     invalidKey();
+    // }
+
     const response = {
+        public_key: pubKeyString,
+        cv: pubKeyLegacy,
         account_names: []
     } as any;
 
@@ -47,27 +72,61 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
         response.permissions = [];
     }
 
+    // use get_accounts_by_authorizers if available
     try {
+        const server = fastify.manager.config.api.chain_api;
+        const url = server + '/v1/chain/get_accounts_by_authorizers';
+        const data = await undiciRequest(url, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({keys: [pubKeyString]})
+        });
+        if (data.statusCode === 200) {
+            const body = await data.body.json() as any;
+            if (body.accounts) {
+                for (const account of body.accounts) {
+                    response.account_names.push(account.account_name);
+                    if (request.method === 'GET' && query.details) {
+                        if (account.authorizing_key === pubKeyLegacy || account.authorizing_key === pubKeyString) {
+                            response.permissions.push({
+                                owner: account.account_name,
+                                name: account.permission_name,
+                                weight: account.weight,
+                                threshold: account.threshold
+                            });
+                        }
+                    }
+                }
+            }
+        } else {
+            if (data.statusCode === 404) {
+                hLog(`⚠️  /v1/chain/get_accounts_by_authorizers not available on ${server}`);
+            }
+        }
+    } catch
+        (e: any) {
+        console.log(e);
+    }
 
+    // early return if we have results from get_accounts_by_authorizers
+    if (response.account_names.length > 0) {
+        response.account_names = [...(new Set(response.account_names))];
+        return response;
+    }
+
+    try {
         const permTableResults = await fastify.elastic.search<any>({
             index: fastify.manager.chain + '-perm-*',
             size: (limit > maxDocs ? maxDocs : limit) || 100,
             from: skip || 0,
-            body: {
-                query: {
-                    bool: {
-                        must: [
-                            {
-                                term: {
-                                    "auth.keys.key.keyword": publicKey
-                                }
-                            }
-                        ],
-                    }
+            query: {
+                bool: {
+                    must: [
+                        {term: {"auth.keys.key.keyword": pubKeyString}}
+                    ]
                 }
             }
         });
-
         if (permTableResults.hits.hits.length > 0) {
             for (const perm of permTableResults.hits.hits) {
                 response.account_names.push(perm._source.owner);
@@ -76,9 +135,8 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
                 }
             }
         }
-
-    } catch (e) {
-        console.log(e);
+    } catch (e: any) {
+        console.log(e.message);
     }
 
     if (response.account_names.length > 0) {
@@ -94,9 +152,9 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
         query: {
             bool: {
                 should: [
-                    {term: {"@updateauth.auth.keys.key.keyword": publicKey}},
-                    {term: {"@newaccount.active.keys.key.keyword": publicKey}},
-                    {term: {"@newaccount.owner.keys.key.keyword": publicKey}}
+                    {term: {"@updateauth.auth.keys.key.keyword": pubKeyString}},
+                    {term: {"@newaccount.active.keys.key.keyword": pubKeyString}},
+                    {term: {"@newaccount.owner.keys.key.keyword": pubKeyString}}
                 ],
                 minimum_should_match: 1
             }

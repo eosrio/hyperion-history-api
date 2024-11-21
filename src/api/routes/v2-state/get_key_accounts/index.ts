@@ -1,6 +1,6 @@
 import {FastifyInstance} from "fastify";
 import {getKeyAccountsHandler} from "./get_key_accounts.js";
-import {addApiRoute, extendQueryStringSchema, getRouteName} from "../../../helpers/functions.js";
+import {addApiRoute, extendQueryStringSchema, extendResponseSchema, getRouteName} from "../../../helpers/functions.js";
 
 export default function (fastify: FastifyInstance, opts: any, next) {
 
@@ -19,32 +19,31 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 type: 'boolean'
             },
         }, ["public_key"]),
-        response: {
-            200: {
-                type: 'object',
-                properties: {
-                    "account_names": {
-                        type: "array",
-                        items: {type: "string"}
-                    },
-                    "permissions": {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            properties: {
-                                owner: {type: 'string'},
-                                block_num: {type: 'integer'},
-                                parent: {type: 'string'},
-                                last_updated: {type: 'string'},
-                                auth: {},
-                                name: {type: 'string'},
-                                present: {type: 'number'}
-                            }
-                        }
+        response: extendResponseSchema({
+            public_key: {type: 'string'},
+            legacy_public_key: {type: 'string'},
+            "account_names": {
+                type: "array",
+                items: {type: "string"}
+            },
+            "permissions": {
+                type: "array",
+                items: {
+                    type: "object",
+                    properties: {
+                        owner: {type: 'string'},
+                        block_num: {type: 'integer'},
+                        parent: {type: 'string'},
+                        last_updated: {type: 'string'},
+                        auth: {},
+                        name: {type: 'string'},
+                        present: {type: 'number'},
+                        weight: {type: 'number'},
+                        threshold: {type: 'number'}
                     }
                 }
             }
-        }
+        })
     };
     addApiRoute(fastify, 'GET', getRouteName(import.meta.filename), getKeyAccountsHandler, getSchema);
 
