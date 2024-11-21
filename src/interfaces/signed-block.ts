@@ -3,7 +3,7 @@ interface ProducerKey {
     block_signing_key: string;
 }
 
-interface ProducerSchedule {
+export interface ProducerSchedule {
     version: number;
     producers: ProducerKey[];
 }

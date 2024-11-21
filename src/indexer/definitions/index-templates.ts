@@ -438,7 +438,8 @@ export const block = {
             "new_producers.version": {"type": "long"},
             "schedule_version": {"type": "double"},
             "cpu_usage": {"type": "integer"},
-            "net_usage": {"type": "integer"}
+            "net_usage": {"type": "integer"},
+            "trx_count": {"type": "integer"}
         }
     }
 };

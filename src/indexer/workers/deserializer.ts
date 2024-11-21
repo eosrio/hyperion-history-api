@@ -16,7 +16,7 @@ import {TransactionTrace} from "../../interfaces/action-trace.js";
 import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
 import {Action, Type as EOSJSType} from "eosjs/dist/eosjs-serialize.js";
 import {JsSignatureProvider} from "eosjs/dist/eosjs-jssig.js";
-import {HyperionSignedBlock} from "../../interfaces/signed-block.js";
+import {HyperionSignedBlock, ProducerSchedule} from "../../interfaces/signed-block.js";
 import {estypes} from "@elastic/elasticsearch";
 
 const abi_remapping = {
@@ -45,16 +45,11 @@ interface HyperionLightBlock {
     block_id: string;
     prev_id: string;
     producer: string;
-    new_producers: {
-        version: number;
-        producers: {
-            block_signing_key: string;
-            producer_name: string;
-        }[];
-    };
+    new_producers?: ProducerSchedule;
     schedule_version: number;
     cpu_usage: number;
     net_usage: number;
+    trx_count: number;
 }
 
 function bufferFromJson(data: any, useFlatstr?: boolean) {
@@ -299,7 +294,19 @@ export default class MainDSWorker extends HyperionWorker {
             const block_num = res['this_block']['block_num'];
             const block_id = res['this_block']['block_id'].toLowerCase();
             let block_ts = res['this_time'];
-            let light_block;
+
+            const light_block: HyperionLightBlock = {
+                '@timestamp': block['timestamp'],
+                block_num: res['this_block']['block_num'],
+                block_id: res['this_block']['block_id'].toLowerCase(),
+                prev_id: res.prev_block?.block_id?.toLowerCase(),
+                producer: block.producer,
+                new_producers: block.new_producers,
+                schedule_version: block.schedule_version,
+                cpu_usage: 0,
+                net_usage: 0,
+                trx_count: 0
+            };
 
             if (this.conf.indexer.fetch_block) {
 
@@ -317,55 +324,61 @@ export default class MainDSWorker extends HyperionWorker {
                 const failedTrx: any[] = [];
 
                 block.transactions.forEach((trx) => {
-
                     total_cpu += trx['cpu_usage_us'];
                     total_net += trx['net_usage_words'];
 
-                    if (this.conf.features.failed_trx) {
-                        switch (trx.status) {
+                    if (trx.status === 0) {
+                        light_block.trx_count++;
+                    } else {
+                        if (this.conf.features.failed_trx) {
+                            switch (trx.status) {
 
-                            // soft_fail: objectively failed (not executed), error handler executed
-                            case 1: {
-                                failedTrx.push({
-                                    id: trx.trx[1],
-                                    status: trx.status,
-                                    cpu: trx.cpu_usage_us,
-                                    net: trx.net_usage_words
-                                });
-                                break;
-                            }
+                                // soft_fail: objectively failed (not executed), error handler executed
+                                case 1: {
+                                    failedTrx.push({
+                                        id: trx.trx[1],
+                                        status: trx.status,
+                                        cpu: trx.cpu_usage_us,
+                                        net: trx.net_usage_words
+                                    });
+                                    break;
+                                }
 
-                            // hard_fail: objectively failed and error handler objectively failed thus no state change
-                            case 2: {
-                                failedTrx.push({
-                                    id: trx.trx[1],
-                                    status: trx.status,
-                                    cpu: trx.cpu_usage_us,
-                                    net: trx.net_usage_words
-                                });
-                                break;
-                            }
+                                // hard_fail: objectively failed and error handler objectively failed thus no state change
+                                case 2: {
+                                    failedTrx.push({
+                                        id: trx.trx[1],
+                                        status: trx.status,
+                                        cpu: trx.cpu_usage_us,
+                                        net: trx.net_usage_words
+                                    });
+                                    break;
+                                }
 
-                            // delayed: transaction delayed/deferred/scheduled for future execution
-                            // case 3: {
-                            //     hLog('delayed', block_num);
-                            //     console.log(trx);
-                            //     const unpackedTrx = this.api.deserializeTransaction(Buffer.from(trx.trx[1].packed_trx, 'hex'));
-                            //     console.log(unpackedTrx);
-                            //     break;
-                            // }
+                                // delayed: transaction delayed/deferred/scheduled for future execution
+                                // case 3: {
+                                //     hLog('delayed', block_num);
+                                //     console.log(trx);
+                                //     const unpackedTrx = this.api.deserializeTransaction(Buffer.from(trx.trx[1].packed_trx, 'hex'));
+                                //     console.log(unpackedTrx);
+                                //     break;
+                                // }
 
-                            // expired: transaction expired and storage space refunded to user
-                            case 4: {
-                                failedTrx.push({
-                                    id: trx.trx[1],
-                                    status: trx.status
-                                });
-                                break;
+                                // expired: transaction expired and storage space refunded to user
+                                case 4: {
+                                    failedTrx.push({
+                                        id: trx.trx[1],
+                                        status: trx.status
+                                    });
+                                    break;
+                                }
                             }
                         }
                     }
                 });
+
+                light_block.cpu_usage = total_cpu;
+                light_block.net_usage = total_net;
 
                 // submit failed trx
                 if (failedTrx.length > 0) {
@@ -380,21 +393,6 @@ export default class MainDSWorker extends HyperionWorker {
                             await this.pushToIndexQueue(payload, 'trx_error');
                         }
                     }
-                }
-
-                light_block = {
-                    '@timestamp': block['timestamp'],
-                    block_num: res['this_block']['block_num'],
-                    block_id: res['this_block']['block_id'].toLowerCase(),
-                    producer: block['producer'],
-                    new_producers: block['new_producers'],
-                    schedule_version: block['schedule_version'],
-                    cpu_usage: total_cpu,
-                    net_usage: total_net
-                };
-
-                if (res['prev_block']) {
-                    light_block.prev_id = res['prev_block']['block_id'].toLowerCase();
                 }
 
                 if (light_block.new_producers) {
