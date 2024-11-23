@@ -24,6 +24,9 @@ import {AlertManagerOptions, AlertsManager} from "../indexer/modules/alertsManag
 import {join} from "node:path";
 import {FastifyMongodbOptions} from "@fastify/mongodb";
 
+import {createContext, runInContext} from "node:vm";
+import fastifyHttpProxy from "@fastify/http-proxy";
+
 
 class HyperionApiServer {
 
@@ -141,6 +144,10 @@ class HyperionApiServer {
         }
 
         hLog(`Chain API URL: "${this.fastify.chain_api}" | Push API URL: "${this.fastify.push_api}"`);
+
+        // check for locally installed explorer
+        this.configureExplorer();
+
 
         const ioRedisClient = new Redis(this.manager.conn.redis);
 
@@ -643,6 +650,59 @@ class HyperionApiServer {
             }).catch(reason => {
                 hLog(`Failed to load alerts manager: ${reason}`);
             });
+        }
+    }
+
+    private configureExplorer() {
+        if (this.manager.config.api.explorer) {
+
+            if (this.manager.config.api.explorer.upstream) {
+                this.fastify.register(fastifyHttpProxy, {
+                    upstream: this.manager.config.api.explorer.upstream,
+                    rewritePrefix: '/explorer',
+                    prefix: '/explorer',
+                    replyOptions: {
+                        rewriteRequestHeaders: (_, headers) => {
+                            return {
+                                ...headers,
+                                'x-hyperion-chain': this.manager.chain,
+                                'x-hyperion-server': this.manager.config.api.server_name
+                            };
+                        }
+                    }
+                });
+            }
+
+            const explorerPath = join(import.meta.dirname, '../../', 'explorer');
+            if (existsSync(explorerPath)) {
+                // load explorer theme data
+                if (this.manager.config.api.explorer.theme) {
+                    const themeData: Record<string, any> = {};
+                    this.fastify.decorate('explorerTheme', themeData);
+                    const themesPath = join(explorerPath, 'themes');
+                    if (existsSync(themesPath)) {
+                        const themeFile = join(themesPath, this.manager.config.api.explorer.theme + '.theme.mjs');
+                        if (existsSync(themeFile)) {
+                            const themeSourceData = readFileSync(themeFile).toString();
+
+                            // create VM context to run theme data
+                            const context = {themeData: {}};
+                            createContext(context);
+                            // run theme data in context
+                            runInContext(themeSourceData, context);
+
+                            if (Object.keys(context.themeData).length > 0) {
+                                for (const key in context.themeData) {
+                                    themeData[key] = context.themeData[key];
+                                }
+                            } else {
+                                hLog(`Failed to load theme data from ${themeFile}`);
+                            }
+
+                        }
+                    }
+                }
+            }
         }
     }
 }

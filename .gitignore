@@ -46,3 +46,5 @@ configuration_backups
 tests/api/ijhttp
 tests/api/ijhttp.zip
 tests/api/reports
+
+explorer

@@ -130,10 +130,16 @@ interface ApiConfigs {
     provider_url: string;
     provider_logo: string;
     chain_logo_url: string;
-    enable_caching: boolean,
+    enable_caching: boolean;
     cache_life: number;
-    limits: ApiLimits,
-    v1_chain_cache?: CachedRouteConfig[]
+    limits: ApiLimits;
+    v1_chain_cache?: CachedRouteConfig[];
+    explorer?: ExplorerConfigs;
+}
+
+interface ExplorerConfigs {
+    theme?: string;
+    upstream?: string;
 }
 
 interface HyperionHubConfigs {

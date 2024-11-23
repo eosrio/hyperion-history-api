@@ -7,6 +7,7 @@ import {CacheManager} from "../../src/api/helpers/cacheManager.js";
 declare module 'fastify' {
     export interface FastifyInstance {
         manager: ConnectionManager;
+        explorerTheme?: Record<string, any>
         shs: StateHistorySocket;
         elastic_version: string;
         cacheManager: CacheManager;

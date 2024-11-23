@@ -11,7 +11,7 @@
     "sourceMap": true,
     "allowJs": false,
     "outDir": "build",
-    "skipLibCheck": false,
+    "skipLibCheck": true,
     "allowArbitraryExtensions": true,
     "strict": true,
     "typeRoots": [

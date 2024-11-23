@@ -7,7 +7,8 @@ async function getExplorerMetadata(fastify: FastifyInstance) {
         provider_url: fastify.manager.config.api.provider_url,
         chain_name: fastify.manager.config.api.chain_name,
         chain_id: fastify.manager.conn.chains[fastify.manager.chain].chain_id,
-        custom_core_token: fastify.manager.config.api.custom_core_token
+        custom_core_token: fastify.manager.config.api.custom_core_token,
+        theme: fastify.explorerTheme ?? {},
     }
 }
 
