@@ -341,7 +341,7 @@ class HyperionApiServer {
             const listeningAddress = this.fastify.server.address() as AddressInfo;
             const apiUrl = `http://${listeningAddress.address}:${listeningAddress.port}`;
             hLog(`${this.chain} Hyperion API ready and listening on ${apiUrl}`);
-            hLog(`API Public Url: http://${this.conf.api.server_name}`);
+            hLog(`API Public Url: ${this.conf.api.server_name}`);
 
             this.alerts?.emit('ApiStart', {
                 hyperion_version: this.manager.current_version,
