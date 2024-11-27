@@ -15,6 +15,7 @@
     "push_api": "",
     "chain_logo_url": "",
     "explorer": {
+      "home_redirect": false,
       "upstream": "",
       "theme": ""
     },

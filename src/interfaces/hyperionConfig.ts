@@ -138,6 +138,7 @@ interface ApiConfigs {
 }
 
 interface ExplorerConfigs {
+    home_redirect?: boolean;
     theme?: string;
     upstream?: string;
 }

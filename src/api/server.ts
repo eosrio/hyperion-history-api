@@ -519,12 +519,16 @@ class HyperionApiServer {
                 tags: ['status'],
             }
         }, (_, reply: FastifyReply) => {
-            reply.send({
-                version: this.manager.current_version,
-                version_hash: this.manager.getServerHash(),
-                chain: this.chain,
-                chain_id: this.manager.conn.chains[this.chain].chain_id
-            });
+            if (this.fastify.manager.config.api.explorer?.home_redirect) {
+                reply.redirect('/explorer');
+            } else {
+                reply.send({
+                    version: this.manager.current_version,
+                    version_hash: this.manager.getServerHash(),
+                    chain: this.chain,
+                    chain_id: this.manager.conn.chains[this.chain].chain_id
+                });
+            }
         });
     }
 
