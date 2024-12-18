@@ -298,24 +298,26 @@ export default class MainDSWorker extends HyperionWorker {
             const block_id = res['this_block']['block_id'].toLowerCase();
             let block_ts = res['this_time'];
 
-            const light_block: HyperionLightBlock = {
-                '@timestamp': block['timestamp'],
-                block_num: res['this_block']['block_num'],
-                block_id: res['this_block']['block_id'].toLowerCase(),
-                prev_id: res.prev_block?.block_id?.toLowerCase(),
-                producer: block.producer,
-                new_producers: block.new_producers,
-                schedule_version: block.schedule_version,
-                cpu_usage: 0,
-                net_usage: 0,
-                trx_count: 0
-            };
+            let light_block: HyperionLightBlock | null = null;
 
             if (this.conf.indexer.fetch_block) {
 
                 if (!block) {
                     return null;
                 }
+
+                light_block = {
+                    '@timestamp': block['timestamp'],
+                    block_num: res['this_block']['block_num'],
+                    block_id: res['this_block']['block_id'].toLowerCase(),
+                    prev_id: res.prev_block?.block_id?.toLowerCase(),
+                    producer: block.producer,
+                    new_producers: block.new_producers,
+                    schedule_version: block.schedule_version,
+                    cpu_usage: 0,
+                    net_usage: 0,
+                    trx_count: 0
+                };
 
                 producer = block['producer'];
                 ts = block['timestamp'];
@@ -331,7 +333,9 @@ export default class MainDSWorker extends HyperionWorker {
                     total_net += trx['net_usage_words'];
 
                     if (trx.status === 0) {
-                        light_block.trx_count++;
+                        if (light_block) {
+                            light_block.trx_count++;
+                        }
                     } else {
                         if (this.conf.features.failed_trx) {
                             switch (trx.status) {
@@ -457,7 +461,7 @@ export default class MainDSWorker extends HyperionWorker {
                                     onBlockTransactions.push(trxId);
                                     process.send?.({
                                         event: 'included_trx',
-                                        block_num: light_block.block_num,
+                                        block_num,
                                         trx_id: trxId,
                                         signatures: signatures,
                                         root_act: trace[1].action_traces[0][1].act
@@ -495,7 +499,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
 
             // Send light block to indexer
-            if (this.conf.indexer.fetch_block) {
+            if (this.conf.indexer.fetch_block && light_block) {
                 await this.pushToBlocksQueue(light_block);
             }
             return {
