@@ -29,10 +29,10 @@ export default class WSRouter extends HyperionWorker {
         });
     }
 
-    assertQueues(): void {
+    async assertQueues(): Promise<void> {
         if (this.ch) {
-            this.ch.assertQueue(this.q, RabbitQueueDef);
-            this.ch.consume(this.q, this.onConsume.bind(this));
+            await this.ch.assertQueue(this.q, RabbitQueueDef);
+            await this.ch.consume(this.q, this.onConsume.bind(this));
         }
     }
 

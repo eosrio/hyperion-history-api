@@ -177,21 +177,25 @@ export default class StateReader extends HyperionWorker {
         }
     }
 
-    assertQueues(): void {
-        if (this.isLiveReader) {
-            const live_queue = this.chain + ':live_blocks';
-            this.ch?.assertQueue(live_queue, RabbitQueueDef);
-            this.ch?.on('drain', () => {
-                this.qStatusMap[live_queue] = true;
-            });
-        } else {
-            for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                this.ch?.assertQueue(this.chain + ":blocks:" + (i + 1), RabbitQueueDef);
-                this.ch?.on('drain', () => {
-                    this.qStatusMap[this.chain + ":blocks:" + (i + 1)] = true;
+    async assertQueues(): Promise<void> {
+
+        if (this.ch) {
+            if (this.isLiveReader) {
+                const live_queue = this.chain + ':live_blocks';
+                await this.ch.assertQueue(live_queue, RabbitQueueDef);
+                this.ch.on('drain', () => {
+                    this.qStatusMap[live_queue] = true;
                 });
+            } else {
+                for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
+                    await this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), RabbitQueueDef);
+                    this.ch.on('drain', () => {
+                        this.qStatusMap[this.chain + ":blocks:" + (i + 1)] = true;
+                    });
+                }
             }
         }
+
         if (this.cch) {
             this.cch_ready = true;
             this.stageOneDistQueue.resume();
