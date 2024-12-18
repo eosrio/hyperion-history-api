@@ -72,7 +72,6 @@ export default class IndexerWorker extends HyperionWorker {
             const queueName = process.env.queue;
             if (this.ch && queueName) {
                 this.ch_ready = true;
-                this.indexQueue.resume();
                 this.ch.on('close', () => {
                     hLog('Channel closed for queue:', queueName);
                     this.indexQueue.pause();
@@ -81,6 +80,7 @@ export default class IndexerWorker extends HyperionWorker {
                 await this.ch.assertQueue(queueName, RabbitQueueDef);
                 await this.ch.prefetch(this.conf.prefetch.index);
                 await this.ch.consume(queueName, this.indexQueue.push);
+                this.indexQueue.resume();
             }
         } catch (e: any) {
             hLog(`Error asserting queue: ${e.message}`);
