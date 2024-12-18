@@ -13,7 +13,7 @@ import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
 import {Type} from "eosjs/dist/eosjs-serialize.js";
 import {HyperionWorker} from "./hyperionWorker.js";
 import {HyperionActionAct} from "../../interfaces/hyperion-action.js";
-import {ABI, ABIDef} from "@wharfkit/antelope";
+import {ABI} from "@wharfkit/antelope";
 
 const abi_remapping = {
     "_Bool": "bool",
@@ -629,13 +629,11 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    initConsumer() {
+    async initConsumer() {
         if (this.ch_ready && this.ch) {
-            this.ch.prefetch(this.conf.prefetch.block);
-            this.ch.consume(this.local_queue, (data) => {
+            await this.ch.prefetch(this.conf.prefetch.block);
+            await this.ch.consume(this.local_queue, (data) => {
                 this.consumerQueue.push(data);
-            }, {}, (err, ok) => {
-                hLog(err, ok);
             });
             debugLog(`started consuming from ${this.local_queue}`);
         }
@@ -695,16 +693,16 @@ export default class DSPoolWorker extends HyperionWorker {
         this.startMonitoring();
     }
 
-    assertQueues(): void {
+    async assertQueues(): Promise<void> {
         const queue_prefix = this.conf.settings.chain;
         this.local_queue = queue_prefix + ':ds_pool:' + process.env.local_id;
         if (this.ch) {
             this.ch_ready = true;
-            this.ch.assertQueue(this.local_queue, RabbitQueueDef);
+            await this.ch.assertQueue(this.local_queue, RabbitQueueDef);
             if (this.conf.settings.dsp_parser) {
-                this.ch.assertQueue(`${queue_prefix}:dsp`, RabbitQueueDef);
+                await this.ch.assertQueue(`${queue_prefix}:dsp`, RabbitQueueDef);
             }
-            this.initConsumer();
+            await this.initConsumer();
         }
     }
 

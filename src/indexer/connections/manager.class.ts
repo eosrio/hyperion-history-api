@@ -81,25 +81,23 @@ export class ConnectionManager {
 
         for (const queue of result) {
             if (queue.name.startsWith(this.chain + ":")) {
-                const msg_count = parseInt(queue.messages);
-                if (msg_count > 0) {
-                    try {
+                hLog(`Deleting queue ${queue.name}`);
+                try {
 
-                        const headers = new Headers();
-                        headers.set('Authorization', 'Basic ' + Buffer.from(opts.username + ":" + opts.password).toString('base64'));
-                        await fetch(apiUrl + `/api/queues/${vHost}/${queue.name}/contents`, {
-                            method: "DELETE",
-                            headers
-                        });
+                    const headers = new Headers();
+                    headers.set('Authorization', 'Basic ' + Buffer.from(opts.username + ":" + opts.password).toString('base64'));
+                    await fetch(apiUrl + `/api/queues/${vHost}/${queue.name}`, {
+                        method: "DELETE",
+                        headers
+                    });
 
-                        // await got.delete(apiUrl + `/api/queues/${vHost}/${queue.name}/contents`, opts);
+                    // await got.delete(apiUrl + `/api/queues/${vHost}/${queue.name}/contents`, opts);
 
-                        hLog(`${queue.messages} messages deleted on queue ${queue.name}`);
-                    } catch (e: any) {
-                        console.log(e.message);
-                        console.error('failed to connect to rabbitmq http api');
-                        process.exit(1);
-                    }
+                    hLog(`${queue.messages} messages deleted on queue ${queue.name}`);
+                } catch (e: any) {
+                    console.log(e.message);
+                    console.error('failed to connect to rabbitmq http api');
+                    process.exit(1);
                 }
             }
         }

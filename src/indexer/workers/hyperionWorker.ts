@@ -2,7 +2,7 @@ import {JsonRpc} from "eosjs/dist";
 import {Client} from "@elastic/elasticsearch";
 import {EventEmitter} from "events";
 import {Abieos} from "@eosrio/node-abieos";
-import {Channel, ConfirmChannel} from "amqplib/callback_api.js";
+import {Channel, ConfirmChannel} from "amqplib";
 
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 import {ConnectionManager} from "../connections/manager.class.js";
@@ -129,18 +129,22 @@ export abstract class HyperionWorker {
     onConnect() {
         this.ch_ready = true;
         this.cch_ready = true;
-        this.assertQueues();
-        if (this.ch && this.cch) {
-            this.ch.on('close', () => {
-                this.ch_ready = false;
-            });
-            this.cch.on('close', () => {
-                this.cch_ready = false;
-            });
-            this.events.emit('ready');
-        } else {
-            hLog("onConnect was called before channels are instantiated!");
-        }
+        this.assertQueues().then(() => {
+            if (this.ch && this.cch) {
+                this.ch.on('close', () => {
+                    this.ch_ready = false;
+                });
+                this.cch.on('close', () => {
+                    this.cch_ready = false;
+                });
+                this.events.emit('ready');
+            } else {
+                hLog("onConnect was called before channels are instantiated!");
+            }
+        }).catch((reason: any) => {
+            hLog('⚠️ Failed to assert queues\n\t⚠️', reason.message);
+            process.exit();
+        });
     }
 
     checkDebugger() {
@@ -334,7 +338,7 @@ export abstract class HyperionWorker {
 
     abstract run(): Promise<void>
 
-    abstract assertQueues(): void
+    abstract assertQueues(): Promise<void>
 
     abstract onIpcMessage(msg: any): void
 

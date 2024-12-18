@@ -31,6 +31,9 @@ export default class IndexerWorker extends HyperionWorker {
         this.mongoRoutes = new MongoRoutes(this.manager);
 
         this.indexQueue = cargo((payload: Message[], callback) => {
+
+            // hLog(`Indexing (${process.env.type}): `, payload.length);
+
             if (this.ch_ready && payload && process.env.type && this.ch) {
 
                 if (this.conf.indexer.experimental_mongodb_state && this.mongoRoutes.routes[process.env.type]) {
@@ -61,28 +64,26 @@ export default class IndexerWorker extends HyperionWorker {
                 }
             }
 
-            // if (this.conf.prefetch.index === payload.length) {
-            //     hLog(`Max index prefetch reached on ${process.env.type} = ${payload.length}`);
-            // }
-
         }, this.conf.prefetch.index);
     }
 
-    assertQueues(): void {
+    async assertQueues(): Promise<void> {
         try {
-            if (this.ch && process.env.queue) {
+            const queueName = process.env.queue;
+            if (this.ch && queueName) {
                 this.ch_ready = true;
+                this.indexQueue.resume();
                 this.ch.on('close', () => {
+                    hLog('Channel closed for queue:', queueName);
                     this.indexQueue.pause();
                     this.ch_ready = false;
                 });
-                this.ch.assertQueue(process.env.queue, RabbitQueueDef);
-                this.ch.prefetch(this.conf.prefetch.index);
-                this.ch.consume(process.env.queue, this.indexQueue.push);
+                await this.ch.assertQueue(queueName, RabbitQueueDef);
+                await this.ch.prefetch(this.conf.prefetch.index);
+                await this.ch.consume(queueName, this.indexQueue.push);
             }
-        } catch (e) {
-            console.error('rabbitmq error!');
-            console.log(e);
+        } catch (e: any) {
+            hLog(`Error asserting queue: ${e.message}`);
             process.exit(1);
         }
     }

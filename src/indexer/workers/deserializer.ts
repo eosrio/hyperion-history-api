@@ -185,7 +185,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    assertQueues(): void {
+    async assertQueues(): Promise<void> {
 
         if (this.ch) {
             this.ch_ready = true;
@@ -201,14 +201,17 @@ export default class MainDSWorker extends HyperionWorker {
             process.exit(1);
         }
 
-        this.ch.assertQueue(this.deltaRemovalQueue, RabbitQueueDef);
+        await this.ch.assertQueue(this.deltaRemovalQueue, RabbitQueueDef);
 
         // make sure the input queue is ready if the deserializer launches too early
-        this.ch.assertQueue(process.env['worker_queue'], RabbitQueueDef);
+        const workerQueue = process.env['worker_queue'];
+        if (workerQueue) {
+            await this.ch.assertQueue(workerQueue, RabbitQueueDef);
+        }
 
         if (process.env['live_mode'] === 'false') {
             for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
-                this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), RabbitQueueDef);
+                await this.ch.assertQueue(this.chain + ":blocks:" + (i + 1), RabbitQueueDef);
             }
         }
 

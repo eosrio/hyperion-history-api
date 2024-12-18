@@ -13,7 +13,7 @@ export const index_queues = [
 
 // Global Queue Definitions
 export const RabbitQueueDef = {
-    durable: false,
+    durable: true,
     arguments: {
         "x-queue-version": 2
     }

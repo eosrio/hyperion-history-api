@@ -1,6 +1,6 @@
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {connect, Connection} from 'amqplib';
-import {Channel, ConfirmChannel} from "amqplib/callback_api.js";
+import {Channel, ConfirmChannel} from "amqplib";
 import {AmqpConfig} from "../../interfaces/hyperionConnections.js";
 
 export async function createConnection(config: AmqpConfig): Promise<Connection> {
@@ -33,9 +33,9 @@ async function createChannels(connection: Connection): Promise<[Channel, Confirm
         const channel = await connection.createChannel();
         const confirmChannel = await connection.createConfirmChannel();
         return [channel, confirmChannel];
-    } catch (e) {
+    } catch (e: any) {
         hLog("[AMQP] failed to create channels");
-        hLog(e);
+        hLog(e.message);
         return null;
     }
 }

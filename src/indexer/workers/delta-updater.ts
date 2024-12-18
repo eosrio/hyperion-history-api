@@ -26,13 +26,13 @@ export default class MainDSWorker extends HyperionWorker {
         super();
     }
 
-    assertQueues(): void {
+    async assertQueues(): Promise<void> {
         if (this.ch) {
             this.queueName = this.chain + ":delta_rm";
             hLog(`Launched delta updater, consuming from ${this.queueName}`);
-            this.ch.assertQueue(this.queueName, RabbitQueueDef);
-            this.ch.prefetch(1);
-            this.ch.consume(this.queueName, this.onConsume.bind(this));
+            await this.ch.assertQueue(this.queueName, RabbitQueueDef);
+            await this.ch.prefetch(1);
+            await this.ch.consume(this.queueName, this.onConsume.bind(this));
         }
     }
 
