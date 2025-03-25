@@ -49,8 +49,9 @@ import {getTotalValue} from "../../api/helpers/functions.js";
 import {ShipServer, StateHistorySocket} from "../connections/state-history.js";
 import {updateByBlock} from "../definitions/updateByBlock.painless.js";
 import {IAccount} from "../../interfaces/table-account.js";
-import Timeout = NodeJS.Timeout;
 import {IProposal} from "../../interfaces/table-proposal.js";
+import {IVoter} from "../../interfaces/table-voter.js";
+import Timeout = NodeJS.Timeout;
 
 interface RevBlock {
     num: number;
@@ -2442,7 +2443,17 @@ export class HyperionMaster {
                         {key: {"provided_approvals.actor": 1}},
                         {key: {"requested_approvals.actor": 1}}
                     ]);
-
+                    // voters table indices
+                    const voters = db.collection<IVoter>("voters");
+                    await voters.createIndexes([
+                        {key: {voter: 1}},
+                        {key: {block_num: 1}},
+                        {key: {staked: 1}},
+                        {key: {last_vote_weight: 1}},
+                        {key: {proxied_vote_weight: 1}},
+                        {key: {producers: 1}},
+                        {key: {is_proxy: 1}}
+                    ]);
                 }
             }
         } catch (e: any) {

@@ -24,10 +24,15 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                     type: "object",
                     properties: {
                         account: {type: "string"},
+                        is_proxy: {type: "boolean"},
                         weight: {type: "number"},
-                        last_vote: {type: "number"},
-                        data: {
-                            additionalProperties: true
+                        staked: {type: "number"},
+                        last_vote_block: {type: "number"},
+                        producers: {
+                            type: "array",
+                            items: {
+                                type: "string"
+                            }
                         }
                     }
                 }
