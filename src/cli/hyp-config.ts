@@ -13,9 +13,10 @@ import { Redis } from "ioredis";
 import { Client } from "@elastic/elasticsearch";
 import { APIClient } from "@wharfkit/antelope";
 import { StateHistorySocket } from "../indexer/connections/state-history.js";
+import { mongodb } from "@fastify/mongodb";
+import { MongoClient } from "mongodb";
 
 const program = new Command();
-
 const rootDir = path.join(import.meta.dirname, '../../');
 const referencesDir = path.join(rootDir, 'references');
 const configDir = path.join(rootDir, 'config');
@@ -582,6 +583,41 @@ async function checkRedis(conn: HyperionConnections) {
     }
 }
 
+async function checkMongoDB(conn: HyperionConnections): Promise<boolean> {
+    console.log(`\n[info] [MONGODB] - Testing MongoDB connection...`);
+    const _mongo = conn.mongodb;
+    if (!_mongo || !_mongo.enabled) {
+        console.log('[info] [MONGODB] - MongoDB is not enabled in the configuration.');
+        return false;
+    }
+
+    let uri = "mongodb://";
+    if (_mongo.user && _mongo.pass) {
+        uri += `${_mongo.user}:${_mongo.pass}@`;
+    }
+    uri += `${_mongo.host}:${_mongo.port}`;
+
+    const client = new MongoClient(uri);
+
+    try {
+        await client.connect();
+        const adminDb = client.db('admin');
+        const result = await adminDb.command({ ping: 1 });
+        if (result && result.ok === 1) {
+            console.log('[info] [MONGODB] - Connection established!');
+            return true;
+        } else {
+            console.log('[error] [MONGODB] - Failed to ping the database.');
+            return false;
+        }
+    } catch (error: any) {
+        console.log('[error] [MONGODB] - ' + error.message);
+        return false;
+    } finally {
+        await client.close();
+    }
+}
+
 async function initConfig() {
     const connections = await getConnections();
 
@@ -714,7 +750,8 @@ async function testConnections() {
                 const results = {
                     redis: await checkRedis(conn),
                     elasticsearch: await checkES(conn),
-                    rabbitmq: await checkAMQP(conn)
+                    rabbitmq: await checkAMQP(conn),
+                    mongodb: await checkMongoDB(conn)
                 }
                 console.log('\n------ Testing Completed -----');
                 console.table(results);
