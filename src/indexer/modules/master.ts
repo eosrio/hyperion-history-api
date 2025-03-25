@@ -50,6 +50,7 @@ import {ShipServer, StateHistorySocket} from "../connections/state-history.js";
 import {updateByBlock} from "../definitions/updateByBlock.painless.js";
 import {IAccount} from "../../interfaces/table-account.js";
 import Timeout = NodeJS.Timeout;
+import {IProposal} from "../../interfaces/table-proposal.js";
 
 interface RevBlock {
     num: number;
@@ -2426,11 +2427,22 @@ export class HyperionMaster {
                 if (this.manager.conn.mongodb) {
                     const db = this.manager.mongodbClient.db(`${this.manager.conn.mongodb.database_prefix}_${this.manager.chain}`);
                     // create indexes
+                    // accounts table indices
                     const accounts = db.collection<IAccount>('accounts');
                     await accounts.createIndex({code: 1}, {unique: false});
                     await accounts.createIndex({scope: 1}, {unique: false});
                     await accounts.createIndex({symbol: 1}, {unique: false});
                     await accounts.createIndex({code: 1, scope: 1, symbol: 1}, {unique: true});
+                    // proposals table indices
+                    const proposals = db.collection<IProposal>('proposals');
+                    await proposals.createIndexes([
+                        {key: {proposal_name: 1}},
+                        {key: {proposer: 1}},
+                        {key: {expiration: -1}},
+                        {key: {"provided_approvals.actor": 1}},
+                        {key: {"requested_approvals.actor": 1}}
+                    ]);
+
                 }
             }
         } catch (e: any) {

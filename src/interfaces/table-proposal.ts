@@ -31,6 +31,7 @@ export interface IApproval {
 
 export interface IProposal {
     proposal_name: string;
+    expiration: string;
     trx: ITransaction;
     amount: number | string;
     code: string;
