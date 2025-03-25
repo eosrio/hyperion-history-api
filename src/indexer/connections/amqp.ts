@@ -1,12 +1,11 @@
 import {debugLog, hLog} from "../helpers/common_functions.js";
-import {connect, Connection} from 'amqplib';
-import {Channel, ConfirmChannel} from "amqplib";
+import {Channel, ChannelModel, ConfirmChannel, connect, Connection} from 'amqplib';
 import {AmqpConfig} from "../../interfaces/hyperionConnections.js";
 
-export async function createConnection(config: AmqpConfig): Promise<Connection> {
+export async function createConnection(config: AmqpConfig): Promise<ChannelModel> {
     try {
         const amqp_url = getAmpqUrl(config);
-        const conn: Connection = await connect(amqp_url);
+        const conn = await connect(amqp_url);
         debugLog("[AMQP] connection established");
         return conn;
     } catch (e: any) {
@@ -28,7 +27,7 @@ export function getAmpqUrl(config: AmqpConfig): string {
     return `amqp://${u}:${p}@${config.host}/${v}?frameMax=${frameMaxValue}`;
 }
 
-async function createChannels(connection: Connection): Promise<[Channel, ConfirmChannel] | null> {
+async function createChannels(connection: ChannelModel): Promise<[Channel, ConfirmChannel] | null> {
     try {
         const channel = await connection.createChannel();
         const confirmChannel = await connection.createConfirmChannel();

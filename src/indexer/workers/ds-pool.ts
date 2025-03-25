@@ -48,7 +48,6 @@ function cleanActionTrace(t: any) {
             delete t.receipts;
         }
 
-        delete t.console;
         delete t.receiver;
 
         // onblock action case
@@ -504,11 +503,12 @@ export default class DSPoolWorker extends HyperionWorker {
                     if (ds_status) {
                         this.temp_ds_counter++;
                         action_count++;
-
                         // print deserialized trace, uncomment below
                         // console.log(trx_id, JSON.stringify(action_trace[1], null, 2));
                     }
                 }
+
+                // console.log(action_trace);
             }
 
             const _finalTraces: ActionTrace[] = [];
@@ -518,6 +518,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
                 // collect digests & receipts
                 for (const _trace of _processedTraces) {
+
                     if (act_digests[_trace.receipt.act_digest]) {
                         act_digests[_trace.receipt.act_digest].push(_trace.receipt);
                     } else {
@@ -569,7 +570,18 @@ export default class DSPoolWorker extends HyperionWorker {
             const redisPayload = new Map<string, RedisValue>();
 
             for (const uniqueAction of _finalTraces) {
+
                 cleanActionTrace(uniqueAction);
+
+                // remove contract console logs by default
+                if (!this.conf.features.contract_console) {
+                    delete uniqueAction.console;
+                } else {
+                    if (uniqueAction.console) {
+                        console.log(uniqueAction.block_num, uniqueAction.act.account, uniqueAction.act.name, uniqueAction.console);
+                    }
+                }
+
                 const payload = Buffer.from(flatstr(JSON.stringify(uniqueAction)));
                 redisPayload.set(uniqueAction.global_sequence.toString(), payload);
                 this.actionDsCounter++;

@@ -1,9 +1,8 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
-import {Serialize} from "eosjs";
+import {JsonRpc, Serialize} from "eosjs";
 import {hLog} from "../../../../indexer/helpers/common_functions.js";
 import {Abieos} from "@eosrio/node-abieos";
-import {JsonRpc} from "eosjs/dist";
 import {terms} from "../../v2-history/get_actions/definitions.js";
 import {Client, estypes} from "@elastic/elasticsearch";
 

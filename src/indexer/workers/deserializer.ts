@@ -292,13 +292,14 @@ export default class MainDSWorker extends HyperionWorker {
             hLog(res);
             return null;
         } else {
+
             let producer = '';
             let ts = '';
+            let block_ts = res['this_time'];
+            let light_block: HyperionLightBlock | null = null;
+
             const block_num = res['this_block']['block_num'];
             const block_id = res['this_block']['block_id'].toLowerCase();
-            let block_ts = res['this_time'];
-
-            let light_block: HyperionLightBlock | null = null;
 
             if (this.conf.indexer.fetch_block) {
 

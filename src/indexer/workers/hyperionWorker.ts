@@ -1,4 +1,4 @@
-import {JsonRpc} from "eosjs/dist";
+import {JsonRpc} from "eosjs";
 import {Client} from "@elastic/elasticsearch";
 import {EventEmitter} from "events";
 import {Abieos} from "@eosrio/node-abieos";

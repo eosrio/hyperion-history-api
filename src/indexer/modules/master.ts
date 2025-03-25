@@ -1,5 +1,5 @@
 import {Client, estypes} from "@elastic/elasticsearch";
-import {JsonRpc} from "eosjs/dist";
+import {JsonRpc} from "eosjs/dist/eosjs-jsonrpc.js";
 import {ConnectionManager} from "../connections/manager.class.js";
 import {ConfigurationModule} from "./config.js";
 import {HyperionModuleLoader} from "./loader.js";

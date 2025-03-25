@@ -31,6 +31,7 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     const startTime = Date.now();
 
     if (fastify.manager.config.indexer.experimental_mongodb_state && fastify.manager.conn.mongodb && query.useMongo === 'true') {
+
         const dbName = `${fastify.manager.conn.mongodb.database_prefix}_${fastify.manager.chain}`;
         const collection = fastify.mongo.client.db(dbName).collection('proposals');
 
@@ -70,6 +71,7 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
             .toArray();
 
     } else {
+
         let queryStruct: any = { bool: { must: [] } };
         if (query.account) {
             const accounts = query.account.split(',');

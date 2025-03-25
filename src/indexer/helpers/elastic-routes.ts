@@ -1,4 +1,4 @@
-import {Channel, Message} from "amqplib/callback_api.js";
+import {Channel, Message} from "amqplib";
 import {ConnectionManager} from "../connections/manager.class.js";
 import _ from "lodash";
 import {hLog} from "./common_functions.js";

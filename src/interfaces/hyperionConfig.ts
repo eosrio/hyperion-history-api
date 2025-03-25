@@ -187,6 +187,7 @@ export interface HyperionConfig {
         failed_trx: boolean,
         resource_usage: boolean,
         resource_limits: boolean,
+        contract_console: boolean
     };
     prefetch: {
         read: number,
