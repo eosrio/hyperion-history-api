@@ -1,6 +1,6 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { getTrackTotalHits, timedQuery } from "../../../helpers/functions.js";
-import { estypes } from '@elastic/elasticsearch';
+import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
+import {getTrackTotalHits, timedQuery} from "../../../helpers/functions.js";
+import {estypes} from '@elastic/elasticsearch';
 
 async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
@@ -30,7 +30,8 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     let stateResult: any[];
     const startTime = Date.now();
 
-    if (fastify.manager.config.indexer.experimental_mongodb_state && fastify.manager.conn.mongodb && query.useMongo === 'true') {
+    // MongoDB State Implementation
+    if (fastify.manager.config.indexer.experimental_mongodb_state && fastify.manager.conn.mongodb) {
 
         const dbName = `${fastify.manager.conn.mongodb.database_prefix}_${fastify.manager.chain}`;
         const collection = fastify.mongo.client.db(dbName).collection('proposals');
@@ -39,8 +40,8 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
         if (query.account) {
             const accounts = query.account.split(',');
             mongoQuery.$or = [
-                { "requested_approvals.actor": { $in: accounts } },
-                { "provided_approvals.actor": { $in: accounts } }
+                {"requested_approvals.actor": {$in: accounts}},
+                {"provided_approvals.actor": {$in: accounts}}
             ];
         }
         if (query.proposer) {
@@ -52,6 +53,14 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
         if (typeof query.executed !== 'undefined') {
             mongoQuery.executed = query.executed;
         }
+
+        const currentDate = new Date();
+        if (query.expired === "true") {
+            mongoQuery.expiration = {$lt: currentDate};
+        } else if (query.expired === "false") {
+            mongoQuery.expiration = {$gte: currentDate};
+        }
+
         if (query.requested) {
             mongoQuery["requested_approvals.actor"] = query.requested;
         }
@@ -59,51 +68,47 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
             mongoQuery["provided_approvals.actor"] = query.provided;
         }
 
-        const lastBlockResult = await fastify.mongo.client.db(dbName).collection('proposals').find().sort({ block_num: -1 }).limit(1).toArray();
+        const lastBlockResult = await fastify.mongo.client.db(dbName).collection('proposals').find().sort({expiration: -1}).limit(1).toArray();
         response.last_indexed_block = lastBlockResult[0]?.block_num || 0;
         response.last_indexed_block_time = lastBlockResult[0]?.block_time || '';
 
-        response.total = await collection.countDocuments(mongoQuery);
-        stateResult = await collection
-            .find(mongoQuery)
-            .skip(skip || 0)
-            .limit(limit || 50)
-            .toArray();
+        response.total = {value: await collection.countDocuments(mongoQuery), relation: "eq"};
+        stateResult = await collection.find(mongoQuery).skip(skip || 0).limit(limit || 50).toArray();
 
     } else {
 
-        let queryStruct: any = { bool: { must: [] } };
+        let queryStruct: any = {bool: {must: []}};
         if (query.account) {
             const accounts = query.account.split(',');
             for (const acc of accounts) {
                 queryStruct.bool.must.push({
                     bool: {
                         should: [
-                            { term: { "requested_approvals.actor": acc } },
-                            { term: { "provided_approvals.actor": acc } }
+                            {term: {"requested_approvals.actor": acc}},
+                            {term: {"provided_approvals.actor": acc}}
                         ]
                     }
                 });
             }
         }
         if (query.proposer) {
-            queryStruct.bool.must.push({ term: { proposer: query.proposer } });
+            queryStruct.bool.must.push({term: {proposer: query.proposer}});
         }
         if (query.proposal) {
-            queryStruct.bool.must.push({ term: { proposal_name: query.proposal } });
+            queryStruct.bool.must.push({term: {proposal_name: query.proposal}});
         }
         if (typeof query.executed !== 'undefined') {
-            queryStruct.bool.must.push({ term: { executed: query.executed } });
+            queryStruct.bool.must.push({term: {executed: query.executed}});
         }
         if (query.requested) {
-            queryStruct.bool.must.push({ term: { "requested_approvals.actor": query.requested } });
+            queryStruct.bool.must.push({term: {"requested_approvals.actor": query.requested}});
         }
         if (query.provided) {
-            queryStruct.bool.must.push({ term: { "provided_approvals.actor": query.provided } });
+            queryStruct.bool.must.push({term: {"provided_approvals.actor": query.provided}});
         }
 
         if (queryStruct.bool.must.length === 0) {
-            queryStruct = { match_all: {} };
+            queryStruct = {match_all: {}};
         }
 
         const esResult = await fastify.elastic.search<any>({
@@ -112,7 +117,7 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
             size: (limit > maxDocs ? maxDocs : limit) || 10,
             track_total_hits: getTrackTotalHits(request.query),
             query: queryStruct,
-            sort: [{ block_num: "desc" }]
+            sort: [{block_num: "desc"}]
         });
 
         stateResult = esResult.hits.hits.map((hit: any) => hit._source);

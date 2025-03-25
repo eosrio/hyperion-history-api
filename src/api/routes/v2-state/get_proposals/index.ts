@@ -64,6 +64,8 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                     type: "object",
                     properties: {
                         proposal_name: { type: "string" },
+                        expiration: { type: "string" },
+                        earliest_exec_time: { type: "string", nullable: true },
                         block_num: { type: "number" },
                         proposer: { type: "string" },
                         executed: { type: "boolean" },
@@ -131,14 +133,13 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                                     time: { type: "string" }
                                 }
                             }
-                        },
-                        earliest_exec_time: { type: "string", nullable: true }
+                        }
                     }
                 }
             }
         })
     };
-    
+
     addApiRoute(
         fastify,
         'GET',

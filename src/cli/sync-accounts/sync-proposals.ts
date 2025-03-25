@@ -1,9 +1,9 @@
-import { APIClient, Name, PackedTransaction, Serializer, UInt64 } from "@wharfkit/antelope";
-import { Client } from "@elastic/elasticsearch";
-import { MongoClient } from "mongodb";
-import { readFileSync } from "fs";
-import { join } from "path";
-import { cargo } from "async";
+import {APIClient, Name, PackedTransaction, Serializer, UInt64} from "@wharfkit/antelope";
+import {Client} from "@elastic/elasticsearch";
+import {MongoClient} from "mongodb";
+import {readFileSync} from "fs";
+import {join} from "path";
+import {cargo} from "async";
 
 const chain = process.argv[2];
 if (!chain) {
@@ -11,13 +11,13 @@ if (!chain) {
     process.exit();
 }
 
-console.log('Proposal & Approval Synchronizer');
+console.log('MultiSig Proposals Synchronizer');
 
 const configDir = join(import.meta.dirname, '../../../config');
 const connections = JSON.parse(readFileSync(join(configDir, "connections.json")).toString());
 
 const endpoint = connections.chains[chain].http;
-const api = new APIClient({ url: endpoint });
+const api = new APIClient({url: endpoint});
 
 if (!endpoint) {
     console.log("No HTTP Endpoint!");
@@ -27,8 +27,8 @@ if (!endpoint) {
 const _es = connections.elasticsearch;
 const elastic = new Client({
     node: `${_es.protocol}://${_es.host}`,
-    auth: { username: _es.user, password: _es.pass },
-    tls: _es.protocol === 'https' ? { rejectUnauthorized: false } : undefined
+    auth: {username: _es.user, password: _es.pass},
+    tls: _es.protocol === 'https' ? {rejectUnauthorized: false} : undefined
 });
 
 const _mongo = connections.mongodb;
@@ -40,7 +40,7 @@ const abiCacheMap = new Map<string, any>();
 let accounts = 0;
 
 
-async function getProposals(scope) {
+async function getProposals(scope: string) {
     let lb: UInt64 | undefined = undefined;
     let more = false;
     const proposals: any[] = [];
@@ -56,9 +56,9 @@ async function getProposals(scope) {
         more = result.more;
 
         for (const proposal of result.rows) {
-            const trx = PackedTransaction.from({ packed_trx: proposal.packed_transaction }).getTransaction();
+            const trx = PackedTransaction.from({packed_trx: proposal.packed_transaction}).getTransaction();
             delete proposal.packed_transaction;
-            const transaction = { ...Serializer.objectify(trx) };
+            const transaction = {...Serializer.objectify(trx)};
             transaction.actions = [];
             for (const action of trx.actions) {
                 try {
@@ -68,13 +68,15 @@ async function getProposals(scope) {
                         abiCacheMap.set(action.account.toString(), abi);
                     }
                     const decodedData = Serializer.objectify(action.decodeData(abi.abi));
-                    transaction.actions.push({ ...Serializer.objectify(action), data: decodedData });
+                    transaction.actions.push({...Serializer.objectify(action), data: decodedData});
                 } catch (error: any) {
-                    console.log(`Failed to decode action ${action.account}::${action.name} - ${error.message}`);
+                    console.log(`Proposal: ${proposal.proposal_name} - Failed to decode action ${action.account}::${action.name} - ${error.message}`);
                     transaction.actions.push(Serializer.objectify(action));
                 }
             }
-            proposals.push({ ...proposal, trx: transaction });
+            // console.log("Proposal:", proposal);
+            // console.log("Transaction Expiration:", transaction.expiration, typeof transaction.expiration);
+            proposals.push({...proposal, expiration: new Date(transaction.expiration), trx: transaction});
         }
     } while (more);
     return proposals;
@@ -114,7 +116,7 @@ async function* scan() {
             const proposalMap = new Map();
 
             for (const proposal of proposals) {
-                proposalMap.set(proposal.proposal_name, { ...proposal });
+                proposalMap.set(proposal.proposal_name, {...proposal});
             }
             for (const approval of approvals) {
                 const proposalMerge = proposalMap.get(approval.proposal_name);
@@ -122,15 +124,15 @@ async function* scan() {
                     proposalMerge.proposer = scope;
                     proposalMerge.version = approval.version;
                     proposalMerge.requested_approvals = approval.requested_approvals.map(el => {
-                        return { actor: el.level.actor, permission: el.level.permission, time: el.time };
+                        return {actor: el.level.actor, permission: el.level.permission, time: el.time};
                     });
                     proposalMerge.provided_approvals = approval.provided_approvals.map(el => {
-                        return { actor: el.level.actor, permission: el.level.permission, time: el.time };
+                        return {actor: el.level.actor, permission: el.level.permission, time: el.time};
                     });
                 }
             }
             for (const entry of proposalMap.values()) {
-                
+
                 yield entry;
             }
         }
@@ -140,21 +142,28 @@ async function* scan() {
 
 async function main() {
     const isMongoEnabled = _mongo?.enabled === true;
-    console.log(`MongoDB habilitado: ${isMongoEnabled}`);
+    console.log(`MongoDB Enabled: ${isMongoEnabled}`);
     try {
         await mongoClient.connect();
-
         if (isMongoEnabled && proposalsCollection) {
-            console.log(`Mongo Enable`)
+
+            await proposalsCollection.createIndexes([
+                {key: {proposal_name: 1}},
+                {key: {proposer: 1}},
+                {key: {expiration: -1}},
+                {key: {"provided_approvals.actor": 1}},
+                {key: {"requested_approvals.actor": 1}}
+            ]);
+
             const cargoQueue = cargo((docs: any[], cb) => {
                 proposalsCollection.bulkWrite(docs.map(doc => ({
                     updateOne: {
-                        filter: { proposal_name: doc.proposal_name, proposer: doc.proposer },
-                        update: { $set: doc },
+                        filter: {proposal_name: doc.proposal_name, proposer: doc.proposer},
+                        update: {$set: doc},
                         upsert: true
                     }
                 }))).finally(() => cb());
-            }, 1000); // Processa até 1000 documentos por vez
+            }, 1000); // 1k docs per batch
 
             for await (const data of scan()) {
                 accounts++;
