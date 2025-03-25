@@ -17,10 +17,11 @@ import {StateHistorySocket} from "../indexer/connections/state-history.js";
 const program = new Command();
 
 const rootDir = path.join(import.meta.dirname, '../../');
+const referencesDir = path.join(rootDir, 'references');
 const configDir = path.join(rootDir, 'config');
 const chainsDir = path.join(configDir, 'chains');
 const connectionsPath = path.join(configDir, 'connections.json');
-const exampleConnectionsPath = path.join(configDir, 'example-connections.json');
+const exampleConnectionsPath = path.join(referencesDir, 'connections.ref.json');
 const backupDir = path.join(configDir, 'configuration_backups');
 
 async function getConnections(): Promise<HyperionConnections | null> {
