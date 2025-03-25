@@ -1,26 +1,29 @@
-import {Command} from "commander";
+import { Command } from "commander";
 import path from "path";
-import {cp, mkdir, readdir, readFile, rm, writeFile} from "fs/promises";
-import {HyperionConfig, ScalingConfigs} from "../interfaces/hyperionConfig.js";
-import {HyperionConnections} from "../interfaces/hyperionConnections.js";
-import {copyFileSync, existsSync, rmSync} from "fs";
-import {JsonRpc} from "eosjs";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "fs/promises";
+import { HyperionConfig, ScalingConfigs } from "../interfaces/hyperionConfig.js";
+import { HyperionConnections } from "../interfaces/hyperionConnections.js";
+import { copyFileSync, existsSync, rmSync } from "fs";
+import { JsonRpc } from "eosjs";
 
 import WebSocket from 'ws';
 import * as readline from "readline";
 import * as amqp from "amqplib";
-import {Redis} from "ioredis";
-import {Client} from "@elastic/elasticsearch";
-import {APIClient} from "@wharfkit/antelope";
-import {StateHistorySocket} from "../indexer/connections/state-history.js";
+import { Redis } from "ioredis";
+import { Client } from "@elastic/elasticsearch";
+import { APIClient } from "@wharfkit/antelope";
+import { StateHistorySocket } from "../indexer/connections/state-history.js";
+import { mongodb } from "@fastify/mongodb";
+import { MongoClient } from "mongodb";
 
 const program = new Command();
-
 const rootDir = path.join(import.meta.dirname, '../../');
+const referencesDir = path.join(rootDir, 'references');
 const configDir = path.join(rootDir, 'config');
 const chainsDir = path.join(configDir, 'chains');
 const connectionsPath = path.join(configDir, 'connections.json');
-const exampleConnectionsPath = path.join(configDir, 'example-connections.json');
+const exampleConnectionsPath = path.join(referencesDir, 'connections.ref.json');
+const exampleChainDataPath = path.join(referencesDir, 'config.ref.json');
 const backupDir = path.join(configDir, 'configuration_backups');
 
 async function getConnections(): Promise<HyperionConnections | null> {
@@ -33,7 +36,7 @@ async function getConnections(): Promise<HyperionConnections | null> {
 }
 
 async function getExampleConfig(): Promise<HyperionConfig> {
-    const exampleChainData = await readFile(path.join(chainsDir, 'example.config.json'));
+    const exampleChainData = await readFile(exampleChainDataPath);
     return JSON.parse(exampleChainData.toString());
 }
 
@@ -225,7 +228,7 @@ async function newChain(shortName: string, options) {
     const targetPath = path.join(chainsDir, `${shortName}.config.json`);
 
     if (existsSync(targetPath)) {
-        console.error(`Chain config for ${shortName} already defined!`);
+        console.error(`Chain config for ${shortName} already defined! Check config/chains folder`);
         process.exit(0);
     }
 
@@ -241,18 +244,35 @@ async function newChain(shortName: string, options) {
     }
 
     if (connections.chains[shortName]) {
-        console.error('Connections already defined!');
+        console.error('Connections already defined! Check connections.json file!');
         console.log(connections.chains[shortName]);
         process.exit(0);
     } else {
+        // Find the highest WS_ROUTER_PORT and control_port
+        let maxWsRouterPort = 7001;
+        let maxControlPort = 7002;
+
+        Object.values(connections.chains).forEach(chain => {
+            if (chain.WS_ROUTER_PORT > maxWsRouterPort) {
+                maxWsRouterPort = chain.WS_ROUTER_PORT;
+            }
+            if (chain.control_port > maxControlPort) {
+                maxControlPort = chain.control_port;
+            }
+        });
+
+        const isFirstChain = Object.keys(connections.chains).length === 0;
+        const newWsRouterPort = isFirstChain ? maxWsRouterPort : maxWsRouterPort + 10;
+        const newControlPort = isFirstChain ? maxControlPort : maxControlPort + 10;
+
         connections.chains[shortName] = {
             name: '',
             ship: '',
             http: '',
             chain_id: '',
             WS_ROUTER_HOST: '127.0.0.1',
-            WS_ROUTER_PORT: 7001,
-            control_port: 7002
+            WS_ROUTER_PORT: newWsRouterPort,
+            control_port: newControlPort
         };
     }
 
@@ -270,7 +290,7 @@ async function newChain(shortName: string, options) {
 
         // test nodeos availability
         try {
-            const jsonRpc = new JsonRpc(options.http, {fetch});
+            const jsonRpc = new JsonRpc(options.http, { fetch });
             const info = await jsonRpc.get_info();
             jsonData.api.chain_api = options.http;
             connections.chains[shortName].chain_id = info.chain_id;
@@ -370,7 +390,7 @@ async function testChain(shortName: string) {
     console.log(`Checking HTTP endpoint: ${httpEndpoint}`);
     let httpChainId = '';
     try {
-        const apiClient = new APIClient({url: httpEndpoint});
+        const apiClient = new APIClient({ url: httpEndpoint });
         const info = await apiClient.v1.chain.get_info();
         httpChainId = info.chain_id.toString();
     } catch (e: any) {
@@ -563,6 +583,41 @@ async function checkRedis(conn: HyperionConnections) {
     }
 }
 
+async function checkMongoDB(conn: HyperionConnections): Promise<boolean> {
+    console.log(`\n[info] [MONGODB] - Testing MongoDB connection...`);
+    const _mongo = conn.mongodb;
+    if (!_mongo || !_mongo.enabled) {
+        console.log('[info] [MONGODB] - MongoDB is not enabled in the configuration.');
+        return false;
+    }
+
+    let uri = "mongodb://";
+    if (_mongo.user && _mongo.pass) {
+        uri += `${_mongo.user}:${_mongo.pass}@`;
+    }
+    uri += `${_mongo.host}:${_mongo.port}`;
+
+    const client = new MongoClient(uri);
+
+    try {
+        await client.connect();
+        const adminDb = client.db('admin');
+        const result = await adminDb.command({ ping: 1 });
+        if (result && result.ok === 1) {
+            console.log('[info] [MONGODB] - Connection established!');
+            return true;
+        } else {
+            console.log('[error] [MONGODB] - Failed to ping the database.');
+            return false;
+        }
+    } catch (error: any) {
+        console.log('[error] [MONGODB] - ' + error.message);
+        return false;
+    } finally {
+        await client.close();
+    }
+}
+
 async function initConfig() {
     const connections = await getConnections();
 
@@ -573,7 +628,7 @@ async function initConfig() {
 
     const exampleConn = await getExampleConnections();
 
-    const rl = readline.createInterface({input: process.stdin, output: process.stdout});
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
 
     const conn = exampleConn;
@@ -695,7 +750,8 @@ async function testConnections() {
                 const results = {
                     redis: await checkRedis(conn),
                     elasticsearch: await checkES(conn),
-                    rabbitmq: await checkAMQP(conn)
+                    rabbitmq: await checkAMQP(conn),
+                    mongodb: await checkMongoDB(conn)
                 }
                 console.log('\n------ Testing Completed -----');
                 console.table(results);
@@ -719,7 +775,7 @@ async function resetConnections() {
         }
 
         if (existsSync(connectionsPath)) {
-            const rl = readline.createInterface({input: process.stdin, output: process.stdout});
+            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
             const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
             const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n') as string;
             if (confirmation.toUpperCase() === 'YES') {
