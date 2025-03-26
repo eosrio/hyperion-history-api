@@ -132,6 +132,19 @@
       "accounts": true,
       "voters": true
     },
+    "contracts_state": {
+      "enabled": false,
+      "account": "account_name",
+      "tables": {
+        "table_name": {
+          "auto_index": false,
+          "indices": {
+            "field1": 1,
+            "field2": -1
+          }
+        }
+      }
+    },
     "index_deltas": true,
     "index_transfer_memo": true,
     "index_all_deltas": true,

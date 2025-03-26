@@ -16,6 +16,34 @@ import { StateHistorySocket } from "../indexer/connections/state-history.js";
 import { mongodb } from "@fastify/mongodb";
 import { MongoClient } from "mongodb";
 
+interface IndexConfig {
+    [key: string]: number;
+}
+
+interface TableConfig {
+    auto_index: boolean;
+    indices: IndexConfig;
+}
+
+interface ContractsState {
+    account: string;
+    tables: {
+        [tableName: string]: TableConfig;
+    };
+}
+
+interface ChainConfig {
+    features: {
+        contracts_state: ContractsState[];
+    };
+}
+
+interface TableInput {
+    name: string;
+    autoIndex: boolean;
+    indices: IndexConfig;
+}
+
 const program = new Command();
 const rootDir = path.join(import.meta.dirname, '../../');
 const referencesDir = path.join(rootDir, 'references');
@@ -794,6 +822,97 @@ async function resetConnections() {
     }
 }
 
+function customStringify(obj: any, indent = 0): string {
+    const indentStr = ' '.repeat(indent);
+    let result = '';
+
+    for (const [key, value] of Object.entries(obj)) {
+        if (typeof value === 'object' && value !== null) {
+            result += `${indentStr}${key}:\n${customStringify(value, indent + 2)}`;
+        } else {
+            result += `${indentStr}${key}: ${value}\n`;
+        }
+    }
+
+    return result;
+}
+
+async function listConfigContract(shortName: string) {
+    console.log(`Listing Contracts config for ${shortName}...`);
+    const targetPath = path.join(chainsDir, `${shortName}.config.json`);
+
+    if (!existsSync(targetPath)) {
+        console.error(`Chain config for ${shortName} not found!`);
+        process.exit(0);
+    }
+
+    const chainJsonFile = await readFile(targetPath);
+    const chainConfig: ChainConfig = JSON.parse(chainJsonFile.toString());
+    const contracts_state = chainConfig.features.contracts_state;
+
+    if (!contracts_state || contracts_state.length === 0) {
+        console.log('No contracts state configuration found.');
+        return;
+    }
+
+    console.log('Contracts State Configuration:');
+    console.log('------------------------------');
+
+    contracts_state.forEach((contractState, index) => {
+        console.log(`Contract State ${index + 1}:`);
+        console.log(`Account: ${contractState.account}`);
+        console.log('Tables:');
+
+        for (const [tableName, tableConfig] of Object.entries(contractState.tables)) {
+            console.log(`  ${tableName}:`);
+            console.log(`    auto_index: ${tableConfig.auto_index}`);
+            console.log('    indices:');
+            console.log(customStringify(tableConfig.indices, 6));
+        }
+
+        if (index < contracts_state.length - 1) {
+            console.log('------------------------------');
+        }
+    });
+}
+
+async function addOrUpdateContractConfig(shortName: string, account: string, tables: TableInput[]) {
+    console.log(`Adding/updating contract config for ${shortName}...`);
+    const targetPath = path.join(chainsDir, `${shortName}.config.json`);
+
+    if (!existsSync(targetPath)) {
+        console.error(`Chain config for ${shortName} not found!`);
+        process.exit(0);
+    }
+
+    const chainJsonFile = await readFile(targetPath);
+    const chainConfig: ChainConfig = JSON.parse(chainJsonFile.toString());
+
+    if (!chainConfig.features.contracts_state) {
+        chainConfig.features.contracts_state = [];
+    }
+
+    let accountConfig = chainConfig.features.contracts_state.find(cs => cs.account === account);
+
+    if (!accountConfig) {
+        accountConfig = {
+            account: account,
+            tables: {}
+        };
+        chainConfig.features.contracts_state.push(accountConfig);
+    }
+
+    tables.forEach(table => {
+        accountConfig.tables[table.name] = {
+            auto_index: table.autoIndex,
+            indices: table.indices
+        };
+    });
+
+    await writeFile(targetPath, JSON.stringify(chainConfig, null, 2));
+    console.log(`Contract config added/updated successfully for account ${account}`);
+}
+
 
 // main program
 (() => {
@@ -872,6 +991,37 @@ async function resetConnections() {
     remove.command('chain <shortName>')
         .description('backup and delete chain configuration')
         .action(rmChain);
+
+    
+    const contracts = program.command('contracts');
+
+    //List Config
+    contracts.command('list <chainName>')
+        .description('list contracts config')
+        .action(listConfigContract)
+
+    // Add to config
+    contracts.command('add-single <chainName> <account> <table> <autoIndex> <indices>')
+    .description('add or update a single table in contract config')
+    .action(async (chainName, account, table, autoIndex, indices) => {
+        const tableInput: TableInput = {
+            name: table,
+            autoIndex: autoIndex === 'true',
+            indices: JSON.parse(indices)
+        };
+        await addOrUpdateContractConfig(chainName, account, [tableInput]);
+    });
+
+contracts.command('add-multiple <chainName> <account> <tablesJson>')
+    .description('add or update multiple tables in contract config')
+    .action(async (chainName, account, tablesJson) => {
+        try {
+            const tables: TableInput[] = JSON.parse(tablesJson);
+            await addOrUpdateContractConfig(chainName, account, tables);
+        } catch (error) {
+            console.error('Error parsing tables JSON:', error);
+        }
+    });
 
 
     program.parse(process.argv);
