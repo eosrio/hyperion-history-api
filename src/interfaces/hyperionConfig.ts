@@ -180,6 +180,20 @@ export interface HyperionConfig {
             userres: boolean,
             delband: boolean
         },
+        contract_state: {
+            enabled: boolean;
+            contracts:
+                {
+                    [key: string]: {
+                        [key: string]: {
+                            auto_index: boolean;
+                            indices: {
+                                [key: string]: 1 | -1 | "text" | "date" | "2dsphere";
+                            }
+                        }
+                    }
+                }
+        }
         index_deltas: boolean,
         index_transfer_memo: boolean,
         index_all_deltas: boolean,

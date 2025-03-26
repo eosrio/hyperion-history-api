@@ -2454,11 +2454,29 @@ export class HyperionMaster {
                         {key: {producers: 1}},
                         {key: {is_proxy: 1}}
                     ]);
+
+                    this.parseContractStateConfig();
                 }
             }
         } catch (e: any) {
             hLog(`MongoDB connection failed! - ${e.message}`);
             process.exit();
+        }
+    }
+
+    private parseContractStateConfig() {
+        if (this.conf.features.contract_state && this.conf.features.contract_state.enabled) {
+            console.log('MongoDB contract state is enabled!');
+            if (this.conf.features.contract_state.contracts) {
+                const contracts = this.conf.features.contract_state.contracts;
+                for (let accountKey in contracts) {
+                    if (contracts[accountKey]) {
+                        console.log(accountKey, contracts[accountKey]);
+                    }
+                }
+            } else {
+                hLog(`Contract state is enabled but no contracts were defined!`);
+            }
         }
     }
 }
