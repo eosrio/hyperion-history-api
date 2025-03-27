@@ -18,6 +18,8 @@ import {Action, Type as EOSJSType} from "eosjs/dist/eosjs-serialize.js";
 import {JsSignatureProvider} from "eosjs/dist/eosjs-jssig.js";
 import {HyperionSignedBlock, ProducerSchedule} from "../../interfaces/signed-block.js";
 import {estypes} from "@elastic/elasticsearch";
+import {Serializer} from "@wharfkit/antelope";
+
 
 const abi_remapping = {
     "_Bool": "bool"
@@ -1049,6 +1051,8 @@ export default class MainDSWorker extends HyperionWorker {
             const key2 = `${contractRowDelta.code}:*`;
             const key3 = `*:${contractRowDelta.table}`;
 
+            this.pushToDynamicTableQueue(contractRowDelta);
+
             // strict code::table handlers
             if (this.tableHandlers[key]) {
                 if (this.isAsync(this.tableHandlers[key])) {
@@ -1122,31 +1126,33 @@ export default class MainDSWorker extends HyperionWorker {
         return prefixedOutput;
     }
 
-    pushToDynamicTableQueue(jsonRow) {
-        if (this.allowedDynamicContracts.has(jsonRow.code)) {
-            const doc = {
-                '@timestamp': jsonRow['@timestamp'],
-                table: jsonRow.table,
-                scope: jsonRow.scope,
-                primary_key: jsonRow.primary_key,
-                payer: jsonRow.payer,
-                block_num: jsonRow.block_num,
-                block_id: jsonRow.block_id,
-                fields: this.addTablePrefix(jsonRow.table, jsonRow.data)
-            };
-            this.preIndexingQueue.push({
-                queue: this.chain + ":index_dynamic:" + (this.dyn_emit_idx),
-                content: bufferFromJson(doc),
-                headers: {
-                    id: `${jsonRow.table}-${jsonRow.scope}-${jsonRow.primary_key}`,
-                    code: jsonRow.code,
+    pushToDynamicTableQueue(jsonRow: HyperionDelta) {
+
+        if (this.conf.features.contract_state.contracts[jsonRow.code] || this.allowedDynamicContracts.has(jsonRow.code)) {
+            if (this.conf.features.contract_state.contracts[jsonRow.code][jsonRow.table]) {
+                const doc = {
+                    '@timestamp': jsonRow['@timestamp'],
+                    scope: jsonRow.scope,
+                    primary_key: jsonRow.primary_key,
+                    payer: jsonRow.payer,
                     block_num: jsonRow.block_num,
-                    present: jsonRow.present
+                    block_id: jsonRow.block_id,
+                    data: jsonRow.data
+                };
+                this.preIndexingQueue.push({
+                    queue: this.chain + ":index_dynamic:" + (this.dyn_emit_idx),
+                    content: bufferFromJson(doc),
+                    headers: {
+                        code: jsonRow.code,
+                        table: jsonRow.table,
+                        block_num: jsonRow.block_num,
+                        present: jsonRow.present
+                    }
+                }).catch(console.log);
+                this.dyn_emit_idx++;
+                if (this.dyn_emit_idx > this.conf.scaling.dyn_idx_queues) {
+                    this.dyn_emit_idx = 1;
                 }
-            }).catch(console.log);
-            this.dyn_emit_idx++;
-            if (this.dyn_emit_idx > this.conf.scaling.dyn_idx_queues) {
-                this.dyn_emit_idx = 1;
             }
         }
     }
@@ -1246,8 +1252,6 @@ export default class MainDSWorker extends HyperionWorker {
 
                 if (jsonRow && await this.processTableDelta(jsonRow)) {
                     if (!this.conf.indexer.disable_indexing && this.conf.features.index_deltas) {
-
-                        this.pushToDynamicTableQueue(jsonRow);
 
                         // check for plugin handlers
                         await this.mLoader.processDeltaData(jsonRow);

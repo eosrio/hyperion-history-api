@@ -1,10 +1,10 @@
-import { Collection, Db } from "mongodb";
-import { ConnectionManager } from "../connections/manager.class.js";
-import { Message } from "amqplib";
-import { hLog } from "./common_functions.js";
-import { IAccount } from "../../interfaces/table-account.js";
-import { IProposal } from "../../interfaces/table-proposal.js";
-import { IVoter } from "../../interfaces/table-voter.js";
+import {BulkWriteResult, Collection, Db} from "mongodb";
+import {ConnectionManager} from "../connections/manager.class.js";
+import {Message} from "amqplib";
+import {hLog} from "./common_functions.js";
+import {IAccount} from "../../interfaces/table-account.js";
+import {IProposal} from "../../interfaces/table-proposal.js";
+import {IVoter} from "../../interfaces/table-voter.js";
 
 export class MongoRoutes {
 
@@ -24,6 +24,7 @@ export class MongoRoutes {
             this.proposalsCollection = this.db.collection('proposals');
             this.votersCollection = this.db.collection('voters');
             this.addRoutes();
+            this.addDynamicRoutes();
         }
     }
 
@@ -62,7 +63,7 @@ export class MongoRoutes {
                 }
             });
 
-            this.accountsCollection?.bulkWrite(operations, { ordered: false }).catch(reason => {
+            this.accountsCollection?.bulkWrite(operations, {ordered: false}).catch(reason => {
                 hLog('error', 'mongo-routes', 'table-accounts', reason);
             }).finally(() => {
                 // TODO: ack
@@ -88,7 +89,7 @@ export class MongoRoutes {
                 };
             });
 
-            this.proposalsCollection?.bulkWrite(operations, { ordered: false }).catch(reason => {
+            this.proposalsCollection?.bulkWrite(operations, {ordered: false}).catch(reason => {
                 hLog('error', 'mongo-routes', 'table-proposals', reason);
             }).finally(() => {
                 callback(payload.length);
@@ -125,5 +126,67 @@ export class MongoRoutes {
                 callback(payload.length);
             });
         };
+    }
+
+    private addDynamicRoutes() {
+        this.routes['dynamic-table'] = (payload: Message[], callback: (indexed_size?: number) => void) => {
+            const groupedOps = new Map<string, any[]>();
+            payload.forEach((msg: Message) => {
+                const delta = JSON.parse(msg.content.toString()) as any;
+                const headers = msg.properties.headers as any;
+
+                const op = {};
+
+                if (headers.present === 1) {
+                    op['updateOne'] = {
+                        filter: {
+                            '@scope': delta.scope,
+                            '@pk': delta.primary_key
+                        },
+                        update: {
+                            $set: {
+                                '@scope': delta.scope,
+                                '@pk': delta.primary_key,
+                                '@payer': delta.payer,
+                                '@block_num': delta.block_num,
+                                '@block_time': delta['@timestamp'],
+                                '@block_id': delta['block_id'],
+                                ...delta.data
+                            }
+                        },
+                        upsert: true
+                    };
+                } else {
+                    op['deleteOne'] = {
+                        filter: {
+                            '@scope': delta.scope,
+                            '@pk': delta.primary_key
+                        }
+                    };
+                }
+
+                const collection = headers.code + '-' + headers.table;
+                const col = groupedOps.get(collection);
+                if (col) {
+                    col.push(op);
+                } else {
+                    groupedOps.set(collection, [op]);
+                }
+                // hLog(msg.properties.headers, delta);
+            });
+
+            const promises: Promise<BulkWriteResult>[] = [];
+
+            groupedOps.forEach((value, key) => {
+                if (this.db) {
+                    promises.push(this.db.collection(key).bulkWrite(value, {ordered: false}))
+                }
+            });
+
+            Promise.all(promises).finally(() => {
+                callback(payload.length);
+            });
+        }
+
     }
 }

@@ -39,28 +39,30 @@ export default class IndexerWorker extends HyperionWorker {
                 if (this.conf.indexer.experimental_mongodb_state && this.mongoRoutes.routes[process.env.type]) {
                     // call route type
                     (this.mongoRoutes.routes[process.env.type] as any)(payload, (indexed_size?: number) => {
-                        // if (indexed_size) {
-                        //     this.temp_indexed_count += indexed_size;
-                        // }
-                        // console.log('MongoDB indexed: ', indexed_size);
+                        if (indexed_size) {
+                            this.temp_indexed_count += indexed_size;
+                        }
+                        // console.log('MongoDB indexed: ', indexed_size, ' on ', process.env.type);
+                        try {
+                            this.ch?.ackAll();
+                            callback();
+                        } catch (e: any) {
+                            hLog(`${e.message} on ${process.env.type}`);
+                        }
                     });
-                }
-
-                if (this.esRoutes.routes[process.env.type]) {
+                } else if (this.esRoutes.routes[process.env.type]) {
                     // call route type
                     (this.esRoutes.routes[process.env.type] as RouteFunction)(payload, this.ch, (indexed_size?: number) => {
                         if (indexed_size) {
                             this.temp_indexed_count += indexed_size;
                         }
+                        // console.log('ES indexed: ', indexed_size, ' on ', process.env.type);
                         try {
                             callback();
                         } catch (e: any) {
                             hLog(`${e.message} on ${process.env.type}`);
                         }
                     });
-                } else {
-                    hLog(`No route for type: ${process.env.type}`);
-                    process.exit(1);
                 }
             }
 
@@ -72,6 +74,7 @@ export default class IndexerWorker extends HyperionWorker {
             const queueName = process.env.queue;
             if (this.ch && queueName) {
                 this.ch_ready = true;
+                console.log('Consumer on:', queueName);
                 this.ch.on('close', () => {
                     hLog('Channel closed for queue:', queueName);
                     this.indexQueue.pause();

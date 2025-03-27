@@ -525,7 +525,7 @@ export class ElasticRoutes {
 
     private registerRoutes() {
         const partitionRouter = this.getIndexPartition.bind(this);
-        this.registerDynamicTableRoute();
+        // this.registerDynamicTableRoute();
         this.addRoute('abi', buildAbiBulk, partitionRouter);
         this.addRoute('action', buildActionBulk, partitionRouter);
         this.addRoute('block', buildBlockBulk, partitionRouter);

@@ -51,6 +51,7 @@ import {updateByBlock} from "../definitions/updateByBlock.painless.js";
 import {IAccount} from "../../interfaces/table-account.js";
 import {IProposal} from "../../interfaces/table-proposal.js";
 import {IVoter} from "../../interfaces/table-voter.js";
+import {Db, IndexDescription} from "mongodb";
 import Timeout = NodeJS.Timeout;
 
 interface RevBlock {
@@ -2455,7 +2456,7 @@ export class HyperionMaster {
                         {key: {is_proxy: 1}}
                     ]);
 
-                    this.parseContractStateConfig();
+                    await this.parseContractStateConfig(db);
                 }
             }
         } catch (e: any) {
@@ -2464,14 +2465,70 @@ export class HyperionMaster {
         }
     }
 
-    private parseContractStateConfig() {
+    private async parseContractStateConfig(db: Db) {
         if (this.conf.features.contract_state && this.conf.features.contract_state.enabled) {
             console.log('MongoDB contract state is enabled!');
             if (this.conf.features.contract_state.contracts) {
                 const contracts = this.conf.features.contract_state.contracts;
-                for (let accountKey in contracts) {
-                    if (contracts[accountKey]) {
-                        console.log(accountKey, contracts[accountKey]);
+                for (let code in contracts) {
+                    if (contracts[code]) {
+                        for (let table in contracts[code]) {
+                            const indices: IndexDescription[] = [
+                                {key: {'@pk': -1}},
+                                {key: {'@scope': 1}},
+                                {key: {'@block_id': -1}},
+                                {key: {'@block_num': -1}},
+                                {key: {'@block_time': -1}},
+                                {key: {'@payer': 1}}
+                            ];
+                            const textFields = {};
+                            if (contracts[code][table]["auto_index"]) {
+                                const contractAbi = await this.rpc.get_abi(code);
+                                if (contractAbi && contractAbi.abi) {
+                                    const tables = contractAbi.abi.tables;
+                                    const structs = contractAbi.abi.structs;
+                                    const extractStructFlat = (structName: string) => {
+                                        const struct = structs.find(value => value.name === structName);
+                                        if (struct?.base) {
+                                            extractStructFlat(struct.base);
+                                        }
+                                        struct?.fields.forEach(value => {
+                                            const key = {};
+                                            key[value.name] = -1;
+                                            indices.push({key});
+                                        });
+                                    };
+                                    const tableData = tables.find(value => value.name === table);
+                                    if (tableData) {
+                                        extractStructFlat(tableData.type);
+                                    }
+                                }
+                            } else {
+                                for (let index in contracts[code][table]['indices']) {
+                                    const key = {};
+                                    const indexValue = contracts[code][table]['indices'][index];
+                                    if (indexValue === 'date') {
+                                        key[index] = -1;
+                                    } else {
+                                        key[index] = indexValue;
+                                    }
+                                    if (indexValue === 'text') {
+                                        textFields[index] = 'text';
+                                    } else {
+                                        indices.push({key})
+                                    }
+                                }
+                            }
+
+                            if (indices.length > 0) {
+                                await db.collection(`${code}-${table}`).createIndexes(indices);
+                            }
+                            if (Object.keys(textFields).length > 0) {
+                                await db.collection(`${code}-${table}`).createIndex(textFields, {
+                                    name: Object.keys(textFields).join('_') + "_text",
+                                });
+                            }
+                        }
                     }
                 }
             } else {
