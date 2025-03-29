@@ -13,29 +13,13 @@ import { Redis } from "ioredis";
 import { Client } from "@elastic/elasticsearch";
 import { APIClient } from "@wharfkit/antelope";
 import { StateHistorySocket } from "../indexer/connections/state-history.js";
-import { mongodb } from "@fastify/mongodb";
 import { MongoClient } from "mongodb";
 
+type AllowedIndexValue = 1 | -1 | "text" | "date" | "2dsphere";
+
 interface IndexConfig {
-    [key: string]: number;
-}
+    [key: string]: AllowedIndexValue
 
-interface TableConfig {
-    auto_index: boolean;
-    indices: IndexConfig;
-}
-
-interface ContractsState {
-    account: string;
-    tables: {
-        [tableName: string]: TableConfig;
-    };
-}
-
-interface ChainConfig {
-    features: {
-        contracts_state: ContractsState[];
-    };
 }
 
 interface TableInput {
@@ -847,37 +831,50 @@ async function listConfigContract(shortName: string) {
     }
 
     const chainJsonFile = await readFile(targetPath);
-    const chainConfig: ChainConfig = JSON.parse(chainJsonFile.toString());
-    const contracts_state = chainConfig.features.contracts_state;
+    const chainConfig: HyperionConfig = JSON.parse(chainJsonFile.toString());
 
-    if (!contracts_state || contracts_state.length === 0) {
-        console.log('No contracts state configuration found.');
+    const contractsConfig = chainConfig.features?.contract_state?.contracts;
+    const contractStateEnabled = chainConfig.features?.contract_state?.enabled ?? false;
+
+    if (!contractStateEnabled || !contractsConfig || Object.keys(contractsConfig).length === 0) {
+        console.log(`No contracts state configuration found or feature is disabled for ${shortName}.`);
+        console.log(`(Contract State Enabled: ${contractStateEnabled})`);
         return;
     }
 
     console.log('Contracts State Configuration:');
+    console.log(`(Enabled: ${contractStateEnabled})`);
     console.log('------------------------------');
 
-    contracts_state.forEach((contractState, index) => {
-        console.log(`Contract State ${index + 1}:`);
-        console.log(`Account: ${contractState.account}`);
-        console.log('Tables:');
+    let firstAccount = true;
+    for (const accountName in contractsConfig) {
+        if (contractsConfig.hasOwnProperty(accountName)) {
+            if (!firstAccount) {
+                console.log('------------------------------');
+            }
+            const accountTables = contractsConfig[accountName];
 
-        for (const [tableName, tableConfig] of Object.entries(contractState.tables)) {
-            console.log(`  ${tableName}:`);
-            console.log(`    auto_index: ${tableConfig.auto_index}`);
-            console.log('    indices:');
-            console.log(customStringify(tableConfig.indices, 6));
-        }
+            console.log(`Account: ${accountName}`);
+            console.log('Tables:');
 
-        if (index < contracts_state.length - 1) {
-            console.log('------------------------------');
+            if (Object.keys(accountTables).length === 0) {
+                console.log('  (No tables configured for this account)');
+            } else {
+                for (const [tableName, tableConfig] of Object.entries(accountTables)) {
+                    console.log(`  ${tableName}:`);
+                    console.log(`    auto_index: ${tableConfig.auto_index}`);
+                    console.log('    indices:');
+                    console.log(customStringify(tableConfig.indices, 6));
+                }
+            }
+            firstAccount = false;
         }
-    });
+    }
 }
 
+
 async function addOrUpdateContractConfig(shortName: string, account: string, tables: TableInput[]) {
-    console.log(`Adding/updating contract config for ${shortName}...`);
+    console.log(`Adding/updating contract config for account '${account}' in ${shortName}...`);
     const targetPath = path.join(chainsDir, `${shortName}.config.json`);
 
     if (!existsSync(targetPath)) {
@@ -886,31 +883,57 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
     }
 
     const chainJsonFile = await readFile(targetPath);
-    const chainConfig: ChainConfig = JSON.parse(chainJsonFile.toString());
+    const chainConfig: HyperionConfig = JSON.parse(chainJsonFile.toString());
 
-    if (!chainConfig.features.contracts_state) {
-        chainConfig.features.contracts_state = [];
+
+    if (!chainConfig.features) {
+        console.warn("WARN: 'features' section missing, creating default structure.");
+
+        chainConfig.features = {
+            streaming: { enable: false, traces: false, deltas: false },
+            tables: { proposals: true, accounts: true, voters: true, userres: true, delband: true },
+            contract_state: { enabled: true, contracts: {} },
+            index_deltas: true,
+            index_transfer_memo: true,
+            index_all_deltas: true,
+            deferred_trx: false,
+            failed_trx: false,
+            resource_limits: false,
+            resource_usage: false,
+            contract_console: false
+        };
+    } else if (!chainConfig.features.contract_state) {
+        console.warn("WARN: 'features.contract_state' section missing, creating default.");
+        chainConfig.features.contract_state = {
+            enabled: true,
+            contracts: {}
+        };
+
+    } else if (!chainConfig.features.contract_state.contracts) {
+        console.warn("WARN: 'features.contract_state.contracts' object missing, creating.");
+        chainConfig.features.contract_state.contracts = {};
     }
 
-    let accountConfig = chainConfig.features.contracts_state.find(cs => cs.account === account);
 
-    if (!accountConfig) {
-        accountConfig = {
-            account: account,
-            tables: {}
-        };
-        chainConfig.features.contracts_state.push(accountConfig);
+    let accountTables = chainConfig.features.contract_state.contracts[account];
+    if (!accountTables) {
+        console.log(`Account '${account}' not found in config, creating new entry.`);
+        chainConfig.features.contract_state.contracts[account] = {};
+        accountTables = chainConfig.features.contract_state.contracts[account];
+    } else {
+        console.log(`Updating existing tables for account '${account}'.`);
     }
 
     tables.forEach(table => {
-        accountConfig.tables[table.name] = {
+        console.log(`  - Processing table '${table.name}'`);
+        accountTables[table.name] = {
             auto_index: table.autoIndex,
             indices: table.indices
         };
     });
 
     await writeFile(targetPath, JSON.stringify(chainConfig, null, 2));
-    console.log(`Contract config added/updated successfully for account ${account}`);
+    console.log(`✅ Contract config saved successfully for account '${account}' in ${shortName}.config.json`);
 }
 
 
@@ -919,7 +942,6 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
 
     const connections = program.command('connections');
 
-    // ./hyp-config connections init
     connections.command('init')
         .description('create and test the connections.json file')
         .action(initConfig);
@@ -992,7 +1014,7 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         .description('backup and delete chain configuration')
         .action(rmChain);
 
-    
+
     const contracts = program.command('contracts');
 
     //List Config
@@ -1002,28 +1024,38 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
 
     // Add to config
     contracts.command('add-single <chainName> <account> <table> <autoIndex> <indices>')
-    .description('add or update a single table in contract config')
-    .action(async (chainName, account, table, autoIndex, indices) => {
-        const tableInput: TableInput = {
-            name: table,
-            autoIndex: autoIndex === 'true',
-            indices: JSON.parse(indices)
-        };
-        await addOrUpdateContractConfig(chainName, account, [tableInput]);
-    });
+        .description('add or update a single table in contract config (indices as JSON string)')
+        .action(async (chainName, account, table, autoIndex, indicesJson) => {
+            try {
+                const indices: IndexConfig = JSON.parse(indicesJson);
+                const tableInput: TableInput = {
+                    name: table,
+                    autoIndex: autoIndex === 'true',
+                    indices: indices
+                };
+                await addOrUpdateContractConfig(chainName, account, [tableInput]);
+            } catch (error: any) {
+                console.error(`Error parsing indices JSON: ${error.message}`);
+                console.error("Please provide indices as a valid JSON string, e.g., '{\"owner\":1}'");
+            }
+        });
 
-contracts.command('add-multiple <chainName> <account> <tablesJson>')
-    .description('add or update multiple tables in contract config')
-    .action(async (chainName, account, tablesJson) => {
-        try {
-            const tables: TableInput[] = JSON.parse(tablesJson);
-            await addOrUpdateContractConfig(chainName, account, tables);
-        } catch (error) {
-            console.error('Error parsing tables JSON:', error);
-        }
-    });
-
-
+    contracts.command('add-multiple <chainName> <account> <tablesJson>')
+        .description('add or update multiple tables in contract config (tables as JSON string)')
+        .action(async (chainName, account, tablesJson) => {
+            try {
+                const tablesData: Array<{ name: string; autoIndex: boolean; indices: IndexConfig }> = JSON.parse(tablesJson);
+                const tables: TableInput[] = tablesData.map(t => ({
+                    name: t.name,
+                    autoIndex: t.autoIndex,
+                    indices: t.indices
+                }));
+                await addOrUpdateContractConfig(chainName, account, tables);
+            } catch (error: any) {
+                console.error(`Error parsing tables JSON: ${error.message}`);
+                console.error("Provide tables as JSON array string, e.g., '[{\"name\":\"t\",\"autoIndex\":true,\"indices\":{}}]'");
+            }
+        });
     program.parse(process.argv);
 
 })();
