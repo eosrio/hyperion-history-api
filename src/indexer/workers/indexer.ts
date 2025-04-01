@@ -1,21 +1,23 @@
-import {cargo, QueueObject} from "async";
-import {Message} from "amqplib";
+import { cargo, QueueObject } from "async";
+import { Message } from "amqplib";
 
-import {HyperionWorker} from "./hyperionWorker.js";
-import {ElasticRoutes, RouteFunction} from '../helpers/elastic-routes.js';
-import {hLog} from "../helpers/common_functions.js";
-import {RabbitQueueDef} from "../definitions/index-queues.js";
-import {MongoRoutes} from "../helpers/mongo-routes.js";
+import { HyperionWorker } from "./hyperionWorker.js";
+import { ElasticRoutes, RouteFunction } from '../helpers/elastic-routes.js';
+import { hLog } from "../helpers/common_functions.js";
+import { RabbitQueueDef } from "../definitions/index-queues.js";
+import { MongoRoutes } from "../helpers/mongo-routes.js";
 
 export default class IndexerWorker extends HyperionWorker {
 
     private indexQueue: QueueObject<any>;
     private temp_indexed_count = 0;
+    private consumerTag: string | undefined;
 
     esRoutes: ElasticRoutes;
     mongoRoutes: MongoRoutes;
 
     constructor() {
+        console.log(`aqui`, process.env.type, process.env.queue);
         super();
         if (!process.env.type) {
             hLog("[FATAL] env.type is not defined!");
@@ -82,7 +84,8 @@ export default class IndexerWorker extends HyperionWorker {
                 });
                 await this.ch.assertQueue(queueName, RabbitQueueDef);
                 await this.ch.prefetch(this.conf.prefetch.index);
-                await this.ch.consume(queueName, this.indexQueue.push);
+                const consume = await this.ch.consume(queueName, this.indexQueue.push);
+                this.consumerTag = consume.consumerTag;
                 this.indexQueue.resume();
             }
         } catch (e: any) {
@@ -94,14 +97,36 @@ export default class IndexerWorker extends HyperionWorker {
     startMonitoring() {
         setInterval(() => {
             if (this.temp_indexed_count > 0) {
-                process.send?.({event: 'add_index', size: this.temp_indexed_count});
+                process.send?.({ event: 'add_index', size: this.temp_indexed_count });
             }
             this.temp_indexed_count = 0;
         }, 1000);
     }
 
     onIpcMessage(msg: any): void {
-        // console.log(msg);
+        if (msg.event === 'pause-indexer') {
+            hLog(`[IPC]`, msg);
+            if (this.indexQueue && this.ch && this.consumerTag) {
+                hLog(`[IPC] Pausing indexer... Subscription: ${msg.mId}`);
+                // this.indexQueue.pause();
+                this.ch.cancel(this.consumerTag);
+                if (this.indexQueue.length() > 0) {
+                    this.indexQueue.drain(() => {
+                        hLog(`[IPC] Indexer paused!`);
+                        process.send?.({
+                            event: 'indexer-paused',
+                            mId: msg.mId
+                        });
+                    });
+                } else {
+                    hLog(`[IPC] Indexer paused!`);
+                    process.send?.({
+                        event: 'indexer-paused',
+                        mId: msg.mId
+                    });
+                }
+            }
+        }
     }
 
     async run(): Promise<void> {

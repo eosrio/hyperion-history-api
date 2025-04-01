@@ -3,11 +3,61 @@ import { AccountSynchronizer } from "./sync-accounts/sync-accounts.js";
 import { VoterSynchronizer } from "./sync-accounts/sync-voters.js";
 import { ProposalSynchronizer } from "./sync-accounts/sync-proposals.js";
 import { ContractStateSynchronizer } from "./sync-accounts/sync-contract-state.js";
+import { readConnectionConfig } from "./repair-cli/functions.js";
+import { WebSocket } from 'ws';
 
 const __dirname = new URL('.', import.meta.url).pathname;
 
-async function syncVoters(chain: string) {
+class IndexerController {
+
+    ws: any;
+
+    constructor(private chain: string, private host?: string) {
+    }
+
+    async pause(type: string) {
+        const config = readConnectionConfig();
+        const controlPort = config.chains[this.chain].control_port;
+        let hyperionIndexer = `ws://localhost:${controlPort}`;
+        if (this.host) {
+            hyperionIndexer = `ws://${this.host}:${controlPort}`;
+        }
+
+        await new Promise((resolve, reject) => {
+            const controller = new WebSocket(hyperionIndexer + '/local');
+
+            controller.on('open', async () => {
+                console.log('Connected to Hyperion Controller');
+                this.ws = controller;
+                controller.send(JSON.stringify({
+                    event: 'pause-indexer',
+                    type: type,
+                }));
+            });
+
+            controller.on('error', (error: any) => {
+                console.error('Error connecting to Hyperion Controller:', error);
+                reject(error);
+            });
+
+            controller.on('message', (data: any) => {
+                const message = JSON.parse(data);
+                if (message.event === 'indexer-paused') {
+                    console.log('Indexer paused');
+                }
+            });
+        }
+        );
+    }
+
+}
+
+async function syncVoters(chain: string, host?: string) {
     const synchronizer = new VoterSynchronizer(chain);
+    const indexerController = new IndexerController(chain, host);
+
+    //pause
+    await indexerController.pause('table-voters');
     await synchronizer.run();
 }
 
@@ -33,9 +83,9 @@ async function syncContractState(chain: string) {
 
     sync.command('voters <chain>')
         .description('Sync voters for a specific chain')
-        .action(async (chain: string) => {
+        .action(async (chain: string, args: any) => {
             try {
-                await syncVoters(chain);
+                await syncVoters(chain, args.host);
             } catch (error) {
                 console.error('Error syncing voters:', error);
             }

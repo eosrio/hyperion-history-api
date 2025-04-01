@@ -1,8 +1,8 @@
-import {Client, estypes} from "@elastic/elasticsearch";
-import {JsonRpc} from "eosjs/dist/eosjs-jsonrpc.js";
-import {ConnectionManager} from "../connections/manager.class.js";
-import {ConfigurationModule} from "./config.js";
-import {HyperionModuleLoader} from "./loader.js";
+import { Client, estypes } from "@elastic/elasticsearch";
+import { JsonRpc } from "eosjs/dist/eosjs-jsonrpc.js";
+import { ConnectionManager } from "../connections/manager.class.js";
+import { ConfigurationModule } from "./config.js";
+import { HyperionModuleLoader } from "./loader.js";
 
 import {
     debugLog,
@@ -17,7 +17,7 @@ import {
 } from "../helpers/common_functions.js";
 
 import pm2io from '@pm2/io';
-import {GetInfoResult} from "eosjs/dist/eosjs-rpc-interfaces.js";
+import { GetInfoResult } from "eosjs/dist/eosjs-rpc-interfaces.js";
 
 import {
     createWriteStream,
@@ -30,29 +30,30 @@ import {
     WriteStream
 } from "fs";
 
-import cluster, {Worker} from "cluster";
+import cluster, { Worker } from "cluster";
 import path from "path";
-import {Socket} from 'socket.io-client';
-import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
-import {HyperionWorkerDef} from "../../interfaces/hyperionWorkerDef.js";
+import { Socket } from 'socket.io-client';
+import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
+import { HyperionWorkerDef } from "../../interfaces/hyperionWorkerDef.js";
 
-import {IOConfig} from "@pm2/io/build/main/pmx.js";
-import {queue, QueueObject} from "async";
-import {convertLegacyPublicKey} from "eosjs/dist/eosjs-numeric.js";
-import {Redis} from "ioredis";
-import {AlertManagerOptions, AlertsManager, HyperionAlertTypes} from "./alertsManager.js";
+import { IOConfig } from "@pm2/io/build/main/pmx.js";
+import { queue, QueueObject } from "async";
+import { convertLegacyPublicKey } from "eosjs/dist/eosjs-numeric.js";
+import { Redis } from "ioredis";
+import { AlertManagerOptions, AlertsManager, HyperionAlertTypes } from "./alertsManager.js";
 
-import {bootstrap} from 'global-agent';
-import {App, HttpRequest, HttpResponse, TemplatedApp, WebSocket} from "uWebSockets.js";
+import { bootstrap } from 'global-agent';
+import { App, HttpRequest, HttpResponse, TemplatedApp, WebSocket } from "uWebSockets.js";
 import moment from "moment";
-import {getTotalValue} from "../../api/helpers/functions.js";
-import {ShipServer, StateHistorySocket} from "../connections/state-history.js";
-import {updateByBlock} from "../definitions/updateByBlock.painless.js";
-import {IAccount} from "../../interfaces/table-account.js";
-import {IProposal} from "../../interfaces/table-proposal.js";
-import {IVoter} from "../../interfaces/table-voter.js";
-import {Db, IndexDescription} from "mongodb";
+import { getTotalValue } from "../../api/helpers/functions.js";
+import { ShipServer, StateHistorySocket } from "../connections/state-history.js";
+import { updateByBlock } from "../definitions/updateByBlock.painless.js";
+import { IAccount } from "../../interfaces/table-account.js";
+import { IProposal } from "../../interfaces/table-proposal.js";
+import { IVoter } from "../../interfaces/table-voter.js";
+import { Db, IndexDescription } from "mongodb";
 import Timeout = NodeJS.Timeout;
+import { randomUUID } from 'node:crypto';
 
 interface RevBlock {
     num: number;
@@ -79,6 +80,7 @@ interface WorkerMessage {
     data?: any;
     block_num?: number;
     block_ts?: string;
+    mId?: string;
 }
 
 type WorkerMessageHandler = (worker: Worker, msg: WorkerMessage) => Promise<void> | void;
@@ -210,6 +212,7 @@ export class HyperionMaster {
     private lastIrreversibleBlock: number = 0;
     private validatedShipServers: ShipServer[] = [];
     private avg_consume_rate: number = 0;
+    private attachedControllerMap? = new Map<string, WebSocket<any>>;
 
     constructor() {
         this.cm = new ConfigurationModule();
@@ -371,7 +374,7 @@ export class HyperionMaster {
                     hLog(`deserializer ${msg.worker_id} received new abi! propagating changes to other workers...`);
                     for (const worker of this.workerMap) {
                         if (worker.worker_role === 'deserializer' && worker.worker_id !== parseInt(msg.worker_id)) {
-                            worker.wref?.send({event: 'update_abi', abi: msg.data});
+                            worker.wref?.send({ event: 'update_abi', abi: msg.data });
                         }
                     }
                 }
@@ -455,7 +458,7 @@ export class HyperionMaster {
             'ds_ready': (worker: Worker, msg: WorkerMessage) => {
                 // send the ship abi to the deserializer
                 if (this.cachedInitABI) {
-                    worker.send({event: 'initialize_abi', data: this.cachedInitABI});
+                    worker.send({ event: 'initialize_abi', data: this.cachedInitABI });
                 }
             },
             'contract_usage_report': (_worker: Worker, msg: WorkerMessage) => {
@@ -481,7 +484,7 @@ export class HyperionMaster {
 
                     this.revBlockArray = this.revBlockArray.filter(item => item.num > msg.data.block_num);
                     if (this.conf.hub && this.hub && this.conf.hub.hub_url) {
-                        this.hub.emit('hyp_ev', {e: 'lib', d: msg.data});
+                        this.hub.emit('hyp_ev', { e: 'lib', d: msg.data });
                     }
                     // forward LIB to streaming router
                     if (this.conf.features.streaming.enable && this.wsRouterWorker) {
@@ -507,7 +510,7 @@ export class HyperionMaster {
                     for (const block of forkedBlocks) {
                         if (block.tx.length > 0) {
                             for (const trxId of block.tx) {
-                                await this.ioRedisClient.set(trxId, JSON.stringify({status: 'forked'}), "EX", 600);
+                                await this.ioRedisClient.set(trxId, JSON.stringify({ status: 'forked' }), "EX", 600);
                             }
                         }
                     }
@@ -517,7 +520,16 @@ export class HyperionMaster {
                     msg.data.forkedBlocks = forkedBlocks;
                     this.wsRouterWorker.send(msg);
                 }
+            },
+            'indexer-paused': (_worker: Worker, msg: WorkerMessage) => {
+                hLog(`[IPC]`, msg);
+                if (msg.mId) {
+                    this.localController?.publish(msg.mId, JSON.stringify({
+                        event: 'indexer-paused'
+                    }));
+                }
             }
+
         };
     }
 
@@ -567,28 +579,28 @@ export class HyperionMaster {
         const table_feats = this.conf.features.tables;
 
         if (table_feats.proposals) {
-            indicesList.push({name: 'tableProposals', type: 'table-proposals'});
-            index_queues.push({type: 'table-proposals', name: index_queue_prefix + "_table_proposals"});
+            indicesList.push({ name: 'tableProposals', type: 'table-proposals' });
+            index_queues.push({ type: 'table-proposals', name: index_queue_prefix + "_table_proposals" });
         }
 
         if (table_feats.accounts) {
-            indicesList.push({name: 'tableAccounts', type: 'table-accounts'});
-            index_queues.push({type: 'table-accounts', name: index_queue_prefix + "_table_accounts"});
+            indicesList.push({ name: 'tableAccounts', type: 'table-accounts' });
+            index_queues.push({ type: 'table-accounts', name: index_queue_prefix + "_table_accounts" });
         }
 
         if (table_feats.voters) {
-            indicesList.push({name: 'tableVoters', type: 'table-voters'});
-            index_queues.push({type: 'table-voters', name: index_queue_prefix + "_table_voters"});
+            indicesList.push({ name: 'tableVoters', type: 'table-voters' });
+            index_queues.push({ type: 'table-voters', name: index_queue_prefix + "_table_voters" });
         }
 
         if (table_feats.delband) {
-            indicesList.push({name: 'tableDelband', type: 'table-delband'});
-            index_queues.push({type: 'table-delband', name: index_queue_prefix + "_table_delband"});
+            indicesList.push({ name: 'tableDelband', type: 'table-delband' });
+            index_queues.push({ type: 'table-delband', name: index_queue_prefix + "_table_delband" });
         }
 
         // special dynamic table mapper
         // indicesList.push({name: 'dynamicTable', type: 'dynamic-table'});
-        index_queues.push({type: 'dynamic-table', name: index_queue_prefix + "_dynamic"});
+        index_queues.push({ type: 'dynamic-table', name: index_queue_prefix + "_dynamic" });
 
     }
 
@@ -929,7 +941,7 @@ export class HyperionMaster {
     private async setupStreaming() {
         const _streaming = this.conf.features.streaming;
         if (_streaming.enable) {
-            this.addWorker({worker_role: 'router'});
+            this.addWorker({ worker_role: 'router' });
             if (_streaming.deltas) hLog('Delta streaming enabled!');
             if (_streaming.traces) hLog('Action trace streaming enabled!');
             if (!_streaming.deltas && !_streaming.traces) {
@@ -965,7 +977,7 @@ export class HyperionMaster {
         await this.setupIndexers();
         await this.setupStreaming();
         await this.setupDSPool();
-        this.addWorker({worker_role: "delta_updater"});
+        this.addWorker({ worker_role: "delta_updater" });
     }
 
     private launchWorkers() {
@@ -1109,7 +1121,7 @@ export class HyperionMaster {
             }, 60000 * 10);
             pm2io.action('start', (reply) => {
                 resolve();
-                reply({ack: true});
+                reply({ ack: true });
                 clearTimeout(idleTimeout);
             });
         });
@@ -1119,14 +1131,14 @@ export class HyperionMaster {
 
     setupDeserializationErrorLogger() {
         const logPath = path.join(path.resolve(), 'logs', this.chain);
-        if (!existsSync(logPath)) mkdirSync(logPath, {recursive: true});
+        if (!existsSync(logPath)) mkdirSync(logPath, { recursive: true });
         const dsLogFileName = (new Date().toISOString()) + "_ds_err_" + this.starting_block + "_" + this.head + ".log";
         const dsErrorsLog = logPath + '/' + dsLogFileName;
         if (existsSync(dsErrorsLog)) unlinkSync(dsErrorsLog);
         const symbolicLink = logPath + '/deserialization_errors.log';
         if (existsSync(symbolicLink)) unlinkSync(symbolicLink);
         symlinkSync(dsLogFileName, symbolicLink);
-        this.dsErrorStream = createWriteStream(dsErrorsLog, {flags: 'a'});
+        this.dsErrorStream = createWriteStream(dsErrorsLog, { flags: 'a' });
         hLog(`📣️  Deserialization errors are being logged in:\n[${symbolicLink}]`);
         this.dsErrorStream.write(`begin ${this.chain} error logs\n`);
     }
@@ -1277,14 +1289,14 @@ export class HyperionMaster {
 
     private pauseReaders() {
         if (!this.readingPaused) {
-            this.sendToRole('reader', {event: 'pause'});
+            this.sendToRole('reader', { event: 'pause' });
             this.readingPaused = true;
         }
     }
 
     private resumeReaders() {
         if (this.readingPaused) {
-            this.sendToRole('reader', {event: 'resume'});
+            this.sendToRole('reader', { event: 'resume' });
             this.readingPaused = false;
         }
     }
@@ -1335,7 +1347,7 @@ export class HyperionMaster {
                         }
                         if (autoscaleConsumers[queue] < this.conf.scaling.max_autoscale) {
                             hLog(`${queue} is above the limit (${size}/${limit}). Launching consumer...`);
-                            this.addWorker({queue: queue, type: worker.type, worker_role: 'ingestor'});
+                            this.addWorker({ queue: queue, type: worker.type, worker_role: 'ingestor' });
                             this.launchWorkers();
                             autoscaleConsumers[queue]++;
                         }
@@ -1481,7 +1493,7 @@ export class HyperionMaster {
         if (this.conf.hub && this.conf.hub.hub_url && this.hub) {
             this.hub.emit('hyp_ev', {
                 e: 'rates',
-                d: {r: _r, c: _c, a: _a}
+                d: { r: _r, c: _c, a: _a }
             });
         }
 
@@ -1574,7 +1586,7 @@ export class HyperionMaster {
                             // attempt to move readers to another server if there are fail-over servers defined
                             if (this.idle_count === 3 && this.validatedShipServers.length > 1) {
                                 readers.forEach(w => {
-                                    w.wref?.send({event: 'next_server'});
+                                    w.wref?.send({ event: 'next_server' });
                                 });
                             }
                         }
@@ -1678,11 +1690,10 @@ export class HyperionMaster {
 
         this.localController = App();
         this.localController.ws('/local', {
-            open: () => {
+            open: (ws: WebSocket<any>) => {
                 hLog(`Local controller connected!`);
             },
             message: (ws, msg) => {
-                console.log(msg);
                 const buffer = Buffer.from(msg);
                 const rawMessage = buffer.toString();
                 try {
@@ -1694,14 +1705,31 @@ export class HyperionMaster {
                         default: {
                             // parse message as json
                             const message = JSON.parse(rawMessage);
-                            if (message.event === 'fill_missing_blocks') {
-                                this.fillMissingBlocks(message.data, ws).catch(console.log);
+                            switch (message.event) {
+                                case `fill_missing_blocks`:
+                                    this.fillMissingBlocks(message.data, ws).catch(console.log);
+                                    break;
+                                case 'pause-indexer':
+                                    hLog(`Pausing indexer...`, message);
+                                    const mId = randomUUID();
+                                    ws.subscribe(mId);
+                                    // send message to work of type message.type
+
+                                    this.workerMap.forEach((worker: HyperionWorkerDef) => {
+                                        if (worker.wref && worker.type === message.type) {
+                                            hLog(`Pausing ${worker.worker_role} ${worker.worker_id}`);
+                                            worker.wref.send({ event: 'pause-indexer', mId });
+                                        }
+                                    });
+
+                                    // ws.send(JSON.stringify({event: 'indexer-paused'}));
+                                    break;
                             }
                         }
                     }
                 } catch (e: any) {
                     console.error(e);
-                    ws.send(JSON.stringify({error: e.message}));
+                    ws.send(JSON.stringify({ error: e.message }));
                     ws.send("Invalid message format!");
                     ws.end();
                 }
@@ -1876,28 +1904,28 @@ export class HyperionMaster {
 
         const prefix = this.chain + ':index';
         this.IndexingQueues = [
-            {type: 'action', name: prefix + "_actions"},
-            {type: 'block', name: prefix + "_blocks"},
-            {type: 'delta', name: prefix + "_deltas"},
-            {type: 'abi', name: prefix + "_abis"},
-            {type: 'generic', name: prefix + "_generic"}
+            { type: 'action', name: prefix + "_actions" },
+            { type: 'block', name: prefix + "_blocks" },
+            { type: 'delta', name: prefix + "_deltas" },
+            { type: 'abi', name: prefix + "_abis" },
+            { type: 'generic', name: prefix + "_generic" }
         ];
 
         const indexConfig: any = await import('../definitions/index-templates.js');
 
         const indicesList = [
-            {name: "action", type: "action"},
-            {name: "block", type: "block"},
-            {name: "abi", type: "abi"},
-            {name: "delta", type: "delta"},
-            {name: "logs", type: "logs"},
-            {name: 'permissionLink', type: 'link'},
-            {name: 'permission', type: 'perm'},
-            {name: 'resourceLimits', type: 'reslimits'},
-            {name: 'resourceUsage', type: 'userres'},
-            {name: 'generatedTransaction', type: 'gentrx'},
-            {name: 'failedTransaction', type: 'trxerr'},
-            {name: 'schedule', type: 'schedule'}
+            { name: "action", type: "action" },
+            { name: "block", type: "block" },
+            { name: "abi", type: "abi" },
+            { name: "delta", type: "delta" },
+            { name: "logs", type: "logs" },
+            { name: 'permissionLink', type: 'link' },
+            { name: 'permission', type: 'perm' },
+            { name: 'resourceLimits', type: 'reslimits' },
+            { name: 'resourceUsage', type: 'userres' },
+            { name: 'generatedTransaction', type: 'gentrx' },
+            { name: 'failedTransaction', type: 'trxerr' },
+            { name: 'schedule', type: 'schedule' }
         ];
 
         this.addStateTables(indicesList, this.IndexingQueues);
@@ -1984,7 +2012,7 @@ export class HyperionMaster {
                     ]
                 }
             },
-            sort: [{block_num: {order: "asc"}}],
+            sort: [{ block_num: { order: "asc" } }],
             _source: {
                 includes: [
                     "block_num",
@@ -2259,7 +2287,7 @@ export class HyperionMaster {
             this.allowMoreReaders = false;
             const stopMsg = 'Stop signal received. Shutting down readers immediately!';
             hLog(stopMsg);
-            messageAllWorkers(cluster, {event: 'stop'});
+            messageAllWorkers(cluster, { event: 'stop' });
 
             const lastBlockFile = `./config/chains/.${this.chain}_lastblock.txt`;
 
@@ -2288,14 +2316,14 @@ export class HyperionMaster {
                     }
 
                     hLog('Shutting down master...');
-                    done({ack: true});
+                    done({ ack: true });
                     process.exit(0);
 
                 }
             }, 1000);
 
         } catch (e: any) {
-            done({ack: false, error: e.message});
+            done({ ack: false, error: e.message });
         }
     }
 
@@ -2424,36 +2452,36 @@ export class HyperionMaster {
             this.manager.prepareMongoClient();
             if (this.manager.mongodbClient) {
                 await this.manager.mongodbClient.connect();
-                const pingStatus = await this.manager.mongodbClient.db("admin").command({ping: 1});
+                const pingStatus = await this.manager.mongodbClient.db("admin").command({ ping: 1 });
                 console.log('MongoDB', pingStatus);
                 if (this.manager.conn.mongodb) {
                     const db = this.manager.mongodbClient.db(`${this.manager.conn.mongodb.database_prefix}_${this.manager.chain}`);
                     // create indexes
                     // accounts table indices
                     const accounts = db.collection<IAccount>('accounts');
-                    await accounts.createIndex({code: 1}, {unique: false});
-                    await accounts.createIndex({scope: 1}, {unique: false});
-                    await accounts.createIndex({symbol: 1}, {unique: false});
-                    await accounts.createIndex({code: 1, scope: 1, symbol: 1}, {unique: true});
+                    await accounts.createIndex({ code: 1 }, { unique: false });
+                    await accounts.createIndex({ scope: 1 }, { unique: false });
+                    await accounts.createIndex({ symbol: 1 }, { unique: false });
+                    await accounts.createIndex({ code: 1, scope: 1, symbol: 1 }, { unique: true });
                     // proposals table indices
                     const proposals = db.collection<IProposal>('proposals');
                     await proposals.createIndexes([
-                        {key: {proposal_name: 1}},
-                        {key: {proposer: 1}},
-                        {key: {expiration: -1}},
-                        {key: {"provided_approvals.actor": 1}},
-                        {key: {"requested_approvals.actor": 1}}
+                        { key: { proposal_name: 1 } },
+                        { key: { proposer: 1 } },
+                        { key: { expiration: -1 } },
+                        { key: { "provided_approvals.actor": 1 } },
+                        { key: { "requested_approvals.actor": 1 } }
                     ]);
                     // voters table indices
                     const voters = db.collection<IVoter>("voters");
                     await voters.createIndexes([
-                        {key: {voter: 1}},
-                        {key: {block_num: 1}},
-                        {key: {staked: 1}},
-                        {key: {last_vote_weight: 1}},
-                        {key: {proxied_vote_weight: 1}},
-                        {key: {producers: 1}},
-                        {key: {is_proxy: 1}}
+                        { key: { voter: 1 } },
+                        { key: { block_num: 1 } },
+                        { key: { staked: 1 } },
+                        { key: { last_vote_weight: 1 } },
+                        { key: { proxied_vote_weight: 1 } },
+                        { key: { producers: 1 } },
+                        { key: { is_proxy: 1 } }
                     ]);
 
                     await this.parseContractStateConfig(db);
@@ -2474,12 +2502,12 @@ export class HyperionMaster {
                     if (contracts[code]) {
                         for (let table in contracts[code]) {
                             const indices: IndexDescription[] = [
-                                {key: {'@pk': -1}},
-                                {key: {'@scope': 1}},
-                                {key: {'@block_id': -1}},
-                                {key: {'@block_num': -1}},
-                                {key: {'@block_time': -1}},
-                                {key: {'@payer': 1}}
+                                { key: { '@pk': -1 } },
+                                { key: { '@scope': 1 } },
+                                { key: { '@block_id': -1 } },
+                                { key: { '@block_num': -1 } },
+                                { key: { '@block_time': -1 } },
+                                { key: { '@payer': 1 } }
                             ];
                             const textFields = {};
                             if (contracts[code][table]["auto_index"]) {
@@ -2495,7 +2523,7 @@ export class HyperionMaster {
                                         struct?.fields.forEach(value => {
                                             const key = {};
                                             key[value.name] = -1;
-                                            indices.push({key});
+                                            indices.push({ key });
                                         });
                                     };
                                     const tableData = tables.find(value => value.name === table);
@@ -2515,7 +2543,7 @@ export class HyperionMaster {
                                     if (indexValue === 'text') {
                                         textFields[index] = 'text';
                                     } else {
-                                        indices.push({key})
+                                        indices.push({ key })
                                     }
                                 }
                             }
