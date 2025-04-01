@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { AccountStateSynchronizer as AccountSynchronizer } from "./sync-accounts/sync-accounts.js";
-import { AccountStateSynchronizer as VoterSynchronizer } from "./sync-accounts/sync-voters.js";
+import { AccountSynchronizer } from "./sync-accounts/sync-accounts.js";
+import { VoterSynchronizer } from "./sync-accounts/sync-voters.js";
 import { ProposalSynchronizer } from "./sync-accounts/sync-proposals.js";
 import { ContractStateSynchronizer } from "./sync-accounts/sync-contract-state.js";
 

@@ -7,7 +7,7 @@ import { Collection, MongoClient } from "mongodb";
 import { IVoter } from "../../interfaces/table-voter.js";
 import { cargo } from "async";
 
-export class AccountStateSynchronizer {
+export class VoterSynchronizer {
     private chain: string;
     private indexName: string;
     private connections: HyperionConnections;
@@ -58,9 +58,9 @@ export class AccountStateSynchronizer {
             this.mongoClient = new MongoClient(uri);
             await this.mongoClient.connect();
             this.voterCollection = this.mongoClient.db(`${_mongo.database_prefix}_${this.chain}`).collection('voters');
-            await this.voterCollection.createIndex({voter: 1}, {unique: true});
-            await this.voterCollection.createIndex({producers: 1}, {unique: false});
-            await this.voterCollection.createIndex({is_proxy: 1}, {unique: false});
+            await this.voterCollection.createIndex({voter: 1});
+            await this.voterCollection.createIndex({producers: 1});
+            await this.voterCollection.createIndex({is_proxy: 1});
             const ping = await this.mongoClient?.db(`admin`).command({ping: 1});
             console.log(ping);
         }

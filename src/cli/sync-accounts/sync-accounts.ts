@@ -7,7 +7,7 @@ import {HyperionConnections} from "../../interfaces/hyperionConnections.js";
 import {IAccount} from "../../interfaces/table-account.js";
 import {cargo} from "async";
 
-export class AccountStateSynchronizer {
+export class AccountSynchronizer {
     private chain: string;
     private indexName: string;
     private connections: HyperionConnections;
