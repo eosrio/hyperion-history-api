@@ -522,14 +522,22 @@ export class HyperionMaster {
                 }
             },
             'indexer-paused': (_worker: Worker, msg: WorkerMessage) => {
-                hLog(`[IPC]`, msg);
                 if (msg.mId) {
                     this.localController?.publish(msg.mId, JSON.stringify({
-                        event: 'indexer-paused'
+                        event: 'indexer-paused',
+                        mId: msg.mId
+                    }));
+                }
+            },
+            'indexer-resumed': (_worker: Worker, msg: WorkerMessage) => {
+                hLog(`[IPC] Resuming indexer`);
+                // Notificar o controlador local que o indexador foi retomado
+                if (msg.mId) {
+                    this.localController?.publish(msg.mId, JSON.stringify({
+                        event: 'indexer-resumed'
                     }));
                 }
             }
-
         };
     }
 
@@ -1710,19 +1718,22 @@ export class HyperionMaster {
                                     this.fillMissingBlocks(message.data, ws).catch(console.log);
                                     break;
                                 case 'pause-indexer':
-                                    hLog(`Pausing indexer...`, message);
                                     const mId = randomUUID();
                                     ws.subscribe(mId);
                                     // send message to work of type message.type
-
                                     this.workerMap.forEach((worker: HyperionWorkerDef) => {
                                         if (worker.wref && worker.type === message.type) {
-                                            hLog(`Pausing ${worker.worker_role} ${worker.worker_id}`);
                                             worker.wref.send({ event: 'pause-indexer', mId });
                                         }
                                     });
-
-                                    // ws.send(JSON.stringify({event: 'indexer-paused'}));
+                                    break;
+                                case 'resume-indexer':
+                                    // send resume message to all indexer workers
+                                    this.workerMap.forEach((worker: HyperionWorkerDef) => {
+                                        if (worker.wref && worker.type === message.type) {
+                                            worker.wref.send({ event: 'resume-indexer', mId: message.mId });
+                                        }
+                                    });
                                     break;
                             }
                         }
