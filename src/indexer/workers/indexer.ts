@@ -17,7 +17,6 @@ export default class IndexerWorker extends HyperionWorker {
     mongoRoutes: MongoRoutes;
 
     constructor() {
-        console.log(`aqui`, process.env.type, process.env.queue);
         super();
         if (!process.env.type) {
             hLog("[FATAL] env.type is not defined!");
@@ -103,29 +102,66 @@ export default class IndexerWorker extends HyperionWorker {
         }, 1000);
     }
 
-    onIpcMessage(msg: any): void {
+    async onIpcMessage(msg: any): Promise<void> {
         if (msg.event === 'pause-indexer') {
-            hLog(`[IPC]`, msg);
-            if (this.indexQueue && this.ch && this.consumerTag) {
-                hLog(`[IPC] Pausing indexer... Subscription: ${msg.mId}`);
-                // this.indexQueue.pause();
-                this.ch.cancel(this.consumerTag);
-                if (this.indexQueue.length() > 0) {
-                    this.indexQueue.drain(() => {
-                        hLog(`[IPC] Indexer paused!`);
-                        process.send?.({
-                            event: 'indexer-paused',
-                            mId: msg.mId
-                        });
-                    });
-                } else {
-                    hLog(`[IPC] Indexer paused!`);
+            await this.pauseIndexer(msg);
+        } else if (msg.event === 'resume-indexer') {
+            await this.resumeIndexer(msg);
+        }
+    }
+
+    private async pauseIndexer(msg) {
+        if (this.indexQueue && this.ch && this.consumerTag) {
+            await this.ch.cancel(this.consumerTag);
+            if (this.indexQueue.length() > 0) {
+                this.indexQueue.drain(() => {
                     process.send?.({
                         event: 'indexer-paused',
                         mId: msg.mId
                     });
-                }
+                });
+            } else {
+                process.send?.({
+                    event: 'indexer-paused',
+                    mId: msg.mId
+                });
             }
+        }  
+    }
+
+    private async resumeIndexer(msg: { mId: string }) {
+        console.log(`Attempting to resume indexer. mId: ${msg.mId}`);
+        if (this.ch) {
+            try {
+                const queueName = process.env.queue;
+                if(!queueName) {
+                    hLog('[resumeIndexer] Queue name is not defined');
+                    return;
+                }
+
+                const consume = await this.ch.consume(queueName, this.indexQueue.push);
+                this.consumerTag = consume.consumerTag;
+                    
+                hLog(`[IPC] Indexer resumed! ConsumerTag: ${this.consumerTag}`);
+                process.send?.({
+                    event: 'indexer-resumed',
+                    mId: msg.mId
+                });
+            } catch (error) {
+                hLog(`[IPC] Error resuming indexer: ${error}`);
+                process.send?.({
+                    event: 'indexer-resume-failed',
+                    mId: msg.mId,
+                    error: error
+                });
+            }
+        } else {
+            hLog('[IPC] Channel not ready');
+            process.send?.({
+                event: 'indexer-resume-failed',
+                mId: msg.mId,
+                error: 'Channel not ready'
+            });
         }
     }
 
