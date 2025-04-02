@@ -16,7 +16,6 @@ class IndexerController {
     constructor(private chain: string, private host?: string) {
     }
 
-
     private async connect(): Promise<void> {
         return new Promise((resolve, reject) => {
             const config = readConnectionConfig();
@@ -88,33 +87,33 @@ class IndexerController {
     }
 }
 
-async function syncVoters(chain: string, host?: string) {
+async function syncWithPauseResume(chain: string, type: string, synchronizer: any, host?: string) {
     const indexerController = new IndexerController(chain, host);
-    const synchronizer = new VoterSynchronizer(chain);
     try {
-        const pauseMId = await indexerController.pause('table-voters');
+        const pauseMId = await indexerController.pause(type);
         await synchronizer.run();
-        console.log("Synchronization completed. Resuming indexer...");
-        await indexerController.resume('table-voters', pauseMId);
+        console.log(`${type} synchronization completed. Resuming indexer...`);
+        await indexerController.resume(type, pauseMId);
     } catch (error) {
-        console.error('Error during synchronization:', error);
+        console.error(`Error during ${type} synchronization:`, error);
     } finally {
         indexerController.close();
     }
 }
-async function syncAccounts(chain: string) {
-    const synchronizer = new AccountSynchronizer(chain);
-    await synchronizer.run();
+
+async function syncVoters(chain: string, host?: string) {
+    await syncWithPauseResume(chain, 'table-voters', new VoterSynchronizer(chain), host);
+}
+async function syncAccounts(chain: string, host?: string) {
+    await syncWithPauseResume(chain, 'table-accounts', new AccountSynchronizer(chain), host);
 }
 
-async function syncProposals(chain: string) {
-    const synchronizer = new ProposalSynchronizer(chain);
-    await synchronizer.run();
+async function syncProposals(chain: string, host?: string) {
+    await syncWithPauseResume(chain, 'table-proposals', new ProposalSynchronizer(chain), host);
 }
 
-async function syncContractState(chain: string) {
-    const synchronizer = new ContractStateSynchronizer(chain);
-    await synchronizer.run();
+async function syncContractState(chain: string, host?: string) {
+        await syncWithPauseResume(chain, 'dynamic-table', new ContractStateSynchronizer(chain), host);
 }
 
 (() => {
