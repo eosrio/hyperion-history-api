@@ -43,14 +43,14 @@
     "@pm2/io": "6.1.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "@wharfkit/antelope": "^1.0.13",
-    "amqplib": "^0.10.5",
+    "amqplib": "^0.10.7",
     "async": "^3.2.6",
     "base-x": "5.0.1",
     "cli-progress": "^3.12.0",
     "commander": "13.1.0",
     "eosjs": "^22.1.0",
     "fast-json-stringify": "6.0.1",
-    "fastify": "5.2.1",
+    "fastify": "5.2.2",
     "fastify-plugin": "^5.0.1",
     "flatstr": "^1.0.12",
     "global-agent": "^3.0.0",
@@ -62,7 +62,7 @@
     "socket.io": "4.8.1",
     "socket.io-client": "4.8.1",
     "typescript": "^5.8.2",
-    "undici": "^7.5.0",
+    "undici": "^7.7.0",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.51.0",
     "ws": "8.18.1"
   },
@@ -79,13 +79,14 @@
     }
   },
   "devDependencies": {
+    "nodemon":"^3.1.9",
     "@types/amqplib": "^0.10.7",
     "@types/async": "^3.2.24",
     "@types/global-agent": "^3.0.0",
     "@types/lodash": "4.17.16",
-    "@types/node": "22.13.13",
+    "@types/node": "22.14.0",
     "@types/nodemailer": "^6.4.17",
-    "@types/ws": "^8.18.0"
+    "@types/ws": "^8.18.1"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.9",

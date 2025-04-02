@@ -80,6 +80,7 @@ export interface IndexerConfigs {
 }
 
 interface ApiLimits {
+    get_table_rows?: number;
     get_top_holders?: number;
     get_links?: number;
     get_actions?: number;
