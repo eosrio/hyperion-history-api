@@ -116,20 +116,10 @@ async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
                 }
             });
 
-            console.log('Used filters (with date processing):', JSON.stringify(mongoQuery, (key, value) => {
-                // Convert Date objects to ISO strings for logging
-                if (value instanceof Date) {
-                    return `Date(${value.toISOString()})`;
-                }
-                return value;
-            }, 2));
-
         } catch (error: any) {
             throw new Error(`Filter processing error: ${error.message}`);
         }
     }
-
-    console.log(mongoQuery);
 
     // Get count of matching documents
     response.rows_count = await collection.countDocuments(mongoQuery);
