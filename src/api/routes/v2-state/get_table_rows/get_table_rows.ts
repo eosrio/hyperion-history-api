@@ -1,10 +1,10 @@
-import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {timedQuery} from "../../../helpers/functions.js";
-import {getSkipLimit} from "../../v2-history/get_actions/functions.js";
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { timedQuery } from "../../../helpers/functions.js";
+import { getSkipLimit } from "../../v2-history/get_actions/functions.js";
 
 async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
-    const {skip, limit} = getSkipLimit(request.query);
+    const { skip, limit } = getSkipLimit(request.query);
     const maxDocs = fastify.manager.config.api.limits.get_table_rows ?? 100;
 
     // Validate required parameters
@@ -16,13 +16,6 @@ async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
         throw new Error('Missing required parameter: table must be specified');
     }
 
-    const response: any = {
-        contract: query.contract,
-        table: query.table,
-        rows_count: 0,
-        rows: []
-    };
-
     // Ensure MongoDB connection is available
     if (!fastify.manager.conn.mongodb || !fastify.mongo.client) {
         throw new Error('MongoDB connection not available');
@@ -31,7 +24,22 @@ async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
     // Construct collection name by combining contract and table
     const collectionName = `${query.contract}-${query.table}`;
     const dbName = `${fastify.manager.conn.mongodb.database_prefix}_${fastify.manager.chain}`;
-    const collection = fastify.mongo.client.db(dbName).collection(collectionName);
+    const db = fastify.mongo.client.db(dbName);
+
+    // Check if the collection exists
+    const collections = await db.listCollections({ name: collectionName }).toArray();
+    if (collections.length === 0) {
+        throw new Error(`Collection ${collectionName} does not exist. This contract-table pair is not indexed in this Hyperion instance. Check on v1/chain/get_table_rows?code=${query.contract}&table=${query.table}&scope=YOUR_SCOPE`);
+    }
+
+    const collection = db.collection(collectionName);
+
+    const response: any = {
+        contract: query.contract,
+        table: query.table,
+        rows_count: 0,
+        rows: []
+    };
 
     // Build query based on parameters
     const mongoQuery: any = {};
@@ -90,9 +98,9 @@ async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
                                     // Replace string with actual Date object for MongoDB
                                     processedValue[op] = parsedDate.toISOString();
                                 } else if (dateValue.match(/^\d{4}-\d{2}-\d{2}/) ||
-                                          dateValue.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/) ||
-                                          dateValue.includes('Z') ||
-                                          dateValue.includes('+')) {
+                                    dateValue.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/) ||
+                                    dateValue.includes('Z') ||
+                                    dateValue.includes('+')) {
                                     // String looks like a date format but failed to parse
                                     throw new Error(`Invalid date format for ${key} ${op}: ${dateValue}`);
                                 }
@@ -116,7 +124,7 @@ async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
                 return value;
             }, 2));
 
-        } catch (error:any) {
+        } catch (error: any) {
             throw new Error(`Filter processing error: ${error.message}`);
         }
     }
@@ -131,28 +139,69 @@ async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
 
     // Build sort options
     let sortOptions = {};
-    if (query.sort_by) {
-        // Determine sort direction (1 for ascending, -1 for descending)
+    let sortField = query.sort_by;
+    if (sortField) {
         const sortDirection = query.sort_direction === 'desc' ? -1 : 1;
-        sortOptions = { [query.sort_by]: sortDirection };
+        sortOptions = { [sortField]: sortDirection };
+    }
 
-        // Include sort info in response
-        response.sort_by = query.sort_by;
+    // Get rows with sorting applied (or not, if no sort specified)
+    let rows;
+    try {
+        rows = await collection
+            .find(mongoQuery, { projection: { _id: 0 } })
+            .sort(sortOptions)
+            .skip(skip || 0)
+            .limit(finalLimit)
+            .toArray();
+
+        // Verificar se o campo de ordenação existe nos resultados
+        if (sortField && rows.length > 0 && !(sortField in rows[0])) {
+            throw new Error(`Sort field '${sortField}' does not exist in the collection.`);
+        }
+    } catch (error) {
+        // Se ocorrer qualquer erro durante a consulta ou verificação do campo
+        if (sortField) {
+            // Se havia um campo de ordenação especificado, assumimos que o erro está relacionado a ele
+            throw new Error(`Error sorting by '${sortField}'. The field may not exist or there might be an issue with the sort operation.`);
+        }
+        // Se não havia campo de ordenação, repassamos o erro original
+        throw error;
+    }
+
+    response.rows_count = await collection.countDocuments(mongoQuery);
+    response.rows = rows;
+
+    if (sortField) {
+        response.sort_by = sortField;
         response.sort_direction = query.sort_direction || 'asc';
     }
 
-    // Get rows with sorting applied
-    response.rows = await collection
-        .find(mongoQuery, {projection: {_id: 0}})
-        .sort(sortOptions)
-        .skip(skip || 0)
-        .limit(finalLimit)
-        .toArray();
     return response;
 }
 
+
 export function getTableRowsHandler(fastify: FastifyInstance, route: string) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-        reply.send(await timedQuery(getTableRows, fastify, request, route));
+        try {
+            const result = await timedQuery(getTableRows, fastify, request, route);
+            reply.send(result);
+        } catch (error: any) {
+            // Check if the error is about the non-existent collection
+            if (error.message.includes("Collection") && error.message.includes("does not exist")) {
+                reply.status(404).send({
+                    error: "Not Found",
+                    message: error.message,
+                    statusCode: 404
+                });
+            } else {
+                // For other errors, you might want to send a 500 Internal Server Error
+                reply.status(500).send({
+                    error: "Internal Server Error",
+                    message: error.message,
+                    statusCode: 500
+                });
+            }
+        }
     }
 }
