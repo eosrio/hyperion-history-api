@@ -4,7 +4,7 @@
 The `get_table_rows` API allows users to retrieve rows from a specified contract table. This API supports filtering, sorting, and pagination to provide flexible querying capabilities.
 
 ## Endpoint
-**GET** `/v2-state/get_table_rows`
+**GET** `/v2/state/get_table_rows`
 
 ## Query Parameters
 
@@ -64,7 +64,7 @@ Retrieve all token balances for a specific account from the `eosio.token` contra
 
 **Request:**
 ```http
-GET /v2-state/get_table_rows?contract=eosio.token&table=accounts&scope=myaccount
+GET /v2/state/get_table_rows?contract=eosio.token&table=accounts&scope=myaccount
 ```
 
 **Response:**
@@ -92,7 +92,7 @@ Retrieve active proposals from the `eosio.msig` contract.
 
 **Request:**
 ```http
-GET /v2-state/get_table_rows?contract=eosio.msig&table=proposals&scope=mydao
+GET /v2/state/get_table_rows?contract=eosio.msig&table=proposals&scope=mydao
 ```
 
 **Response:**
@@ -131,7 +131,7 @@ Retrieve voter information from the `eosio` contract.
 
 **Request:**
 ```http
-GET /v2-state/get_table_rows?contract=eosio&table=voters&scope=myvoter
+GET /v2/state/get_table_rows?contract=eosio&table=voters&scope=myvoter
 ```
 
 **Response:**
@@ -160,7 +160,7 @@ Retrieve rows where the block number is greater than 100.
 
 **Request:**
 ```http
-GET /v2-state/get_table_rows?contract=eosio.token&table=accounts&filters={"@block_num":{"$gt":100}}
+GET /v2/state/get_table_rows?contract=eosio.token&table=accounts&filters={"@block_num":{"$gt":100}}
 ```
 
 **Response:**
@@ -188,7 +188,7 @@ Retrieve rows where the block number is greater than 100 and the payer is `myacc
 
 **Request:**
 ```http
-GET /v2-state/get_table_rows?contract=eosio.token&table=accounts&filters={"@block_num":{"$gt":100},"@payer":"myaccount"}
+GET /v2/state/get_table_rows?contract=eosio.token&table=accounts&filters={"@block_num":{"$gt":100},"@payer":"myaccount"}
 ```
 
 **Response:**
@@ -216,7 +216,7 @@ Retrieve rows where the block time is after `2025-04-01T12:00:00Z`.
 
 **Request:**
 ```http
-GET /v2-state/get_table_rows?contract=eosio.token&table=accounts&filters={"@block_time":{"$gt":"2025-04-01T12:00:00Z"}}
+GET /v2/state/get_table_rows?contract=eosio.token&table=accounts&filters={"@block_time":{"$gt":"2025-04-01T12:00:00Z"}}
 ```
 
 **Response:**
@@ -244,7 +244,7 @@ Retrieve rows where the `staked` amount is greater than `5000.0000`.
 
 **Request:**
 ```http
-GET /v2-state/get_table_rows?contract=eosio&table=voters&filters={"staked":{"$gt":5000.0000}}
+GET /v2/state/get_table_rows?contract=eosio&table=voters&filters={"staked":{"$gt":5000.0000}}
 ```
 
 **Response:**
