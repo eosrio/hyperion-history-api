@@ -19,7 +19,8 @@ export interface StreamDeltasRequest {
 
 export interface RequestFilter {
     field: string;
-    value: string;
+    value: string | number | boolean;
+    operator?: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains' | 'starts_with' | 'ends_with';
 }
 
 export interface StreamActionsRequest {

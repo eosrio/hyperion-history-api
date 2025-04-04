@@ -3,6 +3,7 @@ import {createServer} from "http";
 import {HyperionWorker} from "./hyperionWorker.js";
 import {checkDeltaFilter, checkFilter, hLog} from "../helpers/common_functions.js";
 import {RabbitQueueDef} from "../definitions/index-queues.js";
+import {RequestFilter} from "../../api/socketManager.js";
 
 const greylist = ['eosio.token'];
 
@@ -239,7 +240,8 @@ export default class WSRouter extends HyperionWorker {
             client: data.client_socket,
             filters: req.filters,
             account: req.account,
-            added_on: Date.now()
+            added_on: Date.now(),
+            filter_op: req.filter_op
         };
         if (req.contract !== '' && req.contract !== '*') {
             this.appendToL2Map(this.codeActionMap, req.contract, req.action, link);
@@ -281,7 +283,8 @@ export default class WSRouter extends HyperionWorker {
             client: data.client_socket,
             filters: data.request.filters,
             payer: data.request.payer,
-            added_on: Date.now()
+            added_on: Date.now(),
+            filter_op: data.request.filter_op
         };
         if (req.code !== '' && req.code !== '*') {
             this.appendToL2Map(this.codeDeltaMap, req.code, req.table, link);
@@ -448,12 +451,12 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-    private forwardDeltaMessage(msg, link, payer) {
+    private forwardDeltaMessage(msg: string, link, payer: string) {
         if (!this.io) {
             hLog("Websocket server was not started!");
             return;
         }
-        
+
         let allow = false;
         const relay = this.io.of('/').sockets.get(link.relay);
         if (relay) {
@@ -465,12 +468,18 @@ export default class WSRouter extends HyperionWorker {
             if (link.filters?.length > 0) {
                 // check filters
                 const _parsedMsg = JSON.parse(msg);
-                allow = link.filters.every(filter => {
-                    return checkDeltaFilter(filter, _parsedMsg);
-                });
+                console.log(link.filter_op);
+                if (link.filter_op === 'or') {
+                    allow = link.filters.some((filter: RequestFilter) => {
+                        return checkDeltaFilter(filter, _parsedMsg);
+                    });
+                } else {
+                    allow = link.filters.every((filter: RequestFilter) => {
+                        return checkDeltaFilter(filter, _parsedMsg);
+                    });
+                }
             }
             if (allow) {
-        
                 relay.emit('delta', {client: link.client, req: link.reqUUID, message: msg});
                 this.totalRoutedMessages++;
             }

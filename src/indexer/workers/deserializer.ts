@@ -1128,8 +1128,10 @@ export default class MainDSWorker extends HyperionWorker {
 
     pushToDynamicTableQueue(jsonRow: HyperionDelta) {
 
-        if (this.conf.features.contract_state.contracts[jsonRow.code] || this.allowedDynamicContracts.has(jsonRow.code)) {
-            if (this.conf.features.contract_state.contracts[jsonRow.code][jsonRow.table]) {
+        const contractState = this.conf.features.contract_state;
+
+        if (contractState?.contracts[jsonRow.code] || this.allowedDynamicContracts.has(jsonRow.code)) {
+            if (contractState?.contracts[jsonRow.code][jsonRow.table]) {
                 const doc = {
                     '@timestamp': jsonRow['@timestamp'],
                     scope: jsonRow.scope,

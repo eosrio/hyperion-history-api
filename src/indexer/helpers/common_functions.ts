@@ -5,6 +5,7 @@ import {getTotalValue} from "../../api/helpers/functions.js";
 import {Serialize} from "eosjs";
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 import {Cluster} from "node:cluster";
+import {RequestFilter} from "../../api/socketManager.js";
 
 let config: HyperionConfig | undefined;
 
@@ -210,17 +211,22 @@ export function deserialize(type, array, txtEnc, txtDec, types) {
     return Serialize.getType(types, type).deserialize(buffer, new Serialize.SerializerState({bytesAsUint8Array: true}));
 }
 
-function getNested(path_array, jsonObj) {
+function getNested(path_array: string[], jsonObj: Record<string, any>, operator?: string) {
     const nextPath = path_array.shift();
+
+    if (!nextPath) {
+        return jsonObj;
+    }
+
     const nextValue = jsonObj[nextPath];
 
-    if(nextPath.endsWith(']')) {
+    if (nextPath.endsWith(']')) {
         const index = parseInt(nextPath.substring(nextPath.indexOf('[') + 1, nextPath.indexOf(']')));
         const field = nextPath.substring(0, nextPath.indexOf('['));
 
         if (Array.isArray(jsonObj[field])) {
             console.log('jsonObj[field][index]', jsonObj[field][index])
-            return getNested(path_array, jsonObj[field][index]);
+            return getNested(path_array, jsonObj[field][index], operator);
         } else {
             return null;
         }
@@ -235,15 +241,17 @@ function getNested(path_array, jsonObj) {
             if (Array.isArray(nextValue)) {
                 return nextValue;
             } else {
-                return getNested(path_array, nextValue);
+                return getNested(path_array, nextValue, operator);
             }
         }
     }
 }
 
-export function checkDeltaFilter(filter, _source) {
+export function checkDeltaFilter(filter: RequestFilter, _source: any) {
     if (filter.field && filter.value) {
-        let fieldValue = getNested(filter.field.split("."), _source);
+
+        let fieldValue = getNested(filter.field.split("."), _source, filter.operator);
+
         if (!fieldValue) {
             const fArray = filter.field.split(".");
             if (fArray[0].startsWith('@')) {
@@ -252,15 +260,44 @@ export function checkDeltaFilter(filter, _source) {
                     fArray[0] = 'data';
                     fieldValue = getNested(fArray, _source);
                 }
-            }else {
-               fieldValue = getNested(["data",...fArray], _source);
+            } else {
+                fieldValue = getNested(["data", ...fArray], _source);
             }
         }
+
         if (fieldValue) {
             if (Array.isArray(fieldValue)) {
                 return fieldValue.indexOf(filter.value) !== -1;
             } else {
-                return fieldValue === filter.value;
+                switch (filter.operator) {
+                    case "eq": {
+                        return fieldValue === filter.value;
+                    }
+                    case "gt": {
+                        return fieldValue > filter.value;
+                    }
+                    case "gte": {
+                        return fieldValue >= filter.value;
+                    }
+                    case "lt": {
+                        return fieldValue < filter.value;
+                    }
+                    case "lte": {
+                        return fieldValue <= filter.value;
+                    }
+                    case "ne": {
+                        return fieldValue !== filter.value;
+                    }
+                    case "contains": {
+                        return (fieldValue as string).includes(String(filter.value));
+                    }
+                    case "starts_with": {
+                        return (fieldValue as string).startsWith(String(filter.value));
+                    }
+                    case "ends_with": {
+                        return (fieldValue as string).endsWith(String(filter.value));
+                    }
+                }
             }
         } else {
             return !filter.value;
