@@ -213,6 +213,19 @@ export function deserialize(type, array, txtEnc, txtDec, types) {
 function getNested(path_array, jsonObj) {
     const nextPath = path_array.shift();
     const nextValue = jsonObj[nextPath];
+
+    if(nextPath.endsWith(']')) {
+        const index = parseInt(nextPath.substring(nextPath.indexOf('[') + 1, nextPath.indexOf(']')));
+        const field = nextPath.substring(0, nextPath.indexOf('['));
+
+        if (Array.isArray(jsonObj[field])) {
+            console.log('jsonObj[field][index]', jsonObj[field][index])
+            return getNested(path_array, jsonObj[field][index]);
+        } else {
+            return null;
+        }
+    }
+
     if (!nextValue) {
         return null;
     } else {
@@ -239,6 +252,8 @@ export function checkDeltaFilter(filter, _source) {
                     fArray[0] = 'data';
                     fieldValue = getNested(fArray, _source);
                 }
+            }else {
+               fieldValue = getNested(["data",...fArray], _source);
             }
         }
         if (fieldValue) {

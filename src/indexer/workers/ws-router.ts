@@ -449,16 +449,15 @@ export default class WSRouter extends HyperionWorker {
     }
 
     private forwardDeltaMessage(msg, link, payer) {
-
         if (!this.io) {
             hLog("Websocket server was not started!");
             return;
         }
-
+        
         let allow = false;
         const relay = this.io.of('/').sockets.get(link.relay);
         if (relay) {
-            if (link.payer !== '') {
+            if (link.payer) {
                 allow = link.payer === payer;
             } else {
                 allow = true;
@@ -471,6 +470,7 @@ export default class WSRouter extends HyperionWorker {
                 });
             }
             if (allow) {
+        
                 relay.emit('delta', {client: link.client, req: link.reqUUID, message: msg});
                 this.totalRoutedMessages++;
             }
