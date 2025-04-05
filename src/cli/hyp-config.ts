@@ -1,9 +1,9 @@
 import { Command } from "commander";
-import path from "path";
+import path, { join } from "path";
 import { cp, mkdir, readdir, readFile, rm, writeFile } from "fs/promises";
 import { HyperionConfig, ScalingConfigs } from "../interfaces/hyperionConfig.js";
 import { HyperionConnections } from "../interfaces/hyperionConnections.js";
-import { copyFileSync, existsSync, rmSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { JsonRpc } from "eosjs";
 
 import WebSocket from 'ws';
@@ -14,6 +14,8 @@ import { Client } from "@elastic/elasticsearch";
 import { APIClient } from "@wharfkit/antelope";
 import { StateHistorySocket } from "../indexer/connections/state-history.js";
 import { MongoClient } from "mongodb";
+import { homedir } from "os";
+import { log } from "console";
 
 type AllowedIndexValue = 1 | -1 | "text" | "date" | "2dsphere";
 
@@ -934,6 +936,10 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
 
     await writeFile(targetPath, JSON.stringify(chainConfig, null, 2));
     console.log(`✅ Contract config saved successfully for account '${account}' in ${shortName}.config.json`);
+
+    // TODO: Call the hyperion indexer controller to trigger a reload in the config
+    await reloadConfig(shortName);
+
 }
 
 
@@ -1023,9 +1029,9 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         .action(listConfigContract)
 
     // Add to config
-    contracts.command('add-single <chainName> <account> <table> <autoIndex> <indices>')
+    contracts.command('add-single <chainName> <account> <table> <autoIndex> [indices]')
         .description('add or update a single table in contract config (indices as JSON string)')
-        .action(async (chainName, account, table, autoIndex, indicesJson) => {
+        .action(async (chainName, account, table, autoIndex, indicesJson: string = '{}') => {
             try {
                 const indices: IndexConfig = JSON.parse(indicesJson);
                 const tableInput: TableInput = {
@@ -1056,6 +1062,13 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
                 console.error("Provide tables as JSON array string, e.g., '[{\"name\":\"t\",\"autoIndex\":true,\"indices\":{}}]'");
             }
         });
+
     program.parse(process.argv);
 
 })();
+
+async function reloadConfig(chainName: string) {
+    console.log('Reloading hyperion config... (Not implemented yet, please restart the hyperion indexer manually)');
+    console.log(`Please use "./hyp-control sync contract-state ${chainName}" to sync the contract state`);
+}
+

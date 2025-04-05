@@ -1,13 +1,10 @@
-import { Command } from "commander";
-import { AccountSynchronizer } from "./sync-accounts/sync-accounts.js";
-import { VoterSynchronizer } from "./sync-accounts/sync-voters.js";
-import { ProposalSynchronizer } from "./sync-accounts/sync-proposals.js";
-import { ContractStateSynchronizer } from "./sync-accounts/sync-contract-state.js";
-import { readConnectionConfig } from "./repair-cli/functions.js";
-import { WebSocket } from 'ws';
-import { hLog } from "../indexer/helpers/common_functions.js";
-
-const __dirname = new URL('.', import.meta.url).pathname;
+import {Command} from "commander";
+import {AccountSynchronizer} from "./sync-accounts/sync-accounts.js";
+import {VoterSynchronizer} from "./sync-accounts/sync-voters.js";
+import {ProposalSynchronizer} from "./sync-accounts/sync-proposals.js";
+import {ContractStateSynchronizer} from "./sync-accounts/sync-contract-state.js";
+import {readConnectionConfig} from "./repair-cli/functions.js";
+import {WebSocket} from 'ws';
 
 class IndexerController {
 
@@ -104,6 +101,7 @@ async function syncWithPauseResume(chain: string, type: string, synchronizer: an
 async function syncVoters(chain: string, host?: string) {
     await syncWithPauseResume(chain, 'table-voters', new VoterSynchronizer(chain), host);
 }
+
 async function syncAccounts(chain: string, host?: string) {
     await syncWithPauseResume(chain, 'table-accounts', new AccountSynchronizer(chain), host);
 }
@@ -113,7 +111,7 @@ async function syncProposals(chain: string, host?: string) {
 }
 
 async function syncContractState(chain: string, host?: string) {
-        await syncWithPauseResume(chain, 'dynamic-table', new ContractStateSynchronizer(chain), host);
+    await syncWithPauseResume(chain, 'dynamic-table', new ContractStateSynchronizer(chain), host);
 }
 
 (() => {
