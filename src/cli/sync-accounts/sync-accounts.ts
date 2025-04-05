@@ -62,7 +62,7 @@ export class AccountSynchronizer {
 
     private async setupMongo() {
         const _mongo = this.connections.mongodb;
-        if (_mongo && _mongo.enabled) {
+        if (_mongo) {
             let uri = "mongodb://";
             if (_mongo.user && _mongo.pass) {
                 uri += `${_mongo.user}:${_mongo.pass}@${_mongo.host}:${_mongo.port}`;

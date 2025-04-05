@@ -1909,9 +1909,7 @@ export class HyperionMaster {
 
         await this.verifyIngestClients();
 
-        if (this.conf.indexer.experimental_mongodb_state) {
-            await this.verifyMongoDbClient();
-        }
+        await this.verifyMongoDbClient();
 
         const prefix = this.chain + ':index';
         this.IndexingQueues = [

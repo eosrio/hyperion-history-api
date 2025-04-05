@@ -185,8 +185,33 @@ export class SocketManager {
 
         try {
             const port = this.server.manager.config.api.stream_port || 1234;
+            const serverName = this.server.manager.config.api.server_name.split(':')[0];
             this.uwsApp.listen(port, () => {
-                hLog(`Socket.IO via uWS started on port ${port}`);
+
+                // Extract hostname and determine protocol from server_name
+                let hostname = '127.0.0.1';
+                let wsProtocol = 'ws://'; // Default to non-secure WebSocket
+                try {
+                    const serverName = this.server.manager.config.api.server_name;
+                    if (serverName.includes('://')) {
+                        const url = new URL(serverName);
+                        hostname = url.hostname;
+                        // If the server is using HTTPS, use secure WebSockets (WSS)
+                        if (url.protocol === 'https:') {
+                            wsProtocol = 'wss://';
+                        }
+                    } else {
+                        // Handle simple hostname:port format
+                        hostname = serverName.split(':')[0];
+                    }
+                } catch (e) {
+                    // Fallback to server_addr if parsing fails
+                    hostname = this.server.manager.config.api.server_addr;
+                }
+
+                // Log the complete WebSocket URL with appropriate protocol
+                hLog(`Stream API URL: ${wsProtocol}${hostname}:${port}/stream`);
+
             });
         } catch (e: any) {
             hLog(e.message);

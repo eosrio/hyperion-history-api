@@ -4,6 +4,7 @@ import {HyperionWorker} from "./hyperionWorker.js";
 import {checkDeltaFilter, checkFilter, hLog} from "../helpers/common_functions.js";
 import {RabbitQueueDef} from "../definitions/index-queues.js";
 import {RequestFilter} from "../../api/socketManager.js";
+import {ActionLink, DeltaLink} from "../../interfaces/stream-links.js";
 
 const greylist = ['eosio.token'];
 
@@ -189,7 +190,7 @@ export default class WSRouter extends HyperionWorker {
         hLog('Total WS clients:', this.totalClients);
     }
 
-    appendToL1Map(target, primary, link) {
+    appendToL1Map(target, primary, link: ActionLink | DeltaLink) {
         if (target.has(primary)) {
             target.get(primary).links.push(link);
         } else {
@@ -197,7 +198,7 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-    appendToL2Map(target, primary, secondary, link) {
+    appendToL2Map(target, primary, secondary, link: ActionLink | DeltaLink) {
         if (target.has(primary)) {
             const pMap = target.get(primary);
             if (pMap.has(secondary)) {
@@ -233,7 +234,7 @@ export default class WSRouter extends HyperionWorker {
                 };
             }
         }
-        const link = {
+        const link: ActionLink = {
             type: 'action',
             relay: id,
             reqUUID: data.reqUUID,
@@ -276,7 +277,7 @@ export default class WSRouter extends HyperionWorker {
 
     addDeltaRequest(data, id) {
         const req = data.request;
-        const link = {
+        const link: DeltaLink = {
             type: 'delta',
             relay: id,
             reqUUID: data.reqUUID,
@@ -460,11 +461,13 @@ export default class WSRouter extends HyperionWorker {
         let allow = false;
         const relay = this.io.of('/').sockets.get(link.relay);
         if (relay) {
+
             if (link.payer) {
                 allow = link.payer === payer;
             } else {
                 allow = true;
             }
+
             if (link.filters?.length > 0) {
                 // check filters
                 const _parsedMsg = JSON.parse(msg);
@@ -479,6 +482,7 @@ export default class WSRouter extends HyperionWorker {
                     });
                 }
             }
+
             if (allow) {
                 relay.emit('delta', {client: link.client, req: link.reqUUID, message: msg});
                 this.totalRoutedMessages++;

@@ -69,8 +69,7 @@
     "disable_delta_rm": true,
     "node_max_old_space_size": 4096,
     "node_trace_deprecation": false,
-    "node_trace_warnings": false,
-    "experimental_mongodb_state": false
+    "node_trace_warnings": false
   },
   "settings": {
     "preview": false,
@@ -132,19 +131,7 @@
       "accounts": true,
       "voters": true
     },
-    "contracts_state": {
-      "enabled": false,
-      "account": "account_name",
-      "tables": {
-        "table_name": {
-          "auto_index": false,
-          "indices": {
-            "field1": 1,
-            "field2": -1
-          }
-        }
-      }
-    },
+    "contracts_state": {},
     "index_deltas": true,
     "index_transfer_memo": true,
     "index_all_deltas": true,

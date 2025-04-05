@@ -303,15 +303,34 @@ class HyperionApiServer {
             process.exit();
         });
 
-        hLog('Elasticsearch validated!');
-        hLog('Registering plugins...');
-
         await registerPlugins(this.fastify, this.pluginParams);
+
+        // Wait for MongoDB availability
+        await waitUntilReady(async () => {
+            try {
+                this.manager.prepareMongoClient();
+                if (this.manager.mongodbClient) {
+                    await this.manager.mongodbClient.connect();
+                    const buildInfo = await this.manager.mongodbClient.db("admin").command({buildInfo: 1});
+                    hLog(`MongoDB: ${buildInfo.version}`);
+                    return true;
+                } else {
+                    return false;
+                }
+            } catch (e: any) {
+                console.log(e.message);
+                return false;
+            }
+        }, 10, 5000, () => {
+            hLog('Failed to check mongodb version!');
+            process.exit();
+        })
 
         this.addGenericTypeParsing();
 
         await this.mLoader.init();
 
+        hLog('Registering plugins...');
         // add custom plugin routes
         for (const plugin of this.mLoader.plugins) {
             if (plugin.hasApiRoutes) {
@@ -337,12 +356,13 @@ class HyperionApiServer {
             }
 
             await this.fastify.listen({host: this.conf.api.server_addr, port: this.conf.api.server_port});
-
             const listeningAddress = this.fastify.server.address() as AddressInfo;
-            const apiUrl = `http://${listeningAddress.address}:${listeningAddress.port}`;
-            hLog(`${this.chain} Hyperion API ready and listening on ${apiUrl}`);
+            if (listeningAddress.address === '0.0.0.0') {
+                hLog(`Hyperion API for "${this.chain}" ready and listening on port ${listeningAddress.port} (all interfaces)`);
+            } else {
+                hLog(`Hyperion API for "${this.chain}" ready and listening on port http://${listeningAddress.address}:${listeningAddress.port}`);
+            }
             hLog(`API Public Url: ${this.conf.api.server_name}`);
-
             this.alerts?.emit('ApiStart', {
                 hyperion_version: this.manager.current_version,
                 public_url: this.conf.api.server_name,

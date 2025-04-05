@@ -8,19 +8,19 @@ The `get_table_rows` API allows users to retrieve rows from a specified contract
 
 ## Query Parameters
 
-| Parameter       | Type     | Description                                                                                     | Required | Default |
-|-----------------|----------|-------------------------------------------------------------------------------------------------|----------|---------|
-| `contract`      | `string` | Contract name.                                                                                 | Yes      | -       |
-| `table`         | `string` | Table name.                                                                                    | Yes      | -       |
-| `primary_key`   | `string` | Filter by primary key.                                                                         | No       | -       |
-| `scope`         | `string` | Filter by scope.                                                                               | No       | -       |
-| `block_id`      | `string` | Filter by block ID.                                                                            | No       | -       |
-| `block_num`     | `integer`| Filter by block number.                                                                        | No       | -       |
-| `block_time`    | `string` | Filter by block time.                                                                          | No       | -       |
-| `payer`         | `string` | Filter by payer account.                                                                       | No       | -       |
-| `filters`       | `string` | JSON string containing dynamic filters. Supports MongoDB query operators like `$gt`, `$lt`.   | No       | -       |
-| `sort_by`       | `string` | Field name to sort results by.                                                                | No       | -       |
-| `sort_direction`| `string` | Sort direction: `asc` for ascending, `desc` for descending.                                   | No       | `asc`   |
+| Parameter        | Type      | Description                                                                                 | Required | Default |
+|------------------|-----------|---------------------------------------------------------------------------------------------|----------|---------|
+| `contract`       | `string`  | Contract name.                                                                              | Yes      | -       |
+| `table`          | `string`  | Table name.                                                                                 | Yes      | -       |
+| `primary_key`    | `string`  | Filter by primary key.                                                                      | No       | -       |
+| `scope`          | `string`  | Filter by scope.                                                                            | No       | -       |
+| `block_id`       | `string`  | Filter by block ID.                                                                         | No       | -       |
+| `block_num`      | `integer` | Filter by block number.                                                                     | No       | -       |
+| `block_time`     | `string`  | Filter by block time.                                                                       | No       | -       |
+| `payer`          | `string`  | Filter by payer account.                                                                    | No       | -       |
+| `filters`        | `string`  | JSON string containing dynamic filters. Supports MongoDB query operators like `$gt`, `$lt`. | No       | -       |
+| `sort_by`        | `string`  | Field name to sort results by.                                                              | No       | -       |
+| `sort_direction` | `string`  | Sort direction: `asc` for ascending, `desc` for descending.                                 | No       | `asc`   |
 
 ## Response
 The API returns a JSON object with the following structure:

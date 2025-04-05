@@ -598,8 +598,8 @@ async function checkRedis(conn: HyperionConnections) {
 async function checkMongoDB(conn: HyperionConnections): Promise<boolean> {
     console.log(`\n[info] [MONGODB] - Testing MongoDB connection...`);
     const _mongo = conn.mongodb;
-    if (!_mongo || !_mongo.enabled) {
-        console.log('[info] [MONGODB] - MongoDB is not enabled in the configuration.');
+    if (!_mongo) {
+        console.log('[info] [MONGODB] - MongoDB is not configured.');
         return false;
     }
 
