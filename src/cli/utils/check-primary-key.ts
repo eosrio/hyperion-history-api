@@ -37,6 +37,7 @@ export async function findAndValidatePrimaryKey(contractName: string, tableName:
             console.log(`  -> Field: ${field.name} (${field.type})`);
             switch (field.type) {
                 case 'name':
+                case 'uint64':
                 case 'i64':
                 case 'asset':
                     candidateFields.push({name: field.name.toString(), type: field.type.toString()});
@@ -146,6 +147,7 @@ export async function findAndValidatePrimaryKey(contractName: string, tableName:
                     formattedKeyValue = Name.from(keyValue);
                     break;
                 case 'i64':
+                case 'uint64':
                     // Handle i64 type
                     formattedKeyValue = UInt64.from(keyValue);
                     break;
@@ -197,6 +199,10 @@ export async function findAndValidatePrimaryKey(contractName: string, tableName:
             console.warn(`⚠️ Could not validate a primary key field using data checks for scope "${foundScope}".`);
             console.log(`ℹ️ Based purely on convention, the primary key *should* be: ${candidateFields[0]?.name ?? 'N/A'}`);
             console.log(`   (This could happen if data changed during validation, or due to a non-standard PK implementation).`);
+            return {
+                field: candidateFields[0]?.name ?? null,
+                type: candidateFields[0]?.type ?? null,
+            };
         }
     } catch (error: any) {
         console.error('❌ An unexpected error occurred during row fetching or validation:', error.message || error);

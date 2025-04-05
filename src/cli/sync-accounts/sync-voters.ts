@@ -1,5 +1,5 @@
-import {APIClient, Name, UInt64} from "@wharfkit/antelope";
-import {Client} from "@elastic/elasticsearch";
+import { APIClient, Name, UInt64 } from "@wharfkit/antelope";
+import { Client } from "@elastic/elasticsearch";
 import { join } from "path";
 import { readFileSync } from "fs";
 import { HyperionConnections } from "../../interfaces/hyperionConnections.js";
@@ -23,7 +23,11 @@ export class VoterSynchronizer {
         this.indexName = `${chain}-table-voters-v1`;
         this.connections = this.loadConnections();
         this.elastic = this.createElasticClient();
-        this.client = new APIClient({url: "http://localhost:8888"});
+        const chainConfig = this.connections.chains[chain];
+        if (!chainConfig) {
+            throw new Error(`Chain ${chain} not found in connections.json`);
+        }
+        this.client = new APIClient({ url: chainConfig.http });
     }
 
     private loadConnections(): HyperionConnections {
@@ -58,10 +62,10 @@ export class VoterSynchronizer {
             this.mongoClient = new MongoClient(uri);
             await this.mongoClient.connect();
             this.voterCollection = this.mongoClient.db(`${_mongo.database_prefix}_${this.chain}`).collection('voters');
-            await this.voterCollection.createIndex({voter: 1});
-            await this.voterCollection.createIndex({producers: 1});
-            await this.voterCollection.createIndex({is_proxy: 1});
-            const ping = await this.mongoClient?.db(`admin`).command({ping: 1});
+            await this.voterCollection.createIndex({ voter: 1 });
+            await this.voterCollection.createIndex({ producers: 1 });
+            await this.voterCollection.createIndex({ is_proxy: 1 });
+            const ping = await this.mongoClient?.db(`admin`).command({ ping: 1 });
             console.log(ping);
         }
     }
@@ -144,7 +148,7 @@ export class VoterSynchronizer {
                 const bulkResponse = await this.elastic.helpers.bulk({
                     flushBytes: 1000000,
                     datasource: this.scan(),
-                    onDocument: (doc) => [{index: {_id: doc.voter, _index: this.indexName}}, doc],
+                    onDocument: (doc) => [{ index: { _id: doc.voter, _index: this.indexName } }, doc],
                     onDrop: (doc) => console.log('doc', doc),
                 });
                 console.log(`bulkResponse`, bulkResponse);

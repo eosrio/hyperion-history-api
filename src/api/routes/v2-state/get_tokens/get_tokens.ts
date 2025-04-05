@@ -18,7 +18,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 
     let stateResult: IAccount[];
 
-    if (fastify.manager.config.indexer.experimental_mongodb_state && fastify.manager.conn.mongodb && query.useMongo === 'true') {
+    if (fastify.manager.conn.mongodb && query.useMongo === 'true') {
         const dbName = `${fastify.manager.conn.mongodb.database_prefix}_${fastify.manager.chain}`;
         const collection = fastify.mongo.client.db(dbName).collection<IAccount>('accounts');
         stateResult = await collection

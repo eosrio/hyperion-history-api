@@ -74,9 +74,6 @@ export interface IndexerConfigs {
     repair_mode: boolean;
     max_inline: number;
     disable_delta_rm?: boolean;
-
-    // Index State Tables on MongoDB
-    experimental_mongodb_state?: boolean;
 }
 
 interface ApiLimits {

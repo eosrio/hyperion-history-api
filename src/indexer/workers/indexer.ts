@@ -1,11 +1,11 @@
-import { cargo, QueueObject } from "async";
-import { Message } from "amqplib";
+import {cargo, QueueObject} from "async";
+import {Message} from "amqplib";
 
-import { HyperionWorker } from "./hyperionWorker.js";
-import { ElasticRoutes, RouteFunction } from '../helpers/elastic-routes.js';
-import { hLog } from "../helpers/common_functions.js";
-import { RabbitQueueDef } from "../definitions/index-queues.js";
-import { MongoRoutes } from "../helpers/mongo-routes.js";
+import {HyperionWorker} from "./hyperionWorker.js";
+import {ElasticRoutes, RouteFunction} from '../helpers/elastic-routes.js';
+import {hLog} from "../helpers/common_functions.js";
+import {RabbitQueueDef} from "../definitions/index-queues.js";
+import {MongoRoutes} from "../helpers/mongo-routes.js";
 
 export default class IndexerWorker extends HyperionWorker {
 
@@ -37,7 +37,7 @@ export default class IndexerWorker extends HyperionWorker {
 
             if (this.ch_ready && payload && process.env.type && this.ch) {
 
-                if (this.conf.indexer.experimental_mongodb_state && this.mongoRoutes.routes[process.env.type]) {
+                if (this.mongoRoutes.routes[process.env.type]) {
                     // call route type
                     (this.mongoRoutes.routes[process.env.type] as any)(payload, (indexed_size?: number) => {
                         if (indexed_size) {
@@ -96,7 +96,7 @@ export default class IndexerWorker extends HyperionWorker {
     startMonitoring() {
         setInterval(() => {
             if (this.temp_indexed_count > 0) {
-                process.send?.({ event: 'add_index', size: this.temp_indexed_count });
+                process.send?.({event: 'add_index', size: this.temp_indexed_count});
             }
             this.temp_indexed_count = 0;
         }, 1000);
@@ -126,7 +126,7 @@ export default class IndexerWorker extends HyperionWorker {
                     mId: msg.mId
                 });
             }
-        }  
+        }
     }
 
     private async resumeIndexer(msg: { mId: string }) {
@@ -134,14 +134,14 @@ export default class IndexerWorker extends HyperionWorker {
         if (this.ch) {
             try {
                 const queueName = process.env.queue;
-                if(!queueName) {
+                if (!queueName) {
                     hLog('[resumeIndexer] Queue name is not defined');
                     return;
                 }
 
                 const consume = await this.ch.consume(queueName, this.indexQueue.push);
                 this.consumerTag = consume.consumerTag;
-                    
+
                 hLog(`[IPC] Indexer resumed! ConsumerTag: ${this.consumerTag}`);
                 process.send?.({
                     event: 'indexer-resumed',

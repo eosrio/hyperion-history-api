@@ -209,7 +209,8 @@ export class ConnectionManager {
 
     prepareMongoClient() {
         if (!this.conn.mongodb) {
-            return;
+            console.error('MongoDB connection not specified!');
+            process.exit(1);
         }
         let uri = "mongodb://";
         if (this.conn.mongodb.user && this.conn.mongodb.pass) {

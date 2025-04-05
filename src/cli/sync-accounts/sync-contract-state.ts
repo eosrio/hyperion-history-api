@@ -49,7 +49,7 @@ export class ContractStateSynchronizer {
         if (!endpoint) {
             throw new Error("No HTTP Endpoint!");
         }
-        return new APIClient({url: endpoint});
+        return new APIClient({ url: endpoint });
     }
 
     private createMongoClient(): MongoClient {
@@ -69,26 +69,26 @@ export class ContractStateSynchronizer {
         if (!this.db) {
             throw new Error("Database not initialized");
         }
-    
+
         if (this.config.features.contract_state.contracts) {
             for (const [contract, tables] of Object.entries(this.config.features.contract_state.contracts)) {
                 for (const [table, config] of Object.entries(tables)) {
                     const collectionName = `${contract}-${table}`;
                     const collection = this.db.collection(collectionName);
-    
+
                     const indices: IndexDescription[] = [];
-    
-                    // Adicionar índices padrão apenas se auto_index for true
+
+                    // Add default indices
                     if (config.auto_index === true) {
                         indices.push(
-                            {key: {'@pk': -1}},
-                            {key: {'@scope': 1}},
-                            {key: {'@block_num': -1}},
-                            {key: {'@block_time': -1}},
-                            {key: {'@payer': 1}}
+                            { key: { '@pk': -1 } },
+                            { key: { '@scope': 1 } },
+                            { key: { '@block_num': -1 } },
+                            { key: { '@block_time': -1 } },
+                            { key: { '@payer': 1 } }
                         );
                     }
-    
+
                     if (config.auto_index === true) {
                         console.log(`Auto-indexing enabled for ${collectionName}`);
                         const contractAbi = await this.client.v1.chain.get_abi(contract);
@@ -101,7 +101,7 @@ export class ContractStateSynchronizer {
                                     extractStructFlat(struct.base);
                                 }
                                 struct?.fields.forEach(value => {
-                                    indices.push({key: {[value.name]: 1}});
+                                    indices.push({ key: { [value.name]: 1 } });
                                 });
                             };
                             const tableData = tables.find(value => value.name === table);
@@ -112,10 +112,10 @@ export class ContractStateSynchronizer {
                     } else if (config.indices) {
                         console.log(`Using defined indices for ${collectionName}`);
                         for (const [field, direction] of Object.entries(config.indices)) {
-                            indices.push({key: {[field]: direction === 'desc' ? -1 : 1}});
+                            indices.push({ key: { [field]: direction === 'desc' ? -1 : 1 } });
                         }
                     }
-    
+
                     if (indices.length > 0) {
                         console.log(`Creating ${indices.length} indices for ${collectionName}`);
                         await collection.createIndexes(indices);
@@ -132,17 +132,13 @@ export class ContractStateSynchronizer {
             for (const [contract, tables] of Object.entries(this.config.features.contract_state.contracts)) {
                 for (const [table, config] of Object.entries(tables)) {
 
-                    let pkField = await findAndValidatePrimaryKey(contract,table,this.client)
-                
+                    let pkField = await findAndValidatePrimaryKey(contract, table, this.client);
 
-                    if(!pkField?.field) {
+                    if (!pkField?.field) {
                         console.error(`Primary key not found for ${contract}-${table}`);
                         continue;
-                    }else {
+                    } else {
                         console.log(`Primary key found for ${contract}-${table}: ${pkField.field}`);
-
-                      
-
                     }
 
 
@@ -158,7 +154,7 @@ export class ContractStateSynchronizer {
                                 limit: 1000,
                                 lower_bound: lowerBound ? Name.from(lowerBound).value.toString() : undefined
                             });
-                            
+
                             for (const scopeRow of scopes.rows) {
                                 const scope = scopeRow.scope.toString();
                                 // console.log(`Aqui scope`, scope)
@@ -172,14 +168,12 @@ export class ContractStateSynchronizer {
                                 });
 
 
-                                if(result.ram_payers) {
-                                    for (const [index,row] of result.rows.entries()) {
-                                    let pkValue = ''
+                                if (result.ram_payers) {
+                                    for (const [index, row] of result.rows.entries()) {
+                                        let pkValue = ''
                                         switch (pkField.type) {
                                             case 'asset':
                                                 pkValue = Asset.from(row[pkField.field]).symbol.code.value.toString();
-
-                                             
                                                 break;
                                             case 'name':
                                                 pkValue = Name.from(row[pkField.field]).value.toString();
@@ -192,8 +186,8 @@ export class ContractStateSynchronizer {
                                                 break;
                                         }
 
-                                        console.log(`pkValue`, pkValue, scope)
-                
+                                        // console.log(`pkValue`, pkValue, scope)
+
                                         totalRows++;
                                         yield {
                                             contract,
@@ -243,11 +237,11 @@ export class ContractStateSynchronizer {
             await this.setupIndices();
 
             const cargoQueue = cargo(async (docs: any[], cb) => {
-           
+
                 const groupedOps = new Map<string, any[]>();
 
                 docs.forEach(doc => {
-                    
+
                     // const pk = String(Name.from(doc.primary_key).value);
                     // const pk = String(Name.from(doc.data.account).value);
                     // console.log(`pk`, pk)
@@ -287,7 +281,7 @@ export class ContractStateSynchronizer {
                 groupedOps.forEach((value, key) => {
                     if (this.db) {
                         // console.log(`Inserting ${value.length} documents into ${key}`);
-                        promises.push(this.db.collection(key).bulkWrite(value, {ordered: false}));
+                        promises.push(this.db.collection(key).bulkWrite(value, { ordered: false }));
                     }
                 });
 

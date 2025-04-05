@@ -64,7 +64,14 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
         mongoQuery["provided_approvals.actor"] = query.provided;
     }
 
-    const lastBlockResult = await fastify.mongo.client.db(dbName).collection('proposals').find().sort({expiration: -1}).limit(1).toArray();
+    const lastBlockResult = await fastify.mongo.client
+        .db(dbName)
+        .collection('proposals')
+        .find()
+        .sort({expiration: -1})
+        .limit(1)
+        .toArray();
+
     response.last_indexed_block = lastBlockResult[0]?.block_num || 0;
     response.last_indexed_block_time = lastBlockResult[0]?.block_time || '';
 

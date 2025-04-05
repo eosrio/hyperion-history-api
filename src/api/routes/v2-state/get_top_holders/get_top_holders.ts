@@ -15,7 +15,7 @@ async function getTopHolders(fastify: FastifyInstance, request: FastifyRequest) 
 
     const maxDocs = fastify.manager.config.api.limits.get_top_holders ?? 500;
 
-    if (fastify.manager.config.indexer.experimental_mongodb_state && fastify.manager.conn.mongodb && query.useMongo === 'true') {
+    if (fastify.manager.conn.mongodb && query.useMongo === 'true') {
         console.log(`MongoDB is enabled for state queries - get_top_holders`);
         const dbName = `${fastify.manager.conn.mongodb.database_prefix}_${fastify.manager.chain}`;
         const collection = fastify.mongo.client.db(dbName).collection('accounts');

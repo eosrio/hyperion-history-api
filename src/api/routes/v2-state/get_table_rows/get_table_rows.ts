@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { Document, WithId } from "mongodb";
 import { timedQuery } from "../../../helpers/functions.js";
 import { getSkipLimit } from "../../v2-history/get_actions/functions.js";
 
@@ -17,7 +18,7 @@ async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     // Ensure MongoDB connection is available
-    if (!fastify.manager.conn.mongodb || !fastify.mongo.client) {
+    if (!fastify.mongo.client) {
         throw new Error('MongoDB connection not available');
     }
 
@@ -29,7 +30,7 @@ async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
     // Check if the collection exists
     const collections = await db.listCollections({ name: collectionName }).toArray();
     if (collections.length === 0) {
-        throw new Error(`Collection ${collectionName} does not exist. This contract-table pair is not indexed in this Hyperion instance. Check on v1/chain/get_table_rows?code=${query.contract}&table=${query.table}&scope=YOUR_SCOPE`);
+        throw new Error(`The ${query.contract}::${query.table} contract-table pair is not indexed in this Hyperion instance. Check on v1/chain/get_table_rows?code=${query.contract}&table=${query.table}&scope=YOUR_SCOPE`);
     }
 
     const collection = db.collection(collectionName);
@@ -51,18 +52,23 @@ async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
     if (query.primary_key) {
         mongoQuery['@pk'] = query.primary_key;
     }
+
     if (query.scope) {
         mongoQuery['@scope'] = query.scope;
     }
+
     if (query.block_id) {
         mongoQuery['@block_id'] = query.block_id;
     }
+
     if (query.block_num) {
         mongoQuery['@block_num'] = parseInt(query.block_num);
     }
+
     if (query.block_time) {
         mongoQuery['@block_time'] = query.block_time;
     }
+
     if (query.payer) {
         mongoQuery['@payer'] = query.payer;
     }
@@ -136,7 +142,7 @@ async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     // Get rows with sorting applied (or not, if no sort specified)
-    let rows;
+    let rows: WithId<Document>[];
     try {
         rows = await collection
             .find(mongoQuery, { projection: { _id: 0 } })
@@ -145,17 +151,17 @@ async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
             .limit(finalLimit)
             .toArray();
 
-        // Verificar se o campo de ordenação existe nos resultados
+        // Check if the sort field exists in the results
         if (sortField && rows.length > 0 && !(sortField in rows[0])) {
             throw new Error(`Sort field '${sortField}' does not exist in the collection.`);
         }
-    } catch (error) {
-        // Se ocorrer qualquer erro durante a consulta ou verificação do campo
+    } catch (error: any) {
+        // If any error occurs during the query or field check
         if (sortField) {
-            // Se havia um campo de ordenação especificado, assumimos que o erro está relacionado a ele
+            // If a sort field was specified, assume the error is related to it
             throw new Error(`Error sorting by '${sortField}'. The field may not exist or there might be an issue with the sort operation.`);
         }
-        // Se não havia campo de ordenação, repassamos o erro original
+        // If there was no sort field, pass the original error
         throw error;
     }
 
