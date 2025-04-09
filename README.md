@@ -36,9 +36,9 @@ Made with ♥ by [Rio Blocks](https://rioblocks.io/?lang=en)
 
 ### How to use:
 
- - [For Infrastructure Providers](https://hyperion.docs.eosrio.io/manual_installation/)
+ - [For Infrastructure Providers](https://hyperion.docs.eosrio.io/providers/get-started/)
 
- - [For Developers](https://hyperion.docs.eosrio.io/howtouse/)
+ - [For Developers](https://hyperion.docs.eosrio.io/dev/howtouse/)
 
  - [API Reference](https://hyperion.docs.eosrio.io/api/v2/)
 
