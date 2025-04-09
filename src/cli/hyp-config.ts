@@ -1030,36 +1030,110 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
 
     // Add to config
     contracts.command('add-single <chainName> <account> <table> <autoIndex> [indices]')
-        .description('add or update a single table in contract config (indices as JSON string)')
-        .action(async (chainName, account, table, autoIndex, indicesJson: string = '{}') => {
+        .description('add or update a single table in contract config (indices as JSON string, required if autoIndex is false)')
+        .action(async (chainName, account, table, autoIndex, indicesJson?: string) => {
             try {
-                const indices: IndexConfig = JSON.parse(indicesJson);
+                let indices: IndexConfig = {}; // Default to empty
+                const isAutoIndex = autoIndex === 'true';
+                const isManualIndex = autoIndex === 'false';
+
+                if (isAutoIndex) {
+                    // If autoIndex is true, indices are implicitly empty, ignore indicesJson
+                    indices = {};
+                    if (indicesJson) {
+                        console.warn("WARN: 'indices' argument provided but ignored because autoIndex is true.");
+                    }
+                } else if (isManualIndex) {
+                    // If autoIndex is false, indicesJson is required
+                    if (!indicesJson) {
+                        console.error("Error: 'indices' argument is required when autoIndex is false.");
+                        console.error("Please provide indices as a valid JSON string, e.g., '{\"fieldName\":1}', 1 for ascending, -1 for descending.");
+                        process.exit(1); // Exit if required argument is missing
+                    }
+                    // Parse the provided JSON
+                    indices = JSON.parse(indicesJson);
+                } else {
+                    // Handle invalid autoIndex value
+                    console.error(`Error: Invalid value for autoIndex: '${autoIndex}'. Must be 'true' or 'false'.`);
+                    process.exit(1);
+                }
+
+                // Proceed with the valid indices object
                 const tableInput: TableInput = {
                     name: table,
-                    autoIndex: autoIndex === 'true',
+                    autoIndex: isAutoIndex, // Use the boolean value
                     indices: indices
                 };
                 await addOrUpdateContractConfig(chainName, account, [tableInput]);
+
             } catch (error: any) {
-                console.error(`Error parsing indices JSON: ${error.message}`);
-                console.error("Please provide indices as a valid JSON string, e.g., '{\"owner\":1}'");
+                // Catch JSON parsing errors specifically for the manual case
+                if (autoIndex === 'false' && error instanceof SyntaxError) {
+                     console.error(`Error parsing indices JSON: ${error.message}`);
+                     console.error("Please provide indices as a valid JSON string, e.g., '{\"owner\":1}'");
+                } else {
+                     console.error(`An unexpected error occurred: ${error.message}`); // Handle other potential errors
+                }
+                 process.exit(1); // Exit on error
             }
         });
 
     contracts.command('add-multiple <chainName> <account> <tablesJson>')
-        .description('add or update multiple tables in contract config (tables as JSON string)')
+        .description('add or update multiple tables in contract config (tables as JSON string, indices required per table if autoIndex is false)')
         .action(async (chainName, account, tablesJson) => {
             try {
-                const tablesData: Array<{ name: string; autoIndex: boolean; indices: IndexConfig }> = JSON.parse(tablesJson);
-                const tables: TableInput[] = tablesData.map(t => ({
-                    name: t.name,
-                    autoIndex: t.autoIndex,
-                    indices: t.indices
-                }));
+                // Define a more specific type for the input data
+                type TableJsonInput = { name: string; autoIndex: boolean; indices?: IndexConfig };
+                const tablesData: Array<TableJsonInput> = JSON.parse(tablesJson);
+
+                const tables: TableInput[] = tablesData.map((t, index) => {
+                    let finalIndices: IndexConfig = {};
+                    const isAutoIndex = t.autoIndex === true; // Explicit check for boolean true
+                    const isManualIndex = t.autoIndex === false; // Explicit check for boolean false
+
+                    if (isAutoIndex) {
+                        finalIndices = {}; // Default to empty for autoIndex
+                        if (t.indices && Object.keys(t.indices).length > 0) {
+                            console.warn(`WARN: Table '${t.name}' (index ${index} in JSON) has autoIndex=true, but indices were provided and will be ignored.`);
+                        }
+                    } else if (isManualIndex) {
+                        // Manual index requires indices to be provided and be a non-empty object
+                        if (!t.indices || typeof t.indices !== 'object' || Object.keys(t.indices).length === 0) {
+                             console.error(`Error: Table '${t.name}' (index ${index} in JSON) has autoIndex=false, but 'indices' are missing or empty.`);
+                             console.error("Please provide valid indices for this table, e.g., '{\"fieldName\":1}'");
+                             process.exit(1); // Exit on error for this specific table
+                        }
+                        finalIndices = t.indices;
+                    } else {
+                        // Handle invalid autoIndex value for this specific table
+                        console.error(`Error: Table '${t.name}' (index ${index} in JSON) has an invalid value for autoIndex: '${t.autoIndex}'. Must be true or false.`);
+                        process.exit(1);
+                    }
+
+                    return {
+                        name: t.name,
+                        autoIndex: isAutoIndex,
+                        indices: finalIndices
+                    };
+                });
+
+                // If mapping completes without exiting, proceed
                 await addOrUpdateContractConfig(chainName, account, tables);
+
             } catch (error: any) {
-                console.error(`Error parsing tables JSON: ${error.message}`);
-                console.error("Provide tables as JSON array string, e.g., '[{\"name\":\"t\",\"autoIndex\":true,\"indices\":{}}]'");
+                 if (error instanceof SyntaxError) {
+                    console.error(`Error parsing tables JSON: ${error.message}`);
+                    console.error("Provide tables as a valid JSON array string, e.g., '[{\"name\":\"table1\",\"autoIndex\":true}, {\"name\":\"table2\",\"autoIndex\":false,\"indices\":{\"field\":1}}]'");
+                 } else {
+                    // Handle errors potentially thrown by process.exit or other issues
+                    if (!error.message?.includes('process.exit')) { // Avoid double logging if exited intentionally
+                         console.error(`An unexpected error occurred: ${error.message}`);
+                    }
+                 }
+                 // Ensure exit if not already handled by specific checks
+                 if (!process.exitCode) {
+                     process.exit(1);
+                 }
             }
         });
 
@@ -1071,4 +1145,3 @@ async function reloadConfig(chainName: string) {
     console.log('Reloading hyperion config... (Not implemented yet, please restart the hyperion indexer manually)');
     console.log(`Please use "./hyp-control sync contract-state ${chainName}" to sync the contract state`);
 }
-
