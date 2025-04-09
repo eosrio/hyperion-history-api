@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { APIClient, Asset, Name } from "@wharfkit/antelope";
+import { APIClient, Asset, Name, UInt64 } from "@wharfkit/antelope";
 import { MongoClient, Db, IndexDescription } from "mongodb";
 import { join } from "node:path";
 import { cargo } from "async";
@@ -24,6 +24,9 @@ export class ContractStateSynchronizer {
     private currentBlockId: string = '';
     private currentBlockTime: string = '';
     private processedDocs: number = 0;
+
+    private totalRows: number = 0;
+    private processedRows: number = 0;
 
     constructor(chain: string) {
         this.chain = chain;
@@ -145,7 +148,6 @@ export class ContractStateSynchronizer {
 
                     console.log(`Processing ${contract}-${table}`);
                     let lowerBound: string | null = null;
-                    let totalRows = 0;
                     do {
                         try {
                             const scopes = await this.client.v1.chain.get_table_by_scope({
@@ -157,57 +159,69 @@ export class ContractStateSynchronizer {
 
                             for (const scopeRow of scopes.rows) {
                                 const scope = scopeRow.scope.toString();
-                                // console.log(`Aqui scope`, scope)
-                                const result = await this.client.v1.chain.get_table_rows({
-                                    code: contract,
-                                    scope: scope,
-                                    table: table,
-                                    limit: 1000,
-                                    json: true,
-                                    show_payer: true
-                                });
 
+                                    let lb: UInt64 | undefined = undefined;
+                                        let more = false;
+                                        const approvals: any[] = [];
+                                        do {
+                                            const result =  await this.client.v1.chain.get_table_rows({
+                                                code: contract,
+                                                scope: scope,
+                                                table: table,
+                                                limit: 500,
+                                                json: true,
+                                                show_payer: true,
+                                                lower_bound: lb
+                                            });
 
-                                if (result.ram_payers) {
-                                    for (const [index, row] of result.rows.entries()) {
-                                        let pkValue = ''
-                                        switch (pkField.type) {
-                                            case 'asset':
-                                                pkValue = Asset.from(row[pkField.field]).symbol.code.value.toString();
-                                                break;
-                                            case 'name':
-                                                pkValue = Name.from(row[pkField.field]).value.toString();
-                                                break;
-                                            case 'uint64':
-                                                pkValue = row[pkField.field].toString();
-                                                break;
-                                            default:
-                                                pkValue = row[pkField.field].toString();
-                                                break;
-                                        }
+                                            lb = result.next_key;
+                                            more = result.more;
+                                            
+                                            if (result.ram_payers) {
+                                                for (const [index, row] of result.rows.entries()) {
+                                                    let pkValue = ''
+                                                    switch (pkField.type) {
+                                                        case 'asset':
+                                                            pkValue = Asset.from(row[pkField.field]).symbol.code.value.toString();
+                                                            break;
+                                                        case 'name':
+                                                            pkValue = Name.from(row[pkField.field]).value.toString();
+                                                            break;
+                                                        case 'uint64':
+                                                            pkValue = row[pkField.field].toString();
+                                                            break;
+                                                        default:
+                                                            pkValue = row[pkField.field].toString();
+                                                            break;
+                                                    }
+            
+                                                    this.totalRows++;
 
-                                        // console.log(`pkValue`, pkValue, scope)
+                                                    // log at each 10000 rows
+                                                    if (this.totalRows % 10000 === 0) {
+                                                        console.log(`Fetched ${this.totalRows} rows - at: ${contract}-${table} - scope: ${scope} - pk: ${pkValue} - lb: ${lb?.value.toString()}`);
+                                                    }
 
-                                        totalRows++;
-                                        yield {
-                                            contract,
-                                            table,
-                                            data: row,
-                                            scope: scope,
-                                            primary_key: pkValue,
-                                            payer: result.ram_payers[index].toString()
-                                        };
-                                    }
-                                }
+                                                    yield {
+                                                        contract,
+                                                        table,
+                                                        data: row,
+                                                        scope: scope,
+                                                        primary_key: pkValue,
+                                                        payer: result.ram_payers[index].toString()
+                                                    };
+                                                }
+                                            }
+                                        } while (more);
                             }
                             lowerBound = scopes.more;
-                            console.log(`Fetched ${totalRows} rows from ${contract}-${table}. Total: ${totalRows}`);
+                            console.log(`Fetched ${this.totalRows} rows from ${contract}-${table}. Total: ${this.totalRows}`);
                         } catch (error) {
                             console.error(`Error processing ${contract}-${table}:`, error);
                             lowerBound = null;
                         }
                     } while (lowerBound);
-                    console.log(`Finished processing ${contract}-${table}. Total rows: ${totalRows}`);
+                    console.log(`Finished processing ${contract}-${table}. Total rows: ${this.totalRows}`);
                 }
             }
         } else {
@@ -236,9 +250,11 @@ export class ContractStateSynchronizer {
 
             await this.setupIndices();
 
-            const cargoQueue = cargo(async (docs: any[], cb) => {
+            const cargoQueue = cargo((docs: any[], cb) => {
 
                 const groupedOps = new Map<string, any[]>();
+
+                let total = 0;
 
                 docs.forEach(doc => {
 
@@ -270,6 +286,7 @@ export class ContractStateSynchronizer {
                     const collection = `${doc.contract}-${doc.table}`;
                     const col = groupedOps.get(collection);
                     if (col) {
+                        total++;
                         col.push(op);
                     } else {
                         groupedOps.set(collection, [op]);
@@ -285,22 +302,25 @@ export class ContractStateSynchronizer {
                     }
                 });
 
-                try {
-                    const results = await Promise.all(promises);
-                } catch (error) {
-                    console.error("Error during bulk write:", error);
-                } finally {
+                Promise.all(promises).catch((erro:any) => {
+                    console.error("Error during bulk write:", erro);
+                }).finally(() => {
+                    this.processedRows += total;
+                    const percentComplete = (this.processedRows / this.totalRows) * 100;
+                    console.log(`Indexed ${this.processedRows} rows - ${percentComplete.toFixed(2)}% complete`);
                     cb();
-                }
+                });
+
             }, 1000);
 
             console.log("Starting to process contract state");
             for await (const doc of this.processContractState()) {
+
                 this.processedDocs++;
-                cargoQueue.push(doc);
-                if (this.processedDocs % 1000 === 0) {
-                    console.log(`Processed ${this.processedDocs} documents`);
-                }
+
+                cargoQueue.push(doc).catch((error) => {
+                    console.error("Error pushing to queue:", error);
+                });
             }
 
             console.log(`Waiting for queue to drain...`);
