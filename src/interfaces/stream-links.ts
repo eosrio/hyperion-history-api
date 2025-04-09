@@ -1,4 +1,4 @@
-import {RequestFilter} from "../api/socketManager.js";
+import {RequestFilter} from "./stream-requests.js";
 
 /**
  * ActionLink interface represents a subscription connection between a client and a relay socket

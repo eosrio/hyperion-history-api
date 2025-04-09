@@ -64,7 +64,12 @@ export async function getApiUsageHistory(fastify: FastifyInstance) {
     return response;
 }
 
-export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket, data: any) {
+export async function streamPastDeltas(
+    fastify: FastifyInstance,
+    socket: Socket,
+    requestUUID: string,
+    data: any
+) {
     const search_body: any = {
         query: {bool: {must: []}},
         sort: {block_num: 'asc'},
@@ -111,7 +116,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
     if (scrollLimit && scrollLimit !== -1 && totalHits > scrollLimit) {
         const errorMsg = `Requested ${totalHits} deltas, limit is ${scrollLimit}.`;
         socket.emit('message', {
-            reqUUID: socket.data.reqUUID,
+            reqUUID: requestUUID,
             type: 'delta_trace', mode: 'history', messages: [],
             error: errorMsg
         });
@@ -126,7 +131,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
 
     // emit first block
     if (init_response.hits.hits.length > 0) {
-        emitTraceInit(socket, init_response.hits.hits[0]._source.block_num, totalHits);
+        emitTraceInit(socket, requestUUID, init_response.hits.hits[0]._source.block_num, totalHits);
     }
 
     responseQueue.push(init_response);
@@ -166,7 +171,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
             if (socket.connected) {
                 if (enqueuedMessages.length > 0) {
                     socket.emit('message', {
-                        reqUUID: socket.data.reqUUID,
+                        reqUUID: requestUUID,
                         type: 'delta_trace',
                         mode: 'history',
                         messages: enqueuedMessages,
@@ -199,9 +204,14 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
     return {status: true, lastTransmittedBlock};
 }
 
-export function emitTraceInit(socket: Socket, firstBlock: number, totalResults: number) {
+export function emitTraceInit(
+    socket: Socket,
+    requestUUID: string,
+    firstBlock: number,
+    totalResults: number
+) {
     socket.emit('message', {
-        reqUUID: socket.data.reqUUID,
+        reqUUID: requestUUID,
         type: 'trace_init',
         mode: 'history',
         first_block: firstBlock,
@@ -209,7 +219,7 @@ export function emitTraceInit(socket: Socket, firstBlock: number, totalResults: 
     });
 }
 
-export async function streamPastActions(fastify: FastifyInstance, socket, data) {
+export async function streamPastActions(fastify: FastifyInstance, socket: Socket, requestUUID: string, data) {
     const search_body: any = {query: {bool: {must: []}}, sort: {global_sequence: 'asc'}};
     await addBlockRangeOpts(data, search_body, fastify);
     if (data.account !== '') {
@@ -265,7 +275,7 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
     if (scrollLimit && scrollLimit !== -1 && totalHits > scrollLimit) {
         const errorMsg = `Requested ${totalHits} actions, limit is ${scrollLimit}.`;
         socket.emit('message', {
-            reqUUID: socket.data.reqUUID,
+            reqUUID: requestUUID,
             type: 'action_trace', mode: 'history', messages: [],
             error: `Requested ${totalHits} actions, limit is ${scrollLimit}.`
         });
@@ -280,7 +290,7 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
 
     // emit first block
     if (init_response.hits.hits.length > 0) {
-        emitTraceInit(socket, init_response.hits.hits[0]._source.block_num, totalHits);
+        emitTraceInit(socket, requestUUID, init_response.hits.hits[0]._source.block_num, totalHits);
     }
 
     responseQueue.push(init_response);
@@ -319,7 +329,7 @@ export async function streamPastActions(fastify: FastifyInstance, socket, data) 
             if (socket.connected) {
                 if (enqueuedMessages.length > 0) {
                     socket.emit('message', {
-                        reqUUID: socket.data.reqUUID,
+                        reqUUID: requestUUID,
                         type: 'action_trace',
                         mode: 'history',
                         messages: enqueuedMessages,

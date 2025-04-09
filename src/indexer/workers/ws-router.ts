@@ -3,8 +3,14 @@ import {createServer} from "http";
 import {HyperionWorker} from "./hyperionWorker.js";
 import {checkDeltaFilter, checkFilter, hLog} from "../helpers/common_functions.js";
 import {RabbitQueueDef} from "../definitions/index-queues.js";
-import {RequestFilter} from "../../api/socketManager.js";
 import {ActionLink, DeltaLink} from "../../interfaces/stream-links.js";
+import {
+    RequestFilter,
+    StreamActionsRequest,
+    StreamDeltasRequest,
+    StreamMessage
+} from "../../interfaces/stream-requests.js";
+import {ConsumeMessage} from "amqplib";
 
 const greylist = ['eosio.token'];
 
@@ -64,7 +70,9 @@ export default class WSRouter extends HyperionWorker {
         return undefined;
     }
 
-    onConsume(msg) {
+    onConsume(msg: ConsumeMessage | null) {
+
+
         if (!this.firstData) {
             this.firstData = true;
         }
@@ -72,100 +80,116 @@ export default class WSRouter extends HyperionWorker {
         // push to plugin handlers
         this.mLoader.processStreamEvent(msg);
 
-        // process incoming live messages
-        switch (msg.properties.headers.event) {
-            case 'block': {
-                // forward block events to all APIs
-                this.io?.of('/').emit('block', {
-                    serverTime: Date.now(),
-                    blockNum: msg.properties.headers.blockNum,
-                    content: msg.content
-                });
-                break;
-            }
-            case 'trace': {
-                const actHeader = msg.properties.headers;
-                const code = actHeader.account;
-                const name = actHeader.name;
-                const notified = actHeader.notified.split(',');
-                let decodedMsg;
+        if (msg && msg.properties.headers) {
+            // process incoming live messages
+            switch (msg.properties.headers.event) {
 
-                // send to contract subscribers
-                if (this.codeActionMap.has(code)) {
-                    const codeReq = this.codeActionMap.get(code);
-                    decodedMsg = Buffer.from(msg.content).toString();
-
-                    // send to action subscribers
-                    if (codeReq.has(name)) {
-                        for (const link of codeReq.get(name).links) {
-                            this.forwardActionMessage(decodedMsg, link, notified);
-                        }
-                    }
-                    // send to wildcard subscribers
-                    if (codeReq.has("*")) {
-                        for (const link of codeReq.get("*").links) {
-                            this.forwardActionMessage(decodedMsg, link, notified);
-                        }
-                    }
+                // Block Messages
+                case 'block': {
+                    // forward block events to all APIs
+                    this.io?.of('/').emit('block', {
+                        serverTime: Date.now(),
+                        blockNum: msg.properties.headers.blockNum,
+                        content: msg.content
+                    });
+                    break;
                 }
 
-                // send to notification subscribers
-                notified.forEach((acct) => {
-                    if (this.notifiedMap.has(acct)) {
-                        if (!decodedMsg) {
-                            decodedMsg = Buffer.from(msg.content).toString();
+                // Action Trace Messages
+                case 'trace': {
+                    const actHeader = msg.properties.headers;
+                    const code = actHeader.account;
+                    const name = actHeader.name;
+                    const notified = actHeader.notified.split(',');
+                    let decodedMsg;
+
+                    // send to contract subscribers
+                    if (this.codeActionMap.has(code)) {
+                        const codeReq = this.codeActionMap.get(code);
+                        decodedMsg = Buffer.from(msg.content).toString();
+
+                        // send to action subscribers
+                        if (codeReq.has(name)) {
+                            for (const link of codeReq.get(name).links) {
+                                this.forwardActionMessage(decodedMsg, link, notified);
+                            }
                         }
-                        for (const link of this.notifiedMap.get(acct).links) {
-                            this.forwardActionMessage(decodedMsg, link, notified);
+                        // send to wildcard subscribers
+                        if (codeReq.has("*")) {
+                            for (const link of codeReq.get("*").links) {
+                                this.forwardActionMessage(decodedMsg, link, notified);
+                            }
                         }
                     }
-                });
-                break;
-            }
 
-            case 'delta': {
-                const deltaHeader = msg.properties.headers;
-                const code = deltaHeader.code;
-                const table = deltaHeader.table;
-                // const scope = deltaHeader.scope;
-                const payer = deltaHeader.payer;
-                // console.log(code, table, scope, payer);
-                let decodedDeltaMsg;
-                // Forward to CODE/TABLE listeners
-                if (this.codeDeltaMap.has(code)) {
-                    decodedDeltaMsg = Buffer.from(msg.content).toString();
+                    // send to notification subscribers
+                    notified.forEach((acct) => {
+                        if (this.notifiedMap.has(acct)) {
+                            if (!decodedMsg) {
+                                decodedMsg = Buffer.from(msg.content).toString();
+                            }
+                            for (const link of this.notifiedMap.get(acct).links) {
+                                this.forwardActionMessage(decodedMsg, link, notified);
+                            }
+                        }
+                    });
+                    break;
+                }
 
-                    const tableDeltaMap = this.codeDeltaMap.get(code);
-                    // Send specific table
-                    if (tableDeltaMap.has(table)) {
-                        for (const link of tableDeltaMap.get(table).links) {
+                // Delta Trace Messages
+                case 'delta': {
+                    const deltaHeader = msg.properties.headers;
+                    const code = deltaHeader.code;
+                    const table = deltaHeader.table;
+                    // const scope = deltaHeader.scope;
+                    const payer = deltaHeader.payer;
+                    // console.log(code, table, scope, payer);
+
+                    let decodedDeltaMsg;
+
+                    // Forward to CODE/TABLE listeners
+                    if (this.codeDeltaMap.has(code)) {
+                        decodedDeltaMsg = Buffer.from(msg.content).toString();
+
+                        const tableDeltaMap = this.codeDeltaMap.get(code);
+
+                        // Send specific table
+                        if (tableDeltaMap.has(table)) {
+                            for (const link of tableDeltaMap.get(table).links) {
+                                this.forwardDeltaMessage(decodedDeltaMsg, link, payer);
+                            }
+                        }
+
+                        // Send any table
+                        if (tableDeltaMap.has("*")) {
+                            for (const link of tableDeltaMap.get("*").links) {
+                                this.forwardDeltaMessage(decodedDeltaMsg, link, payer);
+                            }
+                        }
+                    }
+
+                    // Forward to PAYER listeners
+                    if (this.payerMap.has(payer)) {
+                        decodedDeltaMsg = Buffer.from(msg.content).toString();
+                        for (const link of this.payerMap.get(payer).links) {
                             this.forwardDeltaMessage(decodedDeltaMsg, link, payer);
                         }
                     }
-                    // Send any table
-                    if (tableDeltaMap.has("*")) {
-                        for (const link of tableDeltaMap.get("*").links) {
-                            this.forwardDeltaMessage(decodedDeltaMsg, link, payer);
-                        }
-                    }
-                }
-                // Forward to PAYER listeners
-                if (this.payerMap.has(payer)) {
-                    decodedDeltaMsg = Buffer.from(msg.content).toString();
-                    for (const link of this.payerMap.get(payer).links) {
-                        this.forwardDeltaMessage(decodedDeltaMsg, link, payer);
-                    }
-                }
-                break;
-            }
 
-            default: {
-                console.log('Unidentified message!');
-                console.log(msg);
+                    break;
+                }
+
+
+                default: {
+                    console.log('Unidentified message!');
+                    console.log(msg);
+                }
             }
         }
 
-        this.ch?.ack(msg);
+        if (msg) {
+            this.ch?.ack(msg);
+        }
     }
 
     startRoutingRateMonitor() {
@@ -205,38 +229,28 @@ export default class WSRouter extends HyperionWorker {
                 const pLinks = pMap.get(secondary);
                 pLinks.links.push(link);
             } else {
-                pMap.set(secondary, {
-                    links: [link]
-                });
+                pMap.set(secondary, {links: [link]});
             }
         } else {
             const sMap = new Map();
-            sMap.set(secondary, {
-                links: [link]
-            });
+            sMap.set(secondary, {links: [link]});
             target.set(primary, sMap);
         }
     }
 
-    addActionRequest(data, id) {
+    addActionRequest(data: StreamMessage<StreamActionsRequest>, relay_id: string) {
         const req = data.request;
         if (typeof req.account !== 'string') {
-            return {
-                status: 'FAIL',
-                reason: 'invalid request'
-            };
+            return {status: 'FAIL', reason: 'invalid request'};
         }
         if (greylist.indexOf(req.contract) !== -1) {
             if (req.account === '' || req.account === req.contract) {
-                return {
-                    status: 'FAIL',
-                    reason: 'request too broad, please be more specific'
-                };
+                return {status: 'FAIL', reason: 'request too broad, please be more specific'};
             }
         }
         const link: ActionLink = {
             type: 'action',
-            relay: id,
+            relay: relay_id,
             reqUUID: data.reqUUID,
             client: data.client_socket,
             filters: req.filters,
@@ -250,24 +264,19 @@ export default class WSRouter extends HyperionWorker {
             if (req.account !== '') {
                 this.appendToL1Map(this.notifiedMap, req.account, link);
             } else {
-                return {
-                    status: 'FAIL',
-                    reason: 'invalid request'
-                };
+                return {status: 'FAIL', reason: 'invalid request'};
             }
         }
         this.addToClientIndex(
             data.client_socket,
-            id,
+            relay_id,
             [req.contract, req.action, req.account],
             data.reqUUID
         );
-        return {
-            status: 'OK'
-        };
+        return {status: 'OK'};
     }
 
-    addToClientIndex(client_id, relay_id: string, path: string[], reqUUID: string) {
+    addToClientIndex(client_id: string, relay_id: string, path: string[], reqUUID: string) {
         // register client on index
         if (this.clientIndex.has(client_id)) {
             const relayMap = this.clientIndex.get(client_id);
@@ -288,7 +297,7 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-    addDeltaRequest(data, relay_id: string) {
+    addDeltaRequest(data: StreamMessage<StreamDeltasRequest>, relay_id: string) {
         const req = data.request;
         const link: DeltaLink = {
             type: 'delta',
@@ -307,10 +316,7 @@ export default class WSRouter extends HyperionWorker {
             if (req.payer !== '' && req.payer !== '*') {
                 this.appendToL1Map(this.payerMap, req.payer, link);
             } else {
-                return {
-                    status: 'FAIL',
-                    reason: 'invalid request'
-                };
+                return {status: 'FAIL', reason: 'invalid request'};
             }
         }
         this.addToClientIndex(data.client_socket,
@@ -320,7 +326,15 @@ export default class WSRouter extends HyperionWorker {
         );
         console.log(this.clientIndex);
         console.log();
-        console.log(this.codeDeltaMap);
+
+        this.codeDeltaMap.forEach((value, key) => {
+            console.log(`Code: ${key}`);
+            value.forEach((value2, key2) => {
+                console.log(`Table: ${key2}`);
+                console.log(value2);
+            });
+        })
+
         return {
             status: 'OK'
         };
@@ -489,7 +503,7 @@ export default class WSRouter extends HyperionWorker {
         process.send?.({event: 'router_ready'});
     }
 
-    private forwardActionMessage(msg: any, link: any, notified: string[]) {
+    private forwardActionMessage(msg: any, link: ActionLink, notified: string[]) {
 
         if (!this.io) {
             hLog("Websocket server was not started!");
@@ -499,18 +513,28 @@ export default class WSRouter extends HyperionWorker {
         let allow = false;
         const relay = this.io.of('/').sockets.get(link.relay);
         if (relay) {
+
             if (link.account !== '') {
                 allow = notified.indexOf(link.account) !== -1;
             } else {
                 allow = true;
             }
-            if (link.filters?.length > 0) {
+
+            if (link.filters && link.filters?.length > 0) {
                 // check filters
                 const _parsedMsg = JSON.parse(msg);
-                allow = link.filters.every(filter => {
-                    return checkFilter(filter, _parsedMsg);
-                });
+
+                if (link.filter_op === 'or') {
+                    allow = link.filters.some((filter: RequestFilter) => {
+                        return checkFilter(filter, _parsedMsg);
+                    });
+                } else {
+                    allow = link.filters.every((filter: RequestFilter) => {
+                        return checkFilter(filter, _parsedMsg);
+                    });
+                }
             }
+
             if (allow) {
                 relay.emit('trace', {client: link.client, req: link.reqUUID, message: msg});
                 this.totalRoutedMessages++;
@@ -518,7 +542,8 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-    private forwardDeltaMessage(msg: string, link, payer: string) {
+
+    private forwardDeltaMessage(msg: string, link: DeltaLink, payer: string) {
         if (!this.io) {
             hLog("Websocket server was not started!");
             return;
@@ -534,10 +559,9 @@ export default class WSRouter extends HyperionWorker {
                 allow = true;
             }
 
-            if (link.filters?.length > 0) {
+            if (link.filters && link.filters?.length > 0) {
                 // check filters
                 const _parsedMsg = JSON.parse(msg);
-                console.log(link.filter_op);
                 if (link.filter_op === 'or') {
                     allow = link.filters.some((filter: RequestFilter) => {
                         return checkDeltaFilter(filter, _parsedMsg);

@@ -5,7 +5,7 @@ import {getTotalValue} from "../../api/helpers/functions.js";
 import {Serialize} from "eosjs";
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 import {Cluster} from "node:cluster";
-import {RequestFilter} from "../../api/socketManager.js";
+import {RequestFilter} from "../../interfaces/stream-requests.js";
 
 let config: HyperionConfig | undefined;
 
@@ -307,7 +307,7 @@ export function checkDeltaFilter(filter: RequestFilter, _source: any) {
     }
 }
 
-export function checkFilter(filter, _source) {
+export function checkFilter(filter: RequestFilter, _source: any) {
     if (filter.field && filter.value) {
         let fieldValue = getNested(filter.field.split("."), _source);
         if (!fieldValue) {
