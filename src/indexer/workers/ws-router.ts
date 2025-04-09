@@ -14,7 +14,7 @@ export default class WSRouter extends HyperionWorker {
     totalRoutedMessages = 0;
     firstData = false;
     relays = {};
-    clientIndex = new Map();
+    clientIndex: Map<string, Map<string, Map<string, string[]>>> = new Map();
     codeActionMap = new Map();
     notifiedMap = new Map();
     codeDeltaMap = new Map();
@@ -256,30 +256,43 @@ export default class WSRouter extends HyperionWorker {
                 };
             }
         }
-        this.addToClientIndex(data, id, [req.contract, req.action, req.account]);
+        this.addToClientIndex(
+            data.client_socket,
+            id,
+            [req.contract, req.action, req.account],
+            data.reqUUID
+        );
         return {
             status: 'OK'
         };
     }
 
-    addToClientIndex(data, id, path) {
+    addToClientIndex(client_id, relay_id: string, path: string[], reqUUID: string) {
         // register client on index
-        if (this.clientIndex.has(data.client_socket)) {
-            this.clientIndex.get(data.client_socket).set(id, path);
-            // console.log('new relay added to existing client');
+        if (this.clientIndex.has(client_id)) {
+            const relayMap = this.clientIndex.get(client_id);
+            if (relayMap && relayMap.has(relay_id)) {
+                const requestMap = relayMap.get(relay_id);
+                if (requestMap) {
+                    requestMap.set(reqUUID, path);
+                }
+            }
+            console.log(`new relay link added to existing client, using ${reqUUID}`);
         } else {
             const list = new Map();
-            list.set(id, path);
-            this.clientIndex.set(data.client_socket, list);
-            // console.log('new client added to index');
+            const requests = new Map();
+            requests.set(reqUUID, path);
+            list.set(relay_id, requests);
+            this.clientIndex.set(client_id, list);
+            console.log('new client added to index');
         }
     }
 
-    addDeltaRequest(data, id) {
+    addDeltaRequest(data, relay_id: string) {
         const req = data.request;
         const link: DeltaLink = {
             type: 'delta',
-            relay: id,
+            relay: relay_id,
             reqUUID: data.reqUUID,
             client: data.client_socket,
             filters: data.request.filters,
@@ -287,6 +300,7 @@ export default class WSRouter extends HyperionWorker {
             added_on: Date.now(),
             filter_op: data.request.filter_op
         };
+        console.log(`New Delta Request - client: ${data.client_socket} - relay: ${relay_id}`);
         if (req.code !== '' && req.code !== '*') {
             this.appendToL2Map(this.codeDeltaMap, req.code, req.table, link);
         } else {
@@ -299,46 +313,93 @@ export default class WSRouter extends HyperionWorker {
                 };
             }
         }
-        this.addToClientIndex(data, id, [req.code, req.table, req.payer]);
+        this.addToClientIndex(data.client_socket,
+            relay_id,
+            [req.code, req.table, req.payer],
+            data.reqUUID
+        );
+        console.log(this.clientIndex);
+        console.log();
+        console.log(this.codeDeltaMap);
         return {
             status: 'OK'
         };
     }
 
-    removeDeepLinks(map, path, key, id) {
+    removeDeepLinks(
+        map: Map<string, any>,
+        path: string[],
+        relay_id: string,
+        id: string,
+        reqUUID?: string
+    ) {
         if (map.has(path[0])) {
+            console.log("Removing deep links...", path);
             if (map.get(path[0]).has(path[1])) {
                 const currentLinks = map.get(path[0]).get(path[1]).links;
-                currentLinks.forEach((item, index) => {
-                    if (item.relay === key && item.client === id) {
+                console.log(`currentLinks [${path}]`, currentLinks);
+                currentLinks.forEach((item: ActionLink | DeltaLink, index: number) => {
+                    console.log(`ReqUUID: ${reqUUID} | Relay: ${relay_id} | Client: ${id}`);
+                    if ((reqUUID && item.reqUUID === reqUUID) || (item.relay === relay_id && item.client === id)) {
                         currentLinks.splice(index, 1);
+                        console.log("Removed!");
                     }
                 });
             }
         }
     }
 
-    removeSingleLevelLinks(map, path, key, id) {
+    removeSingleLevelLinks(
+        map: Map<string, any>,
+        path: string[],
+        key: string,
+        id: string,
+        reqUUID?: string
+    ) {
         if (map.has(path[2])) {
+            console.log("Removing single level links...", path);
             const _links = map.get(path[2]).links;
-            _links.forEach((item, index) => {
-                if (item.relay === key && item.client === id) {
+            _links.forEach((item: ActionLink | DeltaLink, index: number) => {
+                if ((reqUUID && item.reqUUID === reqUUID) || (item.relay === key && item.client === id)) {
                     _links.splice(index, 1);
                 }
             });
         }
     }
 
-    removeLinks(id) {
-        // console.log(`Removing links for ${id}...`);
+    removeLinks(id: string, reqUUID?: string) {
+        console.log(`Removing links for ${id}... (optional request id: ${reqUUID})`);
         if (this.clientIndex.has(id)) {
+            // find relay links by client ID
             const links = this.clientIndex.get(id);
-            links.forEach((path, key) => {
-                this.removeDeepLinks(this.codeActionMap, path, key, id);
-                this.removeDeepLinks(this.codeDeltaMap, path, key, id);
-                this.removeSingleLevelLinks(this.notifiedMap, path, key, id);
-                this.removeSingleLevelLinks(this.payerMap, path, key, id);
-            });
+            if (links) {
+                links.forEach((requests: Map<string, string[]>, relay_id: string) => {
+                    // remove a single stream link
+                    if (reqUUID) {
+                        const path = requests.get(reqUUID);
+                        console.log('removing path:', path);
+                        if (path) {
+                            this.removeDeepLinks(this.codeActionMap, path, relay_id, id, reqUUID);
+                            this.removeDeepLinks(this.codeDeltaMap, path, relay_id, id, reqUUID);
+                            this.removeSingleLevelLinks(this.notifiedMap, path, relay_id, id, reqUUID);
+                            this.removeSingleLevelLinks(this.payerMap, path, relay_id, id, reqUUID);
+                            console.log(`Client: ${id}, Relay: ${relay_id} ->`, path);
+                            requests.delete(reqUUID);
+                        }
+                    } else {
+                        // remove all requests for the client socket
+                        console.log("Removing all requests for client: ", id);
+                        requests.forEach((path: string[]) => {
+                            this.removeDeepLinks(this.codeActionMap, path, relay_id, id);
+                            this.removeDeepLinks(this.codeDeltaMap, path, relay_id, id);
+                            this.removeSingleLevelLinks(this.notifiedMap, path, relay_id, id);
+                            this.removeSingleLevelLinks(this.payerMap, path, relay_id, id);
+                        })
+                    }
+                });
+            }
+            console.log("codeActionMap", this.codeActionMap);
+            console.log("codeDeltaMap", this.codeDeltaMap);
         }
     }
 
@@ -353,18 +414,18 @@ export default class WSRouter extends HyperionWorker {
             cookie: false
         });
 
-        this.io.on('connection', (socket: Socket) => {
-            hLog(`New relay connected with ID = ${socket.id}`);
-            this.relays[socket.id] = {clients: 0, connected: true};
-            socket.on('event', (data, callback) => {
+        this.io.on('connection', (relaySocket: Socket) => {
+            hLog(`New relay connected with ID = ${relaySocket.id}`);
+            this.relays[relaySocket.id] = {clients: 0, connected: true};
+            relaySocket.on('event', (data, callback) => {
                 switch (data.type) {
                     case 'client_count': {
-                        this.relays[socket.id]['clients'] = data.counter;
+                        this.relays[relaySocket.id]['clients'] = data.counter;
                         this.countClients();
                         break;
                     }
                     case 'action_request': {
-                        const result = this.addActionRequest(data, socket.id);
+                        const result = this.addActionRequest(data, relaySocket.id);
                         if (result.status === 'OK') {
                             callback(result);
                         } else {
@@ -373,7 +434,7 @@ export default class WSRouter extends HyperionWorker {
                         break;
                     }
                     case 'delta_request': {
-                        const result = this.addDeltaRequest(data, socket.id);
+                        const result = this.addDeltaRequest(data, relaySocket.id);
                         if (result.status === 'OK') {
                             callback(result);
                         } else {
@@ -385,13 +446,18 @@ export default class WSRouter extends HyperionWorker {
                         this.removeLinks(data.id);
                         break;
                     }
+                    case 'cancel_request': {
+                        this.removeLinks(data.client_socket_id, data.reqUUID);
+                        callback({status: "OK"});
+                        break;
+                    }
                     default: {
                         console.log(data);
                     }
                 }
             });
-            socket.on('disconnect', () => {
-                this.relays[socket.id].connected = false;
+            relaySocket.on('disconnect', () => {
+                this.relays[relaySocket.id].connected = false;
                 this.countClients();
             });
         });

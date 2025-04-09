@@ -77,11 +77,29 @@ export class SocketManager {
             });
 
             if (this.relay) {
-                this.relay.emit('event', {
-                    type: 'client_count',
-                    counter: this.io.sockets.sockets.size,
-                });
+                this.relay.emit('event', {type: 'client_count', counter: this.io.sockets.sockets.size});
             }
+
+            socket.on('cancel_stream_request', (data: { reqUUID: string }, callback) => {
+                console.log(data);
+                if (typeof callback === 'function' && data) {
+                    try {
+                        if (this.relay.connected) {
+                            this.relay.emit('event', {
+                                reqUUID: data.reqUUID,
+                                type: 'cancel_request',
+                                client_socket_id: socket.id,
+                            }, (response: any) => {
+                                callback(response);
+                            });
+                        } else {
+                            callback('STREAMING_OFFLINE');
+                        }
+                    } catch (e: any) {
+                        console.log(e);
+                    }
+                }
+            })
 
             socket.on('delta_stream_request', async (data: StreamDeltasRequest, callback) => {
                 if (typeof callback === 'function' && data) {
@@ -122,7 +140,7 @@ export class SocketManager {
                                 }
                             }
                         }
-                    } catch (e) {
+                    } catch (e: any) {
                         console.log(e);
                     }
                 }
@@ -167,7 +185,7 @@ export class SocketManager {
                                 }
                             }
                         }
-                    } catch (e) {
+                    } catch (e: any) {
                         console.log(e);
                     }
                 }
