@@ -44,7 +44,8 @@ providing open source software to be operated by block producers, infrastructure
 
 Focused on delivering faster search times, lower bandwidth overhead and easier usability for UI/UX developers,
 Hyperion implements an improved data structure. Actions are stored in a flattened format, transaction ids are added to
-all inline actions, allowing to group by transaction without storing a full transaction index. Besides that if the inline
+all inline actions, allowing to group by transaction without storing a full transaction index. Besides that if the
+inline
 action data is identical to the parent, it is considered a notification and thus removed from the database.
 No full block or transaction data is stored, all information can be reconstructed from actions and deltas, only a block
 header index is stored.
@@ -52,8 +53,10 @@ header index is stored.
 ### 2. Architecture
 
 The following components are required in order to have a fully functional Hyperion API deployment.
+
 * For small use cases, it is absolutely fine to run all components on a single machine.
-* For larger chains and production environments, we recommend setting them up into different servers under a high-speed local network.
+* For larger chains and production environments, we recommend setting them up into different servers under a high-speed
+  local network.
 
 #### 2.1 Elasticsearch Cluster
 
@@ -86,17 +89,57 @@ Used as messaging queue and data transport between the indexer stages and for re
 Used for transient data storage across processes and for the preemptive transaction caching used on
 the `v2/history/get_transaction` and `v2/history/check_transaction` endpoints
 
-#### 2.6 Leap State History
+#### 2.6 MongoDB
 
-[Leap / Nodeos](https://github.com/AntelopeIO/leap/tree/main/plugins/state_history_plugin) plugin used
+MongoDB serves as a specialized data store within Hyperion that fulfills several critical functions:
+
+* **System Contract State Storage**: 
+   - Stores searchable state data for Antelope system contracts like token balances, proposals, and voter information
+   - Maintains three primary collections by default:
+     - `accounts`: Stores token balances with indexes for code, scope, and symbol
+     - `proposals`: Tracks governance proposals with detailed approval status
+     - `voters`: Manages staking and voting records with optimized query paths
+
+* **Custom Contract State Tracking**:
+   - Supports operator-defined custom contracts and tables
+   - Uses a flexible configuration system to define which contract tables to synchronize
+   - Automatically creates appropriate indexes based on contract schemas
+   - Stores tables in collections named `{contract}-{table}`
+
+* **State Synchronization**:
+   - Enables state synchronization even when starting from snapshots, providing a complete view of the blockchain state
+   - Managed through the `hyp-control` CLI tool, allowing for targeted synchronization of specific contracts
+   - Maintains block references to track state changes over time
+
+* **Query Optimization**:
+   - Creates specialized indexes based on common query patterns
+   - Supports advanced query capabilities including MongoDB operators like `$gt`, `$lt`, `$in` for filters
+   - Automatically handles date fields for time-based queries
+
+* **API Integration**:
+   - Provides dedicated API endpoints for querying state data
+   - Supports endpoints like `/v2/state/get_tokens`, `/v2/state/get_proposals`, and `/v2/state/get_voters`
+   - Offers flexible filtering options with pagination
+
+* **Dynamic Contract Schema Support**:
+   - Either automatically creates indexes based on contract ABIs
+   - Or allows for manual index configuration for custom query patterns
+   - Supports text search indexes for specific fields when configured
+
+This MongoDB integration complements Elasticsearch by focusing on current state data rather than historical actions,
+providing an optimized solution for applications that need to query the current blockchain state.
+
+#### 2.7 AntelopeIO State History
+
+[Spring / Leap / Nodeos](https://github.com/AntelopeIO/leap/tree/main/plugins/state_history_plugin) plugin used
 to collect action traces and state deltas. Provides data via websocket to the indexer
 
-#### 2.7 Hyperion Stream Client (optional)
+#### 2.8 Hyperion Stream Client (optional)
 
 Web and Node.js client for real-time streaming on enabled hyperion
 providers. [Documentation](https://hyperion.docs.eosrio.io/dev/stream_client/)
 
-#### 2.8 Hyperion Plugins (optional)
+#### 2.9 Hyperion Plugins (optional)
 
 Hyperion includes a flexible plugin architecture to allow further customization.
 Plugins are managed by the `hpm` (hyperion plugin manager) command line tool.
