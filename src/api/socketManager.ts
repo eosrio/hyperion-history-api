@@ -9,7 +9,6 @@ import {streamPastActions, streamPastDeltas} from "./helpers/functions.js";
 import {randomUUID} from "crypto";
 import {StreamActionsRequest, StreamDeltasRequest} from "../interfaces/stream-requests.js";
 
-
 export class SocketManager {
 
     private io: Server;
@@ -31,8 +30,8 @@ export class SocketManager {
     // request_uuid >> client_id
     // private requestClientMap: Map<string, string> = new Map();
 
-    // payer >> [client_id]
-    private payerClientMap: Map<string, Set<string>> = new Map();
+    // payer >> client_id >> request_uuid
+    private payerClientMap: Map<string, Map<string, string>> = new Map();
 
     constructor(fastify: FastifyInstance, url: string, redisOptions: RedisOptions) {
         this.server = fastify;
@@ -94,14 +93,13 @@ export class SocketManager {
                 if (typeof callback === 'function' && data) {
                     try {
 
-                        // generate random uuid
+                        // generate random uuid for each request
                         const requestUUID = randomUUID();
 
-                        console.log(data);
                         this.attachDeltaRequests(data, socket.id, requestUUID);
 
+                        // debug only
                         this.prettyDeltaRoutingMap();
-
                         this.printRoutingTable();
 
                         // get the last history block from the real time stream request
@@ -111,10 +109,9 @@ export class SocketManager {
                                 callback(emissionResult);
                                 resolve(emissionResult.currentBlockNum);
                             });
-
                         });
 
-                        // push history data
+                        // push history data (optional)
                         if (data.start_from && data.start_from !== 0) {
                             data.read_until = lastHistoryBlock;
                             console.log('Performing primary scroll request until block: ', lastHistoryBlock, '... ');
@@ -206,11 +203,7 @@ export class SocketManager {
                 hLog(`[socket] ${socket.id} disconnected - ${reason}`);
                 this.detachDeltaRequests(socket.id);
                 if (this.relay) {
-                    this.relay.emit('event', {
-                        type: 'client_disconnected',
-                        id: socket.id,
-                        reason,
-                    });
+                    this.relay.emit('event', {type: 'client_disconnected', id: socket.id, reason});
                 }
             });
         });
@@ -276,7 +269,9 @@ export class SocketManager {
         });
 
         this.relay.on('delta', (traceData) => {
-            this.emitToClient(traceData, 'delta_trace');
+
+            this.routeDeltaToClients(traceData);
+            // this.emitToClient(traceData, 'delta_trace');
         });
 
         this.relay.on('trace', (traceData) => {
@@ -323,15 +318,15 @@ export class SocketManager {
     }
 
     // Send data to targeted client
-    emitToClient(traceData, type: string) {
-        if (this.io.sockets.sockets.has(traceData.client)) {
-            this.io.sockets.sockets.get(traceData.client)?.emit('message', {
-                type: type,
-                reqUUID: traceData.req,
-                mode: 'live',
-                message: traceData.message,
-            });
-        }
+    emitToClient(data, type: string) {
+        // if (this.io.sockets.sockets.has(traceData.client)) {
+        //     this.io.sockets.sockets.get(traceData.client)?.emit('message', {
+        //         type: type,
+        //         reqUUID: traceData.req,
+        //         mode: 'live',
+        //         message: traceData.message,
+        //     });
+        // }
     }
 
     // Send request from client to relay socket on indexer
@@ -380,9 +375,9 @@ export class SocketManager {
 
         if (data.payer && !data.code && !data.table) {
             if (!this.payerClientMap.has(data.payer)) {
-                this.payerClientMap.set(data.payer, new Set());
+                this.payerClientMap.set(data.payer, new Map());
             }
-            this.payerClientMap.get(data.payer)?.add(client_id);
+            this.payerClientMap.get(data.payer)?.set(client_id, requestUUID);
         }
 
         // include on the clientDeltaRequestMap as reverse index
@@ -486,5 +481,55 @@ export class SocketManager {
             data2.push({payer, clients: clientSet.size});
         });
         console.table(data2);
+    }
+
+    private routeDeltaToClients(traceData: any) {
+        const {code, table, payer, scope, message} = traceData;
+        const targetClients = new Map<string, string[]>();
+        // Forward to CODE/TABLE listeners
+        if (this.deltaCodeMap.has(code)) {
+            const tableClientMap = this.deltaCodeMap.get(code);
+            if (tableClientMap) {
+                // Send specific table
+                if (tableClientMap.has(table)) {
+                    tableClientMap.get(table)?.forEach((requests, clientId) => {
+                        if (!targetClients.has(clientId)) {
+                            targetClients.set(clientId, []);
+                        }
+                        targetClients.get(clientId)?.push(...requests.keys());
+                    });
+                }
+                // Send any table
+                if (tableClientMap.has("*")) {
+                    tableClientMap.get("*")?.forEach((requests, clientId) => {
+                        if (!targetClients.has(clientId)) {
+                            targetClients.set(clientId, []);
+                        }
+                        targetClients.get(clientId)?.push(...requests.keys());
+                    });
+                }
+            }
+        }
+
+        // Forward to PAYER listeners
+        if (this.payerClientMap.has(payer)) {
+            this.payerClientMap.get(payer)?.forEach((requestUUID, clientId) => {
+                if (!targetClients.has(clientId)) {
+                    targetClients.set(clientId, []);
+                }
+                targetClients.get(clientId)?.push(requestUUID);
+            });
+        }
+
+        // console.log(`Routing Delta [${code}::${table}::${scope}][${payer}] to ${targetClients.size} clients`);
+
+        targetClients.forEach((reqs: string[], clientId: string) => {
+            this.io.sockets.sockets.get(clientId)?.emit('message', {
+                type: 'delta_trace',
+                mode: 'live',
+                targets: reqs,
+                message: traceData.message,
+            });
+        });
     }
 }
