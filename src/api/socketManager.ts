@@ -1,4 +1,4 @@
-import {hLog, sleep} from '../indexer/helpers/common_functions.js';
+import {checkDeltaFilter, hLog, sleep} from '../indexer/helpers/common_functions.js';
 import {Server, Socket} from 'socket.io';
 import {createAdapter} from "@socket.io/redis-adapter";
 import {io, Socket as ClientSocket} from 'socket.io-client';
@@ -7,7 +7,25 @@ import {Redis, RedisOptions} from "ioredis";
 import {App, TemplatedApp} from 'uWebSockets.js';
 import {streamPastActions, streamPastDeltas} from "./helpers/functions.js";
 import {randomUUID} from "crypto";
-import {StreamActionsRequest, StreamDeltasRequest} from "../interfaces/stream-requests.js";
+import {RequestFilter, StreamActionsRequest, StreamDeltasRequest} from "../interfaces/stream-requests.js";
+
+function checkDeltaFilters(request: StreamDeltasRequest, payer: string, msg: string): boolean {
+    let allow: boolean;
+    if (request.payer) {
+        allow = request.payer === payer;
+    } else {
+        allow = true;
+    }
+    if (allow && request.filters && request.filters?.length > 0) {
+        const parsedMsg = JSON.parse(msg);
+        if (request.filter_op === 'or') {
+            allow = request.filters.some((f: RequestFilter) => checkDeltaFilter(f, parsedMsg));
+        } else {
+            allow = request.filters.every((f: RequestFilter) => checkDeltaFilter(f, parsedMsg));
+        }
+    }
+    return allow;
+}
 
 export class SocketManager {
 
@@ -31,7 +49,7 @@ export class SocketManager {
     // private requestClientMap: Map<string, string> = new Map();
 
     // payer >> client_id >> request_uuid
-    private payerClientMap: Map<string, Map<string, string>> = new Map();
+    private payerClientMap: Map<string, Map<string, [string, StreamDeltasRequest]>> = new Map();
 
     constructor(fastify: FastifyInstance, url: string, redisOptions: RedisOptions) {
         this.server = fastify;
@@ -377,7 +395,7 @@ export class SocketManager {
             if (!this.payerClientMap.has(data.payer)) {
                 this.payerClientMap.set(data.payer, new Map());
             }
-            this.payerClientMap.get(data.payer)?.set(client_id, requestUUID);
+            this.payerClientMap.get(data.payer)?.set(client_id, [requestUUID, data]);
         }
 
         // include on the clientDeltaRequestMap as reverse index
@@ -484,45 +502,34 @@ export class SocketManager {
     }
 
     private routeDeltaToClients(traceData: any) {
+
+        // const tRef = process.hrtime.bigint();
         const {code, table, payer, scope, message} = traceData;
         const targetClients = new Map<string, string[]>();
         // Forward to CODE/TABLE listeners
         if (this.deltaCodeMap.has(code)) {
             const tableClientMap = this.deltaCodeMap.get(code);
             if (tableClientMap) {
-                // Send specific table
-                if (tableClientMap.has(table)) {
-                    tableClientMap.get(table)?.forEach((requests, clientId) => {
-                        if (!targetClients.has(clientId)) {
-                            targetClients.set(clientId, []);
-                        }
-                        targetClients.get(clientId)?.push(...requests.keys());
-                    });
-                }
-                // Send any table
-                if (tableClientMap.has("*")) {
-                    tableClientMap.get("*")?.forEach((requests, clientId) => {
-                        if (!targetClients.has(clientId)) {
-                            targetClients.set(clientId, []);
-                        }
-                        targetClients.get(clientId)?.push(...requests.keys());
-                    });
-                }
+                // Process specific table requests
+                processTableRequests(tableClientMap, table, payer, message, targetClients);
+                // Process wildcard table requests
+                processTableRequests(tableClientMap, "*", payer, message, targetClients);
             }
         }
 
         // Forward to PAYER listeners
         if (this.payerClientMap.has(payer)) {
-            this.payerClientMap.get(payer)?.forEach((requestUUID, clientId) => {
+            this.payerClientMap.get(payer)?.forEach(([requestUUID, requestData], clientId) => {
                 if (!targetClients.has(clientId)) {
                     targetClients.set(clientId, []);
                 }
-                targetClients.get(clientId)?.push(requestUUID);
+                if (checkDeltaFilters(requestData, payer, message)) {
+                    targetClients.get(clientId)?.push(requestUUID);
+                }
             });
         }
 
-        // console.log(`Routing Delta [${code}::${table}::${scope}][${payer}] to ${targetClients.size} clients`);
-
+        console.log(`Routing Delta [${code}::${table}::${scope}][${payer}] to ${targetClients.size} clients`);
         targetClients.forEach((reqs: string[], clientId: string) => {
             this.io.sockets.sockets.get(clientId)?.emit('message', {
                 type: 'delta_trace',
@@ -531,5 +538,29 @@ export class SocketManager {
                 message: traceData.message,
             });
         });
+        // console.log("Processing time: ", Number(process.hrtime.bigint() - tRef) / 1000000, "ms");
     }
+}
+
+function processTableRequests(
+    tableClientMap: Map<string, Map<string, Map<string, StreamDeltasRequest>>>,
+    tableId: string,
+    payer: string,
+    message: string,
+    targetClients: Map<string, string[]>
+): void {
+    if (!tableClientMap.has(tableId)) return;
+    tableClientMap.get(tableId)?.forEach((requests, clientId) => {
+
+        console.log(requests);
+
+        if (!targetClients.has(clientId)) {
+            targetClients.set(clientId, []);
+        }
+        requests.forEach((request, uuid) => {
+            if (checkDeltaFilters(request, payer, message)) {
+                targetClients.get(clientId)?.push(uuid);
+            }
+        });
+    });
 }
