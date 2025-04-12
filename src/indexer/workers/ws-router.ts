@@ -206,10 +206,16 @@ export default class WSRouter extends HyperionWorker {
             this.payerRelayMap.get(payer)?.forEach((_, key) => targetRelays.add(key));
         }
         for (const relay_id of targetRelays.values()) {
-            this.io?.of('/').sockets.get(relay_id)?.emit('delta', {
-                ...msg.properties.headers,
-                message: Buffer.from(msg.content).toString()
-            });
+            const relay_socket = this.io?.of('/').sockets.get(relay_id);
+            if (relay_socket) {
+                relay_socket.emit('delta', {
+                    ...msg.properties.headers,
+                    message: Buffer.from(msg.content).toString()
+                });
+            } else {
+                hLog("Relay socket not found: ", relay_id);
+                this.removeRelayLinks(relay_id);
+            }
         }
     }
 
@@ -343,6 +349,7 @@ export default class WSRouter extends HyperionWorker {
         });
 
         const {code, table, payer} = req;
+
         console.log("Incoming Delta Request with code: ", code, " table: ", table, " payer: ", payer);
 
         if (code && table) {
@@ -368,9 +375,11 @@ export default class WSRouter extends HyperionWorker {
             this.payerRelayMap.get(payer)?.get(relay_id)?.add(data.reqUUID);
         }
 
-        console.log("clientMap ->> ", this.clientMap);
-        console.log("codeTableRelayMap ->> ", this.codeTableRelayMap);
-        console.log("payerRelayMap ->> ", this.payerRelayMap);
+        this.printClientTable();
+
+        // console.log("clientMap ->> ", this.clientMap);
+        // console.log("codeTableRelayMap ->> ", this.codeTableRelayMap);
+        // console.log("payerRelayMap ->> ", this.payerRelayMap);
 
         // const link: DeltaLink = {
         //     type: 'delta',
@@ -485,9 +494,15 @@ export default class WSRouter extends HyperionWorker {
         this.io = new Server(server, {path: '/router', serveClient: false, cookie: false});
 
         this.io.on('connection', (relaySocket: Socket) => {
-            hLog(`API Stream Relay connected with ID = ${relaySocket.id}`);
 
-            this.relays[relaySocket.id] = {clients: 0, connected: true};
+            const lastRelayId = relaySocket.handshake.headers['x-last-relay-id'] as string;
+            if (lastRelayId) {
+                hLog(`API Stream Relay connected with ID = ${relaySocket.id} (last ID: ${lastRelayId})`);
+                this.replaceRelay(relaySocket.id, lastRelayId);
+            } else {
+                hLog(`API Stream Relay connected with ID = ${relaySocket.id}`);
+                this.relays[relaySocket.id] = {clients: 0, connected: true};
+            }
 
             relaySocket.on('event', (data, callback) => {
                 switch (data.type) {
@@ -506,7 +521,6 @@ export default class WSRouter extends HyperionWorker {
                         break;
                     }
                     case 'delta_request': {
-                        this.printClientTable();
                         const result = this.addDeltaRequest(data, relaySocket.id);
                         if (result.status === 'OK') {
                             callback(result);
@@ -518,7 +532,6 @@ export default class WSRouter extends HyperionWorker {
                     case 'client_disconnected': {
                         // this.removeLinks(data.id);
                         this.removeClient(data.id);
-                        this.printClientTable();
                         // callback({status: "OK"});
                         break;
                     }
@@ -533,10 +546,13 @@ export default class WSRouter extends HyperionWorker {
                     }
                 }
             });
+
             relaySocket.on('disconnect', () => {
+                hLog(`API Stream Relay disconnected with ID = ${relaySocket.id}`);
                 this.relays[relaySocket.id].connected = false;
                 this.countClients();
             });
+
         });
 
         const connOpts = this.manager.conn.chains[this.chain];
@@ -605,7 +621,6 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-
     private forwardDeltaMessage(msg: string, link: DeltaLink, payer: string) {
         if (!this.io) {
             hLog("Websocket server was not started!");
@@ -646,10 +661,10 @@ export default class WSRouter extends HyperionWorker {
     private removeClient(id: any) {
         const clientInfo = this.clientMap.get(id);
         if (clientInfo) {
-            console.log("Removing client: ", id, clientInfo);
+            // console.log("Removing client: ", id, clientInfo);
             const requests = clientInfo.requests;
             requests.forEach((value: TrackedRequest, requestUUID: string) => {
-                console.log(requestUUID, value);
+                // console.log(requestUUID, value);
                 switch (value.type) {
                     case 'delta': {
                         const request = value.request as StreamDeltasRequest;
@@ -708,7 +723,6 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-
     private printClientTable() {
         // Prepare data for code-table mappings
         const codeTableData: { code: string; table: string; relays: number; requests: number }[] = [];
@@ -721,13 +735,7 @@ export default class WSRouter extends HyperionWorker {
                 relayMap.forEach(requestSet => {
                     totalRequests += requestSet.size;
                 });
-
-                codeTableData.push({
-                    code,
-                    table,
-                    relays: relayMap.size,
-                    requests: totalRequests
-                });
+                codeTableData.push({code, table, relays: relayMap.size, requests: totalRequests});
             });
         });
 
@@ -741,12 +749,7 @@ export default class WSRouter extends HyperionWorker {
             relayMap.forEach(requestSet => {
                 totalRequests += requestSet.size;
             });
-
-            payerData.push({
-                payer,
-                relays: relayMap.size,
-                requests: totalRequests
-            });
+            payerData.push({payer, relays: relayMap.size, requests: totalRequests});
         });
 
         // Display tables
@@ -771,5 +774,47 @@ export default class WSRouter extends HyperionWorker {
         console.log(`Total Code-Table Requests: ${totalCodeTableRequests}`);
         console.log(`Total Payer Requests: ${totalPayerRequests}`);
         console.log(`Total Client Tracking Entries: ${this.clientMap.size}`);
+        console.log("=========================");
+    }
+
+    private replaceRelay(newId: string, lastRelayId: string) {
+        this.relays[newId] = this.relays[lastRelayId];
+        this.countClients();
+
+        // replace on the maps
+        this.payerRelayMap.forEach((relayMap) => {
+            const relayData = relayMap.get(lastRelayId);
+            if (relayData) {
+                relayMap.set(newId, relayData);
+                relayData.delete(lastRelayId);
+            }
+        });
+        this.codeTableRelayMap.forEach((tableMap) => {
+            tableMap.forEach((relayMap) => {
+                const relayData = relayMap.get(lastRelayId);
+                if (relayData) {
+                    relayMap.set(newId, relayData);
+                    relayData.delete(lastRelayId);
+                }
+            });
+        });
+    }
+
+    private removeRelayLinks(relay_id: string) {
+        let removalCount = 0;
+        this.payerRelayMap.forEach((relayMap) => {
+            if (relayMap.delete(relay_id)) {
+                removalCount++;
+            }
+        });
+        this.codeTableRelayMap.forEach((tableMap) => {
+            tableMap.forEach((relayMap) => {
+                if (relayMap.delete(relay_id)) {
+                    removalCount++;
+                }
+            });
+        });
+        hLog(`Removed ${removalCount} relay links for relay ${relay_id}`);
+        this.printClientTable();
     }
 }

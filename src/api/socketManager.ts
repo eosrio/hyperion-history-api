@@ -9,6 +9,30 @@ import {streamPastActions, streamPastDeltas} from "./helpers/functions.js";
 import {randomUUID} from "crypto";
 import {RequestFilter, StreamActionsRequest, StreamDeltasRequest} from "../interfaces/stream-requests.js";
 
+function processTableRequests(
+    tableClientMap: Map<string, Map<string, Map<string, StreamDeltasRequest>>>,
+    tableId: string,
+    payer: string,
+    message: string,
+    targetClients: Map<string, string[]>
+): void {
+    if (!tableClientMap.has(tableId)) return;
+    tableClientMap.get(tableId)?.forEach((requests, clientId) => {
+
+        // console.log(requests);
+
+        if (!targetClients.has(clientId)) {
+            targetClients.set(clientId, []);
+        }
+
+        requests.forEach((request, uuid) => {
+            if (checkDeltaFilters(request, payer, message)) {
+                targetClients.get(clientId)?.push(uuid);
+            }
+        });
+    });
+}
+
 function checkDeltaFilters(request: StreamDeltasRequest, payer: string, msg: string): boolean {
     let allow: boolean;
     if (request.payer) {
@@ -39,17 +63,21 @@ export class SocketManager {
     private readonly chainId: string;
     private currentBlockNum = 0;
 
-    // code >> table >> client_id >> [requests]
-    private deltaCodeMap: Map<string, Map<string, Map<string, Map<string, StreamDeltasRequest>>>> = new Map();
-
     // client_id >> request_uuid >> request
     private clientDeltaRequestMap: Map<string, Map<string, StreamDeltasRequest>> = new Map();
+
+    // code >> table >> client_id >> [requests]
+    private deltaCodeMap: Map<string, Map<string, Map<string, Map<string, StreamDeltasRequest>>>> = new Map();
 
     // request_uuid >> client_id
     // private requestClientMap: Map<string, string> = new Map();
 
     // payer >> client_id >> request_uuid
     private payerClientMap: Map<string, Map<string, [string, StreamDeltasRequest]>> = new Map();
+
+
+    private disconnectTimeoutMap: Map<string, NodeJS.Timeout> = new Map();
+    private lastRelaySocketId: string = '';
 
     constructor(fastify: FastifyInstance, url: string, redisOptions: RedisOptions) {
         this.server = fastify;
@@ -73,21 +101,34 @@ export class SocketManager {
 
         this.io.on('connection', (socket: Socket) => {
 
+            // special event to handle reconnection and request reuse
+            socket.on('reconnect', (data: any) => {
+                if (data.last_id) {
+                    hLog("Client reconnected, previous ID: " + data.last_id);
+                    if (this.clientDeltaRequestMap.has(data.last_id)) {
+                        this.replaceClientId(data.last_id, socket.id);
+                    } else {
+                        // No requests present, likely a server restart, ask the client to resend the request
+                        // Add a random delay
+                        setTimeout(() => {
+                            socket.emit('resend_requests', {last_id: data.last_id});
+                        }, 1000 + Math.random() * 1000);
+                    }
+                }
+            });
+
             if (socket.handshake.headers['x-forwarded-for']) {
                 hLog(`[socket] ${socket.id} connected via ${socket.handshake.headers['x-forwarded-for']}`);
             }
 
-            socket.emit('message', {
-                event: 'handshake',
-                chain: fastify.manager.chain,
-            });
+            socket.emit('handshake', {chain: fastify.manager.chain, chain_id: this.chainId});
 
             if (this.relay) {
                 this.relay.emit('event', {type: 'client_count', counter: this.io.sockets.sockets.size});
             }
 
             socket.on('cancel_stream_request', (data: { reqUUID: string }, callback) => {
-                console.log(data);
+                console.log('cancel_stream_request', data);
                 if (typeof callback === 'function' && data) {
                     try {
                         if (this.relay && this.relay.connected) {
@@ -111,30 +152,54 @@ export class SocketManager {
                 if (typeof callback === 'function' && data) {
                     try {
 
+                        // basic request validation
+
+                        if ((data.start_from && data.start_from !== 0) && (data.read_until && data.read_until !== 0)) {
+                            if (data.start_from > data.read_until) {
+                                return callback({
+                                    status: 'ERROR',
+                                    message: 'start_from cannot be greater than read_until'
+                                });
+                            }
+                        }
+
                         // generate random uuid for each request
                         const requestUUID = randomUUID();
-
-                        this.attachDeltaRequests(data, socket.id, requestUUID);
-
                         // debug only
-                        this.prettyDeltaRoutingMap();
-                        this.printRoutingTable();
+                        // this.prettyDeltaRoutingMap();
+                        // this.printRoutingTable()
 
                         // get the last history block from the real time stream request
-                        const lastHistoryBlock = await new Promise<number>((resolve) => {
-                            // start sending realtime data
-                            this.emitToRelay(data, 'delta_request', socket, requestUUID, (emissionResult) => {
-                                callback(emissionResult);
-                                resolve(emissionResult.currentBlockNum);
+                        let lastHistoryBlock = 0;
+                        if (!data.ignore_live) {
+                            this.attachDeltaRequests(data, socket.id, requestUUID);
+                            lastHistoryBlock = await new Promise<number>((resolve) => {
+                                // start sending realtime data
+                                this.emitToRelay(data, 'delta_request', socket, requestUUID, (emissionResult) => {
+                                    callback(emissionResult);
+                                    resolve(emissionResult.currentBlockNum);
+                                });
                             });
-                        });
+                        } else {
+                            // if live data is ignored immediately reply the callback
+                            callback({status: 'OK', reqUUID: requestUUID, currentBlockNum: this.currentBlockNum});
+                        }
 
                         // push history data (optional)
                         if (data.start_from && data.start_from !== 0) {
-                            data.read_until = lastHistoryBlock;
-                            console.log('Performing primary scroll request until block: ', lastHistoryBlock, '... ');
+
+                            if (data.read_until && data.read_until !== 0) {
+                                console.log("Read until: ", data.read_until);
+                            } else {
+                                if (lastHistoryBlock > 0) {
+                                    data.read_until = lastHistoryBlock;
+                                }
+                            }
+
+                            console.log('Performing primary scroll request until block: ', data.read_until, '... ');
                             let ltb: number | undefined = 0;
                             const hStreamResult = await streamPastDeltas(this.server, socket, requestUUID, data);
+                            console.log(hStreamResult);
                             if (!hStreamResult.status) {
                                 return;
                             } else {
@@ -184,6 +249,9 @@ export class SocketManager {
                                 resolve(emissionResult.currentBlockNum);
                             });
                         });
+
+                        await sleep(2000);
+
                         // push history data
                         if (data.start_from) {
                             data.read_until = lastHistoryBlock;
@@ -195,7 +263,7 @@ export class SocketManager {
                             } else {
                                 ltb = hStreamResult.lastTransmittedBlock;
                                 let attempts = 0;
-                                await sleep(500);
+                                await sleep(1500);
                                 while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
                                     attempts++;
                                     console.log(`Performing fill request from ${hStreamResult.lastTransmittedBlock}...`);
@@ -217,12 +285,18 @@ export class SocketManager {
                 }
             });
 
+
             socket.on('disconnect', (reason) => {
                 hLog(`[socket] ${socket.id} disconnected - ${reason}`);
-                this.detachDeltaRequests(socket.id);
-                if (this.relay) {
-                    this.relay.emit('event', {type: 'client_disconnected', id: socket.id, reason});
-                }
+                const timeoutId = setTimeout(() => {
+                    this.detachDeltaRequests(socket.id);
+                    if (this.relay) {
+                        this.relay.emit('event', {type: 'client_disconnected', id: socket.id, reason});
+                    }
+                    this.disconnectTimeoutMap.delete(socket.id);
+                    console.log("Pending requests: ", this.disconnectTimeoutMap.size);
+                }, 5000);
+                this.disconnectTimeoutMap.set(socket.id, timeoutId);
             });
         });
 
@@ -268,10 +342,17 @@ export class SocketManager {
      */
     startRelay() {
         hLog(`starting relay - ${this.url}`);
-        this.relay = io(this.url, {path: '/router'});
+        this.relay = io(this.url, {
+            path: '/router',
+            extraHeaders: {
+                'x-last-relay-id': this.lastRelaySocketId
+            },
+            reconnection: true,
+        });
 
         this.relay.on('connect', () => {
             hLog('Relay Connected!');
+            this.lastRelaySocketId = this.relay?.id || '';
             if (this.relay_down) {
                 this.relay_restored = true;
                 this.relay_down = false;
@@ -529,7 +610,8 @@ export class SocketManager {
             });
         }
 
-        console.log(`Routing Delta [${code}::${table}::${scope}][${payer}] to ${targetClients.size} clients`);
+        // console.log(`Routing Delta [${code}::${table}::${scope}][${payer}] to ${targetClients.size} clients`);
+
         targetClients.forEach((reqs: string[], clientId: string) => {
             this.io.sockets.sockets.get(clientId)?.emit('message', {
                 type: 'delta_trace',
@@ -540,27 +622,24 @@ export class SocketManager {
         });
         // console.log("Processing time: ", Number(process.hrtime.bigint() - tRef) / 1000000, "ms");
     }
-}
 
-function processTableRequests(
-    tableClientMap: Map<string, Map<string, Map<string, StreamDeltasRequest>>>,
-    tableId: string,
-    payer: string,
-    message: string,
-    targetClients: Map<string, string[]>
-): void {
-    if (!tableClientMap.has(tableId)) return;
-    tableClientMap.get(tableId)?.forEach((requests, clientId) => {
-
-        console.log(requests);
-
-        if (!targetClients.has(clientId)) {
-            targetClients.set(clientId, []);
+    private replaceClientId(previousId: string, newId: string) {
+        const currentTimeout = this.disconnectTimeoutMap.get(previousId);
+        if (currentTimeout) {
+            clearTimeout(currentTimeout);
         }
-        requests.forEach((request, uuid) => {
-            if (checkDeltaFilters(request, payer, message)) {
-                targetClients.get(clientId)?.push(uuid);
-            }
-        });
-    });
+        const currentRequests = this.clientDeltaRequestMap.get(previousId);
+        if (currentRequests) {
+            console.log('⚠️ currentRequests:', currentRequests);
+            currentRequests.forEach((data, requestUUID) => {
+                if (!data.replayOnReconnect) {
+                    this.attachDeltaRequests(data, newId, requestUUID);
+                }
+            });
+            this.detachDeltaRequests(previousId);
+            this.clientDeltaRequestMap.set(newId, currentRequests);
+            this.clientDeltaRequestMap.delete(previousId);
+        }
+
+    }
 }

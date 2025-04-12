@@ -7,6 +7,8 @@ import {estypes} from "@elastic/elasticsearch";
 
 const deltaQueryFields = ['code', 'table', 'scope', 'payer'];
 
+const MAX_SCROLL_TIME_SEC = 3600;
+
 export function getTotalValue(searchResponse: estypes.SearchResponse): number {
     if (searchResponse.hits.total) {
         if (typeof searchResponse.hits.total === 'number') {
@@ -64,23 +66,25 @@ export async function getApiUsageHistory(fastify: FastifyInstance) {
     return response;
 }
 
-export async function streamPastDeltas(
-    fastify: FastifyInstance,
-    socket: Socket,
-    requestUUID: string,
-    data: any
-) {
+export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket, requestUUID: string, data: any) {
     const search_body: any = {
-        query: {bool: {must: []}},
-        sort: {block_num: 'asc'},
+        query: {
+            bool: {
+                must: []
+            }
+        },
+        sort: {
+            block_num: 'asc'
+        },
     };
+
     await addBlockRangeOpts(data, search_body, fastify);
     deltaQueryFields.forEach(f => {
         addTermMatch(data, search_body, f);
     });
 
     const onDemandDeltaFilters: any[] = [];
-    if (data.filters.length > 0) {
+    if (data.filters && data.filters.length > 0) {
         data.filters.forEach(f => {
             if (f.field && f.value) {
                 if (f.field.startsWith('@') && !f.field.startsWith('data')) {
@@ -103,12 +107,14 @@ export async function streamPastDeltas(
 
     // console.log(JSON.stringify(search_body, null, 2));
 
-    const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search({
+    const esQuery = {
         index: fastify.manager.chain + '-delta-*',
-        scroll: '30s',
+        scroll: `${MAX_SCROLL_TIME_SEC}s`,
         size: fastify.manager.config.api.stream_scroll_batch || 500,
         body: search_body,
-    });
+    };
+
+    const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
 
     const totalHits = getTotalValue(init_response);
 
@@ -117,7 +123,9 @@ export async function streamPastDeltas(
         const errorMsg = `Requested ${totalHits} deltas, limit is ${scrollLimit}.`;
         socket.emit('message', {
             reqUUID: requestUUID,
-            type: 'delta_trace', mode: 'history', messages: [],
+            type: 'delta_trace',
+            mode: 'history',
+            messages: [],
             error: errorMsg
         });
         return {status: false, error: errorMsg};
@@ -170,13 +178,23 @@ export async function streamPastDeltas(
 
             if (socket.connected) {
                 if (enqueuedMessages.length > 0) {
-                    socket.emit('message', {
-                        reqUUID: requestUUID,
-                        type: 'delta_trace',
-                        mode: 'history',
-                        messages: enqueuedMessages,
-                        filtered: filterCount
-                    });
+                    try {
+                        // Wait for 120s
+                        const ackResponse = await socket.timeout(MAX_SCROLL_TIME_SEC * 1000).emitWithAck('message', {
+                            reqUUID: requestUUID,
+                            type: 'delta_trace',
+                            mode: 'history',
+                            messages: enqueuedMessages,
+                            filtered: filterCount
+                        });
+                        if (ackResponse.status !== true) {
+                            hLog('delta_trace scroll TIMEOUT');
+                            return {status: ackResponse.status, error: ackResponse.error};
+                        }
+                    } catch (e: any) {
+                        hLog('delta_trace scroll NACK', e);
+                        return {status: false, error: e};
+                    }
                 }
             } else {
                 hLog('LOST CLIENT');
@@ -184,7 +202,7 @@ export async function streamPastDeltas(
             }
 
             if (longScroll) {
-                hLog(`Progress: ${counter + totalFiltered}/${total}`);
+                hLog(`[${requestUUID}] Progress: ${counter + totalFiltered}/${total}`);
             }
 
             if (getTotalValue(rp) === counter) {
@@ -193,7 +211,10 @@ export async function streamPastDeltas(
             }
 
             const next_response = await fastify.elastic.scroll({
-                body: {scroll_id: rp._scroll_id ?? "", scroll: '30s'}
+                body: {
+                    scroll_id: rp._scroll_id ?? "",
+                    scroll: `${MAX_SCROLL_TIME_SEC}s`
+                }
             });
             responseQueue.push(next_response);
         }

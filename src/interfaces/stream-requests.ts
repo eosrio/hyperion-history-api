@@ -12,6 +12,8 @@ export interface StreamActionsRequest {
     read_until: number | string;
     filter_op?: 'and' | 'or';
     filters?: RequestFilter[];
+    // Request a history replay from the last received block
+    replayOnReconnect?: boolean;
 }
 
 export interface StreamDeltasRequest {
@@ -21,8 +23,11 @@ export interface StreamDeltasRequest {
     payer: string;
     start_from: number | string;
     read_until: number | string;
+    ignore_live?: boolean;
     filter_op?: 'and' | 'or';
     filters?: RequestFilter[];
+    // Request a history replay from the last received block
+    replayOnReconnect?: boolean;
 }
 
 export interface StreamMessage<T> {
