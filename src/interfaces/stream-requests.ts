@@ -10,6 +10,7 @@ export interface StreamActionsRequest {
     action: string;
     start_from: number | string;
     read_until: number | string;
+    ignore_live?: boolean;
     filter_op?: 'and' | 'or';
     filters?: RequestFilter[];
     // Request a history replay from the last received block

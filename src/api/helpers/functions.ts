@@ -2,7 +2,7 @@ import _ from "lodash";
 import {Socket} from "socket.io";
 import {createHash} from "crypto";
 import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethods} from "fastify";
-import {checkDeltaFilter, checkFilter, hLog} from "../../indexer/helpers/common_functions.js";
+import {checkMetaFilter, checkFilter, hLog} from "../../indexer/helpers/common_functions.js";
 import {estypes} from "@elastic/elasticsearch";
 import {StreamDeltasRequest} from "../../interfaces/stream-requests.js";
 
@@ -183,11 +183,11 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
                 if (onDemandDeltaFilters.length > 0) {
                     if (data.filter_op === 'or') {
                         allow = onDemandDeltaFilters.some(filter => {
-                            return checkDeltaFilter(filter, doc._source);
+                            return checkMetaFilter(filter, doc._source, 'delta');
                         });
                     } else {
                         allow = onDemandDeltaFilters.every(filter => {
-                            return checkDeltaFilter(filter, doc._source);
+                            return checkMetaFilter(filter, doc._source, 'delta');
                         });
                     }
                 } else {

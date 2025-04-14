@@ -242,16 +242,25 @@ function getNested(path_array: string[], jsonObj: Record<string, any>, operator?
     }
 }
 
-export function checkDeltaFilter(filter: RequestFilter, _source: any) {
+export function checkMetaFilter(filter: RequestFilter, _source: any, metaField: string) {
     if (filter.field && filter.value) {
         let fieldValue = getNested(filter.field.split("."), _source, filter.operator);
         if (!fieldValue) {
             const fArray = filter.field.split(".");
             if (fArray[0].startsWith('@')) {
-                const tableName = fArray[0].replace('@', '');
-                if (_source.table === tableName) {
-                    fArray[0] = 'data';
-                    fieldValue = getNested(fArray, _source);
+                if (metaField === 'action') {
+                    const actName = fArray[0].replace('@', '');
+                    if (_source.act.name === actName) {
+                        fArray[0] = 'data';
+                        fArray.unshift('act');
+                        fieldValue = getNested(fArray, _source);
+                    }
+                } else if (metaField === 'delta') {
+                    const tableName = fArray[0].replace('@', '');
+                    if (_source.table === tableName) {
+                        fArray[0] = 'data';
+                        fieldValue = getNested(fArray, _source);
+                    }
                 }
             } else {
                 fieldValue = getNested(["data", ...fArray], _source);

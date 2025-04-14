@@ -1,4 +1,4 @@
-import {checkDeltaFilter, hLog, sleep} from '../indexer/helpers/common_functions.js';
+import {checkMetaFilter, hLog, sleep} from '../indexer/helpers/common_functions.js';
 import {Server, Socket} from 'socket.io';
 import {createAdapter} from "@socket.io/redis-adapter";
 import {io, Socket as ClientSocket} from 'socket.io-client';
@@ -8,6 +8,29 @@ import {App, TemplatedApp} from 'uWebSockets.js';
 import {streamPastActions, streamPastDeltas} from "./helpers/functions.js";
 import {randomUUID} from "crypto";
 import {RequestFilter, StreamActionsRequest, StreamDeltasRequest} from "../interfaces/stream-requests.js";
+
+function processActionRequests(
+    actionClientMap: Map<string, Map<string, Map<string, StreamActionsRequest>>>,
+    actionName: string,
+    account: string,
+    message: string,
+    targetClients: Map<string, string[]>
+): void {
+    if (!actionClientMap.has(actionName)) return;
+    actionClientMap.get(actionName)?.forEach((requests, clientId) => {
+        // console.log(requests);
+
+        if (!targetClients.has(clientId)) {
+            targetClients.set(clientId, []);
+        }
+
+        requests.forEach((request, uuid) => {
+            if (checkActionFilters(request, account, message)) {
+                targetClients.get(clientId)?.push(uuid);
+            }
+        });
+    });
+}
 
 function processTableRequests(
     tableClientMap: Map<string, Map<string, Map<string, StreamDeltasRequest>>>,
@@ -33,6 +56,24 @@ function processTableRequests(
     });
 }
 
+function checkActionFilters(request: StreamActionsRequest, account: string, msg: string): boolean {
+    let allow: boolean;
+    if (request.account) {
+        allow = request.account === account;
+    } else {
+        allow = true;
+    }
+    if (allow && request.filters && request.filters?.length > 0) {
+        const parsedMsg = JSON.parse(msg);
+        if (request.filter_op === 'or') {
+            allow = request.filters.some((f: RequestFilter) => checkMetaFilter(f, parsedMsg, 'action'));
+        } else {
+            allow = request.filters.every((f: RequestFilter) => checkMetaFilter(f, parsedMsg, 'action'));
+        }
+    }
+    return allow;
+}
+
 function checkDeltaFilters(request: StreamDeltasRequest, payer: string, msg: string): boolean {
     let allow: boolean;
     if (request.payer) {
@@ -43,9 +84,9 @@ function checkDeltaFilters(request: StreamDeltasRequest, payer: string, msg: str
     if (allow && request.filters && request.filters?.length > 0) {
         const parsedMsg = JSON.parse(msg);
         if (request.filter_op === 'or') {
-            allow = request.filters.some((f: RequestFilter) => checkDeltaFilter(f, parsedMsg));
+            allow = request.filters.some((f: RequestFilter) => checkMetaFilter(f, parsedMsg, 'delta'));
         } else {
-            allow = request.filters.every((f: RequestFilter) => checkDeltaFilter(f, parsedMsg));
+            allow = request.filters.every((f: RequestFilter) => checkMetaFilter(f, parsedMsg, 'delta'));
         }
     }
     return allow;
@@ -63,17 +104,26 @@ export class SocketManager {
     private readonly chainId: string;
     private currentBlockNum = 0;
 
-    // client_id >> request_uuid >> request
+    // client_id >> request_uuid >> delta request
     private clientDeltaRequestMap: Map<string, Map<string, StreamDeltasRequest>> = new Map();
+
+    // client_id >> request_uuid >> action request
+    private clientActionRequestMap: Map<string, Map<string, StreamActionsRequest>> = new Map();
 
     // code >> table >> client_id >> [requests]
     private deltaCodeMap: Map<string, Map<string, Map<string, Map<string, StreamDeltasRequest>>>> = new Map();
+
+    // contract >> action >> client_id >> [requests]
+    private actionContractMap: Map<string, Map<string, Map<string, Map<string, StreamActionsRequest>>>> = new Map();
 
     // request_uuid >> client_id
     // private requestClientMap: Map<string, string> = new Map();
 
     // payer >> client_id >> request_uuid
     private payerClientMap: Map<string, Map<string, [string, StreamDeltasRequest]>> = new Map();
+
+    // notifiedAccount >> client_id >> requestIds
+    private notifiedAccountClientMap: Map<string, Map<string, [string, StreamActionsRequest]>> = new Map();
 
 
     private disconnectTimeoutMap: Map<string, NodeJS.Timeout> = new Map();
@@ -153,6 +203,14 @@ export class SocketManager {
                     try {
 
                         // basic request validation
+                        if (!data.code || !data.table) {
+                            return callback({
+                                status: 'ERROR',
+                                message: 'code and table are required'
+                            });
+                        }
+
+                        // validate range
                         if ((data.start_from && data.start_from !== 0) && (data.read_until && data.read_until !== 0)) {
                             if (data.start_from > data.read_until) {
                                 return callback({
@@ -256,16 +314,65 @@ export class SocketManager {
                 if (typeof callback === 'function' && data) {
                     try {
 
-                        // generate random uuid
+                        console.log(data);
+
+                        // basic request validation
+                        if (!data.contract || !data.action) {
+                            return callback({
+                                status: 'ERROR',
+                                message: 'contract or action are required'
+                            });
+                        }
+
+                        // validate range
+                        if ((data.start_from && data.start_from !== 0) && (data.read_until && data.read_until !== 0)) {
+                            if (data.start_from > data.read_until) {
+                                return callback({
+                                    status: 'ERROR',
+                                    message: 'start_from cannot be greater than read_until'
+                                });
+                            }
+                        }
+
+                        // check filters
+                        if (data.filters && data.filter_op !== "or") {
+                            // multiple filters for the same field are not valid unless in OR mode
+                            const filterFields = new Set<string>();
+                            let errCount = 0;
+                            data.filters.forEach(value => {
+                                if (filterFields.has(value.field)) {
+                                    errCount++;
+                                } else {
+                                    filterFields.add(value.field);
+                                }
+                            });
+                            if (errCount > 0) {
+                                return callback({
+                                    status: 'ERROR',
+                                    message: `Multiple filters for the same field are not valid unless in OR mode. ${errCount} errors found`,
+                                    errorData: data.filters
+                                });
+                            }
+                        }
+
+                        // generate random uuid for each request
                         const requestUUID = randomUUID();
 
-                        const lastHistoryBlock = await new Promise<number>((resolve) => {
-                            // start sending realtime data
-                            this.emitToRelay(data, 'action_request', socket, requestUUID, (emissionResult) => {
-                                callback(emissionResult);
-                                resolve(emissionResult.currentBlockNum);
+                        // get the last history block from the real time stream request
+                        let lastHistoryBlock = 0;
+                        if (!data.ignore_live) {
+                            this.attachActionRequests(data, socket.id, requestUUID);
+                            lastHistoryBlock = await new Promise<number>((resolve) => {
+                                // start sending realtime data
+                                this.emitToRelay(data, 'action_request', socket, requestUUID, (emissionResult) => {
+                                    callback(emissionResult);
+                                    resolve(emissionResult.currentBlockNum);
+                                });
                             });
-                        });
+                        } else {
+                            // if live data is ignored immediately reply the callback
+                            callback({status: 'OK', reqUUID: requestUUID, currentBlockNum: this.currentBlockNum});
+                        }
 
                         await sleep(2000);
 
@@ -384,14 +491,12 @@ export class SocketManager {
             this.relay_restored = false;
         });
 
-        this.relay.on('delta', (traceData) => {
-
-            this.routeDeltaToClients(traceData);
-            // this.emitToClient(traceData, 'delta_trace');
+        this.relay.on('action', (traceData) => {
+            this.routeActionTraceToClients(traceData);
         });
 
-        this.relay.on('trace', (traceData) => {
-            this.emitToClient(traceData, 'action_trace');
+        this.relay.on('delta', (traceData) => {
+            this.routeDeltaToClients(traceData);
         });
 
         // update local current block info from relay
@@ -433,18 +538,6 @@ export class SocketManager {
         }
     }
 
-    // Send data to targeted client
-    emitToClient(data, type: string) {
-        // if (this.io.sockets.sockets.has(traceData.client)) {
-        //     this.io.sockets.sockets.get(traceData.client)?.emit('message', {
-        //         type: type,
-        //         reqUUID: traceData.req,
-        //         mode: 'live',
-        //         message: traceData.message,
-        //     });
-        // }
-    }
-
     // Send request from client to relay socket on indexer
     emitToRelay(
         data: StreamActionsRequest | StreamDeltasRequest,
@@ -467,6 +560,40 @@ export class SocketManager {
         } else {
             callback('STREAMING_OFFLINE');
         }
+    }
+
+    // process a single action request to attach to the maps
+    private attachActionRequests(data: StreamActionsRequest, client_id: string, requestUUID: string) {
+        if (data.contract && data.action) {
+
+            if (!this.actionContractMap.has(data.contract)) {
+                this.actionContractMap.set(data.contract, new Map());
+            }
+
+            if (!this.actionContractMap.get(data.contract)?.has(data.action)) {
+                this.actionContractMap.get(data.contract)?.set(data.action, new Map());
+            }
+
+            if (!this.actionContractMap.get(data.contract)?.get(data.action)?.has(client_id)) {
+                this.actionContractMap.get(data.contract)?.get(data.action)?.set(client_id, new Map());
+            }
+
+            const actionRequests = this.actionContractMap.get(data.contract)?.get(data.action)?.get(client_id);
+            actionRequests?.set(requestUUID, data);
+        }
+
+        if (data.account && !data.contract && !data.action) {
+            if (!this.notifiedAccountClientMap.has(data.account)) {
+                this.notifiedAccountClientMap.set(data.account, new Map());
+            }
+            this.notifiedAccountClientMap.get(data.account)?.set(client_id, [requestUUID, data]);
+        }
+
+        // include on the clientDeltaRequestMap as reverse index
+        if (!this.clientActionRequestMap.has(client_id)) {
+            this.clientActionRequestMap.set(client_id, new Map());
+        }
+        this.clientActionRequestMap.get(client_id)?.set(requestUUID, data);
     }
 
     // process a single delta request to attach to the maps
@@ -579,6 +706,42 @@ export class SocketManager {
         }
     }
 
+    private detachActionRequests(client_id: string) {
+        const clientRequests = this.clientActionRequestMap.get(client_id);
+        if (clientRequests) {
+            clientRequests?.forEach((data, requestUUID) => {
+                // console.log(`>> Removing request (${requestUUID}) | contract: ${data.contract} | action: ${data.action}`);
+                if (data.contract && data.action) {
+                    // Remove from actionContractMap
+                    const actionMap = this.actionContractMap.get(data.contract)?.get(data.action);
+                    if (actionMap) {
+                        actionMap.delete(client_id);
+                        // Clean up empty maps
+                        if (actionMap.size === 0) {
+                            this.actionContractMap.get(data.contract)?.delete(data.action);
+                            if (this.actionContractMap.get(data.contract)?.size === 0) {
+                                this.actionContractMap.delete(data.contract);
+                            }
+                        }
+                    }
+                }
+
+                if (data.account) {
+                    // Remove from payerClientMap
+                    const clientSet = this.payerClientMap.get(data.account);
+                    if (clientSet) {
+                        clientSet.delete(client_id);
+                        if (clientSet.size === 0) {
+                            this.payerClientMap.delete(data.account);
+                        }
+                    }
+                }
+            });
+            // Clean up clientDeltaRequestMap
+            this.clientDeltaRequestMap.delete(client_id);
+        }
+    }
+
     /**
      * Print a table with the number of clients attached to each code-table routing path
      */
@@ -597,6 +760,49 @@ export class SocketManager {
             data2.push({payer, clients: clientSet.size});
         });
         console.table(data2);
+    }
+
+    private routeActionTraceToClients(traceData: any) {
+        const {account: contract, name: action, notified} = traceData;
+        const targetClients = new Map<string, string[]>();
+        const notifiedAccounts = notified.split(',');
+        
+        // console.log(`Routing Action [${contract}::${action}] to clients... | Notified: ${notified}`);
+
+        // Forward to CONTRACT/ACTION listeners
+        if (this.actionContractMap.has(contract)) {
+            const actionClientMap = this.actionContractMap.get(contract);
+            if (actionClientMap) {
+                // Process specific action requests
+                processActionRequests(actionClientMap, action, notifiedAccounts, traceData.message, targetClients);
+                // Process wildcard action requests
+                processActionRequests(actionClientMap, "*", notifiedAccounts, traceData.message, targetClients);
+            }
+        }
+
+        // Forward to NOTIFIED ACCOUNT listeners
+        notifiedAccounts.forEach((account) => {
+            if (this.notifiedAccountClientMap.has(account)) {
+                this.notifiedAccountClientMap.get(account)?.forEach(([requestUUID, requestData], clientId) => {
+                    if (!targetClients.has(clientId)) {
+                        targetClients.set(clientId, []);
+                    }
+                    if (checkActionFilters(requestData, account, traceData.message)) {
+                        targetClients.get(clientId)?.push(requestUUID);
+                    }
+                });
+            }
+        });
+
+        targetClients.forEach((reqs: string[], clientId: string) => {
+            this.io.sockets.sockets.get(clientId)?.emit('message', {
+                type: 'action_trace',
+                mode: 'live',
+                targets: reqs,
+                message: traceData.message,
+            });
+        });
+
     }
 
     private routeDeltaToClients(traceData: any) {
@@ -626,7 +832,7 @@ export class SocketManager {
                 }
             });
         }
-
+        
         // console.log(`Routing Delta [${code}::${table}::${scope}][${payer}] to ${targetClients.size} clients`);
 
         targetClients.forEach((reqs: string[], clientId: string) => {
@@ -645,17 +851,30 @@ export class SocketManager {
         if (currentTimeout) {
             clearTimeout(currentTimeout);
         }
-        const currentRequests = this.clientDeltaRequestMap.get(previousId);
-        if (currentRequests) {
-            console.log('⚠️ currentRequests:', currentRequests);
-            currentRequests.forEach((data, requestUUID) => {
+        const currentDeltaRequests = this.clientDeltaRequestMap.get(previousId);
+        if (currentDeltaRequests) {
+            console.log('⚠️ currentDeltaRequests:', currentDeltaRequests);
+            currentDeltaRequests.forEach((data, requestUUID) => {
                 if (!data.replayOnReconnect) {
                     this.attachDeltaRequests(data, newId, requestUUID);
                 }
             });
             this.detachDeltaRequests(previousId);
-            this.clientDeltaRequestMap.set(newId, currentRequests);
+            this.clientDeltaRequestMap.set(newId, currentDeltaRequests);
             this.clientDeltaRequestMap.delete(previousId);
+        }
+
+        const currentActionRequests = this.clientActionRequestMap.get(previousId);
+        if (currentActionRequests) {
+            console.log('⚠️ currentActionRequests:', currentActionRequests);
+            currentActionRequests.forEach((data, requestUUID) => {
+                if (!data.replayOnReconnect) {
+                    this.attachActionRequests(data, newId, requestUUID);
+                }
+            });
+            this.detachActionRequests(previousId);
+            this.clientActionRequestMap.set(newId, currentActionRequests);
+            this.clientActionRequestMap.delete(previousId);
         }
 
     }
