@@ -48,3 +48,5 @@ tests/api/ijhttp.zip
 tests/api/reports
 
 explorer
+.repair
+*.deb
