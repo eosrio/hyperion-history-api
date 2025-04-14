@@ -213,25 +213,20 @@ export function deserialize(type, array, txtEnc, txtDec, types) {
 
 function getNested(path_array: string[], jsonObj: Record<string, any>, operator?: string) {
     const nextPath = path_array.shift();
-
     if (!nextPath) {
         return jsonObj;
     }
-
     const nextValue = jsonObj[nextPath];
-
     if (nextPath.endsWith(']')) {
         const index = parseInt(nextPath.substring(nextPath.indexOf('[') + 1, nextPath.indexOf(']')));
         const field = nextPath.substring(0, nextPath.indexOf('['));
-
         if (Array.isArray(jsonObj[field])) {
-            console.log('jsonObj[field][index]', jsonObj[field][index])
+            // console.log('jsonObj[field][index]', jsonObj[field][index])
             return getNested(path_array, jsonObj[field][index], operator);
         } else {
             return null;
         }
     }
-
     if (!nextValue) {
         return null;
     } else {
@@ -249,9 +244,7 @@ function getNested(path_array: string[], jsonObj: Record<string, any>, operator?
 
 export function checkDeltaFilter(filter: RequestFilter, _source: any) {
     if (filter.field && filter.value) {
-
         let fieldValue = getNested(filter.field.split("."), _source, filter.operator);
-
         if (!fieldValue) {
             const fArray = filter.field.split(".");
             if (fArray[0].startsWith('@')) {
@@ -264,6 +257,8 @@ export function checkDeltaFilter(filter: RequestFilter, _source: any) {
                 fieldValue = getNested(["data", ...fArray], _source);
             }
         }
+
+        // console.log(`Comparing: ${fieldValue} with ${filter.value} using operator ${filter.operator}`);
 
         if (fieldValue) {
             if (Array.isArray(fieldValue)) {
@@ -296,6 +291,9 @@ export function checkDeltaFilter(filter: RequestFilter, _source: any) {
                     }
                     case "ends_with": {
                         return (fieldValue as string).endsWith(String(filter.value));
+                    }
+                    default: {
+                        return fieldValue === filter.value;
                     }
                 }
             }

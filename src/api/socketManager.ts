@@ -153,12 +153,32 @@ export class SocketManager {
                     try {
 
                         // basic request validation
-
                         if ((data.start_from && data.start_from !== 0) && (data.read_until && data.read_until !== 0)) {
                             if (data.start_from > data.read_until) {
                                 return callback({
                                     status: 'ERROR',
                                     message: 'start_from cannot be greater than read_until'
+                                });
+                            }
+                        }
+
+                        // check filters
+                        if (data.filters && data.filter_op !== "or") {
+                            // multiple filters for the same field are not valid unless in OR mode
+                            const filterFields = new Set<string>();
+                            let errCount = 0;
+                            data.filters.forEach(value => {
+                                if (filterFields.has(value.field)) {
+                                    errCount++;
+                                } else {
+                                    filterFields.add(value.field);
+                                }
+                            });
+                            if (errCount > 0) {
+                                return callback({
+                                    status: 'ERROR',
+                                    message: `Multiple filters for the same field are not valid unless in OR mode. ${errCount} errors found`,
+                                    errorData: data.filters
                                 });
                             }
                         }
@@ -188,18 +208,15 @@ export class SocketManager {
                         // push history data (optional)
                         if (data.start_from && data.start_from !== 0) {
 
-                            if (data.read_until && data.read_until !== 0) {
-                                console.log("Read until: ", data.read_until);
-                            } else {
+                            if (!(data.read_until && data.read_until !== 0)) {
                                 if (lastHistoryBlock > 0) {
                                     data.read_until = lastHistoryBlock;
                                 }
                             }
 
-                            console.log('Performing primary scroll request until block: ', data.read_until, '... ');
+                            hLog('Performing primary scroll request until block: ', data.read_until, '... ');
                             let ltb: number | undefined = 0;
                             const hStreamResult = await streamPastDeltas(this.server, socket, requestUUID, data);
-                            console.log(hStreamResult);
                             if (!hStreamResult.status) {
                                 return;
                             } else {
@@ -208,7 +225,7 @@ export class SocketManager {
                                 await sleep(500);
                                 while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
                                     attempts++;
-                                    console.log(`Performing fill request from ${ltb}...`);
+                                    hLog(`Performing fill request from ${ltb}...`);
                                     data.start_from = (hStreamResult.lastTransmittedBlock ?? 0) + 1;
                                     data.read_until = lastHistoryBlock;
                                     const r = await streamPastDeltas(this.server, socket, requestUUID, data);
@@ -219,7 +236,7 @@ export class SocketManager {
                                         ltb = r.lastTransmittedBlock;
                                     }
                                 }
-                                console.log(`Done streaming past data at block ${ltb} Emitting event to client...`);
+                                hLog(`Done streaming past data at block ${ltb} Emitting event to client...`);
                                 socket.emit('message', {
                                     type: 'delta_history_end',
                                     reqUUID: requestUUID,
@@ -294,7 +311,7 @@ export class SocketManager {
                         this.relay.emit('event', {type: 'client_disconnected', id: socket.id, reason});
                     }
                     this.disconnectTimeoutMap.delete(socket.id);
-                    console.log("Pending requests: ", this.disconnectTimeoutMap.size);
+                    // console.log("Pending requests: ", this.disconnectTimeoutMap.size);
                 }, 5000);
                 this.disconnectTimeoutMap.set(socket.id, timeoutId);
             });

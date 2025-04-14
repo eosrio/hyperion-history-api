@@ -4,6 +4,7 @@ import {createHash} from "crypto";
 import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethods} from "fastify";
 import {checkDeltaFilter, checkFilter, hLog} from "../../indexer/helpers/common_functions.js";
 import {estypes} from "@elastic/elasticsearch";
+import {StreamDeltasRequest} from "../../interfaces/stream-requests.js";
 
 const deltaQueryFields = ['code', 'table', 'scope', 'payer'];
 
@@ -66,8 +67,8 @@ export async function getApiUsageHistory(fastify: FastifyInstance) {
     return response;
 }
 
-export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket, requestUUID: string, data: any) {
-    const search_body: any = {
+export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket, requestUUID: string, data: StreamDeltasRequest) {
+    const search_body: estypes.SearchRequest = {
         query: {
             bool: {
                 must: []
@@ -84,19 +85,41 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
     });
 
     const onDemandDeltaFilters: any[] = [];
+
+    let bool_should_group: estypes.QueryDslQueryContainer | undefined;
+    if (data.filter_op === 'or' && data.filters && data.filters.length > 0) {
+        bool_should_group = {
+            bool: {
+                should: [] as estypes.QueryDslQueryContainer[],
+                minimum_should_match: 1
+            }
+        };
+        (search_body.query?.bool?.must as estypes.QueryDslQueryContainer[]).push(bool_should_group);
+    }
+
     if (data.filters && data.filters.length > 0) {
         data.filters.forEach(f => {
             if (f.field && f.value) {
-                if (f.field.startsWith('@') && !f.field.startsWith('data')) {
+                if ((f.field.startsWith('@') && !f.field.startsWith('data')) || f.field === 'scope') {
                     const _q = {};
                     _q[f.field] = f.value;
-                    search_body.query.bool.must.push({'term': _q});
+                    const q_obj = {'term': _q};
+                    if (data.filter_op === 'or') {
+                        (bool_should_group?.bool?.should as estypes.QueryDslQueryContainer[]).push(q_obj);
+                    } else {
+                        (search_body.query?.bool?.must as estypes.QueryDslQueryContainer[]).push(q_obj);
+                    }
                 } else {
                     onDemandDeltaFilters.push(f);
                 }
             }
         });
     }
+
+    // console.log('------------ search_body ----------', JSON.stringify(search_body, null, 2));
+    // if (onDemandDeltaFilters.length > 0) {
+    //     console.log('------------ onDemandDeltaFilters ----------', JSON.stringify(onDemandDeltaFilters, null, 2));
+    // }
 
     const responseQueue: estypes.SearchResponse<any, any>[] = [];
 
@@ -156,18 +179,27 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
 
             for (const doc of rp.hits.hits) {
                 let allow = false;
+
                 if (onDemandDeltaFilters.length > 0) {
-                    allow = onDemandDeltaFilters.every(filter => {
-                        return checkDeltaFilter(filter, doc._source);
-                    });
+                    if (data.filter_op === 'or') {
+                        allow = onDemandDeltaFilters.some(filter => {
+                            return checkDeltaFilter(filter, doc._source);
+                        });
+                    } else {
+                        allow = onDemandDeltaFilters.every(filter => {
+                            return checkDeltaFilter(filter, doc._source);
+                        });
+                    }
                 } else {
                     allow = true;
                 }
+
                 if (allow) {
                     enqueuedMessages.push(doc._source);
                 } else {
                     filterCount++;
                 }
+
                 // set last block
                 if (doc._source.block_num > lastTransmittedBlock) {
                     lastTransmittedBlock = doc._source.block_num;
