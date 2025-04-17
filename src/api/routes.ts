@@ -136,7 +136,7 @@ export function registerRoutes(server: FastifyInstance) {
 
     // Redirect routes to documentation
     addRedirect(server, '/v2', '/v2/docs');
-    addRedirect(server, '/v2/docs', '/docs');
+    // addRedirect(server, '/v2/docs', '/docs');
     addRedirect(server, '/v2/history', '/v2/docs/index.html#/history');
     addRedirect(server, '/v2/state', '/v2/docs/index.html#/state');
     addRedirect(server, '/v1/chain', '/v2/docs/index.html#/chain');

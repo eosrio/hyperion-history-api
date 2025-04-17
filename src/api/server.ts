@@ -202,7 +202,10 @@ class HyperionApiServer {
         const docsConfig = generateOpenApiConfig(this.manager.config);
         if (docsConfig) {
             this.pluginParams.fastify_swagger = docsConfig;
+            
+            // Configuração do Swagger UI
             this.pluginParams.fastify_swagger_ui = {
+                routePrefix: '/docs',
                 logo: {
                     type: 'image/svg+xml',
                     content: headerLogo,
@@ -212,7 +215,6 @@ class HyperionApiServer {
                 theme: {
                     css: [{filename: 'theme.css', content: customCss}]
                 },
-                routePrefix: '/docs',
                 uiConfig: {
                     docExpansion: "list",
                     deepLinking: true
@@ -303,8 +305,14 @@ class HyperionApiServer {
             process.exit();
         });
 
-        await registerPlugins(this.fastify, this.pluginParams);
+        // Config proxy for swagger
+        this.fastify.register(fastifyHttpProxy, {
+            upstream: `http://${this.conf.api.server_addr}:${this.conf.api.server_port}`,
+            prefix: '/v2/docs',
+            rewritePrefix: '/docs',
+        });
 
+        await registerPlugins(this.fastify, this.pluginParams);
         // Wait for MongoDB availability
         await waitUntilReady(async () => {
             try {
