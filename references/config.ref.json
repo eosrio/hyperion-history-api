@@ -131,7 +131,9 @@
       "accounts": true,
       "voters": true
     },
-    "contract_state": {},
+    "contract_state": {
+      "contracts": {}
+    },
     "index_deltas": true,
     "index_transfer_memo": true,
     "index_all_deltas": true,
