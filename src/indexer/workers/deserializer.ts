@@ -1130,7 +1130,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         const contractState = this.conf.features.contract_state;
 
-        if (contractState?.contracts[jsonRow.code] || this.allowedDynamicContracts.has(jsonRow.code)) {
+        if (contractState.contracts && contractState?.contracts[jsonRow.code] || this.allowedDynamicContracts.has(jsonRow.code)) {
             if (contractState?.contracts[jsonRow.code][jsonRow.table]) {
                 const doc = {
                     '@timestamp': jsonRow['@timestamp'],
