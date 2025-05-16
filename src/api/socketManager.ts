@@ -359,7 +359,7 @@ export class SocketManager {
                         const requestUUID = randomUUID();
 
                         // get the last history block from the real time stream request
-                        let lastHistoryBlock = 0;
+                        let lastHistoryBlock: string | number = 0;
                         if (!data.ignore_live) {
                             this.attachActionRequests(data, socket.id, requestUUID);
                             lastHistoryBlock = await new Promise<number>((resolve) => {
@@ -371,37 +371,42 @@ export class SocketManager {
                             });
                         } else {
                             // if live data is ignored immediately reply the callback
+                            console.log("Ignoring live data for action stream request...");
+                            lastHistoryBlock = data.read_until;
                             callback({status: 'OK', reqUUID: requestUUID, currentBlockNum: this.currentBlockNum});
                         }
 
-                        await sleep(2000);
+                        // await sleep(2000);
 
                         // push history data
                         if (data.start_from) {
                             data.read_until = lastHistoryBlock;
                             console.log('Performing primary scroll request...');
-                            let ltb: number | undefined = 0;
-                            const hStreamResult = await streamPastActions(this.server, socket, requestUUID, data);
-                            if (!hStreamResult.status) {
-                                return;
-                            } else {
-                                ltb = hStreamResult.lastTransmittedBlock;
-                                let attempts = 0;
-                                await sleep(1500);
-                                while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
-                                    attempts++;
-                                    console.log(`Performing fill request from ${hStreamResult.lastTransmittedBlock}...`);
-                                    data.start_from = (hStreamResult.lastTransmittedBlock ?? 0) + 1;
-                                    data.read_until = lastHistoryBlock;
-                                    const r = await streamPastActions(this.server, socket, requestUUID, data);
-                                    if (!r.status) {
-                                        console.log(r);
-                                        return;
-                                    } else {
-                                        ltb = r.lastTransmittedBlock;
-                                    }
-                                }
-                            }
+                            await streamPastActions(this.server, socket, requestUUID, data);
+
+                            // let ltb: number | undefined = 0;
+                            // const hStreamResult = await streamPastActions(this.server, socket, requestUUID, data);
+                            // if (!hStreamResult.status) {
+                            //     return;
+                            // } else {
+                            //     ltb = hStreamResult.lastTransmittedBlock;
+                            //     let attempts = 0;
+                            //     await sleep(1500);
+                            //     while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
+                            //         attempts++;
+                            //         console.log(`Performing fill request from ${hStreamResult.lastTransmittedBlock}...`);
+                            //         data.start_from = (hStreamResult.lastTransmittedBlock ?? 0) + 1;
+                            //         data.read_until = lastHistoryBlock;
+                            //         const r = await streamPastActions(this.server, socket, requestUUID, data);
+                            //         if (!r.status) {
+                            //             console.log(r);
+                            //             return;
+                            //         } else {
+                            //             ltb = r.lastTransmittedBlock;
+                            //         }
+                            //     }
+                            // }
+
                         }
                     } catch (e: any) {
                         console.log(e);

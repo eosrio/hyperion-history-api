@@ -56,7 +56,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         "index": indexPattern,
         "from": skip || 0,
         "size": (limit > maxActions ? maxActions : limit) || 10,
-        "body": query_body
+        ...query_body
     };
 
     // console.log(JSON.stringify(esOpts, null, 2));

@@ -1,6 +1,6 @@
-import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
-import {GetInfoResult} from "eosjs/dist/eosjs-rpc-interfaces.js";
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { mergeActionMeta, timedQuery } from "../../../helpers/functions.js";
+import { GetInfoResult } from "eosjs/dist/eosjs-rpc-interfaces.js";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
     const redis = fastify.redis;
@@ -83,10 +83,8 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             const $search = fastify.elastic.search<any>({
                 index: indexPattern,
                 size: _size,
-                body: {
-                    query: {bool: {must: [{term: {trx_id: trxId}}]}},
-                    sort: {global_sequence: "asc"}
-                }
+                query: { bool: { must: [{ term: { trx_id: trxId } }] } },
+                sort: { global_sequence: "asc" }
             });
 
             // execute in parallel

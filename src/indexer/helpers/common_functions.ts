@@ -30,7 +30,7 @@ export function getLastResult(results: estypes.SearchResponse<any, any>) {
     if (results.hits?.hits?.length > 0) {
         const firstHit = results.hits.hits[0];
         if (firstHit.sort) {
-            return parseInt(firstHit.sort[0], 10);
+            return parseInt(firstHit.sort[0]?.toString() ?? '1', 10);
         } else {
             return 1;
         }

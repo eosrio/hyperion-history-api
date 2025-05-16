@@ -2,9 +2,17 @@ import _ from "lodash";
 import {Socket} from "socket.io";
 import {createHash} from "crypto";
 import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethods} from "fastify";
-import {checkMetaFilter, checkFilter, hLog} from "../../indexer/helpers/common_functions.js";
+import {checkFilter, checkMetaFilter, hLog} from "../../indexer/helpers/common_functions.js";
 import {estypes} from "@elastic/elasticsearch";
-import {StreamDeltasRequest} from "../../interfaces/stream-requests.js";
+import {StreamActionsRequest, StreamDeltasRequest} from "../../interfaces/stream-requests.js";
+
+export type BoolQuerySearchBody = estypes.SearchRequest & {
+    query: estypes.QueryDslQueryContainer & {
+        bool: estypes.QueryDslBoolQuery & {
+            must: estypes.QueryDslQueryContainer[]
+        }
+    }
+};
 
 const deltaQueryFields = ['code', 'table', 'scope', 'payer'];
 
@@ -68,17 +76,7 @@ export async function getApiUsageHistory(fastify: FastifyInstance) {
 }
 
 export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket, requestUUID: string, data: StreamDeltasRequest) {
-    const search_body: estypes.SearchRequest = {
-        query: {
-            bool: {
-                must: []
-            }
-        },
-        sort: {
-            block_num: 'asc'
-        },
-    };
-
+    const search_body: BoolQuerySearchBody = {query: {bool: {must: []}}, sort: {block_num: 'asc'}};
     await addBlockRangeOpts(data, search_body, fastify);
     deltaQueryFields.forEach(f => {
         addTermMatch(data, search_body, f);
@@ -94,7 +92,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
                 minimum_should_match: 1
             }
         };
-        (search_body.query?.bool?.must as estypes.QueryDslQueryContainer[]).push(bool_should_group);
+        search_body.query.bool.must.push(bool_should_group);
     }
 
     if (data.filters && data.filters.length > 0) {
@@ -107,7 +105,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
                     if (data.filter_op === 'or') {
                         (bool_should_group?.bool?.should as estypes.QueryDslQueryContainer[]).push(q_obj);
                     } else {
-                        (search_body.query?.bool?.must as estypes.QueryDslQueryContainer[]).push(q_obj);
+                        search_body.query.bool.must.push(q_obj);
                     }
                 } else {
                     onDemandDeltaFilters.push(f);
@@ -134,7 +132,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
         index: fastify.manager.chain + '-delta-*',
         scroll: `${MAX_SCROLL_TIME_SEC}s`,
         size: fastify.manager.config.api.stream_scroll_batch || 500,
-        body: search_body,
+        ...search_body,
     };
 
     const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
@@ -243,10 +241,8 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
             }
 
             const next_response = await fastify.elastic.scroll({
-                body: {
-                    scroll_id: rp._scroll_id ?? "",
-                    scroll: `${MAX_SCROLL_TIME_SEC}s`
-                }
+                scroll_id: rp._scroll_id ?? "",
+                scroll: `${MAX_SCROLL_TIME_SEC}s`
             });
             responseQueue.push(next_response);
         }
@@ -272,8 +268,8 @@ export function emitTraceInit(
     });
 }
 
-export async function streamPastActions(fastify: FastifyInstance, socket: Socket, requestUUID: string, data) {
-    const search_body: any = {query: {bool: {must: []}}, sort: {global_sequence: 'asc'}};
+export async function streamPastActions(fastify: FastifyInstance, socket: Socket, requestUUID: string, data: StreamActionsRequest) {
+    const search_body: BoolQuerySearchBody = {query: {bool: {must: []}}, sort: {global_sequence: 'asc'}};
     await addBlockRangeOpts(data, search_body, fastify);
     if (data.account !== '') {
         search_body.query.bool.must.push({
@@ -295,7 +291,7 @@ export async function streamPastActions(fastify: FastifyInstance, socket: Socket
     }
 
     const onDemandFilters: any[] = [];
-    if (data.filters.length > 0) {
+    if (data.filters && data.filters.length > 0) {
         data.filters.forEach(f => {
             if (f.field && f.value) {
                 if (f.field.startsWith('@') && !f.field.startsWith('act.data')) {
@@ -319,7 +315,7 @@ export async function streamPastActions(fastify: FastifyInstance, socket: Socket
         index: fastify.manager.chain + '-action-*',
         scroll: '30s',
         size: fastify.manager.config.api.stream_scroll_batch || 500,
-        body: search_body,
+        ...search_body,
     });
 
     const totalHits = getTotalValue(init_response);
@@ -404,7 +400,8 @@ export async function streamPastActions(fastify: FastifyInstance, socket: Socket
             }
 
             const next_response = await fastify.elastic.scroll({
-                body: {scroll_id: rp._scroll_id ?? "", scroll: '30s'}
+                scroll_id: rp._scroll_id ?? "",
+                scroll: '30s'
             });
             responseQueue.push(next_response);
         }
@@ -424,64 +421,51 @@ export function addTermMatch(data, search_body, field) {
     }
 }
 
-export async function addBlockRangeOpts(data, search_body, fastify: FastifyInstance) {
+export async function addBlockRangeOpts(data: StreamActionsRequest | StreamDeltasRequest, search_body, fastify: FastifyInstance) {
 
-    let timeRange;
-    let blockRange;
-    let head;
+    let timeRange: Record<string, estypes.QueryDslRangeQueryBase> | undefined;
+    let blockRange: Record<string, estypes.QueryDslRangeQueryBase> | undefined;
+    let head: number | undefined;
 
-    if (typeof data['start_from'] === 'string' && data['start_from'] !== '') {
-        if (!timeRange) {
-            timeRange = {"@timestamp": {}};
-        }
-        timeRange["@timestamp"]['gte'] = data['start_from'];
+    if (typeof data.start_from === 'string' && data.start_from !== '') {
+        if (!timeRange) timeRange = {"@timestamp": {}};
+        timeRange["@timestamp"].gte = data.start_from;
     }
 
-    if (typeof data['read_until'] === 'string' && data['read_until'] !== '') {
-        if (!timeRange) {
-            timeRange = {"@timestamp": {}};
-        }
-        timeRange["@timestamp"]['lte'] = data['read_until'];
+    if (typeof data.read_until === 'string' && data.read_until !== '') {
+        if (!timeRange) timeRange = {"@timestamp": {}};
+        timeRange["@timestamp"].lte = data.read_until;
     }
 
-    if (typeof data['start_from'] === 'number' && data['start_from'] !== 0) {
-        if (!blockRange) {
-            blockRange = {"block_num": {}};
-        }
-        if (data['start_from'] < 0) {
+    if (typeof data.start_from === 'number' && data.start_from !== 0) {
+        if (!blockRange) blockRange = {"block_num": {}};
+        if (data.start_from < 0) {
             if (!head) {
-                head = (await fastify.eosjs.rpc.get_info()).head_block_num;
+                head = await fastify.antelope.getHeadBlockNum();
+                if (!head) return;
             }
-            blockRange["block_num"]['gte'] = head + data['start_from'];
+            blockRange["block_num"].gte = head + data.start_from;
         } else {
-            blockRange["block_num"]['gte'] = data['start_from'];
+            blockRange["block_num"].gte = data.start_from;
         }
     }
 
-    if (typeof data['read_until'] === 'number' && data['read_until'] !== 0) {
-        if (!blockRange) {
-            blockRange = {"block_num": {}};
-        }
-        if (data['read_until'] < 0) {
+    if (typeof data.read_until === 'number' && data.read_until !== 0) {
+        if (!blockRange) blockRange = {"block_num": {}};
+        if (data.read_until < 0) {
             if (!head) {
-                head = (await fastify.eosjs.rpc.get_info()).head_block_num;
+                head = await fastify.antelope.getHeadBlockNum();
+                if (!head) return;
             }
-            blockRange["block_num"]['lte'] = head + data['read_until'];
+            blockRange["block_num"].lte = head + data.read_until;
         } else {
-            blockRange["block_num"]['lte'] = data['read_until'];
+            blockRange["block_num"].lte = data.read_until;
         }
     }
 
-    if (timeRange) {
-        search_body.query.bool.must.push({
-            range: timeRange,
-        });
-    }
-    if (blockRange) {
-        search_body.query.bool.must.push({
-            range: blockRange,
-        });
-    }
+    if (timeRange) search_body.query.bool.must.push({range: timeRange});
+    if (blockRange) search_body.query.bool.must.push({range: blockRange});
+
 }
 
 export function extendResponseSchema(responseProps: any) {

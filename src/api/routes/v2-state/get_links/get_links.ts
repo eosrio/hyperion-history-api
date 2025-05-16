@@ -45,7 +45,7 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
 		index: fastify.manager.chain + '-link-*',
 		from: skip || 0,
 		size: (limit > maxLinks ? maxLinks : limit) || 50,
-		body: query_body
+		...query_body
 	});
 	const hits = results.hits.hits;
 	const response: any = {

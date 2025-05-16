@@ -152,12 +152,15 @@ class HyperionApiServer {
 
         // hLog(`Static Assets Dir: ${staticAssetsDir}`);
 
+        // decorate fastify with the elasticsearch client
+        this.fastify.decorate('elastic', this.manager.elasticsearchClient);
+
         this.pluginParams = {
-            fastify_elasticsearch: {
-                client: this.manager.elasticsearchClient
-            },
             fastify_redis: this.manager.conn.redis,
             fastify_eosjs: this.manager,
+            fastify_antelope: {
+                manager: this.manager
+            },
             chain_id: '',
             fastify_static: {
                 root: staticAssetsDir,
