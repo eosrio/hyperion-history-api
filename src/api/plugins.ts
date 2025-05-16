@@ -7,16 +7,15 @@ import fastifySwaggerUi from '@fastify/swagger-ui';
 import fastifyCors from '@fastify/cors';
 import formBodyPlugin from '@fastify/formbody';
 import fastifyRedis from '@fastify/redis';
-import fastifyElasticsearch from "@fastify/elasticsearch";
 import fastifyRateLimit from '@fastify/rate-limit';
 import fastifyStatic from "@fastify/static";
 import fastifyMongodb from "@fastify/mongodb";
 
 // custom plugins
 import fastify_eosjs from "./plugins/fastify-eosjs.js";
+import fastify_antelope from "./plugins/fastify-antelope.js";
 
 export async function registerPlugins(server: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>, params: any) {
-    server.register(fastifyElasticsearch, params.fastify_elasticsearch);
 
     if (params.fastify_mongo) {
         server.register(fastifyMongodb, params.fastify_mongo);
@@ -25,10 +24,15 @@ export async function registerPlugins(server: Fastify.FastifyInstance<Server, In
     server.register(fastifyCors);
     server.register(formBodyPlugin);
     server.register(fastifyRedis, params.fastify_redis);
+
     if (params.fastify_rate_limit) {
         server.register(fastifyRateLimit, params.fastify_rate_limit);
     }
+
     server.register(fastify_eosjs, params.fastify_eosjs);
+
+    server.register(fastify_antelope, params.fastify_antelope);
+
     if (params.fastify_swagger && params.fastify_swagger_ui) {
         await server.register(fastifySwagger, params.fastify_swagger);
         await server.register(fastifySwaggerUi, params.fastify_swagger_ui);
