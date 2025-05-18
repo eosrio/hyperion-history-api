@@ -110,7 +110,7 @@ export default class IndexerWorker extends HyperionWorker {
         }
     }
 
-    private async pauseIndexer(msg) {
+    private async pauseIndexer(msg: any) {
         if (this.indexQueue && this.ch && this.consumerTag) {
             await this.ch.cancel(this.consumerTag);
             if (this.indexQueue.length() > 0) {

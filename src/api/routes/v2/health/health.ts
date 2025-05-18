@@ -1,7 +1,11 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {connect} from "amqplib";
 import {timedQuery} from "../../../helpers/functions.js";
-import {getFirstIndexedBlock, getLastIndexedBlockWithTotalBlocks, hLog} from "../../../../indexer/helpers/common_functions.js";
+import {
+    getFirstIndexedBlock,
+    getLastIndexedBlockWithTotalBlocks,
+    hLog
+} from "../../../../indexer/helpers/common_functions.js";
 
 interface ESService {
     first_indexed_block: number;
@@ -119,17 +123,16 @@ async function checkRabbit(fastify: FastifyInstance): Promise<ServiceResponse<an
 // Test Nodeos connection and chain info
 async function checkNodeos(fastify: FastifyInstance): Promise<ServiceResponse<NodeosService>> {
     const tRefNodeos = process.hrtime.bigint();
-    const rpc = fastify.manager.nodeosJsonRPC;
     try {
-        const results = await rpc.get_info();
+        const results = await fastify.antelope.chain.get_info();
         if (results) {
-            const diff = (new Date().getTime()) - (new Date(results.head_block_time + '+00:00').getTime());
+            const diff = (new Date().getTime()) - (new Date(results.head_block_time.toString() + '+00:00').getTime());
             return createHealth(false, 'NodeosRPC', 'OK', {
-                head_block_num: results.head_block_num,
-                head_block_time: results.head_block_time,
+                head_block_num: results.head_block_num.toNumber(),
+                head_block_time: results.head_block_time.toString(),
                 time_offset: diff,
-                last_irreversible_block: results.last_irreversible_block_num,
-                chain_id: results.chain_id
+                last_irreversible_block: results.last_irreversible_block_num.toNumber(),
+                chain_id: results.chain_id.toString()
             }, tRefNodeos);
         } else {
             return createHealth(false, 'NodeosRPC', 'Error');

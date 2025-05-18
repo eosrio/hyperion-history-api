@@ -59,7 +59,6 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         ...query_body
     };
 
-    // console.log(JSON.stringify(esOpts, null, 2));
     const esResults = await fastify.elastic.search<any>(esOpts);
 
     const results = esResults.hits;
@@ -74,7 +73,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     if (query.checkLib) {
-        response.lib = (await fastify.eosjs.rpc.get_info()).last_irreversible_block_num;
+        response.lib = (await fastify.antelope.chain.get_info()).last_irreversible_block_num;
     }
 
     if (query.simple) {

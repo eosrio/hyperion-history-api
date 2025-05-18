@@ -105,7 +105,8 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                                                     }
                                                 },
                                                 data: {type: 'object', additionalProperties: true},
-                                                hex_data: {type: 'string'}
+                                                hex_data: {type: 'string'},
+                                                hex_encoder: {type: 'string'}
                                             }
                                         },
                                         trx_id: {type: 'string'},

@@ -32,7 +32,7 @@ export function getTotalValue(searchResponse: estypes.SearchResponse): number {
 
 export async function getApiUsageHistory(fastify: FastifyInstance) {
     const response = {
-        total: {responses: {}},
+        total: {responses: {} as any},
         buckets: []
     } as any;
     const data = await fastify.redis.keys(`stats:${fastify.manager.chain}:*`);
@@ -41,7 +41,7 @@ export async function getApiUsageHistory(fastify: FastifyInstance) {
         if (parts[2] === 'H') {
             const bucket = {
                 timestamp: new Date(parseInt(parts[3])),
-                responses: {}
+                responses: {} as Record<string, Record<string, number>>
             };
             const sortedSet = await fastify.redis.zrange(key, 0, -1, 'WITHSCORES');
             for (let i = 0; i < sortedSet.length; i += 2) {
@@ -99,7 +99,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
         data.filters.forEach(f => {
             if (f.field && f.value) {
                 if ((f.field.startsWith('@') && !f.field.startsWith('data')) || f.field === 'scope') {
-                    const _q = {};
+                    const _q = {} as Record<string, any>;
                     _q[f.field] = f.value;
                     const q_obj = {'term': _q};
                     if (data.filter_op === 'or') {

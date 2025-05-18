@@ -230,22 +230,33 @@ export function applyCodeActionFilters(query, queryStruct) {
     }
 }
 
-export function getSkipLimit(query, max?: number) {
-    let skip = 0;
-    let limit = 0;
-    skip = parseInt(query.skip, 10);
-    if (skip < 0) {
-        throw new Error('invalid skip parameter');
+export function getSkipLimit(query: any, max?: number): { skip: number, limit: number } {
+    let skip: number;
+    let limit: number;
+
+    if (query.skip) {
+        skip = parseInt(query.skip, 10);
+        if (skip < 0) {
+            throw new Error('invalid skip parameter');
+        }
+        if (skip > 10000) {
+            throw new Error('skip is above maximum internal limit: 10000. please limit your search scope or use pagination with before/after parameters');
+        }
+    } else {
+        skip = 0;
     }
-    if (skip > 10000) {
-        throw new Error('skip is above maximum internal limit: 10000. please limit your search scope or use pagination with before/after parameters');
+
+    if (query.limit) {
+        limit = parseInt(query.limit, 10);
+        if (limit < 1) {
+            throw new Error('invalid limit parameter');
+        } else if (limit > (max ?? 10000)) {
+            throw new Error(`limit too big, maximum: ${max}`);
+        }
+    } else {
+        limit = 0;
     }
-    limit = parseInt(query.limit, 10);
-    if (limit < 1) {
-        throw new Error('invalid limit parameter');
-    } else if (limit > (max ?? 10000)) {
-        throw new Error(`limit too big, maximum: ${max}`);
-    }
+
     return {skip, limit};
 }
 

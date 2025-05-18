@@ -1,4 +1,3 @@
-import {JsonRpc} from "eosjs";
 import {Client} from "@elastic/elasticsearch";
 import {EventEmitter} from "events";
 import {Abieos} from "@eosrio/node-abieos";
@@ -11,8 +10,10 @@ import {ConfigurationModule, Filters} from "../modules/config.js";
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {StateHistorySocket} from "../connections/state-history.js";
 import {BasicDelta} from "../../interfaces/hyperion-delta.js";
-import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
 import {getHeapStatistics, HeapInfo} from "node:v8";
+import {HyperionActionAct} from "../../interfaces/hyperion-action.js";
+import {APIClient} from "@wharfkit/antelope";
+import {SavedAbi} from "../../interfaces/hyperion-abi.js";
 
 export abstract class HyperionWorker {
 
@@ -26,7 +27,7 @@ export abstract class HyperionWorker {
     ch?: Channel;
     cch?: ConfirmChannel;
 
-    rpc: JsonRpc;
+    rpc: APIClient;
     client: Client;
     ship: StateHistorySocket;
 
@@ -51,7 +52,7 @@ export abstract class HyperionWorker {
         this.mLoader = new HyperionModuleLoader(cm);
         this.chain = this.conf.settings.chain;
         this.chainId = this.manager.conn.chains[this.chain].chain_id;
-        this.rpc = this.manager.nodeosJsonRPC;
+        this.rpc = this.manager.nodeosApiClient;
         this.client = this.manager.elasticsearchClient;
         this.ship = this.manager.shipClient;
         this.events = new EventEmitter();
@@ -155,31 +156,31 @@ export abstract class HyperionWorker {
         }
     }
 
-    private anyFromCode(act: any) {
+    private anyFromCode(act: HyperionActionAct) {
         return this.chain + '::' + act.account + '::*'
     }
 
-    private anyFromName(act: any) {
+    private anyFromName(act: HyperionActionAct) {
         return this.chain + '::*::' + act.name;
     }
 
-    private codeActionPair(act: any) {
+    private codeActionPair(act: HyperionActionAct) {
         return this.chain + '::' + act.account + '::' + act.name;
     }
 
-    private anyFromDeltaCode(delta: any) {
+    private anyFromDeltaCode(delta: BasicDelta) {
         return this.chain + '::' + delta.code + '::*'
     }
 
-    private anyFromDeltaTable(delta: any) {
+    private anyFromDeltaTable(delta: BasicDelta) {
         return this.chain + '::*::' + delta.table;
     }
 
-    private codeDeltaPair(delta: any) {
+    private codeDeltaPair(delta: BasicDelta) {
         return this.chain + '::' + delta.code + '::' + delta.table;
     }
 
-    protected checkBlacklist(act) {
+    protected checkBlacklist(act: HyperionActionAct) {
 
         // test for chain::code::*
         if (this.filters.action_blacklist.has(this.anyFromCode(act))) {
@@ -195,7 +196,7 @@ export abstract class HyperionWorker {
         return this.filters.action_blacklist.has(this.codeActionPair(act));
     }
 
-    protected checkWhitelist(act) {
+    protected checkWhitelist(act: HyperionActionAct) {
 
         // test for chain::code::*
         if (this.filters.action_whitelist.has(this.anyFromCode(act))) {
@@ -243,21 +244,19 @@ export abstract class HyperionWorker {
         return this.filters.delta_whitelist.has(this.codeDeltaPair(delta));
     }
 
-    async getAbiFromHeadBlock(code: string) {
-        let currentAbi: Abi | undefined = undefined;
+    async getAbiFromHeadBlock(code: string): Promise<SavedAbi | undefined> {
         try {
-            const result = await this.rpc.get_abi(code);
+            const result = await this.rpc.v1.chain.get_abi(code);
             if (result && result.abi) {
-                currentAbi = result.abi;
+                return {
+                    abi: result.abi,
+                    valid_until: null,
+                    valid_from: null
+                };
             }
         } catch (e) {
             hLog(e);
         }
-        return {
-            abi: currentAbi,
-            valid_until: null,
-            valid_from: null
-        };
     }
 
     loadAbiHex(contract: string, block_num: number, abi_hex: string) {
@@ -315,9 +314,9 @@ export abstract class HyperionWorker {
             _status = false;
             debugLog('ignore current abi for', contract);
         } else {
-            const currentAbi = await this.rpc.getRawAbi(contract);
-            if (currentAbi.abi.byteLength > 0) {
-                const abi_hex = Buffer.from(currentAbi.abi).toString('hex');
+            const currentAbi = await this.rpc.v1.chain.get_raw_abi(contract);
+            if (currentAbi.abi.array.byteLength > 0) {
+                const abi_hex = Buffer.from(currentAbi.abi.array).toString('hex');
                 _status = this.abieos.loadAbiHex(contract, abi_hex);
                 if (!_status) {
                     hLog(`Abieos::loadAbiHex error for ${contract} at head`);

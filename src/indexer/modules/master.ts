@@ -54,6 +54,7 @@ import { IVoter } from "../../interfaces/table-voter.js";
 import { Db, IndexDescription } from "mongodb";
 import Timeout = NodeJS.Timeout;
 import { randomUUID } from 'node:crypto';
+import {API, APIClient} from "@wharfkit/antelope";
 
 interface RevBlock {
     num: number;
@@ -94,7 +95,7 @@ export class HyperionMaster {
     manager: ConnectionManager;
 
     // eosjs rpc
-    rpc: JsonRpc;
+    rpc: APIClient;
 
     // live producer schedule
     private currentSchedule: any;
@@ -109,7 +110,7 @@ export class HyperionMaster {
     chain: string;
 
     // Chain API Info
-    private chain_data?: GetInfoResult;
+    private chain_data?: API.v1.GetInfoResponse;
 
     // Main workers
     private workerMap: HyperionWorkerDef[] = [];
@@ -239,7 +240,7 @@ export class HyperionMaster {
         this.manager = new ConnectionManager(this.cm);
 
         this.esClient = this.manager.elasticsearchClient;
-        this.rpc = this.manager.nodeosJsonRPC;
+        this.rpc = this.manager.nodeosApiClient;
         this.ioRedisClient = new Redis(this.manager.conn.redis);
 
         this.mLoader = new HyperionModuleLoader(this.cm);
@@ -614,7 +615,7 @@ export class HyperionMaster {
 
     private async getCurrentSchedule() {
         try {
-            this.currentSchedule = await this.rpc.get_producer_schedule();
+            this.currentSchedule = await this.rpc.v1.chain.get_producer_schedule();
             if (!this.currentSchedule) {
                 console.error('empty producer schedule, something went wrong!');
                 process.exit(1);
@@ -780,14 +781,15 @@ export class HyperionMaster {
         // Start from the last indexed block
         this.starting_block = 1;
 
-        // Fecth chain lib
+        // Fetch chain lib
         try {
-            this.chain_data = await this.rpc.get_info();
+            this.chain_data = await this.rpc.v1.chain.get_info();
         } catch (e: any) {
             hLog('Failed to connect to chain api: ' + e.message);
             process.exit(1);
         }
-        this.head = this.chain_data.head_block_num;
+
+        this.head = this.chain_data.head_block_num.toNumber();
 
         if (lastIndexedBlock > 0) {
             this.starting_block = lastIndexedBlock;
@@ -886,7 +888,7 @@ export class HyperionMaster {
 
         // Setup live workers
         if (this.conf.indexer.live_reader && this.chain_data) {
-            const _head = this.chain_data.head_block_num;
+            const _head = this.chain_data.head_block_num.toNumber();
             hLog(`Setting live reader at head = ${_head}`);
 
             // live block reader
@@ -1853,10 +1855,10 @@ export class HyperionMaster {
         // Wait for Nodeos Chain API availability
         await waitUntilReady(async () => {
             try {
-                const info = await this.rpc.get_info();
+                const info = await this.rpc.v1.chain.get_info();
                 if (info.server_version_string) {
                     hLog(`Nodeos version: ${info.server_version_string}`);
-                    rpcChainId = info.chain_id;
+                    rpcChainId = info.chain_id.toString();
                     return true;
                 } else {
                     return false;
@@ -1947,9 +1949,9 @@ export class HyperionMaster {
 
         // await this.createIndices(indicesList);
 
-        if (this.conf.indexer.fill_state) {
-            await this.fillCurrentStateTables();
-        }
+        // if (this.conf.indexer.fill_state) {
+        //     await this.fillCurrentStateTables();
+        // }
 
         await this.findRange();
 
@@ -2048,166 +2050,6 @@ export class HyperionMaster {
                 }
             }
         }
-    }
-
-    async processAccount(accountName: string) {
-        const acc = await this.manager.nodeosJsonRPC.get_account(accountName);
-
-        // table-accounts
-        if (acc.core_liquid_balance) {
-            const arr = acc.core_liquid_balance.split(' ');
-            const payload = {
-                block_num: acc.head_block_num,
-                symbol: arr[1],
-                amount: parseFloat(arr[0]),
-                code: this.conf.settings.eosio_alias + '.token',
-                scope: accountName,
-                present: 2
-            };
-            try {
-                await this.manager.elasticsearchClient.index({
-                    index: this.chain + '-table-accounts',
-                    id: `${payload.code}-${payload.scope}-${payload.symbol}`,
-                    document: payload,
-                });
-                // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
-            } catch (e) {
-                console.log(`Failed to index account: ${payload.code}-${payload.scope}-${payload.symbol}`);
-                console.log(e);
-            }
-        }
-
-        // table-voters
-        if (acc.voter_info) {
-            const payload = {
-                block_num: acc.head_block_num,
-                last_vote_weight: parseFloat(acc.voter_info.last_vote_weight),
-                proxied_vote_weight: parseFloat(acc.voter_info.proxied_vote_weight),
-                staked: parseFloat(acc.voter_info.staked),
-                voter: acc.voter_info.owner,
-                is_proxy: acc.voter_info.is_proxy === 1,
-                proxy: acc.voter_info.proxy,
-                producers: acc.voter_info.producers
-            }
-
-            if (payload.producers.length === 0) {
-                delete payload.producers;
-            }
-
-            if (payload.proxy === '') {
-                delete payload.proxy;
-            }
-
-            try {
-                await this.manager.elasticsearchClient.index({
-                    index: this.chain + '-table-voters',
-                    id: `${payload.voter}`,
-                    document: payload
-                });
-                // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
-            } catch (e) {
-                console.log(`Failed to index voter: ${payload.voter}`);
-                console.log(e);
-            }
-        }
-
-
-        if (acc.permissions) {
-            for (const perm of acc.permissions) {
-                const payload = {
-                    owner: accountName,
-                    block_num: acc.head_block_num,
-                    parent: perm.parent,
-                    name: perm.perm_name,
-                    auth: perm.required_auth,
-                    present: 2
-                };
-
-                if (payload.auth.accounts.length === 0) {
-                    // @ts-ignore
-                    delete payload.auth.accounts;
-                }
-
-                if (payload.auth.keys.length === 0) {
-                    // @ts-ignore
-                    delete payload.auth.keys;
-                } else {
-                    for (const key of payload.auth.keys) {
-                        key.key = convertLegacyPublicKey(key.key);
-                    }
-                }
-
-                if (payload.auth.waits.length === 0) {
-                    // @ts-ignore
-                    delete payload.auth.waits;
-                }
-
-                try {
-                    await this.manager.elasticsearchClient.index({
-                        index: this.chain + '-perm',
-                        id: `${payload.owner}-${payload.name}`,
-                        document: payload
-                    });
-                    // console.log(`${payload.scope}: ${payload.amount} ${payload.symbol}`);
-                } catch (e) {
-                    console.log(`Failed to index permission: ${payload.owner}-${payload.name}`);
-                    console.log(e);
-                }
-            }
-        }
-    }
-
-    async getRows(start_at?: number | string | null) {
-        const data = await this.manager.nodeosJsonRPC.get_table_rows({
-            code: this.conf.settings.eosio_alias,
-            table: 'voters',
-            scope: this.conf.settings.eosio_alias,
-            key_type: "name",
-            lower_bound: start_at,
-            upper_bound: "",
-            limit: 10,
-            json: true
-        });
-        return data.rows;
-    }
-
-    async fillCurrentStateTables() {
-        hLog(`Filling system state tables with current data...`);
-        const tRef = Date.now();
-
-        let processedAccounts = 0;
-        let totalAccounts = 0;
-        let lastAccount = null;
-
-        setInterval(() => {
-            if (processedAccounts > 0) {
-                hLog(`[Account Filler] processing ${processedAccounts} accounts/s | ${lastAccount} | ${totalAccounts}`);
-                processedAccounts = 0;
-            }
-        }, 1000);
-
-        const queue: any[] = [];
-        const rows = await this.getRows(null);
-        if (rows.length > 0) {
-            lastAccount = rows[rows.length - 1].owner
-        }
-        queue.push(...rows);
-        while (queue.length > 0) {
-            const acc = queue.shift();
-            await this.processAccount(acc.owner);
-            processedAccounts++;
-            totalAccounts++;
-            if (queue.length === 0) {
-                const nextBatch = await this.getRows(acc.owner);
-                if (nextBatch.length > 1) {
-                    lastAccount = (nextBatch.shift()).owner;
-                    queue.push(...nextBatch);
-                }
-            }
-        }
-
-        hLog(`Filling took ${Date.now() - tRef}ms | ${totalAccounts} accounts`);
-        process.exit();
     }
 
     async startFullIndexing() {
@@ -2520,7 +2362,7 @@ export class HyperionMaster {
                             ];
                             const textFields = {};
                             if (contracts[code][table]["auto_index"]) {
-                                const contractAbi = await this.rpc.get_abi(code);
+                                const contractAbi = await this.rpc.v1.chain.get_abi(code);
                                 if (contractAbi && contractAbi.abi) {
                                     const tables = contractAbi.abi.tables;
                                     const structs = contractAbi.abi.structs;

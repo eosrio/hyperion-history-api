@@ -1,16 +1,11 @@
-import { Server, Socket } from "socket.io";
-import { createServer } from "http";
-import { HyperionWorker } from "./hyperionWorker.js";
-import { checkMetaFilter, checkFilter, hLog } from "../helpers/common_functions.js";
-import { RabbitQueueDef } from "../definitions/index-queues.js";
-import { ActionLink, DeltaLink } from "../../interfaces/stream-links.js";
-import {
-    RequestFilter,
-    StreamActionsRequest,
-    StreamDeltasRequest,
-    StreamMessage
-} from "../../interfaces/stream-requests.js";
-import { ConsumeMessage } from "amqplib";
+import {Server, Socket} from "socket.io";
+import {createServer} from "http";
+import {HyperionWorker} from "./hyperionWorker.js";
+import {hLog} from "../helpers/common_functions.js";
+import {RabbitQueueDef} from "../definitions/index-queues.js";
+import {ActionLink, DeltaLink} from "../../interfaces/stream-links.js";
+import {StreamActionsRequest, StreamDeltasRequest, StreamMessage} from "../../interfaces/stream-requests.js";
+import {ConsumeMessage} from "amqplib";
 
 const greylist = ['eosio.token'];
 
@@ -33,7 +28,7 @@ export default class WSRouter extends HyperionWorker {
     q: string;
     totalRoutedMessages = 0;
     firstData = false;
-    relays = {};
+    relays: Record<string, any> = {};
 
     // clientIndex: Map<string, Map<string, Map<string, string[]>>> = new Map();
     // codeActionMap = new Map();
@@ -75,7 +70,7 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
-    appendIdAndEmit(event, data) {
+    appendIdAndEmit(event: string, data: any) {
         this.io?.emit(event, {
             chain_id: this.manager.conn.chains[this.chain]?.chain_id,
             ...data
@@ -156,8 +151,8 @@ export default class WSRouter extends HyperionWorker {
      *  based on the contract, action, and notified accounts.
      *  This function checks the headers of the message to determine
      *  the target relays and emits the message to those relays.
-     * @param msg 
-     * @returns 
+     * @param msg
+     * @returns
      */
     private routeActionTraceMessage(msg: ConsumeMessage) {
         if (!msg.properties.headers) {
@@ -185,7 +180,7 @@ export default class WSRouter extends HyperionWorker {
         }
 
         // Forward to NOTIFIED listeners
-        notified.forEach((acct) => {
+        notified.forEach((acct: string) => {
             if (this.notifiedRelayMap.has(acct)) {
                 this.notifiedRelayMap.get(acct)?.forEach((_, key) => targetRelays.add(key));
             }
@@ -199,15 +194,15 @@ export default class WSRouter extends HyperionWorker {
      * based on the code, table, and payer.
      * This function checks the headers of the message to determine
      * the target relays and emits the message to those relays.
-     * @param msg 
-     * @returns 
+     * @param msg
+     * @returns
      */
     private routeDeltaMessage(msg: ConsumeMessage) {
         if (!msg.properties.headers) {
             return;
         }
         const targetRelays = new Set<string>();
-        const { code, table, payer } = msg.properties.headers;
+        const {code, table, payer} = msg.properties.headers;
         // Forward to CODE/TABLE listeners
         if (this.codeTableRelayMap.has(code)) {
             const tableRelayMap = this.codeTableRelayMap.get(code);
@@ -231,9 +226,9 @@ export default class WSRouter extends HyperionWorker {
 
     /**
      * Emit the message to the target relays
-     * @param eventType 
-     * @param targetRelays 
-     * @param msg 
+     * @param eventType
+     * @param targetRelays
+     * @param msg
      */
     private emitToTargetRelays(eventType: string, targetRelays: Set<string>, msg: any) {
         for (const relay_id of targetRelays.values()) {
@@ -281,8 +276,8 @@ export default class WSRouter extends HyperionWorker {
     /**
      * Add an action request to the router
      * @param data
-     * @param relay_id 
-     * @returns 
+     * @param relay_id
+     * @returns
      */
     addActionRequest(data: StreamMessage<StreamActionsRequest>, relay_id: string) {
 
@@ -309,7 +304,7 @@ export default class WSRouter extends HyperionWorker {
             relay_id: relay_id
         });
 
-        const { contract, action, account } = req;
+        const {contract, action, account} = req;
 
         console.log("Incoming Action Request for contract: ", contract, " action: ", action, " account: ", account);
 
@@ -338,14 +333,14 @@ export default class WSRouter extends HyperionWorker {
 
         this.printActionClientTable();
 
-        return { status: 'OK' };
+        return {status: 'OK'};
     }
 
     /**
      * Add a delta request to the router
-     * @param data 
-     * @param relay_id 
-     * @returns 
+     * @param data
+     * @param relay_id
+     * @returns
      */
     addDeltaRequest(data: StreamMessage<StreamDeltasRequest>, relay_id: string) {
         const req: StreamDeltasRequest = data.request;
@@ -371,7 +366,7 @@ export default class WSRouter extends HyperionWorker {
             relay_id: relay_id
         });
 
-        const { code, table, payer } = req;
+        const {code, table, payer} = req;
 
         console.log("Incoming Delta Request with code: ", code, " table: ", table, " payer: ", payer);
 
@@ -400,7 +395,7 @@ export default class WSRouter extends HyperionWorker {
 
         this.printDeltaClientTable();
 
-        return { status: 'OK' };
+        return {status: 'OK'};
     }
 
     removeDeepLinks(map: Map<string, any>, path: string[], relay_id: string, id: string, reqUUID?: string) {
@@ -474,7 +469,7 @@ export default class WSRouter extends HyperionWorker {
         const server = createServer();
 
         // Internal server for ROUTER-RELAY sockets
-        this.io = new Server(server, { path: '/router', serveClient: false, cookie: false });
+        this.io = new Server(server, {path: '/router', serveClient: false, cookie: false});
 
         this.io.on('connection', (relaySocket: Socket) => {
 
@@ -484,7 +479,7 @@ export default class WSRouter extends HyperionWorker {
                 this.replaceRelay(relaySocket.id, lastRelayId);
             } else {
                 hLog(`API Stream Relay connected with ID = ${relaySocket.id}`);
-                this.relays[relaySocket.id] = { clients: 0, connected: true };
+                this.relays[relaySocket.id] = {clients: 0, connected: true};
             }
 
             relaySocket.on('event', (data, callback) => {
@@ -558,7 +553,7 @@ export default class WSRouter extends HyperionWorker {
     }
 
     ready() {
-        process.send?.({ event: 'router_ready' });
+        process.send?.({event: 'router_ready'});
     }
 
     private removeClient(id: any) {
@@ -672,7 +667,7 @@ export default class WSRouter extends HyperionWorker {
                 relayMap.forEach(requestSet => {
                     totalRequests += requestSet.size;
                 });
-                contractActionData.push({ contract, action, relays: relayMap.size, requests: totalRequests });
+                contractActionData.push({contract, action, relays: relayMap.size, requests: totalRequests});
             });
         });
 
@@ -686,7 +681,7 @@ export default class WSRouter extends HyperionWorker {
             relayMap.forEach(requestSet => {
                 totalRequests += requestSet.size;
             });
-            notifiedData.push({ account, relays: relayMap.size, requests: totalRequests });
+            notifiedData.push({account, relays: relayMap.size, requests: totalRequests});
         });
 
         // Display tables
@@ -726,7 +721,7 @@ export default class WSRouter extends HyperionWorker {
                 relayMap.forEach(requestSet => {
                     totalRequests += requestSet.size;
                 });
-                codeTableData.push({ code, table, relays: relayMap.size, requests: totalRequests });
+                codeTableData.push({code, table, relays: relayMap.size, requests: totalRequests});
             });
         });
 
@@ -740,7 +735,7 @@ export default class WSRouter extends HyperionWorker {
             relayMap.forEach(requestSet => {
                 totalRequests += requestSet.size;
             });
-            payerData.push({ payer, relays: relayMap.size, requests: totalRequests });
+            payerData.push({payer, relays: relayMap.size, requests: totalRequests});
         });
 
         // Display tables

@@ -1,10 +1,10 @@
-import {Api, JsonRpc} from "eosjs";
 import {FastifyRedis} from "@fastify/redis";
 import {StateHistorySocket} from "../../src/indexer/connections/state-history.js";
 import {ConnectionManager} from "../../src/indexer/connections/manager.class.js";
 import {CacheManager} from "../../src/api/helpers/cacheManager.js";
 import {Client} from "@elastic/elasticsearch";
-import {ChainAPI} from "@wharfkit/antelope";
+import {AccountObject, ChainAPI} from "@wharfkit/antelope";
+import {SavedAbi} from "../../src/interfaces/hyperion-abi.js";
 
 declare module 'fastify' {
     export interface FastifyInstance {
@@ -18,10 +18,8 @@ declare module 'fastify' {
         antelope: {
             chain: ChainAPI,
             getHeadBlockNum: () => Promise<number | undefined>;
-        };
-        eosjs: {
-            rpc: JsonRpc;
-            api: Api;
+            getAbi: (account: string) => Promise<SavedAbi | undefined>;
+            getAccountUntyped: (account: string) => Promise<any | undefined>;
         };
         chain_api: string;
         push_api: string;

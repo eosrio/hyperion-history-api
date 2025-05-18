@@ -12,7 +12,6 @@ import fastifyStatic from "@fastify/static";
 import fastifyMongodb from "@fastify/mongodb";
 
 // custom plugins
-import fastify_eosjs from "./plugins/fastify-eosjs.js";
 import fastify_antelope from "./plugins/fastify-antelope.js";
 
 export async function registerPlugins(server: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>, params: any) {
@@ -28,8 +27,6 @@ export async function registerPlugins(server: Fastify.FastifyInstance<Server, In
     if (params.fastify_rate_limit) {
         server.register(fastifyRateLimit, params.fastify_rate_limit);
     }
-
-    server.register(fastify_eosjs, params.fastify_eosjs);
 
     server.register(fastify_antelope, params.fastify_antelope);
 

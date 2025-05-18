@@ -2,6 +2,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 import {getSkipLimit} from "../../v2-history/get_actions/functions.js";
 import {IAccount} from "../../../../interfaces/table-account.js";
+import {Asset} from "@wharfkit/antelope";
 
 
 async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
@@ -43,7 +44,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
     const testSet = new Set();
     for (const data of stateResult) {
         let precision;
-        let token_data;
+        let token_data: Asset[];
         let errorMsg;
 
         const key = `${data.code}_${data.symbol}`;
@@ -60,9 +61,9 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
             precision = fastify.tokenCache.get(key).precision;
         } else {
             try {
-                token_data = await fastify.eosjs.rpc.get_currency_balance(data.code, query.account, data.symbol);
+                token_data = await fastify.antelope.chain.get_currency_balance(data.code, query.account, data.symbol);
                 if (token_data.length > 0) {
-                    const [amount, symbol] = token_data[0].split(" ");
+                    const amount = token_data[0].quantity;
                     const amount_arr = amount.split(".");
                     if (amount_arr.length === 2) {
                         precision = amount_arr[1].length;

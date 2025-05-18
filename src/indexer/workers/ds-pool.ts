@@ -1,5 +1,5 @@
 import {cargo, queue} from "async";
-import {Message} from "amqplib";
+import {ConsumeMessage, Message} from "amqplib";
 import {join, resolve} from "path";
 import {existsSync, readdirSync, readFileSync} from "fs";
 import flatstr from 'flatstr';
@@ -106,7 +106,7 @@ export default class DSPoolWorker extends HyperionWorker {
             }
         }
 
-        this.consumerQueue = cargo((payload: Message[], cb) => {
+        this.consumerQueue = cargo((payload: ConsumeMessage[], cb) => {
             // hLog(`Processing ${payload.length} messages`);
             this.processMessages(payload).catch((err) => {
                 hLog('NackAll:', err);
@@ -405,7 +405,7 @@ export default class DSPoolWorker extends HyperionWorker {
         return [result, abi];
     }
 
-    async deserializeActionAtBlock(action, block_num) {
+    async deserializeActionAtBlock(action: HyperionActionAct, block_num: number) {
         const contract = await this.getContractAtBlock(action.account, block_num, action.name);
         if (contract) {
             if (contract[0].actions.has(action.name)) {
@@ -458,7 +458,7 @@ export default class DSPoolWorker extends HyperionWorker {
         if (transaction_trace.status === 0) {
             let action_count = 0;
             const trx_id = transaction_trace['id'].toLowerCase();
-            const _actDataArray = [];
+            const _actDataArray: any[] = [];
             const _processedTraces: ActionTrace[] = [];
             let action_traces: ActionTrace[] = transaction_trace['action_traces'];
             const trx_data = {
@@ -603,7 +603,7 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    pushToActionsQueue(payload, block_num: number) {
+    pushToActionsQueue(payload: any, block_num: number) {
         if (!this.conf.indexer.disable_indexing) {
             const q = this.chain + ":index_actions:" + (this.act_emit_idx);
             this.preIndexingQueue.push({
@@ -618,14 +618,14 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    pushToActionStreamingQueue(payload, uniqueAction: any) {
+    pushToActionStreamingQueue(payload: any, uniqueAction: any) {
         if (this.allowStreaming && this.conf.features['streaming'].traces && this.ch) {
             try {
                 const notificationArray = new Set();
-                uniqueAction.act.authorization.forEach((auth) => {
+                uniqueAction.act.authorization.forEach((auth: any) => {
                     notificationArray.add(auth.actor);
                 });
-                uniqueAction.receipts.forEach((rec) => {
+                uniqueAction.receipts.forEach((rec: any) => {
                     notificationArray.add(rec.receiver);
                 });
                 const headers = {
@@ -645,7 +645,9 @@ export default class DSPoolWorker extends HyperionWorker {
         if (this.ch_ready && this.ch) {
             await this.ch.prefetch(this.conf.prefetch.block);
             await this.ch.consume(this.local_queue, (data) => {
-                this.consumerQueue.push(data);
+                if (data) {
+                    this.consumerQueue.push(data);
+                }
             });
             debugLog(`started consuming from ${this.local_queue}`);
         }

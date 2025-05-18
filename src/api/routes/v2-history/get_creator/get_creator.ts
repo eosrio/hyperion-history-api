@@ -1,5 +1,6 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
+import {API} from "@wharfkit/antelope";
 
 async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 
@@ -15,9 +16,9 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 
     if (query.account === fastify.manager.config.settings.eosio_alias) {
         try {
-            const genesisBlock = await fastify.eosjs.rpc.get_block(1);
+            const genesisBlock = await fastify.antelope.chain.get_block(1);
             if (genesisBlock) {
-                response.timestamp = genesisBlock.timestamp;
+                response.timestamp = genesisBlock.timestamp.toString();
             }
         } catch (e: any) {
             console.log(e.message);
@@ -46,15 +47,16 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
         response.timestamp = result['@timestamp'];
         return response;
     } else {
-        let accountInfo;
+        let accountInfo: API.v1.AccountObject;
         try {
-            accountInfo = await fastify.eosjs.rpc.get_account(query.account);
+            accountInfo = await fastify.antelope.getAccountUntyped(query.account);
+            console.log(accountInfo);
         } catch (e) {
             throw new Error("account not found");
         }
-        if (accountInfo) {
+        if (accountInfo && accountInfo.created) {
             try {
-                response.timestamp = accountInfo.created;
+                response.timestamp = accountInfo.created.toString();
                 const blockHeader = await fastify.elastic.search<any>({
                     index: fastify.manager.chain + '-block-*',
                     size: 1,
@@ -65,23 +67,30 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
                     }
                 });
                 const hits = blockHeader.hits.hits;
+                console.log('hits', hits);
                 if (hits.length > 0 && hits[0]._source) {
                     const blockId = blockHeader.hits.hits[0]._source.block_id;
-                    const blockData = await fastify.eosjs.rpc.get_block(blockId);
-                    response.block_num = blockData.block_num;
-                    for (const transaction of blockData["transactions"]) {
-                        if (typeof transaction.trx !== 'string') {
-                            const actions = transaction.trx.transaction.actions;
-                            for (const act of actions) {
-                                if (act.name === 'newaccount') {
-                                    if (act.data.name === query.account) {
-                                        response.creator = act.data.creator;
-                                        response.trx_id = transaction.id;
-                                        return response;
-                                    }
+                    const blockData = await fastify.antelope.chain.get_block(blockId);
+                    response.block_num = blockData.block_num.toNumber();
+                    for (const transaction of blockData.transactions) {
+                        const actions = transaction.trx.transaction?.actions;
+                        if (!actions) {
+                            continue;
+                        }
+                        for (const act of actions) {
+                            if (act.name.equals('newaccount')) {
+                                // console.log(act);
+                                // TODO: test this
+                                // @ts-ignore
+                                if (act.data.name === query.account) {
+                                    // @ts-ignore
+                                    response.creator = act.data.creator;
+                                    response.trx_id = transaction.id.toString();
+                                    return response;
                                 }
                             }
                         }
+
                     }
                 }
                 return response;

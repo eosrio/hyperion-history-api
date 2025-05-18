@@ -157,7 +157,6 @@ class HyperionApiServer {
 
         this.pluginParams = {
             fastify_redis: this.manager.conn.redis,
-            fastify_eosjs: this.manager,
             fastify_antelope: {
                 manager: this.manager
             },
@@ -269,10 +268,10 @@ class HyperionApiServer {
 
     async init() {
 
-        const rpc = this.manager.nodeosJsonRPC;
+        const rpc = this.manager.nodeosApiClient;
         await waitUntilReady(async () => {
             try {
-                const chain_data = await rpc.get_info();
+                const chain_data = await rpc.v1.chain.get_info();
                 if (chain_data && chain_data.chain_id) {
                     this.pluginParams.chain_id = chain_data.chain_id;
                     return true;

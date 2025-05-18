@@ -1,11 +1,12 @@
 import WebSocket from "ws";
-import {cargo, QueueObject} from "async";
+import {cargo, ErrorCallback, QueueObject} from "async";
 import {Serialize} from "eosjs";
 import {HyperionWorker} from "./hyperionWorker.js";
 import {Type} from "eosjs/dist/eosjs-serialize.js";
 import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions.js";
 import {RabbitQueueDef} from "../definitions/index-queues.js";
 import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
+import {Channel, ConfirmChannel} from "amqplib";
 
 interface RequestRange {
     first_block: number;
@@ -17,7 +18,7 @@ export default class StateReader extends HyperionWorker {
     private readonly isLiveReader = process.env['worker_role'] === 'continuous_reader';
     private readonly baseRequest: any;
     private abi?: Abi;
-    private qStatusMap = {};
+    private qStatusMap: Record<string, any> = {};
     private recovery = false;
     private tables = new Map();
     private allowRequests = true;
@@ -114,11 +115,13 @@ export default class StateReader extends HyperionWorker {
         }, 5000);
     }
 
-    distribute(data, cb) {
-        this.recursiveDistribute(data, this.cch, cb);
+    distribute(data: any[], cb: () => void) {
+        if (this.cch) {
+            this.recursiveDistribute(data, this.cch, cb);
+        }
     }
 
-    recursiveDistribute(data, channel, cb) {
+    recursiveDistribute(data: any[], channel: Channel | ConfirmChannel, cb: () => void) {
         if (data.length > 0) {
             const q = this.isLiveReader ? this.chain + ':live_blocks' : this.chain + ":blocks:" + this.currentIdx;
             if (!this.qStatusMap[q]) {
@@ -130,7 +133,7 @@ export default class StateReader extends HyperionWorker {
                     const result = channel.sendToQueue(q, d.content, {
                         persistent: true,
                         mandatory: true,
-                    }, (err) => {
+                    }, (err: any) => {
                         if (err !== null) {
                             console.log('Message nacked!');
                             console.log(err.message);
@@ -325,7 +328,7 @@ export default class StateReader extends HyperionWorker {
                 const unconfirmed = this.cch['unconfirmed'];
 
                 if (unconfirmed.length > 0) {
-                    unconfirmed.forEach((elem) => {
+                    unconfirmed.forEach((elem: any) => {
                         if (elem) {
                             pending++;
                         }

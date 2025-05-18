@@ -66,7 +66,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
         if (getBlockHeader.hits.hits.length === 1) {
 
             const block = getBlockHeader.hits.hits[0]._source;
-            const info = await fastify.eosjs.rpc.get_info();
+            const info = await fastify.antelope.chain.get_info();
 
             response.id = block.block_id;
             response.number = block.block_num;

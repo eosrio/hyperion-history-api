@@ -5,6 +5,7 @@ import DSPoolWorker from "../../workers/ds-pool.js";
 import {TrxMetadata} from "../../../interfaces/trx-metadata.js";
 import {ActionTrace} from "../../../interfaces/action-trace.js";
 import {deserialize, hLog} from "../../helpers/common_functions.js";
+import {PackedTransaction} from "@wharfkit/antelope";
 
 export default class HyperionParser extends BaseParser {
 
@@ -97,7 +98,7 @@ export default class HyperionParser extends BaseParser {
                             allowProcessing = false;
                             for (const transaction of block.transactions) {
                                 if (transaction.status === 0 && transaction.trx[1] && transaction.trx[1].packed_trx) {
-                                    const unpacked_trx = worker.api.deserializeTransaction(Buffer.from(transaction.trx[1].packed_trx, 'hex'));
+                                    const unpacked_trx = PackedTransaction.from(transaction.trx[1].packed_trx).getTransaction();
                                     for (const act of unpacked_trx.actions) {
                                         if (this.checkWhitelist(act)) {
                                             allowProcessing = true;

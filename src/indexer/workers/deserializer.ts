@@ -1,5 +1,5 @@
 import {HyperionWorker} from "./hyperionWorker.js";
-import {Api, Serialize} from "eosjs";
+import {Serialize} from "eosjs";
 import {cargo, queue} from 'async';
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {createHash} from "crypto";
@@ -14,11 +14,9 @@ import {TableDelta} from "../../interfaces/table-delta.js";
 import {HyperionAbi} from "../../interfaces/hyperion-abi.js";
 import {TransactionTrace} from "../../interfaces/action-trace.js";
 import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
-import {Action, Type as EOSJSType} from "eosjs/dist/eosjs-serialize.js";
-import {JsSignatureProvider} from "eosjs/dist/eosjs-jssig.js";
 import {HyperionSignedBlock, ProducerSchedule} from "../../interfaces/signed-block.js";
 import {estypes} from "@elastic/elasticsearch";
-import {Serializer} from "@wharfkit/antelope";
+import {Action, PackedTransaction} from "@wharfkit/antelope";
 
 
 const abi_remapping = {
@@ -68,7 +66,7 @@ export default class MainDSWorker extends HyperionWorker {
     private consumerQueue;
     private preIndexingQueue;
     private abi?: Abi;
-    public types: Map<string, EOSJSType> = new Map();
+    public types: Map<string, any> = new Map();
     private tables = new Map();
     private allowStreaming = false;
     private dsPoolMap = {};
@@ -77,7 +75,6 @@ export default class MainDSWorker extends HyperionWorker {
     private local_block_count = 0;
     common: any;
     tableHandlers = {};
-    api: Api;
 
     // generic queue id
     emit_idx = 1;
@@ -124,22 +121,6 @@ export default class MainDSWorker extends HyperionWorker {
                 hLog('Channel is not ready!');
             }
         }, 1);
-
-        this.api = new Api({
-            rpc: this.rpc,
-            signatureProvider: new JsSignatureProvider([]),
-            chainId: this.chainId,
-            textDecoder: this.txDec,
-            textEncoder: this.txEnc,
-        });
-
-        // this.allowedDynamicContracts.add('atomicassets');
-        // this.allowedDynamicContracts.add('atomicmarket');
-        // this.allowedDynamicContracts.add('atomictoolsx');
-        // this.allowedDynamicContracts.add('atomicbridge');
-        // this.allowedDynamicContracts.add('delphioracle');
-        // this.allowedDynamicContracts.add('m.federation');
-        // this.allowedDynamicContracts.add('pack.worlds');
 
         this.events.on('loader_ready', () => {
             this.mLoader.appendDynamicContracts(this.allowedDynamicContracts);
@@ -936,103 +917,108 @@ export default class MainDSWorker extends HyperionWorker {
         return [result, abi];
     }
 
-    async getTableType(code, table, block) {
-        let abi, contract, abi_tables;
-
-        try {
-            const r = await this.getContractAtBlock(code, block);
-            if (r) {
-                [contract, abi] = r;
-            }
-            if (contract && contract.tables) {
-                abi_tables = contract.tables
-            } else {
-                return;
-            }
-        } catch (e: any) {
-            hLog(e.message);
-            return;
-        }
-
-        let this_table, type;
-        for (let t of abi_tables) {
-            if (t.name === table) {
-                this_table = t;
-                break;
-            }
-        }
-        if (this_table) {
-            type = this_table.type;
-        } else {
-            const currentABI = await this.getAbiFromHeadBlock(code);
-            if (!currentABI || !currentABI.abi) {
-                return;
-            }
-            abi_tables = currentABI.abi.tables;
-            for (let t of abi_tables) {
-                if (t.name === table) {
-                    this_table = t;
-                    break;
-                }
-            }
-            if (this_table) {
-                type = this_table.type;
-                const initialTypes = Serialize.createInitialTypes();
-                contract.types = Serialize.getTypesFromAbi(initialTypes, currentABI.abi);
-            } else {
-                return;
-            }
-        }
-        let cType = contract.types.get(type);
-        if (!cType) {
-            if (this.types.has(type)) {
-                cType = this.types.get(type);
-            } else {
-                if (type === 'self_delegated_bandwidth') {
-                    cType = contract.types.get('delegated_bandwidth')
-                }
-            }
-            if (!cType) {
-                hLog(code, block);
-                hLog(`code:${code} | table:${table} | block:${block} | type:${type}`);
-                hLog(Object.keys(contract));
-                hLog(Object.keys(abi));
-            }
-        }
-        return cType;
-    }
+    // async getTableType(code, table, block) {
+    //     let abi, contract, abi_tables;
+    //
+    //     try {
+    //         const r = await this.getContractAtBlock(code, block);
+    //         if (r) {
+    //             [contract, abi] = r;
+    //         }
+    //         if (contract && contract.tables) {
+    //             abi_tables = contract.tables
+    //         } else {
+    //             return;
+    //         }
+    //     } catch (e: any) {
+    //         hLog(e.message);
+    //         return;
+    //     }
+    //
+    //     let this_table, type;
+    //     for (let t of abi_tables) {
+    //         if (t.name === table) {
+    //             this_table = t;
+    //             break;
+    //         }
+    //     }
+    //     if (this_table) {
+    //         type = this_table.type;
+    //     } else {
+    //         const currentABI = await this.getAbiFromHeadBlock(code);
+    //         if (!currentABI || !currentABI.abi) {
+    //             return;
+    //         }
+    //         abi_tables = currentABI.abi.tables;
+    //         for (let t of abi_tables) {
+    //             if (t.name === table) {
+    //                 this_table = t;
+    //                 break;
+    //             }
+    //         }
+    //         if (this_table) {
+    //             type = this_table.type;
+    //             const initialTypes = Serialize.createInitialTypes();
+    //             contract.types = Serialize.getTypesFromAbi(initialTypes, currentABI.abi);
+    //         } else {
+    //             return;
+    //         }
+    //     }
+    //     let cType = contract.types.get(type);
+    //     if (!cType) {
+    //         if (this.types.has(type)) {
+    //             cType = this.types.get(type);
+    //         } else {
+    //             if (type === 'self_delegated_bandwidth') {
+    //                 cType = contract.types.get('delegated_bandwidth')
+    //             }
+    //         }
+    //         if (!cType) {
+    //             hLog(code, block);
+    //             hLog(`code:${code} | table:${table} | block:${block} | type:${type}`);
+    //             hLog(Object.keys(contract));
+    //             hLog(Object.keys(abi));
+    //         }
+    //     }
+    //     return cType;
+    // }
 
     async processContractRow(row, block, validFrom, validUntil) {
-        const row_sb = this.createSerialBuffer(Serialize.hexToUint8Array(row['value']));
-        let error;
-        try {
-            const tableType: EOSJSType = await this.getTableType(row['code'], row['table'], block);
-            if (tableType) {
-                try {
-                    row['data'] = tableType.deserialize(row_sb);
-                    delete row.value;
-                    return row;
-                } catch (e: any) {
-                    error = e.message;
-                }
-            }
-        } catch (e: any) {
-            hLog(e.message);
-            error = e.message;
-        }
-        row['ds_error'] = true;
-        process.send?.({
-            event: 'ds_error',
-            data: {
-                type: 'delta_ds_error',
-                block: block,
-                valid_until: validUntil,
-                code: row['code'],
-                table: row['table'],
-                message: error
-            }
-        });
-        this.registerAutoBlacklist(row['code'], "table", row['table'], validFrom, validUntil);
+
+        console.log('processContractRow', row);
+
+        // const row_sb = this.createSerialBuffer(Serialize.hexToUint8Array(row['value']));
+        //
+        // let error;
+        // try {
+        //     const tableType: EOSJSType = await this.getTableType(row['code'], row['table'], block);
+        //     if (tableType) {
+        //         try {
+        //             row['data'] = tableType.deserialize(row_sb);
+        //             delete row.value;
+        //             return row;
+        //         } catch (e: any) {
+        //             error = e.message;
+        //         }
+        //     }
+        // } catch (e: any) {
+        //     hLog(e.message);
+        //     error = e.message;
+        // }
+        // row['ds_error'] = true;
+        // process.send?.({
+        //     event: 'ds_error',
+        //     data: {
+        //         type: 'delta_ds_error',
+        //         block: block,
+        //         valid_until: validUntil,
+        //         code: row['code'],
+        //         table: row['table'],
+        //         message: error
+        //     }
+        // });
+        // this.registerAutoBlacklist(row['code'], "table", row['table'], validFrom, validUntil);
+
         return row;
     }
 
@@ -1286,7 +1272,7 @@ export default class MainDSWorker extends HyperionWorker {
                     const abiHex = account['abi'];
                     const abiBin = new Uint8Array(Buffer.from(abiHex, 'hex'));
                     const initialTypes = Serialize.createInitialTypes();
-                    const abiDefTypes: EOSJSType | undefined = Serialize.getTypesFromAbi(initialTypes, <Abi>AbiDefinitions).get('abi_def');
+                    const abiDefTypes: any | undefined = Serialize.getTypesFromAbi(initialTypes, <Abi>AbiDefinitions).get('abi_def');
                     if (abiDefTypes) {
                         const abiObj = abiDefTypes.deserialize(this.createSerialBuffer(abiBin));
                         const jsonABIString = JSON.stringify(abiObj);
@@ -1400,7 +1386,7 @@ export default class MainDSWorker extends HyperionWorker {
                     }
                 }
 
-                const unpackedTrx = this.api.deserializeTransaction(Buffer.from(generated_transaction.packed_trx, 'hex'));
+                const unpackedTrx = PackedTransaction.from(generated_transaction.packed_trx).getTransaction();
                 for (const action of unpackedTrx.actions) {
                     const act_data = await this.deserializeActionAtBlockNative(action, block_num);
                     if (act_data) {
@@ -1614,13 +1600,19 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     async deserializeActionAtBlockNative(action: Action, block_num: number): Promise<any> {
-        const [status, actionType] = await this.verifyLocalType(action.account, action.name, block_num, "action");
+        const [status, actionType] = await this.verifyLocalType(
+            action.account.toString(),
+            action.name.toString(),
+            block_num,
+            "action"
+        );
+
         if (status && actionType) {
             try {
                 return this.abieos.binToJson(
-                    action.account,
+                    action.account.toString(),
                     actionType,
-                    Buffer.from(action.data, 'hex')
+                    Buffer.from(action.data.hexString, 'hex')
                 );
             } catch (e: any) {
                 debugLog(`deserializeActionAtBlockNative: ${e.message}`);
@@ -1792,9 +1784,10 @@ export default class MainDSWorker extends HyperionWorker {
             delta['@proposal'] = {
                 proposal_name: delta['data']['proposal_name']
             };
-            const trx = this.api.deserializeTransaction(Serialize.hexToUint8Array(delta.data['packed_transaction']));
+            const packedTrx = PackedTransaction.from(delta.data['packed_transaction']);
+            const trx = packedTrx.getTransaction()
             for (const action of trx.actions) {
-                action.hex_data = action.data;
+                const hex_data = action.data;
                 action.data = await this.deserializeActionAtBlockNative(action, delta.block_num);
             }
             delta['@proposal']['transaction'] = trx;

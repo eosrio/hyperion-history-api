@@ -1,6 +1,6 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { mergeActionMeta, timedQuery } from "../../../helpers/functions.js";
-import { GetInfoResult } from "eosjs/dist/eosjs-rpc-interfaces.js";
+import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
+import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
+import {API} from "@wharfkit/antelope";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
     const redis = fastify.redis;
@@ -20,17 +20,18 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         generated: undefined,
         error: undefined
     };
+
     let hits;
 
     // build get_info request with caching
-    const $getInfo = new Promise<GetInfoResult | null>(resolve => {
+    const $getInfo = new Promise<API.v1.GetInfoResponse | null>(resolve => {
         const key = `${fastify.manager.chain}_get_info`;
         fastify.redis.get(key).then(value => {
             if (value) {
                 response.cached_lib = true;
                 resolve(JSON.parse(value));
             } else {
-                fastify.eosjs.rpc.get_info().then(value1 => {
+                fastify.antelope.chain.get_info().then(value1 => {
                     fastify.redis.set(key, JSON.stringify(value1), 'EX', 6);
                     response.cached_lib = false;
                     resolve(value1);
@@ -83,8 +84,8 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             const $search = fastify.elastic.search<any>({
                 index: indexPattern,
                 size: _size,
-                query: { bool: { must: [{ term: { trx_id: trxId } }] } },
-                sort: { global_sequence: "asc" }
+                query: {bool: {must: [{term: {trx_id: trxId}}]}},
+                sort: {global_sequence: "asc"}
             });
 
             // execute in parallel
