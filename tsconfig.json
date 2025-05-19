@@ -14,9 +14,7 @@
     "skipLibCheck": true,
     "allowArbitraryExtensions": true,
     "strict": true,
-    "typeRoots": [
-      "types"
-    ]
+    "typeRoots": ["types"]
   },
   "include": [
     "./src/**/*.ts",

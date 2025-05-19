@@ -17,8 +17,10 @@ export interface LabelledShipNode {
 }
 
 export class StateHistorySocket {
-    private ws;
-    private readonly max_payload_mb;
+
+    private ws?: WebSocket;
+    private readonly max_payload_mb: number;
+
     retryOnDisconnect = true;
     connected = false;
 
@@ -124,11 +126,11 @@ export class StateHistorySocket {
         if (graceful) {
             this.retryOnDisconnect = false;
         }
-        this.ws.close();
+        this.ws?.close();
     }
 
     send(payload: Uint8Array) {
-        this.ws.send(payload);
+        this.ws?.send(payload);
     }
 
     async validateShipServers(chainId: string): Promise<ShipServer[]> {

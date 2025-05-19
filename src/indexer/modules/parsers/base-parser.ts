@@ -11,8 +11,6 @@ import {Action} from "@wharfkit/antelope";
 
 export abstract class BaseParser {
 
-    txDec = new TextDecoder();
-    txEnc = new TextEncoder();
     configModule: ConfigurationModule;
     filters: Filters;
     private readonly chain: string;

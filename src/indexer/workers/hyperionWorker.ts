@@ -13,7 +13,7 @@ import {BasicDelta} from "../../interfaces/hyperion-delta.js";
 import {getHeapStatistics, HeapInfo} from "node:v8";
 import {HyperionActionAct} from "../../interfaces/hyperion-action.js";
 import {APIClient} from "@wharfkit/antelope";
-import {HyperionAbi, SavedAbi} from "../../interfaces/hyperion-abi.js";
+import {HyperionAbi} from "../../interfaces/hyperion-abi.js";
 
 export abstract class HyperionWorker {
 
@@ -31,8 +31,6 @@ export abstract class HyperionWorker {
     client: Client;
     ship: StateHistorySocket;
 
-    txEnc = new TextEncoder();
-    txDec = new TextDecoder();
     cch_ready = false;
     ch_ready = false;
 
