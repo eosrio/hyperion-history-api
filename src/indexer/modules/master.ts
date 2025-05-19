@@ -1,7 +1,7 @@
-import {Client, estypes} from "@elastic/elasticsearch";
-import {ConnectionManager} from "../connections/manager.class.js";
-import {ConfigurationModule} from "./config.js";
-import {HyperionModuleLoader} from "./loader.js";
+import {Client, estypes} from '@elastic/elasticsearch';
+import {ConnectionManager} from '../connections/manager.class.js';
+import {ConfigurationModule} from './config.js';
+import {HyperionModuleLoader} from './loader.js';
 
 import {
     debugLog,
@@ -13,44 +13,35 @@ import {
     hLog,
     messageAllWorkers,
     waitUntilReady
-} from "../helpers/common_functions.js";
+} from '../helpers/common_functions.js';
 
 import pm2io from '@pm2/io';
 
-import {
-    createWriteStream,
-    existsSync,
-    mkdirSync,
-    readFileSync,
-    symlinkSync,
-    unlinkSync,
-    writeFileSync,
-    WriteStream
-} from "fs";
+import {createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync, WriteStream} from 'fs';
 
-import cluster, {Worker} from "cluster";
-import path from "path";
+import cluster, {Worker} from 'cluster';
+import path from 'path';
 import {Socket} from 'socket.io-client';
-import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
-import {HyperionWorkerDef} from "../../interfaces/hyperionWorkerDef.js";
+import {HyperionConfig} from '../../interfaces/hyperionConfig.js';
+import {HyperionWorkerDef} from '../../interfaces/hyperionWorkerDef.js';
 
-import {IOConfig} from "@pm2/io/build/main/pmx.js";
-import {queue, QueueObject} from "async";
-import {Redis} from "ioredis";
-import {AlertManagerOptions, AlertsManager, HyperionAlertTypes} from "./alertsManager.js";
+import {IOConfig} from '@pm2/io/build/main/pmx.js';
+import {queue, QueueObject} from 'async';
+import {Redis} from 'ioredis';
+import {AlertManagerOptions, AlertsManager, HyperionAlertTypes} from './alertsManager.js';
 
 import {bootstrap} from 'global-agent';
-import {App, HttpRequest, HttpResponse, TemplatedApp, WebSocket} from "uWebSockets.js";
-import moment from "moment";
-import {getTotalValue} from "../../api/helpers/functions.js";
-import {ShipServer, StateHistorySocket} from "../connections/state-history.js";
-import {updateByBlock} from "../definitions/updateByBlock.painless.js";
-import {IAccount} from "../../interfaces/table-account.js";
-import {IProposal} from "../../interfaces/table-proposal.js";
-import {IVoter} from "../../interfaces/table-voter.js";
-import {Db, IndexDescription} from "mongodb";
+import {App, HttpRequest, HttpResponse, TemplatedApp, WebSocket} from 'uWebSockets.js';
+import moment from 'moment';
+import {getTotalValue} from '../../api/helpers/functions.js';
+import {ShipServer, StateHistorySocket} from '../connections/state-history.js';
+import {updateByBlock} from '../definitions/updateByBlock.painless.js';
+import {IAccount} from '../../interfaces/table-account.js';
+import {IProposal} from '../../interfaces/table-proposal.js';
+import {IVoter} from '../../interfaces/table-voter.js';
+import {Db, IndexDescription} from 'mongodb';
 import {randomUUID} from 'node:crypto';
-import {API, APIClient} from "@wharfkit/antelope";
+import {API, APIClient} from '@wharfkit/antelope';
 import Timeout = NodeJS.Timeout;
 
 interface RevBlock {
@@ -84,7 +75,6 @@ interface WorkerMessage {
 type WorkerMessageHandler = (worker: Worker, msg: WorkerMessage) => Promise<void> | void;
 
 export class HyperionMaster {
-
     // global configuration
     conf: HyperionConfig;
 
@@ -139,7 +129,7 @@ export class HyperionMaster {
     private allowMoreReaders = true;
     private allowShutdown = false;
     private readonly log_interval = 5000;
-    private readonly tScale = (this.log_interval / 1000);
+    private readonly tScale = this.log_interval / 1000;
     private consumedBlocks = 0;
     private deserializedActions = 0;
     private indexedObjects = 0;
@@ -202,21 +192,21 @@ export class HyperionMaster {
     private liveReader?: HyperionWorkerDef;
     private repairReader?: HyperionWorkerDef;
     private pendingRepairRanges: {
-        start: number,
-        end: number,
-        size?: number
+        start: number;
+        end: number;
+        size?: number;
     }[] = [];
     private connectedController?: WebSocket<any>;
     private lastIrreversibleBlock: number = 0;
     private validatedShipServers: ShipServer[] = [];
     private avg_consume_rate: number = 0;
-    private attachedControllerMap? = new Map<string, WebSocket<any>>;
+    private attachedControllerMap? = new Map<string, WebSocket<any>>();
 
     constructor() {
         this.cm = new ConfigurationModule();
 
         if (!this.cm.config) {
-            hLog("Configuration is not present! Exiting now!");
+            hLog('Configuration is not present! Exiting now!');
             process.exit(1);
         }
 
@@ -243,12 +233,12 @@ export class HyperionMaster {
         this.mLoader = new HyperionModuleLoader(this.cm);
 
         this.mLoader.init().then(() => {
-            this.mLoader.plugins.forEach(value => {
+            this.mLoader.plugins.forEach((value) => {
                 value.initOnce();
                 hLog(`Plugin loaded: ${value.internalPluginName}`);
-            })
+            });
             this.initHandlerMap();
-            this.mLoader.plugins.forEach(value => {
+            this.mLoader.plugins.forEach((value) => {
                 const pluginHandlerMap = value.initHandlerMap();
                 hLog(`Plugin IPC handlers loaded: ${Object.keys(pluginHandlerMap)}`);
                 for (const handler in pluginHandlerMap) {
@@ -258,7 +248,7 @@ export class HyperionMaster {
                     }
                     this.msgHandlerMap[handler] = pluginHandlerMap[handler];
                 }
-            })
+            });
             this.liveBlockQueue = queue((task, callback) => {
                 this.onLiveBlock(task);
                 callback();
@@ -278,18 +268,20 @@ export class HyperionMaster {
             }
         }
         if (alertManagerConf) {
-            import('./alertsManager.js').then((module) => {
-                const AlertsManager = module.AlertsManager;
-                this.alerts = new AlertsManager(alertManagerConf, this.chain);
-            }).catch(reason => {
-                hLog(`Failed to load alerts manager: ${reason}`);
-            });
+            import('./alertsManager.js')
+                .then((module) => {
+                    const AlertsManager = module.AlertsManager;
+                    this.alerts = new AlertsManager(alertManagerConf, this.chain);
+                })
+                .catch((reason) => {
+                    hLog(`Failed to load alerts manager: ${reason}`);
+                });
         }
     }
 
     initHandlerMap() {
         this.msgHandlerMap = {
-            'skipped_block': (_worker: Worker, msg: WorkerMessage) => {
+            skipped_block: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.block_num) {
                     this.consumedBlocks++;
                     if (msg.block_num > this.lastProcessedBlockNum) {
@@ -297,8 +289,7 @@ export class HyperionMaster {
                     }
                 }
             },
-            'consumed_block': async (_worker: Worker, msg: WorkerMessage) => {
-
+            consumed_block: async (_worker: Worker, msg: WorkerMessage) => {
                 if (!msg.block_num || !msg.block_id) {
                     return;
                 }
@@ -309,7 +300,6 @@ export class HyperionMaster {
                         this.lastProcessedBlockNum = msg.block_num;
                     }
                 } else {
-
                     // LIVE READER
                     this.liveConsumedBlocks++;
 
@@ -332,19 +322,19 @@ export class HyperionMaster {
                     this.lastProducedBlockNum = msg.block_num;
 
                     if (this.liveBlockQueue && this.conf.settings.bp_monitoring && !this.conf.indexer.abi_scan_mode) {
-                        this.liveBlockQueue.push(msg).catch(reason => {
+                        this.liveBlockQueue.push(msg).catch((reason) => {
                             hLog('Error handling consumed_block:', reason);
                         });
                         if (this.liveBlockQueue.length() > 1) {
-                            hLog("Live Block Queue:", this.liveBlockQueue.length(), 'blocks');
+                            hLog('Live Block Queue:', this.liveBlockQueue.length(), 'blocks');
                         }
                     }
                 }
             },
-            'new_schedule': (_worker: Worker, msg: WorkerMessage) => {
+            new_schedule: (_worker: Worker, msg: WorkerMessage) => {
                 this.onScheduleUpdate(msg);
             },
-            'init_abi': (_worker: Worker, msg: WorkerMessage) => {
+            init_abi: (_worker: Worker, msg: WorkerMessage) => {
                 if (!this.cachedInitABI) {
                     this.cachedInitABI = msg.data as string;
                     hLog('received ship abi for distribution');
@@ -358,15 +348,15 @@ export class HyperionMaster {
                     hLog('received ship abi for distribution AGAIN!!');
                 }
             },
-            'router_ready': () => {
+            router_ready: () => {
                 messageAllWorkers(cluster, {
                     event: 'connect_ws'
                 });
             },
-            'ingestor_block_report': () => {
+            ingestor_block_report: () => {
                 // console.log(data);
             },
-            'save_abi': (_worker: Worker, msg: WorkerMessage) => {
+            save_abi: (_worker: Worker, msg: WorkerMessage) => {
                 this.total_abis++;
                 if (msg.live_mode === 'true') {
                     hLog(`deserializer ${msg.worker_id} received new abi! propagating changes to other workers...`);
@@ -378,26 +368,26 @@ export class HyperionMaster {
                     }
                 }
             },
-            'update_last_assigned_block': (_worker: Worker, msg: WorkerMessage) => {
+            update_last_assigned_block: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.block_num && this.head) {
                     this.lastAssignedBlock = msg.block_num;
                     this.total_range = this.head - msg.block_num;
                 }
             },
-            'repair_reader_ready': () => {
+            repair_reader_ready: () => {
                 this.sendPendingRepairRanges();
             },
-            'kill_worker': (_worker: Worker, msg: WorkerMessage) => {
+            kill_worker: (_worker: Worker, msg: WorkerMessage) => {
                 for (let workersKey in cluster.workers) {
                     const w = cluster.workers[workersKey];
                     if (msg.id && w && w.id === parseInt(msg.id)) {
-                        const idx = this.workerMap.findIndex(value => value.worker_id === w.id);
+                        const idx = this.workerMap.findIndex((value) => value.worker_id === w.id);
                         this.workerMap.splice(idx, 1);
                         w.kill();
                     }
                 }
             },
-            'completed': (_worker: Worker, msg: WorkerMessage) => {
+            completed: (_worker: Worker, msg: WorkerMessage) => {
                 // hLog(`Worker ${msg.id} completed range! (last assigned block: ${this.lastAssignedBlock})`);
                 if (this.repairReader && msg.id === this.repairReader.worker_id?.toString()) {
                     console.log('Repair completed!', msg);
@@ -425,19 +415,19 @@ export class HyperionMaster {
                     } else {
                         if (this.lastAssignedBlock >= this.head) {
                             hLog(`Parallel readers finished the requested range`);
-                            const readers = this.workerMap.filter(value => value.worker_role === 'reader');
-                            this.workerMap = this.workerMap.filter(value => value.worker_role !== 'reader');
-                            readers.forEach(value => value.wref?.kill());
+                            const readers = this.workerMap.filter((value) => value.worker_role === 'reader');
+                            this.workerMap = this.workerMap.filter((value) => value.worker_role !== 'reader');
+                            readers.forEach((value) => value.wref?.kill());
                         }
                     }
                 }
             },
-            'add_index': (_worker: Worker, msg: WorkerMessage) => {
+            add_index: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.size) {
                     this.indexedObjects += msg.size;
                 }
             },
-            'ds_report': (_worker: Worker, msg: WorkerMessage) => {
+            ds_report: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.actions) {
                     this.deserializedActions += msg.actions;
                 }
@@ -445,23 +435,23 @@ export class HyperionMaster {
                     this.deserializedDeltas += msg.deltas;
                 }
             },
-            'ds_error': (_worker: Worker, msg: WorkerMessage) => {
+            ds_error: (_worker: Worker, msg: WorkerMessage) => {
                 this.dsErrorStream?.write(JSON.stringify(msg.data) + '\n');
             },
-            'read_block': (_worker: Worker, msg: WorkerMessage) => {
+            read_block: (_worker: Worker, msg: WorkerMessage) => {
                 if (!msg.live) {
                     this.pushedBlocks++;
                 } else {
                     this.livePushedBlocks++;
                 }
             },
-            'ds_ready': (worker: Worker, msg: WorkerMessage) => {
+            ds_ready: (worker: Worker, msg: WorkerMessage) => {
                 // send the ship abi to the deserializer
                 if (this.cachedInitABI) {
                     worker.send({event: 'initialize_abi', data: this.cachedInitABI});
                 }
             },
-            'contract_usage_report': (_worker: Worker, msg: WorkerMessage) => {
+            contract_usage_report: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.data && msg.total_hits) {
                     this.totalContractHits += msg.total_hits;
                     for (const contract in msg.data) {
@@ -475,14 +465,13 @@ export class HyperionMaster {
                     }
                 }
             },
-            'lib_update': (_worker: Worker, msg: WorkerMessage) => {
+            lib_update: (_worker: Worker, msg: WorkerMessage) => {
                 // publish LIB to hub
                 if (msg.data) {
-
                     // save local lib
                     this.lastIrreversibleBlock = msg.data.block_num;
 
-                    this.revBlockArray = this.revBlockArray.filter(item => item.num > msg.data.block_num);
+                    this.revBlockArray = this.revBlockArray.filter((item) => item.num > msg.data.block_num);
                     if (this.conf.hub && this.hub && this.conf.hub.hub_url) {
                         this.hub.emit('hyp_ev', {e: 'lib', d: msg.data});
                     }
@@ -493,24 +482,31 @@ export class HyperionMaster {
                     }
                 }
             },
-            'included_trx': (_worker: Worker, msg: WorkerMessage) => {
+            included_trx: (_worker: Worker, msg: WorkerMessage) => {
                 if (this.ioRedisClient && msg.trx_id) {
-                    this.ioRedisClient.set(msg.trx_id, JSON.stringify({
-                        status: 'executed',
-                        b: msg.block_num,
-                        s: msg.signatures,
-                        a: msg.root_act
-                    }), "EX", 3600).catch(console.log);
+                    this.ioRedisClient
+                        .set(
+                            msg.trx_id,
+                            JSON.stringify({
+                                status: 'executed',
+                                b: msg.block_num,
+                                s: msg.signatures,
+                                a: msg.root_act
+                            }),
+                            'EX',
+                            3600
+                        )
+                        .catch(console.log);
                 }
             },
-            'fork_event': async (_worker: Worker, msg: WorkerMessage) => {
-                const forkedBlocks = this.revBlockArray.filter(item => item.num >= msg.data.starting_block && item.id !== msg.data.new_id);
-                this.revBlockArray = this.revBlockArray.filter(item => item.num < msg.data.starting_block);
+            fork_event: async (_worker: Worker, msg: WorkerMessage) => {
+                const forkedBlocks = this.revBlockArray.filter((item) => item.num >= msg.data.starting_block && item.id !== msg.data.new_id);
+                this.revBlockArray = this.revBlockArray.filter((item) => item.num < msg.data.starting_block);
                 if (this.ioRedisClient) {
                     for (const block of forkedBlocks) {
                         if (block.tx.length > 0) {
                             for (const trxId of block.tx) {
-                                await this.ioRedisClient.set(trxId, JSON.stringify({status: 'forked'}), "EX", 600);
+                                await this.ioRedisClient.set(trxId, JSON.stringify({status: 'forked'}), 'EX', 600);
                             }
                         }
                     }
@@ -523,19 +519,25 @@ export class HyperionMaster {
             },
             'indexer-paused': (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.mId) {
-                    this.localController?.publish(msg.mId, JSON.stringify({
-                        event: 'indexer-paused',
-                        mId: msg.mId
-                    }));
+                    this.localController?.publish(
+                        msg.mId,
+                        JSON.stringify({
+                            event: 'indexer-paused',
+                            mId: msg.mId
+                        })
+                    );
                 }
             },
             'indexer-resumed': (_worker: Worker, msg: WorkerMessage) => {
                 hLog(`[IPC] Resuming indexer`);
                 // Notificar o controlador local que o indexador foi retomado
                 if (msg.mId) {
-                    this.localController?.publish(msg.mId, JSON.stringify({
-                        event: 'indexer-resumed'
-                    }));
+                    this.localController?.publish(
+                        msg.mId,
+                        JSON.stringify({
+                            event: 'indexer-resumed'
+                        })
+                    );
                 }
             }
         };
@@ -588,28 +590,42 @@ export class HyperionMaster {
 
         if (table_feats.proposals) {
             indicesList.push({name: 'tableProposals', type: 'table-proposals'});
-            index_queues.push({type: 'table-proposals', name: index_queue_prefix + "_table_proposals"});
+            index_queues.push({
+                type: 'table-proposals',
+                name: index_queue_prefix + '_table_proposals'
+            });
         }
 
         if (table_feats.accounts) {
             indicesList.push({name: 'tableAccounts', type: 'table-accounts'});
-            index_queues.push({type: 'table-accounts', name: index_queue_prefix + "_table_accounts"});
+            index_queues.push({
+                type: 'table-accounts',
+                name: index_queue_prefix + '_table_accounts'
+            });
         }
 
         if (table_feats.voters) {
             indicesList.push({name: 'tableVoters', type: 'table-voters'});
-            index_queues.push({type: 'table-voters', name: index_queue_prefix + "_table_voters"});
+            index_queues.push({
+                type: 'table-voters',
+                name: index_queue_prefix + '_table_voters'
+            });
         }
 
         if (table_feats.delband) {
             indicesList.push({name: 'tableDelband', type: 'table-delband'});
-            index_queues.push({type: 'table-delband', name: index_queue_prefix + "_table_delband"});
+            index_queues.push({
+                type: 'table-delband',
+                name: index_queue_prefix + '_table_delband'
+            });
         }
 
         // special dynamic table mapper
         // indicesList.push({name: 'dynamicTable', type: 'dynamic-table'});
-        index_queues.push({type: 'dynamic-table', name: index_queue_prefix + "_dynamic"});
-
+        index_queues.push({
+            type: 'dynamic-table',
+            name: index_queue_prefix + '_dynamic'
+        });
     }
 
     private async getCurrentSchedule() {
@@ -690,7 +706,7 @@ export class HyperionMaster {
         }
     }
 
-    private async updateIndexTemplates(indicesList: { name: string, type: string }[], indexConfig) {
+    private async updateIndexTemplates(indicesList: {name: string; type: string}[], indexConfig) {
         hLog(`Updating index templates for ${this.conf.settings.chain}...`);
         let updateCounter = 0;
         for (const index of indicesList) {
@@ -734,7 +750,12 @@ export class HyperionMaster {
                     this.starting_block = this.lastIndexedABI;
                 } else {
                     if (this.conf.features.index_deltas) {
-                        lastIndexedBlockOnRange = await getLastIndexedBlockByDeltaFromRange(this.esClient, this.chain, this.starting_block, this.head);
+                        lastIndexedBlockOnRange = await getLastIndexedBlockByDeltaFromRange(
+                            this.esClient,
+                            this.chain,
+                            this.starting_block,
+                            this.head
+                        );
                     } else {
                         lastIndexedBlockOnRange = await getLastIndexedBlockFromRange(this.esClient, this.chain, this.starting_block, this.head);
                     }
@@ -792,6 +813,18 @@ export class HyperionMaster {
 
         if (lastIndexedBlock > 0) {
             this.starting_block = lastIndexedBlock;
+        }
+
+        // Find first available block on validated ship servers
+        let firstBlock = Infinity;
+        this.validatedShipServers.forEach((shipServer) => {
+            if (shipServer.traceBeginBlock < firstBlock) {
+                firstBlock = shipServer.traceBeginBlock;
+            }
+        });
+
+        if (this.starting_block && firstBlock > this.starting_block) {
+            this.starting_block = firstBlock;
         }
 
         if (this.conf.indexer.stop_on !== 0) {
@@ -852,7 +885,7 @@ export class HyperionMaster {
                     }
                 }
             }
-            hLog(`Worker ID: ${w.worker_id} \t ${str.join(" | ")}`)
+            hLog(`Worker ID: ${w.worker_id} \t ${str.join(' | ')}`);
         }
         hLog('--------------------------------------------------');
     }
@@ -861,6 +894,8 @@ export class HyperionMaster {
         // Setup Readers
 
         this.lastAssignedBlock = this.starting_block ?? 0;
+
+        console.log('Starting block:', this.lastAssignedBlock);
 
         this.activeReadersCount = 0;
 
@@ -913,7 +948,7 @@ export class HyperionMaster {
             for (let j = 0; j < this.conf.scaling.ds_threads; j++) {
                 this.addWorker({
                     worker_role: 'deserializer',
-                    worker_queue: this.chain + ':blocks' + ":" + (i + 1),
+                    worker_queue: this.chain + ':blocks' + ':' + (i + 1),
                     live_mode: 'false'
                 });
             }
@@ -938,7 +973,7 @@ export class HyperionMaster {
             for (let i = 0; i < n; i++) {
                 this.addWorker({
                     worker_role: 'ingestor',
-                    queue: q.name + ":" + (qIdx + 1),
+                    queue: q.name + ':' + (qIdx + 1),
                     type: q.type
                 });
                 qIdx++;
@@ -953,8 +988,7 @@ export class HyperionMaster {
             if (_streaming.deltas) hLog('Delta streaming enabled!');
             if (_streaming.traces) hLog('Action trace streaming enabled!');
             if (!_streaming.deltas && !_streaming.traces) {
-                hLog('WARNING! Streaming is enabled without any datatype,' +
-                    'please enable STREAM_TRACES and/or STREAM_DELTAS');
+                hLog('WARNING! Streaming is enabled without any datatype,' + 'please enable STREAM_TRACES and/or STREAM_DELTAS');
             }
         }
     }
@@ -985,7 +1019,7 @@ export class HyperionMaster {
         await this.setupIndexers();
         await this.setupStreaming();
         await this.setupDSPool();
-        this.addWorker({worker_role: "delta_updater"});
+        this.addWorker({worker_role: 'delta_updater'});
     }
 
     private launchWorkers() {
@@ -1034,16 +1068,16 @@ export class HyperionMaster {
             const proposedWorkers: number[] = [];
             for (let i = 0; i < pool_size; i++) {
                 if (worker_shares[i] < worker_max_pct) {
-                    const rem_pct = (_pct - used_pct);
+                    const rem_pct = _pct - used_pct;
                     if (rem_pct === 0) {
                         break;
                     }
                     if (rem_pct > worker_max_pct) {
-                        used_pct += (worker_max_pct - worker_shares[i]);
+                        used_pct += worker_max_pct - worker_shares[i];
                         worker_shares[i] = worker_max_pct;
                     } else {
                         if (worker_shares[i] + rem_pct > worker_max_pct) {
-                            used_pct += (worker_max_pct - worker_shares[i]);
+                            used_pct += worker_max_pct - worker_shares[i];
                             worker_shares[i] = worker_max_pct;
                         } else {
                             used_pct += rem_pct;
@@ -1084,12 +1118,11 @@ export class HyperionMaster {
             }
         }
 
-
         // phase 3 - assign
         for (const code in this.globalUsageMap) {
             if (JSON.stringify(this.globalUsageMap[code][2]) !== JSON.stringify(propWorkerMap[code])) {
                 // hLog(this.globalUsageMap[code][2], ">>", proposedWorkers);
-                propWorkerMap[code].forEach(w => {
+                propWorkerMap[code].forEach((w) => {
                     const idx = this.globalUsageMap[code][2].indexOf(w);
                     if (idx !== -1) {
                         this.globalUsageMap[code][2].splice(idx, 1);
@@ -1097,11 +1130,11 @@ export class HyperionMaster {
                         // hLog(`Worker ${w} assigned to ${code}`);
                     }
                 });
-                this.globalUsageMap[code][2].forEach(w_id => {
+                this.globalUsageMap[code][2].forEach((w_id) => {
                     // hLog(`>>>> Worker ${this.globalUsageMap[code][2]} removed from ${code}!`);
                     if (this.dsPoolMap.has(w_id)) {
                         this.dsPoolMap.get(w_id)?.send({
-                            event: "remove_contract",
+                            event: 'remove_contract',
                             contract: code
                         });
                     }
@@ -1113,14 +1146,14 @@ export class HyperionMaster {
 
     private sendToRole(role: string, payload: any) {
         this.workerMap
-            .filter(value => value.worker_role === role)
-            .forEach(value => {
+            .filter((value) => value.worker_role === role)
+            .forEach((value) => {
                 value.wref?.send(payload);
             });
     }
 
     private async waitForLaunch(): Promise<void> {
-        return new Promise(resolve => {
+        return new Promise((resolve) => {
             hLog(`Use "pm2 trigger ${pm2io.getConfig()['module_name']} start" to start the indexer now or restart without preview mode.`);
             const idleTimeout = setTimeout(() => {
                 hLog('No command received after 10 minutes.');
@@ -1140,7 +1173,7 @@ export class HyperionMaster {
     setupDeserializationErrorLogger() {
         const logPath = path.join(path.resolve(), 'logs', this.chain);
         if (!existsSync(logPath)) mkdirSync(logPath, {recursive: true});
-        const dsLogFileName = (new Date().toISOString()) + "_ds_err_" + this.starting_block + "_" + this.head + ".log";
+        const dsLogFileName = new Date().toISOString() + '_ds_err_' + this.starting_block + '_' + this.head + '.log';
         const dsErrorsLog = logPath + '/' + dsLogFileName;
         if (existsSync(dsErrorsLog)) unlinkSync(dsErrorsLog);
         const symbolicLink = logPath + '/deserialization_errors.log';
@@ -1162,7 +1195,7 @@ export class HyperionMaster {
                 this.producedBlocks = {};
             }
         }
-        if ((msg.block_num === this.lastProducedBlockNum + 1) || this.lastProducedBlockNum === 0) {
+        if (msg.block_num === this.lastProducedBlockNum + 1 || this.lastProducedBlockNum === 0) {
             const prod = msg.producer;
             if (this.producedBlocks[prod]) {
                 this.producedBlocks[prod]++;
@@ -1173,9 +1206,9 @@ export class HyperionMaster {
                 this.handoffCounter++;
                 if (this.lastProducer && this.handoffCounter > 2) {
                     const activeProds = this.activeSchedule.producers;
-                    const newIdx = activeProds.findIndex(p => p['producer_name'] === prod) + 1;
-                    const oldIdx = activeProds.findIndex(p => p['producer_name'] === this.lastProducer) + 1;
-                    if ((newIdx === oldIdx + 1) || (newIdx === 1 && oldIdx === activeProds.length)) {
+                    const newIdx = activeProds.findIndex((p) => p['producer_name'] === prod) + 1;
+                    const oldIdx = activeProds.findIndex((p) => p['producer_name'] === this.lastProducer) + 1;
+                    if (newIdx === oldIdx + 1 || (newIdx === 1 && oldIdx === activeProds.length)) {
                         if (this.conf.settings.bp_logs) {
                             hLog(`[${msg.block_num}] producer handoff: ${this.lastProducer} [${oldIdx}] -> ${prod} [${newIdx}]`);
                         }
@@ -1244,21 +1277,23 @@ export class HyperionMaster {
     }
 
     private reportMissedBlocks(missingProd: any, lastProducedBlockNum: number, size: number) {
-        hLog(`${missingProd} missed ${size} ${size === 1 ? "block" : "blocks"} after ${lastProducedBlockNum}`);
+        hLog(`${missingProd} missed ${size} ${size === 1 ? 'block' : 'blocks'} after ${lastProducedBlockNum}`);
         const _body = {
             type: 'missed_blocks',
             '@timestamp': new Date().toISOString(),
-            'missed_blocks': {
-                'producer': missingProd,
-                'last_block': lastProducedBlockNum,
-                'size': size,
-                'schedule_version': this.activeSchedule.version
+            missed_blocks: {
+                producer: missingProd,
+                last_block: lastProducedBlockNum,
+                size: size,
+                schedule_version: this.activeSchedule.version
             }
         };
-        this.esClient.index({
-            index: this.chain + '-logs-' + this.conf.settings.index_version,
-            document: _body
-        }).catch(hLog);
+        this.esClient
+            .index({
+                index: this.chain + '-logs-' + this.conf.settings.index_version,
+                document: _body
+            })
+            .catch(hLog);
     }
 
     // ------- START OF MONITORING AND CONTROL METHODS -------- //
@@ -1267,7 +1302,6 @@ export class HyperionMaster {
         if (!this.contractMonitoringInterval) {
             // Monitor Global Contract Usage
             this.contractMonitoringInterval = setInterval(() => {
-
                 // const t0 = process.hrtime.bigint();
                 this.updateWorkerAssignments();
                 // const t1 = process.hrtime.bigint();
@@ -1325,7 +1359,6 @@ export class HyperionMaster {
             }
 
             if (queue && !testedQueues.has(queue)) {
-
                 const size = await this.manager.checkQueueSize(queue);
                 queuedMessages += size;
                 let qlimit = this.conf.scaling.max_queue_limit;
@@ -1355,7 +1388,11 @@ export class HyperionMaster {
                         }
                         if (autoscaleConsumers[queue] < this.conf.scaling.max_autoscale) {
                             hLog(`${queue} is above the limit (${size}/${limit}). Launching consumer...`);
-                            this.addWorker({queue: queue, type: worker.type, worker_role: 'ingestor'});
+                            this.addWorker({
+                                queue: queue,
+                                type: worker.type,
+                                worker_role: 'ingestor'
+                            });
                             this.launchWorkers();
                             autoscaleConsumers[queue]++;
                         }
@@ -1468,15 +1505,15 @@ export class HyperionMaster {
         log_msg.push(`C:${_c}`);
         // this.metrics.consumeRate?.set(_c);
 
-        const _a = (this.deserializedActions) / this.tScale;
+        const _a = this.deserializedActions / this.tScale;
         log_msg.push(`A:${_a}`);
         // this.metrics.actionDSRate?.set(_a);
 
-        const _dds = (this.deserializedDeltas) / this.tScale
+        const _dds = this.deserializedDeltas / this.tScale;
         log_msg.push(`D:${_dds}`);
         // this.metrics.deltaDSRate?.set(_dds);
 
-        const _ir = (this.indexedObjects) / this.tScale
+        const _ir = this.indexedObjects / this.tScale;
         log_msg.push(`I:${_ir}`);
         // this.metrics.indexingRate?.set(_ir);
 
@@ -1512,7 +1549,6 @@ export class HyperionMaster {
     }
 
     private indexerMonitorCycle(reference_time: number): void {
-
         let _workers = 0;
         if (cluster.workers) {
             _workers = Object.keys(cluster.workers).length;
@@ -1523,11 +1559,10 @@ export class HyperionMaster {
         this.logMetrics(_workers);
 
         if (this.liveConsumedBlocks > 0 && this.consumedBlocks === 0 && this.conf.indexer.abi_scan_mode) {
-            hLog('Warning: Live reading on ABI SCAN mode')
+            hLog('Warning: Live reading on ABI SCAN mode');
         }
 
         if (this.liveConsumedBlocks + this.indexedObjects + this.deserializedActions + this.consumedBlocks === 0 && !this.mode_transition) {
-
             // Report completed range (parallel reading)
             if (this.total_blocks === this.total_range && !this.range_completed) {
                 const ttime = (Date.now() - reference_time) / 1000;
@@ -1553,9 +1588,7 @@ export class HyperionMaster {
                 }
             }
 
-
             if (!this.mode_transition) {
-
                 // Allow 10s threshold before shutting down the process
                 this.shutdownTimer = setTimeout(() => {
                     this.allowShutdown = true;
@@ -1565,11 +1598,11 @@ export class HyperionMaster {
                 if (this.pushedBlocks === 0) {
                     this.idle_count++;
                     if (this.auto_stop > 0) {
-                        if ((this.tScale * this.idle_count) >= this.auto_stop) {
-                            hLog("Reached limit for no blocks processed, stopping now...");
+                        if (this.tScale * this.idle_count >= this.auto_stop) {
+                            hLog('Reached limit for no blocks processed, stopping now...');
                             process.exit(1);
                         } else {
-                            const idleMsg = `No blocks processed! Indexer will stop in ${this.auto_stop - (this.tScale * this.idle_count)} seconds!`;
+                            const idleMsg = `No blocks processed! Indexer will stop in ${this.auto_stop - this.tScale * this.idle_count} seconds!`;
                             if (this.idle_count === 1) {
                                 this.emitAlert('IndexerIdle', idleMsg);
                             }
@@ -1577,7 +1610,7 @@ export class HyperionMaster {
                         }
                     } else {
                         if (!this.shutdownStarted) {
-                            const readers = this.workerMap.filter(value => {
+                            const readers = this.workerMap.filter((value) => {
                                 return value.worker_role === 'reader' || value.worker_role === 'continuous_reader';
                             });
                             if (readers.length === 0) {
@@ -1593,7 +1626,7 @@ export class HyperionMaster {
 
                             // attempt to move readers to another server if there are fail-over servers defined
                             if (this.idle_count === 3 && this.validatedShipServers.length > 1) {
-                                readers.forEach(w => {
+                                readers.forEach((w) => {
                                     w.wref?.send({event: 'next_server'});
                                 });
                             }
@@ -1620,13 +1653,12 @@ export class HyperionMaster {
             hLog('FATAL ERROR - All Workers have stopped!');
             process.exit(1);
         }
-
     }
 
     private startIndexMonitoring() {
         let reference_time = Date.now();
         setInterval(() => {
-            this.indexerMonitorCycle(reference_time)
+            this.indexerMonitorCycle(reference_time);
         }, this.log_interval);
     }
 
@@ -1652,8 +1684,8 @@ export class HyperionMaster {
     printActiveProds() {
         if (this.activeSchedule && this.activeSchedule.producers) {
             const arr = this.activeSchedule.producers.map((p, i) => {
-                const pos = (i < 9 ? "0" + (i + 1) : i + 1);
-                return "│ " + pos + " " + p.producer_name + "\t│";
+                const pos = i < 9 ? '0' + (i + 1) : i + 1;
+                return '│ ' + pos + ' ' + p.producer_name + '\t│';
             });
             const div = '──────────────────';
             console.log(`\n ⛏  Active Producers\n┌${div}┐\n${arr.join('\n')}\n└${div}┘`);
@@ -1668,21 +1700,20 @@ export class HyperionMaster {
         });
         this.pendingRepairRanges.reverse();
         let totalBlocks = 0;
-        this.pendingRepairRanges.forEach(value => {
-            value["size"] = value.end - value.start + 1;
+        this.pendingRepairRanges.forEach((value) => {
+            value['size'] = value.end - value.start + 1;
             totalBlocks += value.size;
         });
         hLog(`Filling ${totalBlocks} missing blocks...`);
         this.repairReader = this.addWorker({
             worker_role: 'repair_reader',
-            validated_ship_servers: JSON.stringify(this.validatedShipServers),
+            validated_ship_servers: JSON.stringify(this.validatedShipServers)
         });
         this.launchWorkers();
         this.connectedController = ws;
     }
 
     private createLocalController(controlPort: number) {
-
         const formatWorkerMap = () => {
             return this.workerMap.map((worker: HyperionWorkerDef) => {
                 return {
@@ -1693,7 +1724,7 @@ export class HyperionMaster {
                     worker_queue: worker.worker_queue,
                     live_mode: worker.live_mode
                 };
-            })
+            });
         };
 
         this.localController = App();
@@ -1731,7 +1762,10 @@ export class HyperionMaster {
                                     // send resume message to all indexer workers
                                     this.workerMap.forEach((worker: HyperionWorkerDef) => {
                                         if (worker.wref && worker.type === message.type) {
-                                            worker.wref.send({event: 'resume-indexer', mId: message.mId});
+                                            worker.wref.send({
+                                                event: 'resume-indexer',
+                                                mId: message.mId
+                                            });
                                         }
                                     });
                                     break;
@@ -1741,7 +1775,7 @@ export class HyperionMaster {
                 } catch (e: any) {
                     console.error(e);
                     ws.send(JSON.stringify({error: e.message}));
-                    ws.send("Invalid message format!");
+                    ws.send('Invalid message format!');
                     ws.end();
                 }
             },
@@ -1778,9 +1812,11 @@ export class HyperionMaster {
             }
         } else {
             console.log('Repair completed!');
-            this.connectedController?.send(JSON.stringify({
-                event: 'repair_completed'
-            }));
+            this.connectedController?.send(
+                JSON.stringify({
+                    event: 'repair_completed'
+                })
+            );
         }
     }
 
@@ -1788,7 +1824,6 @@ export class HyperionMaster {
 
     // Main start function
     async runMaster() {
-
         // config checks
         if (!this.conf.scaling.max_queue_limit) {
             hLog(`scaling.max_queue_limit is not defined!`);
@@ -1832,17 +1867,22 @@ export class HyperionMaster {
         // Redis
 
         // Wait for Redis availability
-        await waitUntilReady(async () => {
-            try {
-                await this.ioRedisClient.ping();
-                return true;
-            } catch (e) {
-                return false;
+        await waitUntilReady(
+            async () => {
+                try {
+                    await this.ioRedisClient.ping();
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            },
+            10,
+            5000,
+            () => {
+                hLog(`Redis not available, exiting...`);
+                process.exit();
             }
-        }, 10, 5000, () => {
-            hLog(`Redis not available, exiting...`);
-            process.exit();
-        });
+        );
 
         // Remove first indexed block from cache (v2/health)
         await this.ioRedisClient.del(`${this.manager.chain}::fib`);
@@ -1851,24 +1891,29 @@ export class HyperionMaster {
         let configuredChainId = this.manager.conn.chains[this.chain].chain_id;
 
         // Wait for Nodeos Chain API availability
-        await waitUntilReady(async () => {
-            try {
-                const info = await this.rpc.v1.chain.get_info();
-                if (info.server_version_string) {
-                    hLog(`Nodeos version: ${info.server_version_string}`);
-                    rpcChainId = info.chain_id.toString();
-                    return true;
-                } else {
+        await waitUntilReady(
+            async () => {
+                try {
+                    const info = await this.rpc.v1.chain.get_info();
+                    if (info.server_version_string) {
+                        hLog(`Nodeos version: ${info.server_version_string}`);
+                        rpcChainId = info.chain_id.toString();
+                        return true;
+                    } else {
+                        return false;
+                    }
+                } catch (e: any) {
+                    hLog(`Chain API Error: ${e.message}`);
                     return false;
                 }
-            } catch (e: any) {
-                hLog(`Chain API Error: ${e.message}`);
-                return false;
+            },
+            10,
+            5000,
+            () => {
+                hLog(`Chain API not available, exiting...`);
+                process.exit();
             }
-        }, 10, 5000, () => {
-            hLog(`Chain API not available, exiting...`);
-            process.exit();
-        });
+        );
 
         if (rpcChainId !== configuredChainId) {
             hLog(`Chain ID mismatch! Configured: ${configuredChainId} | RPC: ${rpcChainId}`);
@@ -1893,19 +1938,24 @@ export class HyperionMaster {
         });
 
         // Wait for Elasticsearch availability
-        await waitUntilReady(async () => {
-            try {
-                const esInfo = await this.esClient.info();
-                hLog(`Elasticsearch: ${esInfo.version.number} | Lucene: ${esInfo.version.lucene_version}`);
-                return true;
-            } catch (e: any) {
-                console.log(e.message);
-                return false;
+        await waitUntilReady(
+            async () => {
+                try {
+                    const esInfo = await this.esClient.info();
+                    hLog(`Elasticsearch: ${esInfo.version.number} | Lucene: ${esInfo.version.lucene_version}`);
+                    return true;
+                } catch (e: any) {
+                    console.log(e.message);
+                    return false;
+                }
+            },
+            10,
+            5000,
+            () => {
+                hLog('Failed to check elasticsearch version!');
+                process.exit();
             }
-        }, 10, 5000, () => {
-            hLog('Failed to check elasticsearch version!');
-            process.exit();
-        });
+        );
 
         await this.verifyIngestClients();
 
@@ -1913,21 +1963,21 @@ export class HyperionMaster {
 
         const prefix = this.chain + ':index';
         this.IndexingQueues = [
-            {type: 'action', name: prefix + "_actions"},
-            {type: 'block', name: prefix + "_blocks"},
-            {type: 'delta', name: prefix + "_deltas"},
-            {type: 'abi', name: prefix + "_abis"},
-            {type: 'generic', name: prefix + "_generic"}
+            {type: 'action', name: prefix + '_actions'},
+            {type: 'block', name: prefix + '_blocks'},
+            {type: 'delta', name: prefix + '_deltas'},
+            {type: 'abi', name: prefix + '_abis'},
+            {type: 'generic', name: prefix + '_generic'}
         ];
 
         const indexConfig: any = await import('../definitions/index-templates.js');
 
         const indicesList = [
-            {name: "action", type: "action"},
-            {name: "block", type: "block"},
-            {name: "abi", type: "abi"},
-            {name: "delta", type: "delta"},
-            {name: "logs", type: "logs"},
+            {name: 'action', type: 'action'},
+            {name: 'block', type: 'block'},
+            {name: 'abi', type: 'abi'},
+            {name: 'delta', type: 'delta'},
+            {name: 'logs', type: 'logs'},
             {name: 'permissionLink', type: 'link'},
             {name: 'permission', type: 'perm'},
             {name: 'resourceLimits', type: 'reslimits'},
@@ -2020,14 +2070,10 @@ export class HyperionMaster {
                     ]
                 }
             },
-            sort: [{block_num: {order: "asc"}}],
+            sort: [{block_num: {order: 'asc'}}],
             _source: {
-                includes: [
-                    "block_num",
-                    "block_id",
-                    "prev_id"
-                ]
-            },
+                includes: ['block_num', 'block_id', 'prev_id']
+            }
         });
         const totalHits = getTotalValue(init_response);
         hLog(`Total hits in range: ${totalHits}`);
@@ -2050,13 +2096,12 @@ export class HyperionMaster {
     }
 
     async startFullIndexing() {
-
         // emit kill signal
         hLog(`Killing ${this.workerMap.length} workers`);
         let disconnect_counter = 0;
         for (const w of this.workerMap) {
             if (w.wref && w.wref.isConnected()) {
-                w.wref.on("disconnect", () => {
+                w.wref.on('disconnect', () => {
                     disconnect_counter++;
                 });
                 w.wref.kill();
@@ -2096,7 +2141,6 @@ export class HyperionMaster {
         this.range_completed = false;
         this.lastProcessedBlockNum = 0;
         this.cachedInitABI = null;
-
 
         await this.findRange();
         await this.setupWorkers();
@@ -2140,9 +2184,7 @@ export class HyperionMaster {
             const lastBlockFile = `./config/chains/.${this.chain}_lastblock.txt`;
 
             const _interval = setInterval(async () => {
-
                 if (this.allowShutdown && this.starting_block) {
-
                     // prevent multiple calls
                     clearInterval(_interval);
 
@@ -2166,10 +2208,8 @@ export class HyperionMaster {
                     hLog('Shutting down master...');
                     done({ack: true});
                     process.exit(0);
-
                 }
             }, 1000);
-
         } catch (e: any) {
             done({ack: false, error: e.message});
         }
@@ -2178,9 +2218,9 @@ export class HyperionMaster {
     private addPm2Actions() {
         const ioConfig: IOConfig = {
             apmOptions: {
-                appName: this.chain + " indexer",
-                publicKey: "",
-                secretKey: "",
+                appName: this.chain + ' indexer',
+                publicKey: '',
+                secretKey: '',
                 sendLogs: true
             },
             metrics: {
@@ -2192,7 +2232,6 @@ export class HyperionMaster {
             }
         };
         pm2io.init(ioConfig);
-
 
         pm2io.action('stop', (reply: Function) => {
             this.gracefulStop((result) => {
@@ -2210,7 +2249,7 @@ export class HyperionMaster {
                     event: 'request_memory_usage'
                 },
                 'memory_report'
-            ).then(value => {
+            ).then((value) => {
                 reply(value);
             });
         });
@@ -2221,38 +2260,36 @@ export class HyperionMaster {
                     event: 'request_v8_heap_stats'
                 },
                 'v8_heap_report'
-            ).then(value => {
+            ).then((value) => {
                 reply(value);
             });
         });
     }
 
-    async requestDataFromWorkers(
-        requestEvent: { event: string, data?: any },
-        responseEventType: string,
-        timeoutSec: number = 1000
-    ) {
+    async requestDataFromWorkers(requestEvent: {event: string; data?: any}, responseEventType: string, timeoutSec: number = 1000) {
         const requests: any[] = [];
         for (const id in cluster.workers) {
             if (cluster.workers.hasOwnProperty(id)) {
                 const worker: Worker | undefined = cluster.workers[id];
-                requests.push(new Promise((resolve) => {
-                    if (worker) {
-                        const _timeout = setTimeout(() => {
-                            worker.removeListener('message', _listener);
-                            resolve([id, null]);
-                        }, timeoutSec);
-                        const _listener = (msg: any) => {
-                            if (msg.event === responseEventType) {
-                                clearTimeout(_timeout);
+                requests.push(
+                    new Promise((resolve) => {
+                        if (worker) {
+                            const _timeout = setTimeout(() => {
                                 worker.removeListener('message', _listener);
-                                resolve([msg.id, msg.data]);
-                            }
-                        };
-                        worker.on('message', _listener);
-                        worker.send(requestEvent);
-                    }
-                }));
+                                resolve([id, null]);
+                            }, timeoutSec);
+                            const _listener = (msg: any) => {
+                                if (msg.event === responseEventType) {
+                                    clearTimeout(_timeout);
+                                    worker.removeListener('message', _listener);
+                                    resolve([msg.id, msg.data]);
+                                }
+                            };
+                            worker.on('message', _listener);
+                            worker.send(requestEvent);
+                        }
+                    })
+                );
             }
         }
         const results = await Promise.all(requests);
@@ -2269,7 +2306,7 @@ export class HyperionMaster {
 
     private handleWorkerDisconnect(worker: any) {
         if (!this.mode_transition && !this.shutdownStarted) {
-            const workerReference = this.workerMap.find(value => value.worker_id === worker.id);
+            const workerReference = this.workerMap.find((value) => value.worker_id === worker.id);
             if (workerReference) {
                 hLog(`The worker #${worker.id} has disconnected, attempting to re-launch in 5 seconds...`);
                 workerReference.wref = undefined;
@@ -2300,7 +2337,7 @@ export class HyperionMaster {
             this.manager.prepareMongoClient();
             if (this.manager.mongodbClient) {
                 await this.manager.mongodbClient.connect();
-                const pingStatus = await this.manager.mongodbClient.db("admin").command({ping: 1});
+                const pingStatus = await this.manager.mongodbClient.db('admin').command({ping: 1});
                 console.log('MongoDB', pingStatus);
                 if (this.manager.conn.mongodb) {
                     const db = this.manager.mongodbClient.db(`${this.manager.conn.mongodb.database_prefix}_${this.manager.chain}`);
@@ -2317,11 +2354,11 @@ export class HyperionMaster {
                         {key: {proposal_name: 1}},
                         {key: {proposer: 1}},
                         {key: {expiration: -1}},
-                        {key: {"provided_approvals.actor": 1}},
-                        {key: {"requested_approvals.actor": 1}}
+                        {key: {'provided_approvals.actor': 1}},
+                        {key: {'requested_approvals.actor': 1}}
                     ]);
                     // voters table indices
-                    const voters = db.collection<IVoter>("voters");
+                    const voters = db.collection<IVoter>('voters');
                     await voters.createIndexes([
                         {key: {voter: 1}},
                         {key: {block_num: 1}},
@@ -2358,23 +2395,23 @@ export class HyperionMaster {
                                 {key: {'@payer': 1}}
                             ];
                             const textFields = {};
-                            if (contracts[code][table]["auto_index"]) {
+                            if (contracts[code][table]['auto_index']) {
                                 const contractAbi = await this.rpc.v1.chain.get_abi(code);
                                 if (contractAbi && contractAbi.abi) {
                                     const tables = contractAbi.abi.tables;
                                     const structs = contractAbi.abi.structs;
                                     const extractStructFlat = (structName: string) => {
-                                        const struct = structs.find(value => value.name === structName);
+                                        const struct = structs.find((value) => value.name === structName);
                                         if (struct?.base) {
                                             extractStructFlat(struct.base);
                                         }
-                                        struct?.fields.forEach(value => {
+                                        struct?.fields.forEach((value) => {
                                             const key = {};
                                             key[value.name] = -1;
                                             indices.push({key});
                                         });
                                     };
-                                    const tableData = tables.find(value => value.name === table);
+                                    const tableData = tables.find((value) => value.name === table);
                                     if (tableData) {
                                         extractStructFlat(tableData.type);
                                     }
@@ -2391,7 +2428,7 @@ export class HyperionMaster {
                                     if (indexValue === 'text') {
                                         textFields[index] = 'text';
                                     } else {
-                                        indices.push({key})
+                                        indices.push({key});
                                     }
                                 }
                             }
@@ -2401,7 +2438,7 @@ export class HyperionMaster {
                             }
                             if (Object.keys(textFields).length > 0) {
                                 await db.collection(`${code}-${table}`).createIndex(textFields, {
-                                    name: Object.keys(textFields).join('_') + "_text",
+                                    name: Object.keys(textFields).join('_') + '_text'
                                 });
                             }
                         }
@@ -2413,4 +2450,3 @@ export class HyperionMaster {
         }
     }
 }
-

@@ -1,7 +1,7 @@
-import {debugLog, hLog} from "../helpers/common_functions.js";
+import {debugLog, hLog} from '../helpers/common_functions.js';
 import WebSocket from 'ws';
-import {Abieos} from "@eosrio/node-abieos";
-import {ABI, Serializer} from "@wharfkit/antelope";
+import {Abieos} from '@eosrio/node-abieos';
+import {ABI, Bytes, Serializer} from '@wharfkit/antelope';
 
 export interface ShipServer {
     node: LabelledShipNode;
@@ -17,7 +17,6 @@ export interface LabelledShipNode {
 }
 
 export class StateHistorySocket {
-
     private ws?: WebSocket;
     private readonly max_payload_mb: number;
 
@@ -30,7 +29,6 @@ export class StateHistorySocket {
     private shipNodes: ShipServer[] = [];
 
     constructor(ship_url: string | (string | LabelledShipNode)[], max_payload_mb?: number) {
-
         const shipNodeData = process.env.validated_ship_servers;
         if (shipNodeData) {
             try {
@@ -97,7 +95,7 @@ export class StateHistorySocket {
         debugLog(`Connecting to (${this.shipNode.label}) ${this.shipNode.url}...`);
         this.ws = new WebSocket(this.shipNode.url, {
             perMessageDeflate: false,
-            maxPayload: this.max_payload_mb * 1024 * 1024,
+            maxPayload: this.max_payload_mb * 1024 * 1024
         });
         this.ws.on('open', () => {
             this.connected = true;
@@ -147,7 +145,7 @@ export class StateHistorySocket {
         await this.testShipServers(servers);
 
         // remove servers from other chains
-        servers = servers.filter(s => {
+        servers = servers.filter((s) => {
             if (s.chainId.toLowerCase() === chainId.toLowerCase()) {
                 return true;
             } else {
@@ -167,7 +165,7 @@ export class StateHistorySocket {
 
         const uniqueUrls = new Set();
 
-        servers = servers.filter(s => {
+        servers = servers.filter((s) => {
             if (uniqueUrls.has(s.node.url)) {
                 hLog(`⚠️ Removing SHIP Server ${s.node.url} :: Duplicate URL`);
                 return false;
@@ -186,7 +184,7 @@ export class StateHistorySocket {
     }
 
     private async testShipServer(server: ShipServer) {
-        await new Promise<void>(resolve => {
+        await new Promise<void>((resolve) => {
             let protocolAbi: ABI | undefined = undefined;
             const abieos = Abieos.getInstance();
             const timeout = setTimeout(() => {
@@ -197,22 +195,26 @@ export class StateHistorySocket {
 
             hLog(`Testing SHIP Server ${server.node.url}`);
             const tempWS = new WebSocket(server.node.url);
-            tempWS.on('message', (data) => {
+            tempWS.on('message', (data: Buffer) => {
                 if (!protocolAbi) {
                     const abiString = data.toString();
-                    abieos.loadAbi("0", abiString);
+                    abieos.loadAbi('0', abiString);
                     protocolAbi = ABI.from(abiString);
-                    tempWS.send(Serializer.encode({
-                        object: ['get_status_request_v0', {}],
-                        type: 'request',
-                        abi: protocolAbi
-                    }).array);
+                    tempWS.send(
+                        Serializer.encode({
+                            object: ['get_status_request_v0', {}],
+                            type: 'request',
+                            abi: protocolAbi
+                        }).array
+                    );
                 } else {
-                    const result = Serializer.objectify(Serializer.decode({
-                        data: Buffer.from(data.toString()),
-                        type: "result",
+                    const decoded = Serializer.decode({
+                        data,
+                        type: 'result',
                         abi: protocolAbi
-                    }));
+                    });
+                    const result = Serializer.objectify(decoded);
+
                     if (result[0] === 'get_status_result_v0') {
                         if (result[1].chain_id) {
                             server.chainId = result[1].chain_id.toLowerCase();
