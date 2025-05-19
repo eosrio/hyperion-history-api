@@ -14,10 +14,12 @@
     "skipLibCheck": true,
     "allowArbitraryExtensions": true,
     "strict": true,
-    "typeRoots": ["types"]
+    "typeRoots": ["types"],
+    "experimentalDecorators": true,
+    "useDefineForClassFields": true
   },
   "include": [
-    "./src/**/*.ts",
+    "./src/**/*.ts"
   ],
   "exclude": [
     "node_modules",
