@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import {cargo, ErrorCallback, QueueObject} from "async";
+import {cargo, QueueObject} from "async";
 import {Serialize} from "eosjs";
 import {HyperionWorker} from "./hyperionWorker.js";
 import {Type} from "eosjs/dist/eosjs-serialize.js";
@@ -7,6 +7,8 @@ import {debugLog, deserialize, hLog, serialize} from "../helpers/common_function
 import {RabbitQueueDef} from "../definitions/index-queues.js";
 import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
 import {Channel, ConfirmChannel} from "amqplib";
+import {API} from "@wharfkit/antelope";
+
 
 interface RequestRange {
     first_block: number;
@@ -50,10 +52,19 @@ export default class StateReader extends HyperionWorker {
     // private tempBlockSizeSum = 0;
     private shipInitStatus: any;
 
-    private forkedBlocks = new Map<string, number>();
+
     private idle = true;
     private repairMode = false;
     private internalPendingRanges: RequestRange[] = [];
+
+    // Map to store forked block ids and their timestamps
+    private forkedBlocks = new Map<string, {
+        block_num: number;
+        timestamp: number;
+    }>();
+
+    // Map to store reversible block ids indexed by block number
+    private reversibleBlockMap: Map<number, string> = new Map();
 
     constructor() {
         super();
@@ -99,20 +110,6 @@ export default class StateReader extends HyperionWorker {
         if (this.shipRev === 'v1') {
             this.baseRequest.fetch_block_header = true;
         }
-
-        setInterval(async () => {
-            for (const blockId of this.forkedBlocks.keys()) {
-                const ts = this.forkedBlocks.get(blockId);
-                if (ts) {
-                    // if older than 30 sec remove from the map
-                    if ((ts + (30 * 1000)) > Date.now()) {
-                        await this.deleteForkedBlock(blockId);
-                    } else {
-                        this.forkedBlocks.delete(blockId);
-                    }
-                }
-            }
-        }, 5000);
     }
 
     distribute(data: any[], cb: () => void) {
@@ -380,6 +377,328 @@ export default class StateReader extends HyperionWorker {
         return true;
     }
 
+    private handleStatusResult(data: any) {
+        this.shipInitStatus = data;
+        const beingBlock = this.shipInitStatus['chain_state_begin_block'];
+        const endBlock = this.shipInitStatus['chain_state_end_block'];
+        hLog(`SHIP Range from ${beingBlock} to ${endBlock}`);
+        const chain_state_begin_block = this.shipInitStatus['chain_state_begin_block'];
+        if (!this.conf.indexer.disable_reading || process.env['worker_role'] === 'repair_reader') {
+            switch (process.env['worker_role']) {
+                // range reader setup
+                case 'reader': {
+                    if (process.env.first_block && chain_state_begin_block > process.env.first_block) {
+
+                        // skip the snapshot block until a solution to parse it is found
+                        const nextBlock = chain_state_begin_block + 2;
+                        hLog(`First saved block is ahead of requested range! - Req: ${process.env.first_block} | First: ${chain_state_begin_block}`);
+                        this.local_block_num = nextBlock - 1;
+                        process.send?.({
+                            event: 'update_init_block',
+                            block_num: nextBlock
+                        });
+                        this.newRange({
+                            first_block: nextBlock,
+                            last_block: nextBlock + this.conf.scaling.batch_size
+                        });
+                    } else {
+                        this.requestBlocks(0);
+                    }
+                    break;
+                }
+                // live reader setup
+                case 'continuous_reader': {
+                    if (process.env.worker_last_processed_block) {
+                        this.requestBlocks(parseInt(process.env.worker_last_processed_block, 10));
+                    }
+                    break;
+                }
+                // repair reader setup
+                case 'repair_reader': {
+                    this.repairMode = true;
+                    hLog('Waiting for operations...');
+                    process.send?.({
+                        event: 'repair_reader_ready'
+                    });
+                    break;
+                }
+            }
+        } else {
+            this.ship.close(true);
+            process.exit(1);
+        }
+    }
+
+    private registerReversibleBlock(new_block_num: number, new_block_id: string, res: any) {
+
+        // console.log(`Registering reversible block ${block_num} with id ${block_id}`);
+        // console.log(`[${new_block_num}] Reversible map size: ${this.reversibleBlockMap.size} | Forked map size: ${this.forkedBlocks.size}`);
+
+        // check for a forked block being re-applied
+        if (this.forkedBlocks.has(new_block_id)) {
+            // if the block is already registered, we can check if the id is the same
+            const forkedBlock = this.forkedBlocks.get(new_block_id);
+            if (forkedBlock && forkedBlock.block_num === new_block_num) {
+                // remove the forked block from the map
+                this.forkedBlocks.delete(new_block_id);
+                hLog(`⚠️ Re-applied forked block ${new_block_num} [${new_block_id}]`);
+            }
+        }
+
+        // check if the block is already registered
+        const existingBlockId = this.reversibleBlockMap.get(new_block_num);
+        if (existingBlockId) {
+
+            // if the block is already registered, we can check if the id is the same
+            if (existingBlockId !== new_block_id) {
+                // if the id is different, we can log a warning or handle it as needed
+                debugLog(`Block ${new_block_num} has a different id! Existing: ${existingBlockId}, New: ${new_block_id}`);
+
+                // add the forked block to the pending list for deletion
+                this.forkedBlocks.set(existingBlockId, {block_num: new_block_num, timestamp: Date.now()});
+
+                // Update the reversible block map with the new id
+                this.reversibleBlockMap.set(new_block_num, new_block_id);
+
+                // trigger fork handling
+                this.processForkedBlocks();
+            } else {
+                // if the id is the same, we can log that it's already registered
+                console.log(`⚠️⚠️ Block ${new_block_num} is already registered with the same id!`);
+                // indexing can be skipped for this one
+                console.log(res);
+            }
+
+        } else {
+
+            // register the block for the first time
+            this.reversibleBlockMap.set(new_block_num, new_block_id);
+        }
+    }
+
+    private forkHandlingTimeout: NodeJS.Timeout | null = null;
+    private forkHandlingMode = false;
+
+    private processForkedBlocks() {
+        if (this.forkHandlingMode) {
+            // hLog(`Recent fork event, resetting timeout, delaying fork handling...`);
+            if (this.forkHandlingTimeout) {
+                clearTimeout(this.forkHandlingTimeout);
+                this.forkHandlingTimeout = null;
+            }
+        } else {
+            this.forkHandlingMode = true;
+        }
+        this.forkHandlingTimeout = setTimeout(() => {
+            this.removeForkedBlocks().catch(console.error);
+        }, 13 * 500); // wait for a full round to remove forked blocks
+    }
+
+    private async removeForkedBlocks() {
+        const forkedBlocks = Array.from(this.forkedBlocks.entries());
+        console.log(`⚠️ Checking ${forkedBlocks.length} forked blocks for removal...`);
+        const pendingList: any[] = [];
+        const removedList: any[] = [];
+        for (const [block_id, val] of forkedBlocks) {
+            try {
+                // Confirm the block was actually forked using the chain api
+                let blockData: API.v1.GetBlockResponse | null = null;
+                try {
+                    blockData = await this.rpc.v1.chain.get_block(block_id.toLowerCase());
+                    if (blockData) {
+                        if (blockData.block_num.toNumber() === val.block_num) {
+                            console.log(`Block ${blockData.block_num.toNumber()} ${block_id} is still present on the chain, not forked.`);
+                            // check if the block is older than the last irreversible block
+                            if (val.block_num <= this.local_lib) {
+                                console.log(`Block ${block_id} is older than the lib, definitely not forked.`);
+                                this.forkedBlocks.delete(block_id);
+                            } else {
+
+                                // check the current id for the same block number on the reversible block map
+                                const currentBlockId = this.reversibleBlockMap.get(blockData.block_num.toNumber());
+                                if (currentBlockId && currentBlockId !== block_id) {
+                                    // handle as a forked block, since a new different id was received after the fork
+                                    blockData = null;
+                                } else {
+                                    pendingList.push({block_id, ...val});
+                                }
+                            }
+                        } else {
+                            hLog(`[WARNING] Unexpected block number for ${block_id}: ${blockData.block_num.toNumber()} (expected: ${val.block_num})`);
+                        }
+                    }
+                } catch (e: any) {
+                    console.log(e.message);
+                    // delete the block from the forked blocks map
+                    this.forkedBlocks.delete(block_id);
+                }
+
+                if (blockData === null) {
+                    console.log(`Block ${block_id} not found, confirming it was forked.`);
+                    removedList.push({block_id, ...val});
+                    await this.deleteForkedBlockById(block_id, val.block_num);
+                    // delete the block from the forked blocks map
+                    this.forkedBlocks.delete(block_id);
+                }
+            } catch (e: any) {
+                hLog(`Error deleting forked block ${block_id}: ${e.message}`);
+            }
+        }
+
+        if (pendingList.length > 0) {
+            // re-schedule the fork handling
+            const lastBlock = pendingList[pendingList.length - 1];
+            const timeToLib = (lastBlock.block_num - this.local_lib) * 500;
+            console.log(`Block ${lastBlock.block_id} is not forked, rescheduling fork handling in ${timeToLib}ms...`);
+            setTimeout(() => {
+                this.removeForkedBlocks().catch(console.error);
+            }, timeToLib);
+        }
+
+        if (removedList.length > 0) {
+            this.logForkedBlocks(removedList);
+        }
+
+        this.forkHandlingMode = false;
+        this.forkHandlingTimeout = null;
+    }
+
+    private cleanReversibleBlocks(lib: { block_num: number, block_id: string }) {
+        // console.log(`Cleaning reversible blocks up to ${lib.block_num}`, lib);
+        // remove reversible blocks that are older than the lib
+        this.reversibleBlockMap.forEach((block_id, block_num) => {
+            if (block_num <= lib.block_num) {
+                this.reversibleBlockMap.delete(block_num);
+                // console.log(`Deleting reversible block ${block_num} with id ${block_id}`);
+            }
+        });
+    }
+
+    private async handleBlockResult(res: any, data: Buffer) {
+        if (res['this_block']) {
+            this.idle = false;
+            const blk_num = res['this_block']['block_num'];
+            const blk_id = (res['this_block']['block_id'] as string).toLowerCase();
+
+            const lib = res['last_irreversible'];
+            const task_payload = {
+                num: blk_num,
+                content: data
+            };
+
+            if (res.block && res.traces && res.deltas) {
+
+                if (this.repairMode) {
+                    hLog("Repaired block: " + blk_num);
+                }
+
+                debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
+            } else {
+                if (!res.traces) {
+                    debugLog('missing traces field');
+                }
+                if (!res.deltas) {
+                    debugLog('missing deltas field');
+                }
+                if (!res.block) {
+                    debugLog('missing block field');
+                }
+            }
+
+            if (this.isLiveReader) {
+
+                // LIVE READER MODE
+                let prev_id: string | undefined = undefined;
+                if (res['prev_block'] && res['prev_block']['block_id']) {
+                    prev_id = res['prev_block']['block_id'];
+                }
+
+                // Register the reversible block to handle forks later
+                this.registerReversibleBlock(blk_num, blk_id, res);
+
+                // if ((this.local_block_id && prev_id && this.local_block_id !== prev_id) || (blk_num !== this.local_block_num + 1)) {
+                //
+                //     console.log((this.local_block_id && prev_id && this.local_block_id !== prev_id), (blk_num !== this.local_block_num + 1));
+                //     console.log(blk_num, this.local_block_num + 1);
+                //
+                //     hLog(`Unlinked block at ${prev_id} with previous block ${this.local_block_id}`);
+                //     hLog(`Forked block: ${blk_num}`);
+                //     try {
+                //         // delete all previously stored data for the forked blocks
+                //         // await this.handleFork(res);
+                //     } catch (e: any) {
+                //         hLog(`Failed to handle fork during live reading! - Error: ${e.message}`);
+                //     }
+                // }
+
+                this.local_block_num = blk_num;
+                this.local_block_id = blk_id;
+
+                if (lib.block_num > this.local_lib) {
+                    this.local_lib = lib.block_num;
+                    // emit lib update event
+                    process.send?.({event: 'lib_update', data: lib});
+                    this.cleanReversibleBlocks(lib);
+                }
+
+                await this.stageOneDistQueue.push(task_payload);
+
+                return 1;
+
+            } else {
+
+                // Detect skipped first block
+                if (!this.receivedFirstBlock) {
+                    if (blk_num !== this.local_block_num + 1) {
+                        // Special case for block 2 that is actually the first block on ship
+                        if (blk_num !== 2) {
+                            hLog(`WARNING: First block received was #${blk_num}, but #${this.local_block_num + 1} was expected!`);
+                            hLog(`Make sure the block.log file contains the requested range, check with "eosio-blocklog --smoke-test"`);
+                        }
+                        this.local_block_num = blk_num - 1;
+                        this.local_distributed_count++;
+                        process.send?.({
+                            event: 'skipped_block',
+                            block_num: this.local_block_num + 1
+                        })
+                    }
+                    this.receivedFirstBlock = true;
+                }
+
+                // BACKLOG MODE
+                if (this.future_block !== 0 && this.future_block === blk_num) {
+                    hLog('Missing block ' + blk_num + ' received!');
+                } else {
+                    this.future_block = 0;
+                }
+
+                if (blk_num === this.local_block_num + 1) {
+                    this.local_block_num = blk_num;
+                    if (res['block'] || res['traces'] || res['deltas']) {
+                        await this.stageOneDistQueue.push(task_payload);
+                        return 1;
+                    } else {
+                        if (blk_num === 1) {
+                            await this.stageOneDistQueue.push(task_payload);
+                            return 1;
+                        } else {
+                            return 0;
+                        }
+                    }
+                } else {
+                    hLog(`Missing block: ${(this.local_block_num + 1)} current block: ${blk_num}`)
+                    this.future_block = blk_num + 1;
+                    return 0;
+                }
+            }
+        } else {
+            if (this.repairMode) {
+                hLog("No data on requested block!");
+            }
+            this.idle = true;
+        }
+    }
+
     private async onMessage(data: Buffer) {
         // this.tempBlockSizeSum += data.length;
 
@@ -392,208 +711,25 @@ export default class StateReader extends HyperionWorker {
             hLog("[FATAL ERROR] undefined role! Exiting now!");
             this.ship.close(false);
             process.exit(1);
-            return;
         }
 
         // NORMAL OPERATION MODE
         if (!this.recovery) {
-
             const result = deserialize('result', data, this.txEnc, this.txDec, this.types);
-
-            // ship status message
-            if (result[0] === 'get_status_result_v0') {
-                this.shipInitStatus = result[1];
-                const beingBlock = this.shipInitStatus['chain_state_begin_block'];
-                const endBlock = this.shipInitStatus['chain_state_end_block'];
-                hLog(`SHIP Range from ${beingBlock} to ${endBlock}`);
-                const chain_state_begin_block = this.shipInitStatus['chain_state_begin_block'];
-                if (!this.conf.indexer.disable_reading || process.env['worker_role'] === 'repair_reader') {
-
-                    switch (process.env['worker_role']) {
-
-                        // range reader setup
-                        case 'reader': {
-                            if (process.env.first_block && chain_state_begin_block > process.env.first_block) {
-
-                                // skip snapshot block until a solution to parse it is found
-                                const nextBlock = chain_state_begin_block + 2;
-                                hLog(`First saved block is ahead of requested range! - Req: ${process.env.first_block} | First: ${chain_state_begin_block}`);
-                                this.local_block_num = nextBlock - 1;
-                                process.send?.({
-                                    event: 'update_init_block',
-                                    block_num: nextBlock
-                                });
-                                this.newRange({
-                                    first_block: nextBlock,
-                                    last_block: nextBlock + this.conf.scaling.batch_size
-                                });
-                            } else {
-                                this.requestBlocks(0);
-                            }
-                            break;
-                        }
-
-                        // live reader setup
-                        case 'continuous_reader': {
-                            if (process.env.worker_last_processed_block) {
-                                this.requestBlocks(parseInt(process.env.worker_last_processed_block, 10));
-                            }
-                            break;
-                        }
-
-                        case 'repair_reader': {
-                            this.repairMode = true;
-                            hLog('Waiting for operations...');
-                            process.send?.({
-                                event: 'repair_reader_ready'
-                            });
-                            break;
-                        }
-
-                    }
-                } else {
-                    this.ship.close(true);
-                    process.exit(1);
+            switch (result[0]) {
+                case 'get_status_result_v0': {
+                    this.handleStatusResult(result[1]);
+                    break;
                 }
-
-            } else {
-
-                // ship block message
-                const res = result[1];
-
-                if (res['this_block']) {
-                    this.idle = false;
-                    const blk_num = res['this_block']['block_num'];
-                    const blk_id = res['this_block']['block_id'];
-
-                    const lib = res['last_irreversible'];
-                    const task_payload = {num: blk_num, content: data};
-
-                    if (res.block && res.traces && res.deltas) {
-
-                        if (this.repairMode) {
-                            hLog("Repaired block: " + blk_num);
-                        }
-
-                        debugLog(`block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`);
-                    } else {
-                        if (!res.traces) {
-                            debugLog('missing traces field');
-                        }
-                        if (!res.deltas) {
-                            debugLog('missing deltas field');
-                        }
-                        if (!res.block) {
-                            debugLog('missing block field');
-                        }
-                    }
-
-                    if (this.isLiveReader) {
-
-                        // LIVE READER MODE
-                        let prev_id;
-                        if (res['prev_block'] && res['prev_block']['block_id']) {
-                            prev_id = res['prev_block']['block_id'];
-                        }
-
-                        // // 2% chance to modify the previous block id to simulate a fork
-                        // if (Math.random() < 0.02) {
-                        //     // prev_id = prev_id + 'a';
-                        //     this.local_block_num = this.local_block_num - 1;
-                        // }
-
-                        if ((this.local_block_id && prev_id && this.local_block_id !== prev_id) || (blk_num !== this.local_block_num + 1)) {
-
-                            console.log((this.local_block_id && prev_id && this.local_block_id !== prev_id), (blk_num !== this.local_block_num + 1));
-                            console.log(blk_num, this.local_block_num + 1);
-
-                            hLog(`Unlinked block at ${prev_id} with previous block ${this.local_block_id}`);
-                            hLog(`Forked block: ${blk_num}`);
-                            try {
-                                // delete all previously stored data for the forked blocks
-                                await this.handleFork(res);
-                            } catch (e: any) {
-                                hLog(`Failed to handle fork during live reading! - Error: ${e.message}`);
-                            }
-                        }
-
-                        this.local_block_num = blk_num;
-                        this.local_block_id = blk_id;
-
-                        if (lib.block_num > this.local_lib) {
-                            this.local_lib = lib.block_num;
-                            // emit lib update event
-                            process.send?.({event: 'lib_update', data: lib});
-                        }
-
-                        await this.stageOneDistQueue.push(task_payload);
-
-                        return 1;
-
-                    } else {
-
-                        // Detect skipped first block
-                        if (!this.receivedFirstBlock) {
-                            if (blk_num !== this.local_block_num + 1) {
-                                // Special case for block 2 that is actually the first block on ship
-                                if (blk_num !== 2) {
-                                    hLog(`WARNING: First block received was #${blk_num}, but #${this.local_block_num + 1} was expected!`);
-                                    hLog(`Make sure the block.log file contains the requested range, check with "eosio-blocklog --smoke-test"`);
-                                }
-                                this.local_block_num = blk_num - 1;
-                                this.local_distributed_count++;
-                                process.send?.({
-                                    event: 'skipped_block',
-                                    block_num: this.local_block_num + 1
-                                })
-                            }
-                            this.receivedFirstBlock = true;
-                        }
-
-                        // BACKLOG MODE
-                        if (this.future_block !== 0 && this.future_block === blk_num) {
-                            hLog('Missing block ' + blk_num + ' received!');
-                        } else {
-                            this.future_block = 0;
-                        }
-
-                        if (blk_num === this.local_block_num + 1) {
-                            this.local_block_num = blk_num;
-                            if (res['block'] || res['traces'] || res['deltas']) {
-                                await this.stageOneDistQueue.push(task_payload);
-                                return 1;
-                            } else {
-                                if (blk_num === 1) {
-                                    await this.stageOneDistQueue.push(task_payload);
-                                    return 1;
-                                } else {
-                                    return 0;
-                                }
-                            }
-                        } else {
-                            hLog(`Missing block: ${(this.local_block_num + 1)} current block: ${blk_num}`)
-                            this.future_block = blk_num + 1;
-                            return 0;
-                        }
-                    }
-                } else {
-                    if (this.repairMode) {
-                        hLog("No data on requested block!");
-                    }
-                    this.idle = true;
-                    // hLog(`Reader is idle! - Head at: ${result[1].head.block_num}`);
-                    // this.ship.close(true);
-                    // const queueSize = [this.stageOneDistQueue.length(), this.blockReadingQueue.length()];
-                    // hLog(queueSize);
-                    // process.send({
-                    //     event: 'kill_worker',
-                    //     id: process.env['worker_id']
-                    // });
+                case 'get_blocks_result_v0': {
+                    await this.handleBlockResult(result[1], data);
+                    break;
+                }
+                default: {
+                    hLog(`Unknown message type: ${result[0]}`);
                 }
             }
-
         } else {
-
             // RECOVERY MODE
             if (this.isLiveReader) {
                 hLog(`Resuming live stream from block ${this.local_block_num}...`);
@@ -688,62 +824,97 @@ export default class StateReader extends HyperionWorker {
         }
     }
 
-    private async deleteForkedBlock(block_id: string) {
-        const searchBody = {
-            query: {bool: {must: [{term: {block_id: block_id}}]}}
-        };
+    private async deleteForkedBlockById(block_id: string, block_num: number) {
+
+        const searchBody = {query: {bool: {must: [{term: {block_id: block_id}}]}}};
+
+        // use the block_num and the index partition size to determine the index to search
+        const indexPartition = Math.floor(block_num / this.conf.settings.index_partition_size);
+        const indexName = this.chain + '-block-' + this.conf.settings.index_version + '-' + indexPartition.toString().padStart(6, '0');
+
+        // remove block
+        try {
+            const blockResult = await this.client.deleteByQuery({
+                index: this.chain + '-block-' + this.conf.settings.index_version + '-*',
+                refresh: true,
+                ...searchBody
+            });
+            if (blockResult && blockResult.deleted && blockResult.deleted > 0) {
+                hLog(`${blockResult.deleted} blocks removed from ${block_id}`);
+            } else {
+                if (blockResult.failures && blockResult.failures.length > 0) {
+                    hLog('dbqResultBlock - Operation failed');
+                    console.log(blockResult.failures);
+                }
+            }
+        } catch (e: any) {
+            hLog(`Error deleting block ${block_id}: ${e.message}`);
+        }
 
         // remove deltas
-        const dbqResultDelta = await this.client.deleteByQuery({
-            index: this.chain + '-delta-' + this.conf.settings.index_version + '-*',
-            refresh: true,
-            ...searchBody
-        });
-
-        if (dbqResultDelta && dbqResultDelta.deleted) {
-            hLog(`${dbqResultDelta} deltas removed from ${block_id}`);
-        } else {
-            hLog('Operation failed');
+        try {
+            const dbqResultDelta = await this.client.deleteByQuery({
+                index: this.chain + '-delta-' + this.conf.settings.index_version + '-*',
+                refresh: true,
+                ...searchBody
+            });
+            if (dbqResultDelta && dbqResultDelta.deleted && dbqResultDelta.deleted > 0) {
+                hLog(`${dbqResultDelta.deleted} deltas removed from ${block_id}`);
+            } else {
+                if (dbqResultDelta.failures && dbqResultDelta.failures.length > 0) {
+                    hLog('dbqResultDelta - Operation failed');
+                    console.log(dbqResultDelta.failures);
+                }
+            }
+        } catch (e: any) {
+            hLog(`Error deleting deltas for block ${block_id}: ${e.message}`);
         }
 
         // remove actions
-        const dbqResultAction = await this.client.deleteByQuery({
-            index: this.chain + '-action-' + this.conf.settings.index_version + '-*',
-            refresh: true,
-            ...searchBody
-        });
-
-        if (dbqResultAction && dbqResultAction.deleted) {
-            hLog(`${dbqResultAction.deleted} traces removed from ${block_id}`);
-        } else {
-            hLog('Operation failed');
-        }
-    }
-
-    private async handleFork(data: any) {
-        const this_block = data['this_block'];
-        await this.logForkEvent(this_block['block_num'], this.local_block_num, this_block['block_id']);
-        hLog(`Handling fork event: new block ${this_block['block_num']} has id ${this_block['block_id']}`);
-
-        let targetBlock = this_block['block_num'];
-        while (targetBlock < this.local_block_num + 1) {
-            // fetch by block number to find the forked block_id
-            const blockData = await this.client.get<any>({
-                index: this.chain + '-block-' + this.conf.settings.index_version,
-                id: targetBlock
+        try {
+            const dbqResultAction = await this.client.deleteByQuery({
+                index: this.chain + '-action-' + this.conf.settings.index_version + '-*',
+                refresh: true,
+                ...searchBody
             });
-            targetBlock++;
-            if (blockData) {
-                const targetBlockId = blockData._source.block_id;
-                this.forkedBlocks.set(targetBlockId, Date.now());
-                try {
-                    await this.deleteForkedBlock(targetBlockId);
-                } catch (e: any) {
-                    hLog(`Error deleting forked block ${targetBlockId}: ${e.message}`);
+            if (dbqResultAction && dbqResultAction.deleted && dbqResultAction.deleted > 0) {
+                hLog(`${dbqResultAction.deleted} traces removed from ${block_id}`);
+            } else {
+                if (dbqResultAction.failures && dbqResultAction.failures.length > 0) {
+                    hLog('dbqResultAction - Operation failed');
+                    console.log(dbqResultAction.failures);
                 }
             }
+        } catch (e: any) {
+            hLog(`Error deleting actions for block ${block_id}: ${e.message}`);
         }
     }
+
+    // private async handleFork(data: any) {
+    //     const this_block = data['this_block'];
+    //     await this.logForkEvent(this_block['block_num'], this.local_block_num, this_block['block_id']);
+    //     hLog(`Handling fork event: new block ${this_block['block_num']} has id ${this_block['block_id']}`);
+    //
+    //     let targetBlock = this_block['block_num'];
+    //     while (targetBlock < this.local_block_num + 1) {
+    //         // fetch by block number to find the forked block_id
+    //         const blockData = await this.client.get<any>({
+    //             index: this.chain + '-block-' + this.conf.settings.index_version,
+    //             id: targetBlock
+    //         });
+    //         targetBlock++;
+    //         if (blockData) {
+    //             const targetBlockId = blockData._source.block_id;
+    //             this.forkedBlocks.set(targetBlockId, Date.now());
+    //             console.log('forkedBlocks', this.forkedBlocks);
+    //             try {
+    //                 await this.deleteForkedBlock(targetBlockId);
+    //             } catch (e: any) {
+    //                 hLog(`Error deleting forked block ${targetBlockId}: ${e.message}`);
+    //             }
+    //         }
+    //     }
+    // }
 
     private async logForkEvent(starting_block: number, ending_block: number, new_id: string) {
         process.send?.({event: 'fork_event', data: {starting_block, ending_block, new_id}});
@@ -840,6 +1011,21 @@ export default class StateReader extends HyperionWorker {
         process.send?.({
             event: 'completed',
             id: process.env['worker_id']
+        });
+    }
+
+    private logForkedBlocks(removedList: any[]) {
+        const logData = removedList.map((block: any) => {
+            return {
+                block_id: block.block_id,
+                block_num: block.block_num,
+                timestamp: new Date(block.timestamp).toISOString()
+            };
+        });
+        console.table(logData);
+        process.send?.({
+            event: 'forked_blocks',
+            data: logData
         });
     }
 }
