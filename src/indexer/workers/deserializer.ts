@@ -822,8 +822,6 @@ export default class MainDSWorker extends HyperionWorker {
 
         const [abiStatus, tableType, validFrom, validUntil] = await this.verifyLocalType(row['code'], row['table'], block, "table");
 
-        console.log(abiStatus, tableType, validFrom, validUntil);
-
         if (abiStatus && tableType) {
             let result: string;
             try {
@@ -1235,12 +1233,8 @@ export default class MainDSWorker extends HyperionWorker {
                     }
                 }
 
-                console.log("contract_row", payload);
-
                 // decode contract data
                 let jsonRow = await this.processContractRowNative(payload, block_num);
-
-                console.log("contract_row_done", jsonRow);
 
                 // if (jsonRow?.value) {
                 //     hLog(`Deserialization failed for contract row:`, jsonRow);
