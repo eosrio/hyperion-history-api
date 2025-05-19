@@ -197,7 +197,7 @@ export class StateHistorySocket {
 
             hLog(`Testing SHIP Server ${server.node.url}`);
             const tempWS = new WebSocket(server.node.url);
-            tempWS.on('message', (data) => {
+            tempWS.on('message', (data: Buffer) => {
                 if (!protocolAbi) {
                     const abiString = data.toString();
                     abieos.loadAbi("0", abiString);
@@ -209,7 +209,7 @@ export class StateHistorySocket {
                     }).array);
                 } else {
                     const result = Serializer.objectify(Serializer.decode({
-                        data: Buffer.from(data.toString()),
+                        data,
                         type: "result",
                         abi: protocolAbi
                     }));
