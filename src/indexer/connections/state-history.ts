@@ -1,8 +1,7 @@
-import {debugLog, deserialize, hLog, serialize} from "../helpers/common_functions.js";
+import {debugLog, hLog} from "../helpers/common_functions.js";
 import WebSocket from 'ws';
 import {Abieos} from "@eosrio/node-abieos";
-import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
-import {Serialize} from "eosjs";
+import {ABI, Serializer} from "@wharfkit/antelope";
 
 export interface ShipServer {
     node: LabelledShipNode;
@@ -186,14 +185,8 @@ export class StateHistorySocket {
 
     private async testShipServer(server: ShipServer) {
         await new Promise<void>(resolve => {
-            let protocolAbi: Abi | undefined = undefined;
-            let types: Map<string, Serialize.Type>;
-
+            let protocolAbi: ABI | undefined = undefined;
             const abieos = Abieos.getInstance();
-            const tables = new Map();
-            const txEnc = new TextEncoder();
-            const txDec = new TextDecoder();
-
             const timeout = setTimeout(() => {
                 server.active = false;
                 hLog(`Testing SHIP Server ${server.node.url} :: Timeout after 5s`);
@@ -206,17 +199,18 @@ export class StateHistorySocket {
                 if (!protocolAbi) {
                     const abiString = data.toString();
                     abieos.loadAbi("0", abiString);
-                    protocolAbi = JSON.parse(abiString) as Abi;
-                    types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), protocolAbi);
-                    protocolAbi.tables.map((table) => {
-                        return tables.set(table.name, table.type);
-                    });
-                    // notify master about first abi
-                    // process.send?.({event: 'init_abi', data: abiString});
-                    // request status
-                    tempWS.send(serialize('request', ['get_status_request_v0', {}], txEnc, txDec, types));
+                    protocolAbi = ABI.from(abiString);
+                    tempWS.send(Serializer.encode({
+                        object: ['get_status_request_v0', {}],
+                        type: 'request',
+                        abi: protocolAbi
+                    }).array);
                 } else {
-                    const result = deserialize('result', data, txEnc, txDec, types);
+                    const result = Serializer.objectify(Serializer.decode({
+                        data: Buffer.from(data.toString()),
+                        type: "result",
+                        abi: protocolAbi
+                    }));
                     if (result[0] === 'get_status_result_v0') {
                         if (result[1].chain_id) {
                             server.chainId = result[1].chain_id.toLowerCase();

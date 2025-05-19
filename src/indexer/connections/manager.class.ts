@@ -1,5 +1,4 @@
 import {ConfigurationModule} from "../modules/config.js";
-import {JsonRpc} from "eosjs";
 import {Client} from '@elastic/elasticsearch'
 import {HyperionConnections} from "../../interfaces/hyperionConnections.js";
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";

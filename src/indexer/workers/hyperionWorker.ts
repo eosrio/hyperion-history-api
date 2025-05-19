@@ -13,7 +13,7 @@ import {BasicDelta} from "../../interfaces/hyperion-delta.js";
 import {getHeapStatistics, HeapInfo} from "node:v8";
 import {HyperionActionAct} from "../../interfaces/hyperion-action.js";
 import {APIClient} from "@wharfkit/antelope";
-import {SavedAbi} from "../../interfaces/hyperion-abi.js";
+import {HyperionAbi, SavedAbi} from "../../interfaces/hyperion-abi.js";
 
 export abstract class HyperionWorker {
 
@@ -244,7 +244,7 @@ export abstract class HyperionWorker {
         return this.filters.delta_whitelist.has(this.codeDeltaPair(delta));
     }
 
-    async getAbiFromHeadBlock(code: string): Promise<SavedAbi | undefined> {
+    async getAbiFromHeadBlock(code: string): Promise<HyperionAbi | null> {
         try {
             const result = await this.rpc.v1.chain.get_abi(code);
             if (result && result.abi) {
@@ -257,6 +257,7 @@ export abstract class HyperionWorker {
         } catch (e) {
             hLog(e);
         }
+        return null;
     }
 
     loadAbiHex(contract: string, block_num: number, abi_hex: string) {

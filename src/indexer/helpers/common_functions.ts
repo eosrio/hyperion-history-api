@@ -1,10 +1,11 @@
-import {Client, estypes} from "@elastic/elasticsearch";
-import {existsSync, readFileSync} from "fs";
-import {join} from "path";
-import {getTotalValue} from "../../api/helpers/functions.js";
-import {Serialize} from "eosjs";
-import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 import {Cluster} from "node:cluster";
+import {existsSync, readFileSync} from "node:fs";
+import {join} from "node:path";
+
+import {Client, estypes} from "@elastic/elasticsearch";
+
+import {getTotalValue} from "../../api/helpers/functions.js";
+import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 import {RequestFilter} from "../../interfaces/stream-requests.js";
 
 let config: HyperionConfig | undefined;
@@ -193,24 +194,6 @@ export function messageAllWorkers(cl: Cluster, payload: {
     }
 }
 
-export function serialize(type, value, txtEnc, txtDec, types) {
-    const buffer = new Serialize.SerialBuffer({
-        textEncoder: txtEnc,
-        textDecoder: txtDec
-    });
-    Serialize.getType(types, type).serialize(buffer, value);
-    return buffer.asUint8Array();
-}
-
-export function deserialize(type, array, txtEnc, txtDec, types) {
-    const buffer = new Serialize.SerialBuffer({
-        textEncoder: txtEnc,
-        textDecoder: txtDec,
-        array
-    });
-    return Serialize.getType(types, type).deserialize(buffer, new Serialize.SerializerState({bytesAsUint8Array: true}));
-}
-
 function getNested(path_array: string[], jsonObj: Record<string, any>, operator?: string) {
     const nextPath = path_array.shift();
     if (!nextPath) {
@@ -373,7 +356,7 @@ export function debugLog(text: any, ...extra: any[]) {
         readConfigFromFile();
     }
     if (config?.settings.debug) {
-        hLog(text, ...extra);
+        hLog('[debug]', text, ...extra);
     }
 }
 

@@ -1,19 +1,18 @@
-import { Command } from "commander";
+import {Command} from "commander";
 import path from "path";
-import { cp, mkdir, readdir, readFile, rm, writeFile } from "fs/promises";
-import { HyperionConfig, ScalingConfigs } from "../interfaces/hyperionConfig.js";
-import { HyperionConnections } from "../interfaces/hyperionConnections.js";
-import { copyFileSync, existsSync, rmSync } from "fs";
-import { JsonRpc } from "eosjs";
+import {cp, mkdir, readdir, readFile, rm, writeFile} from "fs/promises";
+import {HyperionConfig, ScalingConfigs} from "../interfaces/hyperionConfig.js";
+import {HyperionConnections} from "../interfaces/hyperionConnections.js";
+import {copyFileSync, existsSync, rmSync} from "fs";
 
 import WebSocket from 'ws';
 import * as readline from "readline";
 import * as amqp from "amqplib";
-import { Redis } from "ioredis";
-import { Client } from "@elastic/elasticsearch";
-import { APIClient } from "@wharfkit/antelope";
-import { StateHistorySocket } from "../indexer/connections/state-history.js";
-import { MongoClient } from "mongodb";
+import {Redis} from "ioredis";
+import {Client} from "@elastic/elasticsearch";
+import {APIClient} from "@wharfkit/antelope";
+import {StateHistorySocket} from "../indexer/connections/state-history.js";
+import {MongoClient} from "mongodb";
 
 type AllowedIndexValue = 1 | -1 | "text" | "date" | "2dsphere";
 
@@ -302,10 +301,10 @@ async function newChain(shortName: string, options) {
 
         // test nodeos availability
         try {
-            const jsonRpc = new JsonRpc(options.http, { fetch });
-            const info = await jsonRpc.get_info();
+            const apiClient = new APIClient({url: options.http, fetch});
+            const info = await apiClient.v1.chain.get_info();
             jsonData.api.chain_api = options.http;
-            connections.chains[shortName].chain_id = info.chain_id;
+            connections.chains[shortName].chain_id = info.chain_id.toString();
             connections.chains[shortName].http = options.http;
             if (info.server_version_string) {
                 if (info.server_version_string.includes('v3')) {
@@ -402,7 +401,7 @@ async function testChain(shortName: string) {
     console.log(`Checking HTTP endpoint: ${httpEndpoint}`);
     let httpChainId = '';
     try {
-        const apiClient = new APIClient({ url: httpEndpoint });
+        const apiClient = new APIClient({url: httpEndpoint});
         const info = await apiClient.v1.chain.get_info();
         httpChainId = info.chain_id.toString();
     } catch (e: any) {
@@ -607,9 +606,9 @@ interface CheckMongoResult {
 async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult> {
     console.log(`\n[info] [MONGODB] - Testing MongoDB connection...`);
     const _mongo = conn.mongodb;
-    if (!_mongo || !_mongo.enabled) { 
+    if (!_mongo || !_mongo.enabled) {
         console.log('[info] [MONGODB] - MongoDB is not configured or not enabled.');
-        return { success: true, errorType: 'NONE' }; // Treat as success if not enabled/configured
+        return {success: true, errorType: 'NONE'}; // Treat as success if not enabled/configured
     }
 
     let uri = "mongodb://";
@@ -623,14 +622,14 @@ async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult
     try {
         await client.connect();
         const adminDb = client.db('admin');
-        const result = await adminDb.command({ ping: 1 });
+        const result = await adminDb.command({ping: 1});
         if (result && result.ok === 1) {
             console.log('[info] [MONGODB] - Connection established!');
-            return { success: true, errorType: 'NONE' };
+            return {success: true, errorType: 'NONE'};
         } else {
             const errMsg = 'Failed to ping the database.';
             console.log('[error] [MONGODB] - ' + errMsg);
-            return { success: false, errorType: 'OTHER', message: errMsg };
+            return {success: false, errorType: 'OTHER', message: errMsg};
         }
     } catch (error: any) {
         const errMsg = error.message || 'Unknown MongoDB error';
@@ -641,12 +640,12 @@ async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult
         } else if (errMsg.includes('ECONNREFUSED') || errMsg.includes('ENOTFOUND') || errMsg.includes('connect timed out')) {
             errorType = 'CONNECTION';
         }
-        return { success: false, errorType: errorType, message: errMsg };
+        return {success: false, errorType: errorType, message: errMsg};
     } finally {
         // Ensure client.close() is called even if connect() fails
         // Use optional chaining in case client wasn't initialized properly
         await client?.close().catch(closeErr => {
-             console.error('[error] [MONGODB] - Error closing connection:', closeErr.message);
+            console.error('[error] [MONGODB] - Error closing connection:', closeErr.message);
         });
     }
 }
@@ -661,7 +660,7 @@ async function initConfig() {
 
     const exampleConn = await getExampleConnections();
 
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const rl = readline.createInterface({input: process.stdin, output: process.stdout});
     const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
 
     const conn = exampleConn;
@@ -820,16 +819,16 @@ async function initConfig() {
                 if (mongo_port) conn.mongodb.port = parseInt(mongo_port as string);
 
                 const mongo_user = await prompt(' > Enter the MongoDB user (or press ENTER for none): ');
-                 conn.mongodb.user = mongo_user ? mongo_user as string : '';
+                conn.mongodb.user = mongo_user ? mongo_user as string : '';
 
                 const mongo_pass = await prompt(' > Enter the MongoDB password (or press ENTER for none): ');
-                 conn.mongodb.pass = mongo_pass ? mongo_pass as string : '';
+                conn.mongodb.pass = mongo_pass ? mongo_pass as string : '';
 
             } else { // First attempt or OTHER error
                 if (errorType === 'OTHER') {
                     console.log('\n[info] [MONGODB] - An unexpected error occurred. Please re-enter all details.');
                 } else {
-                     console.log('\n[info] [MONGODB] - Please enter MongoDB connection details.');
+                    console.log('\n[info] [MONGODB] - Please enter MongoDB connection details.');
                 }
                 const mongo_host = await prompt(' > Enter the MongoDB Server address (or press ENTER to use "127.0.0.1"): ');
                 if (mongo_host) {
@@ -938,7 +937,7 @@ async function resetConnections() {
         }
 
         if (existsSync(connectionsPath)) {
-            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+            const rl = readline.createInterface({input: process.stdin, output: process.stdout});
             const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
             const confirmation = await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n') as string;
             if (confirmation.toUpperCase() === 'YES') {
@@ -1041,9 +1040,9 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         console.warn("WARN: 'features' section missing, creating default structure.");
 
         chainConfig.features = {
-            streaming: { enable: false, traces: false, deltas: false },
-            tables: { proposals: true, accounts: true, voters: true, userres: true, delband: true },
-            contract_state: { enabled: true, contracts: {} },
+            streaming: {enable: false, traces: false, deltas: false},
+            tables: {proposals: true, accounts: true, voters: true, userres: true, delband: true},
+            contract_state: {enabled: true, contracts: {}},
             index_deltas: true,
             index_transfer_memo: true,
             index_all_deltas: true,
@@ -1218,12 +1217,12 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
             } catch (error: any) {
                 // Catch JSON parsing errors specifically for the manual case
                 if (autoIndex === 'false' && error instanceof SyntaxError) {
-                     console.error(`Error parsing indices JSON: ${error.message}`);
-                     console.error("Please provide indices as a valid JSON string, e.g., '{\"owner\":1}'");
+                    console.error(`Error parsing indices JSON: ${error.message}`);
+                    console.error("Please provide indices as a valid JSON string, e.g., '{\"owner\":1}'");
                 } else {
-                     console.error(`An unexpected error occurred: ${error.message}`); // Handle other potential errors
+                    console.error(`An unexpected error occurred: ${error.message}`); // Handle other potential errors
                 }
-                 process.exit(1); // Exit on error
+                process.exit(1); // Exit on error
             }
         });
 
@@ -1248,9 +1247,9 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
                     } else if (isManualIndex) {
                         // Manual index requires indices to be provided and be a non-empty object
                         if (!t.indices || typeof t.indices !== 'object' || Object.keys(t.indices).length === 0) {
-                             console.error(`Error: Table '${t.name}' (index ${index} in JSON) has autoIndex=false, but 'indices' are missing or empty.`);
-                             console.error("Please provide valid indices for this table, e.g., '{\"fieldName\":1}'");
-                             process.exit(1); // Exit on error for this specific table
+                            console.error(`Error: Table '${t.name}' (index ${index} in JSON) has autoIndex=false, but 'indices' are missing or empty.`);
+                            console.error("Please provide valid indices for this table, e.g., '{\"fieldName\":1}'");
+                            process.exit(1); // Exit on error for this specific table
                         }
                         finalIndices = t.indices;
                     } else {
@@ -1270,19 +1269,19 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
                 await addOrUpdateContractConfig(chainName, account, tables);
 
             } catch (error: any) {
-                 if (error instanceof SyntaxError) {
+                if (error instanceof SyntaxError) {
                     console.error(`Error parsing tables JSON: ${error.message}`);
                     console.error("Provide tables as a valid JSON array string, e.g., '[{\"name\":\"table1\",\"autoIndex\":true}, {\"name\":\"table2\",\"autoIndex\":false,\"indices\":{\"field\":1}}]'");
-                 } else {
+                } else {
                     // Handle errors potentially thrown by process.exit or other issues
                     if (!error.message?.includes('process.exit')) { // Avoid double logging if exited intentionally
-                         console.error(`An unexpected error occurred: ${error.message}`);
+                        console.error(`An unexpected error occurred: ${error.message}`);
                     }
-                 }
-                 // Ensure exit if not already handled by specific checks
-                 if (!process.exitCode) {
-                     process.exit(1);
-                 }
+                }
+                // Ensure exit if not already handled by specific checks
+                if (!process.exitCode) {
+                    process.exit(1);
+                }
             }
         });
 

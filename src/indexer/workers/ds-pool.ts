@@ -4,21 +4,14 @@ import {join, resolve} from "path";
 import {existsSync, readdirSync, readFileSync} from "fs";
 import flatstr from 'flatstr';
 import {Redis, RedisValue} from "ioredis";
-import {Serialize} from "eosjs";
 
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {RabbitQueueDef} from "../definitions/index-queues.js";
 import {ActionTrace} from "../../interfaces/action-trace.js";
-import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
-import {Type} from "eosjs/dist/eosjs-serialize.js";
 import {HyperionWorker} from "./hyperionWorker.js";
 import {HyperionActionAct} from "../../interfaces/hyperion-action.js";
-import {ABI} from "@wharfkit/antelope";
-
-const abi_remapping = {
-    "_Bool": "bool",
-    "account_name": "name",
-};
+import {ABI, Action, Serializer} from "@wharfkit/antelope";
+import {HyperionAbi} from "../../interfaces/hyperion-abi.js";
 
 interface CustomAbiDef {
     abi: string;
@@ -69,7 +62,9 @@ function cleanActionTrace(t: any) {
 
 export default class DSPoolWorker extends HyperionWorker {
 
-    abi;
+
+    shipABI: ABI | undefined;
+
     types;
     tables: Map<string, string> = new Map();
     local_queue;
@@ -83,7 +78,11 @@ export default class DSPoolWorker extends HyperionWorker {
     totalHits = 0;
     // contract usage map (temporary)
     contractUsage = {};
-    contracts = new Map();
+    contracts: Map<string, {
+        contract: ABI;
+        valid_until: number;
+        valid_from: number;
+    }> = new Map();
     monitoringLoop?: NodeJS.Timeout;
     actionDsCounter = 0;
 
@@ -194,7 +193,12 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    async fetchAbiHexAtBlockElastic(contract_name: string, last_block: number, get_json: boolean, fetch_offset: number) {
+    async fetchAbiHexAtBlockElastic(
+        contract_name: string,
+        last_block: number,
+        get_json: boolean,
+        fetch_offset: number
+    ) {
         try {
             const _includes = ["block", "actions", "tables"];
             if (get_json) {
@@ -232,16 +236,19 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    // noinspection JSUnusedGlobalSymbols
-    async verifyLocalType(contract: string, type: string, block_num: number, field: string) {
-        let _status;
-        let resultType;
+    async verifyLocalType(contract: string, type: string, block_num: number, field: string): Promise<[boolean, string]> {
+
+        let _status: boolean;
+        let resultType = '';
+
         try {
             resultType = this.getAbiDataType(field, contract, type);
-            _status = true;
-        } catch {
+            _status = !!resultType;
+        } catch (e: any) {
+            debugLog(`(abieos) ${contract}::${type} (type: "${type}") @ ${block_num} >>> ${e.message}`);
             _status = false;
         }
+
         if (!_status) {
 
             if (this.conf.settings.allow_custom_abi) {
@@ -258,7 +265,6 @@ export default class DSPoolWorker extends HyperionWorker {
                 }
             }
 
-
             if (!_status) {
                 const savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false, 0);
                 if (savedAbi) {
@@ -274,18 +280,24 @@ export default class DSPoolWorker extends HyperionWorker {
             if (_status) {
                 try {
                     resultType = this.getAbiDataType(field, contract, type);
-                    _status = true;
-                    return [_status, resultType];
+                    if (resultType) {
+                        _status = true;
+                        // early return since the loaded abi should work
+                        return [_status, resultType];
+                    } else {
+                        _status = false;
+                    }
                 } catch (e: any) {
                     debugLog(`(abieos/cached) >> ${e.message}`);
                     _status = false;
                 }
             }
 
+            if (!_status) {
+                _status = await this.loadCurrentAbiHex(contract);
+            }
 
-            _status = await this.loadCurrentAbiHex(contract);
-
-            if (_status === true) {
+            if (_status) {
                 try {
                     resultType = this.getAbiDataType(field, contract, type);
                     _status = true;
@@ -301,38 +313,42 @@ export default class DSPoolWorker extends HyperionWorker {
     async deserializeActionAtBlockNative(self: DSPoolWorker, action: HyperionActionAct, block_num: number): Promise<any> {
         self.recordContractUsage(action.account);
         const [_status, actionType] = await self.verifyLocalType(action.account, action.name, block_num, "action");
-        if (_status) {
+        if (_status && actionType) {
             try {
                 return self.abieos.binToJson(action.account, actionType, Buffer.from(action.data, 'hex'));
             } catch (e: any) {
-                debugLog(`(abieos) ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
+                debugLog(`(abieos) ${action.account}::${action.name} (type: "${actionType}") @ ${block_num} >>> ${e.message}`);
             }
         }
         return self.deserializeActionAtBlock(action, block_num);
     }
 
-    async getContractAtBlock(accountName: string, block_num: number, check_action: string) {
+    async getContractAtBlock(accountName: string, block_num: number, check_action: string): Promise<ABI | null> {
+
+        // recover ABI from cache
         if (this.contracts.has(accountName)) {
             let _sc = this.contracts.get(accountName);
-            if ((_sc['valid_until'] > block_num && block_num > _sc['valid_from']) || _sc['valid_until'] === -1) {
-                if (_sc['contract'].actions.has(check_action)) {
-                    hLog('cached abi');
-                    return [_sc['contract'], null];
+            if (_sc) {
+                if ((_sc.valid_until > block_num && block_num > _sc.valid_from) || _sc.valid_until === -1) {
+                    if (_sc.contract.actions.find(value => value.name === check_action)) {
+                        return _sc.contract;
+                    }
                 }
             }
         }
-        let savedAbi
-        let abi: Abi;
+
+        let savedAbi: HyperionAbi | null;
+        let abi: ABI;
         savedAbi = await this.fetchAbiHexAtBlockElastic(accountName, block_num, true, 0);
         if (savedAbi === null || (savedAbi.actions && !savedAbi.actions.includes(check_action))) {
             savedAbi = await this.getAbiFromHeadBlock(accountName);
             if (!savedAbi) {
                 return null;
             }
-            abi = savedAbi.abi;
+            abi = ABI.from(savedAbi.abi)
         } else {
             try {
-                abi = JSON.parse(savedAbi.abi) as Abi;
+                abi = ABI.from(savedAbi.abi);
             } catch (e: any) {
                 hLog('failed to parse abi at getContractAtBlock --> ' + e.message);
                 return null;
@@ -343,49 +359,10 @@ export default class DSPoolWorker extends HyperionWorker {
             return null;
         }
 
-        const initialTypes = Serialize.createInitialTypes();
-        let types: Map<string, Type> | undefined;
-        try {
-            types = Serialize.getTypesFromAbi(initialTypes, abi);
-        } catch (e: any) {
-            let remapped = false;
-            for (const struct of abi.structs) {
-                for (const field of struct.fields) {
-                    if (abi_remapping[field.type]) {
-                        field.type = abi_remapping[field.type];
-                        remapped = true;
-                    }
-                }
-            }
-            if (remapped) {
-                try {
-                    types = Serialize.getTypesFromAbi(initialTypes, abi);
-                } catch (e) {
-                    hLog('failed after remapping abi');
-                    hLog(accountName, block_num, check_action);
-                    hLog(e);
-                }
-            } else {
-                hLog(accountName, block_num);
-                hLog(e.message);
-            }
-        }
 
-        if (!types) {
-            return null;
-        }
-
-        const actions = new Map();
-        for (const {name, type} of abi.actions) {
-            try {
-                actions.set(name, Serialize.getType(types, type));
-            } catch {
-            }
-        }
-
-        const result = {types, actions, tables: abi.tables};
         if (check_action) {
-            if (actions.has(check_action)) {
+            // check if the action is in the abi
+            if (abi.getActionType(check_action)) {
                 if (!this.failedAbiMap.has(accountName) || !this.failedAbiMap.get(accountName)?.has(-1)) {
                     try {
                         this.abieos.loadAbi(accountName, JSON.stringify(abi));
@@ -396,37 +373,26 @@ export default class DSPoolWorker extends HyperionWorker {
                     debugLog('ignore reloading of current abi for', accountName);
                 }
                 this.contracts.set(accountName, {
-                    contract: result,
-                    valid_until: savedAbi.valid_until,
-                    valid_from: savedAbi.valid_from
+                    contract: abi,
+                    valid_until: savedAbi.valid_until ? savedAbi.valid_until : -1,
+                    valid_from: savedAbi.valid_from ? savedAbi.valid_from : -1
                 });
             }
         }
-        return [result, abi];
+        return abi;
     }
 
-    async deserializeActionAtBlock(action: HyperionActionAct, block_num: number) {
+    async deserializeActionAtBlock(action: HyperionActionAct, block_num: number): Promise<any | null> {
         const contract = await this.getContractAtBlock(action.account, block_num, action.name);
-        if (contract) {
-            if (contract[0].actions.has(action.name)) {
-                try {
-                    return Serialize.deserializeAction(
-                        contract[0],
-                        action.account,
-                        action.name,
-                        action.authorization,
-                        action.data,
-                        this.txEnc,
-                        this.txDec
-                    ).data;
-                } catch (e: any) {
-                    debugLog(`(eosjs) ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
-                    return null;
-                }
-            } else {
-                return null;
-            }
-        } else {
+        if (!contract) {
+            return null;
+        }
+        try {
+            const typedAction = Action.from(action);
+            const decodedData = typedAction.decodeData(contract);
+            return Serializer.objectify(decodedData);
+        } catch (e: any) {
+            debugLog(`(antelope) ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
             return null;
         }
     }
@@ -697,13 +663,9 @@ export default class DSPoolWorker extends HyperionWorker {
         // hLog(`Monitoring loop started on ds_worker ${process.env.local_id}`);
     }
 
-    initializeShipAbi(data: string) {
-        // hLog(`state history abi ready on ds_worker ${process.env.local_id}`);
-        this.abi = JSON.parse(data) as ABI;
-        this.abieos.loadAbi("0", data);
-        const initialTypes = Serialize.createInitialTypes();
-        this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
-        this.abi.tables.map((table: ABI.Table) => this.tables.set(table.name as string, table.type));
+    initializeShipAbi(abiString: string) {
+        this.shipABI = ABI.from(abiString);
+        this.abieos.loadAbi("0", abiString);
         this.startMonitoring();
     }
 
@@ -749,7 +711,7 @@ export default class DSPoolWorker extends HyperionWorker {
         debugLog(`Standalone deserializer launched with id: ${process.env.local_id}`);
         this.events.once('ready', () => {
             // check if the ship abi is loaded
-            if (!this.abi) {
+            if (!this.shipABI) {
                 this.onReady();
             }
         });

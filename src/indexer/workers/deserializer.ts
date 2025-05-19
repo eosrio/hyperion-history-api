@@ -1,5 +1,4 @@
 import {HyperionWorker} from "./hyperionWorker.js";
-import {Serialize} from "eosjs";
 import {cargo, queue} from 'async';
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import {createHash} from "crypto";
@@ -8,20 +7,15 @@ import {Message, Options} from "amqplib";
 import flatstr from 'flatstr';
 
 import {index_queues, RabbitQueueDef} from "../definitions/index-queues.js";
-import {AbiDefinitions} from "../definitions/abi_def.js";
 import {HyperionDelta} from "../../interfaces/hyperion-delta.js";
 import {TableDelta} from "../../interfaces/table-delta.js";
 import {HyperionAbi} from "../../interfaces/hyperion-abi.js";
 import {TransactionTrace} from "../../interfaces/action-trace.js";
-import {Abi} from "eosjs/dist/eosjs-rpc-interfaces.js";
 import {HyperionSignedBlock, ProducerSchedule} from "../../interfaces/signed-block.js";
 import {estypes} from "@elastic/elasticsearch";
-import {Action, PackedTransaction} from "@wharfkit/antelope";
-
-
-const abi_remapping = {
-    "_Bool": "bool"
-};
+import {ABI, Action, PackedTransaction, Serializer} from "@wharfkit/antelope";
+import {TokenAccount} from "../../interfaces/custom-ds.js";
+import {GetBlocksResultV0} from "./state-reader.js";
 
 interface QueuePayload {
     queue: string;
@@ -65,14 +59,15 @@ export default class MainDSWorker extends HyperionWorker {
     ch_ready = false;
     private consumerQueue;
     private preIndexingQueue;
-    private abi?: Abi;
-    public types: Map<string, any> = new Map();
-    private tables = new Map();
+
+    shipABI?: ABI;
+
     private allowStreaming = false;
     private dsPoolMap = {};
     private ds_pool_counters = {};
     private block_emit_idx = 1;
     private local_block_count = 0;
+
     common: any;
     tableHandlers = {};
 
@@ -137,19 +132,16 @@ export default class MainDSWorker extends HyperionWorker {
     onIpcMessage(msg: any): void {
         switch (msg.event) {
             case 'initialize_abi': {
-                this.abi = JSON.parse(msg.data) as Abi;
+                this.shipABI = ABI.from(msg.data);
                 this.abieos.loadAbi("0", msg.data);
-                const initialTypes = Serialize.createInitialTypes();
-                this.types = Serialize.getTypesFromAbi(initialTypes, this.abi);
-                this.abi.tables.map(table => this.tables.set(table.name, table.type));
                 this.initConsumer();
                 break;
             }
             case 'update_abi': {
-                if (msg.abi) {
-                    if (msg.abi.abi_hex) {
-                        this.abieos.loadAbiHex(msg.abi.account, msg.abi.abi_hex);
-                        hLog(`Worker ${process.env.worker_id} updated the abi for ${msg.abi.account}`);
+                if (msg.shipABI) {
+                    if (msg.shipABI.abi_hex) {
+                        this.abieos.loadAbiHex(msg.shipABI.account, msg.shipABI.abi_hex);
+                        hLog(`Worker ${process.env.worker_id} updated the abi for ${msg.shipABI.account}`);
                     }
                 }
                 break;
@@ -217,7 +209,7 @@ export default class MainDSWorker extends HyperionWorker {
         });
 
         // reload consumer only if ship abi is on cache
-        if (this.abi) {
+        if (this.shipABI) {
             this.initConsumer();
         }
     }
@@ -265,36 +257,32 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     async processBlock(
-        res: any,
+        res: GetBlocksResultV0,
         block: HyperionSignedBlock,
         traces: [string, TransactionTrace][] | null,
         deltas: [string, TableDelta][] | null
     ) {
-        if (!res['this_block']) {
+        if (!res.this_block) {
             // missing current block data
             hLog(res);
             return null;
         } else {
-
             let producer = '';
             let ts = '';
-            let block_ts = res['this_time'];
+            let block_ts = new Date().toISOString();
             let light_block: HyperionLightBlock | null = null;
-
-            const block_num = res['this_block']['block_num'];
-            const block_id = res['this_block']['block_id'].toLowerCase();
-
+            const block_num = res.this_block.block_num.toNumber();
+            const block_id = res.this_block.block_id.toString().toLowerCase();
             if (this.conf.indexer.fetch_block) {
-
                 if (!block) {
+                    hLog('Block not found!');
                     return null;
                 }
-
                 light_block = {
                     '@timestamp': block['timestamp'],
-                    block_num: res['this_block']['block_num'],
-                    block_id: res['this_block']['block_id'].toLowerCase(),
-                    prev_id: res.prev_block?.block_id?.toLowerCase(),
+                    block_num: res.this_block.block_num.toNumber(),
+                    block_id: res.this_block.block_id.toString().toLowerCase(),
+                    prev_id: res.prev_block.block_id.toString().toLowerCase(),
                     producer: block.producer,
                     new_producers: block.new_producers,
                     schedule_version: block.schedule_version,
@@ -305,6 +293,7 @@ export default class MainDSWorker extends HyperionWorker {
 
                 producer = block['producer'];
                 ts = block['timestamp'];
+
                 block_ts = ts;
 
                 let total_cpu = 0;
@@ -368,8 +357,10 @@ export default class MainDSWorker extends HyperionWorker {
                     }
                 });
 
-                light_block.cpu_usage = total_cpu;
-                light_block.net_usage = total_net;
+                if (light_block) {
+                    light_block.cpu_usage = total_cpu;
+                    light_block.net_usage = total_net;
+                }
 
                 // submit failed trx
                 if (failedTrx.length > 0) {
@@ -386,7 +377,7 @@ export default class MainDSWorker extends HyperionWorker {
                     }
                 }
 
-                if (light_block.new_producers) {
+                if (light_block && light_block.new_producers) {
                     process.send?.({
                         event: 'new_schedule',
                         block_num: light_block.block_num,
@@ -396,13 +387,16 @@ export default class MainDSWorker extends HyperionWorker {
                 }
 
                 // stream light block
-                if (this.allowStreaming && this.ch) {
-                    this.ch.publish('', this.chain + ':stream', Buffer.from(JSON.stringify(light_block)), {
-                        headers: {
-                            event: 'block',
-                            blockNum: light_block.block_num
+                if (this.allowStreaming && this.ch && light_block) {
+                    this.ch.publish('', this.chain + ':stream',
+                        Buffer.from(JSON.stringify(light_block)),
+                        {
+                            headers: {
+                                event: 'block',
+                                blockNum: light_block.block_num
+                            }
                         }
-                    });
+                    );
                 }
             }
 
@@ -638,13 +632,13 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
-    createSerialBuffer(inputArray: Uint8Array) {
-        return new Serialize.SerialBuffer({
-            textEncoder: this.txEnc,
-            textDecoder: this.txDec,
-            array: inputArray
-        });
-    }
+    // createSerialBuffer(inputArray: Uint8Array) {
+    //     return new Serialize.SerialBuffer({
+    //         textEncoder: this.txEnc,
+    //         textDecoder: this.txDec,
+    //         array: inputArray
+    //     });
+    // }
 
     async fetchAbiHexAtBlockElastic(
         contract_name: string,
@@ -765,7 +759,7 @@ export default class MainDSWorker extends HyperionWorker {
 
                 if (savedAbi[field + 's'] && savedAbi[field + 's'].includes(type)) {
 
-                    if (savedAbi.abi_hex) {
+                    if (savedAbi.abi_hex && savedAbi.block) {
                         abiStatus = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
                     }
 
@@ -826,9 +820,11 @@ export default class MainDSWorker extends HyperionWorker {
             }
         }
 
-        const [_status, tableType, validFrom, validUntil] = await this.verifyLocalType(row['code'], row['table'], block, "table");
+        const [abiStatus, tableType, validFrom, validUntil] = await this.verifyLocalType(row['code'], row['table'], block, "table");
 
-        if (_status && tableType) {
+        console.log(abiStatus, tableType, validFrom, validUntil);
+
+        if (abiStatus && tableType) {
             let result: string;
             try {
                 if (typeof row.value === 'string') {
@@ -840,82 +836,84 @@ export default class MainDSWorker extends HyperionWorker {
                 delete row.value;
                 return row;
             } catch (e) {
+                console.log('abieos deserialization failed', e, row);
                 debugLog(e);
             }
         }
 
-        return await this.processContractRow(row, block, validFrom, validUntil);
+        // Fallback to Antelope Deserializer
+        return await this.deserializeContractRowAntelope(row, block, validFrom, validUntil, tableType);
     }
 
-    async getContractAtBlock(accountName: string, block_num: number, check_action?: string) {
-        let savedAbi, abi;
-        savedAbi = await this.fetchAbiHexAtBlockElastic(accountName, block_num, true);
-        if (savedAbi === null || (savedAbi.actions && !savedAbi.actions.includes(check_action))) {
-            savedAbi = await this.getAbiFromHeadBlock(accountName);
-            if (!savedAbi) return [null, null];
-            abi = savedAbi.abi;
-        } else {
-            try {
-                abi = JSON.parse(savedAbi.abi);
-            } catch (e) {
-                hLog(e);
-                return [null, null];
-            }
-        }
-        if (!abi) return [null, null];
-        const initialTypes = Serialize.createInitialTypes();
-
-        let types: Map<string, Serialize.Type> | undefined;
-
-        try {
-
-            types = Serialize.getTypesFromAbi(initialTypes, abi);
-
-        } catch (e) {
-
-            let remapped = false;
-            for (const struct of abi.structs) {
-                for (const field of struct.fields) {
-                    if (abi_remapping[field.type]) {
-                        field.type = abi_remapping[field.type];
-                        remapped = true;
-                    }
-                }
-            }
-
-            if (remapped) {
-                try {
-                    types = Serialize.getTypesFromAbi(initialTypes, abi);
-                } catch (e) {
-                    hLog('failed after remapping abi');
-                    hLog(accountName, block_num, check_action);
-                    hLog(e);
-                }
-            } else {
-                hLog(accountName, block_num);
-                hLog(e);
-            }
-        }
-
-        const actions = new Map();
-        if (types) {
-            for (const {name, type} of abi.actions) {
-                actions.set(name, Serialize.getType(types, type));
-            }
-        }
-
-        const result = {types, actions, tables: abi.tables};
-        if (check_action) {
-            if (actions.has(check_action)) {
-                try {
-                    this.abieos.loadAbi(accountName, JSON.stringify(abi));
-                } catch (e) {
-                    hLog(e);
-                }
-            }
-        }
-        return [result, abi];
-    }
+    // async getContractAtBlock(accountName: string, block_num: number, check_action?: string) {
+    //     let savedAbi, abi;
+    //     savedAbi = await this.fetchAbiHexAtBlockElastic(accountName, block_num, true);
+    //     if (savedAbi === null || (savedAbi.actions && !savedAbi.actions.includes(check_action))) {
+    //         savedAbi = await this.getAbiFromHeadBlock(accountName);
+    //         if (!savedAbi) return [null, null];
+    //         abi = savedAbi.shipABI;
+    //     } else {
+    //         try {
+    //             abi = JSON.parse(savedAbi.shipABI);
+    //         } catch (e) {
+    //             hLog(e);
+    //             return [null, null];
+    //         }
+    //     }
+    //     if (!abi) return [null, null];
+    //     const initialTypes = Serialize.createInitialTypes();
+    //
+    //     let types: Map<string, Serialize.Type> | undefined;
+    //
+    //     try {
+    //
+    //         types = Serialize.getTypesFromAbi(initialTypes, abi);
+    //
+    //     } catch (e) {
+    //
+    //         let remapped = false;
+    //         for (const struct of abi.structs) {
+    //             for (const field of struct.fields) {
+    //                 if (abi_remapping[field.type]) {
+    //                     field.type = abi_remapping[field.type];
+    //                     remapped = true;
+    //                 }
+    //             }
+    //         }
+    //
+    //         if (remapped) {
+    //             try {
+    //                 types = Serialize.getTypesFromAbi(initialTypes, abi);
+    //             } catch (e) {
+    //                 hLog('failed after remapping abi');
+    //                 hLog(accountName, block_num, check_action);
+    //                 hLog(e);
+    //             }
+    //         } else {
+    //             hLog(accountName, block_num);
+    //             hLog(e);
+    //         }
+    //     }
+    //
+    //     const actions = new Map();
+    //     if (types) {
+    //         for (const {name, type} of abi.actions) {
+    //             actions.set(name, Serialize.getType(types, type));
+    //         }
+    //     }
+    //
+    //     const result = {types, actions, tables: abi.tables};
+    //     if (check_action) {
+    //         if (actions.has(check_action)) {
+    //             try {
+    //                 this.abieos.loadAbi(accountName, JSON.stringify(abi));
+    //             } catch (e) {
+    //                 hLog(e);
+    //             }
+    //         }
+    //     }
+    //     return [result, abi];
+    // }
 
     // async getTableType(code, table, block) {
     //     let abi, contract, abi_tables;
@@ -983,9 +981,31 @@ export default class MainDSWorker extends HyperionWorker {
     //     return cType;
     // }
 
-    async processContractRow(row, block, validFrom, validUntil) {
+    async deserializeContractRowAntelope(row: HyperionDelta, block: number, validFrom, validUntil, tableType: string | undefined) {
 
-        console.log('processContractRow', row);
+        let savedAbi = await this.fetchAbiHexAtBlockElastic(row.code, block, true);
+
+        // attempt to load the ABI from the head block
+        if (!savedAbi) {
+            savedAbi = await this.getAbiFromHeadBlock(row.code);
+        }
+
+        if (!savedAbi) {
+            return row;
+        }
+
+        if (savedAbi.abi) {
+            const abi = ABI.from(savedAbi.abi);
+            const table = abi.tables.find(t => t.name === row.table);
+            if (table) {
+                row.data = Serializer.decode({data: row.value, abi, type: table.type});
+                delete row.value;
+            }
+        }
+
+        if (!row.data) {
+            console.log(`Failed to deserialize ${row.code}::${row.table} at block ${block}`);
+        }
 
         // const row_sb = this.createSerialBuffer(Serialize.hexToUint8Array(row['value']));
         //
@@ -1215,8 +1235,12 @@ export default class MainDSWorker extends HyperionWorker {
                     }
                 }
 
+                console.log("contract_row", payload);
+
                 // decode contract data
                 let jsonRow = await this.processContractRowNative(payload, block_num);
+
+                console.log("contract_row_done", jsonRow);
 
                 // if (jsonRow?.value) {
                 //     hLog(`Deserialization failed for contract row:`, jsonRow);
@@ -1270,15 +1294,17 @@ export default class MainDSWorker extends HyperionWorker {
             if (account['abi'] !== '') {
                 try {
                     const abiHex = account['abi'];
-                    const abiBin = new Uint8Array(Buffer.from(abiHex, 'hex'));
-                    const initialTypes = Serialize.createInitialTypes();
-                    const abiDefTypes: any | undefined = Serialize.getTypesFromAbi(initialTypes, <Abi>AbiDefinitions).get('abi_def');
-                    if (abiDefTypes) {
-                        const abiObj = abiDefTypes.deserialize(this.createSerialBuffer(abiBin));
+                    const abiObj = Serializer.decode({data: abiHex, type: ABI});
+                    if (abiObj) {
                         const jsonABIString = JSON.stringify(abiObj);
-                        const abi_actions = abiObj.actions.map(a => a.name);
-                        const abi_tables = abiObj.tables.map(t => t.name);
+                        const abi_actions = abiObj.actions.map(a => a.name.toString());
+                        const abi_tables = abiObj.tables.map(t => t.name.toString());
+
                         debugLog(`📝  New code for ${account['name']} at block ${block_num} with ${abi_actions.length} actions`);
+
+                        // console.log(`ABI actions:`, abi_actions);
+                        // console.log(`ABI tables:`, abi_tables);
+
                         const new_abi_object = {
                             '@timestamp': block_ts,
                             account: account['name'],
@@ -1537,25 +1563,28 @@ export default class MainDSWorker extends HyperionWorker {
                 if (deltaStruct[key].length > 0) {
                     for (const row of deltaStruct[key]) {
                         let data = this.deserializeNative(key, row.data);
-                        if (!data) {
-                            try {
-                                const type = this.types.get(key);
-                                if (type) {
-                                    data = type.deserialize(
-                                        new Serialize.SerialBuffer({
-                                            textEncoder: this.txEnc,
-                                            textDecoder: this.txDec,
-                                            array: Buffer.from(row.data, 'hex')
-                                        }),
-                                        new Serialize.SerializerState({
-                                            bytesAsUint8Array: true
-                                        }));
-                                }
-                            } catch (e: any) {
-                                hLog(`Delta struct [${key}] deserialization error: ${e.message}`);
-                                hLog(row.data);
-                            }
-                        }
+
+                        // TODO: fallback deserialization
+
+                        // if (!data) {
+                        //     try {
+                        //         const type = this.types.get(key);
+                        //         if (type) {
+                        //             data = type.deserialize(
+                        //                 new Serialize.SerialBuffer({
+                        //                     textEncoder: this.txEnc,
+                        //                     textDecoder: this.txDec,
+                        //                     array: Buffer.from(row.data, 'hex')
+                        //                 }),
+                        //                 new Serialize.SerializerState({
+                        //                     bytesAsUint8Array: true
+                        //                 }));
+                        //         }
+                        //     } catch (e: any) {
+                        //         hLog(`Delta struct [${key}] deserialization error: ${e.message}`);
+                        //         hLog(row.data);
+                        //     }
+                        // }
 
                         if (data) {
                             try {
@@ -1585,7 +1614,7 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     deserializeNative(datatype: string, array: any): any {
-        if (this.abi) {
+        if (this.shipABI) {
             try {
                 if (typeof array === 'string') {
                     return this.abieos.hexToJson("0", datatype, array);
@@ -1843,15 +1872,8 @@ export default class MainDSWorker extends HyperionWorker {
                 // attempt forced deserialization
                 if (delta.value.length === 32) {
                     try {
-                        debugLog(`Attempting forced deserialization for ${delta['code']}::accounts`);
-                        const sb = new Serialize.SerialBuffer({
-                            textDecoder: new TextDecoder(),
-                            textEncoder: new TextEncoder(),
-                            array: Buffer.from(delta['value'], 'hex'),
-                        });
-                        delta['data'] = {
-                            balance: sb.getAsset()
-                        };
+                        const decoded = Serializer.decode({type: TokenAccount, data: delta['value']});
+                        delta['data'] = Serializer.objectify(decoded);
                     } catch (e) {
                         console.log(e);
                         hLog(`Forced accounts table deserialization failed on ${delta['code']}`);

@@ -1,12 +1,13 @@
+import {Message} from "amqplib";
+
 import {ConfigurationModule, Filters} from "../config.js";
 import MainDSWorker from "../../workers/deserializer.js";
-import {Message} from "amqplib";
 import DSPoolWorker from "../../workers/ds-pool.js";
 import {TrxMetadata} from "../../../interfaces/trx-metadata.js";
 import {ActionTrace} from "../../../interfaces/action-trace.js";
 import {debugLog, hLog} from "../../helpers/common_functions.js";
-import {SerialBuffer} from "eosjs/dist/eosjs-serialize.js";
 import {HyperionActionAct} from "../../../interfaces/hyperion-action.js";
+import {Action} from "@wharfkit/antelope";
 
 export abstract class BaseParser {
 
@@ -26,19 +27,19 @@ export abstract class BaseParser {
         this.addCustomHandlers();
     }
 
-    private anyFromCode(act) {
+    private anyFromCode(act: Action | HyperionActionAct) {
         return this.chain + '::' + act['account'] + '::*';
     }
 
-    private anyFromName(act) {
+    private anyFromName(act: Action | HyperionActionAct) {
         return this.chain + '::*::' + act['name'];
     }
 
-    private codeActionPair(act) {
+    private codeActionPair(act: Action | HyperionActionAct) {
         return this.chain + '::' + act['account'] + '::' + act['name'];
     }
 
-    protected checkBlacklist(act) {
+    protected checkBlacklist(act: Action | HyperionActionAct) {
 
         // test action blacklist for chain::code::*
         if (this.filters.action_blacklist.has(this.anyFromCode(act))) {
@@ -54,7 +55,7 @@ export abstract class BaseParser {
         return this.filters.action_blacklist.has(this.codeActionPair(act));
     }
 
-    protected checkWhitelist(act) {
+    protected checkWhitelist(act: Action | HyperionActionAct) {
 
         // test action whitelist for chain::code::*
         if (this.filters.action_whitelist.has(this.anyFromCode(act))) {
@@ -92,59 +93,51 @@ export abstract class BaseParser {
         usageIncluded.status = true;
     }
 
-    protected createSerialBuffer(data: string) {
-        return new SerialBuffer({
-            textDecoder: this.txDec,
-            textEncoder: this.txEnc,
-            array: Buffer.from(data, 'hex')
-        });
-    }
-
     protected addCustomHandlers() {
         // simple assets
-        this.actionReinterpretMap.set('*::saecreate', (act) => {
-            const _sb = this.createSerialBuffer(act.data);
-            const result: any = {owner: "", assetid: null};
-            result.owner = _sb.getName();
-            result.assetid = _sb.getUint64AsNumber()
-            return result;
-        });
-
-        this.actionReinterpretMap.set('*::saetransfer', (act) => {
-            const _sb = this.createSerialBuffer(act.data);
-            const result: any = {from: "", to: "", assetids: [], memo: ""};
-            result.from = _sb.getName();
-            result.to = _sb.getName();
-            const len = _sb.getVaruint32();
-            for (let i = 0; i < len; i++) {
-                result.assetids.push(_sb.getUint64AsNumber());
-            }
-            result.memo = _sb.getString();
-            return result;
-        });
-
-        this.actionReinterpretMap.set('*::saeclaim', (act) => {
-            const _sb = this.createSerialBuffer(act.data);
-            const result: any = {who: "", assetids: {}};
-            result.who = _sb.getName();
-            const len = _sb.getVaruint32();
-            for (let i = 0; i < len; i++) {
-                result.assetids[_sb.getUint64AsNumber()] = _sb.getName();
-            }
-            return result;
-        });
-
-        this.actionReinterpretMap.set('*::saeburn', (act) => {
-            const _sb = this.createSerialBuffer(act.data);
-            const result: any = {who: "", assetids: [], memo: ""};
-            result.who = _sb.getName();
-            const len = _sb.getVaruint32();
-            for (let i = 0; i < len; i++) {
-                result.assetids.push(_sb.getUint64AsNumber());
-            }
-            result.memo = _sb.getString();
-            return result;
-        });
+        // this.actionReinterpretMap.set('*::saecreate', (act) => {
+        //     const _sb = this.createSerialBuffer(act.data);
+        //     const result: any = {owner: "", assetid: null};
+        //     result.owner = _sb.getName();
+        //     result.assetid = _sb.getUint64AsNumber()
+        //     return result;
+        // });
+        //
+        // this.actionReinterpretMap.set('*::saetransfer', (act) => {
+        //     const _sb = this.createSerialBuffer(act.data);
+        //     const result: any = {from: "", to: "", assetids: [], memo: ""};
+        //     result.from = _sb.getName();
+        //     result.to = _sb.getName();
+        //     const len = _sb.getVaruint32();
+        //     for (let i = 0; i < len; i++) {
+        //         result.assetids.push(_sb.getUint64AsNumber());
+        //     }
+        //     result.memo = _sb.getString();
+        //     return result;
+        // });
+        //
+        // this.actionReinterpretMap.set('*::saeclaim', (act) => {
+        //     const _sb = this.createSerialBuffer(act.data);
+        //     const result: any = {who: "", assetids: {}};
+        //     result.who = _sb.getName();
+        //     const len = _sb.getVaruint32();
+        //     for (let i = 0; i < len; i++) {
+        //         result.assetids[_sb.getUint64AsNumber()] = _sb.getName();
+        //     }
+        //     return result;
+        // });
+        //
+        // this.actionReinterpretMap.set('*::saeburn', (act) => {
+        //     const _sb = this.createSerialBuffer(act.data);
+        //     const result: any = {who: "", assetids: [], memo: ""};
+        //     result.who = _sb.getName();
+        //     const len = _sb.getVaruint32();
+        //     for (let i = 0; i < len; i++) {
+        //         result.assetids.push(_sb.getUint64AsNumber());
+        //     }
+        //     result.memo = _sb.getString();
+        //     return result;
+        // });
     }
 
     async reinterpretActionData(act: HyperionActionAct) {
@@ -167,8 +160,8 @@ export abstract class BaseParser {
     async deserializeActionData(worker: DSPoolWorker, action: ActionTrace, trx_data) {
         let act = action.act;
         const original_act = Object.assign({}, act);
-        let ds_act;
-        let error_message;
+        let ds_act: any | null = null;
+        let error_message: string = '';
         try {
             ds_act = await worker.common.deserializeActionAtBlockNative(worker, act, trx_data.block_num);
         } catch (e: any) {
@@ -186,7 +179,7 @@ export abstract class BaseParser {
             }
         }
 
-        // retry with last abi before the given block_num
+        // retry with the last abi before the given block_num
         if (!ds_act) {
             debugLog('DS Failed ->>', original_act);
             ds_act = await worker.common.deserializeActionAtBlockNative(worker, act, trx_data.block_num - 1);
@@ -201,6 +194,9 @@ export abstract class BaseParser {
 
             // save serialized data
             action.act.data = ds_act;
+
+            // console.dir(action, {depth: Infinity, colors: true});
+
             try {
                 worker.common.attachActionExtras(worker, action);
             } catch (e: any) {

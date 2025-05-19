@@ -1,5 +1,4 @@
 import {HyperionActionAct} from "./hyperion-action.js";
-import {AccountDelta} from "eosjs/dist/eosjs-api-interfaces.js";
 
 export interface ActionTrace {
     signatures: string[];
@@ -36,7 +35,7 @@ export interface TransactionTrace {
     net_usage: number;
     scheduled: boolean;
     action_traces: ActionTrace[];
-    account_ram_delta: AccountDelta | null;
+    account_ram_delta: any | null;
     except: string | null;
     error_code: number | null;
     failed_dtrx_trace: any;

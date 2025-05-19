@@ -3,7 +3,6 @@ import {readFileSync} from 'node:fs';
 import {Client, estypes} from '@elastic/elasticsearch';
 // @ts-ignore
 import cliProgress from 'cli-progress';
-import {JsonRpc} from 'eosjs';
 import {existsSync, mkdirSync, writeFileSync} from 'fs';
 import {HyperionBlock} from './repair-cli/interfaces.js';
 import {
@@ -18,6 +17,7 @@ import {getFirstIndexedBlock} from "../indexer/helpers/common_functions.js";
 
 
 import {WebSocket} from 'ws';
+import {APIClient} from "@wharfkit/antelope";
 
 const progressBar = new cliProgress.SingleBar(
     {},
@@ -35,7 +35,7 @@ let missingBlocks: {
 
 async function run(
     client: Client,
-    rpc: JsonRpc,
+    apiClient: APIClient,
     indexName: string,
     lastRequestedBlock: number,
     firstBlock: number,
@@ -61,7 +61,7 @@ async function run(
             );
             let {hits: {hits}} = result;
             const blocks = hits.map((obj: any) => obj._source);
-            await findForksOnRange(blocks, rpc);
+            await findForksOnRange(blocks, apiClient);
             blockInitial = finalBlock;
             finalBlock = blockInitial - qtdTotal;
             progressBar.update(i);
@@ -91,7 +91,7 @@ async function run(
 
 }
 
-async function findForksOnRange(blocks: HyperionBlock[], rpc: JsonRpc) {
+async function findForksOnRange(blocks: HyperionBlock[], rpc: APIClient) {
     const removals: Set<string> = new Set();
     let start: number | null = null;
     let end: number | null = null;
@@ -131,16 +131,16 @@ async function findForksOnRange(blocks: HyperionBlock[], rpc: JsonRpc) {
         if (previousBlock && previousBlock.block_id !== currentBlock.prev_id) {
             if (start === null) {
                 start = currentBlockNumber - 1;
-                const blockData = await rpc.get_block_info(start);
-                if (blockData && blockData.id !== previousBlock.block_id) {
+                const blockData = await rpc.v1.chain.get_block_info(start);
+                if (blockData && blockData.id.toString() !== previousBlock.block_id) {
                     removals.add(previousBlock.block_id);
                 }
             }
         } else {
             if (start) {
-                const blockData = await rpc.get_block_info(currentBlockNumber);
+                const blockData = await rpc.v1.chain.get_block_info(currentBlockNumber);
                 if (blockData) {
-                    if (blockData.id !== currentBlock.block_id) {
+                    if (blockData.id.toString() !== currentBlock.block_id) {
                         removals.add(currentBlock.block_id);
                     } else {
                         end = currentBlockNumber + 1;
@@ -188,7 +188,7 @@ async function scanChain(chain: string, args: any) {
     const chainConfig = readChainConfig(chain);
     const config = readConnectionConfig();
     const client = initESClient(config);
-    const jsonRpc = new JsonRpc(config.chains[chain].http, {fetch});
+    const apiClient = new APIClient({fetch, url: config.chains[chain].http});
     const ping = await client.ping();
 
     if (!ping) {
@@ -240,7 +240,7 @@ async function scanChain(chain: string, args: any) {
     console.log('Batch Size:', batchSize);
     console.log('Number of Batches:', numberOfBatches);
     console.log();
-    await run(client, jsonRpc, blockIndex, lastBlock, firstBlock, batchSize, numberOfBatches);
+    await run(client, apiClient, blockIndex, lastBlock, firstBlock, batchSize, numberOfBatches);
     console.log(`Finished checking forked blocks!`);
 
     processResults(chain, firstBlock, lastBlock, args);
@@ -891,7 +891,6 @@ async function quickScanChain(chain: string, args: any) {
     const chainConfig = readChainConfig(chain);
     const config = readConnectionConfig();
     const client = initESClient(config);
-    const jsonRpc = new JsonRpc(config.chains[chain].http, {fetch});
     const ping = await client.ping();
 
     if (!ping) {
@@ -905,8 +904,8 @@ async function quickScanChain(chain: string, args: any) {
 
     console.log(`Using block index: ${blockIndex}`);
 
-    let firstBlock;
-    let lastBlock;
+    let firstBlock: number;
+    let lastBlock: number;
 
     if (args.first && args.last) {
         // first must be less than last

@@ -4,8 +4,9 @@ import {Message} from "amqplib";
 import DSPoolWorker from "../../workers/ds-pool.js";
 import {TrxMetadata} from "../../../interfaces/trx-metadata.js";
 import {ActionTrace} from "../../../interfaces/action-trace.js";
-import {deserialize, hLog} from "../../helpers/common_functions.js";
-import {PackedTransaction} from "@wharfkit/antelope";
+import {hLog} from "../../helpers/common_functions.js";
+import {PackedTransaction, Serializer} from "@wharfkit/antelope";
+import {GetBlocksResultV0} from "../../workers/state-reader.js";
 
 export default class HyperionParser extends BaseParser {
 
@@ -13,7 +14,7 @@ export default class HyperionParser extends BaseParser {
 
     public async parseAction(
         worker: DSPoolWorker,
-        ts,
+        ts: string,
         action: ActionTrace,
         trx_data: TrxMetadata,
         _actDataArray,
@@ -23,9 +24,13 @@ export default class HyperionParser extends BaseParser {
     ): Promise<boolean> {
 
         // check filters
-        if (this.checkBlacklist(action.act)) return false;
+        if (this.checkBlacklist(action.act)) {
+            return false;
+        }
         if (this.filters.action_whitelist.size > 0) {
-            if (!this.checkWhitelist(action.act)) return false;
+            if (!this.checkWhitelist(action.act)) {
+                return false;
+            }
         }
 
         await this.deserializeActionData(worker, action, trx_data);
@@ -69,28 +74,33 @@ export default class HyperionParser extends BaseParser {
 
     public async parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void> {
         for (const message of messages) {
+
             let allowProcessing = true;
-            const ds_msg = deserialize('result', message.content, this.txEnc, this.txDec, worker.types);
+
+            const ds_msg = Serializer.decode({
+                data: message.content,
+                type: 'result',
+                abi: worker.shipABI
+            }) as [string, GetBlocksResultV0];
+
             if (!ds_msg) {
                 if (worker.ch && worker.ch_ready) {
                     worker.ch.nack(message);
                     throw new Error('failed to deserialize datatype=result');
                 }
             }
+
             const res = ds_msg[1];
             let block: any = null;
             let traces = [];
-            let deltas = [];
+            let deltas: any[] = [];
 
             if (res.block && res.block.length) {
-
-                block = worker.deserializeNative('signed_block', res.block);
-
+                block = worker.deserializeNative('signed_block', res.block.array);
                 if (block === null) {
                     hLog('incompatible block');
                     process.exit(1);
                 }
-
                 // verify for whitelisted contracts (root actions only)
                 if (worker.conf.whitelists.root_only) {
                     try {
@@ -117,14 +127,19 @@ export default class HyperionParser extends BaseParser {
             }
 
             if (allowProcessing && res.traces && res.traces.length) {
-                traces = worker.deserializeNative('transaction_trace[]', res.traces);
+                traces = worker.deserializeNative('transaction_trace[]', res.traces.array);
                 if (!traces) {
                     hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res['this_block']['block_num']}`);
                 }
             }
 
             if (allowProcessing && res.deltas && res.deltas.length) {
-                deltas = deserialize('table_delta[]', res.deltas, this.txEnc, this.txDec, worker.types);
+                const decodedDeltas = Serializer.decode({
+                    data: res.deltas.array,
+                    type: 'table_delta[]',
+                    abi: worker.shipABI
+                });
+                deltas = Serializer.objectify(decodedDeltas);
                 if (!deltas) {
                     hLog(`[WARNING] table_delta[] deserialization failed on block ${res['this_block']['block_num']}`);
                 }
