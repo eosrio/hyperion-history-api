@@ -13,7 +13,7 @@ import {
     StreamRequest,
     StreamTypeMap
 } from "../interfaces/stream-requests.js";
-import {streamPastActions, streamPastDeltas} from "./helpers/functions.js";
+import {streamPastCommon} from "./helpers/functions.js";
 import {
     checkActionFilters,
     checkDeltaFilters,
@@ -626,27 +626,23 @@ export class SocketManager {
                 hLog('Performing primary scroll request until block: ', data.read_until, '... ');
                 let ltb: number | undefined = 0;
 
-                const hStreamResult = type === 'delta'
-                    ? await streamPastDeltas(this.server, socket, requestUUID, data as StreamDeltasRequest)
-                    : await streamPastActions(this.server, socket, requestUUID, data as StreamActionsRequest);
+                const hStreamResult = await streamPastCommon(this.server, socket, requestUUID, data, type);
 
                 if (!hStreamResult.status) {
                     return;
                 } else {
                     ltb = hStreamResult.lastTransmittedBlock;
                     let attempts = 0;
-                    await sleep(500);
+
+                    await sleep(1000);
+
                     while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts < 5) {
                         hLog('Last transmitted block:', ltb, ' | Last history block:', lastHistoryBlock, ' | Attempts:', attempts);
                         attempts++;
                         hLog(`Performing ${type.toUpperCase()} fill request from ${ltb}...`);
                         data.start_from = (hStreamResult.lastTransmittedBlock ?? 0) + 1;
                         data.read_until = lastHistoryBlock;
-
-                        const r = type === 'delta'
-                            ? await streamPastDeltas(this.server, socket, requestUUID, data as StreamDeltasRequest)
-                            : await streamPastActions(this.server, socket, requestUUID, data as StreamActionsRequest);
-
+                        const r = await streamPastCommon(this.server, socket, requestUUID, data, type);
                         if (!r.status) {
                             hLog(`Error streaming past ${type.toUpperCase()}S:`, r);
                             return;

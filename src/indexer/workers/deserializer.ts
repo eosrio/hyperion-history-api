@@ -1001,6 +1001,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         }
 
+        // TODO: check error on stake.libre::temppower
         if (!row.data) {
             console.log(`Failed to deserialize ${row.code}::${row.table} at block ${block}`);
         }
@@ -1035,7 +1036,7 @@ export default class MainDSWorker extends HyperionWorker {
         //         message: error
         //     }
         // });
-        // this.registerAutoBlacklist(row['code'], "table", row['table'], validFrom, validUntil);
+        this.registerAutoBlacklist(row['code'], "table", row['table'], validFrom, validUntil);
 
         return row;
     }
