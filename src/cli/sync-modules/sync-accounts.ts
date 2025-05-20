@@ -1,82 +1,31 @@
-import {readFileSync} from "node:fs";
-import {APIClient, Name, Serializer} from "@wharfkit/antelope";
-import {Client} from "@elastic/elasticsearch";
-import {join} from "node:path";
-import {Collection, MongoClient} from "mongodb";
-import {HyperionConnections} from "../../interfaces/hyperionConnections.js";
-import {IAccount} from "../../interfaces/table-account.js";
+import {Name, Serializer} from "@wharfkit/antelope";
 import {cargo} from "async";
+import {Collection} from "mongodb";
+import {IAccount} from "../../interfaces/table-account.js";
+import {Synchronizer} from "./synchronizer.js";
 
-export class AccountSynchronizer {
-    private chain: string;
-    private indexName: string;
-    private connections: HyperionConnections;
-    private elastic: Client;
-    private client: APIClient;
-    private mongoClient?: MongoClient;
+export class AccountSynchronizer extends Synchronizer<IAccount> {
     private accountCollection?: Collection<IAccount>;
-    private currentBlock: number = 0;
-    private totalAccounts: number = 0;
     private contractAccounts: string[] = [];
     private tokenContracts: string[] = [];
     private totalScopes: number = 0;
     private processedScopes: number = 0;
     private currentContract: string = '';
     private currentScope: string = '';
-
+    ó
     constructor(chain: string) {
-        this.chain = chain;
-        this.indexName = `${chain}-table-accounts-v1`;
-        this.connections = this.loadConnections();
-        this.elastic = this.createElasticClient();
-        this.client = this.createAPIClient();
+        super(chain, 'accounts');
     }
 
-    private loadConnections(): HyperionConnections {
-        const configDir = join(import.meta.dirname, '../../../config');
-        return JSON.parse(readFileSync(join(configDir, "connections.json")).toString());
-    }
+    protected async setupMongo() {
+        await super.setupMongo('accounts', [
+            {fields: {code: 1}, options: {unique: false}},
+            {fields: {scope: 1}, options: {unique: false}},
+            {fields: {symbol: 1}, options: {unique: false}},
+            {fields: {code: 1, scope: 1, symbol: 1}, options: {unique: true}}
+        ]);
 
-    private createElasticClient(): Client {
-        const _es = this.connections.elasticsearch;
-        return new Client({
-            node: `${_es.protocol}://${_es.host}`,
-            auth: {
-                username: _es.user,
-                password: _es.pass
-            },
-            pingTimeout: 100,
-            tls: _es.protocol === 'https' ? {
-                rejectUnauthorized: false
-            } : undefined
-        });
-    }
-
-    private createAPIClient(): APIClient {
-        const endpoint = this.connections.chains[this.chain].http;
-        if (!endpoint) {
-            throw new Error("No HTTP Endpoint!");
-        }
-        return new APIClient({url: endpoint});
-    }
-
-    private async setupMongo() {
-        const _mongo = this.connections.mongodb;
-        if (_mongo) {
-            let uri = "mongodb://";
-            if (_mongo.user && _mongo.pass) {
-                uri += `${_mongo.user}:${_mongo.pass}@${_mongo.host}:${_mongo.port}`;
-            } else {
-                uri += `${_mongo.host}:${_mongo.port}`;
-            }
-            this.mongoClient = new MongoClient(uri);
-            await this.mongoClient.connect();
-            this.accountCollection = this.mongoClient.db(`${_mongo.database_prefix}_${this.chain}`).collection('accounts');
-            await this.accountCollection.createIndex({code: 1}, {unique: false});
-            await this.accountCollection.createIndex({scope: 1}, {unique: false});
-            await this.accountCollection.createIndex({symbol: 1}, {unique: false});
-            await this.accountCollection.createIndex({code: 1, scope: 1, symbol: 1}, {unique: true});
-        }
+        this.accountCollection = this.collection as Collection<IAccount>;
     }
 
     private async getAbiHashTable(lb?: any) {
@@ -104,7 +53,7 @@ export class AccountSynchronizer {
             {name: "from", type: "name"},
             {name: "to", type: "name"},
             {name: "quantity", type: "asset"},
-            {name: "memo", type: "string"},
+            {name: "memo", type: "string"}
         ];
 
         for (const contract of this.contractAccounts) {
@@ -162,7 +111,7 @@ export class AccountSynchronizer {
                         for (const balance of balances) {
                             const [amount, symbol] = balance.split(' ');
                             const amountFloat = parseFloat(amount);
-                            this.totalAccounts++;
+                            this.totalItems++;
                             const doc = {
                                 amount: amountFloat,
                                 block_num: this.currentBlock,
@@ -197,7 +146,7 @@ export class AccountSynchronizer {
         await this.setupMongo();
 
         const progress = setInterval(() => {
-            console.log(`Progress: ${this.processedScopes}/${this.totalScopes} (${((this.processedScopes / this.totalScopes) * 100).toFixed(2)}%) - ${this.currentScope}@${this.currentContract} - ${this.totalAccounts} accounts`);
+            console.log(`Progress: ${this.processedScopes}/${this.totalScopes} (${((this.processedScopes / this.totalScopes) * 100).toFixed(2)}%) - ${this.currentScope}@${this.currentContract} - ${this.totalItems} accounts`);
         }, 1000);
 
         try {
@@ -229,13 +178,18 @@ export class AccountSynchronizer {
                     cargoQueue.push(doc).catch(console.log);
                 }
 
-                console.log(`Processed ${this.totalAccounts} accounts`);
+                console.log(`Processed ${this.totalItems} accounts`);
                 await this.mongoClient?.close();
             } else {
                 const bulkResponse = await this.elastic.helpers.bulk({
                     flushBytes: 1000000,
                     datasource: this.processContracts(),
-                    onDocument: (doc) => [{index: {_id: `${doc.code}-${doc.scope}-${doc.symbol}`, _index: this.indexName}}, doc]
+                    onDocument: (doc) => [{
+                        index: {
+                            _id: `${doc.code}-${doc.scope}-${doc.symbol}`,
+                            _index: this.indexName
+                        }
+                    }, doc]
                 });
                 console.log(`${bulkResponse.successful} accounts`);
             }

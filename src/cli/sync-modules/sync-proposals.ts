@@ -1,61 +1,28 @@
-import {APIClient, Name, PackedTransaction, Serializer, UInt64} from "@wharfkit/antelope";
-import {Client} from "@elastic/elasticsearch";
-import {Collection, MongoClient} from "mongodb";
-import {readFileSync} from "fs";
-import {join} from "path";
+import {Name, PackedTransaction, Serializer, UInt64} from "@wharfkit/antelope";
 import {cargo} from "async";
+import {Collection} from "mongodb";
+import {IProposal} from "../../interfaces/table-proposal.js";
 
-export class ProposalSynchronizer {
-    private chain: string;
-    private connections: any;
-    private api!: APIClient;
-    private elastic!: Client;
-    private mongoClient!: MongoClient;
-    private proposalsCollection!: Collection;
+import {Synchronizer} from "./synchronizer.js";
+
+export class ProposalSynchronizer extends Synchronizer<IProposal> {
+    private proposalsCollection!: Collection<IProposal>;
     private abiCacheMap: Map<string, any> = new Map();
-    private accounts: number = 0;
 
     constructor(chain: string) {
-        this.chain = chain;
-        this.loadConnections();
-        this.setupAPIClient();
-        this.setupElasticClient();
-        this.setupMongoClient();
+        super(chain, 'proposals');
     }
 
-    private loadConnections() {
-        const configDir = join(import.meta.dirname, '../../../config');
-        this.connections = JSON.parse(readFileSync(join(configDir, "connections.json")).toString());
-    }
+    protected async setupMongo() {
+        await super.setupMongo('proposals', [
+            {fields: {proposal_name: 1}},
+            {fields: {proposer: 1}},
+            {fields: {expiration: -1}},
+            {fields: {"provided_approvals.actor": 1}},
+            {fields: {"requested_approvals.actor": 1}}
+        ]);
 
-    private setupAPIClient() {
-        const endpoint = this.connections.chains[this.chain].http;
-        if (!endpoint) {
-            throw new Error("No HTTP Endpoint!");
-        }
-        this.api = new APIClient({url: endpoint});
-    }
-
-    private setupElasticClient() {
-        const _es = this.connections.elasticsearch;
-        this.elastic = new Client({
-            node: `${_es.protocol}://${_es.host}`,
-            auth: {username: _es.user, password: _es.pass},
-            tls: _es.protocol === 'https' ? {rejectUnauthorized: false} : undefined
-        });
-    }
-
-    private setupMongoClient() {
-        const _mongo = this.connections.mongodb;
-        let uri = 'mongodb://';
-        if (_mongo.user && _mongo.pass) {
-            uri += `${encodeURIComponent(_mongo.user)}:${encodeURIComponent(_mongo.pass)}@`;
-        }
-        uri += `${_mongo.host}:${_mongo.port}`;
-        if (_mongo.authSource) {
-            uri += `/?authSource=${_mongo.authSource}`;
-        }
-        this.mongoClient = new MongoClient(uri);
+        this.proposalsCollection = this.collection as Collection<IProposal>;
     }
 
     private async getProposals(scope: string) {
@@ -63,7 +30,7 @@ export class ProposalSynchronizer {
         let more = false;
         const proposals: any[] = [];
         do {
-            const result = await this.api.v1.chain.get_table_rows({
+            const result = await this.client.v1.chain.get_table_rows({
                 code: "eosio.msig",
                 table: "proposal",
                 scope: scope,
@@ -82,7 +49,7 @@ export class ProposalSynchronizer {
                     try {
                         let abi = this.abiCacheMap.get(action.account.toString());
                         if (!abi) {
-                            abi = await this.api.v1.chain.get_abi(action.account.toString());
+                            abi = await this.client.v1.chain.get_abi(action.account.toString());
                             this.abiCacheMap.set(action.account.toString(), abi);
                         }
                         const decodedData = Serializer.objectify(action.decodeData(abi.abi));
@@ -103,7 +70,7 @@ export class ProposalSynchronizer {
         let more = false;
         const approvals: any[] = [];
         do {
-            const result = await this.api.v1.chain.get_table_rows({
+            const result = await this.client.v1.chain.get_table_rows({
                 code: "eosio.msig",
                 table: "approvals2",
                 scope: scope,
@@ -120,7 +87,7 @@ export class ProposalSynchronizer {
     private async* scan() {
         let lb = '';
         do {
-            const result = await this.api.v1.chain.get_table_by_scope({
+            const result = await this.client.v1.chain.get_table_by_scope({
                 code: "eosio.msig",
                 table: "proposal",
                 limit: 300,
@@ -148,6 +115,7 @@ export class ProposalSynchronizer {
                     }
                 }
                 for (const entry of proposalMap.values()) {
+                    this.totalItems++;
                     yield entry;
                 }
             }
@@ -156,19 +124,16 @@ export class ProposalSynchronizer {
     }
 
     public async run() {
+        const info = await this.client.v1.chain.get_info();
+        this.currentBlock = info.head_block_num.toNumber();
+
+        await this.setupMongo();
+
         const isMongoEnabled = this.connections.mongodb?.enabled === true;
         console.log(`MongoDB Enabled: ${isMongoEnabled}`);
-        try {
-            await this.mongoClient.connect();
-            if (isMongoEnabled && this.proposalsCollection) {
-                await this.proposalsCollection.createIndexes([
-                    {key: {proposal_name: 1}},
-                    {key: {proposer: 1}},
-                    {key: {expiration: -1}},
-                    {key: {"provided_approvals.actor": 1}},
-                    {key: {"requested_approvals.actor": 1}}
-                ]);
 
+        try {
+            if (this.proposalsCollection) {
                 const cargoQueue = cargo((docs: any[], cb) => {
                     this.proposalsCollection.bulkWrite(docs.map(doc => ({
                         updateOne: {
@@ -180,28 +145,28 @@ export class ProposalSynchronizer {
                 }, 1000);
 
                 for await (const data of this.scan()) {
-                    this.accounts++;
                     cargoQueue.push(data).catch(console.log);
                 }
 
                 await cargoQueue.drain();
+                console.log(`Total Proposals Processed: ${this.totalItems}`);
+                await this.mongoClient?.close();
             } else {
-                console.log(`Elastic Enable`)
+                console.log(`Elastic Enable`);
                 const bulkResponse = await this.elastic.helpers.bulk({
                     datasource: this.scan(),
                     onDocument: (doc) => [{
                         index: {
-                            _index: `${this.chain}-table-proposals-v1`,
+                            _index: this.indexName,
                             _id: `${doc.proposer}-${doc.proposal_name}`
                         }
                     }, doc]
                 });
-                this.accounts = bulkResponse.total;
+                console.log(`${bulkResponse.successful} proposals`);
             }
-
-            console.log(`Total Proposals Processed: ${this.accounts}`);
-        } finally {
-            await this.mongoClient.close();
+        } catch (e) {
+            console.log(e);
+            throw e;
         }
     }
 }

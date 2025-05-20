@@ -1,7 +1,7 @@
-import {debugLog, hLog} from '../helpers/common_functions.js';
+import {debugLog, hLog} from "../helpers/common_functions.js";
 import WebSocket from 'ws';
-import {Abieos} from '@eosrio/node-abieos';
-import {ABI, Bytes, Serializer} from '@wharfkit/antelope';
+import {Abieos} from "@eosrio/node-abieos";
+import {ABI, Bytes, Serializer} from "@wharfkit/antelope";
 
 export interface ShipServer {
     node: LabelledShipNode;
