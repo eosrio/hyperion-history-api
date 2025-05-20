@@ -39,15 +39,6 @@ const actionSettings = {
     }
 };
 
-// actionSettings.index["lifecycle"] = {
-//     "name": defaultLifecyclePolicy,
-//     "rollover_alias": chain + "-action"
-// };
-
-if (cm.config.settings.hot_warm_policy) {
-    actionSettings["routing"] = {"allocation": {"exclude": {"data": "warm"}}};
-}
-
 const transferProps = {
     "properties": {
         "from": {"type": "keyword"},
@@ -199,15 +190,6 @@ const deltaSettings = {
     }
 };
 
-// deltaSettings.index["lifecycle"] = {
-//     "name": defaultLifecyclePolicy,
-//     "rollover_alias": chain + "-delta"
-// };
-
-if (cm.config.settings.hot_warm_policy) {
-    deltaSettings["routing"] = {"allocation": {"exclude": {"data": "warm"}}};
-}
-
 export const delta = {
     "index_patterns": [chain + "-delta-*"],
     "settings": deltaSettings,
@@ -269,7 +251,7 @@ export const delta = {
                     "total_producer_vote_weight": {"type": "double"},
                     "total_ram_bytes_reserved": {"type": "long"},
                     "total_ram_stake": {"type": "long"},
-                    "total_unpaid_blocks": {"type": "long"},
+                    "total_unpaid_blocks": {"type": "long"}
                 }
             }
         }
@@ -384,7 +366,7 @@ export const schedule = {
             "version": {"type": "long"},
             "@timestamp": {"type": "date"},
             "producers.name": {"type": "keyword"},
-            "producers.keys": {"type": "keyword"},
+            "producers.keys": {"type": "keyword"}
         }
     }
 };

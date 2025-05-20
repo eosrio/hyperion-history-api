@@ -19,14 +19,26 @@ export interface ScalingConfigs {
     auto_scale_trigger: number;
 }
 
+export interface NodeAttributeRequirement {
+    key: string;
+    value: string;
+}
+
+export interface TieredIndexAllocationSettings {
+    enabled: boolean;
+    max_age_days?: number;
+    max_age_blocks?: number;
+    require_node_attribute: NodeAttributeRequirement;
+}
+
 export interface MainSettings {
     use_global_agent?: boolean;
     process_prefix?: string;
     ignore_snapshot?: boolean;
     ship_request_rev: string;
-    custom_policy: string;
+    // custom_policy: string; // REMOVED
     bypass_index_map: boolean;
-    hot_warm_policy: boolean;
+    // hot_warm_policy: boolean; // REMOVED
     auto_mode_switch: boolean;
     ds_profiling: boolean;
     max_ws_payload_mb: number;
@@ -44,7 +56,9 @@ export interface MainSettings {
     dsp_parser: boolean;
     allow_custom_abi: boolean;
     index_partition_size: number;
+    max_retained_blocks?: number;
     es_replicas: number;
+    tiered_index_allocation?: TieredIndexAllocationSettings; // <-- Updated property
 }
 
 export interface IndexerConfigs {

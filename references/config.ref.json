@@ -87,11 +87,19 @@
     "max_ws_payload_mb": 256,
     "ds_profiling": false,
     "auto_mode_switch": false,
-    "hot_warm_policy": false,
-    "custom_policy": "",
     "use_global_agent": false,
     "index_partition_size": 10000000,
-    "es_replicas": 0
+    "max_retained_blocks": 0,
+    "es_replicas": 0,
+    "tiered_index_allocation": {
+      "enabled": false,
+      "max_age_days": 90,
+      "max_age_blocks": 20000000,
+      "require_node_attribute": {
+        "key": "_name",
+        "value": "node2,node3"
+      }
+    }
   },
   "blacklists": {
     "actions": [],
@@ -158,19 +166,27 @@
       "onApiStart": {
         "enabled": true,
         "cooldown": 30,
-        "emitOn": ["http"]
+        "emitOn": [
+          "http"
+        ]
       },
       "onIndexerError": {
         "enabled": true,
         "cooldown": 30,
-        "emitOn": ["telegram", "email", "http"]
+        "emitOn": [
+          "telegram",
+          "email",
+          "http"
+        ]
       }
     },
     "providers": {
       "telegram": {
         "enabled": false,
         "botToken": "",
-        "destinationIds": [1]
+        "destinationIds": [
+          1
+        ]
       },
       "http": {
         "enabled": false,
@@ -183,7 +199,10 @@
       "email": {
         "enabled": false,
         "sourceEmail": "sender@example.com",
-        "destinationEmails": ["receiverA@example.com","receiverB@example.com"],
+        "destinationEmails": [
+          "receiverA@example.com",
+          "receiverB@example.com"
+        ],
         "smtp": "smtp-relay.gmail.com (UPDATE THIS)",
         "port": 465,
         "tls": true,
