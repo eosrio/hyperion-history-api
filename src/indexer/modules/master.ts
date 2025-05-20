@@ -1,7 +1,40 @@
 import {Client, estypes} from '@elastic/elasticsearch';
+
+import pm2io from '@pm2/io';
+
+import {IOConfig} from '@pm2/io/build/main/pmx.js';
+import {API, APIClient} from '@wharfkit/antelope';
+import {queue, QueueObject} from 'async';
+
+import cluster, {Worker} from 'cluster';
+
+import {
+    createWriteStream,
+    existsSync,
+    mkdirSync,
+    readFileSync,
+    symlinkSync,
+    unlinkSync,
+    writeFileSync,
+    WriteStream
+} from 'fs';
+
+import {bootstrap} from 'global-agent';
+import {Redis} from 'ioredis';
+import moment from 'moment';
+import {Db, IndexDescription} from 'mongodb';
+import path from 'path';
+import {Socket} from 'socket.io-client';
+import {WebSocket} from 'uWebSockets.js';
+import {getTotalValue} from '../../api/helpers/functions.js';
+import {HyperionConfig} from '../../interfaces/hyperionConfig.js';
+import {HyperionWorkerDef} from '../../interfaces/hyperionWorkerDef.js';
+import {IAccount} from '../../interfaces/table-account.js';
+import {IProposal} from '../../interfaces/table-proposal.js';
+import {IVoter} from '../../interfaces/table-voter.js';
 import {ConnectionManager} from '../connections/manager.class.js';
-import {ConfigurationModule} from './config.js';
-import {HyperionModuleLoader} from './loader.js';
+import {ShipServer, StateHistorySocket} from '../connections/state-history.js';
+import {updateByBlock} from '../definitions/updateByBlock.painless.js';
 
 import {
     debugLog,
@@ -14,34 +47,10 @@ import {
     messageAllWorkers,
     waitUntilReady
 } from '../helpers/common_functions.js';
-
-import pm2io from '@pm2/io';
-
-import {createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync, WriteStream} from 'fs';
-
-import cluster, {Worker} from 'cluster';
-import path from 'path';
-import {Socket} from 'socket.io-client';
-import {HyperionConfig} from '../../interfaces/hyperionConfig.js';
-import {HyperionWorkerDef} from '../../interfaces/hyperionWorkerDef.js';
-
-import {IOConfig} from '@pm2/io/build/main/pmx.js';
-import {queue, QueueObject} from 'async';
-import {Redis} from 'ioredis';
 import {AlertManagerOptions, AlertsManager, HyperionAlertTypes} from './alertsManager.js';
-
-import {bootstrap} from 'global-agent';
-import {App, HttpRequest, HttpResponse, TemplatedApp, WebSocket} from 'uWebSockets.js';
-import moment from 'moment';
-import {getTotalValue} from '../../api/helpers/functions.js';
-import {ShipServer, StateHistorySocket} from '../connections/state-history.js';
-import {updateByBlock} from '../definitions/updateByBlock.painless.js';
-import {IAccount} from '../../interfaces/table-account.js';
-import {IProposal} from '../../interfaces/table-proposal.js';
-import {IVoter} from '../../interfaces/table-voter.js';
-import {Db, IndexDescription} from 'mongodb';
-import {randomUUID} from 'node:crypto';
-import {API, APIClient} from '@wharfkit/antelope';
+import {ConfigurationModule} from './config.js';
+import {LocalHyperionController} from "./controller.js";
+import {HyperionModuleLoader} from './loader.js';
 import Timeout = NodeJS.Timeout;
 
 interface RevBlock {
@@ -100,7 +109,7 @@ export class HyperionMaster {
     private chain_data?: API.v1.GetInfoResponse;
 
     // Main workers
-    private workerMap: HyperionWorkerDef[] = [];
+    workerMap: HyperionWorkerDef[] = [];
     private worker_index = 0;
 
     // Scaling params
@@ -186,8 +195,8 @@ export class HyperionMaster {
 
     private shouldCountIPCMessages = false;
 
-    // local websocket server
-    private localController?: TemplatedApp;
+
+    private localController: LocalHyperionController;
 
     private liveReader?: HyperionWorkerDef;
     private repairReader?: HyperionWorkerDef;
@@ -204,6 +213,8 @@ export class HyperionMaster {
 
     constructor() {
         this.cm = new ConfigurationModule();
+
+        this.localController = new LocalHyperionController(this);
 
         if (!this.cm.config) {
             hLog('Configuration is not present! Exiting now!');
@@ -519,25 +530,13 @@ export class HyperionMaster {
             },
             'indexer-paused': (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.mId) {
-                    this.localController?.publish(
-                        msg.mId,
-                        JSON.stringify({
-                            event: 'indexer-paused',
-                            mId: msg.mId
-                        })
-                    );
+                    this.localController.publish(msg.mId, {event: 'indexer-paused', mId: msg.mId});
                 }
             },
             'indexer-resumed': (_worker: Worker, msg: WorkerMessage) => {
                 hLog(`[IPC] Resuming indexer`);
-                // Notificar o controlador local que o indexador foi retomado
                 if (msg.mId) {
-                    this.localController?.publish(
-                        msg.mId,
-                        JSON.stringify({
-                            event: 'indexer-resumed'
-                        })
-                    );
+                    this.localController.publish(msg.mId, {event: 'indexer-resumed'});
                 }
             }
         };
@@ -657,7 +656,7 @@ export class HyperionMaster {
             hLog('Failed to load script updateByBlock. Aborting!');
             process.exit(1);
         } else {
-            hLog('Painless Update Script loaded!');
+            hLog("Painless Update Script loaded!");
         }
     }
 
@@ -706,7 +705,7 @@ export class HyperionMaster {
         }
     }
 
-    private async updateIndexTemplates(indicesList: {name: string; type: string}[], indexConfig) {
+    private async updateIndexTemplates(indicesList: { name: string; type: string }[], indexConfig) {
         hLog(`Updating index templates for ${this.conf.settings.chain}...`);
         let updateCounter = 0;
         for (const index of indicesList) {
@@ -1713,89 +1712,6 @@ export class HyperionMaster {
         this.connectedController = ws;
     }
 
-    private createLocalController(controlPort: number) {
-        const formatWorkerMap = () => {
-            return this.workerMap.map((worker: HyperionWorkerDef) => {
-                return {
-                    worker_id: worker.worker_id,
-                    worker_role: worker.worker_role,
-                    queue: worker.queue,
-                    local_id: worker.local_id,
-                    worker_queue: worker.worker_queue,
-                    live_mode: worker.live_mode
-                };
-            });
-        };
-
-        this.localController = App();
-        this.localController.ws('/local', {
-            open: (ws: WebSocket<any>) => {
-                hLog(`Local controller connected!`);
-            },
-            message: (ws, msg) => {
-                const buffer = Buffer.from(msg);
-                const rawMessage = buffer.toString();
-                try {
-                    switch (rawMessage) {
-                        case 'list_workers': {
-                            ws.send(JSON.stringify(formatWorkerMap()));
-                            break;
-                        }
-                        default: {
-                            // parse message as json
-                            const message = JSON.parse(rawMessage);
-                            switch (message.event) {
-                                case `fill_missing_blocks`:
-                                    this.fillMissingBlocks(message.data, ws).catch(console.log);
-                                    break;
-                                case 'pause-indexer':
-                                    const mId = randomUUID();
-                                    ws.subscribe(mId);
-                                    // send message to work of type message.type
-                                    this.workerMap.forEach((worker: HyperionWorkerDef) => {
-                                        if (worker.wref && worker.type === message.type) {
-                                            worker.wref.send({event: 'pause-indexer', mId});
-                                        }
-                                    });
-                                    break;
-                                case 'resume-indexer':
-                                    // send resume message to all indexer workers
-                                    this.workerMap.forEach((worker: HyperionWorkerDef) => {
-                                        if (worker.wref && worker.type === message.type) {
-                                            worker.wref.send({
-                                                event: 'resume-indexer',
-                                                mId: message.mId
-                                            });
-                                        }
-                                    });
-                                    break;
-                            }
-                        }
-                    }
-                } catch (e: any) {
-                    console.error(e);
-                    ws.send(JSON.stringify({error: e.message}));
-                    ws.send('Invalid message format!');
-                    ws.end();
-                }
-            },
-            close: () => {
-                hLog(`Local controller disconnected!`);
-            }
-        });
-
-        this.localController.get('/list_workers', (res: HttpResponse, req: HttpRequest) => {
-            res.writeHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify(formatWorkerMap()));
-        });
-
-        this.localController.listen(controlPort, (token) => {
-            if (token) {
-                hLog(`Local controller listening on port ${controlPort}`);
-            }
-        });
-    }
-
     private sendPendingRepairRanges() {
         if (this.pendingRepairRanges.length > 0) {
             const nextRange = this.pendingRepairRanges.shift();
@@ -1851,7 +1767,9 @@ export class HyperionMaster {
             controlPort = 7002;
             hLog(`control_port not defined in connections.json, using default: ${controlPort}`);
         }
-        this.createLocalController(controlPort);
+
+        // Create local controller socket
+        this.localController.createLocalController(controlPort);
 
         // Preview mode - prints only the proposed worker map
         let preview = this.conf.settings.preview;
@@ -2173,7 +2091,7 @@ export class HyperionMaster {
         // this.metrics.syncEta = pm2io.metric({name: 'Time to sync'});
     }
 
-    private gracefulStop(done: (result: any) => void) {
+    public gracefulStop(done: (result: any) => void) {
         try {
             this.shutdownStarted = true;
             this.allowMoreReaders = false;
@@ -2207,7 +2125,9 @@ export class HyperionMaster {
 
                     hLog('Shutting down master...');
                     done({ack: true});
-                    process.exit(0);
+                    setTimeout(() => {
+                        process.exit(0);
+                    }, 100);
                 }
             }, 1000);
         } catch (e: any) {
@@ -2266,7 +2186,10 @@ export class HyperionMaster {
         });
     }
 
-    async requestDataFromWorkers(requestEvent: {event: string; data?: any}, responseEventType: string, timeoutSec: number = 1000) {
+    async requestDataFromWorkers(requestEvent: {
+        event: string;
+        data?: any
+    }, responseEventType: string, timeoutSec: number = 1000) {
         const requests: any[] = [];
         for (const id in cluster.workers) {
             if (cluster.workers.hasOwnProperty(id)) {
