@@ -545,7 +545,7 @@ export default class StateReader extends HyperionWorker {
                     blockData = await this.rpc.v1.chain.get_block(block_id.toLowerCase());
                     if (blockData) {
                         if (blockData.block_num.toNumber() === val.block_num) {
-                            console.log(`Block ${blockData.block_num.toNumber()} ${block_id} is still present on the chain, not forked.`);
+                            // console.log(`Block ${blockData.block_num.toNumber()} ${block_id} is still present on the chain, not forked.`);
                             // check if the block is older than the last irreversible block
                             if (val.block_num <= this.local_lib) {
                                 console.log(`Block ${block_id} is older than the lib, definitely not forked.`);
@@ -571,7 +571,7 @@ export default class StateReader extends HyperionWorker {
                 }
 
                 if (blockData === null) {
-                    console.log(`Block ${block_id} not found, confirming it was forked.`);
+                    // console.log(`Block ${block_id} not found, confirming it was forked.`);
                     removedList.push({block_id, ...val});
                     await this.deleteForkedBlockById(block_id, val.block_num);
                     // delete the block from the forked blocks map

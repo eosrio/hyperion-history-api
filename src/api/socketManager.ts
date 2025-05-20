@@ -1,96 +1,25 @@
-import {checkMetaFilter, hLog, sleep} from '../indexer/helpers/common_functions.js';
-import {Server, Socket} from 'socket.io';
 import {createAdapter} from "@socket.io/redis-adapter";
-import {io, Socket as ClientSocket} from 'socket.io-client';
+import {randomUUID} from "crypto";
 import {FastifyInstance} from "fastify";
 import {Redis, RedisOptions} from "ioredis";
+import {Server, Socket} from 'socket.io';
+import {io, Socket as ClientSocket} from 'socket.io-client';
 import {App, TemplatedApp} from 'uWebSockets.js';
+import {hLog, sleep} from '../indexer/helpers/common_functions.js';
+import {
+    StreamActionsRequest,
+    StreamDeltasRequest,
+    StreamEvents,
+    StreamRequest,
+    StreamTypeMap
+} from "../interfaces/stream-requests.js";
 import {streamPastActions, streamPastDeltas} from "./helpers/functions.js";
-import {randomUUID} from "crypto";
-import {RequestFilter, StreamActionsRequest, StreamDeltasRequest} from "../interfaces/stream-requests.js";
-
-function processActionRequests(
-    actionClientMap: Map<string, Map<string, Map<string, StreamActionsRequest>>>,
-    actionName: string,
-    account: string,
-    message: string,
-    targetClients: Map<string, string[]>
-): void {
-    if (!actionClientMap.has(actionName)) return;
-    actionClientMap.get(actionName)?.forEach((requests, clientId) => {
-        // console.log(requests);
-
-        if (!targetClients.has(clientId)) {
-            targetClients.set(clientId, []);
-        }
-
-        requests.forEach((request, uuid) => {
-            if (checkActionFilters(request, account, message)) {
-                targetClients.get(clientId)?.push(uuid);
-            }
-        });
-    });
-}
-
-function processTableRequests(
-    tableClientMap: Map<string, Map<string, Map<string, StreamDeltasRequest>>>,
-    tableId: string,
-    payer: string,
-    message: string,
-    targetClients: Map<string, string[]>
-): void {
-    if (!tableClientMap.has(tableId)) return;
-    tableClientMap.get(tableId)?.forEach((requests, clientId) => {
-
-        // console.log(requests);
-
-        if (!targetClients.has(clientId)) {
-            targetClients.set(clientId, []);
-        }
-
-        requests.forEach((request, uuid) => {
-            if (checkDeltaFilters(request, payer, message)) {
-                targetClients.get(clientId)?.push(uuid);
-            }
-        });
-    });
-}
-
-function checkActionFilters(request: StreamActionsRequest, account: string, msg: string): boolean {
-    let allow: boolean;
-    if (request.account) {
-        allow = request.account === account;
-    } else {
-        allow = true;
-    }
-    if (allow && request.filters && request.filters?.length > 0) {
-        const parsedMsg = JSON.parse(msg);
-        if (request.filter_op === 'or') {
-            allow = request.filters.some((f: RequestFilter) => checkMetaFilter(f, parsedMsg, 'action'));
-        } else {
-            allow = request.filters.every((f: RequestFilter) => checkMetaFilter(f, parsedMsg, 'action'));
-        }
-    }
-    return allow;
-}
-
-function checkDeltaFilters(request: StreamDeltasRequest, payer: string, msg: string): boolean {
-    let allow: boolean;
-    if (request.payer) {
-        allow = request.payer === payer;
-    } else {
-        allow = true;
-    }
-    if (allow && request.filters && request.filters?.length > 0) {
-        const parsedMsg = JSON.parse(msg);
-        if (request.filter_op === 'or') {
-            allow = request.filters.some((f: RequestFilter) => checkMetaFilter(f, parsedMsg, 'delta'));
-        } else {
-            allow = request.filters.every((f: RequestFilter) => checkMetaFilter(f, parsedMsg, 'delta'));
-        }
-    }
-    return allow;
-}
+import {
+    checkActionFilters,
+    checkDeltaFilters,
+    processActionRequests,
+    processTableRequests
+} from "./helpers/streamFunctions.js";
 
 export class SocketManager {
 
@@ -125,8 +54,8 @@ export class SocketManager {
     // notifiedAccount >> client_id >> requestIds
     private notifiedAccountClientMap: Map<string, Map<string, [string, StreamActionsRequest]>> = new Map();
 
-
     private disconnectTimeoutMap: Map<string, NodeJS.Timeout> = new Map();
+
     private lastRelaySocketId: string = '';
 
     constructor(fastify: FastifyInstance, url: string, redisOptions: RedisOptions) {
@@ -135,13 +64,10 @@ export class SocketManager {
         this.uwsApp = App({});
 
         // WS Server for public access
-        this.io = new Server({
-            transports: ['websocket'],
-            path: '/stream'
-        });
+        this.io = new Server({transports: ['websocket'], path: '/stream'});
 
         this.io.attachApp(this.uwsApp);
-        this.chainId = this.server.manager.conn.chains[this.server.manager.chain].chain_id
+        this.chainId = this.server.manager.conn.chains[this.server.manager.chain].chain_id;
         const pubClient = new Redis(redisOptions);
         const subClient = pubClient.duplicate();
 
@@ -150,291 +76,13 @@ export class SocketManager {
         }));
 
         this.io.on('connection', (socket: Socket) => {
-
-            // special event to handle reconnection and request reuse
-            socket.on('reconnect', (data: any) => {
-                if (data.last_id) {
-                    hLog("Client reconnected, previous ID: " + data.last_id);
-                    if (this.clientDeltaRequestMap.has(data.last_id)) {
-                        this.replaceClientId(data.last_id, socket.id);
-                    } else {
-                        // No requests present, likely a server restart, ask the client to resend the request
-                        // Add a random delay
-                        setTimeout(() => {
-                            socket.emit('resend_requests', {last_id: data.last_id});
-                        }, 1000 + Math.random() * 1000);
-                    }
-                }
-            });
-
-            if (socket.handshake.headers['x-forwarded-for']) {
-                hLog(`[socket] ${socket.id} connected via ${socket.handshake.headers['x-forwarded-for']}`);
-            }
-
-            socket.emit('handshake', {chain: fastify.manager.chain, chain_id: this.chainId});
-
-            if (this.relay) {
-                this.relay.emit('event', {type: 'client_count', counter: this.io.sockets.sockets.size});
-            }
-
-            socket.on('cancel_stream_request', (data: { reqUUID: string }, callback) => {
-                console.log('cancel_stream_request', data);
-                if (typeof callback === 'function' && data) {
-                    try {
-                        if (this.relay && this.relay.connected) {
-                            this.relay.emit('event', {
-                                reqUUID: data.reqUUID,
-                                type: 'cancel_request',
-                                client_socket_id: socket.id,
-                            }, (response: any) => {
-                                callback(response);
-                            });
-                        } else {
-                            callback('STREAMING_OFFLINE');
-                        }
-                    } catch (e: any) {
-                        console.log(e);
-                    }
-                }
-            })
-
-            socket.on('delta_stream_request', async (data: StreamDeltasRequest, callback) => {
-                if (typeof callback === 'function' && data) {
-                    try {
-
-                        // basic request validation
-                        if (!data.code || !data.table) {
-                            return callback({
-                                status: 'ERROR',
-                                message: 'code and table are required'
-                            });
-                        }
-
-                        // validate range
-                        if ((data.start_from && data.start_from !== 0) && (data.read_until && data.read_until !== 0)) {
-                            if (data.start_from > data.read_until) {
-                                return callback({
-                                    status: 'ERROR',
-                                    message: 'start_from cannot be greater than read_until'
-                                });
-                            }
-                        }
-
-                        // check filters
-                        if (data.filters && data.filter_op !== "or") {
-                            // multiple filters for the same field are not valid unless in OR mode
-                            const filterFields = new Set<string>();
-                            let errCount = 0;
-                            data.filters.forEach(value => {
-                                if (filterFields.has(value.field)) {
-                                    errCount++;
-                                } else {
-                                    filterFields.add(value.field);
-                                }
-                            });
-                            if (errCount > 0) {
-                                return callback({
-                                    status: 'ERROR',
-                                    message: `Multiple filters for the same field are not valid unless in OR mode. ${errCount} errors found`,
-                                    errorData: data.filters
-                                });
-                            }
-                        }
-
-                        // generate random uuid for each request
-                        const requestUUID = randomUUID();
-                        // debug only
-                        // this.prettyDeltaRoutingMap();
-                        // this.printRoutingTable()
-
-                        // get the last history block from the real time stream request
-                        let lastHistoryBlock = 0;
-                        if (!data.ignore_live) {
-                            this.attachDeltaRequests(data, socket.id, requestUUID);
-                            lastHistoryBlock = await new Promise<number>((resolve) => {
-                                // start sending realtime data
-                                this.emitToRelay(data, 'delta_request', socket, requestUUID, (emissionResult) => {
-                                    callback(emissionResult);
-                                    resolve(emissionResult.currentBlockNum);
-                                });
-                            });
-                        } else {
-                            // if live data is ignored immediately reply the callback
-                            callback({status: 'OK', reqUUID: requestUUID, currentBlockNum: this.currentBlockNum});
-                        }
-
-                        // push history data (optional)
-                        if (data.start_from && data.start_from !== 0) {
-
-                            if (!(data.read_until && data.read_until !== 0)) {
-                                if (lastHistoryBlock > 0) {
-                                    data.read_until = lastHistoryBlock;
-                                }
-                            }
-
-                            hLog('Performing primary scroll request until block: ', data.read_until, '... ');
-                            let ltb: number | undefined = 0;
-                            const hStreamResult = await streamPastDeltas(this.server, socket, requestUUID, data);
-                            if (!hStreamResult.status) {
-                                return;
-                            } else {
-                                ltb = hStreamResult.lastTransmittedBlock;
-                                let attempts = 0;
-                                await sleep(500);
-                                while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
-                                    attempts++;
-                                    hLog(`Performing fill request from ${ltb}...`);
-                                    data.start_from = (hStreamResult.lastTransmittedBlock ?? 0) + 1;
-                                    data.read_until = lastHistoryBlock;
-                                    const r = await streamPastDeltas(this.server, socket, requestUUID, data);
-                                    if (!r.status) {
-                                        console.log("Error streaming past data:", r);
-                                        return;
-                                    } else {
-                                        ltb = r.lastTransmittedBlock;
-                                    }
-                                }
-                                hLog(`Done streaming past data at block ${ltb} Emitting event to client...`);
-                                socket.emit('message', {
-                                    type: 'delta_history_end',
-                                    reqUUID: requestUUID,
-                                    mode: 'history',
-                                    message: {lastBlock: ltb},
-                                });
-                            }
-                        }
-
-                    } catch (e: any) {
-                        console.log(e);
-                    }
-                }
-            });
-
-            socket.on('action_stream_request', async (data: StreamActionsRequest, callback) => {
-                if (typeof callback === 'function' && data) {
-                    try {
-
-                        console.log(data);
-
-                        // basic request validation
-                        if (!data.contract || !data.action) {
-                            return callback({
-                                status: 'ERROR',
-                                message: 'contract or action are required'
-                            });
-                        }
-
-                        // validate range
-                        if ((data.start_from && data.start_from !== 0) && (data.read_until && data.read_until !== 0)) {
-                            if (data.start_from > data.read_until) {
-                                return callback({
-                                    status: 'ERROR',
-                                    message: 'start_from cannot be greater than read_until'
-                                });
-                            }
-                        }
-
-                        // check filters
-                        if (data.filters && data.filter_op !== "or") {
-                            // multiple filters for the same field are not valid unless in OR mode
-                            const filterFields = new Set<string>();
-                            let errCount = 0;
-                            data.filters.forEach(value => {
-                                if (filterFields.has(value.field)) {
-                                    errCount++;
-                                } else {
-                                    filterFields.add(value.field);
-                                }
-                            });
-                            if (errCount > 0) {
-                                return callback({
-                                    status: 'ERROR',
-                                    message: `Multiple filters for the same field are not valid unless in OR mode. ${errCount} errors found`,
-                                    errorData: data.filters
-                                });
-                            }
-                        }
-
-                        // generate random uuid for each request
-                        const requestUUID = randomUUID();
-
-                        // get the last history block from the real time stream request
-                        let lastHistoryBlock: string | number = 0;
-                        if (!data.ignore_live) {
-                            this.attachActionRequests(data, socket.id, requestUUID);
-                            lastHistoryBlock = await new Promise<number>((resolve) => {
-                                // start sending realtime data
-                                this.emitToRelay(data, 'action_request', socket, requestUUID, (emissionResult) => {
-                                    callback(emissionResult);
-                                    resolve(emissionResult.currentBlockNum);
-                                });
-                            });
-                        } else {
-                            // if live data is ignored immediately reply the callback
-                            console.log("Ignoring live data for action stream request...");
-                            lastHistoryBlock = data.read_until;
-                            callback({status: 'OK', reqUUID: requestUUID, currentBlockNum: this.currentBlockNum});
-                        }
-
-                        // await sleep(2000);
-
-                        // push history data
-                        if (data.start_from) {
-                            data.read_until = lastHistoryBlock;
-                            console.log('Performing primary scroll request...');
-                            await streamPastActions(this.server, socket, requestUUID, data);
-
-                            // let ltb: number | undefined = 0;
-                            // const hStreamResult = await streamPastActions(this.server, socket, requestUUID, data);
-                            // if (!hStreamResult.status) {
-                            //     return;
-                            // } else {
-                            //     ltb = hStreamResult.lastTransmittedBlock;
-                            //     let attempts = 0;
-                            //     await sleep(1500);
-                            //     while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts < 3) {
-                            //         attempts++;
-                            //         console.log(`Performing fill request from ${hStreamResult.lastTransmittedBlock}...`);
-                            //         data.start_from = (hStreamResult.lastTransmittedBlock ?? 0) + 1;
-                            //         data.read_until = lastHistoryBlock;
-                            //         const r = await streamPastActions(this.server, socket, requestUUID, data);
-                            //         if (!r.status) {
-                            //             console.log(r);
-                            //             return;
-                            //         } else {
-                            //             ltb = r.lastTransmittedBlock;
-                            //         }
-                            //     }
-                            // }
-
-                        }
-                    } catch (e: any) {
-                        console.log(e);
-                    }
-                }
-            });
-
-
-            socket.on('disconnect', (reason) => {
-                hLog(`[socket] ${socket.id} disconnected - ${reason}`);
-                const timeoutId = setTimeout(() => {
-                    this.detachDeltaRequests(socket.id);
-                    if (this.relay) {
-                        this.relay.emit('event', {type: 'client_disconnected', id: socket.id, reason});
-                    }
-                    this.disconnectTimeoutMap.delete(socket.id);
-                    // console.log("Pending requests: ", this.disconnectTimeoutMap.size);
-                }, 5000);
-                this.disconnectTimeoutMap.set(socket.id, timeoutId);
-            });
+            this.handleSocketConnection(socket, fastify);
         });
 
         try {
             const port = this.server.manager.config.api.stream_port || 1234;
-            const serverName = this.server.manager.config.api.server_name.split(':')[0];
             this.uwsApp.listen(port, () => {
-
-                // Extract hostname and determine protocol from server_name
+                // Extract the hostname and determine protocol from server_name
                 let hostname = '127.0.0.1';
                 let wsProtocol = 'ws://'; // Default to non-secure WebSocket
                 try {
@@ -447,23 +95,95 @@ export class SocketManager {
                             wsProtocol = 'wss://';
                         }
                     } else {
-                        // Handle simple hostname:port format
                         hostname = serverName.split(':')[0];
                     }
                 } catch (e) {
                     // Fallback to server_addr if parsing fails
                     hostname = this.server.manager.config.api.server_addr;
                 }
-
-                // Log the complete WebSocket URL with appropriate protocol
+                // Log the complete WebSocket URL with the appropriate protocol
                 hLog(`Stream API URL: ${wsProtocol}${hostname}:${port}/stream`);
-
             });
         } catch (e: any) {
             hLog(e.message);
         }
 
         hLog('Websocket manager loaded!');
+    }
+
+    private handleSocketConnection(socket: Socket, fastify: FastifyInstance) {
+        if (socket.handshake.headers['x-forwarded-for']) {
+            hLog(`[socket] ${socket.id} connected via ${socket.handshake.headers['x-forwarded-for']}`);
+        }
+        socket.emit('handshake', {chain: fastify.manager.chain, chain_id: this.chainId});
+        if (this.relay) {
+            this.relay.emit('event', {type: 'client_count', counter: this.io.sockets.sockets.size});
+        }
+
+        // handle reconnection and request reuse
+        socket.on('reconnect', (data: any) => {
+            if (data.last_id) {
+                hLog("Client reconnected, previous ID: " + data.last_id);
+                if (this.clientDeltaRequestMap.has(data.last_id)) {
+                    this.replaceClientId(data.last_id, socket.id);
+                } else {
+                    // No requests present, likely a server restart, ask the client to resend the request
+                    // Add a random delay
+                    setTimeout(() => {
+                        socket.emit('resend_requests', {last_id: data.last_id});
+                    }, 1000 + Math.random() * 1000);
+                }
+            }
+        });
+
+        // handle request cancellation
+        socket.on('cancel_stream_request', (data: { reqUUID: string }, callback) => {
+            if (typeof callback === 'function' && data) {
+                try {
+                    if (this.relay && this.relay.connected) {
+                        this.relay.emit('event', {
+                            reqUUID: data.reqUUID,
+                            type: 'cancel_request',
+                            client_socket_id: socket.id
+                        }, (response: any) => {
+                            callback(response);
+                        });
+                    } else {
+                        callback('STREAMING_OFFLINE');
+                    }
+                } catch (e: any) {
+                    console.log(e);
+                }
+            }
+        });
+
+        // handle delta stream request
+        socket.on('delta_stream_request', async (data: StreamDeltasRequest, callback) => {
+            this.processStreamRequest('delta', socket, data, callback).catch(reason => {
+                return callback({status: 'ERROR', message: reason});
+            });
+        });
+
+        // handle action stream request
+        socket.on('action_stream_request', async (data: StreamActionsRequest, callback) => {
+            this.processStreamRequest('action', socket, data, callback).catch(reason => {
+                return callback({status: 'ERROR', message: reason});
+            });
+        });
+
+        // handle client disconnection
+        socket.on('disconnect', (reason) => {
+            hLog(`[socket] ${socket.id} disconnected - ${reason}`);
+            const timeoutId = setTimeout(() => {
+                this.detachDeltaRequests(socket.id);
+                if (this.relay) {
+                    this.relay.emit('event', {type: 'client_disconnected', id: socket.id, reason});
+                }
+                this.disconnectTimeoutMap.delete(socket.id);
+                // console.log("Pending requests: ", this.disconnectTimeoutMap.size);
+            }, 5000);
+            this.disconnectTimeoutMap.set(socket.id, timeoutId);
+        });
     }
 
     /*
@@ -476,7 +196,7 @@ export class SocketManager {
             extraHeaders: {
                 'x-last-relay-id': this.lastRelaySocketId
             },
-            reconnection: true,
+            reconnection: true
         });
 
         this.relay.on('connect', () => {
@@ -516,20 +236,6 @@ export class SocketManager {
         this.addRelayForwarding('lib_update');
 
         this.addRelayForwarding('fork_event');
-
-        // // Relay LIB info to clients;
-        // this.relay.on('lib_update', (data) => {
-        //     if (this.server.manager.conn.chains[this.server.manager.chain].chain_id === data.chain_id) {
-        //         this.io.emit('lib_update', data);
-        //     }
-        // });
-        //
-        // // Relay fork info to clients;
-        // this.relay.on('fork_event', (data) => {
-        //     if (this.server.manager.conn.chains[this.server.manager.chain].chain_id === data.chain_id) {
-        //         this.io.emit('fork_event', data);
-        //     }
-        // });
     }
 
     // Add event broadcasting handlers
@@ -543,27 +249,16 @@ export class SocketManager {
         }
     }
 
-    // Send request from client to relay socket on indexer
-    emitToRelay(
-        data: StreamActionsRequest | StreamDeltasRequest,
-        type: string,
-        socket: Socket,
-        requestUUID: string,
-        callback: (response: any) => void
-    ) {
+    // Send request from client to relay socket on indexer with callback
+    emitToRelay(request: StreamRequest, type: StreamEvents, socket: Socket, reqUUID: string, done: (r: any) => void) {
         if (this.relay && this.relay.connected) {
-            this.relay.emit('event', {
-                reqUUID: requestUUID,
-                type: type,
-                client_socket: socket.id,
-                request: data,
-            }, (response: any) => {
-                response['reqUUID'] = requestUUID;
-                response['currentBlockNum'] = this.currentBlockNum;
-                callback(response);
+            this.relay.emit('event', {reqUUID, type: type, client_socket: socket.id, request}, (resp: any) => {
+                resp['reqUUID'] = reqUUID;
+                resp['currentBlockNum'] = this.currentBlockNum;
+                done(resp);
             });
         } else {
-            callback('STREAMING_OFFLINE');
+            done('STREAMING_OFFLINE');
         }
     }
 
@@ -633,43 +328,6 @@ export class SocketManager {
             this.clientDeltaRequestMap.set(client_id, new Map());
         }
         this.clientDeltaRequestMap.get(client_id)?.set(requestUUID, data);
-    }
-
-    // function to display the full request map this.deltaCodeMap
-    private prettyDeltaRoutingMap() {
-        console.log(`-------- CODE-TABLE-CLIENT MAP --------------`);
-        this.deltaCodeMap.forEach((codeMap, code) => {
-            console.log("Code: ", code, " ->");
-            codeMap.forEach((tableMap, table) => {
-                console.log("Table: ", table, " ->");
-                tableMap.forEach((clientMap, client) => {
-                    console.log("Client: ", client, " ->");
-                    clientMap.forEach((request, requestUUID) => {
-                        console.log(`requestUUID: ${requestUUID}, request: ${JSON.stringify(request, null, 2)}`);
-                    });
-                });
-            });
-        });
-        console.log(`-------- PAYER-CLIENT MAP --------------`);
-        let totalClients = 0;
-        this.payerClientMap.forEach((clientSet, payer) => {
-            console.log("Payer: ", payer, " ->");
-            clientSet.forEach((client) => {
-                console.log("Client: ", client);
-                totalClients++;
-            });
-        });
-        console.log(`Total clients: ${totalClients}`);
-    }
-
-    private prettyPrintPayerClientMap() {
-        console.log(`-------------------------------`);
-        this.payerClientMap.forEach((clientSet, payer) => {
-            console.log("Payer: ", payer, " ->");
-            clientSet.forEach((client) => {
-                console.log("Client: ", client);
-            });
-        })
     }
 
     /**
@@ -747,40 +405,20 @@ export class SocketManager {
         }
     }
 
-    /**
-     * Print a table with the number of clients attached to each code-table routing path
-     */
-    private printRoutingTable() {
-        console.log(`-------- CODE-TABLE-CLIENT MAP --------------`);
-        const data: any[] = [];
-        this.deltaCodeMap.forEach((codeMap, code) => {
-            codeMap.forEach((tableMap, table) => {
-                data.push({code, table, clients: tableMap.size});
-            })
-        });
-        console.table(data);
-        console.log(`-------- PAYER-CLIENT MAP --------------`);
-        const data2: any[] = [];
-        this.payerClientMap.forEach((clientSet, payer) => {
-            data2.push({payer, clients: clientSet.size});
-        });
-        console.table(data2);
-    }
-
     private routeActionTraceToClients(traceData: any) {
         const {account: contract, name: action, notified} = traceData;
         const targetClients = new Map<string, string[]>();
         const notifiedAccounts = notified.split(',');
-        
+
         // console.log(`Routing Action [${contract}::${action}] to clients... | Notified: ${notified}`);
 
         // Forward to CONTRACT/ACTION listeners
         if (this.actionContractMap.has(contract)) {
             const actionClientMap = this.actionContractMap.get(contract);
             if (actionClientMap) {
-                // Process specific action requests
+                // Direct action requests
                 processActionRequests(actionClientMap, action, notifiedAccounts, traceData.message, targetClients);
-                // Process wildcard action requests
+                // Wildcard action requests
                 processActionRequests(actionClientMap, "*", notifiedAccounts, traceData.message, targetClients);
             }
         }
@@ -804,7 +442,7 @@ export class SocketManager {
                 type: 'action_trace',
                 mode: 'live',
                 targets: reqs,
-                message: traceData.message,
+                message: traceData.message
             });
         });
 
@@ -819,9 +457,9 @@ export class SocketManager {
         if (this.deltaCodeMap.has(code)) {
             const tableClientMap = this.deltaCodeMap.get(code);
             if (tableClientMap) {
-                // Process specific table requests
+                // Direct table requests
                 processTableRequests(tableClientMap, table, payer, message, targetClients);
-                // Process wildcard table requests
+                // Wildcard table requests
                 processTableRequests(tableClientMap, "*", payer, message, targetClients);
             }
         }
@@ -837,7 +475,7 @@ export class SocketManager {
                 }
             });
         }
-        
+
         // console.log(`Routing Delta [${code}::${table}::${scope}][${payer}] to ${targetClients.size} clients`);
 
         targetClients.forEach((reqs: string[], clientId: string) => {
@@ -845,7 +483,7 @@ export class SocketManager {
                 type: 'delta_trace',
                 mode: 'live',
                 targets: reqs,
-                message: traceData.message,
+                message: traceData.message
             });
         });
         // console.log("Processing time: ", Number(process.hrtime.bigint() - tRef) / 1000000, "ms");
@@ -883,4 +521,203 @@ export class SocketManager {
         }
 
     }
+
+    private async processStreamRequest<K extends keyof StreamTypeMap>(
+        type: K,
+        socket: Socket,
+        data: StreamTypeMap[K]['request'],
+        callback: (resp: any) => void
+    ) {
+        try {
+
+            // basic request validation
+            switch (type) {
+                case "action": {
+                    const actionData = data as StreamActionsRequest;
+                    if (!actionData.contract || !actionData.action) {
+                        return callback({
+                            status: 'ERROR',
+                            message: 'contract or action are required'
+                        });
+                    }
+                    break;
+                }
+                case "delta": {
+                    const deltaData = data as StreamDeltasRequest;
+                    if (!deltaData.code || !deltaData.table) {
+                        return callback({
+                            status: 'ERROR',
+                            message: 'code and table are required'
+                        });
+                    }
+                    break;
+                }
+            }
+
+            // validate range
+            if ((data.start_from && data.start_from !== 0) && (data.read_until && data.read_until !== 0)) {
+                if (data.start_from > data.read_until) {
+                    return callback({
+                        status: 'ERROR',
+                        message: 'start_from cannot be greater than read_until'
+                    });
+                }
+            }
+
+            // check filters
+            if (data.filters && data.filter_op !== "or") {
+                // multiple filters for the same field are not valid unless in OR mode
+                const filterFields = new Set<string>();
+                let errCount = 0;
+                data.filters.forEach(value => {
+                    if (filterFields.has(value.field)) {
+                        errCount++;
+                    } else {
+                        filterFields.add(value.field);
+                    }
+                });
+                if (errCount > 0) {
+                    return callback({
+                        status: 'ERROR',
+                        message: `Multiple filters for the same field are not valid unless in OR mode. ${errCount} errors found`,
+                        errorData: data.filters
+                    });
+                }
+            }
+
+            // generate random uuid for each request
+            const requestUUID = randomUUID();
+            // debug only
+            // this.prettyDeltaRoutingMap();
+            // this.printRoutingTable()
+
+            // get the last history block from the real time stream request
+            let lastHistoryBlock = 0;
+            if (!data.ignore_live) {
+
+                if (type === 'delta') {
+                    this.attachDeltaRequests(data as StreamDeltasRequest, socket.id, requestUUID);
+                } else if (type === 'action') {
+                    this.attachActionRequests(data as StreamActionsRequest, socket.id, requestUUID);
+                }
+
+                lastHistoryBlock = await new Promise<number>((resolve) => {
+                    // start sending realtime data
+                    const reqType = type === 'delta' ? 'delta_request' : 'action_request';
+                    this.emitToRelay(data, reqType, socket, requestUUID, (emissionResult) => {
+                        callback(emissionResult);
+                        resolve(emissionResult.currentBlockNum);
+                    });
+                });
+            } else {
+                // if live data is ignored immediately reply the callback
+                callback({status: 'OK', reqUUID: requestUUID, currentBlockNum: this.currentBlockNum});
+            }
+
+            // push history data (optional)
+            if (data.start_from && data.start_from !== 0) {
+
+                if (!(data.read_until && data.read_until !== 0)) {
+                    if (lastHistoryBlock > 0) {
+                        data.read_until = lastHistoryBlock;
+                    }
+                }
+
+                hLog('Performing primary scroll request until block: ', data.read_until, '... ');
+                let ltb: number | undefined = 0;
+
+                const hStreamResult = type === 'delta'
+                    ? await streamPastDeltas(this.server, socket, requestUUID, data as StreamDeltasRequest)
+                    : await streamPastActions(this.server, socket, requestUUID, data as StreamActionsRequest);
+
+                if (!hStreamResult.status) {
+                    return;
+                } else {
+                    ltb = hStreamResult.lastTransmittedBlock;
+                    let attempts = 0;
+                    await sleep(500);
+                    while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts < 5) {
+                        hLog('Last transmitted block:', ltb, ' | Last history block:', lastHistoryBlock, ' | Attempts:', attempts);
+                        attempts++;
+                        hLog(`Performing ${type.toUpperCase()} fill request from ${ltb}...`);
+                        data.start_from = (hStreamResult.lastTransmittedBlock ?? 0) + 1;
+                        data.read_until = lastHistoryBlock;
+
+                        const r = type === 'delta'
+                            ? await streamPastDeltas(this.server, socket, requestUUID, data as StreamDeltasRequest)
+                            : await streamPastActions(this.server, socket, requestUUID, data as StreamActionsRequest);
+
+                        if (!r.status) {
+                            hLog(`Error streaming past ${type.toUpperCase()}S:`, r);
+                            return;
+                        } else {
+                            ltb = r.lastTransmittedBlock;
+                            await sleep(500);
+                        }
+                    }
+                    hLog(`✅ Done streaming past ${type.toUpperCase()}S at block ${ltb}`);
+
+                    socket.emit('message', {
+                        type: 'history_end',
+                        reqUUID: requestUUID,
+                        mode: 'history',
+                        message: {lastBlock: ltb}
+                    });
+                }
+            }
+        } catch (e: any) {
+            console.log(e);
+        }
+    }
+
+    // private prettyDeltaRoutingMap() {
+    //     console.log(`-------- CODE-TABLE-CLIENT MAP --------------`);
+    //     this.deltaCodeMap.forEach((codeMap, code) => {
+    //         console.log("Code: ", code, " ->");
+    //         codeMap.forEach((tableMap, table) => {
+    //             console.log("Table: ", table, " ->");
+    //             tableMap.forEach((clientMap, client) => {
+    //                 console.log("Client: ", client, " ->");
+    //                 clientMap.forEach((request, requestUUID) => {
+    //                     console.log(`requestUUID: ${requestUUID}, request: ${JSON.stringify(request, null, 2)}`);
+    //                 });
+    //             });
+    //         });
+    //     });
+    //     console.log(`-------- PAYER-CLIENT MAP --------------`);
+    //     let totalClients = 0;
+    //     this.payerClientMap.forEach((clientSet, payer) => {
+    //         console.log("Payer: ", payer, " ->");
+    //         clientSet.forEach((client) => {
+    //             console.log("Client: ", client);
+    //             totalClients++;
+    //         });
+    //     });
+    //     console.log(`Total clients: ${totalClients}`);
+    // }
+    // private prettyPrintPayerClientMap() {
+    //     console.log(`-------------------------------`);
+    //     this.payerClientMap.forEach((clientSet, payer) => {
+    //         console.log("Payer: ", payer, " ->");
+    //         clientSet.forEach((client) => {
+    //             console.log("Client: ", client);
+    //         });
+    //     });
+    // }
+    // private printRoutingTable() {
+    //     console.log(`-------- CODE-TABLE-CLIENT MAP --------------`);
+    //     const data: any[] = [];
+    //     this.deltaCodeMap.forEach((codeMap, code) => {
+    //         codeMap.forEach((tableMap, table) => {
+    //             data.push({code, table, clients: tableMap.size});
+    //         });
+    //     });
+    //     console.table(data);
+    //     console.log(`-------- PAYER-CLIENT MAP --------------`);
+    //     const data2: any[] = [];
+    //     this.payerClientMap.forEach((clientSet, payer) => {
+    //         data2.push({payer, clients: clientSet.size});
+    //     });
+    //     console.table(data2);
+    // }
 }

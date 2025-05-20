@@ -1,9 +1,9 @@
-import _ from "lodash";
-import {Socket} from "socket.io";
+import {estypes} from "@elastic/elasticsearch";
 import {createHash} from "crypto";
 import {FastifyInstance, FastifyReply, FastifyRequest, FastifySchema, HTTPMethods} from "fastify";
+import _ from "lodash";
+import {Socket} from "socket.io";
 import {checkFilter, checkMetaFilter, hLog} from "../../indexer/helpers/common_functions.js";
-import {estypes} from "@elastic/elasticsearch";
 import {StreamActionsRequest, StreamDeltasRequest} from "../../interfaces/stream-requests.js";
 
 export type BoolQuerySearchBody = estypes.SearchRequest & {
@@ -16,7 +16,7 @@ export type BoolQuerySearchBody = estypes.SearchRequest & {
 
 const deltaQueryFields = ['code', 'table', 'scope', 'payer'];
 
-const MAX_SCROLL_TIME_SEC = 3600;
+const MAX_SCROLL_TIME_SEC = 120;
 
 export function getTotalValue(searchResponse: estypes.SearchResponse): number {
     if (searchResponse.hits.total) {
@@ -75,7 +75,12 @@ export async function getApiUsageHistory(fastify: FastifyInstance) {
     return response;
 }
 
-export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket, requestUUID: string, data: StreamDeltasRequest) {
+export async function streamPastDeltas(
+    fastify: FastifyInstance,
+    socket: Socket,
+    requestUUID: string,
+    data: StreamDeltasRequest
+) {
     const search_body: BoolQuerySearchBody = {query: {bool: {must: []}}, sort: {block_num: 'asc'}};
     await addBlockRangeOpts(data, search_body, fastify);
     deltaQueryFields.forEach(f => {
@@ -132,7 +137,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
         index: fastify.manager.chain + '-delta-*',
         scroll: `${MAX_SCROLL_TIME_SEC}s`,
         size: fastify.manager.config.api.stream_scroll_batch || 500,
-        ...search_body,
+        ...search_body
     };
 
     const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
@@ -171,6 +176,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
         let filterCount = 0;
         const rp = responseQueue.shift();
         if (rp) {
+
             pendingScrollId = rp._scroll_id;
             const enqueuedMessages: any[] = [];
             counter += rp.hits.hits.length;
@@ -209,7 +215,8 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
             if (socket.connected) {
                 if (enqueuedMessages.length > 0) {
                     try {
-                        // Wait for 120s
+
+                        // Wait for 120 s
                         const ackResponse = await socket.timeout(MAX_SCROLL_TIME_SEC * 1000).emitWithAck('message', {
                             reqUUID: requestUUID,
                             type: 'delta_trace',
@@ -217,6 +224,7 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
                             messages: enqueuedMessages,
                             filtered: filterCount
                         });
+
                         if (ackResponse.status !== true) {
                             hLog('delta_trace scroll TIMEOUT');
                             return {status: ackResponse.status, error: ackResponse.error};
@@ -248,6 +256,11 @@ export async function streamPastDeltas(fastify: FastifyInstance, socket: Socket,
         }
     }
 
+    if (counter === 0) {
+        // No data found yet, make sure the last transmitted block is reset
+        lastTransmittedBlock = Number(data.start_from) - 1;
+    }
+
     // destroy scroll context
     await fastify.elastic.clearScroll({scroll_id: pendingScrollId});
     return {status: true, lastTransmittedBlock};
@@ -276,9 +289,9 @@ export async function streamPastActions(fastify: FastifyInstance, socket: Socket
             bool: {
                 should: [
                     {term: {'notified': data.account}},
-                    {term: {'act.authorization.actor': data.account}},
-                ],
-            },
+                    {term: {'act.authorization.actor': data.account}}
+                ]
+            }
         });
     }
 
@@ -315,7 +328,7 @@ export async function streamPastActions(fastify: FastifyInstance, socket: Socket
         index: fastify.manager.chain + '-action-*',
         scroll: '30s',
         size: fastify.manager.config.api.stream_scroll_batch || 500,
-        ...search_body,
+        ...search_body
     });
 
     const totalHits = getTotalValue(init_response);
@@ -377,13 +390,23 @@ export async function streamPastActions(fastify: FastifyInstance, socket: Socket
 
             if (socket.connected) {
                 if (enqueuedMessages.length > 0) {
-                    socket.emit('message', {
-                        reqUUID: requestUUID,
-                        type: 'action_trace',
-                        mode: 'history',
-                        messages: enqueuedMessages,
-                        filtered: filterCount
-                    });
+                    try {
+                        // Wait for 120 s
+                        const ackResponse = await socket.timeout(MAX_SCROLL_TIME_SEC * 1000).emitWithAck('message', {
+                            reqUUID: requestUUID,
+                            type: 'action_trace',
+                            mode: 'history',
+                            messages: enqueuedMessages,
+                            filtered: filterCount
+                        });
+                        if (ackResponse.status !== true) {
+                            hLog('action_trace scroll TIMEOUT');
+                            return {status: ackResponse.status, error: ackResponse.error};
+                        }
+                    } catch (e: any) {
+                        hLog('delta_trace scroll NACK', e);
+                        return {status: false, error: e};
+                    }
                 }
             } else {
                 hLog('LOST CLIENT');
@@ -405,6 +428,11 @@ export async function streamPastActions(fastify: FastifyInstance, socket: Socket
             });
             responseQueue.push(next_response);
         }
+    }
+
+    if (counter === 0) {
+        // No data found yet, make sure the last transmitted block is reset
+        lastTransmittedBlock = Number(data.start_from) - 1;
     }
 
     // destroy scroll context
@@ -518,7 +546,7 @@ export function extendQueryStringSchema(queryParams: any, required?: string[]) {
     const schema = {
         type: 'object',
         properties: params
-    }
+    };
     if (required && required.length > 0) {
         schema["required"] = required;
     }
@@ -629,7 +657,7 @@ const defaultRouteCacheMap = {
     get_resource_usage: 3600,
     get_creator: 3600 * 24,
     health: 10
-}
+};
 
 export async function timedQuery(
     queryFunction: (fastify: FastifyInstance, request: FastifyRequest) => Promise<any>,
@@ -706,7 +734,7 @@ export function chainApiHandler(fastify: FastifyInstance) {
             // console.log('cache miss:', path, hash);
             fastify.cacheManager.setCachedData(hash, path, apiResponse);
         }
-    }
+    };
 }
 
 export async function handleChainApiRedirect(
@@ -895,7 +923,7 @@ export function addSharedSchemas(fastify: FastifyInstance) {
             {
                 type: "integer"
             }
-        ],
+        ]
     });
 
     fastify.addSchema({
@@ -912,7 +940,7 @@ export function addSharedSchemas(fastify: FastifyInstance) {
         description: "String representation of an EOSIO compatible cryptographic signature",
         pattern: "^SIG_([RK]1|WA)_[1-9A-HJ-NP-Za-km-z]+$",
         title: "Signature"
-    })
+    });
 
     fastify.addSchema({
         $id: "AccountName",
@@ -964,7 +992,7 @@ export function addSharedSchemas(fastify: FastifyInstance) {
             ]
         },
         title: "Extension"
-    })
+    });
 
     fastify.addSchema({
         $id: "ActionItems",

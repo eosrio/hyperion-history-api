@@ -4,6 +4,23 @@ export interface RequestFilter {
     operator?: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains' | 'starts_with' | 'ends_with';
 }
 
+export type StreamTypeMap = {
+    action: {
+        request: StreamActionsRequest;
+        reqType: "action_request";
+        endReqType: "action_history_end";
+    };
+    delta: {
+        request: StreamDeltasRequest;
+        reqType: "delta_request";
+        endReqType: "delta_history_end";
+    };
+};
+
+export type StreamRequest = StreamTypeMap[keyof StreamTypeMap]["request"];
+export type RequestEvents = StreamTypeMap[keyof StreamTypeMap]["reqType"];
+export type StreamEvents = RequestEvents | 'history_end';
+
 export interface StreamActionsRequest {
     contract: string;
     account: string;
