@@ -49,4 +49,6 @@ tests/api/reports
 
 explorer
 .repair
+.cli
 *.deb
+
