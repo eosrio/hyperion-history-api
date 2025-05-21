@@ -585,11 +585,11 @@ export class SocketManager {
                     return;
                 } else {
                     ltb = hStreamResult.lastTransmittedBlock;
-                    let attempts = 0;
+                    let attempts = 1;
 
                     await sleep(1000);
 
-                    while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts < 5) {
+                    while (ltb && ltb > 0 && lastHistoryBlock > ltb && attempts <= 3) {
                         hLog('Last transmitted block:', ltb, ' | Last history block:', lastHistoryBlock, ' | Attempts:', attempts);
                         attempts++;
                         hLog(`Performing ${type.toUpperCase()} fill request from ${ltb}...`);
@@ -615,7 +615,7 @@ export class SocketManager {
                 }
             }
         } catch (e: any) {
-            console.log(e);
+            hLog(`[processStreamRequest] Failed to process ${type.toUpperCase()} request:`, e.message);
         }
     }
 

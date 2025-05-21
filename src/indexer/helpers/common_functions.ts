@@ -1,8 +1,7 @@
+import {Client, estypes} from "@elastic/elasticsearch";
 import {Cluster} from "node:cluster";
 import {existsSync, readFileSync} from "node:fs";
 import {join} from "node:path";
-
-import {Client, estypes} from "@elastic/elasticsearch";
 
 import {getTotalValue} from "../../api/helpers/functions.js";
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
@@ -204,7 +203,6 @@ function getNested(path_array: string[], jsonObj: Record<string, any>, operator?
         const index = parseInt(nextPath.substring(nextPath.indexOf('[') + 1, nextPath.indexOf(']')));
         const field = nextPath.substring(0, nextPath.indexOf('['));
         if (Array.isArray(jsonObj[field])) {
-            // console.log('jsonObj[field][index]', jsonObj[field][index])
             return getNested(path_array, jsonObj[field][index], operator);
         } else {
             return null;
@@ -227,35 +225,44 @@ function getNested(path_array: string[], jsonObj: Record<string, any>, operator?
 
 export function checkMetaFilter(filter: RequestFilter, _source: any, metaField: string) {
     if (filter.field && filter.value) {
-        let fieldValue = getNested(filter.field.split("."), _source, filter.operator);
+        const fieldParts = filter.field.split(".");
+        let fieldValue = getNested(fieldParts, _source, filter.operator);
         if (!fieldValue) {
-            const fArray = filter.field.split(".");
-            if (fArray[0].startsWith('@')) {
+            if (fieldParts[0].startsWith('@')) {
                 if (metaField === 'action') {
-                    const actName = fArray[0].replace('@', '');
+                    const actName = fieldParts[0].replace('@', '');
                     if (_source.act.name === actName) {
-                        fArray[0] = 'data';
-                        fArray.unshift('act');
-                        fieldValue = getNested(fArray, _source);
+                        fieldParts[0] = 'data';
+                        fieldParts.unshift('act');
+                        fieldValue = getNested(fieldParts, _source);
                     }
                 } else if (metaField === 'delta') {
-                    const tableName = fArray[0].replace('@', '');
+                    const tableName = fieldParts[0].replace('@', '');
                     if (_source.table === tableName) {
-                        fArray[0] = 'data';
-                        fieldValue = getNested(fArray, _source);
+                        fieldParts[0] = 'data';
+                        fieldValue = getNested(fieldParts, _source);
                     }
                 }
             } else {
-                fieldValue = getNested(["data", ...fArray], _source);
+                fieldValue = getNested(["data", ...fieldParts], _source);
             }
         }
-
-        // console.log(`Comparing: ${fieldValue} with ${filter.value} using operator ${filter.operator}`);
-
         if (fieldValue) {
             if (Array.isArray(fieldValue)) {
-                return fieldValue.indexOf(filter.value) !== -1;
+                return fieldValue.some(item => {
+                    return checkMetaFilter({
+                        field: fieldParts.join('.'),
+                        operator: filter.operator,
+                        value: filter.value
+                    }, item, metaField);
+                });
             } else {
+                if (filter.asset && filter.asset !== '' && typeof fieldValue === 'string') {
+                    const [amount, symbol] = fieldValue.split(' ');
+                    if (symbol === filter.asset) {
+                        fieldValue = parseFloat(amount);
+                    }
+                }
                 switch (filter.operator) {
                     case "eq": {
                         return fieldValue === filter.value;

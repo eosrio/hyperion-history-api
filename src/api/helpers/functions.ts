@@ -134,17 +134,21 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
     if (data.filters && data.filters.length > 0) {
         data.filters.forEach(f => {
             if (f.field && f.value) {
-                if ((f.field.startsWith('@') && !f.field.startsWith('data')) || f.field === 'scope') {
-                    const _q = {} as Record<string, any>;
-                    _q[f.field] = f.value;
-                    const q_obj = {'term': _q};
-                    if (data.filter_op === 'or') {
-                        (bool_should_group?.bool?.should as estypes.QueryDslQueryContainer[]).push(q_obj);
-                    } else {
-                        search_body.query.bool.must.push(q_obj);
-                    }
-                } else {
+                if (f.operator && f.operator !== "eq") {
                     onDemandFilters.push(f);
+                } else {
+                    if ((f.field.startsWith('@') && !f.field.startsWith('data')) || f.field === 'scope') {
+                        const _q = {} as Record<string, any>;
+                        _q[f.field] = f.value;
+                        const q_obj = {'term': _q};
+                        if (data.filter_op === 'or') {
+                            (bool_should_group?.bool?.should as estypes.QueryDslQueryContainer[]).push(q_obj);
+                        } else {
+                            search_body.query.bool.must.push(q_obj);
+                        }
+                    } else {
+                        onDemandFilters.push(f);
+                    }
                 }
             }
         });
@@ -165,6 +169,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
     };
 
     // console.dir(esQuery, {depth: Infinity, colors: true});
+    // console.dir(onDemandFilters);
 
     const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
 
@@ -212,6 +217,13 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
             for (const doc of rp.hits.hits) {
                 let allow = false;
 
+                if (dataKind === 'action') {
+                    mergeActionMeta(doc._source);
+                } else if (dataKind === 'delta') {
+                    mergeDeltaMeta(doc._source);
+                }
+
+                // const tRef = process.hrtime.bigint();
                 if (onDemandFilters.length > 0) {
                     if (data.filter_op === 'or') {
                         allow = onDemandFilters.some(filter => {
@@ -219,12 +231,14 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                         });
                     } else {
                         allow = onDemandFilters.every(filter => {
+                            console.log(doc._source);
                             return checkMetaFilter(filter, doc._source, dataKind);
                         });
                     }
                 } else {
                     allow = true;
                 }
+                // console.log('Filter time: ', Number(process.hrtime.bigint() - tRef) / 10e6, 'ms');
 
                 if (allow) {
                     enqueuedMessages.push(doc._source);
@@ -284,6 +298,9 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
             });
             responseQueue.push(next_response);
         }
+
+        // TODO: Apply dynamic delay for request throttling
+        await new Promise(resolve => setTimeout(resolve, 200));
     }
 
     if (counter === 0) {
@@ -821,21 +838,25 @@ export async function getCacheByHash(redis, key, chain) {
     return [await redis.get(query_hash), query_hash];
 }
 
-export function mergeActionMeta(action) {
+export function mergeActionMeta(action: any, keep?: boolean) {
     const name = action.act.name;
     if (action['@' + name]) {
         action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
-        delete action['@' + name];
+        if (!keep) {
+            delete action['@' + name];
+        }
     }
     action['timestamp'] = action['@timestamp'];
     // delete action['@timestamp'];
 }
 
-export function mergeDeltaMeta(delta: any) {
+export function mergeDeltaMeta(delta: any, keep?: boolean) {
     const name = delta.table;
     if (delta["@" + name]) {
         delta['data'] = _.merge(delta['@' + name], delta['data']);
-        delete delta['@' + name];
+        if (!keep) {
+            delete delta['@' + name];
+        }
     }
     delta['timestamp'] = delta['@timestamp'];
     delete delta['@timestamp'];
