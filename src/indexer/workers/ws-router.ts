@@ -195,6 +195,7 @@ export default class WSRouter extends HyperionWorker {
         }
         const targetRelays = new Set<string>();
         const {code, table, payer} = msg.properties.headers;
+
         // Forward to CODE/TABLE listeners
         if (this.codeTableRelayMap.has(code)) {
             const tableRelayMap = this.codeTableRelayMap.get(code);
@@ -209,10 +210,12 @@ export default class WSRouter extends HyperionWorker {
                 }
             }
         }
+
         // Forward to PAYER listeners
         if (this.payerRelayMap.has(payer)) {
             this.payerRelayMap.get(payer)?.forEach((_, key) => targetRelays.add(key));
         }
+
         this.emitToTargetRelays('delta', targetRelays, msg);
     }
 

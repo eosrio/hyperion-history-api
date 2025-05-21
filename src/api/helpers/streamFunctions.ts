@@ -28,23 +28,30 @@ export function processTableRequests(
     tableClientMap: Map<string, Map<string, Map<string, StreamDeltasRequest>>>,
     tableId: string,
     payer: string,
+    scope: string,
     message: string,
     targetClients: Map<string, string[]>
 ): void {
     if (!tableClientMap.has(tableId)) return;
-    tableClientMap.get(tableId)?.forEach((requests, clientId) => {
 
-        // console.log(requests);
+    tableClientMap.get(tableId)?.forEach((requests, clientId) => {
 
         if (!targetClients.has(clientId)) {
             targetClients.set(clientId, []);
         }
 
         requests.forEach((request, uuid) => {
+            if (scope && request.scope && request.scope !== scope) return;
             if (checkDeltaFilters(request, payer, message)) {
                 targetClients.get(clientId)?.push(uuid);
             }
         });
+
+        // check if the client has any valid requests before removing it
+        const targetClient = targetClients.get(clientId);
+        if (targetClient && targetClient.length === 0) {
+            targetClients.delete(clientId);
+        }
     });
 }
 

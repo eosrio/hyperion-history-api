@@ -1,4 +1,5 @@
 import {createAdapter} from "@socket.io/redis-adapter";
+import {ABI, Name} from "@wharfkit/antelope";
 import {randomUUID} from "crypto";
 import {FastifyInstance} from "fastify";
 import {Redis, RedisOptions} from "ioredis";
@@ -323,10 +324,11 @@ export class SocketManager {
             this.payerClientMap.get(data.payer)?.set(client_id, [requestUUID, data]);
         }
 
-        // include on the clientDeltaRequestMap as reverse index
+        // include on the clientDeltaRequestMap as a reverse index
         if (!this.clientDeltaRequestMap.has(client_id)) {
             this.clientDeltaRequestMap.set(client_id, new Map());
         }
+
         this.clientDeltaRequestMap.get(client_id)?.set(requestUUID, data);
     }
 
@@ -372,8 +374,7 @@ export class SocketManager {
     private detachActionRequests(client_id: string) {
         const clientRequests = this.clientActionRequestMap.get(client_id);
         if (clientRequests) {
-            clientRequests?.forEach((data, requestUUID) => {
-                // console.log(`>> Removing request (${requestUUID}) | contract: ${data.contract} | action: ${data.action}`);
+            clientRequests?.forEach((data) => {
                 if (data.contract && data.action) {
                     // Remove from actionContractMap
                     const actionMap = this.actionContractMap.get(data.contract)?.get(data.action);
@@ -424,7 +425,7 @@ export class SocketManager {
         }
 
         // Forward to NOTIFIED ACCOUNT listeners
-        notifiedAccounts.forEach((account) => {
+        notifiedAccounts.forEach((account: string) => {
             if (this.notifiedAccountClientMap.has(account)) {
                 this.notifiedAccountClientMap.get(account)?.forEach(([requestUUID, requestData], clientId) => {
                     if (!targetClients.has(clientId)) {
@@ -458,9 +459,9 @@ export class SocketManager {
             const tableClientMap = this.deltaCodeMap.get(code);
             if (tableClientMap) {
                 // Direct table requests
-                processTableRequests(tableClientMap, table, payer, message, targetClients);
+                processTableRequests(tableClientMap, table, payer, scope, message, targetClients);
                 // Wildcard table requests
-                processTableRequests(tableClientMap, "*", payer, message, targetClients);
+                processTableRequests(tableClientMap, "*", payer, scope, message, targetClients);
             }
         }
 
@@ -477,15 +478,19 @@ export class SocketManager {
         }
 
         // console.log(`Routing Delta [${code}::${table}::${scope}][${payer}] to ${targetClients.size} clients`);
+        // console.log(targetClients);
+        // console.dir(this.deltaCodeMap, {depth: Infinity, colors: true});
 
-        targetClients.forEach((reqs: string[], clientId: string) => {
-            this.io.sockets.sockets.get(clientId)?.emit('message', {
-                type: 'delta_trace',
-                mode: 'live',
-                targets: reqs,
-                message: traceData.message
+        if (targetClients.size > 0) {
+            targetClients.forEach((reqs: string[], clientId: string) => {
+                this.io.sockets.sockets.get(clientId)?.emit('message', {
+                    type: 'delta_trace',
+                    mode: 'live',
+                    targets: reqs,
+                    message: traceData.message
+                });
             });
-        });
+        }
         // console.log("Processing time: ", Number(process.hrtime.bigint() - tRef) / 1000000, "ms");
     }
 
@@ -530,66 +535,14 @@ export class SocketManager {
     ) {
         try {
 
-            // basic request validation
-            switch (type) {
-                case "action": {
-                    const actionData = data as StreamActionsRequest;
-                    if (!actionData.contract || !actionData.action) {
-                        return callback({
-                            status: 'ERROR',
-                            message: 'contract or action are required'
-                        });
-                    }
-                    break;
-                }
-                case "delta": {
-                    const deltaData = data as StreamDeltasRequest;
-                    if (!deltaData.code || !deltaData.table) {
-                        return callback({
-                            status: 'ERROR',
-                            message: 'code and table are required'
-                        });
-                    }
-                    break;
-                }
-            }
-
-            // validate range
-            if ((data.start_from && data.start_from !== 0) && (data.read_until && data.read_until !== 0)) {
-                if (data.start_from > data.read_until) {
-                    return callback({
-                        status: 'ERROR',
-                        message: 'start_from cannot be greater than read_until'
-                    });
-                }
-            }
-
-            // check filters
-            if (data.filters && data.filter_op !== "or") {
-                // multiple filters for the same field are not valid unless in OR mode
-                const filterFields = new Set<string>();
-                let errCount = 0;
-                data.filters.forEach(value => {
-                    if (filterFields.has(value.field)) {
-                        errCount++;
-                    } else {
-                        filterFields.add(value.field);
-                    }
-                });
-                if (errCount > 0) {
-                    return callback({
-                        status: 'ERROR',
-                        message: `Multiple filters for the same field are not valid unless in OR mode. ${errCount} errors found`,
-                        errorData: data.filters
-                    });
-                }
+            const validation = await this.validateRequest(data, type);
+            if (validation.status === 'ERROR') {
+                console.log('Invalid request: ', data);
+                return callback(validation);
             }
 
             // generate random uuid for each request
             const requestUUID = randomUUID();
-            // debug only
-            // this.prettyDeltaRoutingMap();
-            // this.printRoutingTable()
 
             // get the last history block from the real time stream request
             let lastHistoryBlock = 0;
@@ -610,7 +563,7 @@ export class SocketManager {
                     });
                 });
             } else {
-                // if live data is ignored immediately reply the callback
+                // if live data is ignored, immediately reply to the callback
                 callback({status: 'OK', reqUUID: requestUUID, currentBlockNum: this.currentBlockNum});
             }
 
@@ -666,54 +619,140 @@ export class SocketManager {
         }
     }
 
-    // private prettyDeltaRoutingMap() {
-    //     console.log(`-------- CODE-TABLE-CLIENT MAP --------------`);
-    //     this.deltaCodeMap.forEach((codeMap, code) => {
-    //         console.log("Code: ", code, " ->");
-    //         codeMap.forEach((tableMap, table) => {
-    //             console.log("Table: ", table, " ->");
-    //             tableMap.forEach((clientMap, client) => {
-    //                 console.log("Client: ", client, " ->");
-    //                 clientMap.forEach((request, requestUUID) => {
-    //                     console.log(`requestUUID: ${requestUUID}, request: ${JSON.stringify(request, null, 2)}`);
-    //                 });
-    //             });
-    //         });
-    //     });
-    //     console.log(`-------- PAYER-CLIENT MAP --------------`);
-    //     let totalClients = 0;
-    //     this.payerClientMap.forEach((clientSet, payer) => {
-    //         console.log("Payer: ", payer, " ->");
-    //         clientSet.forEach((client) => {
-    //             console.log("Client: ", client);
-    //             totalClients++;
-    //         });
-    //     });
-    //     console.log(`Total clients: ${totalClients}`);
-    // }
-    // private prettyPrintPayerClientMap() {
-    //     console.log(`-------------------------------`);
-    //     this.payerClientMap.forEach((clientSet, payer) => {
-    //         console.log("Payer: ", payer, " ->");
-    //         clientSet.forEach((client) => {
-    //             console.log("Client: ", client);
-    //         });
-    //     });
-    // }
-    // private printRoutingTable() {
-    //     console.log(`-------- CODE-TABLE-CLIENT MAP --------------`);
-    //     const data: any[] = [];
-    //     this.deltaCodeMap.forEach((codeMap, code) => {
-    //         codeMap.forEach((tableMap, table) => {
-    //             data.push({code, table, clients: tableMap.size});
-    //         });
-    //     });
-    //     console.table(data);
-    //     console.log(`-------- PAYER-CLIENT MAP --------------`);
-    //     const data2: any[] = [];
-    //     this.payerClientMap.forEach((clientSet, payer) => {
-    //         data2.push({payer, clients: clientSet.size});
-    //     });
-    //     console.table(data2);
-    // }
+    private async validateRequest<T extends keyof StreamTypeMap>(data: StreamTypeMap[T]["request"], type: T): Promise<{
+        status: 'OK' | 'ERROR',
+        message?: string,
+        errorData?: any
+    }> {
+        // basic request validation
+        switch (type) {
+            case "action": {
+                const actionData = data as StreamActionsRequest;
+                if (!actionData.contract || !actionData.action) {
+                    return {
+                        status: 'ERROR',
+                        message: 'contract or action are required'
+                    };
+                }
+
+                if (Name.from(actionData.contract).toString() !== actionData.contract) {
+                    return {
+                        status: "ERROR",
+                        message: `Invalid contract name: ${actionData.contract}`
+                    };
+                }
+
+                if (Name.from(actionData.action).toString() !== actionData.action) {
+                    return {
+                        status: "ERROR",
+                        message: `Invalid action name: ${actionData.action}`
+                    };
+                }
+
+                break;
+            }
+            case "delta": {
+                const deltaData = data as StreamDeltasRequest;
+                if (!deltaData.code || !deltaData.table) {
+                    return {
+                        status: 'ERROR',
+                        message: 'code and table are required'
+                    };
+                }
+
+                if (Name.from(deltaData.table).toString() !== deltaData.table) {
+                    return {
+                        status: "ERROR",
+                        message: `Invalid table name: ${deltaData.table}`
+                    };
+                }
+
+                if (Name.from(deltaData.code).toString() !== deltaData.code) {
+                    return {
+                        status: "ERROR",
+                        message: `Invalid code name: ${deltaData.code}`
+                    };
+                }
+
+                if (Name.from(deltaData.scope).toString() !== deltaData.scope) {
+                    return {
+                        status: "ERROR",
+                        message: `Invalid scope name: ${deltaData.scope}`
+                    };
+                }
+
+                break;
+            }
+        }
+
+        // validate range
+        if ((data.start_from && data.start_from !== 0) && (data.read_until && data.read_until !== 0)) {
+            if (data.start_from > data.read_until) {
+                return {
+                    status: 'ERROR',
+                    message: 'start_from cannot be greater than read_until'
+                };
+            }
+        }
+
+        // check filters
+        if (data.filters && data.filter_op !== "or") {
+            // multiple filters for the same field are not valid unless in OR mode
+            const filterFields = new Set<string>();
+            let errCount = 0;
+            data.filters.forEach(value => {
+                if (filterFields.has(value.field)) {
+                    errCount++;
+                } else {
+                    filterFields.add(value.field);
+                }
+            });
+            if (errCount > 0) {
+                return {
+                    status: 'ERROR',
+                    message: `Multiple filters for the same field are not valid unless in OR mode. ${errCount} errors found`,
+                    errorData: data.filters
+                };
+            }
+        }
+
+        let contract: string | undefined;
+        if (type === 'action') {
+            contract = (data as StreamActionsRequest).contract;
+        } else if (type === 'delta') {
+            contract = (data as StreamDeltasRequest).code;
+        }
+
+        if (contract) {
+            const abiData = await this.server.antelope.getAbi(contract);
+            if (!abiData) {
+                return {
+                    status: 'ERROR',
+                    message: `Contract ${contract} not found`
+                };
+            }
+            const abi = ABI.from(abiData.abi);
+            if (type === 'action') {
+                const actionName = (data as StreamActionsRequest).action;
+                const action = abi.actions.find(action => action.name.toString() === actionName);
+                if (!action) {
+                    return {
+                        status: 'ERROR',
+                        message: `Action ${actionName} not found in contract ${contract}`
+                    };
+                }
+            } else if (type === 'delta') {
+                const tableName = (data as StreamDeltasRequest).table;
+                const tableDef = abi.tables.find(table => table.name.toString() === tableName);
+                if (!tableDef) {
+                    return {
+                        status: 'ERROR',
+                        message: `Table ${tableName} not found in contract ${contract}`
+                    };
+                }
+            }
+        }
+
+        return {status: "OK"};
+    }
 }

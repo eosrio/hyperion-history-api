@@ -86,7 +86,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
     // Elasticsearch query
     const search_body: BoolQuerySearchBody = {query: {bool: {must: []}}, sort: {block_num: 'asc'}};
-    await addBlockRangeOpts(data, search_body, fastify);
+    const head = await addBlockRangeOpts(data, search_body, fastify);
     switch (dataKind) {
         case "action": {
             const actionReq = data as StreamActionsRequest;
@@ -288,13 +288,15 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
     if (counter === 0) {
         // No data found yet, make sure the last transmitted block is reset
-        console.log('lastTransmittedBlock', data.start_from);
         lastTransmittedBlock = Number(data.start_from) - 1;
+        if (head && lastTransmittedBlock < 0) {
+            lastTransmittedBlock = head + lastTransmittedBlock;
+        }
     }
 
     // destroy scroll context
     await fastify.elastic.clearScroll({scroll_id: pendingScrollId});
-    return {status: true, lastTransmittedBlock};
+    return {status: true, lastTransmittedBlock, counter};
 }
 
 
@@ -702,7 +704,11 @@ export function addTermMatch(data, search_body, field) {
     }
 }
 
-export async function addBlockRangeOpts(data: StreamActionsRequest | StreamDeltasRequest, search_body, fastify: FastifyInstance) {
+export async function addBlockRangeOpts(
+    data: StreamActionsRequest | StreamDeltasRequest,
+    search_body: BoolQuerySearchBody,
+    fastify: FastifyInstance
+): Promise<number | undefined> {
 
     let timeRange: Record<string, estypes.QueryDslRangeQueryBase> | undefined;
     let blockRange: Record<string, estypes.QueryDslRangeQueryBase> | undefined;
@@ -726,7 +732,6 @@ export async function addBlockRangeOpts(data: StreamActionsRequest | StreamDelta
                 if (!head) return;
             }
             blockRange["block_num"].gte = head + data.start_from;
-            data.start_from = head + data.start_from;
         } else {
             blockRange["block_num"].gte = data.start_from;
         }
@@ -744,10 +749,13 @@ export async function addBlockRangeOpts(data: StreamActionsRequest | StreamDelta
             blockRange["block_num"].lte = data.read_until;
         }
     }
-
-    if (timeRange) search_body.query.bool.must.push({range: timeRange});
-    if (blockRange) search_body.query.bool.must.push({range: blockRange});
-
+    if (timeRange) {
+        search_body.query.bool.must.push({range: timeRange});
+    }
+    if (blockRange) {
+        search_body.query.bool.must.push({range: blockRange});
+    }
+    return head;
 }
 
 export function extendResponseSchema(responseProps: any) {
