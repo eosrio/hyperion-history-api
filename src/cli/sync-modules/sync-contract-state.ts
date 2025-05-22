@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs";
-import { APIClient, Asset, Name, UInt64 } from "@wharfkit/antelope";
-import { MongoClient, Db, IndexDescription } from "mongodb";
-import { join } from "node:path";
-import { cargo } from "async";
-import { findAndValidatePrimaryKey } from "../utils/check-primary-key.js";
+import {readFileSync} from 'node:fs';
+import {APIClient, Asset, Name, UInt64} from '@wharfkit/antelope';
+import {MongoClient, Db, IndexDescription} from 'mongodb';
+import {join} from 'node:path';
+import {cargo} from 'async';
+import {findAndValidatePrimaryKey} from '../utils/check-primary-key.js';
 
 interface ChainConfig {
     features: {
@@ -28,6 +28,11 @@ export class ContractStateSynchronizer {
     private totalRows: number = 0;
     private processedRows: number = 0;
 
+    // Check if contract state is enabled in the config
+    public isEnabled(): boolean {
+        return !!this.config?.features?.contract_state?.enabled;
+    }
+
     constructor(chain: string) {
         this.chain = chain;
         this.config = this.loadConfig();
@@ -43,16 +48,16 @@ export class ContractStateSynchronizer {
 
     private loadConnections() {
         const configDir = join(import.meta.dirname, '../../../config');
-        return JSON.parse(readFileSync(join(configDir, "connections.json"), 'utf-8'));
+        return JSON.parse(readFileSync(join(configDir, 'connections.json'), 'utf-8'));
     }
 
     private createAPIClient(): APIClient {
         const connections = this.loadConnections();
         const endpoint = connections.chains[this.chain].http;
         if (!endpoint) {
-            throw new Error("No HTTP Endpoint!");
+            throw new Error('No HTTP Endpoint!');
         }
-        return new APIClient({ url: endpoint });
+        return new APIClient({url: endpoint});
     }
 
     private createMongoClient(): MongoClient {
@@ -70,7 +75,7 @@ export class ContractStateSynchronizer {
 
     private async setupIndices() {
         if (!this.db) {
-            throw new Error("Database not initialized");
+            throw new Error('Database not initialized');
         }
 
         if (this.config.features.contract_state.contracts) {
@@ -84,11 +89,11 @@ export class ContractStateSynchronizer {
                     // Add default indices
                     if (config.auto_index === true) {
                         indices.push(
-                            { key: { '@pk': -1 } },
-                            { key: { '@scope': 1 } },
-                            { key: { '@block_num': -1 } },
-                            { key: { '@block_time': -1 } },
-                            { key: { '@payer': 1 } }
+                            {key: {'@pk': -1}},
+                            {key: {'@scope': 1}},
+                            {key: {'@block_num': -1}},
+                            {key: {'@block_time': -1}},
+                            {key: {'@payer': 1}}
                         );
                     }
 
@@ -99,15 +104,15 @@ export class ContractStateSynchronizer {
                             const tables = contractAbi.abi.tables;
                             const structs = contractAbi.abi.structs;
                             const extractStructFlat = (structName: string) => {
-                                const struct = structs.find(value => value.name === structName);
+                                const struct = structs.find((value) => value.name === structName);
                                 if (struct?.base) {
                                     extractStructFlat(struct.base);
                                 }
-                                struct?.fields.forEach(value => {
-                                    indices.push({ key: { [value.name]: 1 } });
+                                struct?.fields.forEach((value) => {
+                                    indices.push({key: {[value.name]: 1}});
                                 });
                             };
-                            const tableData = tables.find(value => value.name === table);
+                            const tableData = tables.find((value) => value.name === table);
                             if (tableData) {
                                 extractStructFlat(tableData.type);
                             }
@@ -115,7 +120,7 @@ export class ContractStateSynchronizer {
                     } else if (config.indices) {
                         console.log(`Using defined indices for ${collectionName}`);
                         for (const [field, direction] of Object.entries(config.indices)) {
-                            indices.push({ key: { [field]: direction === 'desc' ? -1 : 1 } });
+                            indices.push({key: {[field]: direction === 'desc' ? -1 : 1}});
                         }
                     }
 
@@ -130,11 +135,10 @@ export class ContractStateSynchronizer {
         }
     }
 
-    private async* processContractState() {
+    private async *processContractState() {
         if (this.config.features.contract_state.contracts) {
             for (const [contract, tables] of Object.entries(this.config.features.contract_state.contracts)) {
                 for (const [table, config] of Object.entries(tables)) {
-
                     let pkField = await findAndValidatePrimaryKey(contract, table, this.client);
 
                     if (!pkField?.field) {
@@ -143,8 +147,6 @@ export class ContractStateSynchronizer {
                     } else {
                         console.log(`Primary key found for ${contract}-${table}: ${pkField.field}`);
                     }
-
-
 
                     console.log(`Processing ${contract}-${table}`);
                     let lowerBound: string | null = null;
@@ -160,59 +162,63 @@ export class ContractStateSynchronizer {
                             for (const scopeRow of scopes.rows) {
                                 const scope = scopeRow.scope.toString();
 
-                                    let lb: UInt64 | undefined = undefined;
-                                        let more = false;
-                                        const approvals: any[] = [];
-                                        do {
-                                            const result =  await this.client.v1.chain.get_table_rows({
-                                                code: contract,
-                                                scope: scope,
-                                                table: table,
-                                                limit: 500,
-                                                json: true,
-                                                show_payer: true,
-                                                lower_bound: lb
-                                            });
+                                let lb: UInt64 | undefined = undefined;
+                                let more = false;
+                                const approvals: any[] = [];
+                                do {
+                                    const result = await this.client.v1.chain.get_table_rows({
+                                        code: contract,
+                                        scope: scope,
+                                        table: table,
+                                        limit: 500,
+                                        json: true,
+                                        show_payer: true,
+                                        lower_bound: lb
+                                    });
 
-                                            lb = result.next_key;
-                                            more = result.more;
-                                            
-                                            if (result.ram_payers) {
-                                                for (const [index, row] of result.rows.entries()) {
-                                                    let pkValue = ''
-                                                    switch (pkField.type) {
-                                                        case 'asset':
-                                                            pkValue = Asset.from(row[pkField.field]).symbol.code.value.toString();
-                                                            break;
-                                                        case 'name':
-                                                            pkValue = Name.from(row[pkField.field]).value.toString();
-                                                            break;
-                                                        case 'uint64':
-                                                            pkValue = row[pkField.field].toString();
-                                                            break;
-                                                        default:
-                                                            pkValue = row[pkField.field].toString();
-                                                            break;
-                                                    }
-            
-                                                    this.totalRows++;
+                                    lb = result.next_key;
+                                    more = result.more;
 
-                                                    // log at each 10000 rows
-                                                    if (this.totalRows % 10000 === 0) {
-                                                        console.log(`Fetched ${this.totalRows} rows - at: ${contract}-${table} - scope: ${scope} - pk: ${pkValue} - lb: ${lb?.value.toString()}`);
-                                                    }
-
-                                                    yield {
-                                                        contract,
-                                                        table,
-                                                        data: row,
-                                                        scope: scope,
-                                                        primary_key: pkValue,
-                                                        payer: result.ram_payers[index].toString()
-                                                    };
-                                                }
+                                    if (result.ram_payers) {
+                                        for (const [index, row] of result.rows.entries()) {
+                                            let pkValue = '';
+                                            switch (pkField.type) {
+                                                case 'asset':
+                                                    pkValue = Asset.from(row[pkField.field]).symbol.code.value.toString();
+                                                    break;
+                                                case 'name':
+                                                    pkValue = Name.from(row[pkField.field]).value.toString();
+                                                    break;
+                                                case 'uint64':
+                                                    pkValue = row[pkField.field].toString();
+                                                    break;
+                                                default:
+                                                    pkValue = row[pkField.field].toString();
+                                                    break;
                                             }
-                                        } while (more);
+
+                                            this.totalRows++;
+
+                                            // log at each 10000 rows
+                                            if (this.totalRows % 10000 === 0) {
+                                                console.log(
+                                                    `Fetched ${
+                                                        this.totalRows
+                                                    } rows - at: ${contract}-${table} - scope: ${scope} - pk: ${pkValue} - lb: ${lb?.value.toString()}`
+                                                );
+                                            }
+
+                                            yield {
+                                                contract,
+                                                table,
+                                                data: row,
+                                                scope: scope,
+                                                primary_key: pkValue,
+                                                payer: result.ram_payers[index].toString()
+                                            };
+                                        }
+                                    }
+                                } while (more);
                             }
                             lowerBound = scopes.more;
                             console.log(`Fetched ${this.totalRows} rows from ${contract}-${table}. Total: ${this.totalRows}`);
@@ -225,7 +231,7 @@ export class ContractStateSynchronizer {
                 }
             }
         } else {
-            console.log("No contracts defined in the configuration");
+            console.log('No contracts defined in the configuration');
         }
     }
 
@@ -234,7 +240,7 @@ export class ContractStateSynchronizer {
         const tRef = Date.now();
         try {
             if (!this.config.features.contract_state.enabled) {
-                console.log("Contract state synchronization is not enabled in the config.");
+                console.log('Contract state synchronization is not enabled in the config.');
                 return;
             }
 
@@ -245,19 +251,17 @@ export class ContractStateSynchronizer {
             console.log(`Current block: ${this.currentBlock}`);
 
             await this.mongoClient.connect();
-            console.log("Connected to MongoDB");
+            console.log('Connected to MongoDB');
             this.db = this.mongoClient.db(`hyperion_${this.chain}`);
 
             await this.setupIndices();
 
             const cargoQueue = cargo((docs: any[], cb) => {
-
                 const groupedOps = new Map<string, any[]>();
 
                 let total = 0;
 
-                docs.forEach(doc => {
-
+                docs.forEach((doc) => {
                     // const pk = String(Name.from(doc.primary_key).value);
                     // const pk = String(Name.from(doc.data.account).value);
                     // console.log(`pk`, pk)
@@ -298,28 +302,28 @@ export class ContractStateSynchronizer {
                 groupedOps.forEach((value, key) => {
                     if (this.db) {
                         // console.log(`Inserting ${value.length} documents into ${key}`);
-                        promises.push(this.db.collection(key).bulkWrite(value, { ordered: false }));
+                        promises.push(this.db.collection(key).bulkWrite(value, {ordered: false}));
                     }
                 });
 
-                Promise.all(promises).catch((erro:any) => {
-                    console.error("Error during bulk write:", erro);
-                }).finally(() => {
-                    this.processedRows += total;
-                    const percentComplete = (this.processedRows / this.totalRows) * 100;
-                    console.log(`Indexed ${this.processedRows} rows - ${percentComplete.toFixed(2)}% complete`);
-                    cb();
-                });
-
+                Promise.all(promises)
+                    .catch((erro: any) => {
+                        console.error('Error during bulk write:', erro);
+                    })
+                    .finally(() => {
+                        this.processedRows += total;
+                        const percentComplete = (this.processedRows / this.totalRows) * 100;
+                        console.log(`Indexed ${this.processedRows} rows - ${percentComplete.toFixed(2)}% complete`);
+                        cb();
+                    });
             }, 1000);
 
-            console.log("Starting to process contract state");
+            console.log('Starting to process contract state');
             for await (const doc of this.processContractState()) {
-
                 this.processedDocs++;
 
                 cargoQueue.push(doc).catch((error) => {
-                    console.error("Error pushing to queue:", error);
+                    console.error('Error pushing to queue:', error);
                 });
             }
 
@@ -327,13 +331,13 @@ export class ContractStateSynchronizer {
             await cargoQueue.drain();
             console.log(`Queue drained. Total processed documents: ${this.processedDocs}`);
         } catch (e) {
-            console.error("Error during contract state sync:", e);
+            console.error('Error during contract state sync:', e);
             throw e;
         } finally {
             await this.mongoClient.close();
-            console.log("MongoDB connection closed");
+            console.log('MongoDB connection closed');
             const tFinal = Date.now();
-            console.log(`Processing took: ${(tFinal - tRef)}ms`);
+            console.log(`Processing took: ${tFinal - tRef}ms`);
         }
     }
 }

@@ -1116,7 +1116,7 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         chainConfig.features = {
             streaming: {enable: false, traces: false, deltas: false},
             tables: {proposals: true, accounts: true, voters: true, userres: true, delband: true},
-            contract_state: {enabled: true, contracts: {}},
+            contract_state: {enabled: false, contracts: {}},
             index_deltas: true,
             index_transfer_memo: true,
             index_all_deltas: true,
@@ -1129,9 +1129,18 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
     } else if (!chainConfig.features.contract_state) {
         console.warn("WARN: 'features.contract_state' section missing, creating default.");
         chainConfig.features.contract_state = {
-            enabled: true,
+            enabled: false,
             contracts: {}
         };
+    } else if (Object.keys(chainConfig.features.contract_state).length === 0 || !chainConfig.features.contract_state.hasOwnProperty('enabled')) {
+        // When contract_state is an empty object or missing the enabled property
+        console.warn("WARN: 'features.contract_state.enabled' property missing, setting to true.");
+        chainConfig.features.contract_state.enabled = true;
+
+        // Ensure contracts object exists
+        if (!chainConfig.features.contract_state.contracts) {
+            chainConfig.features.contract_state.contracts = {};
+        }
     } else if (!chainConfig.features.contract_state.contracts) {
         console.warn("WARN: 'features.contract_state.contracts' object missing, creating.");
         chainConfig.features.contract_state.contracts = {};

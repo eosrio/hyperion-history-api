@@ -1,10 +1,9 @@
-import {Command} from "commander";
-import {IndexerController} from "./controller-client/controller.client.js";
-import {AccountSynchronizer} from "./sync-modules/sync-accounts.js";
-import {ContractStateSynchronizer} from "./sync-modules/sync-contract-state.js";
-import {ProposalSynchronizer} from "./sync-modules/sync-proposals.js";
-import {VoterSynchronizer} from "./sync-modules/sync-voters.js";
-
+import {Command} from 'commander';
+import {IndexerController} from './controller-client/controller.client.js';
+import {AccountSynchronizer} from './sync-modules/sync-accounts.js';
+import {ContractStateSynchronizer} from './sync-modules/sync-contract-state.js';
+import {ProposalSynchronizer} from './sync-modules/sync-proposals.js';
+import {VoterSynchronizer} from './sync-modules/sync-voters.js';
 
 async function syncWithPauseResume(chain: string, type: string, synchronizer: any, host?: string) {
     const indexerController = new IndexerController(chain, host);
@@ -55,7 +54,14 @@ async function syncProposals(chain: string, host?: string) {
 }
 
 async function syncContractState(chain: string, host?: string) {
-    await syncWithPauseResume(chain, 'dynamic-table', new ContractStateSynchronizer(chain), host);
+    const contractStateSynchronizer = new ContractStateSynchronizer(chain);
+    // Check if contract state is enabled before proceeding
+    if (!contractStateSynchronizer.isEnabled()) {
+        console.log(`Contract state synchronization is not enabled for chain: ${chain}`);
+        return false; // Return false to indicate no sync was performed
+    }
+    await syncWithPauseResume(chain, 'dynamic-table', contractStateSynchronizer, host);
+    return true; // Return true to indicate sync was performed
 }
 
 async function stopIndexer(chain: string, host?: string) {
@@ -70,7 +76,8 @@ async function stopIndexer(chain: string, host?: string) {
     const indexer = program.command('indexer');
 
     // Action to stop the indexer
-    indexer.command('stop <chain>')
+    indexer
+        .command('stop <chain>')
         .description('Stop the indexer for a specific chain')
         .action(async (chain: string, args: any) => {
             try {
@@ -120,8 +127,13 @@ async function stopIndexer(chain: string, host?: string) {
         .description('Sync contract state for a specific chain')
         .action(async (chain: string) => {
             try {
-                await syncContractState(chain);
-                console.log('Sync completed for contractState');
+                const syncPerformed = await syncContractState(chain);
+                // Only show completion message if sync was actually performed
+                if (syncPerformed) {
+                    console.log('Sync completed for contractState');
+                } else {
+                    console.log('Contract state synchronization skipped - feature is disabled in config');
+                }
             } catch (error) {
                 console.error('Error syncing contract state:', error);
             }
@@ -134,8 +146,12 @@ async function stopIndexer(chain: string, host?: string) {
                 await syncVoters(chain);
                 await syncAccounts(chain);
                 await syncProposals(chain);
-                await syncContractState(chain);
+                const contractStateSynced = await syncContractState(chain);
+
                 console.log(`Sync completed for all components`);
+                if (!contractStateSynced) {
+                    console.log(`Note: Contract state sync was skipped (feature is disabled in config)`);
+                }
             } catch (error) {
                 console.error('Error during sync:', error);
             }
