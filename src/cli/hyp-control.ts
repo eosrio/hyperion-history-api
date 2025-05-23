@@ -1,9 +1,49 @@
-import {Command} from 'commander';
-import {IndexerController} from './controller-client/controller.client.js';
-import {AccountSynchronizer} from './sync-modules/sync-accounts.js';
-import {ContractStateSynchronizer} from './sync-modules/sync-contract-state.js';
-import {ProposalSynchronizer} from './sync-modules/sync-proposals.js';
-import {VoterSynchronizer} from './sync-modules/sync-voters.js';
+import { Command } from 'commander';
+import { IndexerController } from './controller-client/controller.client.js';
+import { AccountSynchronizer } from './sync-modules/sync-accounts.js';
+import { ContractStateSynchronizer } from './sync-modules/sync-contract-state.js';
+import { ProposalSynchronizer } from './sync-modules/sync-proposals.js';
+import { VoterSynchronizer } from './sync-modules/sync-voters.js';
+
+// --- Usage/Memory/Heap commands ---
+async function printUsageMap(chain: string, host?: string) {
+    const indexerController = new IndexerController(chain, host);
+    try {
+        const usageMap = await indexerController.getUsageMap();
+        console.log('Global Usage Map:');
+        console.dir(usageMap, { depth: null, colors: true });
+    } catch (error: any) {
+        console.error('Error fetching usage map:', error.message);
+    } finally {
+        indexerController.close();
+    }
+}
+
+async function printMemoryUsage(chain: string, host?: string) {
+    const indexerController = new IndexerController(chain, host);
+    try {
+        const memUsage = await indexerController.getMemoryUsage();
+        console.log('Memory Usage:');
+        console.dir(memUsage, { depth: null, colors: true });
+    } catch (error: any) {
+        console.error('Error fetching memory usage:', error.message);
+    } finally {
+        indexerController.close();
+    }
+}
+
+async function printHeapStats(chain: string, host?: string) {
+    const indexerController = new IndexerController(chain, host);
+    try {
+        const heapStats = await indexerController.getHeapStats();
+        console.log('Heap Stats:');
+        console.dir(heapStats, { depth: null, colors: true });
+    } catch (error: any) {
+        console.error('Error fetching heap stats:', error.message);
+    } finally {
+        indexerController.close();
+    }
+}
 
 async function syncWithPauseResume(chain: string, type: string, synchronizer: any, host?: string) {
     const indexerController = new IndexerController(chain, host);
@@ -70,6 +110,13 @@ async function stopIndexer(chain: string, host?: string) {
     indexerController.close();
 }
 
+async function startIndexer(chain: string, host?: string) {
+    const indexerController = new IndexerController(chain, host);
+    // Assuming IndexerController has a start() method
+    await indexerController.start();
+    indexerController.close();
+}
+
 (() => {
     const program = new Command();
 
@@ -79,12 +126,27 @@ async function stopIndexer(chain: string, host?: string) {
     indexer
         .command('stop <chain>')
         .description('Stop the indexer for a specific chain')
+        .option('-h, --host <host>', 'Optional host for the indexer controller')
         .action(async (chain: string, args: any) => {
             try {
                 await stopIndexer(chain, args.host);
-                console.log('Indexer stopped');
+                console.log(`Indexer stop command sent for chain ${chain}`);
             } catch (error: any) {
                 console.error('Error stopping indexer:', error.message);
+            }
+        });
+
+    // Action to start the indexer
+    indexer
+        .command('start <chain>')
+        .description('Start or ensure the indexer is actively processing for a specific chain')
+        .option('-h, --host <host>', 'Optional host for the indexer controller')
+        .action(async (chain: string, args: any) => {
+            try {
+                await startIndexer(chain, args.host);
+                console.log(`Indexer start command sent for chain ${chain}`);
+            } catch (error: any) {
+                console.error('Error starting indexer:', error.message);
             }
         });
 
@@ -154,6 +216,43 @@ async function stopIndexer(chain: string, host?: string) {
                 }
             } catch (error) {
                 console.error('Error during sync:', error);
+            }
+        });
+
+    // Add usage/memory/heap commands
+    program
+        .command('get-usage-map <chain>')
+        .description('Get the global contract usage map from the indexer')
+        .option('-h, --host <host>', 'Optional host for the indexer controller')
+        .action(async (chain: string, args: any) => {
+            try {
+                await printUsageMap(chain, args.host);
+            } catch (error: any) {
+                console.error('Error fetching usage map:', error.message);
+            }
+        });
+
+    program
+        .command('get-memory-usage <chain>')
+        .description('Get memory usage from all indexer workers')
+        .option('-h, --host <host>', 'Optional host for the indexer controller')
+        .action(async (chain: string, args: any) => {
+            try {
+                await printMemoryUsage(chain, args.host);
+            } catch (error: any) {
+                console.error('Error fetching memory usage:', error.message);
+            }
+        });
+
+    program
+        .command('get-heap <chain>')
+        .description('Get V8 heap statistics from all indexer workers')
+        .option('-h, --host <host>', 'Optional host for the indexer controller')
+        .action(async (chain: string, args: any) => {
+            try {
+                await printHeapStats(chain, args.host);
+            } catch (error: any) {
+                console.error('Error fetching heap stats:', error.message);
             }
         });
 

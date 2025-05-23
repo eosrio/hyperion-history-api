@@ -1,8 +1,8 @@
-import {randomUUID} from "node:crypto";
-import {App, HttpRequest, HttpResponse, RecognizedString, TemplatedApp, WebSocket} from "uWebSockets.js";
-import {HyperionWorkerDef} from "../../interfaces/hyperionWorkerDef.js";
-import {hLog} from "../helpers/common_functions.js";
-import {HyperionMaster} from "./master.js";
+import { randomUUID } from "node:crypto";
+import { App, HttpRequest, HttpResponse, RecognizedString, TemplatedApp, WebSocket } from "uWebSockets.js";
+import { HyperionWorkerDef } from "../../interfaces/hyperionWorkerDef.js";
+import { hLog } from "../helpers/common_functions.js";
+import { HyperionMaster } from "./master.js";
 
 export class LocalHyperionController {
 
@@ -59,7 +59,7 @@ export class LocalHyperionController {
                                     // forward to the workers of type message.type
                                     this.master.workerMap.forEach((worker: HyperionWorkerDef) => {
                                         if (worker.wref && worker.type === message.type) {
-                                            worker.wref.send({event: 'pause-indexer', mId});
+                                            worker.wref.send({ event: 'pause-indexer', mId });
                                         }
                                     });
                                     break;
@@ -73,6 +73,19 @@ export class LocalHyperionController {
                                                 mId: message.mId
                                             });
                                         }
+                                    });
+                                    break;
+                                }
+                                case 'start-indexer': {
+                                    this.master.start().then((response) => {
+                                        if (response.status) {
+                                            ws.send(JSON.stringify({ event: 'indexer-started', message: 'Indexer has been started.' }));
+                                        } else {
+                                            ws.send(JSON.stringify({ event: 'indexer-start-failed', error: response.error || 'Unknown error starting indexer.' }));
+                                        }
+                                    }).catch(error => {
+                                        console.error('Failed to start Hyperion Master via controller:', error);
+                                        ws.send(JSON.stringify({ event: 'indexer-start-failed', error: error.message || 'Unknown error starting indexer.' }));
                                     });
                                     break;
                                 }
@@ -94,7 +107,7 @@ export class LocalHyperionController {
                     }
                 } catch (e: any) {
                     console.error(e);
-                    ws.send(JSON.stringify({error: e.message}));
+                    ws.send(JSON.stringify({ error: e.message }));
                     ws.send('Invalid message format!');
                     ws.end();
                 }

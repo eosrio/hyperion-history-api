@@ -3,8 +3,9 @@ import {Client} from "@elastic/elasticsearch";
 import {HyperionBlock} from "./interfaces.js";
 import path from "path";
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
+import { HyperionConnections } from "../../interfaces/hyperionConnections.js";
 
-export function readConnectionConfig() {
+export function readConnectionConfig(): HyperionConnections {
     const connectionsConfigPath = path.join(import.meta.dirname, '../../../', 'config/connections.json');
     const file = readFileSync(connectionsConfigPath, 'utf8');
     return JSON.parse(file);
