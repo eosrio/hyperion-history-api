@@ -53,30 +53,30 @@ export class LocalHyperionController {
                                     this.master.fillMissingBlocks(message.data, ws).catch(console.log);
                                     break;
                                 }
-                                case 'pause-indexer': {
+                                case 'pause_indexer': {
                                     const mId = randomUUID();
                                     ws.subscribe(mId);
                                     // forward to the workers of type message.type
                                     this.master.workerMap.forEach((worker: HyperionWorkerDef) => {
                                         if (worker.wref && worker.type === message.type) {
-                                            worker.wref.send({ event: 'pause-indexer', mId });
+                                            worker.wref.send({ event: 'pause_indexer', mId });
                                         }
                                     });
                                     break;
                                 }
                                 // resume all indexer workers
-                                case 'resume-indexer': {
+                                case 'resume_indexer': {
                                     this.master.workerMap.forEach((worker: HyperionWorkerDef) => {
                                         if (worker.wref && worker.type === message.type) {
                                             worker.wref.send({
-                                                event: 'resume-indexer',
+                                                event: 'resume_indexer',
                                                 mId: message.mId
                                             });
                                         }
                                     });
                                     break;
                                 }
-                                case 'start-indexer': {
+                                case 'start_indexer': {
                                     this.master.start().then((response) => {
                                         if (response.status) {
                                             ws.send(JSON.stringify({ event: 'indexer-started', message: 'Indexer has been started.' }));
@@ -89,13 +89,79 @@ export class LocalHyperionController {
                                     });
                                     break;
                                 }
-                                case 'stop-indexer': {
+                                case 'stop_indexer': {
                                     this.master.gracefulStop(result => {
                                         if (result.ack) {
                                             ws.send(JSON.stringify({
-                                                event: 'indexer-stopped'
+                                                event: 'indexer_stopped'
                                             }));
                                         }
+                                    });
+                                    break;
+                                }
+                                case 'get_memory_usage': {
+                                    this.master.requestDataFromWorkers(
+                                        {
+                                            event: 'request_memory_usage'
+                                        },
+                                        'memory_report'
+                                    ).then((value) => {
+                                        ws.send(JSON.stringify({
+                                            event: 'memory_usage',
+                                            data: value
+                                        }));
+                                    });
+                                    break;
+                                }
+                                case 'get_usage_map': {
+                                    const now = Date.now();
+                                    const timingMetadata = {
+                                        lastUpdate: this.master.lastContractMonitoringUpdate,
+                                        monitoringInterval: this.master.contractMonitoringIntervalMs,
+                                        startTime: this.master.contractMonitoringStartTime,
+                                        currentTime: now,
+                                        timeSinceLastUpdate: this.master.lastContractMonitoringUpdate > 0
+                                            ? now - this.master.lastContractMonitoringUpdate
+                                            : null,
+                                        nextUpdateIn: this.master.lastContractMonitoringUpdate > 0
+                                            ? Math.max(0, this.master.contractMonitoringIntervalMs - (now - this.master.lastContractMonitoringUpdate))
+                                            : null
+                                    };
+
+                                    const loadDistributionPeriod = {
+                                        intervalMs: this.master.contractMonitoringIntervalMs,
+                                        lastCycleDurationMs: this.master.lastDistributionDurationMs,
+                                        averageCycleDurationMs: this.master.averageDistributionDurationMs,
+                                        totalCycles: this.master.distributionCycleCount,
+                                        totalProcessingTimeMs: this.master.totalDistributionTimeMs,
+                                        performanceRatio: this.master.lastDistributionDurationMs > 0
+                                            ? (this.master.lastDistributionDurationMs / this.master.contractMonitoringIntervalMs * 100).toFixed(2) + '%'
+                                            : null,
+                                        isHealthy: this.master.lastDistributionDurationMs < (this.master.contractMonitoringIntervalMs * 0.1), // Healthy if < 10% of interval
+                                        uptime: this.master.contractMonitoringStartTime > 0
+                                            ? now - this.master.contractMonitoringStartTime
+                                            : 0
+                                    };
+
+                                    ws.send(JSON.stringify({
+                                        event: 'usage_map',
+                                        data: this.master.globalUsageMap,
+                                        timing: timingMetadata,
+                                        loadDistributionPeriod: loadDistributionPeriod
+                                    }));
+                                    break;
+                                }
+                                case 'get_heap': {
+                                    this.master.requestDataFromWorkers(
+                                        {
+                                            event: 'request_v8_heap_stats'
+                                        },
+                                        'v8_heap_report'
+                                    ).then((value) => {
+                                        ws.send(JSON.stringify({
+                                            event: 'v8_heap_report',
+                                            data: value
+                                        }));
                                     });
                                     break;
                                 }

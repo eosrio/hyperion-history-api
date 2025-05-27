@@ -187,9 +187,9 @@ export class IndexerController {
 
     async pause(type: string): Promise<string> {
         return this._sendRequestAndAwaitResponse<string>(
-            { event: 'pause-indexer', type: type },
+            { event: 'pause_indexer', type: type },
             (message, resolve) => {
-                if (message.event === 'indexer-paused') {
+                if (message.event === 'indexer_paused') {
                     console.log('Indexer paused');
                     resolve(message.mId);
                     return true; 
@@ -203,9 +203,9 @@ export class IndexerController {
 
     async resume(type: string, mId: string): Promise<void> {
         return this._sendRequestAndAwaitResponse<void>(
-            { event: 'resume-indexer', type: type, mId: mId },
+            { event: 'resume_indexer', type: type, mId: mId },
             (message, resolve) => {
-                if (message.event === 'indexer-resumed') {
+                if (message.event === 'indexer_resumed') {
                     console.log('Indexer resumed');
                     resolve();
                     return true;
@@ -219,7 +219,7 @@ export class IndexerController {
 
     async start(): Promise<void> {
         return this._sendRequestAndAwaitResponse<void>(
-            { event: 'start-indexer' },
+            { event: 'start_indexer' },
             (message, resolve) => {
                 if (message.event === 'indexer-started') {
                     console.log('Indexer start command acknowledged');
@@ -261,13 +261,13 @@ export class IndexerController {
 
     async stop(): Promise<void> {
         return this._sendRequestAndAwaitResponse<void>(
-            { event: 'stop-indexer' },
+            { event: 'stop_indexer' },
             (message, resolve) => {
-                if (message.event === 'indexer-stopped') {
+                if (message.event === 'indexer_stopped') {
                     resolve();
                     return true;
                 } else {
-                    console.log(message); // Log other messages while waiting for 'indexer-stopped'
+                    console.log(message); // Log other messages while waiting for 'indexer_stopped'
                 }
                 return false;
             },
@@ -286,8 +286,13 @@ export class IndexerController {
         return this._sendRequestAndAwaitResponse<any>(
             { event: 'get_usage_map' },
             (message, resolve) => {
-                if (message.event === 'get_usage_map') {
-                    resolve(message.data);
+                if (message.event === 'usage_map') {
+                    // Return complete response including timing and load distribution data
+                    resolve({
+                        data: message.data,
+                        timing: message.timing,
+                        loadDistributionPeriod: message.loadDistributionPeriod
+                    });
                     return true;
                 }
                 return false;
@@ -305,7 +310,7 @@ export class IndexerController {
         return this._sendRequestAndAwaitResponse<any>(
             { event: 'get_memory_usage' },
             (message, resolve) => {
-                if (message.event === 'get_memory_usage') {
+                if (message.event === 'memory_usage') {
                     resolve(message.data);
                     return true;
                 }
@@ -324,7 +329,7 @@ export class IndexerController {
         return this._sendRequestAndAwaitResponse<any>(
             { event: 'get_heap' },
             (message, resolve) => {
-                if (message.event === 'get_heap') {
+                if (message.event === 'v8_heap_report') {
                     resolve(message.data);
                     return true;
                 }
