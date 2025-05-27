@@ -1,21 +1,21 @@
-import {HyperionWorker} from "./hyperionWorker.js";
-import {cargo, queue} from 'async';
-import {debugLog, hLog} from "../helpers/common_functions.js";
-import {createHash} from "crypto";
-import {Message, Options} from "amqplib";
+import { HyperionWorker } from "./hyperionWorker.js";
+import { cargo, queue } from 'async';
+import { debugLog, hLog } from "../helpers/common_functions.js";
+import { createHash } from "crypto";
+import { Message, Options } from "amqplib";
 
 import flatstr from 'flatstr';
 
-import {index_queues, RabbitQueueDef} from "../definitions/index-queues.js";
-import {HyperionDelta} from "../../interfaces/hyperion-delta.js";
-import {TableDelta} from "../../interfaces/table-delta.js";
-import {HyperionAbi} from "../../interfaces/hyperion-abi.js";
-import {TransactionTrace} from "../../interfaces/action-trace.js";
-import {HyperionSignedBlock, ProducerSchedule} from "../../interfaces/signed-block.js";
-import {estypes} from "@elastic/elasticsearch";
-import {ABI, Action, PackedTransaction, Serializer} from "@wharfkit/antelope";
-import {TokenAccount} from "../../interfaces/custom-ds.js";
-import {GetBlocksResultV0} from "./state-reader.js";
+import { index_queues, RabbitQueueDef } from "../definitions/index-queues.js";
+import { HyperionDelta } from "../../interfaces/hyperion-delta.js";
+import { TableDelta } from "../../interfaces/table-delta.js";
+import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
+import { TransactionTrace } from "../../interfaces/action-trace.js";
+import { HyperionSignedBlock, ProducerSchedule } from "../../interfaces/signed-block.js";
+import { estypes } from "@elastic/elasticsearch";
+import { ABI, Action, PackedTransaction, Serializer } from "@wharfkit/antelope";
+import { TokenAccount } from "../../interfaces/custom-ds.js";
+import { GetBlocksResultV0 } from "./state-reader.js";
 
 interface QueuePayload {
     queue: string;
@@ -110,7 +110,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         this.preIndexingQueue = queue((data: any, cb) => {
             if (this.ch && this.ch_ready) {
-                this.ch.sendToQueue(data.queue, data.content, {headers: data.headers});
+                this.ch.sendToQueue(data.queue, data.content, { headers: data.headers });
                 cb();
             } else {
                 hLog('Channel is not ready!');
@@ -155,6 +155,27 @@ export default class MainDSWorker extends HyperionWorker {
             }
             case 'update_pool_map': {
                 this.dsPoolMap = msg.data;
+                break;
+            }
+            case 'reload_config': {
+                try {
+                    hLog(`Reloading configuration...`);
+                    this.configModule.loadConfigJson();
+                    this.conf = this.configModule.config;
+                    // Notify the master
+                    process.send?.({
+                        event: 'config_reloaded',
+                        status: 'success'
+                    });
+                } catch (error: any) {
+                    hLog(`Error reloading configuration: ${error.message}`);
+                    // Notify the master about the error
+                    process.send?.({
+                        event: 'config_reloaded',
+                        status: 'error',
+                        message: error.message
+                    });
+                }
                 break;
             }
         }
@@ -604,7 +625,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         if (!this.waitToSend) {
             if (this.ch_ready) {
-                this.controlledSendToQueue(pool_queue, payload, {headers});
+                this.controlledSendToQueue(pool_queue, payload, { headers });
                 return true;
             } else {
                 return false;
@@ -613,7 +634,7 @@ export default class MainDSWorker extends HyperionWorker {
             this.backpressureQueue.push({
                 queue: pool_queue,
                 payload: payload,
-                options: {headers}
+                options: { headers }
             });
             return false;
         }
@@ -655,16 +676,16 @@ export default class MainDSWorker extends HyperionWorker {
             const query = {
                 bool: {
                     must: [
-                        {term: {account: contract_name}},
-                        {range: {block: {lte: last_block}}}
+                        { term: { account: contract_name } },
+                        { range: { block: { lte: last_block } } }
                     ]
                 }
             };
             const queryResult: estypes.SearchResponse<any, any> = await this.client.search({
                 index: `${this.chain}-abi-*`,
                 size: 1, query,
-                sort: [{block: {order: "desc"}}],
-                _source: {includes: _includes}
+                sort: [{ block: { order: "desc" } }],
+                _source: { includes: _includes }
             });
             const results = queryResult.hits.hits;
             if (results.length > 0) {
@@ -674,13 +695,13 @@ export default class MainDSWorker extends HyperionWorker {
                     query: {
                         bool: {
                             must: [
-                                {term: {account: contract_name}},
-                                {range: {block: {gte: last_block}}}
+                                { term: { account: contract_name } },
+                                { range: { block: { gte: last_block } } }
                             ]
                         }
                     },
-                    sort: [{block: {order: "asc"}}],
-                    _source: {includes: ["block"]}
+                    sort: [{ block: { order: "asc" } }],
+                    _source: { includes: ["block"] }
                 });
                 const nextRef = nextRefResponse.hits.hits;
                 if (nextRef.length > 0) {
@@ -706,7 +727,7 @@ export default class MainDSWorker extends HyperionWorker {
         block: number,
         valid_until: number | undefined
     ) {
-        const info = {field, type, block, valid_until};
+        const info = { field, type, block, valid_until };
         if (!info.valid_until) {
             info.valid_until = 0;
         }
@@ -996,7 +1017,7 @@ export default class MainDSWorker extends HyperionWorker {
             const abi = ABI.from(savedAbi.abi);
             const table = abi.tables.find(t => t.name === row.table);
             if (table) {
-                row.data = Serializer.decode({data: row.value, abi, type: table.type});
+                row.data = Serializer.decode({ data: row.value, abi, type: table.type });
                 delete row.value;
             }
         }
@@ -1173,7 +1194,7 @@ export default class MainDSWorker extends HyperionWorker {
         await this.preIndexingQueue.push({
             queue: q,
             content: bufferData,
-            headers: {block_num}
+            headers: { block_num }
         });
         this.delta_emit_idx++;
         if (this.delta_emit_idx > this.conf.scaling.ad_idx_queues) {
@@ -1186,7 +1207,7 @@ export default class MainDSWorker extends HyperionWorker {
         await this.preIndexingQueue.push({
             queue: q,
             content: bufferFromJson(data),
-            headers: {type}
+            headers: { type }
         });
         this.emit_idx++;
         if (this.emit_idx > this.conf.scaling.indexing_queues) {
@@ -1293,7 +1314,7 @@ export default class MainDSWorker extends HyperionWorker {
             if (account['abi'] !== '') {
                 try {
                     const abiHex = account['abi'];
-                    const abiObj = Serializer.decode({data: abiHex, type: ABI});
+                    const abiObj = Serializer.decode({ data: abiHex, type: ABI });
                     if (abiObj) {
                         const jsonABIString = JSON.stringify(abiObj);
                         const abi_actions = abiObj.actions.map(a => a.name.toString());
@@ -1316,7 +1337,7 @@ export default class MainDSWorker extends HyperionWorker {
 
                         debugLog(`[Worker ${process.env.worker_id}] read ${account['name']} ABI at block ${block_num}`);
                         const q = this.chain + ":index_abis:1";
-                        await this.preIndexingQueue.push({queue: q, content: bufferFromJson(new_abi_object)});
+                        await this.preIndexingQueue.push({ queue: q, content: bufferFromJson(new_abi_object) });
 
                         // update locally cached abi
                         if (process.env['live_mode'] === 'true') {
@@ -1838,10 +1859,10 @@ export default class MainDSWorker extends HyperionWorker {
             delta['@approvals'] = {
                 proposal_name: delta['data']['proposal_name'],
                 requested_approvals: delta['data']['requested_approvals'].map((item: any) => {
-                    return {actor: item.level.actor, permission: item.level.permission, time: item.time};
+                    return { actor: item.level.actor, permission: item.level.permission, time: item.time };
                 }),
                 provided_approvals: delta['data']['provided_approvals'].map((item: any) => {
-                    return {actor: item.level.actor, permission: item.level.permission, time: item.time};
+                    return { actor: item.level.actor, permission: item.level.permission, time: item.time };
                 })
             };
             if (this.conf.features.tables.proposals) {
@@ -1871,7 +1892,7 @@ export default class MainDSWorker extends HyperionWorker {
                 // attempt forced deserialization
                 if (delta.value.length === 32) {
                     try {
-                        const decoded = Serializer.decode({type: TokenAccount, data: delta['value']});
+                        const decoded = Serializer.decode({ type: TokenAccount, data: delta['value'] });
                         delta['data'] = Serializer.objectify(decoded);
                     } catch (e) {
                         console.log(e);

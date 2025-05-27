@@ -165,6 +165,29 @@ export class LocalHyperionController {
                                     });
                                     break;
                                 }
+                                case 'reload_contract_config': {
+                                    const contract = message.data?.contract;
+                                    if (!contract) {
+                                        ws.send(JSON.stringify({
+                                            event: 'contract_config_reload_failed',
+                                            error: 'No contract specified for reload.'
+                                        }));
+                                        return;
+                                    }
+                                    this.master.reloadContractConfig(contract).then((result) => {
+                                        if (result.success) {
+                                            ws.send(JSON.stringify({
+                                                event: 'contract_config_reloaded',
+                                                message: 'Contract configuration reloaded successfully.'
+                                            }));
+                                        } else {
+                                            ws.send(JSON.stringify({
+                                                event: 'contract_config_reload_failed',
+                                                error: result.error || 'Unknown error reloading contract configuration.'
+                                            }));
+                                        }
+                                    });
+                                }
                                 default: {
                                     hLog(`Unknown message type: ${message.event}`);
                                 }

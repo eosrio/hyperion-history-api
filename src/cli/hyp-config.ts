@@ -1,18 +1,19 @@
-import {Command} from 'commander';
+import { Command } from 'commander';
 import path from 'path';
-import {cp, mkdir, readdir, readFile, rm, writeFile} from 'fs/promises';
-import {HyperionConfig, ScalingConfigs} from '../interfaces/hyperionConfig.js';
-import {HyperionConnections} from '../interfaces/hyperionConnections.js';
-import {copyFileSync, existsSync, mkdirSync, rmSync} from 'fs';
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'fs/promises';
+import { HyperionConfig, ScalingConfigs } from '../interfaces/hyperionConfig.js';
+import { HyperionConnections } from '../interfaces/hyperionConnections.js';
+import { copyFileSync, existsSync, mkdirSync, rmSync } from 'fs';
 
 import WebSocket from 'ws';
 import * as readline from 'readline';
 import * as amqp from 'amqplib';
-import {Redis} from 'ioredis';
-import {Client} from '@elastic/elasticsearch';
-import {APIClient} from '@wharfkit/antelope';
-import {StateHistorySocket} from '../indexer/connections/state-history.js';
-import {MongoClient} from 'mongodb';
+import { Redis } from 'ioredis';
+import { Client } from '@elastic/elasticsearch';
+import { APIClient } from '@wharfkit/antelope';
+import { StateHistorySocket } from '../indexer/connections/state-history.js';
+import { MongoClient } from 'mongodb';
+import { IndexerController } from './controller-client/controller.client.js';
 
 interface ConnectionsInitOptions {
     amqpUser?: string;
@@ -321,7 +322,7 @@ async function newChain(shortName: string, options) {
 
         // test nodeos availability
         try {
-            const apiClient = new APIClient({url: options.http, fetch});
+            const apiClient = new APIClient({ url: options.http, fetch });
             const info = await apiClient.v1.chain.get_info();
             jsonData.api.chain_api = options.http;
             connections.chains[shortName].chain_id = info.chain_id.toString();
@@ -420,7 +421,7 @@ async function testChain(shortName: string) {
     console.log(`Checking HTTP endpoint: ${httpEndpoint}`);
     let httpChainId = '';
     try {
-        const apiClient = new APIClient({url: httpEndpoint});
+        const apiClient = new APIClient({ url: httpEndpoint });
         const info = await apiClient.v1.chain.get_info();
         httpChainId = info.chain_id.toString();
     } catch (e: any) {
@@ -622,7 +623,7 @@ async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult
     const _mongo = conn.mongodb;
     if (!_mongo || !_mongo.enabled) {
         console.log('[info] [MONGODB] - MongoDB is not configured or not enabled.');
-        return {success: true, errorType: 'NONE'}; // Treat as success if not enabled/configured
+        return { success: true, errorType: 'NONE' }; // Treat as success if not enabled/configured
     }
 
     let uri = 'mongodb://';
@@ -638,25 +639,25 @@ async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult
         const adminDb = client.db('admin');
 
         try {
-            const hostInfoResult = await adminDb.command({hostInfo: 1});
+            const hostInfoResult = await adminDb.command({ hostInfo: 1 });
             if (hostInfoResult && hostInfoResult.ok === 1) {
                 console.log('[info] [MONGODB] - Connection established with full authentication!');
-                return {success: true, errorType: 'NONE'};
+                return { success: true, errorType: 'NONE' };
             } else {
                 const errMsg = 'Failed to get hostInfo from database.';
                 console.log('[error] [MONGODB] - ' + errMsg);
-                return {success: false, errorType: 'OTHER', message: errMsg};
+                return { success: false, errorType: 'OTHER', message: errMsg };
             }
         } catch (authError: any) {
             // Verifica se é um problema de autenticação
             if (authError.message?.includes('requires authentication')) {
                 console.log('[error] [MONGODB] - Authentication required but not provided or invalid.');
-                return {success: false, errorType: 'AUTH', message: authError.message};
+                return { success: false, errorType: 'AUTH', message: authError.message };
             }
 
             // Outros erros
             console.log('[error] [MONGODB] - ' + authError.message);
-            return {success: false, errorType: 'OTHER', message: authError.message};
+            return { success: false, errorType: 'OTHER', message: authError.message };
         }
     } catch (error: any) {
         const errMsg = error.message || 'Unknown MongoDB error';
@@ -667,7 +668,7 @@ async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult
         } else if (errMsg.includes('ECONNREFUSED') || errMsg.includes('ENOTFOUND') || errMsg.includes('connect timed out')) {
             errorType = 'CONNECTION';
         }
-        return {success: false, errorType: errorType, message: errMsg};
+        return { success: false, errorType: errorType, message: errMsg };
     } finally {
         // Ensure client.close() is called even if connect() fails
         // Use optional chaining in case client wasn't initialized properly
@@ -687,7 +688,7 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
 
     const exampleConn = await getExampleConnections();
 
-    const rl = readline.createInterface({input: process.stdin, output: process.stdout});
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
 
     const conn = exampleConn;
@@ -1013,7 +1014,7 @@ async function resetConnections() {
         }
 
         if (existsSync(connectionsPath)) {
-            const rl = readline.createInterface({input: process.stdin, output: process.stdout});
+            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
             const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
             const confirmation = (await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n')) as string;
             if (confirmation.toUpperCase() === 'YES') {
@@ -1114,9 +1115,9 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         console.warn("WARN: 'features' section missing, creating default structure.");
 
         chainConfig.features = {
-            streaming: {enable: false, traces: false, deltas: false},
-            tables: {proposals: true, accounts: true, voters: true, userres: true, delband: true},
-            contract_state: {enabled: false, contracts: {}},
+            streaming: { enable: false, traces: false, deltas: false },
+            tables: { proposals: true, accounts: true, voters: true, userres: true, delband: true },
+            contract_state: { enabled: false, contracts: {} },
             index_deltas: true,
             index_transfer_memo: true,
             index_all_deltas: true,
@@ -1166,8 +1167,7 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
     await writeFile(targetPath, JSON.stringify(chainConfig, null, 2));
     console.log(`✅ Contract config saved successfully for account '${account}' in ${shortName}.config.json`);
 
-    // TODO: Call the hyperion indexer controller to trigger a reload in the config
-    await reloadConfig(shortName);
+    await reloadConfig(shortName, account);
 }
 
 // main program
@@ -1321,7 +1321,7 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         .action(async (chainName, account, tablesJson) => {
             try {
                 // Define a more specific type for the input data
-                type TableJsonInput = {name: string; autoIndex: boolean; indices?: IndexConfig};
+                type TableJsonInput = { name: string; autoIndex: boolean; indices?: IndexConfig };
                 const tablesData: Array<TableJsonInput> = JSON.parse(tablesJson);
 
                 const tables: TableInput[] = tablesData.map((t, index) => {
@@ -1386,7 +1386,10 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
     program.parse(process.argv);
 })();
 
-async function reloadConfig(chainName: string) {
-    console.log('Reloading hyperion config... (Not implemented yet, please restart the hyperion indexer manually)');
+async function reloadConfig(chainName: string, contractName: string) {
+    const controller = new IndexerController(chainName);
+    console.log('Reloading hyperion config...');
+    await controller.reloadContractStateConfig(contractName);
     console.log(`Please use "./hyp-control sync contract-state ${chainName}" to sync the contract state`);
+    controller.close();
 }

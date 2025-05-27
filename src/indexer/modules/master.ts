@@ -176,10 +176,11 @@ export class HyperionMaster {
 
     // Indexer Monitor
     private indexerMonitor: HyperionIndexerMonitor;
-    
+
     // Elastic Index Lifecycle Manager
     private lifecycleManager: HyperionLifecycleManager;
-;
+
+    pendingReloadPromises: Map<number, (value: void | PromiseLike<void>) => void> = new Map();
 
     constructor() {
         this.cm = new ConfigurationModule();
@@ -346,7 +347,6 @@ export class HyperionMaster {
                 if (msg.live_mode === 'true') {
                     hLog(`deserializer ${msg.worker_id} received new abi! propagating changes to other workers...`);
                     for (const worker of this.workerMap) {
-                        console.log(worker.worker_role);
                         if (worker.worker_role === 'deserializer' && worker.worker_id !== parseInt(msg.worker_id)) {
                             worker.wref?.send({ event: 'update_abi', abi: msg.data });
                         }
@@ -521,7 +521,90 @@ export class HyperionMaster {
             },
             v8_heap_report: (worker: Worker, msg: WorkerMessage) => {
                 hLog(worker.id, msg);
+            },
+            config_reloaded: (worker: Worker, msg: WorkerMessage) => {
+                hLog(`Worker ${worker.id} reloaded configuration`);
+                if (this.pendingReloadPromises.has(worker.id)) {
+                    const resolve = this.pendingReloadPromises.get(worker.id);
+                    if (resolve) {
+                        resolve();
+                        this.pendingReloadPromises.delete(worker.id);
+                    }
+                }
             }
+        };
+    }
+
+    async reloadContractConfig(contract: string): Promise<{
+        success: boolean;
+        message?: string;
+        error?: string;
+    }> {
+        if (this.manager.mongodbClient && contract) {
+            const db = this.manager.mongodbClient.db(`${this.manager.conn.mongodb.database_prefix}_${this.manager.chain}`);
+
+            try {
+                this.cm.loadConfigJson();
+                this.conf = this.cm.config;
+
+                // After loading config
+                if (!this.conf.features?.contract_state?.contracts?.[contract]) {
+                    return {
+                        success: false,
+                        message: `Contract ${contract} not found in configuration`
+                    };
+                }
+
+            } catch (error: any) {
+                hLog(`Failed to load configuration: ${error.message}`);
+                return {
+                    success: false,
+                    message: 'Failed to load configuration.'
+                };
+            }
+
+            try {
+                // Parse the contract state config for a single contract to create the index
+                await this.parseContractStateConfig(db, contract);
+                
+                // Notify deserializer to reload the configs
+                this.pendingReloadPromises = new Map();
+
+                const promises: Promise<void>[] = [];
+
+                for (const worker of this.workerMap) {
+                    if (worker.worker_role === 'deserializer' && worker.worker_id) {
+                        const promise = new Promise<void>((resolve) => {
+                            if (worker.worker_id) {
+                                this.pendingReloadPromises.set(worker.worker_id, resolve);
+                            }
+                        });
+                        promises.push(promise);
+                        worker.wref?.send({ event: 'reload_config', contract });
+                    }
+                }
+
+                // Wait for all workers to reload the config
+                await Promise.all(promises);
+                hLog(`Reloaded contract state config for ${contract}`);
+                return {
+                    success: true
+                }
+            } catch (e: any) {
+                const errorDetails = e.message || 'Unknown error';
+                hLog(`Failed to reload contract config for ${contract}: ${errorDetails}`);
+                if (e.stack) {
+                    debugLog(e.stack);
+                }
+                return {
+                    success: false,
+                    error: `Failed to parse contract state config: ${errorDetails}`
+                };
+            }
+        }
+        return {
+            success: false,
+            message: 'Failed to reload contract config, MongoDB client not available or contract name is empty.'
         };
     }
 
@@ -1870,13 +1953,23 @@ export class HyperionMaster {
         }
     }
 
-    private async parseContractStateConfig(db: Db) {
+    private async parseContractStateConfig(db: Db, singleContract?: string) {
         if (this.conf.features.contract_state && this.conf.features.contract_state.enabled) {
             hLog('MongoDB contract state is enabled!');
             if (this.conf.features.contract_state.contracts) {
                 const contracts = this.conf.features.contract_state.contracts;
                 for (let code in contracts) {
+
+                    if (singleContract && code !== singleContract) {
+                        continue;
+                    }
+
                     if (contracts[code]) {
+
+                        if (singleContract) {
+                            hLog(`Setting up contract state for ${code}`);
+                        }
+
                         for (let table in contracts[code]) {
                             const indices: IndexDescription[] = [
                                 { key: { '@pk': -1 } },

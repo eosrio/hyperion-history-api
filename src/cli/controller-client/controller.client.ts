@@ -53,13 +53,13 @@ export class IndexerController {
                 }
                 this.ws = null;
             }
-            
+
             const newWs = new WebSocket(hyperionIndexer + '/local');
             let connectionTimeoutId: NodeJS.Timeout;
 
             const onOpen = () => {
                 clearTimeout(connectionTimeoutId);
-                newWs.off('error', onError); 
+                newWs.off('error', onError);
                 this.ws = newWs;
                 console.log('Connected to Hyperion Controller');
                 this.connectionPromise = null;
@@ -75,12 +75,12 @@ export class IndexerController {
                 this.connectionPromise = null;
                 reject(new Error(`Failed to connect to Hyperion Controller: ${error.message}`));
             };
-            
+
             connectionTimeoutId = setTimeout(() => {
                 newWs.off('open', onOpen);
                 newWs.off('error', onError);
                 if (newWs.readyState !== WebSocket.OPEN && newWs.readyState !== WebSocket.CLOSED) {
-                    newWs.terminate(); 
+                    newWs.terminate();
                 }
                 if (this.ws === newWs) {
                     this.ws = null;
@@ -98,8 +98,8 @@ export class IndexerController {
     private async _sendRequestAndAwaitResponse<T>(
         requestPayload: any,
         successCondition: (
-            message: any, 
-            resolve: (value: T | PromiseLike<T>) => void, 
+            message: any,
+            resolve: (value: T | PromiseLike<T>) => void,
             reject: (reason?: any) => void
         ) => boolean,
         operationDescription: string,
@@ -171,7 +171,7 @@ export class IndexerController {
                 cleanupListeners();
                 reject(new Error(`WebSocket error during ${operationDescription} operation: ${error.message}`));
             };
-            
+
             currentWs.on('message', messageHandler);
             currentWs.on('close', closeHandler);
             currentWs.on('error', errorHandler);
@@ -192,7 +192,7 @@ export class IndexerController {
                 if (message.event === 'indexer_paused') {
                     console.log('Indexer paused');
                     resolve(message.mId);
-                    return true; 
+                    return true;
                 }
                 return false;
             },
@@ -234,7 +234,7 @@ export class IndexerController {
             },
             'indexer to start',
             10000,
-            (error, messageText) => { 
+            (error, messageText) => {
                 console.error(`Error parsing start response JSON: "${messageText}". Error:`, error);
             }
         );
@@ -247,11 +247,11 @@ export class IndexerController {
             // The connectionPromise itself will eventually timeout or error if ws.close() affects it.
         }
         if (this.ws) {
-            this.ws.removeAllListeners(); 
+            this.ws.removeAllListeners();
             if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
                 this.ws.close();
             } else if (this.ws.readyState !== WebSocket.CLOSED && this.ws.readyState !== WebSocket.CLOSING) {
-                 // Only terminate if not already closing or closed to avoid errors
+                // Only terminate if not already closing or closed to avoid errors
                 this.ws.terminate();
             }
             this.ws = null;
@@ -273,8 +273,8 @@ export class IndexerController {
             },
             'indexer to stop',
             60000,
-            (error, messageText) => { 
-                 console.error(`Error parsing stop response JSON: "${messageText}". Error:`, error);
+            (error, messageText) => {
+                console.error(`Error parsing stop response JSON: "${messageText}". Error:`, error);
             }
         );
     }
@@ -338,6 +338,27 @@ export class IndexerController {
             'heap stats response',
             10000,
             () => { /* ignore parse errors */ }
+        );
+    }
+
+    async reloadContractStateConfig(contractName: string): Promise<any> {
+        return this._sendRequestAndAwaitResponse<any>(
+            { event: 'reload_contract_config', data: { contract: contractName } },
+            (message, resolve) => {
+                if (message.event === 'contract_config_reloaded') {
+                    console.log('Contract state config reloaded successfully');
+                    resolve(message.data);
+                    return true;
+                } else if (message.event === 'contract_config_reload_failed') {
+                    console.error(`Failed to reload contract state config for ${contractName}: ${message.error}`);
+                    resolve(null);
+                    return true;
+                }
+                console.log(message); // Log other messages while waiting for 'contract_config_reloaded'
+                return false;
+            },
+            'contract state config reload',
+            10000
         );
     }
 }

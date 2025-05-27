@@ -480,6 +480,7 @@ export default class StateReader extends HyperionWorker {
                 // remove the forked block from the map
                 this.forkedBlocks.delete(new_block_id);
                 hLog(`⚠️ Re-applied forked block ${new_block_num} [${new_block_id}]`);
+                console.log(res.this_block);
             }
         }
 
@@ -504,9 +505,8 @@ export default class StateReader extends HyperionWorker {
                 this.processForkedBlocks();
             } else {
                 // if the id is the same, we can log that it's already registered
-                console.log(`⚠️⚠️ Block ${new_block_num} is already registered with the same id!`);
+                hLog(`⚠️⚠️ Block ${new_block_num} is already registered with the same id!`);
                 // indexing can be skipped for this one
-                console.log(res);
             }
         } else {
             // register the block for the first time
@@ -534,7 +534,7 @@ export default class StateReader extends HyperionWorker {
 
     private async removeForkedBlocks() {
         const forkedBlocks = Array.from(this.forkedBlocks.entries());
-        console.log(`⚠️ Checking ${forkedBlocks.length} forked blocks for removal...`);
+        hLog(`⚠️ Checking ${forkedBlocks.length} forked blocks for removal...`);
         const pendingList: any[] = [];
         const removedList: any[] = [];
         for (const [block_id, val] of forkedBlocks) {

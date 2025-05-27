@@ -40,10 +40,12 @@ export abstract class HyperionWorker {
 
     failedAbiMap: Map<string, Set<number>> = new Map();
     protected abieos = Abieos.getInstance();
+    configModule: ConfigurationModule;
 
     protected constructor() {
         this.checkDebugger();
         const cm = new ConfigurationModule();
+        this.configModule = cm;
         this.conf = cm.config;
         this.filters = cm.filters;
         this.manager = new ConnectionManager(cm);

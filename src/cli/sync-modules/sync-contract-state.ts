@@ -1,9 +1,9 @@
-import {readFileSync} from 'node:fs';
-import {APIClient, Asset, Name, UInt64} from '@wharfkit/antelope';
-import {MongoClient, Db, IndexDescription} from 'mongodb';
-import {join} from 'node:path';
-import {cargo} from 'async';
-import {findAndValidatePrimaryKey} from '../utils/check-primary-key.js';
+import { readFileSync } from 'node:fs';
+import { APIClient, Asset, Name, UInt64 } from '@wharfkit/antelope';
+import { MongoClient, Db, IndexDescription } from 'mongodb';
+import { join } from 'node:path';
+import { cargo } from 'async';
+import { findAndValidatePrimaryKey } from '../utils/check-primary-key.js';
 
 interface ChainConfig {
     features: {
@@ -57,7 +57,7 @@ export class ContractStateSynchronizer {
         if (!endpoint) {
             throw new Error('No HTTP Endpoint!');
         }
-        return new APIClient({url: endpoint});
+        return new APIClient({ url: endpoint });
     }
 
     private createMongoClient(): MongoClient {
@@ -89,11 +89,11 @@ export class ContractStateSynchronizer {
                     // Add default indices
                     if (config.auto_index === true) {
                         indices.push(
-                            {key: {'@pk': -1}},
-                            {key: {'@scope': 1}},
-                            {key: {'@block_num': -1}},
-                            {key: {'@block_time': -1}},
-                            {key: {'@payer': 1}}
+                            { key: { '@pk': -1 } },
+                            { key: { '@scope': 1 } },
+                            { key: { '@block_num': -1 } },
+                            { key: { '@block_time': -1 } },
+                            { key: { '@payer': 1 } }
                         );
                     }
 
@@ -109,7 +109,7 @@ export class ContractStateSynchronizer {
                                     extractStructFlat(struct.base);
                                 }
                                 struct?.fields.forEach((value) => {
-                                    indices.push({key: {[value.name]: 1}});
+                                    indices.push({ key: { [value.name]: 1 } });
                                 });
                             };
                             const tableData = tables.find((value) => value.name === table);
@@ -120,7 +120,7 @@ export class ContractStateSynchronizer {
                     } else if (config.indices) {
                         console.log(`Using defined indices for ${collectionName}`);
                         for (const [field, direction] of Object.entries(config.indices)) {
-                            indices.push({key: {[field]: direction === 'desc' ? -1 : 1}});
+                            indices.push({ key: { [field]: direction === 'desc' ? -1 : 1 } });
                         }
                     }
 
@@ -135,10 +135,20 @@ export class ContractStateSynchronizer {
         }
     }
 
-    private async *processContractState() {
+    private async *processContractState(targetContract?: string, targetTable?: string): AsyncGenerator<any> {
         if (this.config.features.contract_state.contracts) {
             for (const [contract, tables] of Object.entries(this.config.features.contract_state.contracts)) {
+
+                if (targetContract && contract !== targetContract) {
+                    continue; // Skip if not the target contract
+                }
+
                 for (const [table, config] of Object.entries(tables)) {
+
+                    if (targetTable && table !== targetTable) {
+                        continue; // Skip if not the target table
+                    }
+
                     let pkField = await findAndValidatePrimaryKey(contract, table, this.client);
 
                     if (!pkField?.field) {
@@ -202,8 +212,7 @@ export class ContractStateSynchronizer {
                                             // log at each 10000 rows
                                             if (this.totalRows % 10000 === 0) {
                                                 console.log(
-                                                    `Fetched ${
-                                                        this.totalRows
+                                                    `Fetched ${this.totalRows
                                                     } rows - at: ${contract}-${table} - scope: ${scope} - pk: ${pkValue} - lb: ${lb?.value.toString()}`
                                                 );
                                             }
@@ -235,8 +244,8 @@ export class ContractStateSynchronizer {
         }
     }
 
-    public async run() {
-        console.log(`Starting contract state sync for chain: ${this.chain}`);
+    public async run(contract?: string, table?: string): Promise<void> {
+        console.log(`Starting contract state sync for chain: ${this.chain} | Contract: ${contract || 'all'} | Table: ${table || 'all'}`);
         const tRef = Date.now();
         try {
             if (!this.config.features.contract_state.enabled) {
@@ -302,7 +311,7 @@ export class ContractStateSynchronizer {
                 groupedOps.forEach((value, key) => {
                     if (this.db) {
                         // console.log(`Inserting ${value.length} documents into ${key}`);
-                        promises.push(this.db.collection(key).bulkWrite(value, {ordered: false}));
+                        promises.push(this.db.collection(key).bulkWrite(value, { ordered: false }));
                     }
                 });
 
@@ -319,7 +328,7 @@ export class ContractStateSynchronizer {
             }, 1000);
 
             console.log('Starting to process contract state');
-            for await (const doc of this.processContractState()) {
+            for await (const doc of this.processContractState(contract, table)) {
                 this.processedDocs++;
 
                 cargoQueue.push(doc).catch((error) => {

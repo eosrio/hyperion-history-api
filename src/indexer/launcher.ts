@@ -1,7 +1,7 @@
 import cluster from "cluster";
-import {ConfigurationModule} from "./modules/config.js";
-import {HyperionWorker} from "./workers/hyperionWorker.js";
-import {hLog} from "./helpers/common_functions.js";
+import { ConfigurationModule } from "./modules/config.js";
+import { HyperionWorker } from "./workers/hyperionWorker.js";
+import { hLog } from "./helpers/common_functions.js";
 
 interface WorkerEnv {
 	worker_role: string;
@@ -34,12 +34,16 @@ async function launch() {
 	});
 
 	if (cluster.isPrimary) {
+
 		process.title = `${conf.proc_prefix}-${chain_name}-master`;
 		const master = await import('./modules/master.js');
-		new master.HyperionMaster().runMaster().catch((err) => {
-			console.log(process.env['worker_role']);
-			console.log(err);
-		});
+		const instance = new master.HyperionMaster();
+		try {
+			await instance.runMaster();
+		} catch (err) {
+			console.error("Error running master:", err);
+		}
+
 	} else {
 
 		const env: WorkerEnv = {
@@ -51,7 +55,12 @@ async function launch() {
 			process.title = `${conf.proc_prefix}-${chain_name}-${env.worker_role}:${env.worker_id}`;
 			const mod = (await import(`./workers/${hyperionWorkers[env.worker_role]}.js`)).default;
 			const instance = new mod() as HyperionWorker;
-			await instance.run();
+			try {
+				await instance.run();
+			} catch (error) {
+				console.error(`Error running worker ${env.worker_role} (${env.worker_id}):`, error);
+			}
+
 		}
 	}
 }

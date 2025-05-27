@@ -61,10 +61,6 @@ export class ConfigurationModule {
         // this.filters.action_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}::onblock`);
         this.filters.action_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}.null::*`);
 
-        // this.filters.delta_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}::global`);
-        // this.filters.delta_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}::global2`);
-        // this.filters.delta_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}::global3`);
-
         // append user blacklists
         if (this.config.blacklists) {
             if (this.config.blacklists.actions) {
