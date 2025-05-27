@@ -1,5 +1,26 @@
 import {AlertManagerOptions} from "../indexer/modules/alertsManager.js";
 
+/**
+ * Contract usage statistics structure
+ * [0] = Total hits count for this contract
+ * [1] = Percentage of total hits (0.0 to 1.0)
+ * [2] = Array of worker IDs assigned to handle this contract
+ */
+export interface ContractUsageEntry {
+    0: number;      // Total hits
+    1: number;      // Percentage (0.0 to 1.0)
+    2: number[];    // Assigned worker IDs
+}
+
+/**
+ * Global usage map tracking contract activity and worker assignments
+ * Key: contract name (e.g., 'eosio', 'eosio.oracle')
+ * Value: [hits, percentage, workers]
+ */
+export interface ContractUsageMap {
+    [contractName: string]: ContractUsageEntry;
+}
+
 export interface ScalingConfigs {
     polling_interval: number;
     resume_trigger: number;
@@ -28,7 +49,7 @@ export interface TieredIndexAllocationSettings {
     enabled: boolean;
     max_age_days?: number;
     max_age_blocks?: number;
-    require_node_attribute: NodeAttributeRequirement;
+    require_node_attribute?: NodeAttributeRequirement;
 }
 
 export interface MainSettings {
@@ -58,7 +79,7 @@ export interface MainSettings {
     index_partition_size: number;
     max_retained_blocks?: number;
     es_replicas: number;
-    tiered_index_allocation?: TieredIndexAllocationSettings; // <-- Updated property
+    tiered_index_allocation?: TieredIndexAllocationSettings;
 }
 
 export interface IndexerConfigs {

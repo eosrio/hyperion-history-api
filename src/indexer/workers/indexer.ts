@@ -103,9 +103,9 @@ export default class IndexerWorker extends HyperionWorker {
     }
 
     async onIpcMessage(msg: any): Promise<void> {
-        if (msg.event === 'pause-indexer') {
+        if (msg.event === 'pause_indexer') {
             await this.pauseIndexer(msg);
-        } else if (msg.event === 'resume-indexer') {
+        } else if (msg.event === 'resume_indexer') {
             await this.resumeIndexer(msg);
         }
     }
@@ -116,13 +116,13 @@ export default class IndexerWorker extends HyperionWorker {
             if (this.indexQueue.length() > 0) {
                 this.indexQueue.drain(() => {
                     process.send?.({
-                        event: 'indexer-paused',
+                        event: 'indexer_paused',
                         mId: msg.mId
                     });
                 });
             } else {
                 process.send?.({
-                    event: 'indexer-paused',
+                    event: 'indexer_paused',
                     mId: msg.mId
                 });
             }
@@ -144,7 +144,7 @@ export default class IndexerWorker extends HyperionWorker {
 
                 hLog(`[IPC] Indexer resumed! ConsumerTag: ${this.consumerTag}`);
                 process.send?.({
-                    event: 'indexer-resumed',
+                    event: 'indexer_resumed',
                     mId: msg.mId
                 });
             } catch (error) {

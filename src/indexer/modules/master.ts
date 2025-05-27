@@ -1,8 +1,5 @@
 import { Client, estypes } from '@elastic/elasticsearch';
 
-import pm2io from '@pm2/io';
-
-import { IOConfig } from '@pm2/io/build/main/pmx.js';
 import { API, APIClient } from '@wharfkit/antelope';
 import { queue, QueueObject } from 'async';
 
@@ -21,14 +18,13 @@ import {
 
 import { bootstrap } from 'global-agent';
 import { Redis } from 'ioredis';
-import moment from 'moment';
 import { Db, IndexDescription } from 'mongodb';
 import path from 'path';
 import { Socket } from 'socket.io-client';
 import { WebSocket } from 'uWebSockets.js';
 import { getTotalValue } from '../../api/helpers/functions.js';
 import { HyperionConfig } from '../../interfaces/hyperionConfig.js';
-import { HyperionWorkerDef } from '../../interfaces/hyperionWorkerDef.js';
+import { HyperionWorkerDef, RevBlock, WorkerMessage, WorkerMessageHandler } from '../../interfaces/hyperionWorkerDef.js';
 import { IAccount } from '../../interfaces/table-account.js';
 import { IProposal } from '../../interfaces/table-proposal.js';
 import { IVoter } from '../../interfaces/table-voter.js';
@@ -50,38 +46,12 @@ import {
 import { AlertManagerOptions, AlertsManager, HyperionAlertTypes } from './alertsManager.js';
 import { ConfigurationModule } from './config.js';
 import { LocalHyperionController } from "./controller.js";
+import { HyperionIndexerMonitor } from './indexerMonitor.js';
 import { HyperionModuleLoader } from './loader.js';
+import { HyperionQueueMonitor } from './queueMonitor.js';
+
 import Timeout = NodeJS.Timeout;
-
-interface RevBlock {
-    num: number;
-    id: string;
-    tx: string[];
-}
-
-interface WorkerMessage {
-    root_act?: any;
-    signatures?: any;
-    trx_id?: string;
-    total_hits?: number;
-    deltas?: number;
-    actions?: number;
-    size?: number;
-    id?: string;
-    worker_id?: any;
-    trx_ids?: string[];
-    live_mode?: string;
-    block_id?: string;
-    event: string;
-    live?: string;
-    target?: string;
-    data?: any;
-    block_num?: number;
-    block_ts?: string;
-    mId?: string;
-}
-
-type WorkerMessageHandler = (worker: Worker, msg: WorkerMessage) => Promise<void> | void;
+import { HyperionLifecycleManager } from './lifecycleManager.js';
 
 export class HyperionMaster {
     // global configuration
@@ -120,11 +90,11 @@ export class HyperionMaster {
 
     // mem-optimized deserialization pool
     private dsPoolMap: Map<number, Worker> = new Map();
-    private globalUsageMap = {};
+    public globalUsageMap = {};
     private totalContractHits = 0;
 
     // producer monitoring
-    private lastProducedBlockNum = 0;
+    lastProducedBlockNum = 0;
     private handoffCounter: number = 0;
     private lastProducer: string | null = null;
     private producedBlocks: object = {};
@@ -132,32 +102,6 @@ export class HyperionMaster {
 
     // IPC Messaging
     private totalMessages = 0;
-
-    // Indexer Monitoring
-    private lastProcessedBlockNum = 0;
-    private allowMoreReaders = true;
-    private allowShutdown = false;
-    private readonly log_interval = 5000;
-    private readonly tScale = this.log_interval / 1000;
-    private consumedBlocks = 0;
-    private deserializedActions = 0;
-    private indexedObjects = 0;
-    private deserializedDeltas = 0;
-    private liveConsumedBlocks = 0;
-    private livePushedBlocks = 0;
-    private pushedBlocks = 0;
-    private total_read = 0;
-    private total_blocks = 0;
-    private total_actions = 0;
-    private total_deltas = 0;
-    private total_abis = 0;
-    private consume_rates: number[] = [];
-    private total_range = 0;
-    private range_completed = false;
-    private head = -1;
-    private starting_block?: number;
-    private idle_count = 0;
-    private auto_stop = 0;
 
     // IPC Messages Handling
     private msgHandlerMap: Record<string, WorkerMessageHandler> = {};
@@ -171,19 +115,28 @@ export class HyperionMaster {
     private proposedSchedule: any;
     private wsRouterWorker?: Worker;
     private liveBlockQueue?: QueueObject<any>;
-    private readingPaused = false;
 
     // private readingLimited = false;
 
     // Hyperion Hub Socket
-    private hub?: Socket;
+    hub?: Socket;
 
     // Timers
     private contractMonitoringInterval?: Timeout;
-    private queueMonitoringInterval?: Timeout;
-    private shutdownTimer?: Timeout;
+    shutdownTimer?: Timeout;
 
-    private mode_transition = false;
+    // Contract monitoring timing
+    public lastContractMonitoringUpdate: number = 0;
+    public contractMonitoringIntervalMs: number = 5000;
+    public contractMonitoringStartTime: number = 0;
+
+    // Load distribution performance metrics
+    public lastDistributionDurationMs: number = 0;
+    public averageDistributionDurationMs: number = 0;
+    public distributionCycleCount: number = 0;
+    public totalDistributionTimeMs: number = 0;
+
+    mode_transition = false;
 
     private readonly cm: ConfigurationModule;
     private alerts?: AlertsManager;
@@ -191,12 +144,9 @@ export class HyperionMaster {
 
     // Reversible Blocks
     private revBlockArray: RevBlock[] = [];
-    private shutdownStarted = false;
+    shutdownStarted = false;
 
     private shouldCountIPCMessages = false;
-
-
-    private localController: LocalHyperionController;
 
     private liveReader?: HyperionWorkerDef;
     private repairReader?: HyperionWorkerDef;
@@ -205,18 +155,34 @@ export class HyperionMaster {
         end: number;
         size?: number;
     }[] = [];
+
     private connectedController?: WebSocket<any>;
-    private lastIrreversibleBlock: number = 0;
-    private validatedShipServers: ShipServer[] = [];
-    private avg_consume_rate: number = 0;
+    lastIrreversibleBlock: number = 0;
+    head = -1;
+    validatedShipServers: ShipServer[] = [];
+    allowMoreReaders = true;
+    allowShutdown = false;
+    starting_block?: number;
+    lastProcessedBlockNum = 0;
 
     private waitForLaunchResolve: ((value: void | PromiseLike<void>) => void) | null = null;
     waitForLaunchTimeout: Timeout | null = null;
 
+    // Queue Monitor
+    private queueMonitor: HyperionQueueMonitor;
+
+    // Local Hyperion Controller
+    private localController: LocalHyperionController;
+
+    // Indexer Monitor
+    private indexerMonitor: HyperionIndexerMonitor;
+    
+    // Elastic Index Lifecycle Manager
+    private lifecycleManager: HyperionLifecycleManager;
+;
+
     constructor() {
         this.cm = new ConfigurationModule();
-
-        this.localController = new LocalHyperionController(this);
 
         if (!this.cm.config) {
             hLog('Configuration is not present! Exiting now!');
@@ -269,6 +235,12 @@ export class HyperionMaster {
         });
 
         this.initAlerts();
+
+        // Inject master instance into modules
+        this.localController = new LocalHyperionController(this);
+        this.queueMonitor = new HyperionQueueMonitor(this);
+        this.indexerMonitor = new HyperionIndexerMonitor(this);
+        this.lifecycleManager = new HyperionLifecycleManager(this);
     }
 
     private initAlerts() {
@@ -296,7 +268,7 @@ export class HyperionMaster {
         this.msgHandlerMap = {
             skipped_block: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.block_num) {
-                    this.consumedBlocks++;
+                    this.indexerMonitor.consumedBlocks++;
                     if (msg.block_num > this.lastProcessedBlockNum) {
                         this.lastProcessedBlockNum = msg.block_num;
                     }
@@ -308,13 +280,13 @@ export class HyperionMaster {
                 }
 
                 if (msg.live === 'false') {
-                    this.consumedBlocks++;
+                    this.indexerMonitor.consumedBlocks++;
                     if (msg.block_num && msg.block_num > this.lastProcessedBlockNum) {
                         this.lastProcessedBlockNum = msg.block_num;
                     }
                 } else {
                     // LIVE READER
-                    this.liveConsumedBlocks++;
+                    this.indexerMonitor.liveConsumedBlocks++;
 
                     // cache the last block number for quick api access
                     this.ioRedisClient.set(`${this.chain}:last_idx_block`, `${msg.block_num}@${msg.block_ts}`).catch(console.error);
@@ -355,7 +327,7 @@ export class HyperionMaster {
                         event: 'initialize_abi',
                         data: msg.data
                     });
-                    this.monitorIndexingQueues();
+                    this.queueMonitor.monitorIndexingQueues();
                     this.startContractMonitoring();
                 } else {
                     hLog('received ship abi for distribution AGAIN!!');
@@ -370,7 +342,7 @@ export class HyperionMaster {
                 // console.log(data);
             },
             save_abi: (_worker: Worker, msg: WorkerMessage) => {
-                this.total_abis++;
+                this.indexerMonitor.total_abis++;
                 if (msg.live_mode === 'true') {
                     hLog(`deserializer ${msg.worker_id} received new abi! propagating changes to other workers...`);
                     for (const worker of this.workerMap) {
@@ -384,7 +356,7 @@ export class HyperionMaster {
             update_last_assigned_block: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.block_num && this.head) {
                     this.lastAssignedBlock = msg.block_num;
-                    this.total_range = this.head - msg.block_num;
+                    this.indexerMonitor.total_range = this.head - msg.block_num;
                 }
             },
             repair_reader_ready: () => {
@@ -437,15 +409,15 @@ export class HyperionMaster {
             },
             add_index: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.size) {
-                    this.indexedObjects += msg.size;
+                    this.indexerMonitor.indexedObjects += msg.size;
                 }
             },
             ds_report: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.actions) {
-                    this.deserializedActions += msg.actions;
+                    this.indexerMonitor.deserializedActions += msg.actions;
                 }
                 if (msg.deltas) {
-                    this.deserializedDeltas += msg.deltas;
+                    this.indexerMonitor.deserializedDeltas += msg.deltas;
                 }
             },
             ds_error: (_worker: Worker, msg: WorkerMessage) => {
@@ -453,9 +425,9 @@ export class HyperionMaster {
             },
             read_block: (_worker: Worker, msg: WorkerMessage) => {
                 if (!msg.live) {
-                    this.pushedBlocks++;
+                    this.indexerMonitor.pushedBlocks++;
                 } else {
-                    this.livePushedBlocks++;
+                    this.indexerMonitor.livePushedBlocks++;
                 }
             },
             ds_ready: (worker: Worker, msg: WorkerMessage) => {
@@ -485,9 +457,12 @@ export class HyperionMaster {
                     this.lastIrreversibleBlock = msg.data.block_num;
 
                     this.revBlockArray = this.revBlockArray.filter((item) => item.num > msg.data.block_num);
+
+                    // TODO: confirm this is being emmited to QRY hub
                     if (this.conf.hub && this.hub && this.conf.hub.hub_url) {
                         this.hub.emit('hyp_ev', { e: 'lib', d: msg.data });
                     }
+
                     // forward LIB to streaming router
                     if (this.conf.features.streaming.enable && this.wsRouterWorker) {
                         debugLog(`Live Reader reported LIB update: ${msg.data.block_num} | ${msg.data.block_id}`);
@@ -530,16 +505,22 @@ export class HyperionMaster {
                     this.wsRouterWorker.send(msg);
                 }
             },
-            'indexer-paused': (_worker: Worker, msg: WorkerMessage) => {
+            indexer_paused: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.mId) {
-                    this.localController.publish(msg.mId, { event: 'indexer-paused', mId: msg.mId });
+                    this.localController.publish(msg.mId, { event: 'indexer_paused', mId: msg.mId });
                 }
             },
-            'indexer-resumed': (_worker: Worker, msg: WorkerMessage) => {
+            indexer_resumed: (_worker: Worker, msg: WorkerMessage) => {
                 hLog(`[IPC] Resuming indexer`);
                 if (msg.mId) {
-                    this.localController.publish(msg.mId, { event: 'indexer-resumed' });
+                    this.localController.publish(msg.mId, { event: 'indexer_resumed' });
                 }
+            },
+            memory_report: (worker: Worker, msg: WorkerMessage) => {
+                hLog(worker.id, msg);
+            },
+            v8_heap_report: (worker: Worker, msg: WorkerMessage) => {
+                hLog(worker.id, msg);
             }
         };
     }
@@ -636,15 +617,19 @@ export class HyperionMaster {
                 console.error('empty producer schedule, something went wrong!');
                 process.exit(1);
             } else {
+
                 if (this.currentSchedule.active) {
                     this.activeSchedule = this.currentSchedule.active;
                 }
+
                 if (this.currentSchedule.pending) {
                     this.pendingSchedule = this.currentSchedule.pending;
                 }
+
                 if (this.currentSchedule.proposed) {
                     this.proposedSchedule = this.currentSchedule.proposed;
                 }
+
             }
         } catch (e) {
             console.error('failed to connect to api');
@@ -661,29 +646,6 @@ export class HyperionMaster {
             hLog("Painless Update Script loaded!");
         }
     }
-
-    // private async addLifecyclePolicies(indexConfig) {
-    //     if (indexConfig.ILPs) {
-    //         for (const ILP of indexConfig.ILPs) {
-    //             try {
-    //                 await this.esClient.ilm.getLifecycle({
-    //                     policy: ILP.policy
-    //                 });
-    //             } catch {
-    //                 try {
-    //                     const ilm_status = await this.esClient.ilm.putLifecycle(ILP);
-    //                     if (!ilm_status.acknowledged) {
-    //                         hLog(`Failed to create ILM Policy`);
-    //                     }
-    //                 } catch (e) {
-    //                     hLog(`[FATAL] :: Failed to create ILM Policy`);
-    //                     hLog(e);
-    //                     process.exit(1);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
 
     private async appendExtraMappings(indexConfig) {
         // Modify mappings
@@ -786,7 +748,7 @@ export class HyperionMaster {
     private async findRange() {
         // Auto-stop
         if (this.conf.settings.auto_stop) {
-            this.auto_stop = this.conf.settings.auto_stop;
+            this.indexerMonitor.auto_stop = this.conf.settings.auto_stop;
         }
 
         // Find last indexed block
@@ -994,7 +956,7 @@ export class HyperionMaster {
         }
     }
 
-    private addWorker(def: HyperionWorkerDef): HyperionWorkerDef {
+    addWorker(def: HyperionWorkerDef): HyperionWorkerDef {
         this.worker_index++;
         def.worker_id = this.worker_index;
         def.failures = 0;
@@ -1014,7 +976,7 @@ export class HyperionMaster {
     private async setupWorkers() {
         this.lastIndexedABI = await getLastIndexedABI(this.esClient, this.chain);
         await this.defineBlockRange();
-        this.total_range = this.head - (this.starting_block ?? 0);
+        this.indexerMonitor.total_range = this.head - (this.starting_block ?? 0);
         await this.setupReaders();
         await this.setupDeserializers();
         await this.setupIndexers();
@@ -1023,7 +985,7 @@ export class HyperionMaster {
         this.addWorker({ worker_role: 'delta_updater' });
     }
 
-    private launchWorkers() {
+    launchWorkers() {
         let launchedCount = 0;
         this.workerMap.forEach((wrk: HyperionWorkerDef) => {
             if (!wrk.wref && wrk.worker_id) {
@@ -1145,7 +1107,7 @@ export class HyperionMaster {
         }
     }
 
-    private sendToRole(role: string, payload: any) {
+    sendToRole(role: string, payload: any) {
         this.workerMap
             .filter((value) => value.worker_role === role)
             .forEach((value) => {
@@ -1239,7 +1201,7 @@ export class HyperionMaster {
                                 hLog(e);
                             }
                             cIdx++;
-                            if (cIdx === activeProds.length) {
+                            if (cIdx === newIdx) {
                                 cIdx = 0;
                             }
                         }
@@ -1309,11 +1271,22 @@ export class HyperionMaster {
     private startContractMonitoring() {
         if (!this.contractMonitoringInterval) {
             // Monitor Global Contract Usage
+            this.contractMonitoringStartTime = Date.now();
             this.contractMonitoringInterval = setInterval(() => {
-                // const t0 = process.hrtime.bigint();
+                const t0 = process.hrtime.bigint();
                 this.updateWorkerAssignments();
-                // const t1 = process.hrtime.bigint();
+                const t1 = process.hrtime.bigint();
 
+                // Update timing information
+                this.lastContractMonitoringUpdate = Date.now();
+
+                // Calculate and store distribution performance metrics
+                this.lastDistributionDurationMs = Number(t1 - t0) / 1000000; // Convert nanoseconds to milliseconds
+                this.distributionCycleCount++;
+                this.totalDistributionTimeMs += this.lastDistributionDurationMs;
+                this.averageDistributionDurationMs = this.totalDistributionTimeMs / this.distributionCycleCount;
+
+                // Optional: Log timing information (currently commented)
                 // hLog('----------- Usage Report ----------');
                 // hLog(`Total Hits: ${this.totalContractHits}`);
                 // hLog(`Update time: ${parseInt((t1 - t0).toString()) / 1000000} ms`);
@@ -1333,351 +1306,8 @@ export class HyperionMaster {
                 }
 
                 // clearUsageMap();
-            }, 5000);
+            }, this.contractMonitoringIntervalMs);
         }
-    }
-
-    private pauseReaders() {
-        if (!this.readingPaused) {
-            this.sendToRole('reader', { event: 'pause' });
-            this.readingPaused = true;
-        }
-    }
-
-    private resumeReaders() {
-        if (this.readingPaused) {
-            this.sendToRole('reader', { event: 'resume' });
-            this.readingPaused = false;
-        }
-    }
-
-    private async checkQueues(autoscaleConsumers, limit) {
-        const testedQueues = new Set();
-        let aboveLimit = false;
-        let canResume = true;
-        let queuedMessages = 0;
-        for (const worker of this.workerMap) {
-            let queue = worker.queue;
-            if (!queue) {
-                queue = worker.worker_queue;
-            }
-
-            if (worker.worker_role === 'ds_pool_worker') {
-                queue = `${this.chain}:ds_pool:${worker.local_id}`;
-            }
-
-            if (queue && !testedQueues.has(queue)) {
-                const size = await this.manager.checkQueueSize(queue);
-                queuedMessages += size;
-                let qlimit = this.conf.scaling.max_queue_limit;
-                if (worker.worker_role === 'deserializer') {
-                    qlimit = this.conf.scaling.block_queue_limit;
-                }
-
-                // if (size / qlimit > 0.5) {
-                // 	hLog(queue, size, ((size / qlimit) * 100).toFixed(2) + "%");
-                // }
-
-                // pause readers if queues are above the max_limit
-                if (size >= qlimit) {
-                    aboveLimit = true;
-                }
-
-                // check if any queue is above resume point
-                if (size >= this.conf.scaling.resume_trigger) {
-                    canResume = false;
-                }
-
-                // check indexing queues
-                if (worker.worker_role === 'ingestor') {
-                    if (size > limit) {
-                        if (!autoscaleConsumers[queue]) {
-                            autoscaleConsumers[queue] = 0;
-                        }
-                        if (autoscaleConsumers[queue] < this.conf.scaling.max_autoscale) {
-                            hLog(`${queue} is above the limit (${size}/${limit}). Launching consumer...`);
-                            this.addWorker({
-                                queue: queue,
-                                type: worker.type,
-                                worker_role: 'ingestor'
-                            });
-                            this.launchWorkers();
-                            autoscaleConsumers[queue]++;
-                        }
-                    }
-                }
-
-                // // resume readers if the queues are below the trigger point
-                // if (size <= this.conf.scaling.resume_trigger) {
-                //
-                // 	// remove flow limiter
-                // 	if (this.readingLimited) {
-                // 		this.readingLimited = false;
-                // 		hLog('removing flow limiters');
-                // 		for (const worker of this.workerMap) {
-                // 			if (worker.worker_role === 'reader') {
-                // 				worker.wref.send({event: 'set_delay', data: {state: false, delay: 0}});
-                // 			}
-                // 		}
-                // 	}
-                //
-                // 	// fully unpause
-                // 	if (this.readingPaused) {
-                // 		canResume = true;
-                // 		this.readingPaused = false;
-                // 		hLog('resuming readers');
-                // 		for (const worker of this.workerMap) {
-                // 			if (worker.worker_role === 'reader') {
-                // 				worker.wref.send({event: 'pause'});
-                // 			}
-                // 		}
-                // 	}
-                // }
-                //
-                // // apply block processing delay on 80% usage
-                // if (size >= this.conf.scaling.max_queue_limit * 0.8) {
-                // 	this.readingLimited = true;
-                // 	hLog('applying flow limiters');
-                // 	for (const worker of this.workerMap) {
-                // 		if (worker.worker_role === 'reader') {
-                // 			worker.wref.send({event: 'set_delay', data: {state: true, delay: 250}});
-                // 		}
-                // 	}
-                // }
-
-                testedQueues.add(queue);
-            }
-        }
-        if (aboveLimit) {
-            this.pauseReaders();
-        } else {
-            if (canResume) {
-                this.resumeReaders();
-            }
-        }
-        // this.metrics.queuedMessages?.set(queuedMessages);
-    }
-
-    private monitorIndexingQueues() {
-        if (!this.queueMonitoringInterval) {
-            const limit = this.conf.scaling.auto_scale_trigger;
-            const autoscaleConsumers = {};
-            setTimeout(() => {
-                this.checkQueues(autoscaleConsumers, limit).catch(console.log);
-            }, 3000);
-            if (!this.conf.scaling.polling_interval) {
-                this.conf.scaling.polling_interval = 20000;
-            }
-            this.queueMonitoringInterval = setInterval(async () => {
-                await this.checkQueues(autoscaleConsumers, limit);
-            }, this.conf.scaling.polling_interval);
-        }
-    }
-
-    private updateIndexingRates() {
-        this.total_read += this.pushedBlocks;
-        this.total_blocks += this.consumedBlocks;
-        this.total_actions += this.deserializedActions;
-        this.total_deltas += this.deserializedDeltas;
-        const consume_rate = this.consumedBlocks / this.tScale;
-        this.consume_rates.push(consume_rate);
-        if (this.consume_rates.length > 20) {
-            this.consume_rates.splice(0, 1);
-        }
-        this.avg_consume_rate = 0;
-        if (this.consume_rates.length > 0) {
-            for (const r of this.consume_rates) {
-                this.avg_consume_rate += r;
-            }
-            this.avg_consume_rate = this.avg_consume_rate / this.consume_rates.length;
-        } else {
-            this.avg_consume_rate = consume_rate;
-        }
-    }
-
-    private logMetrics(_workers: number) {
-        const log_msg: string[] = [];
-
-        // print current head for live reading
-        if (this.lastProducedBlockNum > 0 && this.lastIrreversibleBlock > 0) {
-            log_msg.push(`H:${this.lastProducedBlockNum} L:${this.lastIrreversibleBlock}`);
-        }
-
-        log_msg.push(`W:${_workers}`);
-
-        const _r = (this.pushedBlocks + this.livePushedBlocks) / this.tScale;
-        log_msg.push(`R:${_r}`);
-        // this.metrics.readingRate?.set(_r);
-
-        const _c = (this.liveConsumedBlocks + this.consumedBlocks) / this.tScale;
-        log_msg.push(`C:${_c}`);
-        // this.metrics.consumeRate?.set(_c);
-
-        const _a = this.deserializedActions / this.tScale;
-        log_msg.push(`A:${_a}`);
-        // this.metrics.actionDSRate?.set(_a);
-
-        const _dds = this.deserializedDeltas / this.tScale;
-        log_msg.push(`D:${_dds}`);
-        // this.metrics.deltaDSRate?.set(_dds);
-
-        const _ir = this.indexedObjects / this.tScale;
-        log_msg.push(`I:${_ir}`);
-        // this.metrics.indexingRate?.set(_ir);
-
-        if (this.total_blocks < this.total_range && !this.conf.indexer.live_only_mode) {
-            let time_string = 'waiting for indexer';
-            if (this.avg_consume_rate > 0) {
-                const remaining = this.total_range - this.total_blocks;
-                const estimated_time = Math.round(remaining / this.avg_consume_rate);
-                time_string = moment().add(estimated_time, 'seconds').fromNow(false);
-            }
-            const pct_parsed = ((this.total_blocks / this.total_range) * 100).toFixed(1);
-            const pct_read = ((this.total_read / this.total_range) * 100).toFixed(1);
-            log_msg.push(`${this.total_blocks}/${this.total_read}/${this.total_range}`);
-            log_msg.push(`syncs ${time_string} (${pct_parsed}% ${pct_read}%)`);
-            // this.metrics.syncEta.set(time_string);
-        }
-
-        // publish last processed block to pm2
-        // this.metrics.lastProcessedBlockNum.set(this.lastProcessedBlockNum);
-
-        // publish log to hub
-        if (this.conf.hub && this.conf.hub.hub_url && this.hub) {
-            this.hub.emit('hyp_ev', {
-                e: 'rates',
-                d: { r: _r, c: _c, a: _a }
-            });
-        }
-
-        // print monitoring log
-        if (this.conf.settings.rate_monitoring && !this.mode_transition) {
-            hLog(log_msg.join(' | '));
-        }
-    }
-
-    private indexerMonitorCycle(reference_time: number): void {
-        let _workers = 0;
-        if (cluster.workers) {
-            _workers = Object.keys(cluster.workers).length;
-        }
-
-        this.updateIndexingRates();
-
-        this.logMetrics(_workers);
-
-        if (this.liveConsumedBlocks > 0 && this.consumedBlocks === 0 && this.conf.indexer.abi_scan_mode) {
-            hLog('Warning: Live reading on ABI SCAN mode');
-        }
-
-        if (this.liveConsumedBlocks + this.indexedObjects + this.deserializedActions + this.consumedBlocks === 0 && !this.mode_transition) {
-            // Report completed range (parallel reading)
-            if (this.total_blocks === this.total_range && !this.range_completed) {
-                const ttime = (Date.now() - reference_time) / 1000;
-                hLog(`\n
-        -------- BLOCK RANGE COMPLETED -------------
-        | Range: ${this.starting_block} >> ${this.head}
-        | Total time: ${ttime} seconds
-        | Blocks: ${this.total_range}
-        | Actions: ${this.total_actions}
-        | Deltas: ${this.total_deltas}
-        | ABIs: ${this.total_abis}
-        --------------------------------------------\n`);
-                this.range_completed = true;
-                if (this.conf.indexer.abi_scan_mode) {
-                    if (this.conf.settings.auto_mode_switch) {
-                        this.mode_transition = true;
-                        hLog('Auto switching to full indexing mode in 10 seconds...');
-                        setTimeout(() => {
-                            reference_time = Date.now();
-                            this.startFullIndexing().catch(console.error);
-                        });
-                    }
-                }
-            }
-
-            if (!this.mode_transition) {
-                // Allow 10s threshold before shutting down the process
-                this.shutdownTimer = setTimeout(() => {
-                    this.allowShutdown = true;
-                }, 10000);
-
-                // Auto-Stop
-                if (this.pushedBlocks === 0) {
-                    this.idle_count++;
-                    if (this.auto_stop > 0) {
-                        if (this.tScale * this.idle_count >= this.auto_stop) {
-                            hLog('Reached limit for no blocks processed, stopping now...');
-                            process.exit(1);
-                        } else {
-                            const idleMsg = `No blocks processed! Indexer will stop in ${this.auto_stop - this.tScale * this.idle_count} seconds!`;
-                            if (this.idle_count === 1) {
-                                this.emitAlert('IndexerIdle', idleMsg);
-                            }
-                            hLog(idleMsg);
-                        }
-                    } else {
-                        if (!this.shutdownStarted) {
-                            const readers = this.workerMap.filter((value) => {
-                                return value.worker_role === 'reader' || value.worker_role === 'continuous_reader';
-                            });
-                            if (readers.length === 0) {
-                                hLog(`No more active workers, stopping now...`);
-                                process.exit();
-                            }
-                            const idleMsg = 'No blocks are being processed, please check your state-history node!';
-                            if (this.idle_count === 2) {
-                                this.emitAlert('IndexerIdle', idleMsg);
-                            }
-
-                            hLog(idleMsg);
-
-                            // attempt to move readers to another server if there are fail-over servers defined
-                            if (this.idle_count === 3 && this.validatedShipServers.length > 1) {
-                                readers.forEach((w) => {
-                                    w.wref?.send({ event: 'next_server' });
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            if (this.idle_count > 1) {
-                this.emitAlert('IndexerResumed', '✅ Data processing resumed!');
-                hLog('Processing resumed!');
-            }
-            this.idle_count = 0;
-            if (this.shutdownTimer) {
-                clearTimeout(this.shutdownTimer);
-                this.shutdownTimer = undefined;
-            }
-        }
-
-        // reset counters
-        this.resetMonitoringCounters();
-
-        if (_workers === 0 && !this.mode_transition) {
-            hLog('FATAL ERROR - All Workers have stopped!');
-            process.exit(1);
-        }
-    }
-
-    private startIndexMonitoring() {
-        let reference_time = Date.now();
-        setInterval(() => {
-            this.indexerMonitorCycle(reference_time);
-        }, this.log_interval);
-    }
-
-    resetMonitoringCounters() {
-        this.pushedBlocks = 0;
-        this.livePushedBlocks = 0;
-        this.consumedBlocks = 0;
-        this.liveConsumedBlocks = 0;
-        this.deserializedActions = 0;
-        this.deserializedDeltas = 0;
-        this.indexedObjects = 0;
     }
 
     // ------ END OF MONITORING AND CONTROL METHODS ------ //
@@ -1941,7 +1571,7 @@ export class HyperionMaster {
         this.setupDeserializationErrorLogger();
 
         // Start Monitoring
-        this.startIndexMonitoring();
+        this.indexerMonitor.startIndexMonitoring();
 
         // handle worker disconnection events
         cluster.on('disconnect', (worker) => {
@@ -1969,8 +1599,8 @@ export class HyperionMaster {
             }
         }
 
-        // Actions that can be triggered via pm2 trigger <action> <process> or on the pm2 dashboard
-        this.addPm2Actions();
+        // Start lifecycle management
+        this.lifecycleManager.start();
     }
 
     async streamBlockHeaders(start_on: number, stop_on: number, func: (data: any) => void) {
@@ -2057,12 +1687,13 @@ export class HyperionMaster {
         this.conf.indexer.abi_scan_mode = false;
 
         // reset global counters
-        this.total_abis = 0;
-        this.total_actions = 0;
-        this.total_blocks = 0;
-        this.total_deltas = 0;
-        this.total_read = 0;
-        this.range_completed = false;
+        this.indexerMonitor.total_abis = 0;
+        this.indexerMonitor.total_actions = 0;
+        this.indexerMonitor.total_blocks = 0;
+        this.indexerMonitor.total_deltas = 0;
+        this.indexerMonitor.total_read = 0;
+        this.indexerMonitor.range_completed = false;
+
         this.lastProcessedBlockNum = 0;
         this.cachedInitABI = null;
 
@@ -2076,7 +1707,7 @@ export class HyperionMaster {
         this.mode_transition = false;
     }
 
-    private emitAlert(msgType: HyperionAlertTypes, message: WorkerMessage | string) {
+    emitAlert(msgType: HyperionAlertTypes, message: WorkerMessage | string) {
         this.alerts?.emit(msgType, {
             type: msgType,
             process: process.title,
@@ -2084,13 +1715,12 @@ export class HyperionMaster {
         });
     }
 
-    // ------- START OF PM2 METRICS AND ACTIONS ------- //
-
     public gracefulStop(done: (result: any) => void) {
         try {
             this.shutdownStarted = true;
             this.allowMoreReaders = false;
             const stopMsg = 'Stop signal received. Shutting down readers immediately!';
+
             hLog(stopMsg);
             messageAllWorkers(cluster, { event: 'stop' });
 
@@ -2130,61 +1760,7 @@ export class HyperionMaster {
         }
     }
 
-    private addPm2Actions() {
-        const ioConfig: IOConfig = {
-            apmOptions: {
-                appName: this.chain + ' indexer',
-                publicKey: '',
-                secretKey: '',
-                sendLogs: true
-            },
-            metrics: {
-                v8: true,
-                http: false,
-                network: false,
-                runtime: true,
-                eventLoop: true
-            }
-        };
-        pm2io.init(ioConfig);
-
-        pm2io.action('stop', (reply: Function) => {
-            this.gracefulStop((result) => {
-                reply(result);
-            });
-        });
-
-        pm2io.action('get_usage_map', (reply: Function) => {
-            reply(this.globalUsageMap);
-        });
-
-        pm2io.action('get_memory_usage', (reply: Function) => {
-            this.requestDataFromWorkers(
-                {
-                    event: 'request_memory_usage'
-                },
-                'memory_report'
-            ).then((value) => {
-                reply(value);
-            });
-        });
-
-        pm2io.action('get_heap', (reply: Function) => {
-            this.requestDataFromWorkers(
-                {
-                    event: 'request_v8_heap_stats'
-                },
-                'v8_heap_report'
-            ).then((value) => {
-                reply(value);
-            });
-        });
-    }
-
-    async requestDataFromWorkers(requestEvent: {
-        event: string;
-        data?: any
-    }, responseEventType: string, timeoutSec: number = 1000) {
+    async requestDataFromWorkers(requestEvent: { event: string; data?: any }, responseEventType: string, timeoutSec: number = 1000) {
         const requests: any[] = [];
         for (const id in cluster.workers) {
             if (cluster.workers.hasOwnProperty(id)) {
@@ -2219,8 +1795,6 @@ export class HyperionMaster {
         }
         return responses;
     }
-
-    // ------- END OF PM2 METRICS AND ACTIONS ------- //
 
     private handleWorkerDisconnect(worker: any) {
         if (!this.mode_transition && !this.shutdownStarted) {
