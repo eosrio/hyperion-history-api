@@ -47,11 +47,11 @@ import { AlertManagerOptions, AlertsManager, HyperionAlertTypes } from './alerts
 import { ConfigurationModule } from './config.js';
 import { LocalHyperionController } from "./controller.js";
 import { HyperionIndexerMonitor } from './indexerMonitor.js';
+import { HyperionLifecycleManager } from './lifecycleManager.js';
 import { HyperionModuleLoader } from './loader.js';
 import { HyperionQueueMonitor } from './queueMonitor.js';
 
 import Timeout = NodeJS.Timeout;
-import { HyperionLifecycleManager } from './lifecycleManager.js';
 
 export class HyperionMaster {
     // global configuration

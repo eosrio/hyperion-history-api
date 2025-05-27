@@ -3,14 +3,13 @@ import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
 import { ConnectionManager } from "../connections/manager.class.js";
 import { hLog } from "../helpers/common_functions.js";
 import { HyperionMaster } from "./master.js";
-import moment from 'moment';
 
 export class HyperionIndexerMonitor {
 
     master: HyperionMaster;
     conf: HyperionConfig;
     manager: ConnectionManager;
-    
+
     consumedBlocks = 0;
     deserializedActions = 0;
     indexedObjects = 0;
@@ -26,18 +25,38 @@ export class HyperionIndexerMonitor {
     total_range = 0;
     auto_stop = 0;
     range_completed = false;
-    
+
     private consume_rates: number[] = [];
     private idle_count = 0;
     private avg_consume_rate: number = 0;
-    
+
     private readonly log_interval = 5000;
     private readonly tScale = this.log_interval / 1000;
+
+    intervals = [
+        { label: 'year', seconds: 60 * 60 * 24 * 365 },
+        { label: 'month', seconds: 60 * 60 * 24 * 30 },
+        { label: 'day', seconds: 60 * 60 * 24 },
+        { label: 'hour', seconds: 60 * 60 },
+        { label: 'minute', seconds: 60 }
+    ];
 
     constructor(master: HyperionMaster) {
         this.master = master;
         this.conf = this.master.conf;
         this.manager = this.master.manager;
+    }
+
+    private getRelativeTime(seconds: number): string {
+        // console.log(`Calculating relative time for ${seconds} seconds`);
+        for (const interval of this.intervals) {
+            const count = Math.floor(seconds / interval.seconds);
+            if (count >= 1) {
+                const plural = count !== 1 ? 's' : '';
+                return `in ${count} ${interval.label}${plural}`;
+            }
+        }
+        return 'in a few seconds';
     }
 
     startIndexMonitoring() {
@@ -82,7 +101,7 @@ export class HyperionIndexerMonitor {
             if (this.avg_consume_rate > 0) {
                 const remaining = this.total_range - this.total_blocks;
                 const estimated_time = Math.round(remaining / this.avg_consume_rate);
-                time_string = moment().add(estimated_time, 'seconds').fromNow(false);
+                time_string = this.getRelativeTime(estimated_time);
             }
             const pct_parsed = ((this.total_blocks / this.total_range) * 100).toFixed(1);
             const pct_read = ((this.total_read / this.total_range) * 100).toFixed(1);
