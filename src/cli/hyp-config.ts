@@ -1,19 +1,19 @@
-import { Command } from 'commander';
+import {Command} from 'commander';
 import path from 'path';
-import { cp, mkdir, readdir, readFile, rm, writeFile } from 'fs/promises';
-import { HyperionConfig, ScalingConfigs } from '../interfaces/hyperionConfig.js';
-import { HyperionConnections } from '../interfaces/hyperionConnections.js';
-import { copyFileSync, existsSync, mkdirSync, rmSync } from 'fs';
+import {cp, mkdir, readdir, readFile, rm, writeFile} from 'fs/promises';
+import {HyperionConfig, ScalingConfigs} from '../interfaces/hyperionConfig.js';
+import {HyperionConnections} from '../interfaces/hyperionConnections.js';
+import {copyFileSync, existsSync, mkdirSync, rmSync} from 'fs';
 
 import WebSocket from 'ws';
 import * as readline from 'readline';
 import * as amqp from 'amqplib';
-import { Redis } from 'ioredis';
-import { Client } from '@elastic/elasticsearch';
-import { APIClient } from '@wharfkit/antelope';
-import { StateHistorySocket } from '../indexer/connections/state-history.js';
-import { MongoClient } from 'mongodb';
-import { IndexerController } from './controller-client/controller.client.js';
+import {Redis} from 'ioredis';
+import {Client} from '@elastic/elasticsearch';
+import {APIClient} from '@wharfkit/antelope';
+import {StateHistorySocket} from '../indexer/connections/state-history.js';
+import {MongoClient} from 'mongodb';
+import {IndexerController} from './controller-client/controller.client.js';
 
 interface ConnectionsInitOptions {
     amqpUser?: string;
@@ -322,7 +322,7 @@ async function newChain(shortName: string, options) {
 
         // test nodeos availability
         try {
-            const apiClient = new APIClient({ url: options.http, fetch });
+            const apiClient = new APIClient({url: options.http, fetch});
             const info = await apiClient.v1.chain.get_info();
             jsonData.api.chain_api = options.http;
             connections.chains[shortName].chain_id = info.chain_id.toString();
@@ -421,7 +421,7 @@ async function testChain(shortName: string) {
     console.log(`Checking HTTP endpoint: ${httpEndpoint}`);
     let httpChainId = '';
     try {
-        const apiClient = new APIClient({ url: httpEndpoint });
+        const apiClient = new APIClient({url: httpEndpoint});
         const info = await apiClient.v1.chain.get_info();
         httpChainId = info.chain_id.toString();
     } catch (e: any) {
@@ -623,7 +623,7 @@ async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult
     const _mongo = conn.mongodb;
     if (!_mongo || !_mongo.enabled) {
         console.log('[info] [MONGODB] - MongoDB is not configured or not enabled.');
-        return { success: true, errorType: 'NONE' }; // Treat as success if not enabled/configured
+        return {success: true, errorType: 'NONE'}; // Treat as success if not enabled/configured
     }
 
     let uri = 'mongodb://';
@@ -639,25 +639,25 @@ async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult
         const adminDb = client.db('admin');
 
         try {
-            const hostInfoResult = await adminDb.command({ hostInfo: 1 });
+            const hostInfoResult = await adminDb.command({hostInfo: 1});
             if (hostInfoResult && hostInfoResult.ok === 1) {
                 console.log('[info] [MONGODB] - Connection established with full authentication!');
-                return { success: true, errorType: 'NONE' };
+                return {success: true, errorType: 'NONE'};
             } else {
                 const errMsg = 'Failed to get hostInfo from database.';
                 console.log('[error] [MONGODB] - ' + errMsg);
-                return { success: false, errorType: 'OTHER', message: errMsg };
+                return {success: false, errorType: 'OTHER', message: errMsg};
             }
         } catch (authError: any) {
             // Verifica se é um problema de autenticação
             if (authError.message?.includes('requires authentication')) {
                 console.log('[error] [MONGODB] - Authentication required but not provided or invalid.');
-                return { success: false, errorType: 'AUTH', message: authError.message };
+                return {success: false, errorType: 'AUTH', message: authError.message};
             }
 
             // Outros erros
             console.log('[error] [MONGODB] - ' + authError.message);
-            return { success: false, errorType: 'OTHER', message: authError.message };
+            return {success: false, errorType: 'OTHER', message: authError.message};
         }
     } catch (error: any) {
         const errMsg = error.message || 'Unknown MongoDB error';
@@ -668,7 +668,7 @@ async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult
         } else if (errMsg.includes('ECONNREFUSED') || errMsg.includes('ENOTFOUND') || errMsg.includes('connect timed out')) {
             errorType = 'CONNECTION';
         }
-        return { success: false, errorType: errorType, message: errMsg };
+        return {success: false, errorType: errorType, message: errMsg};
     } finally {
         // Ensure client.close() is called even if connect() fails
         // Use optional chaining in case client wasn't initialized properly
@@ -688,7 +688,7 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
 
     const exampleConn = await getExampleConnections();
 
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const rl = readline.createInterface({input: process.stdin, output: process.stdout});
     const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
 
     const conn = exampleConn;
@@ -709,7 +709,23 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
     if (options.redisHost) conn.redis.host = options.redisHost;
     if (options.redisPort) conn.redis.port = parseInt(options.redisPort);
 
-    // MongoDB settings are handled later in the flow
+    // MongoDB settings are now mandatory, like Redis/ES/AMQP
+    // Ensure mongodb section exists in template
+    if (!conn.mongodb) {
+        conn.mongodb = {
+            enabled: true,
+            host: '127.0.0.1',
+            port: 27017,
+            database_prefix: 'hyperion',
+            user: '',
+            pass: ''
+        };
+    } else {
+        if (!conn.mongodb.hasOwnProperty('database_prefix')) {
+            conn.mongodb.database_prefix = 'hyperion';
+        }
+        conn.mongodb.enabled = true;
+    }
 
     // check rabbitmq
     let amqp_state = false;
@@ -717,25 +733,13 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
         amqp_state = await checkAMQP(conn);
         if (!amqp_state) {
             const amqp_user = await prompt('\n > Enter the RabbitMQ user (or press ENTER to use "hyperion_user"): ');
-            if (amqp_user) {
-                conn.amqp.user = amqp_user as string;
-            } else {
-                conn.amqp.user = 'hyperion_user';
-            }
+            conn.amqp.user = amqp_user ? (amqp_user as string) : 'hyperion_user';
 
             const amqp_pass = await prompt(' > Enter the RabbitMQ password (or press ENTER to use "hyperion_password"): ');
-            if (amqp_pass) {
-                conn.amqp.pass = amqp_pass as string;
-            } else {
-                conn.amqp.pass = 'hyperion_password';
-            }
+            conn.amqp.pass = amqp_pass ? (amqp_pass as string) : 'hyperion_password';
 
             const amqp_vhost = await prompt(' > Enter the RabbitMQ vhost (or press ENTER to use "hyperion"): ');
-            if (amqp_vhost) {
-                conn.amqp.vhost = amqp_vhost as string;
-            } else {
-                conn.amqp.vhost = 'hyperion';
-            }
+            conn.amqp.vhost = amqp_vhost ? (amqp_vhost as string) : 'hyperion';
 
             console.log('\n------ current RabbitMQ config -----');
             console.log(conn.amqp);
@@ -751,11 +755,7 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
         elastic_state = await checkES(conn);
         if (!elastic_state) {
             const es_user = await prompt('\n > Enter the elasticsearch user (or press ENTER to use "elastic"): ');
-            if (es_user) {
-                conn.elasticsearch.user = es_user as string;
-            } else {
-                conn.elasticsearch.user = 'elastic';
-            }
+            conn.elasticsearch.user = es_user ? (es_user as string) : 'elastic';
 
             const es_pass = await prompt(' > Enter the elasticsearch password: ');
             if (es_pass) {
@@ -763,11 +763,7 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
             }
 
             const es_proto = await prompt(' > Do you want to use http or https?\n1 = http\n2 = https (default)\n');
-            if (es_proto === '1') {
-                conn.elasticsearch.protocol = 'http';
-            } else {
-                conn.elasticsearch.protocol = 'https';
-            }
+            conn.elasticsearch.protocol = es_proto === '1' ? 'http' : 'https';
 
             console.log('\n------ current elasticsearch config -----');
             console.log(conn.elasticsearch);
@@ -783,18 +779,10 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
         redis_state = await checkRedis(conn);
         if (!redis_state) {
             const redis_host = await prompt('\n > Enter the Redis Server address (or press ENTER to use "127.0.0.1"): ');
-            if (redis_host) {
-                conn.redis.host = redis_host as string;
-            } else {
-                conn.redis.host = '127.0.0.1';
-            }
+            conn.redis.host = redis_host ? (redis_host as string) : '127.0.0.1';
 
             const redis_port = await prompt(' > Enter the Redis Server port (or press ENTER to use "6379"): ');
-            if (redis_port) {
-                conn.redis.port = parseInt(redis_port as string);
-            } else {
-                conn.redis.port = 6379;
-            }
+            conn.redis.port = redis_port ? parseInt(redis_port as string) : 6379;
 
             console.log('\n------ current redis config -----');
             console.log(conn.redis);
@@ -804,165 +792,38 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
 
     console.log(`\n Redis ✅`);
 
-    // Ensure mongodb section exists in template
-    if (!conn.mongodb) {
-        conn.mongodb = {
-            enabled: false, // Default to false
-            host: '127.0.0.1',
-            port: 27017,
-            database_prefix: 'hyperion', // Use prefix
-            user: '',
-            pass: ''
-        };
-    } else {
-        // Ensure prefix exists if mongo section does
-        if (!conn.mongodb.hasOwnProperty('database_prefix')) {
-            conn.mongodb.database_prefix = 'hyperion';
-        }
-        // Ensure enabled exists
-        if (!conn.mongodb.hasOwnProperty('enabled')) {
-            conn.mongodb.enabled = false;
-        }
-    }
+    // MongoDB config (mandatory)
+    let mongo_state = false;
+    let mongoCheckResult: CheckMongoResult | null = null;
+    while (!mongo_state) {
+        console.log('\n[info] [MONGODB] - Please enter MongoDB connection details:');
 
-    // Check if MongoDB is to be enabled based on command-line options
-    let mongoEnabled: boolean;
-    if (options.mongoEnabled !== undefined) {
-        mongoEnabled = options.mongoEnabled.toLowerCase() === 'true';
-        conn.mongodb.enabled = mongoEnabled;
-    } else {
-        // If not specified via command line, prompt the user
-        const enableMongo = (await prompt('\n > Do you want to enable MongoDB integration? (Needed for contract state indexing) (Y/n): ')) as string;
-        mongoEnabled = enableMongo.toLowerCase() !== 'n';
-        conn.mongodb.enabled = mongoEnabled;
-    }
+        const mongo_host = await prompt(' > Enter the MongoDB Server address (or press ENTER to use "127.0.0.1"): ');
+        conn.mongodb.host = mongo_host ? (mongo_host as string) : '127.0.0.1';
 
-    // Apply MongoDB configuration from command line if provided
-    if (conn.mongodb.enabled && options.mongoHost) conn.mongodb.host = options.mongoHost;
-    if (conn.mongodb.enabled && options.mongoPort) conn.mongodb.port = parseInt(options.mongoPort);
-    if (conn.mongodb.enabled && options.mongoUser !== undefined) conn.mongodb.user = options.mongoUser;
-    if (conn.mongodb.enabled && options.mongoPass !== undefined) conn.mongodb.pass = options.mongoPass;
-    if (conn.mongodb.enabled && options.mongoPrefix) conn.mongodb.database_prefix = options.mongoPrefix;
+        const mongo_port = await prompt(' > Enter the MongoDB Server port (or press ENTER to use "27017"): ');
+        conn.mongodb.port = mongo_port ? parseInt(mongo_port as string) : 27017;
 
-    if (!conn.mongodb.enabled) {
-        console.log('[info] [MONGODB] - MongoDB integration skipped.');
-    } else {
-        // check mongodb connection only if enabled
-        let mongo_state = false;
-        let mongoCheckResult: CheckMongoResult | null = null;
+        const mongo_user = await prompt(' > Enter the MongoDB user (or press ENTER for none): ');
+        conn.mongodb.user = mongo_user ? (mongo_user as string) : '';
 
-        // When running without command line parameters, always ask for MongoDB details first
-        // This ensures we always prompt for MongoDB connection details in interactive mode
-        if (!options.mongoHost && !options.mongoPort && options.mongoUser === undefined && options.mongoPass === undefined) {
-            console.log('\n[info] [MONGODB] - Please enter MongoDB connection details:');
+        const mongo_pass = await prompt(' > Enter the MongoDB password (or press ENTER for none): ');
+        conn.mongodb.pass = mongo_pass ? (mongo_pass as string) : '';
 
-            const mongo_host = await prompt(' > Enter the MongoDB Server address (or press ENTER to use "127.0.0.1"): ');
-            if (mongo_host) {
-                conn.mongodb.host = mongo_host as string;
-            } else {
-                conn.mongodb.host = '127.0.0.1';
-            }
+        const mongo_prefix = await prompt(' > Enter the MongoDB database prefix (or press ENTER to use "hyperion"): ');
+        conn.mongodb.database_prefix = mongo_prefix ? (mongo_prefix as string) : 'hyperion';
 
-            const mongo_port = await prompt(' > Enter the MongoDB Server port (or press ENTER to use "27017"): ');
-            if (mongo_port) {
-                conn.mongodb.port = parseInt(mongo_port as string);
-            } else {
-                conn.mongodb.port = 27017;
-            }
-
-            const mongo_user = await prompt(' > Enter the MongoDB user (or press ENTER for none): ');
-            conn.mongodb.user = mongo_user ? (mongo_user as string) : '';
-
-            const mongo_pass = await prompt(' > Enter the MongoDB password (or press ENTER for none): ');
-            conn.mongodb.pass = mongo_pass ? (mongo_pass as string) : '';
-
-            const mongo_prefix = await prompt(' > Enter the MongoDB database prefix (or press ENTER to use "hyperion"): ');
-            if (mongo_prefix) {
-                conn.mongodb.database_prefix = mongo_prefix as string;
-            } else {
-                conn.mongodb.database_prefix = 'hyperion';
-            }
-        }
-
-        // Try with the current settings (from command line or from the prompts above)
+        // Now test the connection with the updated details
         mongoCheckResult = await checkMongoDB(conn);
         mongo_state = mongoCheckResult.success;
 
-        while (!mongo_state) {
-            const errorType = mongoCheckResult?.errorType;
-
-            // Prompt based on the previous error type
-            if (errorType === 'AUTH') {
-                console.log('\n[info] [MONGODB] - Authentication failed. Please re-enter credentials.');
-                const mongo_user = await prompt(' > Enter the MongoDB user (or press ENTER for none): ');
-                conn.mongodb.user = mongo_user ? (mongo_user as string) : '';
-
-                const mongo_pass = await prompt(' > Enter the MongoDB password (or press ENTER for none): ');
-                conn.mongodb.pass = mongo_pass ? (mongo_pass as string) : '';
-            } else if (errorType === 'CONNECTION') {
-                console.log('\n[info] [MONGODB] - Connection failed. Please re-enter connection details.');
-                const mongo_host = await prompt(` > Enter the MongoDB Server address (or press ENTER to use "${conn.mongodb.host}"): `);
-                if (mongo_host) conn.mongodb.host = mongo_host as string;
-
-                const mongo_port = await prompt(` > Enter the MongoDB Server port (or press ENTER to use "${conn.mongodb.port}"): `);
-                if (mongo_port) conn.mongodb.port = parseInt(mongo_port as string);
-
-                const mongo_user = await prompt(' > Enter the MongoDB user (or press ENTER for none): ');
-                conn.mongodb.user = mongo_user ? (mongo_user as string) : '';
-
-                const mongo_pass = await prompt(' > Enter the MongoDB password (or press ENTER for none): ');
-                conn.mongodb.pass = mongo_pass ? (mongo_pass as string) : '';
-            } else {
-                // OTHER error
-                console.log('\n[info] [MONGODB] - An unexpected error occurred. Please re-enter all details.');
-
-                const mongo_host = await prompt(' > Enter the MongoDB Server address (or press ENTER to use "127.0.0.1"): ');
-                if (mongo_host) {
-                    conn.mongodb.host = mongo_host as string;
-                } else {
-                    conn.mongodb.host = '127.0.0.1';
-                }
-
-                const mongo_port = await prompt(' > Enter the MongoDB Server port (or press ENTER to use "27017"): ');
-                if (mongo_port) {
-                    conn.mongodb.port = parseInt(mongo_port as string);
-                } else {
-                    conn.mongodb.port = 27017;
-                }
-
-                const mongo_user = await prompt(' > Enter the MongoDB user (or press ENTER for none): ');
-                conn.mongodb.user = mongo_user ? (mongo_user as string) : '';
-
-                const mongo_pass = await prompt(' > Enter the MongoDB password (or press ENTER for none): ');
-                conn.mongodb.pass = mongo_pass ? (mongo_pass as string) : '';
-
-                const mongo_prefix = await prompt(' > Enter the MongoDB database prefix (or press ENTER to use "hyperion"): ');
-                if (mongo_prefix) {
-                    conn.mongodb.database_prefix = mongo_prefix as string;
-                } else {
-                    conn.mongodb.database_prefix = 'hyperion';
-                }
-            }
-
-            console.log('\n------ current MongoDB config -----');
-            console.log(conn.mongodb);
-            console.log('-----------------------------------');
-
-            // Now test the connection with the updated details
-            mongoCheckResult = await checkMongoDB(conn);
-            mongo_state = mongoCheckResult.success;
-
-            if (!mongo_state) {
-                // Use the specific error message from checkMongoDB if available
-                const errMsg = mongoCheckResult.message || 'Connection test failed. Please check your input and ensure the server is accessible.';
-                console.log(`[error] [MONGODB] - ${errMsg}`);
-                // The loop will continue, prompting based on the new errorType
-            }
+        if (!mongo_state) {
+            // Use the specific error message from checkMongoDB if available
+            const errMsg = mongoCheckResult.message || 'Connection test failed. Please check your input and ensure the server is accessible.';
+            console.log(`[error] [MONGODB] - ${errMsg}`);
         }
-
-        // Only print success if it was enabled and the loop completed successfully
-        console.log(`\n MongoDB ✅`);
     }
+    console.log(`\n MongoDB ✅`);
 
     console.log('\nInit completed! Saving configuration...');
 
@@ -1014,7 +875,7 @@ async function resetConnections() {
         }
 
         if (existsSync(connectionsPath)) {
-            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+            const rl = readline.createInterface({input: process.stdin, output: process.stdout});
             const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
             const confirmation = (await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n')) as string;
             if (confirmation.toUpperCase() === 'YES') {
@@ -1115,9 +976,9 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         console.warn("WARN: 'features' section missing, creating default structure.");
 
         chainConfig.features = {
-            streaming: { enable: false, traces: false, deltas: false },
-            tables: { proposals: true, accounts: true, voters: true, userres: true, delband: true },
-            contract_state: { enabled: false, contracts: {} },
+            streaming: {enable: false, traces: false, deltas: false},
+            tables: {proposals: true, accounts: true, voters: true, userres: true, delband: true},
+            contract_state: {enabled: false, contracts: {}},
             index_deltas: true,
             index_transfer_memo: true,
             index_all_deltas: true,
@@ -1321,7 +1182,7 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         .action(async (chainName, account, tablesJson) => {
             try {
                 // Define a more specific type for the input data
-                type TableJsonInput = { name: string; autoIndex: boolean; indices?: IndexConfig };
+                type TableJsonInput = {name: string; autoIndex: boolean; indices?: IndexConfig};
                 const tablesData: Array<TableJsonInput> = JSON.parse(tablesJson);
 
                 const tables: TableInput[] = tablesData.map((t, index) => {
