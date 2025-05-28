@@ -1,6 +1,6 @@
-import {FastifyInstance} from "fastify";
-import {getProposalsHandler} from "./get_proposals.js";
-import {addApiRoute, extendResponseSchema, getRouteName} from "../../../helpers/functions.js";
+import { FastifyInstance } from 'fastify';
+import { getProposalsHandler } from './get_proposals.js';
+import { addApiRoute, extendResponseSchema, getRouteName } from '../../../helpers/functions.js';
 
 export default function (fastify: FastifyInstance, opts: any, next) {
     const schema = {
@@ -10,40 +10,40 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         querystring: {
             type: 'object',
             properties: {
-                "proposer": {
+                proposer: {
                     description: 'filter by proposer',
                     type: 'string'
                 },
-                "proposal": {
+                proposal: {
                     description: 'filter by proposal name',
                     type: 'string'
                 },
-                "account": {
+                account: {
                     description: 'filter by either requested or provided account',
                     type: 'string'
                 },
-                "requested": {
+                requested: {
                     description: 'filter by requested account',
                     type: 'string'
                 },
-                "provided": {
+                provided: {
                     description: 'filter by provided account',
                     type: 'string'
                 },
-                "executed": {
+                executed: {
                     description: 'filter by execution status',
                     type: 'boolean'
                 },
-                "track": {
+                track: {
                     description: 'total results to track (count) [number or true]',
                     type: 'string'
                 },
-                "skip": {
+                skip: {
                     description: 'skip [n] actions (pagination)',
                     type: 'integer',
                     minimum: 0
                 },
-                "limit": {
+                limit: {
                     description: 'limit of [n] actions per page',
                     type: 'integer',
                     minimum: 1
@@ -52,85 +52,89 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         },
         response: extendResponseSchema({
             total: {
-                type: "object",
+                type: 'object',
                 properties: {
-                    value: {type: "number"},
-                    relation: {type: "string"}
+                    value: { type: 'number' },
+                    relation: { type: 'string' }
                 }
             },
+            error: {
+                type: 'string',
+                description: 'Error message when a condition fails (MongoDB disabled or feature disabled)'
+            },
             proposals: {
-                type: "array",
+                type: 'array',
                 items: {
-                    type: "object",
+                    type: 'object',
                     properties: {
-                        proposal_name: { type: "string" },
-                        expiration: { type: "string" },
-                        earliest_exec_time: { type: "string", nullable: true },
-                        block_num: { type: "number" },
-                        proposer: { type: "string" },
-                        executed: { type: "boolean" },
-                        primary_key: { type: "string" },
+                        proposal_name: { type: 'string' },
+                        expiration: { type: 'string' },
+                        earliest_exec_time: { type: 'string', nullable: true },
+                        block_num: { type: 'number' },
+                        proposer: { type: 'string' },
+                        executed: { type: 'boolean' },
+                        primary_key: { type: 'string' },
                         trx: {
-                            type: "object",
+                            type: 'object',
                             properties: {
-                                expiration: { type: "string" },
-                                ref_block_num: { type: "number" },
-                                ref_block_prefix: { type: "number" },
-                                max_net_usage_words: { type: "number" },
-                                max_cpu_usage_ms: { type: "number" },
-                                delay_sec: { type: "number" },
-                                context_free_actions: { type: "array", items: { type: "object" } },
+                                expiration: { type: 'string' },
+                                ref_block_num: { type: 'number' },
+                                ref_block_prefix: { type: 'number' },
+                                max_net_usage_words: { type: 'number' },
+                                max_cpu_usage_ms: { type: 'number' },
+                                delay_sec: { type: 'number' },
+                                context_free_actions: { type: 'array', items: { type: 'object' } },
                                 actions: {
-                                    type: "array",
+                                    type: 'array',
                                     items: {
-                                        type: "object",
+                                        type: 'object',
                                         properties: {
-                                            account: { type: "string" },
-                                            name: { type: "string" },
+                                            account: { type: 'string' },
+                                            name: { type: 'string' },
                                             authorization: {
-                                                type: "array",
+                                                type: 'array',
                                                 items: {
-                                                    type: "object",
+                                                    type: 'object',
                                                     properties: {
-                                                        actor: { type: "string" },
-                                                        permission: { type: "string" }
+                                                        actor: { type: 'string' },
+                                                        permission: { type: 'string' }
                                                     }
                                                 }
                                             },
                                             data: {
-                                                type: "object",
+                                                type: 'object',
                                                 properties: {
-                                                    from: { type: "string" },
-                                                    to: { type: "string" },
-                                                    quantity: { type: "string" },
-                                                    memo: { type: "string" }
+                                                    from: { type: 'string' },
+                                                    to: { type: 'string' },
+                                                    quantity: { type: 'string' },
+                                                    memo: { type: 'string' }
                                                 }
                                             }
                                         }
                                     }
                                 },
-                                transaction_extensions: { type: "array", items: { type: "object" } }
+                                transaction_extensions: { type: 'array', items: { type: 'object' } }
                             }
                         },
                         requested_approvals: {
-                            type: "array",
+                            type: 'array',
                             items: {
-                                type: "object",
+                                type: 'object',
                                 properties: {
-                                    actor: { type: "string" },
-                                    permission: { type: "string" },
-                                    time: { type: "string" }
+                                    actor: { type: 'string' },
+                                    permission: { type: 'string' },
+                                    time: { type: 'string' }
                                 }
                             }
                         },
                         provided_approvals: {
-                            type: "array",
+                            type: 'array',
                             items: {
-                                type: "object",
+                                type: 'object',
                                 properties: {
-                                    actor: { type: "string" },
-                                    permission: { type: "string" },
-                                    time: { type: "string" }
+                                    actor: { type: 'string' },
+                                    permission: { type: 'string' },
+                                    time: { type: 'string' }
                                 }
                             }
                         }
@@ -140,12 +144,6 @@ export default function (fastify: FastifyInstance, opts: any, next) {
         })
     };
 
-    addApiRoute(
-        fastify,
-        'GET',
-        getRouteName(import.meta.filename),
-        getProposalsHandler,
-        schema
-    );
+    addApiRoute(fastify, 'GET', getRouteName(import.meta.filename), getProposalsHandler, schema);
     next();
 }

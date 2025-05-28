@@ -1,12 +1,26 @@
-import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {timedQuery} from "../../../helpers/functions.js";
-import {getSkipLimit} from "../../v2-history/get_actions/functions.js";
-import {IVoter} from "../../../../interfaces/table-voter.js";
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { timedQuery } from '../../../helpers/functions.js';
+import { getSkipLimit } from '../../v2-history/get_actions/functions.js';
+import { IVoter } from '../../../../interfaces/table-voter.js';
 
 async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
-    const {skip, limit} = getSkipLimit(request.query);
+    const { skip, limit } = getSkipLimit(request.query);
     const maxDocs = fastify.manager.config.api.limits.get_voters ?? 100;
+
+    // Check if MongoDB is enabled
+    if (!fastify.manager.conn.mongodb || fastify.manager.conn.mongodb.enabled === false) {
+        return {
+            error: 'MongoDB is disabled. Please enable MongoDB in config/connections.json to use this endpoint.'
+        };
+    }
+
+    // Check if voters feature is enabled
+    if (fastify.manager.config.features?.tables?.voters === false) {
+        return {
+            error: 'Voters feature is disabled. Please enable "voters" in features.tables configuration in chains/CHAIN_NAME.config.json file to use this endpoint.'
+        };
+    }
 
     const response: any = {
         voter_count: 0,
@@ -20,7 +34,7 @@ async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
 
     const mongoQuery: any = {};
     if (query.producer) {
-        mongoQuery.producers = {$all: query.producer.split(",")};
+        mongoQuery.producers = { $all: query.producer.split(',') };
     }
 
     if (query.is_proxy === 'true') {
@@ -45,7 +59,6 @@ async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
         .limit(limit || 50)
         .toArray();
 
-
     for (const voter of stateResult) {
         response.voters.push({
             account: voter.voter,
@@ -62,6 +75,17 @@ async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
 
 export function getVotersHandler(fastify: FastifyInstance, route: string) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
+        // Check conditions that require direct response without timedQuery
+        if (
+            !fastify.manager.conn.mongodb ||
+            fastify.manager.conn.mongodb.enabled === false ||
+            fastify.manager.config.features?.tables?.voters === false
+        ) {
+            // Call directly without timedQuery to avoid response modification
+            const result = await getVoters(fastify, request);
+            reply.send(result);
+            return;
+        }
         reply.send(await timedQuery(getVoters, fastify, request, route));
     };
 }

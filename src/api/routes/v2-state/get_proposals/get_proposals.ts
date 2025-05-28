@@ -1,5 +1,5 @@
-import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {timedQuery} from "../../../helpers/functions.js";
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { timedQuery } from '../../../helpers/functions.js';
 
 async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
@@ -16,6 +16,20 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     const maxDocs = fastify.manager.config.api.limits.get_proposals ?? 100;
+
+    // Check if MongoDB is enabled
+    if (!fastify.manager.conn.mongodb || fastify.manager.conn.mongodb.enabled === false) {
+        return {
+            error: 'MongoDB is disabled. Please enable MongoDB in config/connections.json to use this endpoint.'
+        };
+    }
+
+    // Check if proposals feature is enabled
+    if (fastify.manager.config.features?.tables?.proposals === false) {
+        return {
+            error: 'Proposals feature is disabled. Please enable "proposals" in features.tables configuration in chains/CHAIN_NAME.config.json file to use this endpoint.'
+        };
+    }
 
     const response: any = {
         query_time_ms: 0,
@@ -35,10 +49,7 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     const mongoQuery: any = {};
     if (query.account) {
         const accounts = query.account.split(',');
-        mongoQuery.$or = [
-            {"requested_approvals.actor": {$in: accounts}},
-            {"provided_approvals.actor": {$in: accounts}}
-        ];
+        mongoQuery.$or = [{ 'requested_approvals.actor': { $in: accounts } }, { 'provided_approvals.actor': { $in: accounts } }];
     }
     if (query.proposer) {
         mongoQuery.proposer = query.proposer;
@@ -51,32 +62,30 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     const currentDate = new Date();
-    if (query.expired === "true") {
-        mongoQuery.expiration = {$lt: currentDate};
-    } else if (query.expired === "false") {
-        mongoQuery.expiration = {$gte: currentDate};
+    if (query.expired === 'true') {
+        mongoQuery.expiration = { $lt: currentDate };
+    } else if (query.expired === 'false') {
+        mongoQuery.expiration = { $gte: currentDate };
     }
 
     if (query.requested) {
-        mongoQuery["requested_approvals.actor"] = query.requested;
+        mongoQuery['requested_approvals.actor'] = query.requested;
     }
     if (query.provided) {
-        mongoQuery["provided_approvals.actor"] = query.provided;
+        mongoQuery['provided_approvals.actor'] = query.provided;
     }
 
-    const lastBlockResult = await fastify.mongo.client
-        .db(dbName)
-        .collection('proposals')
-        .find()
-        .sort({expiration: -1})
-        .limit(1)
-        .toArray();
+    const lastBlockResult = await fastify.mongo.client.db(dbName).collection('proposals').find().sort({ expiration: -1 }).limit(1).toArray();
 
     response.last_indexed_block = lastBlockResult[0]?.block_num || 0;
     response.last_indexed_block_time = lastBlockResult[0]?.block_time || '';
 
-    response.total = {value: await collection.countDocuments(mongoQuery), relation: "eq"};
-    stateResult = await collection.find(mongoQuery).skip(skip || 0).limit(limit || 50).toArray();
+    response.total = { value: await collection.countDocuments(mongoQuery), relation: 'eq' };
+    stateResult = await collection
+        .find(mongoQuery)
+        .skip(skip || 0)
+        .limit(limit || 50)
+        .toArray();
 
     for (const proposal of stateResult) {
         response.proposals.push(proposal);
@@ -88,6 +97,16 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
 
 export function getProposalsHandler(fastify: FastifyInstance, route: string) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
+        // Check conditions that require direct response without timedQuery
+        if (
+            !fastify.manager.conn.mongodb ||
+            fastify.manager.conn.mongodb.enabled === false ||
+            fastify.manager.config.features?.tables?.proposals === false
+        ) {
+            const result = await getProposals(fastify, request);
+            reply.send(result);
+            return;
+        }
         reply.send(await timedQuery(getProposals, fastify, request, route));
     };
 }
