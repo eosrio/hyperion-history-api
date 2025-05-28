@@ -25,16 +25,26 @@ export function getConfigPath(): string {
 function readConfigFromFile() {
     const configFile = getConfigPath();
     const conf_path = join(import.meta.dirname, '../../../', configFile || "");
+    let errorMsg = '';
     if (existsSync(conf_path)) {
         try {
             config = JSON.parse(readFileSync(conf_path).toString());
         } catch (e: any) {
-            console.log(e.message);
-            process.exit(1);
+            errorMsg = e.message;
+
+        }
+    }
+
+    if (!config && existsSync(configFile)) {
+        try {
+            config = JSON.parse(readFileSync(configFile).toString());
+        } catch (e: any) {
+            errorMsg = e.message;
         }
     }
 
     if (!config) {
+        console.error(errorMsg);
         console.log(`Configuration not found: ${conf_path}`);
         process.exit(1);
     }

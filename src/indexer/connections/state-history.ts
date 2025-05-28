@@ -167,7 +167,7 @@ export class StateHistorySocket {
 
         servers = servers.filter((s) => {
             if (uniqueUrls.has(s.node.url)) {
-                hLog(`⚠️ Removing SHIP Server ${s.node.url} :: Duplicate URL`);
+                hLog(`⚠️  Removing SHIP Server ${s.node.url} :: Duplicate URL`);
                 return false;
             }
             uniqueUrls.add(s.node.url);

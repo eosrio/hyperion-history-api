@@ -180,8 +180,9 @@ export class HyperionLifecycleManager {
                 });
                 hLog(`Delete by query completed. Deleted ${deleteResponse.deleted} blocks.`);
                 hLog(`Task ID: ${deleteResponse.task}`);
-
-                // TODO: keep monitoring the task until completion
+                if (deleteResponse.task && typeof deleteResponse.task === 'string') {
+                    await this.startMonitoringDeleteTask(deleteResponse.task);
+                }
             } else {
                 hLog(`No blocks found to prune in index ${blockIndices[0].index}.`);
             }
@@ -190,6 +191,29 @@ export class HyperionLifecycleManager {
             // Partitioned block index, we can prune by index
             await this.pruneIndices('block');
         }
+    }
+
+    async startMonitoringDeleteTask(task: string) {
+        if (!task) {
+            hLog(`No task ID provided for monitoring.`);
+            return;
+        }
+
+        const esClient = this.manager.elasticsearchClient;
+
+        const checkTaskStatus = async () => {
+            const taskInfo = await esClient.tasks.get({
+                task_id: task
+            });
+            if (taskInfo.completed) {
+                hLog(`Delete task ${task} completed.`);
+            } else {
+                hLog(`Delete task ${task} is still running...`);
+                setTimeout(checkTaskStatus, 5000);
+            }
+        };
+
+        checkTaskStatus();
     }
 
     async pruneIndices(indexType: string) {
