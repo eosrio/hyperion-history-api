@@ -1902,7 +1902,7 @@ export class HyperionMaster {
                 await this.manager.mongodbClient.connect();
                 const pingStatus = await this.manager.mongodbClient.db('admin').command({ ping: 1 });
                 hLog('MongoDB', pingStatus);
-                if (this.manager.conn.mongodb) {
+                if (this.manager.conn.mongodb && this.manager.conn.mongodb.enabled === true) {
                     const db = this.manager.mongodbClient.db(`${this.manager.conn.mongodb.database_prefix}_${this.manager.chain}`);
                     const table_feats = this.conf.features.tables;
 
@@ -1943,6 +1943,8 @@ export class HyperionMaster {
                     }
 
                     await this.parseContractStateConfig(db);
+                } else {
+                    hLog('MongoDB', 'MongoDB is disabled in connections configuration. Skipping collection creation.');
                 }
             }
         } catch (e: any) {
