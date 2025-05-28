@@ -257,16 +257,29 @@ async function listChains(flags) {
 }
 
 async function newChain(shortName: string, options) {
-    console.log(`Creating new config for ${shortName}...`);
+    if (options.usePending) {
+        console.log(`Updating pending chain config for ${shortName}...`);
+    } else {
+        console.log(`Creating new config for ${shortName}...`);
+    }
     const targetPath = path.join(chainsDir, `${shortName}.config.json`);
 
-    if (existsSync(targetPath)) {
+    if (existsSync(targetPath) && !options.usePending) {
         console.error(`Chain config for ${shortName} already defined! Check config/chains folder`);
+        console.error(`Use --use-pending to update a pending chain configuration`);
         process.exit(0);
     }
 
-    // read example
-    const exampleChain = await getExampleConfig();
+    // When using --use-pending, we should load the existing config
+    let jsonData;
+    if (options.usePending && existsSync(targetPath)) {
+        console.log(`Using existing pending configuration for ${shortName}...`);
+        const existingConfig = await readFile(targetPath);
+        jsonData = JSON.parse(existingConfig.toString());
+    } else {
+        // read example for a new chain
+        jsonData = await getExampleConfig();
+    }
 
     // read connections.json
     const connections = await getConnections();
@@ -276,11 +289,11 @@ async function newChain(shortName: string, options) {
         process.exit(1);
     }
 
-    if (connections.chains[shortName]) {
+    if (connections.chains[shortName] && !options.usePending) {
         console.error('Connections already defined! Check connections.json file!');
         console.log(connections.chains[shortName]);
         process.exit(0);
-    } else {
+    } else if (!connections.chains[shortName]) {
         // Find the highest WS_ROUTER_PORT and control_port
         let maxWsRouterPort = 7001;
         let maxControlPort = 7002;
@@ -309,9 +322,10 @@ async function newChain(shortName: string, options) {
         };
     }
 
-    const jsonData = exampleChain;
+    // Set the chain in settings
     jsonData.settings.chain = shortName;
 
+    // Always update the HTTP endpoint when provided
     if (options.http) {
         if (options.http.startsWith('http://') || options.http.startsWith('https://')) {
             console.log(`Testing connection on ${options.http}`);
@@ -346,6 +360,7 @@ async function newChain(shortName: string, options) {
         }
     }
 
+    // Always update the SHIP endpoint when provided
     if (options.ship) {
         if (options.ship.startsWith('ws://') || options.ship.startsWith('wss://')) {
             console.log(`Testing connection on ${options.ship}`);
@@ -385,22 +400,51 @@ async function newChain(shortName: string, options) {
         }
     }
 
-    const fullNameArr: any[] = [];
-    shortName.split('-').forEach((word: string) => {
-        fullNameArr.push(word[0].toUpperCase() + word.substring(1));
-    });
+    // When working with a pending chain, we might already have a chain name in the config
+    // but we should still ensure the connections.chains entry has the name set
+    if (!options.usePending || !connections.chains[shortName]?.name) {
+        const fullNameArr: any[] = [];
+        shortName.split('-').forEach((word: string) => {
+            fullNameArr.push(word[0].toUpperCase() + word.substring(1));
+        });
 
-    const fullChainName = fullNameArr.join(' ');
+        const fullChainName = fullNameArr.join(' ');
 
-    jsonData.api.chain_name = fullChainName;
-    connections.chains[shortName].name = fullChainName;
+        jsonData.api.chain_name = fullChainName;
+
+        if (!connections.chains[shortName]) {
+            // Create the chain entry if it doesn't exist yet
+            connections.chains[shortName] = {
+                name: fullChainName,
+                ship: '',
+                http: '',
+                chain_id: '',
+                WS_ROUTER_HOST: '127.0.0.1',
+                WS_ROUTER_PORT: 7001,
+                control_port: 7002
+            };
+        }
+
+        connections.chains[shortName].name = fullChainName;
+    }
 
     console.log(connections.chains[shortName]);
 
     console.log('Saving connections.json...');
     await writeFile(connectionsPath, JSON.stringify(connections, null, 2));
-    console.log(`Saving chains/${shortName}.config.json...`);
+
+    if (options.usePending) {
+        console.log(`Updating existing chains/${shortName}.config.json...`);
+    } else {
+        console.log(`Creating new chains/${shortName}.config.json...`);
+    }
     await writeFile(targetPath, JSON.stringify(jsonData, null, 2));
+
+    if (options.usePending) {
+        console.log(`✅ Successfully updated pending chain ${shortName} configuration`);
+    } else {
+        console.log(`✅ Successfully created new chain ${shortName} configuration`);
+    }
 }
 
 async function testChain(shortName: string) {
@@ -762,7 +806,7 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
                 conn.elasticsearch.pass = es_pass as string;
             }
 
-            const es_proto = await prompt(' > Do you want to use http or https?\n1 = http\n2 = https (default)\n');
+            const es_proto = await prompt(' > Do you want to use http or https?\n1 = http(default)\n2 = https\n');
             conn.elasticsearch.protocol = es_proto === '1' ? 'http' : 'https';
 
             console.log('\n------ current elasticsearch config -----');
@@ -1078,6 +1122,7 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         .description('initialize new chain config based on example')
         .requiredOption('--http <http_endpoint>', 'define chain api http endpoint')
         .requiredOption('--ship <ship_endpoint>', 'define state history ws endpoint')
+        .option('--use-pending', 'use existing pending chain config instead of creating a new one')
         .action(newChain);
 
     // ./hyp-config chains remove <shortName>
