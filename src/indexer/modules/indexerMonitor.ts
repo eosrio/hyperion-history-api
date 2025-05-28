@@ -48,7 +48,6 @@ export class HyperionIndexerMonitor {
     }
 
     private getRelativeTime(seconds: number): string {
-        // console.log(`Calculating relative time for ${seconds} seconds`);
         for (const interval of this.intervals) {
             const count = Math.floor(seconds / interval.seconds);
             if (count >= 1) {
