@@ -1,16 +1,30 @@
-import {Client, estypes} from "@elastic/elasticsearch";
-import {Cluster} from "node:cluster";
-import {existsSync, readFileSync} from "node:fs";
-import {join} from "node:path";
+import { Client, estypes } from "@elastic/elasticsearch";
+import { Cluster } from "node:cluster";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
-import {getTotalValue} from "../../api/helpers/functions.js";
-import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
-import {RequestFilter} from "../../interfaces/stream-requests.js";
+import { getTotalValue } from "../../api/helpers/functions.js";
+import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
+import { RequestFilter } from "../../interfaces/stream-requests.js";
 
 let config: HyperionConfig | undefined;
 
+export function getConfigPath(): string {
+    let configFile = process.env.CONFIG_JSON;
+    if (!configFile) {
+        if (process.env.CHAIN_NAME) {
+            configFile = `./config/chains/${process.env.CHAIN_NAME}.config.json`;
+        } else {
+            console.error('No chain name specified! Please set the CHAIN_NAME environment variable or CONFIG_JSON.');
+            process.exit(1);
+        }
+    }
+    return configFile;
+}
+
 function readConfigFromFile() {
-    const conf_path = join(import.meta.dirname, '../../../', process.env.CONFIG_JSON || "");
+    const configFile = getConfigPath();
+    const conf_path = join(import.meta.dirname, '../../../', configFile || "");
     if (existsSync(conf_path)) {
         try {
             config = JSON.parse(readFileSync(conf_path).toString());
@@ -43,8 +57,8 @@ export async function getLastIndexedBlockByDelta(es_client: Client, chain: strin
     const results = await es_client.search<any>({
         index: chain + '-delta-*',
         size: 1,
-        query: {bool: {filter: {match_all: {}}}},
-        sort: [{block_num: {order: "desc"}}]
+        query: { bool: { filter: { match_all: {} } } },
+        sort: [{ block_num: { order: "desc" } }]
     });
     return getLastResult(results);
 }
@@ -53,8 +67,8 @@ export async function getLastIndexedBlock(es_client: Client, chain: string) {
     const results = await es_client.search<any>({
         index: chain + '-block-*',
         size: 1,
-        query: {bool: {filter: {match_all: {}}}},
-        sort: [{block_num: {order: "desc"}}]
+        query: { bool: { filter: { match_all: {} } } },
+        sort: [{ block_num: { order: "desc" } }]
     });
     return getLastResult(results);
 }
@@ -63,8 +77,8 @@ export async function getLastIndexedBlockWithTotalBlocks(es_client: Client, chai
     const results = await es_client.search<any>({
         index: chain + '-block-*',
         size: 1,
-        query: {bool: {filter: {match_all: {}}}},
-        sort: [{block_num: {order: "desc"}}],
+        query: { bool: { filter: { match_all: {} } } },
+        sort: [{ block_num: { order: "desc" } }],
         track_total_hits: true
     });
     let lastBlock = getLastResult(results);
@@ -96,8 +110,8 @@ export async function getFirstIndexedBlock(es_client: Client, chain: string, par
         const results = await es_client.search<any>({
             index: chain + '-block-*',
             size: 1,
-            query: {range: {block_num: {gte: startBlock, lte: endBlock}}},
-            sort: [{block_num: {order: "asc"}}]
+            query: { range: { block_num: { gte: startBlock, lte: endBlock } } },
+            sort: [{ block_num: { order: "asc" } }]
         });
         if (results.hits?.hits?.length > 0) {
             firstIndexedBlock = getLastResult(results);
@@ -110,8 +124,8 @@ export async function getFirstIndexedBlock(es_client: Client, chain: string, par
         const results = await es_client.search<any>({
             index: chain + '-block-*',
             size: 1,
-            query: {bool: {filter: {match_all: {}}}},
-            sort: [{block_num: {order: "asc"}}]
+            query: { bool: { filter: { match_all: {} } } },
+            sort: [{ block_num: { order: "asc" } }]
         });
         firstIndexedBlock = getLastResult(results);
     }
@@ -126,7 +140,7 @@ export async function getLastIndexedABI(es_client: Client, chain: string) {
         query: {
             match_all: {}
         },
-        sort: [{block: {order: "desc"}}]
+        sort: [{ block: { order: "desc" } }]
     });
     return getLastResult(results);
 }
@@ -144,7 +158,7 @@ export async function getLastIndexedBlockByDeltaFromRange(es_client: Client, cha
                 }
             }
         },
-        sort: [{block_num: {order: "desc"}}]
+        sort: [{ block_num: { order: "desc" } }]
     });
     return getLastResult(results);
 }
@@ -162,7 +176,7 @@ export async function getLastIndexedBlockFromRange(es_client: Client, chain: str
                 }
             }
         },
-        sort: [{block_num: {order: "desc"}}]
+        sort: [{ block_num: { order: "desc" } }]
     });
     return getLastResult(results);
 }

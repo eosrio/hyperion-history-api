@@ -1,6 +1,7 @@
-import {existsSync, readFileSync, writeFileSync} from "fs";
-import {HyperionConnections} from "../../interfaces/hyperionConnections.js";
-import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { HyperionConnections } from "../../interfaces/hyperionConnections.js";
+import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
+import { getConfigPath, hLog } from "../helpers/common_functions.js";
 
 export interface Filters {
     action_blacklist: Set<string>;
@@ -95,13 +96,14 @@ export class ConfigurationModule {
     }
 
     loadConfigJson() {
-        if (process.env.CONFIG_JSON) {
-            const data = readFileSync(process.env.CONFIG_JSON).toString();
+        const configFile = getConfigPath();
+        if (configFile) {
+            const data = readFileSync(configFile).toString();
             try {
                 this.config = JSON.parse(data);
                 this.processConfig();
             } catch (e) {
-                console.log(`Failed to Load configuration file ${process.env.CONFIG_JSON}`);
+                console.log(`Failed to Load configuration file ${configFile}`);
                 console.log(e);
                 process.exit(1);
             }
@@ -112,11 +114,12 @@ export class ConfigurationModule {
     }
 
     setAbiScanMode(value: boolean) {
-        if (process.env.CONFIG_JSON && this.config) {
-            const data = readFileSync(process.env.CONFIG_JSON).toString();
+        const configFile = getConfigPath();
+        if (configFile && this.config) {
+            const data = readFileSync(configFile).toString();
             const tempConfig: HyperionConfig = JSON.parse(data);
             tempConfig.indexer.abi_scan_mode = value;
-            writeFileSync(process.env.CONFIG_JSON, JSON.stringify(tempConfig, null, 2));
+            writeFileSync(configFile, JSON.stringify(tempConfig, null, 2));
             this.config.indexer.abi_scan_mode = value;
         }
     }

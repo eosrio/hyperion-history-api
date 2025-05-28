@@ -3,6 +3,8 @@ import { ConfigurationModule } from "./modules/config.js";
 import { HyperionWorker } from "./workers/hyperionWorker.js";
 import { hLog } from "./helpers/common_functions.js";
 
+import 'dotenv/config';
+
 interface WorkerEnv {
 	worker_role: string;
 	worker_id: string;

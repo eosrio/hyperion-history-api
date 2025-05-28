@@ -1,8 +1,10 @@
 import {join} from "node:path";
 import {existsSync, readFileSync} from "fs";
 import {HyperionConfig} from "../../../interfaces/hyperionConfig.js";
+import { getConfigPath } from "../../helpers/common_functions.js";
 
-const configPath = join(import.meta.dirname, '../../../../', process.env.CONFIG_JSON || '');
+const configJsonPath = getConfigPath();
+const configPath = join(import.meta.dirname, '../../../../', configJsonPath || '');
 
 if (!existsSync(configPath)) {
     throw new Error(`chain config not found - ${configPath}`);

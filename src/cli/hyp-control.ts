@@ -90,8 +90,9 @@ async function startIndexer(chain: string, host?: string) {
         .option('-h, --host <host>', 'Optional host for the indexer controller')
         .action(async (chain: string, args: any) => {
             try {
+                console.log(`Stopping indexer for chain ${chain}...`);
                 await stopIndexer(chain, args.host);
-                console.log(`Indexer stop command sent for chain ${chain}`);
+                console.log(`Indexer stopped for chain ${chain}`);
             } catch (error: any) {
                 console.error('Error stopping indexer:', error.message);
             }

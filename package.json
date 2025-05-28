@@ -2,11 +2,8 @@
   "name": "hyperion-history",
   "version": "3.6.0-beta.5",
   "description": "Scalable Full History API Solution for EOSIO based blockchains",
-  "main": "launcher.js",
+  "main": "./build/indexer/launcher.js",
   "scripts": {
-    "logs": "pm2 logs Indexer",
-    "start:api": "pm2 start --only API --update-env",
-    "start:indexer": "pm2 start --only Indexer --update-env",
     "tsc": "tsc",
     "build": "tsc",
     "build:watch": "tsc --watch",
@@ -45,6 +42,7 @@
     "async": "3.2.6",
     "cli-progress": "3.12.0",
     "commander": "14.0.0",
+    "dotenv": "^16.5.0",
     "fastify": "5.3.3",
     "fastify-plugin": "5.0.1",
     "flatstr": "1.0.12",
@@ -59,18 +57,6 @@
     "undici": "7.10.0",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.52.0",
     "ws": "8.18.2"
-  },
-  "overrides": {
-    "cookie": "0.7.2",
-    "apache-arrow": {
-      "@types/node": "22.9.3"
-    },
-    "socket.io-client": {
-      "engine.io-client": "6.6.2"
-    },
-    "socket.io-parser": {
-      "@socket.io/component-emitter": "3.1.2"
-    }
   },
   "devDependencies": {
     "@types/amqplib": "0.10.7",
