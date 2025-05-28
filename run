@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+set -e  # Exit on any command failure
+
 if [ $# -eq 0 ]; then
   echo 'Please inform the app name. ex: "./run chain-indexer"'
   exit 1

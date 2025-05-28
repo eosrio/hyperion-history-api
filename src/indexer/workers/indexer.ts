@@ -75,7 +75,7 @@ export default class IndexerWorker extends HyperionWorker {
             const queueName = process.env.queue;
             if (this.ch && queueName) {
                 this.ch_ready = true;
-                console.log('Consumer on:', queueName);
+                // console.log('Consumer on:', queueName);
                 this.ch.on('close', () => {
                     hLog('Channel closed for queue:', queueName);
                     this.indexQueue.pause();

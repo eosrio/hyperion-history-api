@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
+set -e  # Exit on any command failure
+
 if [ $# -eq 0 ]; then
-  echo 'Please inform the app name. ex: "./run.sh indexer"'
+  echo 'Please inform the app name. ex: "./run.sh chain-indexer"'
   exit 1
 fi
 echo -e "\n-->> Starting $1..."
 (
   set -x
-  pm2 start pm2/ecosystem.config.cjs --only "$@" --update-env --silent
+  pm2 start pm2/ecosystem.config.cjs --only "$@" --update-env
 )
 echo -e "\n-->> Saving pm2 state..."
 (
