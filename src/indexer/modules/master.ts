@@ -5,16 +5,7 @@ import { queue, QueueObject } from 'async';
 
 import cluster, { Worker } from 'cluster';
 
-import {
-    createWriteStream,
-    existsSync,
-    mkdirSync,
-    readFileSync,
-    symlinkSync,
-    unlinkSync,
-    writeFileSync,
-    WriteStream
-} from 'fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync, WriteStream } from 'fs';
 
 import { bootstrap } from 'global-agent';
 import { Redis } from 'ioredis';
@@ -45,7 +36,7 @@ import {
 } from '../helpers/common_functions.js';
 import { AlertManagerOptions, AlertsManager, HyperionAlertTypes } from './alertsManager.js';
 import { ConfigurationModule } from './config.js';
-import { LocalHyperionController } from "./controller.js";
+import { LocalHyperionController } from './controller.js';
 import { HyperionIndexerMonitor } from './indexerMonitor.js';
 import { HyperionLifecycleManager } from './lifecycleManager.js';
 import { HyperionModuleLoader } from './loader.js';
@@ -554,7 +545,6 @@ export class HyperionMaster {
                         message: `Contract ${contract} not found in configuration`
                     };
                 }
-
             } catch (error: any) {
                 hLog(`Failed to load configuration: ${error.message}`);
                 return {
@@ -566,7 +556,7 @@ export class HyperionMaster {
             try {
                 // Parse the contract state config for a single contract to create the index
                 await this.parseContractStateConfig(db, contract);
-                
+
                 // Notify deserializer to reload the configs
                 this.pendingReloadPromises = new Map();
 
@@ -589,7 +579,7 @@ export class HyperionMaster {
                 hLog(`Reloaded contract state config for ${contract}`);
                 return {
                     success: true
-                }
+                };
             } catch (e: any) {
                 const errorDetails = e.message || 'Unknown error';
                 hLog(`Failed to reload contract config for ${contract}: ${errorDetails}`);
@@ -700,7 +690,6 @@ export class HyperionMaster {
                 console.error('empty producer schedule, something went wrong!');
                 process.exit(1);
             } else {
-
                 if (this.currentSchedule.active) {
                     this.activeSchedule = this.currentSchedule.active;
                 }
@@ -712,7 +701,6 @@ export class HyperionMaster {
                 if (this.currentSchedule.proposed) {
                     this.proposedSchedule = this.currentSchedule.proposed;
                 }
-
             }
         } catch (e) {
             console.error('failed to connect to api');
@@ -726,7 +714,7 @@ export class HyperionMaster {
             hLog('Failed to load script updateByBlock. Aborting!');
             process.exit(1);
         } else {
-            hLog("Painless Update Script loaded!");
+            hLog('Painless Update Script loaded!');
         }
     }
 
@@ -1916,33 +1904,43 @@ export class HyperionMaster {
                 hLog('MongoDB', pingStatus);
                 if (this.manager.conn.mongodb) {
                     const db = this.manager.mongodbClient.db(`${this.manager.conn.mongodb.database_prefix}_${this.manager.chain}`);
-                    // create indexes
-                    // accounts table indices
-                    const accounts = db.collection<IAccount>('accounts');
-                    await accounts.createIndex({ code: 1 }, { unique: false });
-                    await accounts.createIndex({ scope: 1 }, { unique: false });
-                    await accounts.createIndex({ symbol: 1 }, { unique: false });
-                    await accounts.createIndex({ code: 1, scope: 1, symbol: 1 }, { unique: true });
-                    // proposals table indices
-                    const proposals = db.collection<IProposal>('proposals');
-                    await proposals.createIndexes([
-                        { key: { proposal_name: 1 } },
-                        { key: { proposer: 1 } },
-                        { key: { expiration: -1 } },
-                        { key: { 'provided_approvals.actor': 1 } },
-                        { key: { 'requested_approvals.actor': 1 } }
-                    ]);
-                    // voters table indices
-                    const voters = db.collection<IVoter>('voters');
-                    await voters.createIndexes([
-                        { key: { voter: 1 } },
-                        { key: { block_num: 1 } },
-                        { key: { staked: 1 } },
-                        { key: { last_vote_weight: 1 } },
-                        { key: { proxied_vote_weight: 1 } },
-                        { key: { producers: 1 } },
-                        { key: { is_proxy: 1 } }
-                    ]);
+                    const table_feats = this.conf.features.tables;
+
+                    // create indexes only for enabled features
+                    if (table_feats.accounts) {
+                        // accounts table indices
+                        const accounts = db.collection<IAccount>('accounts');
+                        await accounts.createIndex({ code: 1 }, { unique: false });
+                        await accounts.createIndex({ scope: 1 }, { unique: false });
+                        await accounts.createIndex({ symbol: 1 }, { unique: false });
+                        await accounts.createIndex({ code: 1, scope: 1, symbol: 1 }, { unique: true });
+                    }
+
+                    if (table_feats.proposals) {
+                        // proposals table indices
+                        const proposals = db.collection<IProposal>('proposals');
+                        await proposals.createIndexes([
+                            { key: { proposal_name: 1 } },
+                            { key: { proposer: 1 } },
+                            { key: { expiration: -1 } },
+                            { key: { 'provided_approvals.actor': 1 } },
+                            { key: { 'requested_approvals.actor': 1 } }
+                        ]);
+                    }
+
+                    if (table_feats.voters) {
+                        // voters table indices
+                        const voters = db.collection<IVoter>('voters');
+                        await voters.createIndexes([
+                            { key: { voter: 1 } },
+                            { key: { block_num: 1 } },
+                            { key: { staked: 1 } },
+                            { key: { last_vote_weight: 1 } },
+                            { key: { proxied_vote_weight: 1 } },
+                            { key: { producers: 1 } },
+                            { key: { is_proxy: 1 } }
+                        ]);
+                    }
 
                     await this.parseContractStateConfig(db);
                 }
@@ -1959,13 +1957,11 @@ export class HyperionMaster {
             if (this.conf.features.contract_state.contracts) {
                 const contracts = this.conf.features.contract_state.contracts;
                 for (let code in contracts) {
-
                     if (singleContract && code !== singleContract) {
                         continue;
                     }
 
                     if (contracts[code]) {
-
                         if (singleContract) {
                             hLog(`Setting up contract state for ${code}`);
                         }
