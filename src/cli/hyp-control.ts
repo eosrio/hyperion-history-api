@@ -5,6 +5,7 @@ import { AccountSynchronizer } from './sync-modules/sync-accounts.js';
 import { ContractStateSynchronizer } from './sync-modules/sync-contract-state.js';
 import { ProposalSynchronizer } from './sync-modules/sync-proposals.js';
 import { VoterSynchronizer } from './sync-modules/sync-voters.js';
+import { QueueManager } from './queue-manager/queue.manager.js';
 
 async function syncWithPauseResume(chain: string, type: string, synchronizer: any, host?: string, contract?: string, table?: string) {
     const indexerController = new IndexerController(chain, host);
@@ -76,6 +77,76 @@ async function startIndexer(chain: string, host?: string) {
     // Assuming IndexerController has a start() method
     await indexerController.start();
     indexerController.close();
+}
+
+async function listQueues(chain: string, options: any) {
+    const queueManager = new QueueManager();
+    try {
+        const queueOptions = {
+            showAll: options.all,
+            showEmpty: options.empty,
+            sortBy: options.sort,
+            filterPattern: options.filter
+        };
+        
+        const queues = await queueManager.listQueues(chain, queueOptions);
+        
+        if (options.categorize) {
+            queueManager.formatCategorizedQueues(queues, options.verbose);
+        } else {
+            queueManager.formatQueueList(queues, options.verbose);
+        }
+    } catch (error: any) {
+        console.error('Error listing queues:', error.message);
+    }
+}
+
+async function showQueueDetails(chain: string, queueName: string) {
+    const queueManager = new QueueManager();
+    try {
+        const queue = await queueManager.getQueueDetails(queueName);
+        if (!queue) {
+            console.error(`Queue '${queueName}' not found.`);
+            return;
+        }
+        
+        console.log(`\nQueue Details: ${queueName}`);
+        console.log('─'.repeat(50));
+        console.log(`Messages: ${queue.messages}`);
+        console.log(`Consumers: ${queue.consumers}`);
+        console.log(`Memory: ${(queue.memory / 1024 / 1024).toFixed(2)}MB`);
+        console.log(`State: ${queue.state}`);
+        console.log(`Node: ${queue.node}`);
+        console.log(`VHost: ${queue.vhost}`);
+        console.log(`Durable: ${queue.durable}`);
+        console.log(`Auto Delete: ${queue.auto_delete}`);
+        console.log(`Exclusive: ${queue.exclusive}`);
+        
+        if (queue.arguments && Object.keys(queue.arguments).length > 0) {
+            console.log('\nArguments:');
+            for (const [key, value] of Object.entries(queue.arguments)) {
+                console.log(`  ${key}: ${value}`);
+            }
+        }
+    } catch (error: any) {
+        console.error('Error getting queue details:', error.message);
+    }
+}
+
+async function purgeQueue(chain: string, queueName: string, options: any) {
+    const queueManager = new QueueManager();
+    try {
+        if (!options.force) {
+            // In a real implementation, you might want to add a confirmation prompt
+            console.log('Use --force to confirm purging the queue');
+            return;
+        }
+        
+        await queueManager.purgeQueue(queueName);
+        console.log(`✅ Queue '${queueName}' has been purged.`);
+    } catch (error: any) {
+        console.error('Error purging queue:', error.message);
+    }
 }
 
 (() => {
@@ -217,6 +288,51 @@ async function startIndexer(chain: string, host?: string) {
                 await printHeapStats(chain, args.host);
             } catch (error: any) {
                 console.error('Error fetching heap stats:', error.message);
+            }
+        });
+
+    const queues = program.command('queues');
+
+    // List queues command
+    queues
+        .command('list <chain>')
+        .description('List RabbitMQ queues for a specific chain')
+        .option('-a, --all', 'Show all queues (not just chain-specific)')
+        .option('-e, --empty', 'Show empty queues')
+        .option('-v, --verbose', 'Show detailed information')
+        .option('-c, --categorize', 'Group queues by category')
+        .option('-s, --sort <field>', 'Sort by field (name, messages, consumers)', 'name')
+        .option('-f, --filter <pattern>', 'Filter queues by name pattern (regex)')
+        .action(async (chain: string, options: any) => {
+            try {
+                await listQueues(chain, options);
+            } catch (error: unknown) {
+                console.error('Error executing queue command:', (error as Error).message);
+            }
+        });
+
+    // Queue details command
+    queues
+        .command('details <chain> <queueName>')
+        .description('Show detailed information about a specific queue')
+        .action(async (chain: string, queueName: string) => {
+            try {
+                await showQueueDetails(chain, queueName);
+            } catch (error: unknown) {
+                console.error('Error executing queue-details command:', (error as Error).message);
+            }
+        });
+
+    // Purge queue command
+    queues
+        .command('purge <chain> <queueName>')
+        .description('Purge all messages from a queue')
+        .option('--force', 'Force purge without confirmation')
+        .action(async (chain: string, queueName: string, options: any) => {
+            try {
+                await purgeQueue(chain, queueName, options);
+            } catch (error: unknown) {
+                console.error('Error executing purge-queue command:', (error as Error).message);
             }
         });
 
