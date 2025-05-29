@@ -1,19 +1,19 @@
-import {Command} from 'commander';
+import { Command } from 'commander';
 import path from 'path';
-import {cp, mkdir, readdir, readFile, rm, writeFile} from 'fs/promises';
-import {HyperionConfig, ScalingConfigs} from '../interfaces/hyperionConfig.js';
-import {HyperionConnections} from '../interfaces/hyperionConnections.js';
-import {copyFileSync, existsSync, mkdirSync, rmSync} from 'fs';
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'fs/promises';
+import { HyperionConfig, ScalingConfigs } from '../interfaces/hyperionConfig.js';
+import { HyperionConnections } from '../interfaces/hyperionConnections.js';
+import { copyFileSync, existsSync, mkdirSync, rmSync } from 'fs';
 
 import WebSocket from 'ws';
 import * as readline from 'readline';
 import * as amqp from 'amqplib';
-import {Redis} from 'ioredis';
-import {Client} from '@elastic/elasticsearch';
-import {APIClient} from '@wharfkit/antelope';
-import {StateHistorySocket} from '../indexer/connections/state-history.js';
-import {MongoClient} from 'mongodb';
-import {IndexerController} from './controller-client/controller.client.js';
+import { Redis } from 'ioredis';
+import { Client } from '@elastic/elasticsearch';
+import { APIClient } from '@wharfkit/antelope';
+import { StateHistorySocket } from '../indexer/connections/state-history.js';
+import { MongoClient } from 'mongodb';
+import { IndexerController } from './controller-client/controller.client.js';
 
 interface ConnectionsInitOptions {
     amqpUser?: string;
@@ -336,7 +336,7 @@ async function newChain(shortName: string, options) {
 
         // test nodeos availability
         try {
-            const apiClient = new APIClient({url: options.http, fetch});
+            const apiClient = new APIClient({ url: options.http, fetch });
             const info = await apiClient.v1.chain.get_info();
             jsonData.api.chain_api = options.http;
             connections.chains[shortName].chain_id = info.chain_id.toString();
@@ -465,7 +465,7 @@ async function testChain(shortName: string) {
     console.log(`Checking HTTP endpoint: ${httpEndpoint}`);
     let httpChainId = '';
     try {
-        const apiClient = new APIClient({url: httpEndpoint});
+        const apiClient = new APIClient({ url: httpEndpoint });
         const info = await apiClient.v1.chain.get_info();
         httpChainId = info.chain_id.toString();
     } catch (e: any) {
@@ -667,7 +667,7 @@ async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult
     const _mongo = conn.mongodb;
     if (!_mongo || !_mongo.enabled) {
         console.log('[info] [MONGODB] - MongoDB is not configured or not enabled.');
-        return {success: true, errorType: 'NONE'}; // Treat as success if not enabled/configured
+        return { success: true, errorType: 'NONE' }; // Treat as success if not enabled/configured
     }
 
     let uri = 'mongodb://';
@@ -683,25 +683,25 @@ async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult
         const adminDb = client.db('admin');
 
         try {
-            const hostInfoResult = await adminDb.command({hostInfo: 1});
+            const hostInfoResult = await adminDb.command({ hostInfo: 1 });
             if (hostInfoResult && hostInfoResult.ok === 1) {
                 console.log('[info] [MONGODB] - Connection established with full authentication!');
-                return {success: true, errorType: 'NONE'};
+                return { success: true, errorType: 'NONE' };
             } else {
                 const errMsg = 'Failed to get hostInfo from database.';
                 console.log('[error] [MONGODB] - ' + errMsg);
-                return {success: false, errorType: 'OTHER', message: errMsg};
+                return { success: false, errorType: 'OTHER', message: errMsg };
             }
         } catch (authError: any) {
             // Verifica se é um problema de autenticação
             if (authError.message?.includes('requires authentication')) {
                 console.log('[error] [MONGODB] - Authentication required but not provided or invalid.');
-                return {success: false, errorType: 'AUTH', message: authError.message};
+                return { success: false, errorType: 'AUTH', message: authError.message };
             }
 
             // Outros erros
             console.log('[error] [MONGODB] - ' + authError.message);
-            return {success: false, errorType: 'OTHER', message: authError.message};
+            return { success: false, errorType: 'OTHER', message: authError.message };
         }
     } catch (error: any) {
         const errMsg = error.message || 'Unknown MongoDB error';
@@ -712,7 +712,7 @@ async function checkMongoDB(conn: HyperionConnections): Promise<CheckMongoResult
         } else if (errMsg.includes('ECONNREFUSED') || errMsg.includes('ENOTFOUND') || errMsg.includes('connect timed out')) {
             errorType = 'CONNECTION';
         }
-        return {success: false, errorType: errorType, message: errMsg};
+        return { success: false, errorType: errorType, message: errMsg };
     } finally {
         // Ensure client.close() is called even if connect() fails
         // Use optional chaining in case client wasn't initialized properly
@@ -732,7 +732,7 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
 
     const exampleConn = await getExampleConnections();
 
-    const rl = readline.createInterface({input: process.stdin, output: process.stdout});
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
 
     const conn = exampleConn;
@@ -919,7 +919,7 @@ async function resetConnections() {
         }
 
         if (existsSync(connectionsPath)) {
-            const rl = readline.createInterface({input: process.stdin, output: process.stdout});
+            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
             const prompt = (query: string) => new Promise((resolve) => rl.question(query, resolve));
             const confirmation = (await prompt('Are you sure you want to reset the connection configuration? Type "YES" to confirm.\n')) as string;
             if (confirmation.toUpperCase() === 'YES') {
@@ -1020,9 +1020,16 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         console.warn("WARN: 'features' section missing, creating default structure.");
 
         chainConfig.features = {
-            streaming: {enable: false, traces: false, deltas: false},
-            tables: {proposals: true, accounts: true, voters: true, userres: true, delband: true},
-            contract_state: {enabled: false, contracts: {}},
+            streaming: { enable: false, traces: false, deltas: false },
+            tables: {
+                proposals: true,
+                accounts: true,
+                voters: true,
+                userres: true,
+                delband: true,
+                permissions: true
+            },
+            contract_state: { enabled: false, contracts: {} },
             index_deltas: true,
             index_transfer_memo: true,
             index_all_deltas: true,
@@ -1227,7 +1234,7 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         .action(async (chainName, account, tablesJson) => {
             try {
                 // Define a more specific type for the input data
-                type TableJsonInput = {name: string; autoIndex: boolean; indices?: IndexConfig};
+                type TableJsonInput = { name: string; autoIndex: boolean; indices?: IndexConfig };
                 const tablesData: Array<TableJsonInput> = JSON.parse(tablesJson);
 
                 const tables: TableInput[] = tablesData.map((t, index) => {
@@ -1289,6 +1296,57 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
             }
         });
 
+    // Configuration editing commands
+    program
+        .command('get <chain> <configPath>')
+        .description('get a configuration value from chain config file')
+        .action(async (chain: string, configPath: string) => {
+            try {
+                await getConfigValue(chain, configPath);
+            } catch (error: any) {
+                console.error(`Error getting config value: ${error.message}`);
+                process.exit(1);
+            }
+        });
+
+    program
+        .command('set <chain> <configPath> <value>')
+        .description('set a configuration value in chain config file')
+        .action(async (chain: string, configPath: string, value: string) => {
+            try {
+                await setConfigValue(chain, configPath, value);
+            } catch (error: any) {
+                console.error(`Error setting config value: ${error.message}`);
+                process.exit(1);
+            }
+        });
+
+    program
+        .command('set-default <chain> <configPath>')
+        .description('reset a configuration value to its default from reference config')
+        .action(async (chain: string, configPath: string) => {
+            try {
+                await setDefaultConfigValue(chain, configPath);
+            } catch (error: any) {
+                console.error(`Error setting default config value: ${error.message}`);
+                process.exit(1);
+            }
+        });
+
+    program
+        .command('list-paths <chain>')
+        .description('list all valid configuration paths for a chain')
+        .option('--filter <category>', 'filter paths by category (e.g., api, indexer, scaling)')
+        .action(async (chain: string, options: { filter?: string }) => {
+            const { filter } = options;
+            try {
+                await showValidConfigPaths(filter);
+            } catch (error: any) {
+                console.error(`Error listing config paths: ${error.message}`);
+                process.exit(1);
+            }
+        });
+
     program.parse(process.argv);
 })();
 
@@ -1298,4 +1356,345 @@ async function reloadConfig(chainName: string, contractName: string) {
     await controller.reloadContractStateConfig(contractName);
     console.log(`Please use "./hyp-control sync contract-state ${chainName}" to sync the contract state`);
     controller.close();
+}
+
+// Configuration editing utility functions
+function getNestedValue(obj: any, path: string): any {
+    return path.split('.').reduce((current, key) => {
+        return current && current[key] !== undefined ? current[key] : undefined;
+    }, obj);
+}
+
+function setNestedValue(obj: any, path: string, value: any): void {
+    const keys = path.split('.');
+    const lastKey = keys.pop()!;
+    const target = keys.reduce((current, key) => {
+        if (!current[key] || typeof current[key] !== 'object') {
+            current[key] = {};
+        }
+        return current[key];
+    }, obj);
+    target[lastKey] = value;
+}
+
+function parseValue(valueStr: string): any {
+    // Try to parse as JSON first (for objects, arrays, booleans, numbers, null)
+    try {
+        return JSON.parse(valueStr);
+    } catch {
+        // If JSON parsing fails, treat as string
+        return valueStr;
+    }
+}
+
+function formatValue(value: any): string {
+    if (typeof value === 'object') {
+        return JSON.stringify(value, null, 2);
+    }
+    return String(value);
+}
+
+function isValidConfigPath(configPath: string, referenceConfig: any): boolean {
+    const value = getNestedValue(referenceConfig, configPath);
+    return value !== undefined;
+}
+
+function getConfigPathType(configPath: string, referenceConfig: any): string {
+    const value = getNestedValue(referenceConfig, configPath);
+    if (value === null) return 'null';
+    if (Array.isArray(value)) return 'array';
+    return typeof value;
+}
+
+function validateValueType(value: any, expectedType: string, configPath: string): boolean {
+    let actualType: string;
+    if (value === null) {
+        actualType = 'null';
+    } else if (Array.isArray(value)) {
+        actualType = 'array';
+    } else {
+        actualType = typeof value;
+    }
+
+    // Allow some type flexibility for common cases
+    if (expectedType === 'number' && actualType === 'string' && !isNaN(Number(value))) {
+        return true; // String numbers can be converted
+    }
+    
+    if (expectedType === 'boolean' && actualType === 'string' && (value === 'true' || value === 'false')) {
+        return true; // String booleans can be converted
+    }
+
+    return actualType === expectedType;
+}
+
+async function validateConfigPath(configPath: string): Promise<{isValid: boolean, expectedType?: string, referenceValue?: any}> {
+    try {
+        const referenceConfig = await getExampleConfig();
+        const isValid = isValidConfigPath(configPath, referenceConfig);
+        
+        if (isValid) {
+            const referenceValue = getNestedValue(referenceConfig, configPath);
+            const expectedType = getConfigPathType(configPath, referenceConfig);
+            return { isValid: true, expectedType, referenceValue };
+        }
+        
+        return { isValid: false };
+    } catch (error) {
+        console.error('Error loading reference configuration for validation');
+        return { isValid: false };
+    }
+}
+
+async function getConfigValue(chainName: string, configPath: string) {
+    console.log(`Getting configuration value for ${chainName}: ${configPath}`);
+    
+    // Validate configuration path against reference
+    const validation = await validateConfigPath(configPath);
+    if (!validation.isValid) {
+        console.error(`Invalid configuration path '${configPath}'`);
+        console.error('Please check the reference configuration for valid paths.');
+        console.error('Hint: Use dot notation like "indexer.start_on" or "scaling.readers"');
+        process.exit(1);
+    }
+
+    const targetPath = path.join(chainsDir, `${chainName}.config.json`);
+
+    if (!existsSync(targetPath)) {
+        console.error(`Chain config for ${chainName} not found!`);
+        process.exit(1);
+    }
+
+    try {
+        const chainJsonFile = await readFile(targetPath);
+        const chainConfig: HyperionConfig = JSON.parse(chainJsonFile.toString());
+
+        const value = getNestedValue(chainConfig, configPath);
+
+        if (value === undefined) {
+            console.error(`Configuration path '${configPath}' not found in ${chainName}.config.json`);
+            console.log(`This path exists in reference config with default value: ${formatValue(validation.referenceValue)}`);
+            console.log(`You can set it using: ./hyp-config set-default ${chainName} ${configPath}`);
+            process.exit(1);
+        }
+
+        console.log(`${configPath}: ${formatValue(value)}`);
+        console.log(`Type: ${validation.expectedType}`);
+    } catch (error: any) {
+        console.error(`Error reading configuration: ${error.message}`);
+        process.exit(1);
+    }
+}
+
+async function setConfigValue(chainName: string, configPath: string, valueStr: string) {
+    console.log(`Setting configuration value for ${chainName}: ${configPath} = ${valueStr}`);
+    
+    // Validate configuration path against reference
+    const validation = await validateConfigPath(configPath);
+    if (!validation.isValid) {
+        console.error(`Invalid configuration path '${configPath}'`);
+        console.error('Please check the reference configuration for valid paths.');
+        console.error('Hint: Use dot notation like "indexer.start_on" or "scaling.readers"');
+        process.exit(1);
+    }
+
+    const targetPath = path.join(chainsDir, `${chainName}.config.json`);
+
+    if (!existsSync(targetPath)) {
+        console.error(`Chain config for ${chainName} not found!`);
+        process.exit(1);
+    }
+
+    try {
+        const chainJsonFile = await readFile(targetPath);
+        const chainConfig: HyperionConfig = JSON.parse(chainJsonFile.toString());
+
+        // Parse the value
+        let parsedValue: any;
+        try {
+            parsedValue = parseValue(valueStr);
+        } catch (error) {
+            console.error(`Error parsing value '${valueStr}': ${error}`);
+            console.error('For complex values, use JSON format like: \'{"key": "value"}\' or \'[1,2,3]\'');
+            process.exit(1);
+        }
+
+        // Validate value type against reference
+        if (!validateValueType(parsedValue, validation.expectedType!, configPath)) {
+            console.error(`Type mismatch for '${configPath}'`);
+            console.error(`Expected: ${validation.expectedType}, but got: ${typeof parsedValue}`);
+            console.error(`Reference value: ${formatValue(validation.referenceValue)}`);
+            console.error(`Your value: ${formatValue(parsedValue)}`);
+            process.exit(1);
+        }
+
+        // Convert string values to proper types if needed
+        if (validation.expectedType === 'number' && typeof parsedValue === 'string') {
+            parsedValue = Number(parsedValue);
+        } else if (validation.expectedType === 'boolean' && typeof parsedValue === 'string') {
+            parsedValue = parsedValue === 'true';
+        }
+
+        // Check if the path exists before setting
+        const currentValue = getNestedValue(chainConfig, configPath);
+        if (currentValue !== undefined) {
+            console.log(`Current value: ${formatValue(currentValue)}`);
+        } else {
+            console.log(`Creating new configuration path: ${configPath}`);
+        }
+
+        // Set the new value
+        setNestedValue(chainConfig, configPath, parsedValue);
+
+        // Create backup
+        if (!existsSync(backupDir)) {
+            await mkdir(backupDir);
+        }
+        const timestamp = Date.now();
+        const backupPath = path.join(backupDir, `${chainName}_${timestamp}_config.json`);
+        await cp(targetPath, backupPath);
+        console.log(`Backup created: ${backupPath}`);
+
+        // Save the updated configuration
+        await writeFile(targetPath, JSON.stringify(chainConfig, null, 2));
+
+        console.log(`✅ Configuration updated successfully!`);
+        console.log(`New value: ${formatValue(parsedValue)}`);
+
+    } catch (error: any) {
+        console.error(`Error updating configuration: ${error.message}`);
+        process.exit(1);
+    }
+}
+
+async function setDefaultConfigValue(chainName: string, configPath: string) {
+    console.log(`Setting default value for ${chainName}: ${configPath}`);
+    
+    // Validate configuration path against reference
+    const validation = await validateConfigPath(configPath);
+    if (!validation.isValid) {
+        console.error(`Invalid configuration path '${configPath}'`);
+        console.error('Please check the reference configuration for valid paths.');
+        console.error('Hint: Use dot notation like "indexer.start_on" or "scaling.readers"');
+        process.exit(1);
+    }
+
+    const targetPath = path.join(chainsDir, `${chainName}.config.json`);
+
+    if (!existsSync(targetPath)) {
+        console.error(`Chain config for ${chainName} not found!`);
+        process.exit(1);
+    }
+
+    try {
+        // Load the reference configuration to get default values
+        const exampleConfig = await getExampleConfig();
+        const defaultValue = getNestedValue(exampleConfig, configPath);
+
+        const chainJsonFile = await readFile(targetPath);
+        const chainConfig: HyperionConfig = JSON.parse(chainJsonFile.toString());
+
+        // Check current value
+        const currentValue = getNestedValue(chainConfig, configPath);
+        if (currentValue !== undefined) {
+            console.log(`Current value: ${formatValue(currentValue)}`);
+        } else {
+            console.log(`Path '${configPath}' does not exist in current config`);
+        }
+
+        // Set the default value
+        setNestedValue(chainConfig, configPath, defaultValue);
+
+        // Create backup
+        if (!existsSync(backupDir)) {
+            await mkdir(backupDir);
+        }
+        const timestamp = Date.now();
+        const backupPath = path.join(backupDir, `${chainName}_${timestamp}_config.json`);
+        await cp(targetPath, backupPath);
+        console.log(`Backup created: ${backupPath}`);
+
+        // Save the updated configuration
+        await writeFile(targetPath, JSON.stringify(chainConfig, null, 2));
+
+        console.log(`✅ Configuration reset to default successfully!`);
+        console.log(`Default value: ${formatValue(defaultValue)}`);
+        console.log(`Type: ${validation.expectedType}`);
+
+    } catch (error: any) {
+        console.error(`Error setting default configuration: ${error.message}`);
+        process.exit(1);
+    }
+}
+
+function listAllConfigPaths(obj: any, prefix: string = '', paths: string[] = []): string[] {
+    for (const key in obj) {
+        if (obj.hasOwnProperty(key)) {
+            const fullPath = prefix ? `${prefix}.${key}` : key;
+            const value = obj[key];
+            
+            if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+                // Recursively process nested objects
+                listAllConfigPaths(value, fullPath, paths);
+            } else {
+                // This is a leaf node (primitive value, array, or null)
+                paths.push(fullPath);
+            }
+        }
+    }
+    return paths;
+}
+
+async function showValidConfigPaths(filterCategory?: string) {
+    try {
+        const referenceConfig = await getExampleConfig();
+        const allPaths = listAllConfigPaths(referenceConfig);
+        
+        let filteredPaths = allPaths;
+        if (filterCategory) {
+            filteredPaths = allPaths.filter(path => path.startsWith(filterCategory));
+        }
+        
+        if (filteredPaths.length === 0) {
+            if (filterCategory) {
+                console.log(`No configuration paths found starting with '${filterCategory}'`);
+                console.log('Available categories: api, indexer, settings, scaling, features, blacklists, whitelists, prefetch, hub, plugins, alerts');
+            } else {
+                console.log('No configuration paths found');
+            }
+            return;
+        }
+        
+        console.log(`\nValid Configuration Paths${filterCategory ? ` (${filterCategory})` : ''}:`);
+        console.log('=' + '='.repeat(50));
+        
+        // Group by top-level category for better organization
+        const grouped: Record<string, string[]> = {};
+        filteredPaths.forEach(path => {
+            const category = path.split('.')[0];
+            if (!grouped[category]) {
+                grouped[category] = [];
+            }
+            grouped[category].push(path);
+        });
+        
+        for (const [category, paths] of Object.entries(grouped)) {
+            console.log(`\n📁 ${category.toUpperCase()}:`);
+            paths.forEach(path => {
+                const value = getNestedValue(referenceConfig, path);
+                const type = getConfigPathType(path, referenceConfig);
+                console.log(`  ${path.padEnd(40)} (${type}) = ${formatValue(value).split('\n')[0]}`);
+            });
+        }
+        
+        console.log(`\nTotal: ${filteredPaths.length} configuration paths`);
+        console.log('\nUsage examples:');
+        console.log('  ./hyp-config get <chain> indexer.start_on');
+        console.log('  ./hyp-config set <chain> scaling.readers 2');
+        console.log('  ./hyp-config set-default <chain> api.server_port');
+        
+    } catch (error: any) {
+        console.error(`Error loading reference configuration: ${error.message}`);
+        process.exit(1);
+    }
 }

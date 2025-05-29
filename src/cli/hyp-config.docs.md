@@ -92,6 +92,115 @@ Tests the configured HTTP and SHIP endpoints for a specific chain to ensure conn
 **Arguments:**
 *   `<shortName>`: The short name of the chain configuration to test.
 
+## Configuration Editing
+
+Edit and manage configuration values within chain configuration files with automatic validation against the reference configuration.
+
+### `get <chain> <configPath>`
+
+Retrieves a specific configuration value from a chain's configuration file. The configuration path is validated against the reference configuration to ensure it exists and is valid.
+
+**Usage:**
+```bash
+./hyp-config get <chain> <configPath>
+```
+
+**Arguments:**
+*   `<chain>`: The short name of the chain whose configuration to read.
+*   `<configPath>`: The dot-notation path to the configuration value (e.g., `indexer.start_on`, `scaling.readers`, `api.server_port`).
+
+**Examples:**
+```bash
+./hyp-config get wax indexer.start_on
+./hyp-config get eos scaling.readers
+./hyp-config get telos api.server_port
+```
+
+### `set <chain> <configPath> <value>`
+
+Sets a specific configuration value in a chain's configuration file. The configuration path and value type are validated against the reference configuration. Creates an automatic backup before making changes.
+
+**Usage:**
+```bash
+./hyp-config set <chain> <configPath> <value>
+```
+
+**Arguments:**
+*   `<chain>`: The short name of the chain whose configuration to modify.
+*   `<configPath>`: The dot-notation path to the configuration value.
+*   `<value>`: The new value to set. Can be a string, number, boolean, or JSON for complex values.
+
+**Type Validation:** The value must match the expected type from the reference configuration:
+*   **Numbers:** `1000`, `4096`
+*   **Booleans:** `true`, `false`
+*   **Strings:** `"example_string"`
+*   **Arrays:** `[1,2,3]` or `["item1","item2"]`
+*   **Objects:** `{"key":"value"}`
+
+**Examples:**
+```bash
+./hyp-config set wax indexer.start_on 1000
+./hyp-config set eos scaling.readers 4
+./hyp-config set telos api.enabled true
+./hyp-config set wax api.limits '{"get_actions": 2000}'
+```
+
+### `set-default <chain> <configPath>`
+
+Resets a specific configuration value to its default value from the reference configuration. Creates an automatic backup before making changes.
+
+**Usage:**
+```bash
+./hyp-config set-default <chain> <configPath>
+```
+
+**Arguments:**
+*   `<chain>`: The short name of the chain whose configuration to reset.
+*   `<configPath>`: The dot-notation path to the configuration value to reset.
+
+**Examples:**
+```bash
+./hyp-config set-default wax indexer.start_on
+./hyp-config set-default eos api.server_port
+./hyp-config set-default telos scaling.readers
+```
+
+### `list-paths <chain> [--filter <category>]`
+
+Lists all valid configuration paths available for modification. Useful for discovering available configuration options and their current values and types.
+
+**Usage:**
+```bash
+./hyp-config list-paths <chain> [options]
+```
+
+**Arguments:**
+*   `<chain>`: The short name of the chain (used for command context, but paths are from reference config).
+
+**Options:**
+*   `--filter <category>`: Filter paths by category (e.g., `api`, `indexer`, `scaling`, `features`).
+
+**Examples:**
+```bash
+./hyp-config list-paths wax
+./hyp-config list-paths wax --filter indexer
+./hyp-config list-paths wax --filter scaling
+./hyp-config list-paths wax --filter api
+```
+
+**Available Categories:**
+*   `api` - API server configuration
+*   `indexer` - Indexer process configuration  
+*   `settings` - General settings
+*   `scaling` - Performance and scaling options
+*   `features` - Feature toggles
+*   `blacklists` - Action and delta blacklists
+*   `whitelists` - Action and delta whitelists
+*   `prefetch` - Prefetch settings
+*   `hub` - Hub configuration
+*   `plugins` - Plugin settings
+*   `alerts` - Alert system configuration
+
 ## `contracts`
 
 Manage contract-specific state indexing configurations within a chain's config file.
