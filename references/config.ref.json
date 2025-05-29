@@ -137,7 +137,8 @@
     "tables": {
       "proposals": true,
       "accounts": true,
-      "voters": true
+      "voters": true,
+      "permissions": true
     },
     "contract_state": {
       "contracts": {}
