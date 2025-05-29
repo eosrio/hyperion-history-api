@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import path from 'path';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'fs/promises';
-import { HyperionConfig, ScalingConfigs } from '../interfaces/hyperionConfig.js';
+import { HyperionConfig, ScalingConfigs, HyperionConfigSchema } from '../interfaces/hyperionConfig.js';
 import { HyperionConnections } from '../interfaces/hyperionConnections.js';
 import { copyFileSync, existsSync, mkdirSync, rmSync } from 'fs';
 
@@ -1138,6 +1138,13 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
     // ./hyp-config chains test <shortName>
     chains.command('test <shortName>').description('test a chain configuration').action(testChain);
 
+    // ./hyp-config chains validate <shortName>
+    chains
+        .command('validate <shortName>')
+        .description('validate a chain configuration using schema')
+        .option('--fix', 'automatically fix missing or invalid fields using reference configuration')
+        .action(validateChain);
+
     // DEPRECATED ./hyp-config list chains
     const list = program
         .command('list', {
@@ -1695,6 +1702,176 @@ async function showValidConfigPaths(filterCategory?: string) {
         
     } catch (error: any) {
         console.error(`Error loading reference configuration: ${error.message}`);
+        process.exit(1);
+    }
+}
+
+async function validateChain(shortName: string, options: { fix?: boolean } = {}) {
+    console.log(`Validating chain config for ${shortName}...`);
+    const targetPath = path.join(chainsDir, `${shortName}.config.json`);
+
+    if (!existsSync(targetPath)) {
+        console.error(`❌ Chain config for ${shortName} not found at ${targetPath}`);
+        process.exit(1);
+    }
+
+    try {
+        // Read and parse the configuration file
+        const chainJsonFile = await readFile(targetPath);
+        let chainConfig = JSON.parse(chainJsonFile.toString());
+
+        // Validate using Zod schema
+        let validationResult = HyperionConfigSchema.safeParse(chainConfig);
+
+        if (!validationResult.success && options.fix) {
+            console.log(`🔧 Attempting to fix configuration issues...`);
+            
+            // Create backup before making changes
+            const backupPath = path.join(backupDir, `${shortName}.config.backup.${Date.now()}.json`);
+            if (!existsSync(backupDir)) {
+                mkdirSync(backupDir, { recursive: true });
+            }
+            await writeFile(backupPath, JSON.stringify(chainConfig, null, 2));
+            console.log(`📦 Backup created: ${backupPath}`);
+            
+            // Load reference configuration
+            const referenceConfig = await getExampleConfig();
+            let fixedFields = 0;
+            
+            // Define default values for fields that might not be in reference config
+            const defaultValues: any = {
+                api: {
+                    provider_logo: ""
+                },
+                settings: {
+                    ship_request_rev: "",
+                    bypass_index_map: false,
+                    dsp_parser: false
+                },
+                hub: {
+                    production: false
+                },
+                scaling: {
+                    queue_limit: 100000
+                },
+                indexer: {
+                    fill_state: false,
+                    fetch_deltas: true,
+                    repair_mode: false,
+                    max_inline: 1000
+                },
+                features: {
+                    tables: {
+                        permissions: true,
+                        userres: false,
+                        delband: false
+                    },
+                    contract_console: false
+                }
+            };
+            
+            // Helper function to set missing values from reference or defaults
+            function fixMissingFields(obj: any, ref: any, defaults: any, path: string = '') {
+                // First, apply reference values
+                for (const key in ref) {
+                    const currentPath = path ? `${path}.${key}` : key;
+                    
+                    if (obj[key] === undefined) {
+                        obj[key] = JSON.parse(JSON.stringify(ref[key])); // Deep clone
+                        console.log(`   ✓ Fixed missing field: ${currentPath} = ${JSON.stringify(ref[key])}`);
+                        fixedFields++;
+                    } else if (typeof ref[key] === 'object' && ref[key] !== null && !Array.isArray(ref[key])) {
+                        // Recursively fix nested objects
+                        if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+                            const nestedDefaults = defaults && defaults[key] ? defaults[key] : {};
+                            fixMissingFields(obj[key], ref[key], nestedDefaults, currentPath);
+                        }
+                    }
+                }
+                
+                // Then, apply default values for fields not in reference
+                for (const key in defaults) {
+                    const currentPath = path ? `${path}.${key}` : key;
+                    
+                    if (obj[key] === undefined) {
+                        obj[key] = JSON.parse(JSON.stringify(defaults[key])); // Deep clone
+                        console.log(`   ✓ Fixed missing field: ${currentPath} = ${JSON.stringify(defaults[key])} (default)`);
+                        fixedFields++;
+                    } else if (typeof defaults[key] === 'object' && defaults[key] !== null && !Array.isArray(defaults[key])) {
+                        // Recursively fix nested objects
+                        if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+                            const refNested = ref && ref[key] ? ref[key] : {};
+                            fixMissingFields(obj[key], refNested, defaults[key], currentPath);
+                        }
+                    }
+                }
+            }
+
+            // Apply fixes
+            fixMissingFields(chainConfig, referenceConfig, defaultValues);
+
+            // Re-validate after fixes
+            validationResult = HyperionConfigSchema.safeParse(chainConfig);
+
+            if (validationResult.success) {
+                // Save the fixed configuration
+                await writeFile(targetPath, JSON.stringify(chainConfig, null, 2));
+                console.log(`💾 Fixed configuration saved to ${targetPath}`);
+                console.log(`🎉 Successfully fixed ${fixedFields} field(s)!`);
+            } else {
+                console.log(`⚠️  Fixed ${fixedFields} field(s), but some issues remain.`);
+            }
+        }
+
+        if (validationResult.success) {
+            console.log(`✅ Chain config for ${shortName} is valid!`);
+            
+            // Show summary of configuration
+            console.log('\n📋 Configuration Summary:');
+            console.log(`   Chain: ${validationResult.data.settings.chain}`);
+            console.log(`   API Port: ${validationResult.data.api.server_port}`);
+            console.log(`   Stream Port: ${validationResult.data.api.stream_port}`);
+            console.log(`   Indexer Enabled: ${validationResult.data.indexer.enabled ?? 'true'}`);
+            console.log(`   API Enabled: ${validationResult.data.api.enabled ?? 'true'}`);
+            console.log(`   Debug Mode: ${validationResult.data.settings.debug}`);
+        } else {
+            console.error(`❌ Chain config for ${shortName} has validation errors:`);
+            
+            // Group errors by path for better readability
+            const errorsByPath: { [path: string]: string[] } = {};
+            
+            validationResult.error.issues.forEach(issue => {
+                const path = issue.path.join('.');
+                if (!errorsByPath[path]) {
+                    errorsByPath[path] = [];
+                }
+                errorsByPath[path].push(issue.message);
+            });
+
+            Object.entries(errorsByPath).forEach(([path, messages]) => {
+                console.error(`\n🔸 ${path || 'root'}:`);
+                messages.forEach(message => {
+                    console.error(`   • ${message}`);
+                });
+            });
+
+            if (!options.fix) {
+                console.error(`\n💡 To automatically fix missing fields, run:`);
+                console.error(`   ./hyp-config chains validate ${shortName} --fix`);
+                console.error(`\n   This will create a backup and apply reference defaults for missing fields.`);
+            } else {
+                console.error(`\n💡 Some issues could not be automatically fixed. Please review and fix manually.`);
+                console.error(`   Check the backup file if you need to restore the original configuration.`);
+            }
+            process.exit(1);
+        }
+    } catch (error: any) {
+        console.error(`❌ Failed to validate chain config for ${shortName}:`);
+        if (error.name === 'SyntaxError') {
+            console.error(`   Invalid JSON format: ${error.message}`);
+        } else {
+            console.error(`   Error: ${error.message}`);
+        }
         process.exit(1);
     }
 }

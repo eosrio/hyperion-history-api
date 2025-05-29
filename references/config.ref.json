@@ -90,16 +90,7 @@
     "use_global_agent": false,
     "index_partition_size": 10000000,
     "max_retained_blocks": 0,
-    "es_replicas": 0,
-    "tiered_index_allocation": {
-      "enabled": false,
-      "max_age_days": 90,
-      "max_age_blocks": 20000000,
-      "require_node_attribute": {
-        "key": "_name",
-        "value": "node2,node3"
-      }
-    }
+    "es_replicas": 0
   },
   "blacklists": {
     "actions": [],

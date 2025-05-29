@@ -92,6 +92,65 @@ Tests the configured HTTP and SHIP endpoints for a specific chain to ensure conn
 **Arguments:**
 *   `<shortName>`: The short name of the chain configuration to test.
 
+### `chains validate <shortName>`
+
+Validates a chain configuration file against the Zod schema to ensure all required fields are present and have correct types. Can automatically fix missing or invalid fields using reference defaults.
+
+**Usage:**
+```bash
+./hyp-config chains validate <shortName> [options]
+```
+
+**Arguments:**
+*   `<shortName>`: The short name of the chain configuration to validate.
+
+**Options:**
+*   `--fix`: Automatically fix missing or invalid fields using reference configuration and sensible defaults. Creates a backup before making changes.
+
+**Validation Features:**
+*   **Schema Validation**: Validates the entire configuration structure using comprehensive Zod schemas
+*   **Detailed Error Reporting**: Groups validation errors by configuration path for easy debugging
+*   **Configuration Summary**: On successful validation, displays key configuration details
+*   **JSON Syntax Checking**: Catches and reports JSON parsing errors
+*   **Auto-Fix Capability**: Automatically adds missing fields with appropriate defaults
+
+**Auto-Fix Behavior:**
+When using the `--fix` option, the command will:
+1. Create a timestamped backup in `config/configuration_backups/`
+2. Apply values from the reference configuration (`config.ref.json`) where available
+3. Use sensible defaults for fields not present in the reference
+4. Save the fixed configuration and report all changes made
+
+**Examples:**
+```bash
+# Validate configuration only (shows errors if any)
+./hyp-config chains validate wax
+
+# Validate and automatically fix missing fields
+./hyp-config chains validate wax --fix
+```
+
+**Sample Output (with --fix):**
+```
+Validating chain config for wax...
+🔧 Attempting to fix configuration issues...
+📦 Backup created: config/configuration_backups/wax.config.backup.1748562368468.json
+   ✓ Fixed missing field: api.provider_logo = "" (default)
+   ✓ Fixed missing field: settings.ship_request_rev = "" (default)
+   ✓ Fixed missing field: settings.bypass_index_map = false (default)
+💾 Fixed configuration saved to config/chains/wax.config.json
+🎉 Successfully fixed 3 field(s)!
+✅ Chain config for wax is valid!
+
+📋 Configuration Summary:
+   Chain: wax
+   API Port: 7000
+   Stream Port: 1234
+   Indexer Enabled: true
+   API Enabled: true
+   Debug Mode: false
+```
+
 ## Configuration Editing
 
 Edit and manage configuration values within chain configuration files with automatic validation against the reference configuration.

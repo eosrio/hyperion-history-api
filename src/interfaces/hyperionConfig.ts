@@ -1,3 +1,5 @@
+import { z } from "zod/v4";
+
 import {AlertManagerOptions} from "../indexer/modules/alertsManager.js";
 
 /**
@@ -248,3 +250,249 @@ export interface HyperionConfig {
     };
     alerts?: AlertManagerOptions;
 }
+
+// Zod schema for API limits
+const ApiLimitsSchema = z.object({
+    get_table_rows: z.number().optional(),
+    get_top_holders: z.number().optional(),
+    get_links: z.number().optional(),
+    get_actions: z.number().optional(),
+    get_blocks: z.number().optional(),
+    get_created_accounts: z.number().optional(),
+    get_deltas: z.number().optional(),
+    get_key_accounts: z.number().optional(),
+    get_proposals: z.number().optional(),
+    get_tokens: z.number().optional(),
+    get_transfers: z.number().optional(),
+    get_voters: z.number().optional(),
+    get_trx_actions: z.number().optional(),
+});
+
+// Zod schema for cached route configuration
+const CachedRouteConfigSchema = z.object({
+    path: z.string(),
+    ttl: z.number()
+});
+
+// Zod schema for explorer configurations
+const ExplorerConfigsSchema = z.object({
+    home_redirect: z.boolean().optional(),
+    theme: z.string().optional(),
+    upstream: z.string().optional(),
+});
+
+export const HyperionApiConfigSchema = z.object({
+    enabled: z.boolean().optional(),
+    log_errors: z.boolean().optional(),
+    stream_scroll_batch: z.number().optional(),
+    stream_scroll_limit: z.number().optional(),
+    pm2_scaling: z.number().optional(),
+    
+    // Node.js options
+    node_max_old_space_size: z.number().optional(),
+    node_trace_deprecation: z.boolean().optional(),
+    node_trace_warnings: z.boolean().optional(),
+    
+    disable_rate_limit: z.boolean().optional(),
+    disable_tx_cache: z.boolean().optional(),
+    tx_cache_expiration_sec: z.union([z.number(), z.string()]).optional(),
+    rate_limit_rpm: z.number().optional(),
+    rate_limit_allow: z.array(z.string()).optional(),
+    custom_core_token: z.string().optional(),
+    chain_api_error_log: z.boolean().optional(),
+    chain_api: z.string().optional(),
+    push_api: z.string().optional(),
+    access_log: z.boolean(),
+    chain_name: z.string(),
+    server_port: z.number(),
+    stream_port: z.number(),
+    server_addr: z.string(),
+    server_name: z.string(),
+    provider_name: z.string(),
+    provider_url: z.string(),
+    provider_logo: z.string(),
+    chain_logo_url: z.string(),
+    enable_caching: z.boolean(),
+    cache_life: z.number(),
+    limits: ApiLimitsSchema,
+    v1_chain_cache: z.array(CachedRouteConfigSchema).optional(),
+    explorer: ExplorerConfigsSchema.optional(),
+});
+
+// Zod schema for node attribute requirement
+const NodeAttributeRequirementSchema = z.object({
+    key: z.string(),
+    value: z.string()
+});
+
+// Zod schema for tiered index allocation settings
+const TieredIndexAllocationSettingsSchema = z.object({
+    enabled: z.boolean(),
+    max_age_days: z.number().optional(),
+    max_age_blocks: z.number().optional(),
+    require_node_attribute: NodeAttributeRequirementSchema.optional(),
+});
+
+export const HyperionSettingsConfigSchema = z.object({
+    use_global_agent: z.boolean().optional(),
+    process_prefix: z.string().optional(),
+    ignore_snapshot: z.boolean().optional(),
+    ship_request_rev: z.string(),
+    bypass_index_map: z.boolean(),
+    auto_mode_switch: z.boolean(),
+    ds_profiling: z.boolean(),
+    max_ws_payload_mb: z.number(),
+    ipc_debug_rate: z.number().optional(),
+    bp_monitoring: z.boolean().optional(),
+    preview: z.boolean(),
+    chain: z.string(),
+    eosio_alias: z.string(),
+    parser: z.string(),
+    auto_stop: z.number(),
+    index_version: z.string(),
+    debug: z.boolean(),
+    rate_monitoring: z.boolean(),
+    bp_logs: z.boolean(),
+    dsp_parser: z.boolean(),
+    allow_custom_abi: z.boolean(),
+    index_partition_size: z.number(),
+    max_retained_blocks: z.number().optional(),
+    es_replicas: z.number(),
+    tiered_index_allocation: TieredIndexAllocationSettingsSchema.optional(),
+});
+
+// Zod schema for scaling configurations
+const ScalingConfigsSchema = z.object({
+    polling_interval: z.number(),
+    resume_trigger: z.number(),
+    max_queue_limit: z.number(),
+    block_queue_limit: z.number(),
+    routing_mode: z.string(),
+    batch_size: z.number(),
+    queue_limit: z.number(),
+    readers: z.number(),
+    ds_queues: z.number(),
+    ds_threads: z.number(),
+    ds_pool_size: z.number(),
+    indexing_queues: z.number(),
+    ad_idx_queues: z.number(),
+    dyn_idx_queues: z.number(),
+    max_autoscale: z.number(),
+    auto_scale_trigger: z.number(),
+});
+
+// Zod schema for indexer configurations
+const IndexerConfigsSchema = z.object({
+    enabled: z.boolean().optional(),
+    
+    // Node.js options
+    node_max_old_space_size: z.number().optional(),
+    node_trace_deprecation: z.boolean().optional(),
+    node_trace_warnings: z.boolean().optional(),
+    
+    fill_state: z.boolean(),
+    start_on: z.number(),
+    stop_on: z.number(),
+    rewrite: z.boolean(),
+    purge_queues: z.boolean(),
+    live_reader: z.boolean(),
+    live_only_mode: z.boolean(),
+    abi_scan_mode: z.boolean(),
+    fetch_block: z.boolean(),
+    fetch_traces: z.boolean(),
+    fetch_deltas: z.boolean(),
+    disable_reading: z.boolean(),
+    disable_indexing: z.boolean(),
+    process_deltas: z.boolean(),
+    repair_mode: z.boolean(),
+    max_inline: z.number(),
+    disable_delta_rm: z.boolean().optional(),
+});
+
+// Zod schema for hub configurations
+const HyperionHubConfigsSchema = z.object({
+    enabled: z.boolean(),
+    production: z.boolean(),
+    instance_key: z.string(),
+    hub_url: z.string().optional(),
+    custom_indexer_controller: z.string().optional(),
+});
+
+// Zod schema for blacklists and whitelists
+const BlacklistsSchema = z.object({
+    actions: z.array(z.string()),
+    deltas: z.array(z.string())
+});
+
+const WhitelistsSchema = z.object({
+    max_depth: z.number(),
+    root_only: z.boolean(),
+    actions: z.array(z.string()),
+    deltas: z.array(z.string())
+});
+
+// Zod schema for features
+const StreamingFeaturesSchema = z.object({
+    enable: z.boolean(),
+    traces: z.boolean(),
+    deltas: z.boolean()
+});
+
+const TablesFeaturesSchema = z.object({
+    permissions: z.boolean(),
+    proposals: z.boolean(),
+    accounts: z.boolean(),
+    voters: z.boolean(),
+    userres: z.boolean(),
+    delband: z.boolean()
+});
+
+const ContractStateSchema = z.object({
+    enabled: z.boolean(),
+    contracts: z.record(z.string(), z.record(z.string(), z.object({
+        auto_index: z.boolean(),
+        indices: z.record(z.string(), z.union([
+            z.literal(1),
+            z.literal(-1),
+            z.literal("text"),
+            z.literal("date"),
+            z.literal("2dsphere")
+        ]))
+    })))
+});
+
+const FeaturesSchema = z.object({
+    streaming: StreamingFeaturesSchema,
+    tables: TablesFeaturesSchema,
+    contract_state: ContractStateSchema,
+    index_deltas: z.boolean(),
+    index_transfer_memo: z.boolean(),
+    index_all_deltas: z.boolean(),
+    deferred_trx: z.boolean(),
+    failed_trx: z.boolean(),
+    resource_usage: z.boolean(),
+    resource_limits: z.boolean(),
+    contract_console: z.boolean()
+});
+
+// Zod schema for prefetch
+const PrefetchSchema = z.object({
+    read: z.number(),
+    block: z.number(),
+    index: z.number()
+});
+
+export const HyperionConfigSchema = z.object({
+    api: HyperionApiConfigSchema,
+    settings: HyperionSettingsConfigSchema,
+    hub: HyperionHubConfigsSchema,
+    scaling: ScalingConfigsSchema,
+    indexer: IndexerConfigsSchema,
+    blacklists: BlacklistsSchema,
+    whitelists: WhitelistsSchema,
+    features: FeaturesSchema,
+    prefetch: PrefetchSchema,
+    experimental: z.any(),
+    plugins: z.record(z.string(), z.any()),
+    alerts: z.any().optional(), // AlertManagerOptions type is imported but not defined in this file
+});
