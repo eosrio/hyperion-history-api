@@ -6,6 +6,7 @@ import { ContractStateSynchronizer } from './sync-modules/sync-contract-state.js
 import { ProposalSynchronizer } from './sync-modules/sync-proposals.js';
 import { VoterSynchronizer } from './sync-modules/sync-voters.js';
 import { QueueManager } from './queue-manager/queue.manager.js';
+import { PermissionsSynchronizer } from './sync-modules/sync-permissions.js';
 
 async function syncWithPauseResume(chain: string, type: string, synchronizer: any, host?: string, contract?: string, table?: string) {
     const indexerController = new IndexerController(chain, host);
@@ -184,6 +185,19 @@ async function purgeQueue(chain: string, queueName: string, options: any) {
         });
 
     const sync = program.command('sync');
+
+    sync.command('permissions <chain>')
+        .description('Sync permissions for a specific chain')
+        .action(async (chain: string) => {
+            try {
+                const synchronizer = new PermissionsSynchronizer(chain);
+                await synchronizer.run();
+                console.log('Sync completed for permissions');
+            } catch (error) {
+                console.error('Error syncing permissions:', error);
+            }
+        }
+    );
 
     sync.command('voters <chain>')
         .description('Sync voters for a specific chain')

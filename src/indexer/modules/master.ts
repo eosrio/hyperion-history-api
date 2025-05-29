@@ -43,6 +43,7 @@ import { HyperionModuleLoader } from './loader.js';
 import { HyperionQueueMonitor } from './queueMonitor.js';
 
 import Timeout = NodeJS.Timeout;
+import { IPermission } from '../../interfaces/table-permissions.js';
 
 export class HyperionMaster {
     // global configuration
@@ -1595,7 +1596,8 @@ export class HyperionMaster {
             { type: 'block', name: prefix + '_blocks' },
             { type: 'delta', name: prefix + '_deltas' },
             { type: 'abi', name: prefix + '_abis' },
-            { type: 'generic', name: prefix + '_generic' }
+            { type: 'generic', name: prefix + '_generic' },
+            { type: 'state', name: prefix + '_state' }
         ];
 
         const indexConfig: any = await import('../definitions/index-templates.js');
@@ -1910,21 +1912,24 @@ export class HyperionMaster {
                     if (table_feats.accounts) {
                         // accounts table indices
                         const accounts = db.collection<IAccount>('accounts');
-                        await accounts.createIndex({ code: 1 }, { unique: false });
-                        await accounts.createIndex({ scope: 1 }, { unique: false });
-                        await accounts.createIndex({ symbol: 1 }, { unique: false });
-                        await accounts.createIndex({ code: 1, scope: 1, symbol: 1 }, { unique: true });
+                        await accounts.createIndexes([
+                            { key: { code: 1, scope: 1, symbol: 1 }, unique: true },
+                            { key: { code: 1 }, unique: false },
+                            { key: { scope: 1 }, unique: false },
+                            { key: { symbol: 1 }, unique: false }
+                        ]);
                     }
 
                     if (table_feats.proposals) {
                         // proposals table indices
                         const proposals = db.collection<IProposal>('proposals');
                         await proposals.createIndexes([
-                            { key: { proposal_name: 1 } },
-                            { key: { proposer: 1 } },
-                            { key: { expiration: -1 } },
-                            { key: { 'provided_approvals.actor': 1 } },
-                            { key: { 'requested_approvals.actor': 1 } }
+                            { key: { proposal_name: 1, proposer: 1 }, unique: true },
+                            { key: { proposal_name: 1 }, unique: false },
+                            { key: { proposer: 1 }, unique: false },
+                            { key: { expiration: -1 }, unique: false },
+                            { key: { 'provided_approvals.actor': 1 }, unique: false },
+                            { key: { 'requested_approvals.actor': 1 }, unique: false }
                         ]);
                     }
 
@@ -1932,13 +1937,28 @@ export class HyperionMaster {
                         // voters table indices
                         const voters = db.collection<IVoter>('voters');
                         await voters.createIndexes([
-                            { key: { voter: 1 } },
+                            { key: { voter: 1 }, unique: true },
                             { key: { block_num: 1 } },
                             { key: { staked: 1 } },
                             { key: { last_vote_weight: 1 } },
                             { key: { proxied_vote_weight: 1 } },
                             { key: { producers: 1 } },
                             { key: { is_proxy: 1 } }
+                        ]);
+                    }
+
+                    if (table_feats.permissions) {
+                        // permissions table indices
+                        const permissions = db.collection<IPermission>('permissions');
+                        await permissions.createIndexes([
+                            { key: { account: 1, perm_name: 1 }, unique: true },
+                            { key: { block_num: 1 }, unique: false },
+                            { key: { account: 1 }, unique: false },
+                            { key: { perm_name: 1 }, unique: false },
+                            { key: { parent: 1 }, unique: false },
+                            { key: { 'linked_actions.account': 1 }, unique: false },
+                            { key: { 'linked_actions.action': 1 }, unique: false },
+                            { key: { last_updated: -1 }, unique: false }
                         ]);
                     }
 

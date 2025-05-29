@@ -1,11 +1,11 @@
-import {cargo, QueueObject} from "async";
-import {Message} from "amqplib";
+import { ConsumeMessage } from "amqplib";
+import { cargo, QueueObject } from "async";
 
-import {HyperionWorker} from "./hyperionWorker.js";
-import {ElasticRoutes, RouteFunction} from '../helpers/elastic-routes.js';
-import {hLog} from "../helpers/common_functions.js";
-import {RabbitQueueDef} from "../definitions/index-queues.js";
-import {MongoRoutes} from "../helpers/mongo-routes.js";
+import { RabbitQueueDef } from "../definitions/index-queues.js";
+import { hLog } from "../helpers/common_functions.js";
+import { ElasticRoutes, RouteFunction } from '../helpers/elastic-routes.js';
+import { MongoRoutes } from "../helpers/mongo-routes.js";
+import { HyperionWorker } from "./hyperionWorker.js";
 
 export default class IndexerWorker extends HyperionWorker {
 
@@ -31,9 +31,7 @@ export default class IndexerWorker extends HyperionWorker {
 
         this.mongoRoutes = new MongoRoutes(this.manager);
 
-        this.indexQueue = cargo((payload: Message[], callback) => {
-
-            // hLog(`Indexing (${process.env.type}): `, payload.length);
+        this.indexQueue = cargo((payload: ConsumeMessage[], callback) => {
 
             if (this.ch_ready && payload && process.env.type && this.ch) {
 
@@ -75,7 +73,7 @@ export default class IndexerWorker extends HyperionWorker {
             const queueName = process.env.queue;
             if (this.ch && queueName) {
                 this.ch_ready = true;
-                // console.log('Consumer on:', queueName);
+                console.log('Consumer on:', queueName);
                 this.ch.on('close', () => {
                     hLog('Channel closed for queue:', queueName);
                     this.indexQueue.pause();

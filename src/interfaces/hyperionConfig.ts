@@ -207,6 +207,7 @@ export interface HyperionConfig {
             deltas: boolean
         },
         tables: {
+            permissions: boolean,
             proposals: boolean,
             accounts: boolean,
             voters: boolean,

@@ -1215,6 +1215,19 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
+    async pushToStateIndexQueue(data: any, type: string) {
+        const q = this.chain + ":index_state:" + (this.emit_idx);
+        await this.preIndexingQueue.push({
+            queue: q,
+            content: bufferFromJson(data),
+            headers: { type }
+        });
+        this.emit_idx++;
+        if (this.emit_idx > this.conf.scaling.indexing_queues) {
+            this.emit_idx = 1;
+        }
+    }
+
     private anyFromSender(gen_trx: any) {
         return this.chain + '::' + gen_trx.sender + '::*';
     }
@@ -1374,7 +1387,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         "permission_link": async (link: any, block_num: number, block_ts: string, row: any) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
-                await this.pushToIndexQueue({
+                await this.pushToStateIndexQueue({
                     "@timestamp": block_ts,
                     block_num: block_num,
                     present: row.present,
@@ -1388,7 +1401,6 @@ export default class MainDSWorker extends HyperionWorker {
 
         "permission": async (perm: any, block_num: number, block_ts: string, row: any) => {
             if (!this.conf.indexer.abi_scan_mode && this.conf.indexer.process_deltas) {
-
                 if (perm.auth.accounts.length === 0) {
                     delete perm.auth.accounts;
                 }
@@ -1401,7 +1413,7 @@ export default class MainDSWorker extends HyperionWorker {
                     delete perm.auth.waits;
                 }
 
-                await this.pushToIndexQueue({
+                await this.pushToStateIndexQueue({
                     block_num: block_num,
                     present: row.present,
                     ...perm
@@ -1575,6 +1587,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     async processDeltas(deltas: [string, TableDelta][], block_num: number, block_ts: string, block_id: string) {
         const deltaStruct = extractDeltaStruct(deltas);
+
         for (const key in deltaStruct) {
             if (this.deltaStructHandlers[key] && deltaStruct.hasOwnProperty(key)) {
                 if (this.conf.indexer.abi_scan_mode && key !== 'account') {

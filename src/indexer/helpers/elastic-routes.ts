@@ -259,14 +259,6 @@ function buildTrxErrBulk(payloads: Message[], messageMap: MMap) {
 }
 
 const generatorsMap = {
-    permission: {
-        index_name: 'perm',
-        func: buildPermBulk
-    },
-    permission_link: {
-        index_name: 'link',
-        func: buildLinkBulk
-    },
     resource_limits: {
         index_name: 'reslimits',
         func: buildResLimitBulk

@@ -1,7 +1,7 @@
-import {Name, UInt64} from "@wharfkit/antelope";
-import {cargo} from "async";
-import {IVoter} from "../../interfaces/table-voter.js";
-import {Synchronizer} from "./synchronizer.js";
+import { Name, UInt64 } from "@wharfkit/antelope";
+import { cargo } from "async";
+import { IVoter } from "../../interfaces/table-voter.js";
+import { Synchronizer } from "./synchronizer.js";
 
 export class VoterSynchronizer extends Synchronizer<IVoter> {
 
@@ -46,9 +46,9 @@ export class VoterSynchronizer extends Synchronizer<IVoter> {
         this.currentBlock = info.head_block_num.toNumber();
 
         await this.setupMongo('voters', [
-            {fields: {voter: 1}},
-            {fields: {producers: 1}},
-            {fields: {is_proxy: 1}}
+            { fields: { voter: 1 }, options: { unique: true } },
+            { fields: { producers: 1 } },
+            { fields: { is_proxy: 1 } }
         ]);
 
         try {
@@ -91,7 +91,7 @@ export class VoterSynchronizer extends Synchronizer<IVoter> {
                 const bulkResponse = await this.elastic.helpers.bulk({
                     flushBytes: 1000000,
                     datasource: this.scan(),
-                    onDocument: (doc) => [{index: {_id: doc.voter, _index: this.indexName}}, doc],
+                    onDocument: (doc) => [{ index: { _id: doc.voter, _index: this.indexName } }, doc],
                     onDrop: (doc) => console.log('doc', doc)
                 });
                 console.log(`bulkResponse`, bulkResponse);
