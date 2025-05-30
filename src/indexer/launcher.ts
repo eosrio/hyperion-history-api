@@ -17,8 +17,7 @@ const hyperionWorkers = {
 	continuous_reader: 'state-reader',
 	repair_reader: 'state-reader',
 	ingestor: 'indexer',
-	router: 'ws-router',
-	delta_updater: 'delta-updater'
+	router: 'ws-router'
 };
 
 async function launch() {

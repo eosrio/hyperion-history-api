@@ -110,7 +110,6 @@ export interface IndexerConfigs {
     process_deltas: boolean;
     repair_mode: boolean;
     max_inline: number;
-    disable_delta_rm?: boolean;
 }
 
 interface ApiLimits {
@@ -405,8 +404,7 @@ const IndexerConfigsSchema = z.object({
     disable_indexing: z.boolean(),
     process_deltas: z.boolean(),
     repair_mode: z.boolean(),
-    max_inline: z.number(),
-    disable_delta_rm: z.boolean().optional(),
+    max_inline: z.number()
 });
 
 // Zod schema for hub configurations

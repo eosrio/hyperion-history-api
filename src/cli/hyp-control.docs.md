@@ -240,7 +240,7 @@ Lists all active workers for a specific chain with detailed information includin
 
 **Output Columns:**
 *   **ID**: Unique worker identifier
-*   **Role**: Worker type (continuous_reader, deserializer, ingestor, router, ds_pool_worker, delta_updater)
+*   **Role**: Worker type (continuous_reader, deserializer, ingestor, router, ds_pool_worker)
 *   **Queue**: Assigned processing queue (chain prefix removed for clarity)
 *   **Local**: Local worker ID (for pool workers)
 *   **Live**: Live mode status (✓ = true, ✗ = false, — = not applicable)
@@ -252,7 +252,6 @@ Lists all active workers for a specific chain with detailed information includin
 *   **ingestor**: Indexes processed data into ElasticSearch/MongoDB
 *   **router**: Handles streaming connections and routing
 *   **ds_pool_worker**: Deserializes actions in a worker pool
-*   **delta_updater**: Updates delta records and state changes
 
 ### `worker details <chain> <workerId>`
 

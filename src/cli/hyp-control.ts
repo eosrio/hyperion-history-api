@@ -207,7 +207,7 @@ async function listWorkers(chain: string, host?: string) {
         }
 
         console.log(`\n📋 Workers for chain: ${chain}`);
-        console.log('═'.repeat(155));
+        console.log('═'.repeat(110));
         console.log('ID  │ Role              │ Queue                      │ Local │ Live  │ Fails │ Msgs  │ Consumers │ Rate(msg/s)');
         console.log('────┼───────────────────┼────────────────────────────┼───────┼───────┼───────┼───────┼───────────┼────────────');
 
@@ -326,7 +326,7 @@ async function listWorkers(chain: string, host?: string) {
             console.log(`${id} │ ${role} │ ${queue} │ ${localId} │ ${liveMode} │ ${failures} │ ${messages} │ ${consumers} │ ${publishRate}`);
         });
 
-        console.log('═'.repeat(155));
+        console.log('═'.repeat(110));
         console.log(`Total workers: ${workers.length}`);
 
         // Add queue metrics summary

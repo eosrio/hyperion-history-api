@@ -84,7 +84,6 @@ export default class MainDSWorker extends HyperionWorker {
     autoBlacklist: Map<string, any[]> = new Map();
 
     lastSelectedWorker = 0;
-    deltaRemovalQueue: string;
 
     allowedDynamicContracts: Set<string> = new Set<string>();
 
@@ -94,8 +93,6 @@ export default class MainDSWorker extends HyperionWorker {
     constructor() {
 
         super();
-
-        this.deltaRemovalQueue = this.chain + ":delta_rm";
 
         this.consumerQueue = cargo<Message>((payload, cb) => {
             this.processMessages(payload).then(() => {
@@ -196,8 +193,6 @@ export default class MainDSWorker extends HyperionWorker {
             hLog("Channel was not created! Something went wrong!");
             process.exit(1);
         }
-
-        await this.ch.assertQueue(this.deltaRemovalQueue, RabbitQueueDef);
 
         // make sure the input queue is ready if the deserializer launches too early
         const workerQueue = process.env['worker_queue'];
@@ -1307,15 +1302,20 @@ export default class MainDSWorker extends HyperionWorker {
                         }
 
                         if (typeof row.present !== "undefined") {
-                            if (row.present === 0 && !this.conf.indexer.disable_delta_rm) {
-                                if (this.ch_ready && this.ch) {
-                                    this.ch.sendToQueue(this.deltaRemovalQueue, buff);
-                                } else {
-                                    hLog('Channel is not ready!');
-                                }
-                            } else {
+
+                            if (row.present === 1 || row.present === true) {
                                 await this.pushToDeltaQueue(buff, block_num);
                             }
+
+                            // if (row.present === 0) {
+                            //     if (this.ch_ready && this.ch) {
+                            //         this.ch.sendToQueue(this.deltaRemovalQueue, buff);
+                            //     } else {
+                            //         hLog('Channel is not ready!');
+                            //     }
+                            // } else {
+                            //     await this.pushToDeltaQueue(buff, block_num);
+                            // }
                         }
                         this.temp_delta_counter++;
                     }

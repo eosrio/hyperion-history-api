@@ -41,10 +41,6 @@ export class ConfigurationModule {
             this.proc_prefix = this.config.settings.process_prefix;
         }
 
-        if (this.config.indexer.disable_delta_rm) {
-            this.disabledWorkers.add('delta_updater');
-        }
-
         // enforce deltas only for abi scan mode
         if (this.config.indexer.abi_scan_mode) {
             this.config.indexer.fetch_traces = false;

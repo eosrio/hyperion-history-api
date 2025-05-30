@@ -1054,7 +1054,6 @@ export class HyperionMaster {
         await this.setupIndexers();
         await this.setupStreaming();
         await this.setupDSPool();
-        this.addWorker({ worker_role: 'delta_updater' });
     }
 
     launchWorkers() {
