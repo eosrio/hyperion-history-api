@@ -17,21 +17,179 @@ export class LocalHyperionController {
         this.localController?.publish(topic, JSON.stringify(data));
     }
 
-    createLocalController(controlPort: number) {
-        const formatWorkerMap = () => {
-            return this.master.workerMap.map((worker: HyperionWorkerDef) => {
-                return {
+    formatWorkerMap() {
+        return this.master.workerMap.map((worker: HyperionWorkerDef) => {
+            return {
+                worker_id: worker.worker_id,
+                worker_role: worker.worker_role,
+                queue: worker.queue,
+                local_id: worker.local_id,
+                worker_queue: worker.worker_queue,
+                live_mode: worker.live_mode,
+                failures: worker.failures || 0
+            };
+        });
+    }
+
+    /**
+     * Sets up HTTP handlers for the local controller to manage Hyperion workers.
+     * This includes endpoints for getting worker information, killing workers, and scaling parameters.
+     */
+    setHttpHandlers() {
+
+
+        if (!this.localController) {
+            throw new Error("Local controller is not initialized. Call createLocalController first.");
+        }
+
+        // Get the list of workers
+        this.localController.get('/get_workers', (res: HttpResponse, req: HttpRequest) => {
+            res.writeHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(this.formatWorkerMap()));
+        });
+
+        // Get worker info by worker_id
+        this.localController.get('/get_worker/:worker_id', (res: HttpResponse, req: HttpRequest) => {
+            const workerId = req.getParameter(0);
+
+            if (!workerId) {
+                res.writeStatus('400 Bad Request');
+                res.end(JSON.stringify({ error: 'Worker ID is required.' }));
+                return;
+            }
+
+            const workerIdNumber = parseInt(workerId, 10);
+            if (isNaN(workerIdNumber)) {
+                res.writeStatus('400 Bad Request');
+                res.end(JSON.stringify({ error: 'Invalid Worker ID format. It should be a number.' }));
+                return;
+            }
+
+            const worker = this.master.workerMap.find((w: HyperionWorkerDef) => w.worker_id === workerIdNumber);
+            if (worker) {
+                res.writeHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({
                     worker_id: worker.worker_id,
                     worker_role: worker.worker_role,
-                    queue: worker.queue,
-                    local_id: worker.local_id,
-                    worker_queue: worker.worker_queue,
-                    live_mode: worker.live_mode
-                };
-            });
-        };
+                    last_processed_block: worker.worker_last_processed_block,
+                    pid: worker.wref?.process.pid || null,
+                    failures: worker.failures || 0,
+                    killed: worker.wref?.process.killed || false
+                }));
+            } else {
+                res.writeStatus('404 Not Found');
+                res.end(JSON.stringify({ error: `Worker with ID ${workerId} not found.` }));
+            }
+        });
 
-        this.localController = App();
+        // Kill a worker by worker_id
+        this.localController.get('/kill_worker/:worker_id', (res: HttpResponse, req: HttpRequest) => {
+            const workerId = req.getParameter(0);
+            if (!workerId) {
+                res.writeStatus('400 Bad Request');
+                res.end(JSON.stringify({ error: 'Worker ID is required.' }));
+                return;
+            }
+            const workerIdNumber = parseInt(workerId, 10);
+            if (isNaN(workerIdNumber)) {
+                res.writeStatus('400 Bad Request');
+                res.end(JSON.stringify({ error: 'Invalid Worker ID format. It should be a number.' }));
+                return;
+            }
+            const worker = this.master.workerMap.find((w: HyperionWorkerDef) => w.worker_id === workerIdNumber);
+            if (worker) {
+                if (worker.wref && worker.wref.process) {
+                    worker.wref.process.kill();
+                    res.writeHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({
+                        message: `Worker with ID ${workerId} has been killed.`,
+                        worker_id: worker.worker_id,
+                        worker_role: worker.worker_role,
+                        last_processed_block: worker.worker_last_processed_block,
+                        pid: worker.wref.process.pid,
+                        killed: worker.wref.process.killed
+                    }));
+                } else {
+                    res.writeStatus('404 Not Found');
+                    res.end(JSON.stringify({ error: `Worker with ID ${workerId} is not running.` }));
+                }
+            } else {
+                res.writeStatus('404 Not Found');
+                res.end(JSON.stringify({ error: `Worker with ID ${workerId} not found.` }));
+            }
+        });
+
+        this.localController.get('/list_workers', (res: HttpResponse, req: HttpRequest) => {
+            res.writeHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(this.formatWorkerMap()));
+        });
+
+        // Get scaling parameters and worker counts by type
+        this.localController.get('/scaling', (res: HttpResponse, req: HttpRequest) => {
+            const workerCounts: Record<string, number> = {};
+            const workersByRole: Record<string, HyperionWorkerDef[]> = {};
+
+            // Group workers by role and count them
+            this.master.workerMap.forEach((worker: HyperionWorkerDef) => {
+                const role = worker.worker_role || 'unknown';
+                if (!workerCounts[role]) {
+                    workerCounts[role] = 0;
+                    workersByRole[role] = [];
+                }
+                workerCounts[role]++;
+                workersByRole[role].push(worker);
+            });
+
+            const scalingInfo = {
+                // Configuration scaling parameters
+                config: {
+                    readers: this.master.conf.scaling.readers,
+                    ds_threads: this.master.conf.scaling.ds_threads,
+                    ds_queues: this.master.conf.scaling.ds_queues,
+                    ds_pool_size: this.master.conf.scaling.ds_pool_size,
+                    indexing_queues: this.master.conf.scaling.indexing_queues,
+                    ad_idx_queues: this.master.conf.scaling.ad_idx_queues,
+                    dyn_idx_queues: this.master.conf.scaling.dyn_idx_queues,
+                    max_autoscale: this.master.conf.scaling.max_autoscale,
+                    auto_scale_trigger: this.master.conf.scaling.auto_scale_trigger,
+                    batch_size: this.master.conf.scaling.batch_size,
+                    max_queue_limit: this.master.conf.scaling.max_queue_limit,
+                    block_queue_limit: this.master.conf.scaling.block_queue_limit,
+                    routing_mode: this.master.conf.scaling.routing_mode
+                },
+                // Current worker counts by role
+                current_workers: workerCounts,
+                // Total active workers
+                total_workers: this.master.workerMap.length,
+                // Worker details by role
+                workers_by_role: Object.keys(workersByRole).reduce((acc, role) => {
+                    acc[role] = workersByRole[role].map(worker => ({
+                        worker_id: worker.worker_id,
+                        local_id: worker.local_id,
+                        queue: worker.queue || worker.worker_queue,
+                        live_mode: worker.live_mode,
+                        failures: worker.failures || 0,
+                        active: !!worker.wref && !worker.wref.process.killed
+                    }));
+                    return acc;
+                }, {} as Record<string, any[]>)
+            };
+
+            res.writeHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(scalingInfo, null, 2));
+        });
+    }
+
+
+    /**
+     * Sets up WebSocket handlers for the local controller to manage Hyperion workers.
+     * This includes handling messages for starting, stopping, and monitoring workers.
+     */
+    setWebSocketHandlers() {
+        if (!this.localController) {
+            throw new Error("Local controller is not initialized. Call createLocalController first.");
+        }
+
         this.localController.ws('/local', {
             open: (ws: WebSocket<any>) => {
                 hLog(`Local controller connected!`);
@@ -42,7 +200,7 @@ export class LocalHyperionController {
                 try {
                     switch (rawMessage) {
                         case 'list_workers': {
-                            ws.send(JSON.stringify(formatWorkerMap()));
+                            ws.send(JSON.stringify(this.formatWorkerMap()));
                             break;
                         }
                         default: {
@@ -205,12 +363,28 @@ export class LocalHyperionController {
                 hLog(`Local controller disconnected!`);
             }
         });
+    }
 
-        this.localController.get('/list_workers', (res: HttpResponse, req: HttpRequest) => {
-            res.writeHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify(formatWorkerMap()));
-        });
+    /**
+     * Creates the local controller for managing Hyperion workers and handling requests.
+     * @param controlPort The port on which the local controller will listen for WebSocket connections.
+     */
+    createLocalController(controlPort: number) {
 
+        if (this.localController) {
+            throw new Error("Local controller is already initialized. Call createLocalController only once.");
+        }
+        if (!controlPort || controlPort <= 0 || controlPort > 65535) {
+            throw new Error("Invalid control port specified. It must be a number between 1 and 65535.");
+        }
+
+        // Initialize the local controller app
+        this.localController = App();
+
+        this.setHttpHandlers();
+        this.setWebSocketHandlers();
+
+        // Start listening on the specified control port
         this.localController.listen(controlPort, (token) => {
             if (token) {
                 hLog(`Local controller listening on port ${controlPort}`);

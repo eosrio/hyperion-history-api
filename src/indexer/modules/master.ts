@@ -1168,10 +1168,14 @@ export class HyperionMaster {
                 this.globalUsageMap[code][2].forEach((w_id) => {
                     // hLog(`>>>> Worker ${this.globalUsageMap[code][2]} removed from ${code}!`);
                     if (this.dsPoolMap.has(w_id)) {
-                        this.dsPoolMap.get(w_id)?.send({
-                            event: 'remove_contract',
-                            contract: code
-                        });
+                        try {
+                            this.dsPoolMap.get(w_id)?.send({
+                                event: 'remove_contract',
+                                contract: code
+                            });
+                        } catch (error) {
+                            hLog(`Failed to remove contract ${code} from worker ${w_id}:`, error);
+                        }
                     }
                 });
                 this.globalUsageMap[code][2] = propWorkerMap[code];
@@ -1879,7 +1883,8 @@ export class HyperionMaster {
                     workerReference.failures = 0;
                 }
                 workerReference.failures++;
-                hLog(`New worker defined: ${workerReference.worker_role} for ${workerReference.worker_queue}`);
+                hLog(`New worker defined: ${workerReference.worker_role} for ${workerReference.worker_queue ?? workerReference.queue}`);
+                console.log(workerReference);
                 setTimeout(() => {
                     this.launchWorkers();
                     setTimeout(() => {

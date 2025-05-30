@@ -13,6 +13,17 @@ interface QueueInfo {
     auto_delete: boolean;
     durable: boolean;
     exclusive: boolean;
+    message_stats?: {
+        publish_details?: {
+            rate: number;
+        };
+        deliver_details?: {
+            rate: number;
+        };
+        ack_details?: {
+            rate: number;
+        };
+    };
 }
 
 interface QueueListOptions {
@@ -60,13 +71,13 @@ export class QueueManager {
 
             const allQueues: QueueInfo[] = await response.json();
 
-            // Filter queues for the specific chain
-            let filteredQueues = allQueues.filter(queue => {
-                if (options.showAll) {
-                    return true;
-                }
-                return queue.name.startsWith(`${chain}:`);
-            });
+            // Apply client-side filtering for precise matching
+            let filteredQueues = allQueues;
+            
+            if (!options.showAll && chain) {
+                // Filter to only get queues that start with the chain prefix
+                filteredQueues = allQueues.filter(queue => queue.name.startsWith(`${chain}:`));
+            }
 
             // Apply additional filters
             if (options.filterPattern) {

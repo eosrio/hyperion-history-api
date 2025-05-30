@@ -213,6 +213,157 @@ Retrieves and displays V8 heap statistics from all indexer workers, providing de
 ./hyp-control stats get-heap telos --host localhost:7000
 ```
 
+## `worker`
+
+Monitor and manage individual Hyperion indexer workers. These commands interact with the local controller's HTTP endpoints to provide real-time worker information and management capabilities.
+
+### `worker list <chain>`
+
+Lists all active workers for a specific chain with detailed information including worker roles, queues, and failure counts.
+
+**Usage:**
+```bash
+./hyp-control worker list <chain> [options]
+```
+
+**Arguments:**
+*   `<chain>`: The short name of the chain to list workers for.
+
+**Options:**
+*   `-h, --host <host>`: Optional host for the indexer controller (defaults to configuration).
+
+**Example:**
+```bash
+./hyp-control worker list libre
+./hyp-control worker list wax --host localhost:7000
+```
+
+**Output Columns:**
+*   **ID**: Unique worker identifier
+*   **Role**: Worker type (continuous_reader, deserializer, ingestor, router, ds_pool_worker, delta_updater)
+*   **Queue**: Assigned processing queue (chain prefix removed for clarity)
+*   **Local**: Local worker ID (for pool workers)
+*   **Live**: Live mode status (✓ = true, ✗ = false, — = not applicable)
+*   **Fails**: Number of failures encountered by the worker
+
+**Worker Roles:**
+*   **continuous_reader**: Reads blocks from the blockchain in real-time
+*   **deserializer**: Processes and deserializes block data
+*   **ingestor**: Indexes processed data into ElasticSearch/MongoDB
+*   **router**: Handles streaming connections and routing
+*   **ds_pool_worker**: Deserializes actions in a worker pool
+*   **delta_updater**: Updates delta records and state changes
+
+### `worker details <chain> <workerId>`
+
+Retrieves detailed information about a specific worker including process details, performance metrics, and current status.
+
+**Usage:**
+```bash
+./hyp-control worker details <chain> <workerId> [options]
+```
+
+**Arguments:**
+*   `<chain>`: The short name of the chain.
+*   `<workerId>`: The unique worker ID to inspect.
+
+**Options:**
+*   `-h, --host <host>`: Optional host for the indexer controller (defaults to configuration).
+
+**Example:**
+```bash
+./hyp-control worker details libre 7
+./hyp-control worker details wax 15 --host localhost:7000
+```
+
+**Displayed Information:**
+*   Worker ID and role
+*   Last processed block number
+*   Process ID (PID)
+*   Failure count
+*   Current status (running/killed)
+
+### `worker kill <chain> <workerId>`
+
+Terminates a specific worker process. This is useful for restarting problematic workers or performing maintenance.
+
+**Usage:**
+```bash
+./hyp-control worker kill <chain> <workerId> [options]
+```
+
+**Arguments:**
+*   `<chain>`: The short name of the chain.
+*   `<workerId>`: The unique worker ID to terminate.
+
+**Options:**
+*   `-h, --host <host>`: Optional host for the indexer controller (defaults to configuration).
+*   `--force`: Force kill without confirmation prompt.
+
+**Examples:**
+```bash
+# Kill with confirmation prompt
+./hyp-control worker kill libre 7
+
+# Force kill without confirmation
+./hyp-control worker kill libre 7 --force
+
+# Kill worker on remote host
+./hyp-control worker kill wax 15 --host 192.168.1.100 --force
+```
+
+**Important:**
+*   Killing workers will interrupt their current processing
+*   The master process will typically restart killed workers automatically
+*   Use this command for troubleshooting stuck or problematic workers
+
+### `worker scaling <chain>`
+
+Displays comprehensive scaling information including configuration parameters, current worker distribution, and detailed worker status by role.
+
+**Usage:**
+```bash
+./hyp-control worker scaling <chain> [options]
+```
+
+**Arguments:**
+*   `<chain>`: The short name of the chain to get scaling information for.
+
+**Options:**
+*   `-h, --host <host>`: Optional host for the indexer controller (defaults to configuration).
+
+**Example:**
+```bash
+./hyp-control worker scaling libre
+./hyp-control worker scaling wax --host localhost:7000
+```
+
+**Displayed Information:**
+
+**Configuration Section:**
+*   `readers`: Number of configured reader workers
+*   `ds_threads`: Deserializer threads per queue
+*   `ds_queues`: Number of deserializer queues
+*   `ds_pool_size`: Deserializer pool worker count
+*   `indexing_queues`: Generic indexing queue count
+*   `ad_idx_queues`: Action/delta indexing queue count
+*   `dyn_idx_queues`: Dynamic table indexing queue count
+*   `max_autoscale`: Maximum autoscaling limit
+*   `auto_scale_trigger`: Queue size threshold for autoscaling
+*   `batch_size`: Processing batch size
+*   `max_queue_limit`: Maximum queue message limit
+*   `block_queue_limit`: Block queue message limit
+*   `routing_mode`: Load balancing routing mode
+
+**Current Workers Summary:**
+*   Count of active workers by role
+*   Total worker count
+
+**Detailed Workers by Role:**
+*   Individual worker details grouped by role
+*   Worker status (✅ active, ❌ inactive)
+*   Queue assignments and failure counts
+
 ## `queues`
 
 Manage and monitor RabbitMQ queues used by the Hyperion indexer for processing blockchain data.
@@ -334,6 +485,13 @@ Purging queues removes all pending messages and cannot be undone. Ensure the ind
 - If the indexer is offline during sync operations, a warning is displayed, but the sync continues.
 - Always verify indexer status after sync operations complete.
 
+### Worker Management
+- Worker commands interact with the local controller HTTP API running on specific ports per chain.
+- Default ports: libre (47012), wax (47013), jungle (47014), ultra (47015), pangea (47016).
+- Worker list provides real-time status including failures, which helps identify problematic workers.
+- Killing workers is safe as the master process automatically restarts them.
+- Use scaling information to understand current worker distribution and configuration.
+
 ### Queue Management
 - Queue operations interact directly with RabbitMQ through its management API.
 - Ensure RabbitMQ is accessible and properly configured in `connections.json`.
@@ -344,6 +502,7 @@ Purging queues removes all pending messages and cannot be undone. Ensure the ind
 - Stats commands provide real-time insights into indexer performance.
 - Memory and heap statistics help identify potential memory leaks or resource constraints.
 - Usage maps show which contracts are consuming the most processing resources.
+- Worker monitoring helps identify individual worker performance and failure patterns.
 
 ## Troubleshooting
 
@@ -351,6 +510,12 @@ Purging queues removes all pending messages and cannot be undone. Ensure the ind
 - **Sync Failures**: Check indexer logs for detailed error information during synchronization operations.
 - **Queue Access**: Ensure RabbitMQ management API is enabled and credentials are correct in `connections.json`.
 - **Performance Issues**: Use stats commands to identify bottlenecks and monitor resource usage patterns.
+- **Worker Issues**: 
+  - Use `worker list` to identify workers with high failure counts
+  - Use `worker details` to get detailed information about problematic workers
+  - Use `worker kill --force` to restart stuck workers
+  - Check `worker scaling` to verify configuration matches expected worker distribution
+- **Port Issues**: If worker commands fail to connect, verify the local controller port for your chain is accessible.
 
 ## Additional Information
 

@@ -45,7 +45,7 @@ export class MongoRoutes {
             if (permissionMessages.length > 0) {
                 const operations = payload.map((msg: Message) => {
                     const data = JSON.parse(msg.content.toString()) as IPermission & { present: number };
-                    console.log('permission', data);
+                    // console.log('permission', data);
                     if (data.present !== 0) {
                         return {
                             updateOne: {
@@ -76,16 +76,19 @@ export class MongoRoutes {
                     }
                 });
 
-                console.log(operations);
+                // console.log(operations);
 
-                this.permissionsCollection?.bulkWrite(operations, { ordered: false }).then((value) => {
-                    console.log(value);
-                    console.log('Permission messages indexed:', permissionMessages.length);
-                }).catch(reason => {
-                    hLog('error', 'mongo-routes', 'state', reason);
-                }).finally(() => {
-                    callback(payload.length);
-                });
+                this.permissionsCollection?.bulkWrite(operations, { ordered: false })
+                    // .then((value) => {
+                    //     console.log(value);
+                    //     console.log('Permission messages indexed:', permissionMessages.length);
+                    // })
+                    .catch(reason => {
+                        hLog('error', 'mongo-routes', 'state', reason);
+                    })
+                    .finally(() => {
+                        callback(payload.length);
+                    });
             }
 
             const permissionLinkMessages = payload.filter((msg: Message) => {
@@ -96,7 +99,7 @@ export class MongoRoutes {
             if (permissionLinkMessages.length > 0) {
                 const operations = permissionLinkMessages.map((msg: Message) => {
                     const data = JSON.parse(msg.content.toString()) as IPermission & { present: number };
-                    console.log('permission_link', data);
+                    // console.log('permission_link', data);
                     if (data.present !== 0) {
                         return {
                             updateOne: {
@@ -140,14 +143,17 @@ export class MongoRoutes {
                     }
                 });
 
-                this.permissionsCollection?.bulkWrite(operations, { ordered: false }).then((value)=>{
-                    console.log(value);
-                    console.log('Permission link messages indexed:', permissionLinkMessages.length);
-                }).catch(reason => {
-                    hLog('error', 'mongo-routes', 'state', reason);
-                }).finally(() => {
-                    callback(permissionLinkMessages.length);
-                });
+                this.permissionsCollection?.bulkWrite(operations, { ordered: false })
+                    // .then((value) => {
+                    //     console.log(value);
+                    //     console.log('Permission link messages indexed:', permissionLinkMessages.length);
+                    // })
+                    .catch(reason => {
+                        hLog('error', 'mongo-routes', 'state', reason);
+                    })
+                    .finally(() => {
+                        callback(permissionLinkMessages.length);
+                    });
             }
 
             if (permissionMessages.length === 0 && permissionLinkMessages.length === 0) {
