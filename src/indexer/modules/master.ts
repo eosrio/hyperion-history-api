@@ -1882,8 +1882,11 @@ export class HyperionMaster {
                     workerReference.failures = 0;
                 }
                 workerReference.failures++;
-                hLog(`New worker defined: ${workerReference.worker_role} for ${workerReference.worker_queue ?? workerReference.queue}`);
-                console.log(workerReference);
+                let queueName = workerReference.worker_queue ?? workerReference.queue;
+                if (workerReference.worker_role === 'ds_pool_worker') {
+                    queueName = `${this.chain}:ds_pool:${workerReference.local_id}`;
+                }
+                hLog(`New worker defined: ${workerReference.worker_role} for ${queueName}`);
                 setTimeout(() => {
                     this.launchWorkers();
                     setTimeout(() => {

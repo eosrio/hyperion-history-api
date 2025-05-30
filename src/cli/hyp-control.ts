@@ -222,7 +222,13 @@ async function listWorkers(chain: string, host?: string) {
             // Special case for ds_pool_worker: construct queue name from local_id
             if (worker.worker_role === 'ds_pool_worker' && worker.local_id) {
                 fullQueueName = `${chain}:ds_pool:${worker.local_id}`;
-                queue = `ds_pool:${worker.local_id}`;
+                queue = `<- ds_pool:${worker.local_id}`;
+            } else if (worker.worker_role === 'router') {
+                queue = `<- stream`;
+            } else if (worker.worker_role === 'continuous_reader') {
+                queue = '-> live_blocks'; // continuous_reader publishes to live_blocks
+            } else if (worker.worker_role === 'reader') {
+                queue = '-> blocks:*'; // reader published to all blocks queues
             } else {
                 // Ensure fullQueueName has chain prefix for lookup
                 if (queue && !queue.startsWith(`${chain}:`)) {
@@ -230,7 +236,7 @@ async function listWorkers(chain: string, host?: string) {
                 }
                 // Remove chain prefix for display
                 if (queue.startsWith(`${chain}:`)) {
-                    queue = queue.substring(chain.length + 1);
+                    queue = '<- ' + queue.substring(chain.length + 1);
                 }
             }
 
