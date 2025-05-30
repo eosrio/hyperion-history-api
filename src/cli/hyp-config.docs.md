@@ -177,7 +177,7 @@ Retrieves a specific configuration value from a chain's configuration file. The 
 
 ### `set <chain> <configPath> <value>`
 
-Sets a specific configuration value in a chain's configuration file. The configuration path and value type are validated against the reference configuration. Creates an automatic backup before making changes.
+Sets a specific configuration value in a chain's configuration file. The configuration path and value type are validated against the reference configuration, and the entire configuration is validated using Zod schema to ensure overall integrity. Creates an automatic backup before making changes.
 
 **Usage:**
 ```bash
@@ -188,6 +188,12 @@ Sets a specific configuration value in a chain's configuration file. The configu
 *   `<chain>`: The short name of the chain whose configuration to modify.
 *   `<configPath>`: The dot-notation path to the configuration value.
 *   `<value>`: The new value to set. Can be a string, number, boolean, or JSON for complex values.
+
+**Validation Process:**
+1. **Path Validation**: Ensures the configuration path exists in the reference configuration
+2. **Type Validation**: Validates the value type matches the expected type from reference
+3. **Schema Validation**: Validates the entire configuration using comprehensive Zod schema
+4. **Backup Creation**: Creates a timestamped backup before saving changes
 
 **Type Validation:** The value must match the expected type from the reference configuration:
 *   **Numbers:** `1000`, `4096`
@@ -202,6 +208,29 @@ Sets a specific configuration value in a chain's configuration file. The configu
 ./hyp-config set eos scaling.readers 4
 ./hyp-config set telos api.enabled true
 ./hyp-config set wax api.limits '{"get_actions": 2000}'
+```
+
+**Sample Output:**
+```
+Setting configuration value for wax: indexer.start_on = 1000
+Current value: 0
+🔍 Validating configuration with schema...
+📦 Backup created: config/configuration_backups/wax_1748565893020_config.json
+✅ Configuration updated and validated successfully!
+New value: 1000
+```
+
+**Error Handling:**
+If the configuration becomes invalid after the change, you'll see relevant validation errors and suggestions to fix them:
+```
+❌ Configuration validation failed after setting 'indexer.start_on':
+
+🔸 Related validation errors:
+   • indexer.stop_on: Invalid input: expected number, received undefined
+
+💡 The value was set but the overall configuration is invalid.
+Please fix the validation errors or run:
+   ./hyp-config chains validate wax --fix
 ```
 
 ### `set-default <chain> <configPath>`

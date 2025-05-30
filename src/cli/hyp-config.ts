@@ -1514,7 +1514,7 @@ async function setConfigValue(chainName: string, configPath: string, valueStr: s
 
     try {
         const chainJsonFile = await readFile(targetPath);
-        const chainConfig: HyperionConfig = JSON.parse(chainJsonFile.toString());
+        let chainConfig: HyperionConfig = JSON.parse(chainJsonFile.toString());
 
         // Parse the value
         let parsedValue: any;
@@ -1526,7 +1526,7 @@ async function setConfigValue(chainName: string, configPath: string, valueStr: s
             process.exit(1);
         }
 
-        // Validate value type against reference
+        // Validate value type against reference (basic check)
         if (!validateValueType(parsedValue, validation.expectedType!, configPath)) {
             console.error(`Type mismatch for '${configPath}'`);
             console.error(`Expected: ${validation.expectedType}, but got: ${typeof parsedValue}`);
@@ -1553,6 +1553,43 @@ async function setConfigValue(chainName: string, configPath: string, valueStr: s
         // Set the new value
         setNestedValue(chainConfig, configPath, parsedValue);
 
+        // Validate the entire configuration with Zod schema before saving
+        console.log('🔍 Validating configuration with schema...');
+        const validationResult = HyperionConfigSchema.safeParse(chainConfig);
+
+        if (!validationResult.success) {
+            console.error(`❌ Configuration validation failed after setting '${configPath}':`);
+            
+            // Show only errors related to the path we just changed or its vicinity
+            const relevantErrors = validationResult.error.issues.filter(issue => {
+                const errorPath = issue.path.join('.');
+                return errorPath.startsWith(configPath) || configPath.startsWith(errorPath);
+            });
+
+            if (relevantErrors.length > 0) {
+                console.error('\n🔸 Related validation errors:');
+                relevantErrors.forEach(issue => {
+                    const errorPath = issue.path.join('.');
+                    console.error(`   • ${errorPath}: ${issue.message}`);
+                });
+            } else {
+                // Show first few general errors if no specific ones found
+                console.error('\n🔸 Schema validation errors:');
+                validationResult.error.issues.slice(0, 3).forEach(issue => {
+                    const errorPath = issue.path.join('.');
+                    console.error(`   • ${errorPath || 'root'}: ${issue.message}`);
+                });
+                if (validationResult.error.issues.length > 3) {
+                    console.error(`   ... and ${validationResult.error.issues.length - 3} more errors`);
+                }
+            }
+
+            console.error('\n💡 The value was set but the overall configuration is invalid.');
+            console.error('Please fix the validation errors or run:');
+            console.error(`   ./hyp-config chains validate ${chainName} --fix`);
+            process.exit(1);
+        }
+
         // Create backup
         if (!existsSync(backupDir)) {
             await mkdir(backupDir);
@@ -1560,12 +1597,12 @@ async function setConfigValue(chainName: string, configPath: string, valueStr: s
         const timestamp = Date.now();
         const backupPath = path.join(backupDir, `${chainName}_${timestamp}_config.json`);
         await cp(targetPath, backupPath);
-        console.log(`Backup created: ${backupPath}`);
+        console.log(`📦 Backup created: ${backupPath}`);
 
         // Save the updated configuration
         await writeFile(targetPath, JSON.stringify(chainConfig, null, 2));
 
-        console.log(`✅ Configuration updated successfully!`);
+        console.log(`✅ Configuration updated and validated successfully!`);
         console.log(`New value: ${formatValue(parsedValue)}`);
 
     } catch (error: any) {
@@ -1612,6 +1649,43 @@ async function setDefaultConfigValue(chainName: string, configPath: string) {
         // Set the default value
         setNestedValue(chainConfig, configPath, defaultValue);
 
+        // Validate the entire configuration with Zod schema before saving
+        console.log('🔍 Validating configuration with schema...');
+        const validationResult = HyperionConfigSchema.safeParse(chainConfig);
+
+        if (!validationResult.success) {
+            console.error(`❌ Configuration validation failed after setting '${configPath}' to default:`);
+            
+            // Show only errors related to the path we just changed or its vicinity
+            const relevantErrors = validationResult.error.issues.filter(issue => {
+                const errorPath = issue.path.join('.');
+                return errorPath.startsWith(configPath) || configPath.startsWith(errorPath);
+            });
+
+            if (relevantErrors.length > 0) {
+                console.error('\n🔸 Related validation errors:');
+                relevantErrors.forEach(issue => {
+                    const errorPath = issue.path.join('.');
+                    console.error(`   • ${errorPath}: ${issue.message}`);
+                });
+            } else {
+                // Show first few general errors if no specific ones found
+                console.error('\n🔸 Schema validation errors:');
+                validationResult.error.issues.slice(0, 3).forEach(issue => {
+                    const errorPath = issue.path.join('.');
+                    console.error(`   • ${errorPath || 'root'}: ${issue.message}`);
+                });
+                if (validationResult.error.issues.length > 3) {
+                    console.error(`   ... and ${validationResult.error.issues.length - 3} more errors`);
+                }
+            }
+
+            console.error('\n💡 The default value was set but the overall configuration is invalid.');
+            console.error('Please fix the validation errors or run:');
+            console.error(`   ./hyp-config chains validate ${chainName} --fix`);
+            process.exit(1);
+        }
+
         // Create backup
         if (!existsSync(backupDir)) {
             await mkdir(backupDir);
@@ -1619,12 +1693,12 @@ async function setDefaultConfigValue(chainName: string, configPath: string) {
         const timestamp = Date.now();
         const backupPath = path.join(backupDir, `${chainName}_${timestamp}_config.json`);
         await cp(targetPath, backupPath);
-        console.log(`Backup created: ${backupPath}`);
+        console.log(`📦 Backup created: ${backupPath}`);
 
         // Save the updated configuration
         await writeFile(targetPath, JSON.stringify(chainConfig, null, 2));
 
-        console.log(`✅ Configuration reset to default successfully!`);
+        console.log(`✅ Configuration reset to default and validated successfully!`);
         console.log(`Default value: ${formatValue(defaultValue)}`);
         console.log(`Type: ${validation.expectedType}`);
 
