@@ -165,11 +165,11 @@ async function getControllerPort(chain: string): Promise<number> {
         if (error.code === 'ENOENT') {
             throw new Error(
                 `\n[Hyperion CLI Error]\n` +
-                `Could not find the required configuration file: 'config/connections.json'.\n` +
-                `\nTo fix this, you can:\n` +
-                `  1. Run \x1b[36m./hyp-config connections init\x1b[0m to create a new configuration interactively.\n` +
-                `  2. Or copy the example: \x1b[36mcp references/connections.ref.json config/connections.json\x1b[0m\n` +
-                `\nSee './hyp-config connections --help' for more options.`
+                    `Could not find the required configuration file: 'config/connections.json'.\n` +
+                    `\nTo fix this, you can:\n` +
+                    `  1. Run \x1b[36m./hyp-config connections init\x1b[0m to create a new configuration interactively.\n` +
+                    `  2. Or copy the example: \x1b[36mcp references/connections.ref.json config/connections.json\x1b[0m\n` +
+                    `\nSee './hyp-config connections --help' for more options.`
             );
         }
         throw new Error(`Error reading connection config for chain '${chain}': ${error.message}`);
@@ -199,7 +199,7 @@ async function listWorkers(chain: string, host?: string) {
         try {
             const queueManager = new QueueManager();
             const queues = await queueManager.listQueues(chain, { showEmpty: true });
-            queues.forEach(queue => {
+            queues.forEach((queue) => {
                 queueData.set(queue.name, queue);
             });
         } catch (error: any) {
@@ -272,7 +272,7 @@ async function listWorkers(chain: string, host?: string) {
                 const roleBasedQueues = [
                     `${chain}:${worker.worker_role}:${worker.local_id}`,
                     `${chain}:index_${worker.worker_role}:${worker.local_id}`,
-                    `${chain}:${worker.worker_role.replace('_worker', '')}:${worker.local_id}`,
+                    `${chain}:${worker.worker_role.replace('_worker', '')}:${worker.local_id}`
                 ];
 
                 for (const queueName of roleBasedQueues) {
@@ -288,8 +288,7 @@ async function listWorkers(chain: string, host?: string) {
                 if (worker.worker_role === 'action_worker' && worker.local_id) {
                     queueInfo = queueData.get(`${chain}:index_actions:${worker.local_id}`);
                 } else if (worker.worker_role === 'block_worker' && worker.local_id) {
-                    queueInfo = queueData.get(`${chain}:blocks:${worker.local_id}`) ||
-                        queueData.get(`${chain}:index_blocks:${worker.local_id}`);
+                    queueInfo = queueData.get(`${chain}:blocks:${worker.local_id}`) || queueData.get(`${chain}:index_blocks:${worker.local_id}`);
                 } else if (worker.worker_role === 'delta_worker' && worker.local_id) {
                     queueInfo = queueData.get(`${chain}:index_deltas:${worker.local_id}`);
                 } else if (worker.worker_role === 'abi_worker' && worker.local_id) {
@@ -339,7 +338,7 @@ async function listWorkers(chain: string, host?: string) {
         if (queueData.size > 0) {
             const totalMessages = Array.from(queueData.values()).reduce((sum, queue) => sum + queue.messages, 0);
             const totalConsumers = Array.from(queueData.values()).reduce((sum, queue) => sum + queue.consumers, 0);
-            const queuesWithMessages = Array.from(queueData.values()).filter(queue => queue.messages > 0).length;
+            const queuesWithMessages = Array.from(queueData.values()).filter((queue) => queue.messages > 0).length;
 
             // Calculate total publish rate
             const totalPublishRate = Array.from(queueData.values()).reduce((sum, queue) => {
@@ -351,7 +350,7 @@ async function listWorkers(chain: string, host?: string) {
                 }
             }, 0);
 
-            const queuesWithActivity = Array.from(queueData.values()).filter(queue => {
+            const queuesWithActivity = Array.from(queueData.values()).filter((queue) => {
                 try {
                     const rate = queue.message_stats?.publish_details?.rate;
                     return typeof rate === 'number' && rate > 0;
@@ -360,8 +359,12 @@ async function listWorkers(chain: string, host?: string) {
                 }
             }).length;
 
-            console.log(`Queue metrics: ${totalMessages} total messages, ${totalConsumers} total consumers, ${totalPublishRate.toFixed(2)} msg/s total rate`);
-            console.log(`Activity: ${queuesWithMessages}/${queueData.size} queues with messages, ${queuesWithActivity}/${queueData.size} queues with publish activity`);
+            console.log(
+                `Queue metrics: ${totalMessages} total messages, ${totalConsumers} total consumers, ${totalPublishRate.toFixed(2)} msg/s total rate`
+            );
+            console.log(
+                `Activity: ${queuesWithMessages}/${queueData.size} queues with messages, ${queuesWithActivity}/${queueData.size} queues with publish activity`
+            );
         }
 
         // Add summary by role
@@ -375,7 +378,6 @@ async function listWorkers(chain: string, host?: string) {
         Object.entries(roleCount).forEach(([role, count]) => {
             console.log(`   ${role}: ${count}`);
         });
-
     } catch (error: any) {
         console.error('Error listing workers:', error.message);
     }
@@ -447,7 +449,7 @@ async function getScalingInfo(chain: string, host?: string) {
         console.log('─'.repeat(40));
         Object.entries(scalingInfo.workers_by_role).forEach(([role, workers]) => {
             console.log(`\n${role.toUpperCase()}:`);
-            (workers as any[]).forEach(worker => {
+            (workers as any[]).forEach((worker) => {
                 const status = worker.active ? '✅' : '❌';
                 const queue = worker.queue ? ` [${worker.queue}]` : '';
                 const failures = worker.failures > 0 ? ` (${worker.failures} failures)` : '';
@@ -505,8 +507,7 @@ async function getScalingInfo(chain: string, host?: string) {
             } catch (error) {
                 console.error('Error syncing permissions:', error);
             }
-        }
-        );
+        });
 
     sync.command('voters <chain>')
         .description('Sync voters for a specific chain')
@@ -552,8 +553,10 @@ async function getScalingInfo(chain: string, host?: string) {
                 } else {
                     console.log('Contract state synchronization skipped - feature is disabled in config');
                 }
+                process.exit(0);
             } catch (error) {
                 console.error('Error syncing contract state:', error);
+                process.exit(1);
             }
         });
 

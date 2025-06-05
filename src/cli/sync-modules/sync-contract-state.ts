@@ -138,13 +138,11 @@ export class ContractStateSynchronizer {
     private async *processContractState(targetContract?: string, targetTable?: string): AsyncGenerator<any> {
         if (this.config.features.contract_state.contracts) {
             for (const [contract, tables] of Object.entries(this.config.features.contract_state.contracts)) {
-
                 if (targetContract && contract !== targetContract) {
                     continue; // Skip if not the target contract
                 }
 
                 for (const [table, config] of Object.entries(tables)) {
-
                     if (targetTable && table !== targetTable) {
                         continue; // Skip if not the target table
                     }
@@ -212,7 +210,8 @@ export class ContractStateSynchronizer {
                                             // log at each 10000 rows
                                             if (this.totalRows % 10000 === 0) {
                                                 console.log(
-                                                    `Fetched ${this.totalRows
+                                                    `Fetched ${
+                                                        this.totalRows
                                                     } rows - at: ${contract}-${table} - scope: ${scope} - pk: ${pkValue} - lb: ${lb?.value.toString()}`
                                                 );
                                             }
@@ -230,7 +229,6 @@ export class ContractStateSynchronizer {
                                 } while (more);
                             }
                             lowerBound = scopes.more;
-                            console.log(`Fetched ${this.totalRows} rows from ${contract}-${table}. Total: ${this.totalRows}`);
                         } catch (error) {
                             console.error(`Error processing ${contract}-${table}:`, error);
                             lowerBound = null;
@@ -267,14 +265,9 @@ export class ContractStateSynchronizer {
 
             const cargoQueue = cargo((docs: any[], cb) => {
                 const groupedOps = new Map<string, any[]>();
-
                 let total = 0;
 
                 docs.forEach((doc) => {
-                    // const pk = String(Name.from(doc.primary_key).value);
-                    // const pk = String(Name.from(doc.data.account).value);
-                    // console.log(`pk`, pk)
-
                     const op = {
                         updateOne: {
                             filter: {
@@ -310,35 +303,68 @@ export class ContractStateSynchronizer {
 
                 groupedOps.forEach((value, key) => {
                     if (this.db) {
-                        // console.log(`Inserting ${value.length} documents into ${key}`);
-                        promises.push(this.db.collection(key).bulkWrite(value, { ordered: false }));
+                        promises.push(
+                            this.db
+                                .collection(key)
+                                .bulkWrite(value, { ordered: false })
+                                .catch((error) => {
+                                    console.error(`Bulk write error for ${key}:`, error);
+                                    throw error;
+                                })
+                        );
                     }
                 });
 
                 Promise.all(promises)
-                    .catch((erro: any) => {
-                        console.error('Error during bulk write:', erro);
-                    })
-                    .finally(() => {
+                    .then(() => {
                         this.processedRows += total;
-                        const percentComplete = (this.processedRows / this.totalRows) * 100;
-                        console.log(`Indexed ${this.processedRows} rows - ${percentComplete.toFixed(2)}% complete`);
                         cb();
+                    })
+                    .catch((erro: any) => {
+                        console.error('Error during bulk write operations:', erro);
+                        cb(erro);
                     });
             }, 1000);
 
+            cargoQueue.error((err, task) => {
+                console.error('Cargo queue error:', err);
+            });
+
             console.log('Starting to process contract state');
+            let docCount = 0;
+
             for await (const doc of this.processContractState(contract, table)) {
                 this.processedDocs++;
+                docCount++;
 
-                cargoQueue.push(doc).catch((error) => {
-                    console.error('Error pushing to queue:', error);
-                });
+                await cargoQueue.push(doc);
             }
 
+            console.log(`Finished processing ${docCount} documents`);
             console.log(`Waiting for queue to drain...`);
-            await cargoQueue.drain();
-            console.log(`Queue drained. Total processed documents: ${this.processedDocs}`);
+
+            // Custom drain implementation to handle stuck drain()
+            const waitForQueueComplete = new Promise<void>((resolve, reject) => {
+                const monitor = setInterval(() => {
+                    if (cargoQueue.length() === 0 && cargoQueue.running() === 0 && cargoQueue.idle()) {
+                        clearInterval(monitor);
+                        resolve();
+                    }
+                }, 2000);
+
+                setTimeout(() => {
+                    clearInterval(monitor);
+                    reject(new Error('Queue completion timeout after 2 minutes'));
+                }, 2 * 60 * 1000);
+            });
+
+            try {
+                await waitForQueueComplete;
+                console.log(`Queue drained. Total processed documents: ${this.processedDocs}`);
+            } catch (error) {
+                console.error('Error during queue completion wait:', error);
+                cargoQueue.kill();
+            }
         } catch (e) {
             console.error('Error during contract state sync:', e);
             throw e;
