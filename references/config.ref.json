@@ -63,6 +63,7 @@
     "abi_scan_mode": true,
     "fetch_block": true,
     "fetch_traces": true,
+    "fetch_deltas": true,
     "disable_reading": false,
     "disable_indexing": false,
     "process_deltas": true,
@@ -129,7 +130,8 @@
       "proposals": true,
       "accounts": true,
       "voters": true,
-      "permissions": true
+      "permissions": true,
+      "user_resources": false
     },
     "contract_state": {
       "contracts": {}

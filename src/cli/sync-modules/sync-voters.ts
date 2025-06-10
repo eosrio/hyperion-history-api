@@ -79,13 +79,19 @@ export class VoterSynchronizer extends Synchronizer<IVoter> {
                     });
                 }, 1000);
 
+                const voterCounterLogger = setInterval(() => {
+                    console.log(`Processed ${this.totalItems} voters so far...`);
+                }, 5000);
+
                 for await (const doc of this.scan()) {
                     cargoQueue.push(doc).catch(console.log);
                 }
 
                 await cargoQueue.drain();
 
-                console.log(`Processed ${this.totalItems} accounts`);
+                clearInterval(voterCounterLogger);
+
+                console.log(`Processed ${this.totalItems} voters.`);
                 await this.mongoClient?.close();
             } else {
                 const bulkResponse = await this.elastic.helpers.bulk({

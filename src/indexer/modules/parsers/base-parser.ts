@@ -82,7 +82,7 @@ export abstract class BaseParser {
         if (full_trace.action_traces.length > 1) {
             action.inline_count = trx_data.inline_count - 1;
             action.inline_filtered = trx_data.filtered;
-            if (action.inline_filtered) {
+            if (action.inline_filtered && worker.conf.indexer.max_inline) {
                 action.max_inline = worker.conf.indexer.max_inline;
             }
         } else {

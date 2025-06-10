@@ -1025,9 +1025,8 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
                 proposals: true,
                 accounts: true,
                 voters: true,
-                userres: true,
-                delband: true,
-                permissions: true
+                permissions: true,
+                user_resources: true
             },
             contract_state: { enabled: false, contracts: {} },
             index_deltas: true,
@@ -1818,29 +1817,7 @@ async function validateChain(shortName: string, options: { fix?: boolean } = {})
                     provider_logo: ""
                 },
                 settings: {
-                    ship_request_rev: "",
-                    bypass_index_map: false,
-                    dsp_parser: false
-                },
-                hub: {
-                    production: false
-                },
-                scaling: {
-                    queue_limit: 100000
-                },
-                indexer: {
-                    fill_state: false,
-                    fetch_deltas: true,
-                    repair_mode: false,
-                    max_inline: 1000
-                },
-                features: {
-                    tables: {
-                        permissions: true,
-                        userres: false,
-                        delband: false
-                    },
-                    contract_console: false
+                    ship_request_rev: ""
                 }
             };
             

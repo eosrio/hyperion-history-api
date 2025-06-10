@@ -1,8 +1,8 @@
-import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {timedQuery} from "../../../helpers/functions.js";
-import {getSkipLimit} from "../../v2-history/get_actions/functions.js";
-import {IAccount} from "../../../../interfaces/table-account.js";
-import {Asset} from "@wharfkit/antelope";
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { timedQuery } from "../../../helpers/functions.js";
+import { getSkipLimit } from "../../v2-history/get_actions/functions.js";
+import { IAccount } from "../../../../interfaces/table-account.js";
+import { Asset } from "@wharfkit/antelope";
 
 
 async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
@@ -14,32 +14,31 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
         tokens: []
     };
 
-    const {skip, limit} = getSkipLimit(request.query);
+    let { skip, limit } = getSkipLimit(request.query);
     const maxDocs = fastify.manager.config.api.limits.get_tokens ?? 100;
+
+    // Check if MongoDB is enabled
+    if (!fastify.manager.conn.mongodb || fastify.manager.conn.mongodb.enabled === false) {
+        return {
+            error: 'MongoDB is disabled. Please enable MongoDB in config/connections.json to use this endpoint.'
+        };
+    }
+
+    // Check if limit is above maximum allowed
+    if (limit && limit > maxDocs) {
+        limit = maxDocs;
+    }
 
     let stateResult: IAccount[];
 
-    if (fastify.manager.conn.mongodb && query.useMongo === 'true') {
-        const dbName = `${fastify.manager.conn.mongodb.database_prefix}_${fastify.manager.chain}`;
-        const collection = fastify.mongo.client.db(dbName).collection<IAccount>('accounts');
-        stateResult = await collection
-            .find({scope: query.account}, {projection: {_id: 0, code: 1, symbol: 1, amount: 1}})
-            .skip(skip || 0)
-            .limit(limit || 50)
-            .toArray();
-    } else {
-        const esResult = await fastify.elastic.search<any>({
-            "index": fastify.manager.chain + '-table-accounts-*',
-            "size": (limit > maxDocs ? maxDocs : limit) || 50,
-            "from": skip || 0,
-            query: {
-                bool: {
-                    filter: [{term: {scope: query.account}}]
-                }
-            }
-        });
-        stateResult = esResult.hits.hits.map(v => v._source).filter(v => v.present !== 0);
-    }
+    const dbName = `${fastify.manager.conn.mongodb.database_prefix}_${fastify.manager.chain}`;
+    const collection = fastify.mongo.client.db(dbName).collection<IAccount>('accounts');
+    stateResult = await collection
+        .find({ scope: query.account }, { projection: { _id: 0, code: 1, symbol: 1, amount: 1 } })
+        .skip(skip || 0)
+        .limit(limit || 50)
+        .toArray();
+
 
     const testSet = new Set();
     for (const data of stateResult) {
@@ -67,7 +66,7 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
                     const amount_arr = amount.split(".");
                     if (amount_arr.length === 2) {
                         precision = amount_arr[1].length;
-                        fastify.tokenCache.set(key, {precision});
+                        fastify.tokenCache.set(key, { precision });
                     }
                 }
             } catch (e: any) {

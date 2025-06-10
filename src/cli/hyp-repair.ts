@@ -1013,7 +1013,6 @@ program
 program
     .command('scan <chain>')
     .description('scan for missing and forked blocks')
-    .option('-d, --dry', 'dry-run, do not delete or repair blocks')
     .option('-o, --out-file <file>', 'forked-blocks.json output file')
     .option('-f, --first <number>', 'initial block to start validation')
     .option('-l, --last <number>', 'last block to validate')

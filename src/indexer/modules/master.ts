@@ -668,7 +668,7 @@ export class HyperionMaster {
             });
         }
 
-        if (table_feats.delband) {
+        if (table_feats.user_resources) {
             indicesList.push({ name: 'tableDelband', type: 'table-delband' });
             index_queues.push({
                 type: 'table-delband',
@@ -1629,10 +1629,6 @@ export class HyperionMaster {
         await this.updateIndexTemplates(indicesList, indexConfig);
 
         // await this.createIndices(indicesList);
-
-        // if (this.conf.indexer.fill_state) {
-        //     await this.fillCurrentStateTables();
-        // }
 
         await this.findRange();
         await this.setupWorkers();

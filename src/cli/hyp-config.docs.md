@@ -137,7 +137,6 @@ Validating chain config for wax...
 📦 Backup created: config/configuration_backups/wax.config.backup.1748562368468.json
    ✓ Fixed missing field: api.provider_logo = "" (default)
    ✓ Fixed missing field: settings.ship_request_rev = "" (default)
-   ✓ Fixed missing field: settings.bypass_index_map = false (default)
 💾 Fixed configuration saved to config/chains/wax.config.json
 🎉 Successfully fixed 3 field(s)!
 ✅ Chain config for wax is valid!

@@ -850,7 +850,7 @@ export default class MainDSWorker extends HyperionWorker {
                 delete row.value;
                 return row;
             } catch (e) {
-                console.log('abieos deserialization failed', e, row);
+                hLog('abieos deserialization failed', e, row);
                 debugLog(e);
             }
         }
@@ -997,63 +997,66 @@ export default class MainDSWorker extends HyperionWorker {
 
     async deserializeContractRowAntelope(row: HyperionDelta, block: number, validFrom, validUntil, tableType: string | undefined) {
 
-        let savedAbi = await this.fetchAbiHexAtBlockElastic(row.code, block, true);
+        try {
+            let savedAbi = await this.fetchAbiHexAtBlockElastic(row.code, block, true);
 
-        // attempt to load the ABI from the head block
-        if (!savedAbi) {
-            savedAbi = await this.getAbiFromHeadBlock(row.code);
-        }
-
-        if (!savedAbi) {
-            return row;
-        }
-
-        if (savedAbi.abi) {
-            const abi = ABI.from(savedAbi.abi);
-            const table = abi.tables.find(t => t.name === row.table);
-            if (table) {
-                row.data = Serializer.decode({ data: row.value, abi, type: table.type });
-                delete row.value;
+            // attempt to load the ABI from the head block
+            if (!savedAbi) {
+                savedAbi = await this.getAbiFromHeadBlock(row.code);
             }
+
+            if (!savedAbi) {
+                return row;
+            }
+
+            if (savedAbi.abi) {
+                const abi = ABI.from(savedAbi.abi);
+                const table = abi.tables.find(t => t.name === row.table);
+                if (table) {
+                    row.data = Serializer.decode({ data: row.value, abi, type: table.type });
+                    delete row.value;
+                }
+            }
+
+            // TODO: check error on stake.libre::temppower
+            if (!row.data) {
+                console.log(`Failed to deserialize ${row.code}::${row.table} at block ${block}`);
+            }
+
+            // const row_sb = this.createSerialBuffer(Serialize.hexToUint8Array(row['value']));
+            //
+            // let error;
+            // try {
+            //     const tableType: EOSJSType = await this.getTableType(row['code'], row['table'], block);
+            //     if (tableType) {
+            //         try {
+            //             row['data'] = tableType.deserialize(row_sb);
+            //             delete row.value;
+            //             return row;
+            //         } catch (e: any) {
+            //             error = e.message;
+            //         }
+            //     }
+            // } catch (e: any) {
+            //     hLog(e.message);
+            //     error = e.message;
+            // }
+            // row['ds_error'] = true;
+            // process.send?.({
+            //     event: 'ds_error',
+            //     data: {
+            //         type: 'delta_ds_error',
+            //         block: block,
+            //         valid_until: validUntil,
+            //         code: row['code'],
+            //         table: row['table'],
+            //         message: error
+            //     }
+            // });
+            this.registerAutoBlacklist(row['code'], "table", row['table'], validFrom, validUntil);
+        } catch (error: any) {
+            hLog(`WharfKit/Antelope - Error deserializing contract row: ${error.message}`);
         }
-
-        // TODO: check error on stake.libre::temppower
-        if (!row.data) {
-            console.log(`Failed to deserialize ${row.code}::${row.table} at block ${block}`);
-        }
-
-        // const row_sb = this.createSerialBuffer(Serialize.hexToUint8Array(row['value']));
-        //
-        // let error;
-        // try {
-        //     const tableType: EOSJSType = await this.getTableType(row['code'], row['table'], block);
-        //     if (tableType) {
-        //         try {
-        //             row['data'] = tableType.deserialize(row_sb);
-        //             delete row.value;
-        //             return row;
-        //         } catch (e: any) {
-        //             error = e.message;
-        //         }
-        //     }
-        // } catch (e: any) {
-        //     hLog(e.message);
-        //     error = e.message;
-        // }
-        // row['ds_error'] = true;
-        // process.send?.({
-        //     event: 'ds_error',
-        //     data: {
-        //         type: 'delta_ds_error',
-        //         block: block,
-        //         valid_until: validUntil,
-        //         code: row['code'],
-        //         table: row['table'],
-        //         message: error
-        //     }
-        // });
-        this.registerAutoBlacklist(row['code'], "table", row['table'], validFrom, validUntil);
-
         return row;
     }
 

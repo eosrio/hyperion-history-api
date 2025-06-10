@@ -675,9 +675,6 @@ export default class DSPoolWorker extends HyperionWorker {
         if (this.ch) {
             this.ch_ready = true;
             await this.ch.assertQueue(this.local_queue, RabbitQueueDef);
-            if (this.conf.settings.dsp_parser) {
-                await this.ch.assertQueue(`${queue_prefix}:dsp`, RabbitQueueDef);
-            }
             await this.initConsumer();
         }
     }

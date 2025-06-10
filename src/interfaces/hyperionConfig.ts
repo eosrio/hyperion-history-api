@@ -30,7 +30,6 @@ export interface ScalingConfigs {
     block_queue_limit: number;
     routing_mode: string;
     batch_size: number;
-    queue_limit: number;
     readers: number;
     ds_queues: number;
     ds_threads: number;
@@ -58,9 +57,8 @@ export interface MainSettings {
     use_global_agent?: boolean;
     process_prefix?: string;
     ignore_snapshot?: boolean;
-    ship_request_rev: string;
+    ship_request_rev?: string;
     // custom_policy: string; // REMOVED
-    bypass_index_map: boolean;
     // hot_warm_policy: boolean; // REMOVED
     auto_mode_switch: boolean;
     ds_profiling: boolean;
@@ -76,7 +74,6 @@ export interface MainSettings {
     debug: boolean;
     rate_monitoring: boolean;
     bp_logs: boolean;
-    dsp_parser: boolean;
     allow_custom_abi: boolean;
     index_partition_size: number;
     max_retained_blocks?: number;
@@ -93,8 +90,6 @@ export interface IndexerConfigs {
     node_trace_deprecation?: boolean;
     node_trace_warnings?: boolean;
 
-    fill_state: boolean;
-
     start_on: number;
     stop_on: number;
     rewrite: boolean;
@@ -104,12 +99,11 @@ export interface IndexerConfigs {
     abi_scan_mode: boolean;
     fetch_block: boolean;
     fetch_traces: boolean;
-    fetch_deltas: boolean;
+    fetch_deltas?: boolean;
     disable_reading: boolean;
     disable_indexing: boolean;
     process_deltas: boolean;
-    repair_mode: boolean;
-    max_inline: number;
+    max_inline?: number;
 }
 
 interface ApiLimits {
@@ -162,7 +156,7 @@ interface ApiConfigs {
     server_name: string;
     provider_name: string;
     provider_url: string;
-    provider_logo: string;
+    provider_logo?: string;
     chain_logo_url: string;
     enable_caching: boolean;
     cache_life: number;
@@ -179,7 +173,6 @@ interface ExplorerConfigs {
 
 interface HyperionHubConfigs {
     enabled: boolean;
-    production: boolean;
     instance_key: string;
     hub_url?: string;
     custom_indexer_controller?: string;
@@ -212,8 +205,7 @@ export interface HyperionConfig {
             proposals: boolean,
             accounts: boolean,
             voters: boolean,
-            userres: boolean,
-            delband: boolean
+            user_resources?: boolean
         },
         contract_state: {
             enabled: boolean;
@@ -236,7 +228,7 @@ export interface HyperionConfig {
         failed_trx: boolean,
         resource_usage: boolean,
         resource_limits: boolean,
-        contract_console: boolean
+        contract_console?: boolean
     };
     prefetch: {
         read: number,
@@ -309,7 +301,7 @@ export const HyperionApiConfigSchema = z.object({
     server_name: z.string(),
     provider_name: z.string(),
     provider_url: z.string(),
-    provider_logo: z.string(),
+    provider_logo: z.string().optional(),
     chain_logo_url: z.string(),
     enable_caching: z.boolean(),
     cache_life: z.number(),
@@ -336,8 +328,7 @@ export const HyperionSettingsConfigSchema = z.object({
     use_global_agent: z.boolean().optional(),
     process_prefix: z.string().optional(),
     ignore_snapshot: z.boolean().optional(),
-    ship_request_rev: z.string(),
-    bypass_index_map: z.boolean(),
+    ship_request_rev: z.string().optional(),
     auto_mode_switch: z.boolean(),
     ds_profiling: z.boolean(),
     max_ws_payload_mb: z.number(),
@@ -352,7 +343,6 @@ export const HyperionSettingsConfigSchema = z.object({
     debug: z.boolean(),
     rate_monitoring: z.boolean(),
     bp_logs: z.boolean(),
-    dsp_parser: z.boolean(),
     allow_custom_abi: z.boolean(),
     index_partition_size: z.number(),
     max_retained_blocks: z.number().optional(),
@@ -368,7 +358,6 @@ const ScalingConfigsSchema = z.object({
     block_queue_limit: z.number(),
     routing_mode: z.string(),
     batch_size: z.number(),
-    queue_limit: z.number(),
     readers: z.number(),
     ds_queues: z.number(),
     ds_threads: z.number(),
@@ -388,8 +377,7 @@ const IndexerConfigsSchema = z.object({
     node_max_old_space_size: z.number().optional(),
     node_trace_deprecation: z.boolean().optional(),
     node_trace_warnings: z.boolean().optional(),
-    
-    fill_state: z.boolean(),
+
     start_on: z.number(),
     stop_on: z.number(),
     rewrite: z.boolean(),
@@ -399,18 +387,16 @@ const IndexerConfigsSchema = z.object({
     abi_scan_mode: z.boolean(),
     fetch_block: z.boolean(),
     fetch_traces: z.boolean(),
-    fetch_deltas: z.boolean(),
+    fetch_deltas: z.boolean().optional(),
     disable_reading: z.boolean(),
     disable_indexing: z.boolean(),
     process_deltas: z.boolean(),
-    repair_mode: z.boolean(),
-    max_inline: z.number()
+    max_inline: z.number().optional(),
 });
 
 // Zod schema for hub configurations
 const HyperionHubConfigsSchema = z.object({
     enabled: z.boolean(),
-    production: z.boolean(),
     instance_key: z.string(),
     hub_url: z.string().optional(),
     custom_indexer_controller: z.string().optional(),
@@ -441,12 +427,11 @@ const TablesFeaturesSchema = z.object({
     proposals: z.boolean(),
     accounts: z.boolean(),
     voters: z.boolean(),
-    userres: z.boolean(),
-    delband: z.boolean()
+    user_resources: z.boolean().optional()
 });
 
 const ContractStateSchema = z.object({
-    enabled: z.boolean(),
+    enabled: z.boolean().optional(),
     contracts: z.record(z.string(), z.record(z.string(), z.object({
         auto_index: z.boolean(),
         indices: z.record(z.string(), z.union([
@@ -470,7 +455,7 @@ const FeaturesSchema = z.object({
     failed_trx: z.boolean(),
     resource_usage: z.boolean(),
     resource_limits: z.boolean(),
-    contract_console: z.boolean()
+    contract_console: z.boolean().optional()
 });
 
 // Zod schema for prefetch
