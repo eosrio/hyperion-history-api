@@ -9,6 +9,7 @@ async function getExplorerMetadata(fastify: FastifyInstance) {
         chain_id: fastify.manager.conn.chains[fastify.manager.chain].chain_id,
         custom_core_token: fastify.manager.config.api.custom_core_token,
         theme: fastify.explorerTheme ?? {},
+        oracle: fastify.manager.config.api.explorer?.oracle ?? null,
     }
 }
 

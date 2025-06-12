@@ -169,6 +169,15 @@ interface ExplorerConfigs {
     home_redirect?: boolean;
     theme?: string;
     upstream?: string;
+    oracle?: {
+        custom_mode?: string;
+        pair?: string;
+        contract?: string;
+        table?: string;
+        path?: string;
+        type?: string;
+        factor?: number;
+    }
 }
 
 interface HyperionHubConfigs {
