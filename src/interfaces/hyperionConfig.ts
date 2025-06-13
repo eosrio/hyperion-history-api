@@ -67,7 +67,8 @@ export interface MainSettings {
     bp_monitoring?: boolean;
     preview: boolean;
     chain: string;
-    eosio_alias: string;
+    eosio_alias?: string; // Deprecated, use system_contract
+    system_contract?: string; 
     parser: string;
     auto_stop: number;
     index_version: string;
@@ -345,7 +346,8 @@ export const HyperionSettingsConfigSchema = z.object({
     bp_monitoring: z.boolean().optional(),
     preview: z.boolean(),
     chain: z.string(),
-    eosio_alias: z.string(),
+    eosio_alias: z.string().optional(),
+    system_contract: z.string().optional(),
     parser: z.string(),
     auto_stop: z.number(),
     index_version: z.string(),

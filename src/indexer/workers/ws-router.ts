@@ -7,8 +7,6 @@ import {RabbitQueueDef} from "../definitions/index-queues.js";
 import {hLog} from "../helpers/common_functions.js";
 import {HyperionWorker} from "./hyperionWorker.js";
 
-const greylist = ['eosio.token'];
-
 interface TrackedRequest {
     type: string;
     firstBlock: number | null;

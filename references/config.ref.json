@@ -39,14 +39,8 @@
     "disable_tx_cache": false,
     "tx_cache_expiration_sec": 3600,
     "v1_chain_cache": [
-      {
-        "path": "get_block",
-        "ttl": 3000
-      },
-      {
-        "path": "get_info",
-        "ttl": 500
-      }
+      {"path": "get_block","ttl": 3000},
+      {"path": "get_info","ttl": 500}
     ],
     "node_max_old_space_size": 1024,
     "node_trace_deprecation": false,
@@ -75,7 +69,6 @@
   "settings": {
     "preview": false,
     "chain": "eos",
-    "eosio_alias": "eosio",
     "parser": "3.2",
     "auto_stop": 0,
     "index_version": "v1",
@@ -160,27 +153,19 @@
       "onApiStart": {
         "enabled": true,
         "cooldown": 30,
-        "emitOn": [
-          "http"
-        ]
+        "emitOn": ["http"]
       },
       "onIndexerError": {
         "enabled": true,
         "cooldown": 30,
-        "emitOn": [
-          "telegram",
-          "email",
-          "http"
-        ]
+        "emitOn": ["telegram","email","http"]
       }
     },
     "providers": {
       "telegram": {
         "enabled": false,
         "botToken": "",
-        "destinationIds": [
-          1
-        ]
+        "destinationIds": [1]
       },
       "http": {
         "enabled": false,

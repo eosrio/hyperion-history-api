@@ -1770,8 +1770,10 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     private async populateTableHandlers() {
-        const EOSIO_ALIAS = this.conf.settings.eosio_alias;
-        this.tableHandlers[EOSIO_ALIAS + ':voters'] = (delta: HyperionDelta) => {
+
+        const systemContract = this.conf.settings.system_contract ?? (this.conf.settings.eosio_alias ?? 'eosio');
+
+        this.tableHandlers[systemContract + ':voters'] = (delta: HyperionDelta) => {
             delta['@voters'] = {};
             delta['@voters']['is_proxy'] = delta.data['is_proxy'];
             delete delta.data['is_proxy'];
@@ -1795,12 +1797,12 @@ export default class MainDSWorker extends HyperionWorker {
             }
         };
 
-        this.tableHandlers[EOSIO_ALIAS + ':global'] = (delta: HyperionDelta) => {
+        this.tableHandlers[systemContract + ':global'] = (delta: HyperionDelta) => {
             delta['@global'] = delta['data'];
             delete delta['data'];
         };
 
-        this.tableHandlers[EOSIO_ALIAS + ':producers'] = (delta: HyperionDelta) => {
+        this.tableHandlers[systemContract + ':producers'] = (delta: HyperionDelta) => {
             const data = delta['data'];
             if (data) {
                 delta['@producers'] = {
@@ -1812,7 +1814,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         };
 
-        this.tableHandlers[EOSIO_ALIAS + ':userres'] = (delta: HyperionDelta) => {
+        this.tableHandlers[systemContract + ':userres'] = (delta: HyperionDelta) => {
             const data = delta['data'];
             if (data['net_weight'] && data['cpu_weight']) {
                 const net = parseFloat(data['net_weight'].split(" ")[0]);
@@ -1828,7 +1830,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         };
 
-        this.tableHandlers[EOSIO_ALIAS + ':delband'] = (delta: HyperionDelta) => {
+        this.tableHandlers[systemContract + ':delband'] = (delta: HyperionDelta) => {
             const data = delta['data'];
             if (data['net_weight'] && data['cpu_weight']) {
                 const net = parseFloat(data['net_weight'].split(" ")[0]);
@@ -1844,7 +1846,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         };
 
-        this.tableHandlers[EOSIO_ALIAS + '.msig:proposal'] = async (delta: HyperionDelta) => {
+        this.tableHandlers[systemContract + '.msig:proposal'] = async (delta: HyperionDelta) => {
             // decode packed_transaction
             delta['@proposal'] = {
                 proposal_name: delta['data']['proposal_name']
@@ -1859,7 +1861,7 @@ export default class MainDSWorker extends HyperionWorker {
             delete delta['data'];
         };
 
-        this.tableHandlers[EOSIO_ALIAS + '.msig:approvals'] = (delta: HyperionDelta) => {
+        this.tableHandlers[systemContract + '.msig:approvals'] = (delta: HyperionDelta) => {
             delta['@approvals'] = {
                 proposal_name: delta['data']['proposal_name'],
                 requested_approvals: delta['data']['requested_approvals'],
@@ -1871,7 +1873,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
         };
 
-        this.tableHandlers[EOSIO_ALIAS + '.msig:approvals2'] = (delta: HyperionDelta) => {
+        this.tableHandlers[systemContract + '.msig:approvals2'] = (delta: HyperionDelta) => {
             delta['@approvals'] = {
                 proposal_name: delta['data']['proposal_name'],
                 requested_approvals: delta['data']['requested_approvals'].map((item: any) => {
@@ -1885,22 +1887,6 @@ export default class MainDSWorker extends HyperionWorker {
                 this.storeProposal(delta);
             }
         };
-
-        this.tableHandlers['simpleassets:sassets'] = (delta: HyperionDelta) => {
-            if (delta.data) {
-                if (delta.data.mdata) {
-                    delta['@sassets'] = {
-                        mdata_hash: createHash('sha256')
-                            .update(delta.data.mdata)
-                            .digest()
-                            .toString('hex'),
-                        author: delta.data.author,
-                        id: delta.data.id,
-                        category: delta.data.category
-                    }
-                }
-            }
-        }
 
         this.tableHandlers['*:accounts'] = (delta: HyperionDelta) => {
 
