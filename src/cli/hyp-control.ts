@@ -9,6 +9,7 @@ import { VoterSynchronizer } from './sync-modules/sync-voters.js';
 import { QueueManager } from './queue-manager/queue.manager.js';
 import { PermissionsSynchronizer } from './sync-modules/sync-permissions.js';
 import { readConnectionConfig } from './repair-cli/functions.js';
+import { SnapshotManager } from './snapshot/snapshot.manager.js';
 
 async function syncWithPauseResume(chain: string, type: string, synchronizer: any, host?: string, contract?: string, table?: string) {
     const indexerController = new IndexerController(chain, host);
@@ -165,11 +166,11 @@ async function getControllerPort(chain: string): Promise<number> {
         if (error.code === 'ENOENT') {
             throw new Error(
                 `\n[Hyperion CLI Error]\n` +
-                    `Could not find the required configuration file: 'config/connections.json'.\n` +
-                    `\nTo fix this, you can:\n` +
-                    `  1. Run \x1b[36m./hyp-config connections init\x1b[0m to create a new configuration interactively.\n` +
-                    `  2. Or copy the example: \x1b[36mcp references/connections.ref.json config/connections.json\x1b[0m\n` +
-                    `\nSee './hyp-config connections --help' for more options.`
+                `Could not find the required configuration file: 'config/connections.json'.\n` +
+                `\nTo fix this, you can:\n` +
+                `  1. Run \x1b[36m./hyp-config connections init\x1b[0m to create a new configuration interactively.\n` +
+                `  2. Or copy the example: \x1b[36mcp references/connections.ref.json config/connections.json\x1b[0m\n` +
+                `\nSee './hyp-config connections --help' for more options.`
             );
         }
         throw new Error(`Error reading connection config for chain '${chain}': ${error.message}`);
@@ -714,6 +715,44 @@ async function getScalingInfo(chain: string, host?: string) {
                 await getScalingInfo(chain, options.host);
             } catch (error: unknown) {
                 console.error('Error getting scaling information:', (error as Error).message);
+            }
+        });
+
+    // ...existing code...
+
+    // Add MongoDB snapshot command
+    const mongodbSnapshot = program.command('mongodb-snapshot')
+        .description('MongoDB snapshot utilities');
+    const snapshotManager = new SnapshotManager();
+
+    mongodbSnapshot
+        .command('create <chain>')
+        .description('Create a MongoDB snapshot for a specific chain')
+        .option('-h, --host <host>', 'Optional host for the indexer controller')
+        .option('-o, --output <path>', 'Output directory for the snapshot (default: ./snapshots)')
+        .option('--force', 'Force snapshot even if indexer cannot be stopped or queues are not empty')
+        .option('-c, --compress', 'Compress the dump with gzip')
+        .option('--collections <collections>', 'Comma-separated list of collections to dump (default: all)')
+        .option('-a, --archive', 'Create a tar archive of the snapshot')
+        .option('--remove-after-archive', 'Remove the snapshot directory after creating archive')
+        .action(async (chain: string, options: any) => {
+            try {
+                await snapshotManager.createSnapshot(chain, options);
+            } catch (error: unknown) {
+                console.error('MongoDB snapshot creation failed:', (error as Error).message);
+                process.exit(1);
+            }
+        });
+
+    mongodbSnapshot
+        .command('list [chain]')
+        .description('List available MongoDB snapshots')
+        .option('-o, --output <path>', 'Snapshots directory (default: ./snapshots)')
+        .action(async (chain: string | undefined, options: any) => {
+            try {
+                await snapshotManager.listSnapshots(chain, options);
+            } catch (error: unknown) {
+                console.error('Error listing MongoDB snapshots:', (error as Error).message);
             }
         });
 

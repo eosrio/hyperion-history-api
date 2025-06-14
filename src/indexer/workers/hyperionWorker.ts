@@ -157,27 +157,27 @@ export abstract class HyperionWorker {
     }
 
     private anyFromCode(act: HyperionActionAct) {
-        return this.chain + '::' + act.account + '::*'
+        return act.account + '::*'
     }
 
     private anyFromName(act: HyperionActionAct) {
-        return this.chain + '::*::' + act.name;
+        return '*::' + act.name;
     }
 
     private codeActionPair(act: HyperionActionAct) {
-        return this.chain + '::' + act.account + '::' + act.name;
+        return act.account + '::' + act.name;
     }
 
     private anyFromDeltaCode(delta: BasicDelta) {
-        return this.chain + '::' + delta.code + '::*'
+        return delta.code + '::*'
     }
 
     private anyFromDeltaTable(delta: BasicDelta) {
-        return this.chain + '::*::' + delta.table;
+        return '*::' + delta.table;
     }
 
     private codeDeltaPair(delta: BasicDelta) {
-        return this.chain + '::' + delta.code + '::' + delta.table;
+        return delta.code + '::' + delta.table;
     }
 
     protected checkBlacklist(act: HyperionActionAct) {

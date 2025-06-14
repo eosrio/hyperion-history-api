@@ -26,15 +26,15 @@ export abstract class BaseParser {
     }
 
     private anyFromCode(act: Action | HyperionActionAct) {
-        return this.chain + '::' + act['account'] + '::*';
+        return act['account'] + '::*';
     }
 
     private anyFromName(act: Action | HyperionActionAct) {
-        return this.chain + '::*::' + act['name'];
+        return '*::' + act['name'];
     }
 
     private codeActionPair(act: Action | HyperionActionAct) {
-        return this.chain + '::' + act['account'] + '::' + act['name'];
+        return act['account'] + '::' + act['name'];
     }
 
     protected checkBlacklist(act: Action | HyperionActionAct) {

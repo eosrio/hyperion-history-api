@@ -54,20 +54,30 @@ export class ConfigurationModule {
             this.config.settings.eosio_alias = 'eosio';
         }
 
+        const normalizeEntryFormat = (entry: string): string => {
+            if (entry.includes('::')) {
+                const parts = entry.split('::');
+                if (parts.length === 3) {
+                    return `${parts[1]}::${parts[2]}`;
+                }
+            }
+            return entry;
+        }
+
         // append default blacklists (eosio::onblock & eosio.null)
         // this.filters.action_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}::onblock`);
-        this.filters.action_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}.null::*`);
+        this.filters.action_blacklist.add(`${this.EOSIO_ALIAS}.null::*`);
 
         // append user blacklists
         if (this.config.blacklists) {
             if (this.config.blacklists.actions) {
                 this.config.blacklists.actions.forEach((a) => {
-                    this.filters.action_blacklist.add(a);
+                    this.filters.action_blacklist.add(normalizeEntryFormat(a));
                 });
             }
             if (this.config.blacklists.deltas) {
                 this.config.blacklists.deltas.forEach((d) => {
-                    this.filters.delta_blacklist.add(d);
+                    this.filters.delta_blacklist.add(normalizeEntryFormat(d));
                 });
             }
         }
@@ -76,12 +86,12 @@ export class ConfigurationModule {
         if (this.config.whitelists) {
             if (this.config.whitelists.actions) {
                 this.config.whitelists.actions.forEach((a) => {
-                    this.filters.action_whitelist.add(a);
+                    this.filters.action_whitelist.add(normalizeEntryFormat(a));
                 });
             }
             if (this.config.whitelists.deltas) {
                 this.config.whitelists.deltas.forEach((d) => {
-                    this.filters.delta_whitelist.add(d);
+                    this.filters.delta_whitelist.add(normalizeEntryFormat(d));
                 });
             }
 

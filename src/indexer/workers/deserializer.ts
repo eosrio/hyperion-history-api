@@ -1227,7 +1227,7 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     private anyFromSender(gen_trx: any) {
-        return this.chain + '::' + gen_trx.sender + '::*';
+        return gen_trx.sender + '::*';
     }
 
     checkDeltaBlacklistForGenTrx(gen_trx) {

@@ -38,11 +38,11 @@ export class PermissionsSynchronizer extends Synchronizer<IPermission> {
             });
             const rows = scopes.rows;
             for (const row of rows) {
+                this.processedScopes++;
                 yield row.scope.toString();
             }
             lowerBound = scopes.more;
         } while (lowerBound !== '');
-        this.processedScopes++;
     }
 
     public async run(): Promise<void> {
@@ -80,48 +80,68 @@ export class PermissionsSynchronizer extends Synchronizer<IPermission> {
             });
         }, 1000);
 
+        const monitoring = setInterval(() => {
+            console.log(`Processed ${this.totalItems} permissions for ${this.processedScopes} scopes so far...`);
+        }, 1000);
 
         for await (const accountName of this.scan()) {
-            if (accountName) {
-                const info = await this.client.call({
-                    path: "/v1/chain/get_account",
-                    params: {
-                        account_name: accountName
-                    }
-                }) as any;
-                if (info.permissions) {
-                    for (const perm of info.permissions) {
-                        if (perm.required_auth && perm.required_auth.keys && perm.required_auth.keys.length > 0) {
-                            perm.required_auth.keys = perm.required_auth.keys.map((key: any) => {
-                                const publicKey = PublicKey.from(key.key);
-                                return {
-                                    key: publicKey.toString(),
-                                    weight: key.weight
-                                };
-                            });
-                        } else {
-                            perm.required_auth.keys = [];
+            try {
+                if (accountName) {
+                    const info = await this.client.call({
+                        path: "/v1/chain/get_account",
+                        params: {
+                            account_name: accountName
                         }
-                        const permissionData: IPermission = {
-                            block_num: this.currentBlock,
-                            account: accountName,
-                            perm_name: perm.perm_name,
-                            parent: perm.parent,
-                            required_auth: perm.required_auth,
-                            linked_actions: perm.linked_actions || [],
-                            last_updated: info.head_block_time ?? ""
-                        };
-                        // if (permissionData.linked_actions && permissionData.linked_actions.length > 0) {
-                        //     console.dir(permissionData, { depth: Infinity });
-                        // }
-                        this.totalItems++;
-                        cargoQueue.push(permissionData).catch(console.error);
+                    }) as any;
+                    if (info.permissions) {
+                        for (const perm of info.permissions) {
+                            if (perm.required_auth && perm.required_auth.keys && perm.required_auth.keys.length > 0) {
+                                perm.required_auth.keys = perm.required_auth.keys.map((key: any) => {
+                                    try {
+                                        const publicKey = PublicKey.from(key.key);
+                                        return {
+                                            key: publicKey.toString(),
+                                            weight: key.weight
+                                        };
+                                    } catch (error) {
+                                        console.error(`Invalid public key for account ${accountName} in permission ${perm.perm_name}:`, key.key);
+                                        return {
+                                            key: key.key, // Keep the original key if conversion fails
+                                            weight: key.weight
+                                        };
+                                    }
+                                });
+                            } else {
+                                perm.required_auth.keys = [];
+                            }
+                            const permissionData: IPermission = {
+                                block_num: this.currentBlock,
+                                account: accountName,
+                                perm_name: perm.perm_name,
+                                parent: perm.parent,
+                                required_auth: perm.required_auth,
+                                linked_actions: perm.linked_actions || [],
+                                last_updated: info.head_block_time ?? ""
+                            };
+                            // if (permissionData.linked_actions && permissionData.linked_actions.length > 0) {
+                            //     console.dir(permissionData, { depth: Infinity });
+                            // }
+                            this.totalItems++;
+                            cargoQueue.push(permissionData).catch(console.error);
+                        }
                     }
                 }
+            } catch (error) {
+                console.error(`Error processing account ${accountName}:`, error);
             }
         }
+
         await cargoQueue.drain();
-        console.log(`Processed ${this.totalItems} permissions for ${this.processedScopes} scopes.`);
+
+        clearInterval(monitoring);
+
+        console.log(`Processed ${this.totalItems} permissions for ${this.processedScopes} accounts.`);
+
         await this.mongoClient?.close();
     }
 }
