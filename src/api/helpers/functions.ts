@@ -90,7 +90,8 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
     switch (dataKind) {
         case "action": {
             const actionReq = data as StreamActionsRequest;
-            if (actionReq.account !== '') {
+
+            if (actionReq.account && actionReq.account !== '') {
                 search_body.query.bool.must.push({
                     bool: {
                         should: [
@@ -101,11 +102,11 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                 });
             }
 
-            if (actionReq.contract !== '*' && actionReq.contract !== '') {
+            if (actionReq.contract && actionReq.contract !== '*' && actionReq.contract !== '') {
                 search_body.query.bool.must.push({'term': {'act.account': actionReq.contract}});
             }
 
-            if (actionReq.action !== '*' && actionReq.action !== '') {
+            if (actionReq.action && actionReq.action !== '*' && actionReq.action !== '') {
                 search_body.query.bool.must.push({'term': {'act.name': actionReq.action}});
             }
 

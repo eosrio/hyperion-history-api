@@ -1,12 +1,12 @@
-import {createAdapter} from "@socket.io/redis-adapter";
-import {ABI, Name} from "@wharfkit/antelope";
-import {randomUUID} from "crypto";
-import {FastifyInstance} from "fastify";
-import {Redis, RedisOptions} from "ioredis";
-import {Server, Socket} from 'socket.io';
-import {io, Socket as ClientSocket} from 'socket.io-client';
-import {App, TemplatedApp} from 'uWebSockets.js';
-import {hLog, sleep} from '../indexer/helpers/common_functions.js';
+import { createAdapter } from "@socket.io/redis-adapter";
+import { ABI, Name } from "@wharfkit/antelope";
+import { randomUUID } from "crypto";
+import { FastifyInstance } from "fastify";
+import { Redis, RedisOptions } from "ioredis";
+import { Server, Socket } from 'socket.io';
+import { io, Socket as ClientSocket } from 'socket.io-client';
+import { App, TemplatedApp } from 'uWebSockets.js';
+import { hLog, sleep } from '../indexer/helpers/common_functions.js';
 import {
     StreamActionsRequest,
     StreamDeltasRequest,
@@ -14,7 +14,7 @@ import {
     StreamRequest,
     StreamTypeMap
 } from "../interfaces/stream-requests.js";
-import {streamPastCommon} from "./helpers/functions.js";
+import { streamPastCommon } from "./helpers/functions.js";
 import {
     checkActionFilters,
     checkDeltaFilters,
@@ -65,7 +65,7 @@ export class SocketManager {
         this.uwsApp = App({});
 
         // WS Server for public access
-        this.io = new Server({transports: ['websocket'], path: '/stream'});
+        this.io = new Server({ transports: ['websocket'], path: '/stream' });
 
         this.io.attachApp(this.uwsApp);
         this.chainId = this.server.manager.conn.chains[this.server.manager.chain].chain_id;
@@ -116,9 +116,9 @@ export class SocketManager {
         if (socket.handshake.headers['x-forwarded-for']) {
             hLog(`[socket] ${socket.id} connected via ${socket.handshake.headers['x-forwarded-for']}`);
         }
-        socket.emit('handshake', {chain: fastify.manager.chain, chain_id: this.chainId});
+        socket.emit('handshake', { chain: fastify.manager.chain, chain_id: this.chainId });
         if (this.relay) {
-            this.relay.emit('event', {type: 'client_count', counter: this.io.sockets.sockets.size});
+            this.relay.emit('event', { type: 'client_count', counter: this.io.sockets.sockets.size });
         }
 
         // handle reconnection and request reuse
@@ -131,7 +131,7 @@ export class SocketManager {
                     // No requests present, likely a server restart, ask the client to resend the request
                     // Add a random delay
                     setTimeout(() => {
-                        socket.emit('resend_requests', {last_id: data.last_id});
+                        socket.emit('resend_requests', { last_id: data.last_id });
                     }, 1000 + Math.random() * 1000);
                 }
             }
@@ -161,14 +161,14 @@ export class SocketManager {
         // handle delta stream request
         socket.on('delta_stream_request', async (data: StreamDeltasRequest, callback) => {
             this.processStreamRequest('delta', socket, data, callback).catch(reason => {
-                return callback({status: 'ERROR', message: reason});
+                return callback({ status: 'ERROR', message: reason });
             });
         });
 
         // handle action stream request
         socket.on('action_stream_request', async (data: StreamActionsRequest, callback) => {
             this.processStreamRequest('action', socket, data, callback).catch(reason => {
-                return callback({status: 'ERROR', message: reason});
+                return callback({ status: 'ERROR', message: reason });
             });
         });
 
@@ -178,7 +178,7 @@ export class SocketManager {
             const timeoutId = setTimeout(() => {
                 this.detachDeltaRequests(socket.id);
                 if (this.relay) {
-                    this.relay.emit('event', {type: 'client_disconnected', id: socket.id, reason});
+                    this.relay.emit('event', { type: 'client_disconnected', id: socket.id, reason });
                 }
                 this.disconnectTimeoutMap.delete(socket.id);
                 // console.log("Pending requests: ", this.disconnectTimeoutMap.size);
@@ -253,7 +253,7 @@ export class SocketManager {
     // Send request from client to relay socket on indexer with callback
     emitToRelay(request: StreamRequest, type: StreamEvents, socket: Socket, reqUUID: string, done: (r: any) => void) {
         if (this.relay && this.relay.connected) {
-            this.relay.emit('event', {reqUUID, type: type, client_socket: socket.id, request}, (resp: any) => {
+            this.relay.emit('event', { reqUUID, type: type, client_socket: socket.id, request }, (resp: any) => {
                 resp['reqUUID'] = reqUUID;
                 resp['currentBlockNum'] = this.currentBlockNum;
                 done(resp);
@@ -407,7 +407,7 @@ export class SocketManager {
     }
 
     private routeActionTraceToClients(traceData: any) {
-        const {account: contract, name: action, notified} = traceData;
+        const { account: contract, name: action, notified } = traceData;
         const targetClients = new Map<string, string[]>();
         const notifiedAccounts = notified.split(',');
 
@@ -452,7 +452,7 @@ export class SocketManager {
     private routeDeltaToClients(traceData: any) {
 
         // const tRef = process.hrtime.bigint();
-        const {code, table, payer, scope, message} = traceData;
+        const { code, table, payer, scope, message } = traceData;
         const targetClients = new Map<string, string[]>();
         // Forward to CODE/TABLE listeners
         if (this.deltaCodeMap.has(code)) {
@@ -541,6 +541,8 @@ export class SocketManager {
                 return callback(validation);
             }
 
+            console.log(`Processing ${type.toUpperCase()} request:`, data);
+
             // generate random uuid for each request
             const requestUUID = randomUUID();
 
@@ -564,7 +566,7 @@ export class SocketManager {
                 });
             } else {
                 // if live data is ignored, immediately reply to the callback
-                callback({status: 'OK', reqUUID: requestUUID, currentBlockNum: this.currentBlockNum});
+                callback({ status: 'OK', reqUUID: requestUUID, currentBlockNum: this.currentBlockNum });
             }
 
             // push history data (optional)
@@ -610,7 +612,7 @@ export class SocketManager {
                         type: 'history_end',
                         reqUUID: requestUUID,
                         mode: 'history',
-                        message: {lastBlock: ltb}
+                        message: { lastBlock: ltb }
                     });
                 }
             }
@@ -628,24 +630,38 @@ export class SocketManager {
         switch (type) {
             case "action": {
                 const actionData = data as StreamActionsRequest;
-                if (!actionData.contract || !actionData.action) {
+
+                // we should accept contract and action if account is not provided
+                // if the account is provided we don't need contract and action enforcement
+                if (!actionData.account && (!actionData.contract || !actionData.action)) {
                     return {
                         status: 'ERROR',
-                        message: 'contract or action are required'
+                        message: 'account or contract and action are required'
                     };
                 }
 
-                if (Name.from(actionData.contract).toString() !== actionData.contract) {
+
+                // validate contract name
+                if (actionData.contract && Name.from(actionData.contract).toString() !== actionData.contract) {
                     return {
                         status: "ERROR",
                         message: `Invalid contract name: ${actionData.contract}`
                     };
                 }
 
-                if (Name.from(actionData.action).toString() !== actionData.action) {
+                // validate action name
+                if (actionData.action && Name.from(actionData.action).toString() !== actionData.action) {
                     return {
                         status: "ERROR",
                         message: `Invalid action name: ${actionData.action}`
+                    };
+                }
+
+                // validate account name
+                if (actionData.account && Name.from(actionData.account).toString() !== actionData.account) {
+                    return {
+                        status: "ERROR",
+                        message: `Invalid account name: ${actionData.account}`
                     };
                 }
 
@@ -753,6 +769,6 @@ export class SocketManager {
             }
         }
 
-        return {status: "OK"};
+        return { status: "OK" };
     }
 }
