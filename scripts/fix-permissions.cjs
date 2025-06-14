@@ -5,5 +5,5 @@ if (os.type() === 'Windows_NT') {
   console.log('Skipping permission update on windows');
 } else {
   console.log('Updating permissions...');
-  execSync('chmod u+x run run.sh stop stop.sh hpm hyp-config hyp-repair');
+  execSync('chmod u+x run stop hpm hyp-config hyp-repair');
 }

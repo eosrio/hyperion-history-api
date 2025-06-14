@@ -122,7 +122,7 @@ export class SnapshotManager {
             console.log('═'.repeat(40));
             console.log('🛑 The indexer has been stopped for this snapshot.');
             console.log('🔄 To restart the indexer when ready, run:');
-            console.log(`   ./run.sh ${chain}-indexer`);
+            console.log(`   ./run ${chain}-indexer`);
             console.log('');
             console.log('💡 For migration scenarios, you may want to keep');
             console.log('   the indexer stopped until the migration is complete.');
@@ -134,7 +134,7 @@ export class SnapshotManager {
         // Still remind about indexer restart on failure
         if (indexerStopped) {
             console.log('\n⚠️  Important: The indexer was stopped but snapshot failed.');
-            console.log(`   To restart the indexer, run: ./run.sh ${chain}-indexer`);
+            console.log(`   To restart the indexer, run: ./run ${chain}-indexer`);
         }
         
         throw error;

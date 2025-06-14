@@ -95,7 +95,7 @@ This is intentional for migration scenarios. After the snapshot is complete, you
 ════════════════════════════════════════════════════════════
 🛑 The indexer has been stopped for this snapshot.
 🔄 To restart the indexer when ready, run:
-   ./run.sh your-chain-indexer
+   ./run your-chain-indexer
 
 💡 For migration scenarios, you may want to keep
    the indexer stopped until the migration is complete.
@@ -103,7 +103,7 @@ This is intentional for migration scenarios. After the snapshot is complete, you
 
 To restart the indexer when ready:
 ```bash
-./run.sh your-chain-indexer
+./run your-chain-indexer
 ```
 
 ## Snapshot Naming Convention
@@ -121,7 +121,7 @@ Examples:
 
 1. **Indexer Stop Check**: Verifies the indexer is stopped before proceeding
 2. **Queue Validation**: Ensures all chain-specific queues are empty
-3. **Automatic Restart**: Restarts the indexer using `./run.sh {chain}-indexer` after completion
+3. **Automatic Restart**: Restarts the indexer using `./run {chain}-indexer` after completion
 4. **Metadata Tracking**: Creates a metadata file with snapshot information
 5. **Error Handling**: Comprehensive error handling with rollback capabilities
 
@@ -187,6 +187,6 @@ mongorestore --host localhost --port 27017 --db eos_hyperion --gzip /path/to/sna
 - Use ES Snapshot API: https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshot-restore.html
 
 ### Indexer Won't Restart
-- Manually restart: `./run.sh {chain}-indexer`
+- Manually restart: `./run {chain}-indexer`
 - Check indexer logs for errors
 - Verify configuration files are correct

@@ -5,18 +5,72 @@ if [ $# -eq 0 ]; then
   echo 'Please inform the app name. ex: "./run chain-indexer"'
   exit 1
 fi
-echo -e "\n-->> Starting $1..."
-(
-  set -x
-  pm2 start pm2/ecosystem.config.cjs --only "$@" --update-env
-)
-echo -e "\n-->> Saving pm2 state..."
-(
-  set -x
-  pm2 save
-)
-echo -e "\n-->> Reading $1 logs..."
-(
-  set -x
-  pm2 logs --raw --lines 10 "$@"
-)
+
+# Check if the argument ends with -api or -indexer
+if [[ "$1" == *-api ]] || [[ "$1" == *-indexer ]]; then
+  # Standard case: start the specific service
+  echo -e "\n-->> Starting $1..."
+  (
+    set -x
+    pm2 start pm2/ecosystem.config.cjs --only "$@" --update-env
+  )
+  echo -e "\n-->> Saving pm2 state..."
+  (
+    set -x
+    pm2 save
+  )
+  echo -e "\n-->> Reading $1 logs..."
+  (
+    set -x
+    pm2 logs --raw --lines 10 "$@"
+  )
+else
+  # Chain name without suffix: start both indexer and api
+  echo -e "\n-->> Starting $1-indexer and $1-api..."
+  (
+    set -x
+    pm2 start pm2/ecosystem.config.cjs --only "$1-indexer" --update-env
+    pm2 start pm2/ecosystem.config.cjs --only "$1-api" --update-env
+  )
+  echo -e "\n-->> Saving pm2 state..."
+  (
+    set -x
+    pm2 save
+  )
+  echo -e "\n-->> Creating tmux session with split logs for $1..."
+  
+  # Check if tmux session already exists, kill it if it does
+  if tmux has-session -t "$1-logs" 2>/dev/null; then
+    echo -e "\n-->> Tmux session '$1-logs' already exists. Killing it..."
+    tmux kill-session -t "$1-logs"
+  fi
+  
+  # Create new tmux session with split panes
+  tmux new-session -d -s "$1-logs" -n "logs"
+  tmux split-window -h -t "$1-logs:logs"
+  
+  # Send commands to each pane
+  tmux send-keys -t "$1-logs:logs.0" "pm2 logs --raw $1-indexer" C-m
+  tmux send-keys -t "$1-logs:logs.1" "pm2 logs --raw $1-api" C-m
+  
+  # Set pane titles
+  tmux select-pane -t "$1-logs:logs.0" -T "$1-indexer"
+  tmux select-pane -t "$1-logs:logs.1" -T "$1-api"
+  
+  echo -e "\n-->> Tmux session '$1-logs' created with split logs"
+  echo -e "     Left pane: $1-indexer logs"
+  echo -e "     Right pane: $1-api logs"
+  echo -e "\n-->> To attach: tmux attach -t $1-logs"
+  echo -e "     To detach: Ctrl+b then d"
+  echo -e "     To kill session: tmux kill-session -t $1-logs"
+  
+  # Prompt user to attach
+  echo -e "\n-->> Would you like to attach to the tmux session now? (y/N)"
+  read -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    tmux attach -t "$1-logs"
+  else
+    echo -e "Session running in background. Use 'tmux attach -t $1-logs' to view logs."
+  fi
+fi
