@@ -52,3 +52,5 @@ explorer
 .cli
 *.deb
 
+# Snapshots
+snapshots
