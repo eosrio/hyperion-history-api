@@ -1,17 +1,16 @@
-import {Command, InvalidArgumentError} from 'commander';
-import path from 'path'
-import {readdir, rm} from "fs/promises";
-import fs, {existsSync, readdirSync, readFileSync, writeFileSync} from "fs";
-import {execSync, spawn} from "child_process";
+import { Command, InvalidArgumentError } from 'commander';
+import path, { join } from 'path'
+import { readdir, rm } from "fs/promises";
+import fs, { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { execSync, spawn } from "child_process";
 import crypto from "crypto";
 
 const packageRootDir = path.join(import.meta.dirname, '../../');
 const package_json = JSON.parse(readFileSync(path.join(packageRootDir, 'package.json')).toString());
 const debug = process.env.HPM_DEBUG;
 const program = new Command();
-const buildDir = path.join(packageRootDir, 'build');
-const pluginDirAbsolutePath = path.join(buildDir, 'plugins', 'repos');
-const pluginStatePath = path.join(buildDir, 'plugins', '.state.json');
+const pluginDirAbsolutePath = path.join(packageRootDir, 'plugins');
+const pluginStatePath = path.join(pluginDirAbsolutePath, '.state.json');
 
 let stateJson: any;
 
@@ -118,7 +117,7 @@ async function buildPlugin(name, flags) {
         }
 
         stateJson.plugins[name].last_build_date = new Date().toISOString();
-        const hash = await hashItem(pluginDir);
+        const hash = await hashItem(join(pluginDir, 'build'));
         console.log(`SHA1 Hash: ${hash}`);
         stateJson.plugins[name].hash = hash;
         stateJson.plugins[name].branch = currentBranch;
@@ -228,6 +227,12 @@ async function clonePluginRepo(pluginName: string, options: any): Promise<void> 
 }
 
 function init() {
+
+    // Make sure plugins directory exists
+    if (!existsSync(pluginDirAbsolutePath)) {
+        fs.mkdirSync(pluginDirAbsolutePath, { recursive: true });
+    }
+
     const check = existsSync(pluginStatePath);
     if (check) {
         try {
@@ -310,10 +315,15 @@ async function listPlugins(): Promise<void> {
     const dirs = await readdir(pluginDirAbsolutePath);
     const results: any[] = [];
     for (const dir of dirs) {
+
+        if (dir === '.state.json') {
+            continue; // skip state file
+        }
+
         try {
             const packageJsonPath = path.join(pluginDirAbsolutePath, dir, 'package.json');
             const package_json = JSON.parse(readFileSync(packageJsonPath).toString());
-            const {name, version, description} = package_json;
+            const { name, version, description } = package_json;
             // console.table([dir, name, version, description].join('\t'));
 
             let pluginState = false;
@@ -348,6 +358,13 @@ function saveState() {
 }
 
 async function setPluginState(pluginName: string, newState: boolean) {
+
+    // check if plugin exists
+    const pluginDir = path.join(pluginDirAbsolutePath, pluginName);
+    if (!existsSync(pluginDir)) {
+        throwAndQuit(`plugin ${pluginName} not found!`);
+    }
+
     if (stateJson) {
         if (stateJson.plugins[pluginName]) {
             stateJson.plugins[pluginName].enabled = newState;
@@ -373,9 +390,12 @@ function printState() {
     console.log(JSON.stringify(stateJson, null, 2));
 }
 
-async function buildAllPlugins(flags) {
+async function buildAllPlugins(flags: any) {
     const names = readdirSync(pluginDirAbsolutePath);
     for (const name of names) {
+        if (name === '.state.json') {
+            continue; // skip state file
+        }
         await buildPlugin(name, flags)
     }
 }

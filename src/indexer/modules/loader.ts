@@ -133,22 +133,18 @@ export class HyperionModuleLoader {
 
     // main loader function for plugin modules
     private async loadPlugins() {
-        const base = join(import.meta.dirname, '../../', 'plugins');
+        const base = join(import.meta.dirname, '../../../', 'plugins');
+        hLog(`Loading plugins from ${base}`);
         if (!existsSync(base)) {
-            // console.error('Plugin folder not found');
-            return;
-        }
-        const repos = join(base, 'repos');
-        if (!existsSync(repos)) {
-            // console.error('Plugin repo folder not found at ' + repos);
-            return;
-        }
-        const state = join(base, '.state.json');
-        if (!existsSync(state)) {
-            // console.error('Plugin state file not found');
+            console.error('Plugin folder not found');
             return;
         }
 
+        const state = join(base, '.state.json');
+        if (!existsSync(state)) {
+            console.error('Plugin state file not found');
+            return;
+        }
 
         let pState;
         try {
@@ -163,10 +159,10 @@ export class HyperionModuleLoader {
 
         for (const key in this.config.plugins) {
             if (this.config.plugins.hasOwnProperty(key)) {
-                if (pState[key] && pState[key].enabled && this.config.plugins[key].enabled) {
+                if (pState[key] && pState[key].enabled && this.config.plugins[key] && this.config.plugins[key].enabled) {
                     try {
-                        const pMod = (await import(join(repos, key))).default;
-                        const pl = new pMod(this.config.plugins[key]);
+                        const pMod = (await import(join(base, key, 'build', 'index.js'))).default;
+                        const pl = new pMod(this.config.plugins[key]) as HyperionPlugin;
                         if (pl.actionHandlers) {
                             this.loadPluginActionHandlers(pl.actionHandlers);
                         }

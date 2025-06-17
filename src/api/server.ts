@@ -4,35 +4,35 @@ import {
   hLog,
   waitUntilReady,
 } from '../indexer/helpers/common_functions.js';
-import {ConfigurationModule} from '../indexer/modules/config.js';
-import {ConnectionManager} from '../indexer/connections/manager.class.js';
-import {HyperionConfig} from '../interfaces/hyperionConfig.js';
-import {Redis} from 'ioredis';
-import fastify, {FastifyInstance, FastifyReply} from 'fastify';
-import {registerPlugins} from './plugins.js';
-import {AddressInfo} from 'net';
-import {registerRoutes} from './routes.js';
-import {generateOpenApiConfig} from './config/open_api.js';
-import {createWriteStream, existsSync, mkdirSync, readFileSync} from 'fs';
-import {SocketManager} from './socketManager.js';
-import {HyperionModuleLoader} from '../indexer/modules/loader.js';
-import {extendedActions} from './routes/v2-history/get_actions/definitions.js';
-import {CacheManager} from './helpers/cacheManager.js';
+import { ConfigurationModule } from '../indexer/modules/config.js';
+import { ConnectionManager } from '../indexer/connections/manager.class.js';
+import { HyperionConfig } from '../interfaces/hyperionConfig.js';
+import { Redis } from 'ioredis';
+import fastify, { FastifyInstance, FastifyReply } from 'fastify';
+import { registerPlugins } from './plugins.js';
+import { AddressInfo } from 'net';
+import { registerRoutes } from './routes.js';
+import { generateOpenApiConfig } from './config/open_api.js';
+import { createWriteStream, existsSync, mkdirSync, readFileSync } from 'fs';
+import { SocketManager } from './socketManager.js';
+import { HyperionModuleLoader } from '../indexer/modules/loader.js';
+import { extendedActions } from './routes/v2-history/get_actions/definitions.js';
+import { CacheManager } from './helpers/cacheManager.js';
 
-import {bootstrap} from 'global-agent';
-import {FastifySwaggerUiOptions} from '@fastify/swagger-ui';
-import {QRYBasePublisher} from './qry-hub/base-publisher.js';
-import {getApiUsageHistory} from './helpers/functions.js';
-import {WebSocket} from 'ws';
-import {StateHistorySocket} from '../indexer/connections/state-history.js';
+import { bootstrap } from 'global-agent';
+import { FastifySwaggerUiOptions } from '@fastify/swagger-ui';
+import { QRYBasePublisher } from './qry-hub/base-publisher.js';
+import { getApiUsageHistory } from './helpers/functions.js';
+import { WebSocket } from 'ws';
+import { StateHistorySocket } from '../indexer/connections/state-history.js';
 import {
   AlertManagerOptions,
   AlertsManager,
 } from '../indexer/modules/alertsManager.js';
-import {join} from 'node:path';
-import {FastifyMongodbOptions} from '@fastify/mongodb';
+import { join } from 'node:path';
+import { FastifyMongodbOptions } from '@fastify/mongodb';
 
-import {createContext, runInContext} from 'node:vm';
+import { createContext, runInContext } from 'node:vm';
 import fastifyHttpProxy from '@fastify/http-proxy';
 
 class HyperionApiServer {
@@ -76,7 +76,7 @@ class HyperionApiServer {
     this.cacheManager = new CacheManager(this.conf);
 
     if (!existsSync('./logs/' + this.chain)) {
-      mkdirSync('./logs/' + this.chain, {recursive: true});
+      mkdirSync('./logs/' + this.chain, { recursive: true });
     }
 
     const logStream = createWriteStream(
@@ -89,7 +89,7 @@ class HyperionApiServer {
       level: 'info',
       prettyPrint: true,
       serializers: {
-        res: (reply: {statusCode: any}) => {
+        res: (reply: { statusCode: any }) => {
           return {
             statusCode: reply.statusCode,
           };
@@ -232,7 +232,7 @@ class HyperionApiServer {
           target: '_self',
         },
         theme: {
-          css: [{filename: 'theme.css', content: customCss}],
+          css: [{ filename: 'theme.css', content: customCss }],
         },
         uiConfig: {
           docExpansion: 'list',
@@ -354,7 +354,7 @@ class HyperionApiServer {
             await this.manager.mongodbClient.connect();
             const buildInfo = await this.manager.mongodbClient
               .db('admin')
-              .command({buildInfo: 1});
+              .command({ buildInfo: 1 });
             hLog(`MongoDB: ${buildInfo.version}`);
             return true;
           } else {
@@ -380,11 +380,18 @@ class HyperionApiServer {
     hLog('Registering plugins...');
     // add custom plugin routes
     for (const plugin of this.mLoader.plugins) {
-      if (plugin.hasApiRoutes) {
-        hLog(`Adding routes for plugin: ${plugin.internalPluginName}`);
-        plugin.addRoutes(this.fastify);
-        plugin.chainName = this.chain;
+      try {
+        if (plugin.hasApiRoutes) {
+          hLog(`Adding routes for plugin: ${plugin.internalPluginName}`);
+          plugin.addRoutes(this.fastify);
+          plugin.chainName = this.chain;
+        }
+      } catch (error) {
+        hLog(
+          `Failed to add routes for plugin "${plugin.internalPluginName}": ${error}`,
+        );
       }
+
     }
 
     // FASTIFY ROUTES
@@ -434,7 +441,7 @@ class HyperionApiServer {
     }
   }
 
-  async getPast24HoursUsage(): Promise<{ct: number; ts: string}[]> {
+  async getPast24HoursUsage(): Promise<{ ct: number; ts: string }[]> {
     const stats = await getApiUsageHistory(this.fastify);
     const dataPoints: any[] = [];
     if (stats.buckets && stats.buckets.length > 0) {
@@ -448,7 +455,7 @@ class HyperionApiServer {
               hits += responses[k];
             });
           }
-          dataPoints.push({ct: hits, ts: bucket.timestamp});
+          dataPoints.push({ ct: hits, ts: bucket.timestamp });
         }
       }
     }
@@ -456,11 +463,11 @@ class HyperionApiServer {
   }
 
   registerQryHubRoutes() {
-    this.fastify.get('/.qry/usage', {schema: {hide: true}}, async () => {
+    this.fastify.get('/.qry/usage', { schema: { hide: true } }, async () => {
       return this.getPast24HoursUsage();
     });
 
-    this.fastify.get('/.qry/first', {schema: {hide: true}}, async () => {
+    this.fastify.get('/.qry/first', { schema: { hide: true } }, async () => {
       const tRef = process.hrtime.bigint();
       const firstBlock = await getFirstIndexedBlock(
         this.fastify.elastic,
@@ -478,12 +485,12 @@ class HyperionApiServer {
 
     this.fastify.get(
       '/.qry/get_first_block_histogram',
-      {schema: {hide: true}},
+      { schema: { hide: true } },
       async (request, reply) => {
         let firstBlock = -1;
         const tRef = process.hrtime.bigint();
 
-        const times: {name: string; time: number}[] = [];
+        const times: { name: string; time: number }[] = [];
 
         const elastic = this.fastify.elastic;
 
@@ -495,7 +502,7 @@ class HyperionApiServer {
         });
 
         const getIndicesTime = this.logTime(tRef);
-        times.push({name: 'get_indices', time: getIndicesTime});
+        times.push({ name: 'get_indices', time: getIndicesTime });
         console.log(`Time to get indices: ${getIndicesTime}ms`);
 
         const firstIndex = indices[0].index;
@@ -544,7 +551,7 @@ class HyperionApiServer {
         });
 
         const histogramTime = this.logTime(tRefHistogram);
-        times.push({name: 'histogram', time: histogramTime});
+        times.push({ name: 'histogram', time: histogramTime });
         console.log(`Time to get histogram: ${histogramTime}ms`);
 
         if (!histogramData.aggregations) {
@@ -572,11 +579,11 @@ class HyperionApiServer {
               },
             },
           },
-          sort: [{block_num: {order: 'asc'}}],
+          sort: [{ block_num: { order: 'asc' } }],
         });
 
         const searchTime = this.logTime(tRefSearch);
-        times.push({name: 'search', time: searchTime});
+        times.push({ name: 'search', time: searchTime });
         console.log(`Time to search: ${searchTime}ms`);
 
         firstBlock = getLastResult(results);
@@ -729,7 +736,7 @@ class HyperionApiServer {
     this.indexerController.on('close', () => {
       hLog('Disconnected from Hyperion Controller');
       this.qryPublisher?.publishIndexerStatus('offline');
-      this.alerts?.emit('IndexerError', {message: 'Indexer disconnected'});
+      this.alerts?.emit('IndexerError', { message: 'Indexer disconnected' });
       setTimeout(() => {
         this.setupIndexerController();
       }, 5000);
@@ -792,7 +799,7 @@ class HyperionApiServer {
               const themeSourceData = readFileSync(themeFile).toString();
 
               // create VM context to run theme data
-              const context = {themeData: {}};
+              const context = { themeData: {} };
               createContext(context);
               // run theme data in context
               runInContext(themeSourceData, context);

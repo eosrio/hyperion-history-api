@@ -1,0 +1,12 @@
+{
+  "name": "delphioracle-plugin",
+  "version": "1.0.1",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc"
+  }
+}
