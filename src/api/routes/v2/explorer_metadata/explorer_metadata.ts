@@ -1,7 +1,10 @@
-import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
-import {timedQuery} from "../../../helpers/functions.js";
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { timedQuery } from "../../../helpers/functions.js";
 
 async function getExplorerMetadata(fastify: FastifyInstance) {
+
+
+
     return {
         provider: fastify.manager.config.api.provider_name,
         provider_url: fastify.manager.config.api.provider_url,
@@ -9,7 +12,7 @@ async function getExplorerMetadata(fastify: FastifyInstance) {
         chain_id: fastify.manager.conn.chains[fastify.manager.chain].chain_id,
         custom_core_token: fastify.manager.config.api.custom_core_token,
         theme: fastify.explorerTheme ?? {},
-        oracle: fastify.manager.config.api.explorer?.oracle ?? null,
+        oracle: fastify.hasRoute({ url: '/v2/oracle/get_datapoints_histogram', method: 'GET' })
     }
 }
 
