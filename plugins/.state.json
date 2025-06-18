@@ -1,12 +1,12 @@
 {
-  "update_ts": 1750200015099,
+  "update_ts": 1750285476871,
   "hyperion_version": "4.0.0-beta.1",
   "plugins": {
-    "delphioracle-plugin": {
-      "enabled": true,
-      "last_build_date": "2025-06-17T22:40:15.093Z",
-      "hash": "04cf8076b470aeb543a4df0e6a399af4031c50f4",
-      "branch": "release/4.0"
+    "delphioracle": {
+      "hash": "ebb5476ee68f03f23be7069452d117ddcb32cb5e",
+      "last_build_date": "2025-06-18T22:24:36.868Z",
+      "branch": "main",
+      "enabled": true
     }
   }
 }
