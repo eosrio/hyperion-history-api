@@ -2,9 +2,6 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { timedQuery } from "../../../helpers/functions.js";
 
 async function getExplorerMetadata(fastify: FastifyInstance) {
-
-
-
     return {
         provider: fastify.manager.config.api.provider_name,
         provider_url: fastify.manager.config.api.provider_url,
