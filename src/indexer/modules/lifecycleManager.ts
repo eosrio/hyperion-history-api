@@ -66,11 +66,21 @@ export class HyperionLifecycleManager {
         }
 
         if (this.allocation && this.allocation.enabled === true) {
-            if (this.allocation.require_node_attribute) {
+            const {
+                require_node_attributes,
+                include_node_attributes,
+                exclude_node_attributes
+            } = this.allocation;
+
+            if (
+                (require_node_attributes && Object.keys(require_node_attributes).length > 0) ||
+                (include_node_attributes && Object.keys(include_node_attributes).length > 0) ||
+                (exclude_node_attributes && Object.keys(exclude_node_attributes).length > 0)
+            ) {
                 this.allocationEnabled = true;
-                this.nodeAttribute = this.allocation.require_node_attribute;
+                hLog(`Tiered index allocation is enabled!`);
             } else {
-                hLog(`Tiered index allocation is enabled but no node attribute requirement is specified`);
+                hLog(`Tiered index allocation is enabled but no node attribute requirements are specified`);
             }
         }
     }
@@ -128,7 +138,6 @@ export class HyperionLifecycleManager {
             return;
         }
         hLog(`Auto pruning started with max retained blocks: ${this.maxRetainedBlocks}`);
-
         await this.checkPruning();
     }
 
@@ -141,8 +150,9 @@ export class HyperionLifecycleManager {
         await this.pruneIndices("action");
         await this.pruneIndices("delta");
 
-        // TODO: implement pruning for the block index if partitioned or not
         await this.pruneBlocks();
+
+        await this.checkTieredAllocation();
 
         if (this.totalDeletedBytes > 0) {
             const gbSaved = (this.totalDeletedBytes / (1024 * 1024 * 1024)).toFixed(2);
@@ -151,6 +161,147 @@ export class HyperionLifecycleManager {
 
         hLog(`Auto pruning completed.`);
     }
+
+    private attributesToObject(attributes: NodeAttributeRequirement[]): { [key: string]: string } {
+        const obj: { [key: string]: string } = {};
+        for (const attr of attributes) {
+            obj[attr.key] = attr.value;
+        }
+        return obj;
+    }
+
+    async checkTieredAllocation() {
+
+        if (!this.allocationEnabled || !this.allocation) {
+            return;
+        }
+
+        hLog('Checking for tiered index allocation...');
+
+        await this.applyTieredAllocationForType('action');
+        await this.applyTieredAllocationForType('delta');
+
+        hLog('Tiered index allocation check completed.');
+    }
+
+    private async applyTieredAllocationForType(indexType: string) {
+
+        if (!this.allocationEnabled || !this.allocation) {
+            return;
+        }
+
+        const esClient = this.manager.elasticsearchClient;
+        const maxAgeDays = this.allocation.max_age_days;
+        const maxAgeBlocks = this.allocation.max_age_blocks;
+
+        if (!maxAgeDays && !maxAgeBlocks) {
+            return;
+        }
+
+        // Get indices with their creation date
+        const indices = await esClient.cat.indices({
+            format: 'json',
+            index: `${this.master.chain}-${indexType}-${this.conf.settings.index_version}-*`,
+            h: 'index,creation.date' // creation.date is in epoch millis
+        });
+
+        if (!indices || indices.length === 0) {
+            return;
+        }
+
+        let headBlockNum = 0;
+        if (maxAgeBlocks) {
+            try {
+                const chainInfo = await this.master.rpc.v1.chain.get_info();
+                if (chainInfo && chainInfo.head_block_num) {
+                    headBlockNum = chainInfo.head_block_num.toNumber();
+                } else {
+                    hLog('Could not get head block number for tiered allocation check.');
+                }
+            } catch (e: any) {
+                hLog(`Error getting chain info for tiered allocation: ${e.message}`);
+            }
+        }
+
+        const settingsToApply: any = {};
+        const logObject: any = {};
+
+        if (this.allocation.require_node_attributes && Object.keys(this.allocation.require_node_attributes).length > 0) {
+            settingsToApply['index.routing.allocation.require'] = this.allocation.require_node_attributes;
+            logObject.require = settingsToApply['index.routing.allocation.require'];
+        }
+        if (this.allocation.include_node_attributes && Object.keys(this.allocation.include_node_attributes).length > 0) {
+            settingsToApply['index.routing.allocation.include'] = this.allocation.include_node_attributes;
+            logObject.include = settingsToApply['index.routing.allocation.include'];
+        }
+        if (this.allocation.exclude_node_attributes && Object.keys(this.allocation.exclude_node_attributes).length > 0) {
+            settingsToApply['index.routing.allocation.exclude'] = this.allocation.exclude_node_attributes;
+            logObject.exclude = settingsToApply['index.routing.allocation.exclude'];
+        }
+
+        if (Object.keys(settingsToApply).length === 0) {
+            hLog('No allocation rules to apply.');
+            return;
+        }
+
+        // Pretty print the settings to apply
+        hLog(`Applying tiered allocation settings: ${JSON.stringify(logObject, null, 2)}`);
+
+        const now = Date.now();
+
+        for (const indexInfo of indices) {
+            if (!indexInfo.index) {
+                continue;
+            }
+
+            let shouldBeMoved = false;
+            let reason = '';
+
+            // Check by age in days
+            if (maxAgeDays && indexInfo['creation.date']) {
+                const creationDate = Number(indexInfo['creation.date']);
+                const ageInMillis = now - creationDate;
+                const ageInDays = ageInMillis / (1000 * 60 * 60 * 24);
+                if (ageInDays > maxAgeDays) {
+                    shouldBeMoved = true;
+                    reason = `age in days (${ageInDays.toFixed(2)}) is greater than max_age_days (${maxAgeDays})`;
+                }
+            }
+
+            // Check by age in blocks
+            if (!shouldBeMoved && maxAgeBlocks && headBlockNum > 0) {
+                const parts = indexInfo.index.split('-');
+                const suffix = parts[parts.length - 1];
+                const partitionNumber = parseInt(suffix, 10);
+
+                if (!isNaN(partitionNumber)) {
+                    const indexPartitionSize = this.conf.settings.index_partition_size;
+                    const finalBlockOfIndex = partitionNumber * indexPartitionSize;
+
+                    if ((headBlockNum - finalBlockOfIndex) > maxAgeBlocks) {
+                        shouldBeMoved = true;
+                        reason = `block age (${headBlockNum - finalBlockOfIndex}) is greater than max_age_blocks (${maxAgeBlocks})`;
+                    }
+                }
+            }
+
+            if (shouldBeMoved) {
+                hLog(`Index ${indexInfo.index} is eligible for tiered allocation. Reason: ${reason}.`);
+                try {
+                    hLog(`Applying allocation rules to ${indexInfo.index}: ${JSON.stringify(logObject)}`);
+                    await esClient.indices.putSettings({
+                        index: indexInfo.index,
+                        body: settingsToApply
+                    });
+                    hLog(`Successfully applied allocation rules to ${indexInfo.index}.`);
+                } catch (error: any) {
+                    hLog(`Error applying allocation rules to ${indexInfo.index}: ${error.message}`);
+                }
+            }
+        }
+    }
+
+
 
     async pruneBlocks() {
 

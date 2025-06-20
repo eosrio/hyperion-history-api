@@ -50,7 +50,9 @@ export interface TieredIndexAllocationSettings {
     enabled: boolean;
     max_age_days?: number;
     max_age_blocks?: number;
-    require_node_attribute?: NodeAttributeRequirement;
+    require_node_attributes?: { [key: string]: string };
+    include_node_attributes?: { [key: string]: string };
+    exclude_node_attributes?: { [key: string]: string };
 }
 
 export interface MainSettings {
@@ -320,18 +322,14 @@ export const HyperionApiConfigSchema = z.object({
     explorer: ExplorerConfigsSchema.optional(),
 });
 
-// Zod schema for node attribute requirement
-const NodeAttributeRequirementSchema = z.object({
-    key: z.string(),
-    value: z.string()
-});
-
 // Zod schema for tiered index allocation settings
 const TieredIndexAllocationSettingsSchema = z.object({
     enabled: z.boolean(),
     max_age_days: z.number().optional(),
     max_age_blocks: z.number().optional(),
-    require_node_attribute: NodeAttributeRequirementSchema.optional(),
+    require_node_attributes: z.record(z.string(), z.string()).optional(),
+    include_node_attributes: z.record(z.string(), z.string()).optional(),
+    exclude_node_attributes: z.record(z.string(), z.string()).optional(),
 });
 
 export const HyperionSettingsConfigSchema = z.object({
