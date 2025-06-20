@@ -1021,6 +1021,7 @@ export default class MainDSWorker extends HyperionWorker {
             // TODO: check error on stake.libre::temppower
             if (!row.data) {
                 console.log(`Failed to deserialize ${row.code}::${row.table} at block ${block}`);
+                console.log(row);
             }
 
             // const row_sb = this.createSerialBuffer(Serialize.hexToUint8Array(row['value']));

@@ -73,7 +73,7 @@ export default class IndexerWorker extends HyperionWorker {
             const queueName = process.env.queue;
             if (this.ch && queueName) {
                 this.ch_ready = true;
-                console.log('Consumer on:', queueName);
+                hLog('Starting consumer on:', queueName);
                 this.ch.on('close', () => {
                     hLog('Channel closed for queue:', queueName);
                     this.indexQueue.pause();
@@ -94,7 +94,7 @@ export default class IndexerWorker extends HyperionWorker {
     startMonitoring() {
         setInterval(() => {
             if (this.temp_indexed_count > 0) {
-                process.send?.({event: 'add_index', size: this.temp_indexed_count});
+                process.send?.({ event: 'add_index', size: this.temp_indexed_count });
             }
             this.temp_indexed_count = 0;
         }, 1000);

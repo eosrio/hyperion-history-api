@@ -3,6 +3,7 @@ import { HyperionConfig, NodeAttributeRequirement, TieredIndexAllocationSettings
 import { ConnectionManager } from "../connections/manager.class.js";
 import { hLog } from "../helpers/common_functions.js";
 import { HyperionMaster } from "./master.js";
+import { delay } from "lodash";
 
 interface IndexData {
     index: string;
@@ -26,6 +27,8 @@ export class HyperionLifecycleManager {
     maxRetainedBlocks?: number;
     autoPrune = false;
     totalDeletedBytes = 0;
+
+    private lastPruningCheckBlockNum = 0;
 
     constructor(master: HyperionMaster) {
         this.master = master;
@@ -69,6 +72,40 @@ export class HyperionLifecycleManager {
             } else {
                 hLog(`Tiered index allocation is enabled but no node attribute requirement is specified`);
             }
+        }
+    }
+
+    async notifyConsumedBlock(blockNum: number) {
+        if (!this.autoPrune) {
+            return;
+        }
+
+        const partitionSize = this.conf.settings.index_partition_size;
+        if (partitionSize <= 0) {
+            return; // Pruning is based on partitions, so this is required.
+        }
+
+        if (this.lastPruningCheckBlockNum === 0) {
+            // First block seen, initialize and return.
+            this.lastPruningCheckBlockNum = blockNum;
+            return;
+        }
+
+        // Calculate partitions based on 1-based block numbers
+        const oldPartition = Math.floor((this.lastPruningCheckBlockNum - 1) / partitionSize);
+        const newPartition = Math.floor((blockNum - 1) / partitionSize);
+
+        if (newPartition > oldPartition) {
+            hLog(`New index partition boundary crossed at block ${blockNum}. Triggering pruning check in 5 seconds...`);
+            setTimeout(() => {
+                this.checkPruning().catch((err) => {
+                    hLog(`Error during pruning check: ${err.message}`);
+                });
+            }, 5000);
+        }
+
+        if (blockNum > this.lastPruningCheckBlockNum) {
+            this.lastPruningCheckBlockNum = blockNum;
         }
     }
 
@@ -128,7 +165,9 @@ export class HyperionLifecycleManager {
             bytes: 'b',
             index: `${this.master.chain}-block-${this.conf.settings.index_version}*`
         });
-        console.dir(blockIndices, { depth: Infinity });
+
+        // console.dir(blockIndices, { depth: Infinity });
+
         if (blockIndices.length === 1) {
 
             const indexName = blockIndices[0].index;
@@ -136,6 +175,8 @@ export class HyperionLifecycleManager {
                 hLog(`No block index found to prune.`);
                 return;
             }
+
+            hLog(`Found block index: ${indexName}`);
 
             // Get the current head block number
             const chainInfo = await this.master.rpc.v1.chain.get_info();
@@ -167,7 +208,7 @@ export class HyperionLifecycleManager {
                 query: { bool: { must: [{ range: { block_num: { lte: finalBlockToKeep } } }] } }
             });
 
-            console.dir(response, { depth: Infinity });
+            // console.dir(response, { depth: Infinity });
 
             const totalHits = response.hits.total as estypes.SearchTotalHits;
             if (totalHits && totalHits.value > 0) {
@@ -189,6 +230,7 @@ export class HyperionLifecycleManager {
 
         } else if (blockIndices.length > 1) {
             // Partitioned block index, we can prune by index
+            hLog(`Multiple block indices found. Pruning by index...`);
             await this.pruneIndices('block');
         }
     }

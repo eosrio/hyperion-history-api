@@ -1,11 +1,11 @@
-import {ConfigurationModule} from "./config.js";
-import path, {join} from "path";
-import {existsSync, readdirSync, readFileSync} from "fs";
-import {HyperionConnections} from "../../interfaces/hyperionConnections.js";
-import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
-import {BaseParser} from "./parsers/base-parser.js";
-import {hLog} from "../helpers/common_functions.js";
-import {ActionTrace} from "../../interfaces/action-trace.js";
+import { ConfigurationModule } from "./config.js";
+import path, { join } from "path";
+import { existsSync, readdirSync, readFileSync } from "fs";
+import { HyperionConnections } from "../../interfaces/hyperionConnections.js";
+import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
+import { BaseParser } from "./parsers/base-parser.js";
+import { hLog } from "../helpers/common_functions.js";
+import { ActionTrace } from "../../interfaces/action-trace.js";
 import { HyperionPlugin, HyperionStreamHandler } from "@eosrio/hyperion-plugin-core";
 
 export class HyperionModuleLoader {
@@ -134,7 +134,9 @@ export class HyperionModuleLoader {
     // main loader function for plugin modules
     private async loadPlugins() {
         const base = join(import.meta.dirname, '../../../', 'plugins');
-        hLog(`Loading plugins from ${base}`);
+
+        // hLog(`Loading plugins from ${base}`);
+
         if (!existsSync(base)) {
             console.error('Plugin folder not found');
             return;
@@ -155,7 +157,7 @@ export class HyperionModuleLoader {
             return;
         }
 
-        console.log(JSON.stringify(pState, null, 2));
+        // console.log(JSON.stringify(pState, null, 2));
 
         for (const key in this.config.plugins) {
             if (this.config.plugins.hasOwnProperty(key)) {

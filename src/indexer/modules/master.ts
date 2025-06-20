@@ -273,13 +273,20 @@ export class HyperionMaster {
                 }
 
                 if (msg.live === 'false') {
+
                     this.indexerMonitor.consumedBlocks++;
                     if (msg.block_num && msg.block_num > this.lastProcessedBlockNum) {
                         this.lastProcessedBlockNum = msg.block_num;
                     }
+
                 } else {
                     // LIVE READER
                     this.indexerMonitor.liveConsumedBlocks++;
+
+                    // notify the lifecycle manager
+                    this.lifecycleManager.notifyConsumedBlock(msg.block_num).catch(e => {
+                        hLog(`Error from lifecycle manager notification: ${e.message}`);
+                    });
 
                     // cache the last block number for quick api access
                     this.ioRedisClient.set(`${this.chain}:last_idx_block`, `${msg.block_num}@${msg.block_ts}`).catch(console.error);
