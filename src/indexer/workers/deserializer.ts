@@ -798,7 +798,14 @@ export default class MainDSWorker extends HyperionWorker {
 
 
             debugLog(`Loading current ABI (${savedAbi?.block} | ${savedAbi?.valid_until}) ${contract}`);
-            abiStatus = await this.loadCurrentAbiHex(contract);
+
+            try {
+                abiStatus = await this.loadCurrentAbiHex(contract);
+            } catch (error: any) {
+                debugLog(`(abieos/current) >> ${error.message}`);
+                abiStatus = false;
+            }
+
             if (abiStatus) {
                 try {
                     resultType = this.getAbiDataType(field, contract, type);
@@ -1753,7 +1760,7 @@ export default class MainDSWorker extends HyperionWorker {
             accountDoc['amount'] = data['@accounts']['amount'];
             accountDoc['symbol'] = data['@accounts']['symbol'];
         } else {
-            debugLog(`${data['code']} is not a valid token contract!`);
+            // debugLog(`${data['code']} is not a valid token contract!`, data);
             return;
         }
 

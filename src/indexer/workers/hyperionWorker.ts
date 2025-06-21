@@ -1,19 +1,19 @@
-import {Client} from "@elastic/elasticsearch";
-import {EventEmitter} from "events";
-import {Abieos} from "@eosrio/node-abieos";
-import {Channel, ConfirmChannel} from "amqplib";
+import { Client } from "@elastic/elasticsearch";
+import { EventEmitter } from "events";
+import { Abieos } from "@eosrio/node-abieos";
+import { Channel, ConfirmChannel } from "amqplib";
 
-import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
-import {ConnectionManager} from "../connections/manager.class.js";
-import {HyperionModuleLoader} from "../modules/loader.js";
-import {ConfigurationModule, Filters} from "../modules/config.js";
-import {debugLog, hLog} from "../helpers/common_functions.js";
-import {StateHistorySocket} from "../connections/state-history.js";
-import {BasicDelta} from "../../interfaces/hyperion-delta.js";
-import {getHeapStatistics, HeapInfo} from "node:v8";
-import {HyperionActionAct} from "../../interfaces/hyperion-action.js";
-import {APIClient} from "@wharfkit/antelope";
-import {HyperionAbi} from "../../interfaces/hyperion-abi.js";
+import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
+import { ConnectionManager } from "../connections/manager.class.js";
+import { HyperionModuleLoader } from "../modules/loader.js";
+import { ConfigurationModule, Filters } from "../modules/config.js";
+import { debugLog, hLog } from "../helpers/common_functions.js";
+import { StateHistorySocket } from "../connections/state-history.js";
+import { BasicDelta } from "../../interfaces/hyperion-delta.js";
+import { getHeapStatistics, HeapInfo } from "node:v8";
+import { HyperionActionAct } from "../../interfaces/hyperion-action.js";
+import { APIClient } from "@wharfkit/antelope";
+import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
 
 export abstract class HyperionWorker {
 
@@ -310,7 +310,7 @@ export abstract class HyperionWorker {
     }
 
     async loadCurrentAbiHex(contract: string): Promise<boolean> {
-        let _status: boolean;
+        let _status: boolean = false;
         if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract)?.has(-1)) {
             _status = false;
             debugLog('ignore current abi for', contract);
@@ -318,7 +318,13 @@ export abstract class HyperionWorker {
             const currentAbi = await this.rpc.v1.chain.get_raw_abi(contract);
             if (currentAbi.abi.array.byteLength > 0) {
                 const abi_hex = Buffer.from(currentAbi.abi.array).toString('hex');
-                _status = this.abieos.loadAbiHex(contract, abi_hex);
+                
+                try {
+                    _status = this.abieos.loadAbiHex(contract, abi_hex);
+                } catch (e: any) {
+                    debugLog(`(abieos/current) >> ${e.message}`);
+                }
+
                 if (!_status) {
                     hLog(`Abieos::loadAbiHex error for ${contract} at head`);
                     if (this.failedAbiMap.has(contract)) {
