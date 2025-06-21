@@ -298,20 +298,34 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
 
 // Main health check query
 async function getHealthQuery(fastify: FastifyInstance) {
+    const settings = fastify.manager.config.settings;
+    const maxRetainedBlocks = settings.max_retained_blocks;
+    const autoPrune = !!(maxRetainedBlocks && maxRetainedBlocks > 0);
+
     let response: {
         version?: string,
         version_hash?: string,
         host: string,
         health: ServiceResponse<any>[],
         limits: any
-        features: any
+        features: any,
+        pruning: {
+            auto_pruning_enabled: boolean,
+            max_retained_blocks: number,
+            pruning_check_interval_sec?: number,
+            next_prune_eta_sec?: number
+        }
     } = {
         version: fastify.manager.current_version,
         version_hash: fastify.manager.getServerHash(),
         host: fastify.manager.config.api.server_name,
         health: [],
         limits: fastify.manager.config.api.limits,
-        features: fastify.manager.config.features
+        features: fastify.manager.config.features,
+        pruning: {
+            auto_pruning_enabled: autoPrune,
+            max_retained_blocks: maxRetainedBlocks || 0
+        }
     };
     response.health = await Promise.all([
         checkStateHistory(fastify),
@@ -324,6 +338,22 @@ async function getHealthQuery(fastify: FastifyInstance) {
     if (nodeos && nodeos.service_data && es && es.service_data) {
         es.service_data.head_offset = nodeos.service_data.head_block_num - es.service_data.last_indexed_block;
     }
+
+    if (autoPrune && es?.service_data) {
+        const partitionSize = settings.index_partition_size;
+        if (partitionSize > 0) {
+            const lastIndexedBlock = es.service_data.last_indexed_block;
+            const blockTimeMs = 500;
+
+            response.pruning.pruning_check_interval_sec = (partitionSize * blockTimeMs) / 1000;
+
+            const currentPartition = Math.floor((lastIndexedBlock - 1) / partitionSize);
+            const nextPruneBlock = (currentPartition + 1) * partitionSize + 1;
+            const blocksUntilPrune = nextPruneBlock - lastIndexedBlock;
+            response.pruning.next_prune_eta_sec = (blocksUntilPrune * blockTimeMs) / 1000;
+        }
+    }
+
     return response;
 }
 
