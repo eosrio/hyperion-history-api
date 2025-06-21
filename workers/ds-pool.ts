@@ -279,8 +279,12 @@ export default class DSPoolWorker extends HyperionWorker {
                 }
             }
 
-
-            _status = await this.loadCurrentAbiHex(contract);
+            try {
+                _status = await this.loadCurrentAbiHex(contract);
+            } catch (error: any) {
+                debugLog(`(abieos/current) >> ${error.message}`);
+                _status = false;
+            }
 
             if (_status === true) {
                 try {
