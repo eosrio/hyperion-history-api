@@ -160,7 +160,7 @@ A client library (for Web and Node.js) simplifying connection to the real-time s
 
 ### 3.9 Hyperion Plugins (Optional)
 Hyperion features an extensible plugin architecture. Plugins can add custom data handlers, API routes, or other functionalities. Managed via the `hpm` command-line tool.
-*   **Example:** [Hyperion Lightweight Explorer](https://github.com/eosrio/hyperion-explorer-plugin)
+*   **Example:** [DelphiOracle Plugin](https://github.com/eosrio/hyperion-delphioracle-plugin)
 
 ## 4. Getting Started
 
