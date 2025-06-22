@@ -1,10 +1,10 @@
-import {Command} from 'commander';
-import {readFileSync} from 'node:fs';
-import {Client, estypes} from '@elastic/elasticsearch';
+import { Command } from 'commander';
+import { readFileSync } from 'node:fs';
+import { Client, estypes } from '@elastic/elasticsearch';
 // @ts-ignore
 import cliProgress from 'cli-progress';
-import {existsSync, mkdirSync, writeFileSync} from 'fs';
-import {HyperionBlock} from './repair-cli/interfaces.js';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { HyperionBlock } from './repair-cli/interfaces.js';
 import {
     getBlocks,
     getLastIndexedBlock,
@@ -13,11 +13,11 @@ import {
     readConnectionConfig,
 } from './repair-cli/functions.js';
 
-import {getFirstIndexedBlock} from "../indexer/helpers/common_functions.js";
+import { getFirstIndexedBlock } from "../indexer/helpers/common_functions.js";
 
 
-import {WebSocket} from 'ws';
-import {APIClient} from "@wharfkit/antelope";
+import { WebSocket } from 'ws';
+import { APIClient } from "@wharfkit/antelope";
 
 const progressBar = new cliProgress.SingleBar(
     {},
@@ -59,7 +59,7 @@ async function run(
                 finalBlock,
                 qtdTotal
             );
-            let {hits: {hits}} = result;
+            let { hits: { hits } } = result;
             const blocks = hits.map((obj: any) => obj._source);
             await findForksOnRange(blocks, apiClient);
             blockInitial = finalBlock;
@@ -144,7 +144,7 @@ async function findForksOnRange(blocks: HyperionBlock[], rpc: APIClient) {
                         removals.add(currentBlock.block_id);
                     } else {
                         end = currentBlockNumber + 1;
-                        const range = {start, end, ids: [...removals]};
+                        const range = { start, end, ids: [...removals] };
                         errorRanges.push(range);
                         removals.clear();
                         // console.log(`\n ⚠️⚠️ Forked at ${range.start} to ${range.end}`);
@@ -175,7 +175,7 @@ function processResults(chain, firstBlock, lastBlock, args) {
 
     if (missingBlocks.length > 0) {
         let path = `.repair/${chain}-${firstBlock + 2
-        }-${lastBlock}-missing-blocks.json`;
+            }-${lastBlock}-missing-blocks.json`;
         if (args.outFile) {
             path = args.outFile + '-missing-blocks.json';
         }
@@ -188,7 +188,7 @@ async function scanChain(chain: string, args: any) {
     const chainConfig = readChainConfig(chain);
     const config = readConnectionConfig();
     const client = initESClient(config);
-    const apiClient = new APIClient({fetch, url: config.chains[chain].http});
+    const apiClient = new APIClient({ fetch, url: config.chains[chain].http });
     const ping = await client.ping();
 
     if (!ping) {
@@ -411,7 +411,7 @@ async function repairChain(chain: string, file: string, args: any) {
                     must: [
                         {
                             range: {
-                                block: {lte: range.start, gte: range.end},
+                                block: { lte: range.start, gte: range.end },
                             },
                         },
                     ],
@@ -428,7 +428,7 @@ async function repairChain(chain: string, file: string, args: any) {
                 deleteAbis += (
                     resultAbis.hits.total as estypes.SearchTotalHits
                 )?.value;
-                console.log('ABIs', {lte: range.start, gte: range.end});
+                console.log('ABIs', { lte: range.start, gte: range.end });
             }
         } else {
             const indexExists = await client.indices.exists({
@@ -617,7 +617,7 @@ async function repairChain(chain: string, file: string, args: any) {
         } else {
 
 
-            const indexExists = await client.indices.exists({index: searchProposals.index});
+            const indexExists = await client.indices.exists({ index: searchProposals.index });
 
             if (indexExists) {
                 delete searchProposals.size;
@@ -674,7 +674,7 @@ async function repairChain(chain: string, file: string, args: any) {
                 )?.value;
             }
         } else {
-            const indexExists = await client.indices.exists({index: searchLinks.index});
+            const indexExists = await client.indices.exists({ index: searchLinks.index });
 
             if (indexExists) {
                 delete searchLinks.size;
@@ -728,14 +728,14 @@ async function repairChain(chain: string, file: string, args: any) {
                     )?.value,
                     'permissions needs to be updated'
                 );
-                console.log({lte: range.start, gte: range.end});
+                console.log({ lte: range.start, gte: range.end });
                 deletePermissions += (
                     resultPermissions.hits.total as estypes.SearchTotalHits
                 )?.value;
             }
         } else {
 
-            const indexExists = await client.indices.exists({index: searchPermissions.index});
+            const indexExists = await client.indices.exists({ index: searchPermissions.index });
             if (indexExists) {
                 delete searchPermissions.size;
                 const deletedPermissionsResult = await client.deleteByQuery(
@@ -762,7 +762,7 @@ async function repairChain(chain: string, file: string, args: any) {
             const searchBlocks = {
                 index: blockIndex,
                 query: {
-                    bool: {must: [{term: {block_id: {value: id}}}]},
+                    bool: { must: [{ term: { block_id: { value: id } } }] },
                 },
             };
             if (args.dry) {
@@ -834,13 +834,15 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
     controller.on('open', async () => {
         console.log('Connected to Hyperion Controller');
         const parsedFile = JSON.parse(readFileSync(file).toString());
-        const chunkSize = 20; // Chunk size
+        // Chunk size
+        const chunkSize = 5;
         const totalLines = parsedFile.length;
 
         if (!dryRun) {
             let completedLines = 0;
             for (let i = 0; i < parsedFile.length; i += chunkSize) {
                 const chunk = parsedFile.slice(i, i + chunkSize);
+                // Send the chunk to the controller and wait for completion (repair_completed event)
                 await sendChunk(chunk);
                 completedLines += chunk.length;
                 const progress = (completedLines / totalLines) * 100;
@@ -948,12 +950,12 @@ async function quickScanChain(chain: string, args: any) {
             if (missingBlocks[i].start === end + 1) {
                 end = missingBlocks[i].end;
             } else {
-                mergedRanges.push({start, end, count: end - start + 1});
+                mergedRanges.push({ start, end, count: end - start + 1 });
                 start = missingBlocks[i].start;
                 end = missingBlocks[i].end;
             }
         }
-        mergedRanges.push({start, end, count: end - start + 1});
+        mergedRanges.push({ start, end, count: end - start + 1 });
         console.log(mergedRanges);
         missingBlocks = mergedRanges;
         const totalMissingBlocks = missingBlocks.reduce((acc, range) => acc + range.count, 0);
@@ -967,10 +969,10 @@ async function quickScanChain(chain: string, args: any) {
 }
 
 async function searchMissingBlocks(client: Client,
-                                   blockIndex: string,
-                                   firstBlock: number,
-                                   lastBlock: number,
-                                   totalBlocks: number) {
+    blockIndex: string,
+    firstBlock: number,
+    lastBlock: number,
+    totalBlocks: number) {
 
     // console.log(`Search region size: ${totalBlocks}`);
     // count the total number of indexed blocks
@@ -979,7 +981,7 @@ async function searchMissingBlocks(client: Client,
         query: {
             bool: {
                 must: [{
-                    range: {block_num: {gte: firstBlock, lte: lastBlock}}
+                    range: { block_num: { gte: firstBlock, lte: lastBlock } }
                 }]
             }
         }
@@ -987,7 +989,7 @@ async function searchMissingBlocks(client: Client,
 
     if (totalIndexedBlocks.count === 0) {
         // console.log(`\n ❌ No indexed blocks found between the range ${firstBlock} and ${lastBlock}`);
-        missingBlocks.push({start: firstBlock, end: lastBlock, count: firstBlock - lastBlock + 1});
+        missingBlocks.push({ start: firstBlock, end: lastBlock, count: firstBlock - lastBlock + 1 });
         return;
     }
 
@@ -996,8 +998,8 @@ async function searchMissingBlocks(client: Client,
         // console.log(`\n ⚠️  ⚠️  Found ${missedBlocks} missing blocks between the range ${firstBlock} and ${lastBlock}`);
         // split the range in half
         const middleBlock = Math.floor((lastBlock + firstBlock) / 2);
-        const leftRange = {first: firstBlock, last: middleBlock};
-        const rightRange = {first: middleBlock + 1, last: lastBlock};
+        const leftRange = { first: firstBlock, last: middleBlock };
+        const rightRange = { first: middleBlock + 1, last: lastBlock };
         await searchMissingBlocks(client, blockIndex, leftRange.first, leftRange.last, middleBlock - firstBlock + 1);
         await searchMissingBlocks(client, blockIndex, rightRange.first, rightRange.last, lastBlock - middleBlock);
     }

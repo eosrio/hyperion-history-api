@@ -36,7 +36,7 @@ import {
 } from '../helpers/common_functions.js';
 import { AlertManagerOptions, AlertsManager, HyperionAlertTypes } from './alertsManager.js';
 import { ConfigurationModule } from './config.js';
-import { LocalHyperionController } from './controller.js';
+import { LocalHyperionController, WebSocketData } from './controller.js';
 import { HyperionIndexerMonitor } from './indexerMonitor.js';
 import { HyperionLifecycleManager } from './lifecycleManager.js';
 import { HyperionModuleLoader } from './loader.js';
@@ -148,7 +148,7 @@ export class HyperionMaster {
         size?: number;
     }[] = [];
 
-    private connectedController?: WebSocket<any>;
+    connectedController?: WebSocket<WebSocketData>;
     lastIrreversibleBlock: number = 0;
     head = -1;
     validatedShipServers: ShipServer[] = [];
@@ -374,7 +374,6 @@ export class HyperionMaster {
             completed: (_worker: Worker, msg: WorkerMessage) => {
                 // hLog(`Worker ${msg.id} completed range! (last assigned block: ${this.lastAssignedBlock})`);
                 if (this.repairReader && msg.id === this.repairReader.worker_id?.toString()) {
-                    hLog('Repair completed!', msg);
                     this.sendPendingRepairRanges();
                 } else {
                     this.activeReadersCount--;
@@ -1414,7 +1413,11 @@ export class HyperionMaster {
 
     // --------- START OF REPAIR METHODS ------------
 
-    async fillMissingBlocks(data: any, ws: WebSocket<any>) {
+    async fillMissingBlocks(data: any, ws: WebSocket<WebSocketData>) {
+
+        // Assign the WebSocket controller
+        this.connectedController = ws;
+
         this.pendingRepairRanges = data.filter((range: any) => {
             return range.end - range.start >= 0;
         });
@@ -1424,19 +1427,21 @@ export class HyperionMaster {
             value['size'] = value.end - value.start + 1;
             totalBlocks += value.size;
         });
-        hLog(`Filling ${totalBlocks} missing blocks...`);
-        this.repairReader = this.addWorker({
-            worker_role: 'repair_reader',
-            validated_ship_servers: JSON.stringify(this.validatedShipServers)
-        });
-        this.launchWorkers();
-        this.connectedController = ws;
+        if (!this.repairReader) {
+            this.repairReader = this.addWorker({
+                worker_role: 'repair_reader',
+                validated_ship_servers: JSON.stringify(this.validatedShipServers)
+            });
+            this.launchWorkers();
+        } else {
+            this.sendPendingRepairRanges();
+        }
     }
 
     private sendPendingRepairRanges() {
         if (this.pendingRepairRanges.length > 0) {
             const nextRange = this.pendingRepairRanges.shift();
-            console.log('NEXT RANGE FOR REPAIR: ', nextRange);
+            // hLog('Sending repair range: ', nextRange);
             if (this.repairReader && this.repairReader.wref && this.repairReader.worker_id && nextRange) {
                 this.repairReader.wref.send({
                     event: 'new_range',
@@ -1448,17 +1453,14 @@ export class HyperionMaster {
                 });
             }
         } else {
-            hLog('Repair completed!');
             if (this.connectedController) {
                 try {
-                    this.connectedController.send(
-                        JSON.stringify({
-                            event: 'repair_completed'
-                        })
-                    );
-                } catch (error) {
-                    hLog('Failed to send repair completion message:', error);
+                    this.connectedController.send(JSON.stringify({ event: 'repair_completed' }));
+                } catch (error: any) {
+                    hLog('Failed to send repair completion message:', error.message);
                 }
+            } else {
+                hLog('No connected controller to send repair completion message.');
             }
         }
     }

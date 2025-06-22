@@ -4,10 +4,16 @@ import { HyperionWorkerDef } from "../../interfaces/hyperionWorkerDef.js";
 import { hLog } from "../helpers/common_functions.js";
 import { HyperionMaster } from "./master.js";
 
+export interface WebSocketData {
+    socketId: string;
+}
+
 export class LocalHyperionController {
 
     private localController?: TemplatedApp;
     master: HyperionMaster;
+
+    sockets: Map<string, WebSocket<any>> = new Map();
 
     constructor(master: HyperionMaster) {
         this.master = master;
@@ -191,10 +197,15 @@ export class LocalHyperionController {
         }
 
         this.localController.ws('/local', {
-            open: (ws: WebSocket<any>) => {
+            open: (ws: WebSocket<WebSocketData>) => {
                 hLog(`Local controller connected!`);
+                // Store the WebSocket connection in the sockets map
+                const socketId = randomUUID();
+                // Assign a unique socket ID to the WebSocket connection
+                ws.getUserData().socketId = socketId;
+                this.sockets.set(socketId, ws);
             },
-            message: (ws, msg) => {
+            message: (ws: WebSocket<WebSocketData>, msg: ArrayBuffer) => {
                 const buffer = Buffer.from(msg);
                 const rawMessage = buffer.toString();
                 try {
@@ -359,8 +370,16 @@ export class LocalHyperionController {
                     ws.end();
                 }
             },
-            close: () => {
-                hLog(`Local controller disconnected!`);
+            close: (ws: WebSocket<WebSocketData>) => {
+                // Handle WebSocket disconnection
+                const socketId = ws.getUserData().socketId;
+                if (socketId) {
+                    this.sockets.delete(socketId);
+                    hLog(`Local controller disconnected!`);
+                    this.master.connectedController = undefined;
+                } else {
+                    hLog(`WebSocket closed without a valid socket ID.`);
+                }
             }
         });
     }

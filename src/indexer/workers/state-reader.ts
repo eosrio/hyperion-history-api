@@ -230,11 +230,8 @@ export default class StateReader extends HyperionWorker {
     }
 
     newRange(data: any) {
-        debugLog(`new_range [${data.first_block},${data.last_block}]`);
 
-        if (this.repairMode) {
-            hLog(`Received Repair request [${data.first_block},${data.last_block}]`);
-        }
+        debugLog(`new_range [${data.first_block},${data.last_block}]`);
 
         this.local_distributed_count = 0;
         if (this.completionMonitoring) {
