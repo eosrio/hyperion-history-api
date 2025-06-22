@@ -61,7 +61,6 @@
     "disable_reading": false,
     "disable_indexing": false,
     "process_deltas": true,
-    "disable_delta_rm": true,
     "node_max_old_space_size": 4096,
     "node_trace_deprecation": false,
     "node_trace_warnings": false
