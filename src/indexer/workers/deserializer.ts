@@ -857,8 +857,7 @@ export default class MainDSWorker extends HyperionWorker {
                 delete row.value;
                 return row;
             } catch (e) {
-                hLog('abieos deserialization failed', e, row);
-                debugLog(e);
+                debugLog('primary node-abieos deserialization failed', e, row);
             }
         }
 
