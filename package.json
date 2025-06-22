@@ -59,7 +59,7 @@
     "socket.io-redis": "^6.1.1",
     "typescript": "^5.4.5",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.43.0",
-    "ws": "^8.16.0",
+    "ws": "^8.17.1",
     "nodemailer": "^6.9.13",
     "telegraf": "^4.16.3"
   },
