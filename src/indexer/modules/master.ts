@@ -1449,11 +1449,17 @@ export class HyperionMaster {
             }
         } else {
             hLog('Repair completed!');
-            this.connectedController?.send(
-                JSON.stringify({
-                    event: 'repair_completed'
-                })
-            );
+            if (this.connectedController) {
+                try {
+                    this.connectedController.send(
+                        JSON.stringify({
+                            event: 'repair_completed'
+                        })
+                    );
+                } catch (error) {
+                    hLog('Failed to send repair completion message:', error);
+                }
+            }
         }
     }
 
