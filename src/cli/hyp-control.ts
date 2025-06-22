@@ -474,6 +474,9 @@ async function getScalingInfo(chain: string, host?: string) {
         .option('-h, --host <host>', 'Optional host for the indexer controller')
         .action(async (chain: string, args: any) => {
             try {
+                if (chain.endsWith('-indexer')) {
+                    chain = chain.replace('-indexer', '');
+                }
                 console.log(`Stopping indexer for chain ${chain}...`);
                 await stopIndexer(chain, args.host);
                 console.log(`Indexer stopped for chain ${chain}`);
