@@ -1,8 +1,8 @@
-import {Name, Serializer} from "@wharfkit/antelope";
-import {cargo} from "async";
-import {Collection} from "mongodb";
-import {IAccount} from "../../interfaces/table-account.js";
-import {Synchronizer} from "./synchronizer.js";
+import { Name, Serializer } from "@wharfkit/antelope";
+import { cargo } from "async";
+import { Collection } from "mongodb";
+import { IAccount } from "../../interfaces/table-account.js";
+import { Synchronizer } from "./synchronizer.js";
 
 export class AccountSynchronizer extends Synchronizer<IAccount> {
     private accountCollection?: Collection<IAccount>;
@@ -10,19 +10,23 @@ export class AccountSynchronizer extends Synchronizer<IAccount> {
     private tokenContracts: string[] = [];
     private totalScopes: number = 0;
     private processedScopes: number = 0;
+    private totalScopesToProcess: number = 0;
+    private currentContractIndex: number = 0;
     private currentContract: string = '';
     private currentScope: string = '';
-    ó
-    constructor(chain: string) {
+    private contractFilter?: string;
+
+    constructor(chain: string, contractFilter?: string) {
         super(chain, 'accounts');
+        this.contractFilter = contractFilter;
     }
 
     protected async setupMongo() {
         await super.setupMongo('accounts', [
-            {fields: {code: 1}, options: {unique: false}},
-            {fields: {scope: 1}, options: {unique: false}},
-            {fields: {symbol: 1}, options: {unique: false}},
-            {fields: {code: 1, scope: 1, symbol: 1}, options: {unique: true}}
+            { fields: { code: 1 }, options: { unique: false } },
+            { fields: { scope: 1 }, options: { unique: false } },
+            { fields: { symbol: 1 }, options: { unique: false } },
+            { fields: { code: 1, scope: 1, symbol: 1 }, options: { unique: true } }
         ]);
 
         this.accountCollection = this.collection as Collection<IAccount>;
@@ -49,14 +53,17 @@ export class AccountSynchronizer extends Synchronizer<IAccount> {
     }
 
     private async scanABIs() {
+
         const transferFields = [
-            {name: "from", type: "name"},
-            {name: "to", type: "name"},
-            {name: "quantity", type: "asset"},
-            {name: "memo", type: "string"}
+            { name: "from", type: "name" },
+            { name: "to", type: "name" },
+            { name: "quantity", type: "asset" },
+            { name: "memo", type: "string" }
         ];
 
-        for (const contract of this.contractAccounts) {
+        const contractsToScan = this.contractFilter ? [this.contractFilter] : this.contractAccounts;
+
+        for (const contract of contractsToScan) {
             try {
                 const abi = await this.client.v1.chain.get_abi(contract);
                 const tables = new Set(abi.abi?.tables?.map(value => value.name));
@@ -91,8 +98,12 @@ export class AccountSynchronizer extends Synchronizer<IAccount> {
     }
 
     private async* processContracts() {
-        for (const contract of this.tokenContracts) {
+        for (let i = 0; i < this.tokenContracts.length; i++) {
+            const contract = this.tokenContracts[i];
             this.currentContract = contract;
+            this.currentContractIndex = i;
+            console.log(`[DEBUG] Starting contract ${i + 1}/${this.tokenContracts.length}: ${contract}`);
+            
             let lowerBound: string = '';
             do {
                 const scopes = await this.client.v1.chain.get_table_by_scope({
@@ -128,8 +139,12 @@ export class AccountSynchronizer extends Synchronizer<IAccount> {
                 }
                 lowerBound = scopes.more;
             } while (lowerBound !== '');
-            this.processedScopes++;
+            
+            // Mark this contract as processed
+            this.processedScopes = i + 1;
+            console.log(`[DEBUG] Completed contract ${i + 1}/${this.tokenContracts.length}: ${contract}`);
         }
+        console.log(`[DEBUG] All contracts processed`);
     }
 
     public async run() {
@@ -137,20 +152,47 @@ export class AccountSynchronizer extends Synchronizer<IAccount> {
         const info = await this.client.v1.chain.get_info();
         this.currentBlock = info.head_block_num.toNumber();
         console.log(await this.elastic.ping());
-        await this.getAbiHashTable();
-        console.log(`Number of contract candidates: ${this.contractAccounts.length}`);
+        
+        if (this.contractFilter) {
+            console.log(`Syncing specific contract: ${this.contractFilter}`);
+        } else {
+            await this.getAbiHashTable();
+            console.log(`Number of contract candidates: ${this.contractAccounts.length}`);
+        }
+        
         await this.scanABIs();
         console.log(`Number of validated token contracts: ${this.tokenContracts.length}`);
-        this.totalScopes += this.tokenContracts.length;
+        this.totalScopesToProcess = this.tokenContracts.length;
 
         await this.setupMongo();
 
-        const progress = setInterval(() => {
-            console.log(`Progress: ${this.processedScopes}/${this.totalScopes} (${((this.processedScopes / this.totalScopes) * 100).toFixed(2)}%) - ${this.currentScope}@${this.currentContract} - ${this.totalItems} accounts`);
+        let progress: NodeJS.Timeout | null = null;
+        let isProcessingComplete = false;
+        
+        progress = setInterval(() => {
+            if (isProcessingComplete) {
+                if (progress) {
+                    clearInterval(progress);
+                    progress = null;
+                }
+                return;
+            }
+            const progressPercent = this.totalScopesToProcess > 0 ? ((this.processedScopes / this.totalScopesToProcess) * 100).toFixed(2) : '0.00';
+            
+            let statusMessage = '';
+            if (this.processedScopes >= this.totalScopesToProcess) {
+                statusMessage = 'finalizing database writes...';
+            } else {
+                statusMessage = this.currentContract ? `${this.currentScope}@${this.currentContract}` : 'initializing...';
+            }
+            
+            const timestamp = new Date().toISOString().split('T')[1].split('.')[0]; // HH:MM:SS format
+            console.log(`[${timestamp}] Progress: ${this.processedScopes}/${this.totalScopesToProcess} (${progressPercent}%) - ${statusMessage} - ${this.totalItems} accounts`);
         }, 1000);
 
         try {
             if (this.accountCollection) {
+                console.log(`[DEBUG] Using MongoDB for storage`);
                 const cargoQueue = cargo((docs: any[], cb) => {
                     this.accountCollection!.bulkWrite(docs.map(doc => {
                         return {
@@ -174,13 +216,22 @@ export class AccountSynchronizer extends Synchronizer<IAccount> {
                     });
                 }, 1000);
 
+                console.log(`[DEBUG] Starting to process contracts...`);
                 for await (const doc of this.processContracts()) {
-                    cargoQueue.push(doc).catch(console.log);
+                    try {
+                        await cargoQueue.push(doc);
+                    } catch (error: any) {
+                        console.error(`Error processing document: ${error.message}`);
+                    }
                 }
 
+                console.log(`[DEBUG] MongoDB processing completed`);
                 console.log(`Processed ${this.totalItems} accounts`);
+                isProcessingComplete = true;
+
                 await this.mongoClient?.close();
             } else {
+                console.log(`[DEBUG] Using Elasticsearch for storage`);
                 const bulkResponse = await this.elastic.helpers.bulk({
                     flushBytes: 1000000,
                     datasource: this.processContracts(),
@@ -191,13 +242,18 @@ export class AccountSynchronizer extends Synchronizer<IAccount> {
                         }
                     }, doc]
                 });
+                console.log(`[DEBUG] Elasticsearch processing completed`);
                 console.log(`${bulkResponse.successful} accounts`);
+                isProcessingComplete = true;
             }
         } catch (e) {
             console.log(e);
             throw e;
         } finally {
-            clearInterval(progress);
+            isProcessingComplete = true;
+            if (progress) {
+                clearInterval(progress);
+            }
             const tFinal = Date.now();
             console.log(`Processing took: ${(tFinal - tRef)}ms`);
         }

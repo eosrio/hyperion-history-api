@@ -51,8 +51,8 @@ async function syncVoters(chain: string, host?: string) {
     await syncWithPauseResume(chain, 'table-voters', new VoterSynchronizer(chain), host);
 }
 
-async function syncAccounts(chain: string, host?: string) {
-    await syncWithPauseResume(chain, 'table-accounts', new AccountSynchronizer(chain), host);
+async function syncAccounts(chain: string, host?: string, contract?: string) {
+    await syncWithPauseResume(chain, 'table-accounts', new AccountSynchronizer(chain, contract), host);
 }
 
 async function syncProposals(chain: string, host?: string) {
@@ -524,11 +524,11 @@ async function getScalingInfo(chain: string, host?: string) {
             }
         });
 
-    sync.command('accounts <chain>')
-        .description('Sync accounts for a specific chain')
-        .action(async (chain: string) => {
+    sync.command('accounts <chain> [contract]')
+        .description('Sync accounts for a specific chain, optionally filtering by a specific token contract')
+        .action(async (chain: string, contract?: string) => {
             try {
-                await syncAccounts(chain);
+                await syncAccounts(chain, undefined, contract);
                 console.log('Sync completed for accounts');
             } catch (error) {
                 console.error('Error syncing accounts:', error);
@@ -569,7 +569,7 @@ async function getScalingInfo(chain: string, host?: string) {
         .action(async (chain: string) => {
             try {
                 await syncVoters(chain);
-                await syncAccounts(chain);
+                await syncAccounts(chain, undefined, undefined);
                 await syncProposals(chain);
                 const contractStateSynced = await syncContractState(chain);
 

@@ -69,22 +69,31 @@ Synchronizes voter data for a specific chain.
 ./hyp-control sync voters wax
 ```
 
-### `sync accounts <chain>`
+### `sync accounts <chain> [contract]`
 
-Synchronizes account data for a specific chain.
+Synchronizes account data for a specific chain, with optional filtering by a specific token contract.
 
 **Usage:**
 ```bash
-./hyp-control sync accounts <chain>
+./hyp-control sync accounts <chain> [contract]
 ```
 
 **Arguments:**
 *   `<chain>`: The short name of the chain to sync accounts for.
+*   `[contract]`: Optional specific token contract to sync accounts for. If omitted, syncs all token contracts.
 
-**Example:**
+**Examples:**
 ```bash
+# Sync all token contracts
 ./hyp-control sync accounts wax
+
+# Sync only accounts for a specific token contract
+./hyp-control sync accounts wax eosio.token
+./hyp-control sync accounts vaulta core.vaulta
 ```
+
+**Note:**
+When specifying a contract, only accounts with balances for that specific token contract will be synchronized. This can significantly reduce sync time when you only need to update accounts for a particular token.
 
 ### `sync proposals <chain>`
 
