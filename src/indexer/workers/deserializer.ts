@@ -1646,8 +1646,8 @@ export default class MainDSWorker extends HyperionWorker {
                                 );
                             } catch (e: any) {
                                 hLog(`Delta struct [${key}] processing error: ${e.message}`);
-                                hLog(e);
-                                hLog(data[1]);
+                                // hLog(e);
+                                // hLog(data[1]);
                             }
                         }
                     }

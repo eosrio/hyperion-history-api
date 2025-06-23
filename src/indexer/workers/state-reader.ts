@@ -261,6 +261,7 @@ export default class StateReader extends HyperionWorker {
             const ranges: any[] = [];
             let start = parseInt(data.first_block);
             let end = parseInt(data.last_block);
+            
             while (start < end) {
                 const s = start;
                 const e = start + this.conf.scaling.batch_size;
@@ -620,9 +621,11 @@ export default class StateReader extends HyperionWorker {
             };
 
             if (res.block && res.traces && res.deltas) {
+
                 if (this.repairMode) {
-                    hLog('Repaired block: ' + blk_num);
+                    debugLog('Repaired block: ' + blk_num);
                 }
+
                 debugLog(
                     `block_num: ${blk_num}, block_size: ${res.block.length}, traces_size: ${res.traces.length}, deltas_size: ${res.deltas.length}`
                 );
