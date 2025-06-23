@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { scanChain, quickScanChain } from './repair-cli/scan.js';
+import { scanChain, quickScanChain, scanActions } from './repair-cli/scan.js';
 import { repairChain, repairMissing } from './repair-cli/repair.js';
 import { monitorBlockQueues } from './repair-cli/monitor.js';
 import { viewFile, connectToHyperion } from './repair-cli/utils.js';
@@ -26,6 +26,16 @@ program
     .command('quick-scan <chain>')
     .description('scan for missing blocks using binary tree search')
     .action(quickScanChain);
+
+program
+    .command('scan-actions <chain>')
+    .description('scan for missing actions using binary tree search and action validation')
+    .option('-f, --first <number>', 'initial block to start validation')
+    .option('-l, --last <number>', 'last block to validate')
+    .option('-o, --out-file <file>', 'missing-actions.json output file')
+    .option('-m, --min-range-size <number>', 'minimum range size to continue binary search (default: 1, stops subdividing ranges when they reach this size)', '1')
+    .option('-v, --verbose', 'enable verbose logging (shows details for all ranges)')
+    .action(scanActions);
 
 program
     .command('repair <chain> <file>')
