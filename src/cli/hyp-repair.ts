@@ -1,9 +1,9 @@
 import { Command } from 'commander';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { Client, estypes } from '@elastic/elasticsearch';
 // @ts-ignore
 import cliProgress from 'cli-progress';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { HyperionBlock } from './repair-cli/interfaces.js';
 import {
     getBlocks,
@@ -19,6 +19,8 @@ import { getFirstIndexedBlock } from "../indexer/helpers/common_functions.js";
 import { WebSocket } from 'ws';
 import { APIClient } from "@wharfkit/antelope";
 
+const REPAIR_STATE_FILE = '.repair/fill-state.json';
+
 const progressBar = new cliProgress.SingleBar(
     {},
     cliProgress.Presets.shades_classic
@@ -32,6 +34,18 @@ let missingBlocks: {
     end: number;
     count: number;
 }[] = [];
+
+function askQuestion(query: string): Promise<string> {
+    const rl = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+
+    return new Promise(resolve => rl.question(query, ans => {
+        rl.close();
+        resolve(ans);
+    }));
+}
 
 async function run(
     client: Client,
@@ -255,7 +269,34 @@ async function repairMissing(chain: string, file: string, args: any) {
         console.log('Could not connect to ElasticSearch');
         process.exit();
     }
-    await fillMissingBlocksFromFile(args.host, chain, file, args.dry);
+
+    let startFrom = 0;
+    let targetFile = file;
+
+    if (existsSync(REPAIR_STATE_FILE)) {
+        try {
+            const state = JSON.parse(readFileSync(REPAIR_STATE_FILE).toString());
+            if (state.file) {
+                console.log(`
+Found a previous repair session for file ${state.file}.`);
+                const answer = await askQuestion(`Do you want to resume from where you left off? (y/n) `);
+                if (answer.toLowerCase() === 'y') {
+                    console.log(`Resuming from line ${state.lastProcessedLine}.`);
+                    targetFile = state.file;
+                    startFrom = state.lastProcessedLine || 0;
+                } else {
+                    console.log('Starting a new repair session.');
+                    unlinkSync(REPAIR_STATE_FILE);
+                }
+            }
+        } catch (e) {
+            console.log('Could not read state file, starting new session.');
+            if (existsSync(REPAIR_STATE_FILE)) {
+                unlinkSync(REPAIR_STATE_FILE);
+            }
+        }
+    }
+    await fillMissingBlocksFromFile(args.host, chain, targetFile, args.dry, startFrom);
 }
 
 async function repairChain(chain: string, file: string, args: any) {
@@ -806,7 +847,7 @@ async function repairChain(chain: string, file: string, args: any) {
     await fillMissingBlocksFromFile(args.host, chain, file, args.dry);
 }
 
-async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
+async function fillMissingBlocksFromFile(host, chain, file, dryRun, startFrom = 0) {
     const config = readConnectionConfig();
     const controlPort = config.chains[chain].control_port;
     let hyperionIndexer = `ws://localhost:${controlPort}`;
@@ -814,6 +855,22 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
         hyperionIndexer = `ws://${host}:${controlPort}`;
     }
     const controller = new WebSocket(hyperionIndexer + '/local');
+
+    let lastProcessedLine = startFrom;
+
+    const saveState = () => {
+        if (!existsSync('.repair')) {
+            mkdirSync('.repair');
+        }
+        writeFileSync(REPAIR_STATE_FILE, JSON.stringify({
+            file,
+            lastProcessedLine
+        }, null, 2));
+        console.log(`\nProgress saved. Last processed line: ${lastProcessedLine}`);
+        process.exit(0);
+    };
+
+    process.on('SIGINT', saveState);
 
     async function sendChunk(chunk): Promise<void> {
         return new Promise((resolve, reject) => {
@@ -826,6 +883,8 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
                 const parsed = JSON.parse(data.toString());
                 if (parsed.event === 'repair_completed') {
                     resolve();
+                } else if (parsed.event === 'error') {
+                    reject(new Error(parsed.message));
                 }
             });
         });
@@ -838,12 +897,24 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
         const chunkSize = 5;
         const totalLines = parsedFile.length;
 
+        if (startFrom >= totalLines && totalLines > 0) {
+            console.log('File already processed.');
+            if (existsSync(REPAIR_STATE_FILE)) {
+                unlinkSync(REPAIR_STATE_FILE);
+            }
+            controller.close();
+            return;
+        }
+
         if (!dryRun) {
-            let completedLines = 0;
-            for (let i = 0; i < parsedFile.length; i += chunkSize) {
+            let completedLines = startFrom;
+            for (let i = startFrom; i < parsedFile.length; i += chunkSize) {
                 const chunk = parsedFile.slice(i, i + chunkSize);
                 // Send the chunk to the controller and wait for completion (repair_completed event)
                 await sendChunk(chunk);
+
+                lastProcessedLine = i + chunkSize;
+
                 completedLines += chunk.length;
                 const progress = (completedLines / totalLines) * 100;
                 const progressBar = Array(Math.round(progress / 2))
@@ -855,6 +926,9 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
                     `Progress: [${progressBar}] ${progress.toFixed(2)}%`
                 );
             }
+            if (existsSync(REPAIR_STATE_FILE)) {
+                unlinkSync(REPAIR_STATE_FILE);
+            }
             console.log();
             controller.close();
         } else {
@@ -863,12 +937,18 @@ async function fillMissingBlocksFromFile(host, chain, file, dryRun) {
         }
     });
 
+    const cleanup = () => {
+        process.removeListener('SIGINT', saveState);
+    };
+
     controller.on('close', () => {
         console.log('Disconnected from Hyperion Controller');
+        cleanup();
     });
 
     controller.on('error', (err) => {
         console.log(err);
+        cleanup();
     });
 }
 
