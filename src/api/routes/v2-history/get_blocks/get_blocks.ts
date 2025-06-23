@@ -116,7 +116,7 @@ async function getBlocks(fastify: FastifyInstance, request: FastifyRequest) {
 
     // Perform search
     const results = await fastify.elastic.search<any>({
-        index: fastify.manager.chain + '-block-' + fastify.manager.config.settings.index_version + '-*',
+        index: fastify.manager.chain + '-block-' + fastify.manager.config.settings.index_version,
         from: skip,
         size: finalLimit,
         query: queryStruct,

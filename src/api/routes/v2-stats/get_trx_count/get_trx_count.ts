@@ -177,7 +177,7 @@ async function getTrxCount(fastify: FastifyInstance, request: FastifyRequest) {
         // Build query for action index with same filters
         const actionQueryStruct = {
             bool: {
-                must: [...mustArray, { term: { "action_ordinal": 1 } }],
+                must: [...mustArray, { term: { "creator_action_ordinal": 0 } }],
                 must_not: [
                     // Filter out onblock actions from eosio contract (system-generated, not user transactions)
                     {
@@ -198,14 +198,10 @@ async function getTrxCount(fastify: FastifyInstance, request: FastifyRequest) {
 
         const actionSearchParams = {
             index: fastify.manager.chain + '-action-' + fastify.manager.config.settings.index_version + '-*',
-            size: 0, // We only want aggregations
+            size: 0,
             query: actionQueryStruct,
             aggs: {
-                total_action_count: {
-                    value_count: {
-                        field: "trx_id" // Use trx_id to count unique actions
-                    }
-                }
+                total_action_count: { value_count: { field: "cpu_usage_us" } }
             }
         };
 

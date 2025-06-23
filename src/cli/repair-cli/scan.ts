@@ -7,6 +7,7 @@ import { HyperionBlock } from './interfaces.js';
 import { getBlocks, getLastIndexedBlock, initESClient, readChainConfig, readConnectionConfig } from './functions.js';
 import { getFirstIndexedBlock } from "../../indexer/helpers/common_functions.js";
 import { printHeader, processResults } from './utils.js';
+import { log } from 'node:console';
 
 const progressBar = new cliProgress.SingleBar(
     {},
@@ -363,7 +364,7 @@ export async function scanActions(chain: string, args: any) {
     }
 
     if (args.first) {
-        firstBlock = args.first;
+        firstBlock = parseInt(args.first, 10);
     } else {
         const tRef = process.hrtime.bigint();
         firstBlock = await getFirstIndexedBlock(client, chain, chainConfig.settings.index_partition_size);
@@ -371,7 +372,7 @@ export async function scanActions(chain: string, args: any) {
     }
 
     if (args.last) {
-        lastBlock = args.last;
+        lastBlock = parseInt(args.last, 10);
     } else {
         const tRef = process.hrtime.bigint();
         lastBlock = await getLastIndexedBlock(client, blockIndex);
@@ -382,6 +383,10 @@ export async function scanActions(chain: string, args: any) {
 
     console.log('Range:', firstBlock, lastBlock);
     console.log('Total Blocks:', totalBlocks);
+
+    // Wait for Elasticsearch indices to catch up
+    console.log('⏳ Waiting for 5 seconds to allow Elasticsearch indices to catch up...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
     // Parse and validate min-range-size parameter
     let minRangeSize = 1;
@@ -428,9 +433,9 @@ export async function scanActions(chain: string, args: any) {
 
     const missingActionRanges: any[] = [];
     console.log(`\n🚀 Starting binary search for missing actions...`);
-    
+
     console.log(`📊 Expected maximum API calls: ~${Math.ceil(Math.log2(totalBlocks)) * 2}`);
-    
+
     if (minRangeSize > 1) {
         console.log(`⚡ Early stop optimization enabled: ranges ≤ ${minRangeSize} blocks will not be subdivided further`);
     }
@@ -468,7 +473,11 @@ export async function scanActions(chain: string, args: any) {
     }
 
     console.log(`\n🔍 Starting detailed search...`);
-    
+
+    console.log(`Type: ${typeof firstBlock}, Value: ${firstBlock}`);
+    console.log(`Type: ${typeof lastBlock}, Value: ${lastBlock}`);
+
+
     await searchMissingActions(apiBaseUrl, chain, firstBlock, lastBlock, totalBlocks, missingActionRanges, 0, minRangeSize, progressState);
 
     // Final progress update
@@ -476,6 +485,8 @@ export async function scanActions(chain: string, args: any) {
         const foundActions = missingActionRanges.reduce((sum, range) => sum + (range.missing_actions || range.count), 0);
         console.log(`\n✅ Search completed: ${progressState.apiCalls} API calls made | ${progressState.foundRanges} ranges found | ${foundActions.toLocaleString()} missing actions found`);
     }
+
+    // console.table(missingActionRanges);
 
     if (missingActionRanges.length > 0) {
         // merge missing ranges
@@ -541,14 +552,14 @@ export async function searchMissingActions(
     if (progressState) {
         progressState.apiCalls++;
         const now = Date.now();
-        
+
         // Show progress every 5 seconds or every 20 API calls
         if (now - progressState.lastUpdate > 5000 || progressState.apiCalls % 20 === 0) {
             const foundActions = missingActionRanges.reduce((sum, range) => sum + (range.missing_actions || range.count), 0);
-            const progressPercent = progressState.totalMissingActions > 0 
+            const progressPercent = progressState.totalMissingActions > 0
                 ? Math.min(100, (foundActions / progressState.totalMissingActions * 100))
                 : 0;
-            
+
             console.log(`📊 Progress: ${progressState.apiCalls} API calls | ${progressState.foundRanges} ranges found | ${foundActions.toLocaleString()} missing actions found ${progressState.totalMissingActions > 0 ? `(${progressPercent.toFixed(1)}%)` : ''}`);
             progressState.lastUpdate = now;
         }
@@ -675,7 +686,7 @@ export async function searchMissingActions(
 
             // Split the range in half for binary search
             const middleBlock = Math.floor((lastBlock + firstBlock) / 2);
-            
+
             // Ensure we don't create overlapping ranges
             if (middleBlock >= firstBlock) {
                 const leftRangeSize = middleBlock - firstBlock + 1;
