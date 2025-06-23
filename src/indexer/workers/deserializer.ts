@@ -16,6 +16,7 @@ import { estypes } from "@elastic/elasticsearch";
 import { ABI, Action, PackedTransaction, Serializer } from "@wharfkit/antelope";
 import { TokenAccount } from "../../interfaces/custom-ds.js";
 import { GetBlocksResultV0 } from "./state-reader.js";
+import { de } from "zod/v4/locales";
 
 interface QueuePayload {
     queue: string;
@@ -525,14 +526,18 @@ export default class MainDSWorker extends HyperionWorker {
 
         let first_action;
         if (trace['action_traces'][0] && trace['action_traces'][0].length === 2) {
+
             first_action = trace['action_traces'][0][1];
 
-            // replace first action if the root is eosio.null::nonce
-            if (first_action.act.account === this.conf.settings.eosio_alias + '.null' && first_action.act.name === 'nonce') {
-                if (trace['action_traces'][1] && trace['action_traces'][1].length === 2) {
-                    first_action = trace['action_traces'][1][1];
-                }
-            }
+            // // replace first action if the root is eosio.null::nonce
+            // if (first_action.act.account === this.conf.settings.eosio_alias + '.null' && first_action.act.name === 'nonce') {
+
+            //     console.dir(trace, { depth: Infinity });
+
+            //     // if (trace['action_traces'][1] && trace['action_traces'][1].length === 2) {
+            //     //     first_action = trace['action_traces'][1][1];
+            //     // }
+            // }
 
         } else {
             console.log('missing action_trace_v0');

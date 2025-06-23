@@ -1,12 +1,12 @@
-import {BaseParser} from "./base-parser.js";
+import { BaseParser } from "./base-parser.js";
 import MainDSWorker from "../../workers/deserializer.js";
-import {Message} from "amqplib";
+import { Message } from "amqplib";
 import DSPoolWorker from "../../workers/ds-pool.js";
-import {TrxMetadata} from "../../../interfaces/trx-metadata.js";
-import {ActionTrace} from "../../../interfaces/action-trace.js";
-import {hLog} from "../../helpers/common_functions.js";
-import {PackedTransaction, Serializer} from "@wharfkit/antelope";
-import {GetBlocksResultV0} from "../../workers/state-reader.js";
+import { TrxMetadata } from "../../../interfaces/trx-metadata.js";
+import { ActionTrace } from "../../../interfaces/action-trace.js";
+import { hLog } from "../../helpers/common_functions.js";
+import { PackedTransaction, Serializer } from "@wharfkit/antelope";
+import { GetBlocksResultV0 } from "../../workers/state-reader.js";
 
 export default class HyperionParser extends BaseParser {
 
@@ -63,6 +63,10 @@ export default class HyperionParser extends BaseParser {
             // add usage data to the first action on the transaction
             if (!usageIncluded.status) {
                 this.extendFirstAction(worker, action, trx_data, full_trace, usageIncluded);
+                // ignore eosio.null::nonce
+                if (action.act.account === this.configModule.config.settings.eosio_alias + '.null' && action.act.name === 'nonce') {
+                    usageIncluded.status = false;
+                }
             }
             _processedTraces.push(action);
         } else {

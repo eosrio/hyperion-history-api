@@ -66,7 +66,7 @@ export class ConfigurationModule {
 
         // append default blacklists (eosio::onblock & eosio.null)
         // this.filters.action_blacklist.add(`${this.config.settings.chain}::${this.EOSIO_ALIAS}::onblock`);
-        this.filters.action_blacklist.add(`${this.EOSIO_ALIAS}.null::*`);
+        // this.filters.action_blacklist.add(`${this.EOSIO_ALIAS}.null::*`);
 
         // append user blacklists
         if (this.config.blacklists) {

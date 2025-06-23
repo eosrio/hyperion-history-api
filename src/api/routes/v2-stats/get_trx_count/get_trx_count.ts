@@ -177,7 +177,11 @@ async function getTrxCount(fastify: FastifyInstance, request: FastifyRequest) {
         // Build query for action index with same filters
         const actionQueryStruct = {
             bool: {
-                must: [...mustArray, { term: { "creator_action_ordinal": 0 } }],
+                must: [
+                    ...mustArray,
+                    { term: { "creator_action_ordinal": 0 }},
+                    { term: { "action_ordinal": 1 }}
+                ],
                 must_not: [
                     // Filter out onblock actions from eosio contract (system-generated, not user transactions)
                     {

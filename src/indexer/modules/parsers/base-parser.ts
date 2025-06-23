@@ -1,13 +1,13 @@
-import {Message} from "amqplib";
+import { Message } from "amqplib";
 
-import {ConfigurationModule, Filters} from "../config.js";
+import { ConfigurationModule, Filters } from "../config.js";
 import MainDSWorker from "../../workers/deserializer.js";
 import DSPoolWorker from "../../workers/ds-pool.js";
-import {TrxMetadata} from "../../../interfaces/trx-metadata.js";
-import {ActionTrace} from "../../../interfaces/action-trace.js";
-import {debugLog, hLog} from "../../helpers/common_functions.js";
-import {HyperionActionAct} from "../../../interfaces/hyperion-action.js";
-import {Action} from "@wharfkit/antelope";
+import { TrxMetadata } from "../../../interfaces/trx-metadata.js";
+import { ActionTrace } from "../../../interfaces/action-trace.js";
+import { debugLog, hLog } from "../../helpers/common_functions.js";
+import { HyperionActionAct } from "../../../interfaces/hyperion-action.js";
+import { Action } from "@wharfkit/antelope";
 
 export abstract class BaseParser {
 
@@ -160,11 +160,19 @@ export abstract class BaseParser {
         const original_act = Object.assign({}, act);
         let ds_act: any | null = null;
         let error_message: string = '';
-        try {
-            ds_act = await worker.common.deserializeActionAtBlockNative(worker, act, trx_data.block_num);
-        } catch (e: any) {
-            console.log(e);
-            error_message = e.message;
+
+        // ignore for eosio.null::nonce
+        if (act.account === this.configModule.config.settings.eosio_alias + '.null' && act.name === 'nonce') {
+            ds_act = act.data;
+        }
+
+        if (!ds_act) {
+            try {
+                ds_act = await worker.common.deserializeActionAtBlockNative(worker, act, trx_data.block_num);
+            } catch (e: any) {
+                console.log(e);
+                error_message = e.message;
+            }
         }
 
         // retry failed deserialization for custom ABI maps
