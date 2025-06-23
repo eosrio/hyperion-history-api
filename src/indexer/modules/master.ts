@@ -1573,8 +1573,7 @@ export class HyperionMaster {
         this.validatedShipServers = await shs.validateShipServers(rpcChainId);
 
         if (this.validatedShipServers.length === 0) {
-            hLog(`No valid state history servers found!`);
-            console.log(shipNodes);
+            hLog(`No valid state history servers found!`, shipNodes);
             process.exit();
         }
 
@@ -1592,7 +1591,7 @@ export class HyperionMaster {
                     hLog(`Elasticsearch: ${esInfo.version.number} | Lucene: ${esInfo.version.lucene_version}`);
                     return true;
                 } catch (e: any) {
-                    console.log(e.message);
+                    hLog(`Elasticsearch Error: ${e.message} | Retrying...`);
                     return false;
                 }
             },
