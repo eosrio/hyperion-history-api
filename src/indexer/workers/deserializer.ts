@@ -17,6 +17,7 @@ import { ABI, Action, PackedTransaction, Serializer } from "@wharfkit/antelope";
 import { TokenAccount } from "../../interfaces/custom-ds.js";
 import { GetBlocksResultV0 } from "./state-reader.js";
 import { de } from "zod/v4/locales";
+import { log } from "console";
 
 interface QueuePayload {
     queue: string;
@@ -319,13 +320,47 @@ export default class MainDSWorker extends HyperionWorker {
                 const failedTrx: any[] = [];
 
                 block.transactions.forEach((trx) => {
+
+                    let valid = true;
+
+                    // Check if the transaction is blacklisted or whitelisted
+                    if (this.filters.action_blacklist.size > 0 || this.filters.action_whitelist.size > 0) {
+
+                        // valid should be false by default if any whitelist is present
+                        valid = this.filters.action_whitelist.size === 0;
+
+                        try {
+                            const unpacked_trx = PackedTransaction.from(trx.trx[1]).getTransaction();
+                            for (const act of unpacked_trx.actions) {
+
+                                if (this.filters.action_blacklist.size > 0 && this.checkBlacklist(act)) {
+                                    valid = false;
+                                    // hLog(`Blacklisted action found in block ${block_num}: ${act.account}::${act.name}`);
+                                    break;
+                                }
+
+                                if (this.filters.action_whitelist.size > 0 && this.checkWhitelist(act)) {
+                                    valid = true;
+                                    // hLog(`Whitelisted action found in block ${block_num}: ${act.account}::${act.name}`);
+                                    break;
+                                }
+
+                            }
+                        } catch (error: any) {
+                            hLog(`Failed to unpack transaction in block ${block_num}:`, error.message);
+                        }
+                        
+                    }
+
                     total_cpu += trx['cpu_usage_us'];
                     total_net += trx['net_usage_words'];
 
                     if (trx.status === 0) {
-                        if (light_block) {
+
+                        if (light_block && valid) {
                             light_block.trx_count++;
                         }
+
                     } else {
                         if (this.conf.features.failed_trx) {
                             switch (trx.status) {
@@ -378,6 +413,8 @@ export default class MainDSWorker extends HyperionWorker {
                     light_block.cpu_usage = total_cpu;
                     light_block.net_usage = total_net;
                 }
+
+                // hLog(`Transaction Count: ${light_block.trx_count}`);
 
                 // submit failed trx
                 if (failedTrx.length > 0) {

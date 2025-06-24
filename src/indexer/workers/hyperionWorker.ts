@@ -12,7 +12,7 @@ import { StateHistorySocket } from "../connections/state-history.js";
 import { BasicDelta } from "../../interfaces/hyperion-delta.js";
 import { getHeapStatistics, HeapInfo } from "node:v8";
 import { HyperionActionAct } from "../../interfaces/hyperion-action.js";
-import { APIClient } from "@wharfkit/antelope";
+import { Action, APIClient } from "@wharfkit/antelope";
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
 
 export abstract class HyperionWorker {
@@ -156,15 +156,15 @@ export abstract class HyperionWorker {
         }
     }
 
-    private anyFromCode(act: HyperionActionAct) {
+    private anyFromCode(act: HyperionActionAct | Action) {
         return act.account + '::*'
     }
 
-    private anyFromName(act: HyperionActionAct) {
+    private anyFromName(act: HyperionActionAct | Action) {
         return '*::' + act.name;
     }
 
-    private codeActionPair(act: HyperionActionAct) {
+    private codeActionPair(act: HyperionActionAct | Action) {
         return act.account + '::' + act.name;
     }
 
@@ -180,7 +180,7 @@ export abstract class HyperionWorker {
         return delta.code + '::' + delta.table;
     }
 
-    protected checkBlacklist(act: HyperionActionAct) {
+    protected checkBlacklist(act: HyperionActionAct | Action) {
 
         // test for chain::code::*
         if (this.filters.action_blacklist.has(this.anyFromCode(act))) {
@@ -196,7 +196,7 @@ export abstract class HyperionWorker {
         return this.filters.action_blacklist.has(this.codeActionPair(act));
     }
 
-    protected checkWhitelist(act: HyperionActionAct) {
+    protected checkWhitelist(act: HyperionActionAct | Action) {
 
         // test for chain::code::*
         if (this.filters.action_whitelist.has(this.anyFromCode(act))) {
