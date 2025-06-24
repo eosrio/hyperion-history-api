@@ -1,6 +1,6 @@
 {
   "name": "hyperion-history",
-  "version": "4.0.0-beta.1",
+  "version": "4.0.0-beta.2",
   "description": "Scalable Full History API Solution for EOSIO based blockchains",
   "main": "./build/indexer/launcher.js",
   "scripts": {
@@ -58,14 +58,14 @@
     "undici": "7.10.0",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.52.0",
     "ws": "8.18.2",
-    "zod": "3.25.64" 
+    "zod": "3.25.67" 
   },
   "devDependencies": {
     "@types/amqplib": "0.10.7",
     "@types/async": "3.2.24",
     "@types/global-agent": "3.0.0",
-    "@types/lodash": "4.17.17",
-    "@types/node": "24.0.1",
+    "@types/lodash": "4.17.18",
+    "@types/node": "24.0.3",
     "@types/nodemailer": "6.4.17",
     "@types/ws": "8.18.1",
     "nodemon": "^3.1.10"
