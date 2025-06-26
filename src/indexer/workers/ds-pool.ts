@@ -270,7 +270,18 @@ export default class DSPoolWorker extends HyperionWorker {
                 if (savedAbi) {
                     if (savedAbi[field + 's'] && savedAbi[field + 's'].includes(type)) {
                         if (savedAbi.abi_hex) {
-                            _status = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
+
+                            // _status = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
+
+                            try {
+
+                                _status = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
+
+                            } catch (error: any) {
+
+                                debugLog(`(abieos) ${contract}::${type} (field: "${field}") @ ${block_num} >>> ${error.message}`);
+
+                            }
                         }
                     }
                 }
@@ -371,8 +382,8 @@ export default class DSPoolWorker extends HyperionWorker {
                 if (!this.failedAbiMap.has(accountName) || !this.failedAbiMap.get(accountName)?.has(-1)) {
                     try {
                         this.abieos.loadAbi(accountName, JSON.stringify(abi));
-                    } catch (e) {
-                        hLog(e);
+                    } catch (e:any) {
+                        hLog(`failed to load abi for ${accountName} @ ${block_num} >>> ${e.message}`);
                     }
                 } else {
                     debugLog('ignore reloading of current abi for', accountName);
