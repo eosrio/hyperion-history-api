@@ -62,6 +62,7 @@ async function checkStateHistory(fastify: FastifyInstance): Promise<ServiceRespo
     try {
 
         const shipHealthCache = await fastify.redis.get(`${fastify.manager.chain}::ship_status`);
+
         if (shipHealthCache) {
             return createHealth(true, 'StateHistory', 'OK', JSON.parse(shipHealthCache), tRefShip);
         } else {
@@ -88,6 +89,7 @@ async function checkStateHistory(fastify: FastifyInstance): Promise<ServiceRespo
                 return createHealth(false, 'StateHistory', 'OK', response, tRefShip);
             }
         }
+
     } catch (e) {
         console.log(e);
         return createHealth(false, 'StateHistory', 'Error');
@@ -218,6 +220,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
         let firstIndexedBlock: number;
         const tRefElastic2 = process.hrtime.bigint();
         const fib = await fastify.redis.get(`${fastify.manager.chain}::fib`);
+        // Check if first indexed block is cached, if not fetch it from Elasticsearch
         if (fib) {
             firstIndexedBlock = parseInt(fib);
             times.push({
