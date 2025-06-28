@@ -329,8 +329,6 @@ export class HyperionMaster {
                     });
                     this.queueMonitor.monitorIndexingQueues();
                     this.startContractMonitoring();
-                } else {
-                    hLog('received ship abi for distribution AGAIN!!');
                 }
             },
             router_ready: () => {

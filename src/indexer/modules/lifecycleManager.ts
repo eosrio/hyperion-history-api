@@ -46,10 +46,10 @@ export class HyperionLifecycleManager {
 
             const indexPartitionSize = this.conf.settings.index_partition_size;
 
-            // Must be a multiple of index partition size, round up if necessary
+            // Must be a multiple of index_partition_size, round up if necessary
             if (this.maxRetainedBlocks % indexPartitionSize !== 0) {
-                hLog(`max_retained_blocks (${this.maxRetainedBlocks}) is not a multiple of index partition size (${indexPartitionSize}).`);
-                hLog(`Adjusting max_retained_blocks to be a multiple of index partition size.`);
+                hLog(`max_retained_blocks (${this.maxRetainedBlocks}) is not a multiple of index_partition_size (${indexPartitionSize}).`);
+                hLog(`Adjusting max_retained_blocks to be a multiple of index_partition_size.`);
                 this.maxRetainedBlocks += (indexPartitionSize - (this.maxRetainedBlocks % indexPartitionSize));
             }
         }
@@ -160,7 +160,6 @@ export class HyperionLifecycleManager {
         }
 
         hLog(`Auto pruning completed.`);
-        await this.master.ioRedisClient.del(`${this.manager.chain}::fib`);
     }
 
     private attributesToObject(attributes: NodeAttributeRequirement[]): { [key: string]: string } {
@@ -375,6 +374,8 @@ export class HyperionLifecycleManager {
                 hLog(`Task ID: ${deleteResponse.task}`);
                 if (deleteResponse.task && typeof deleteResponse.task === 'string') {
                     await this.startMonitoringDeleteTask(deleteResponse.task);
+                } else {
+                    await this.master.ioRedisClient.del(`${this.manager.chain}::fib`);
                 }
             } else {
                 hLog(`No blocks found to prune in index ${blockIndices[0].index}.`);
@@ -388,8 +389,10 @@ export class HyperionLifecycleManager {
     }
 
     async startMonitoringDeleteTask(task: string) {
+
         if (!task) {
             hLog(`No task ID provided for monitoring.`);
+            await this.master.ioRedisClient.del(`${this.manager.chain}::fib`);
             return;
         }
 
@@ -401,6 +404,7 @@ export class HyperionLifecycleManager {
             });
             if (taskInfo.completed) {
                 hLog(`Delete task ${task} completed.`);
+                await this.master.ioRedisClient.del(`${this.manager.chain}::fib`);
             } else {
                 hLog(`Delete task ${task} is still running...`);
                 setTimeout(checkTaskStatus, 5000);
