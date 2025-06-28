@@ -160,6 +160,7 @@ export class HyperionLifecycleManager {
         }
 
         hLog(`Auto pruning completed.`);
+        await this.master.ioRedisClient.del(`${this.manager.chain}::fib`);
     }
 
     private attributesToObject(attributes: NodeAttributeRequirement[]): { [key: string]: string } {

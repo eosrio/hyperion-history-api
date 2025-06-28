@@ -132,7 +132,7 @@ export class HyperionMaster {
 
     private readonly cm: ConfigurationModule;
     private alerts?: AlertsManager;
-    private ioRedisClient: Redis;
+    ioRedisClient: Redis;
 
     // Reversible Blocks
     private revBlockArray: RevBlock[] = [];
