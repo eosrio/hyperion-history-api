@@ -232,7 +232,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                         });
                     } else {
                         allow = onDemandFilters.every(filter => {
-                            console.log(doc._source);
+                            // console.log(doc._source);
                             return checkMetaFilter(filter, doc._source, dataKind);
                         });
                     }
