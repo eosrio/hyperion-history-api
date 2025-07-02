@@ -24,7 +24,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@elastic/elasticsearch": "9.0.2",
+    "@elastic/elasticsearch":"9.0.3",
     "@eosrio/node-abieos": "4.0.2-2039717",
     "@eosrio/hyperion-plugin-core": "^0.1.0",
     "@fastify/autoload": "6.3.1",
