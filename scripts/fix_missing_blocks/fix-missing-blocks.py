@@ -51,7 +51,7 @@ lastblock_indexed = r'.*Last Indexed Block:.* (\d*)'  #group the last block inde
 # Config
 hyperionfolder="/home/charles/hyperion/"
 indexer_log_file = "/home/charles/.pm2/logs/wax-indexer-out.log"
-ecosystem_file_location = f'{hyperionfolder}ecosystem.config.js'
+ecosystem_file_location = f'{hyperionfolder}ecosystem.config.cjs'
 
 chain = "wax"  #set the Chain name eos or wax
 filepath=hyperionfolder+"chains/wax.config.json"
@@ -66,24 +66,24 @@ hyperion_version = '3.7'  #'3.1' or '3.3'
 if hyperion_version == '3.7':
     no_blocks_processed = r'.*-------- BLOCK RANGE COMPLETED -------------.*'
     shutting_down = r'.*No more active workers, stopping now...*'
-    
+
 elif hyperion_version == '3.1':
     no_blocks_processed = r'.*No blocks processed.*'
     shutting_down = r'.*Shutting down master.*'
 else:
     no_blocks_processed = r'.*-------- BLOCK RANGE COMPLETED -------------.*'
     shutting_down = r'.*No more active workers, stopping now...*'
-    
+
 
 def update_run_script():
     # Copy the original run.sh to run.bak
     shutil.copy2(f"{hyperionfolder}/run.sh", f"{hyperionfolder}/run.bak")
-    
+
     # Update the contents of run.sh with the new command
     with open("run.sh", "w") as f:
         f.write(f'''#!/usr/bin/env bash
 if [ $# -lt 2 ]; then
-  echo "Please inform the app name and ecosystem file location. ex: './run.sh indexer /path/to/ecosystem.config.js'"
+  echo "Please inform the app name and ecosystem file location. ex: './run.sh indexer /path/to/ecosystem.config.cjs'"
   exit 1
 fi
 echo -e "\n-->> Starting $1..."
@@ -182,7 +182,7 @@ def get_buckets(interval, query):
     return buckets
 
 # Find buckets with missing blocks
-def buckets_missing(bucketlist,count1,count2): 
+def buckets_missing(bucketlist,count1,count2):
     buckets_final = []
     bucketdict = {}
     for num, bucket in enumerate(bucketlist):
@@ -254,7 +254,7 @@ def spinning_cursor(run):
 def startRewrite(gt,lt):
     Popen(indexer_start,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(2)
-    logtail = Popen(tail_indexer_logs, stdin=PIPE, stdout=PIPE, stderr=STDOUT) 
+    logtail = Popen(tail_indexer_logs, stdin=PIPE, stdout=PIPE, stderr=STDOUT)
     completedcount = 0
     for linenum, line in enumerate(logtail.stdout):
         #spinning_cursor(True)
@@ -276,7 +276,7 @@ def startRewrite(gt,lt):
         elif lastblock:
              # Indicates indexer has already shutdown, break out of loop and restart process.
              print(bcolors.OKYELLOW,f"{'='*100}\n6.Indexer shutdown: ",bcolors.ENDC)
-             break  
+             break
         elif shutdown:
             # If indexer already shutdown, break out of loop and restart process.
             print(bcolors.OKYELLOW,f"{'='*100}\n6.Indexer shutdown: ",bcolors.ENDC)

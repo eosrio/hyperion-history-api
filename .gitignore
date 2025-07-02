@@ -1,3 +1,6 @@
+# Dependency directories
+node_modules/
+
 # Logs
 logs
 *.log
@@ -11,88 +14,45 @@ pids
 *.seed
 *.pid.lock
 
-# Dependency directories
-node_modules/
-
 # Optional npm cache directory
 .npm
 
 # Optional eslint cache
 .eslintcache
 
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
 # dotenv environment variables file
 .env
 
+# main build directory
+build
+
+# IDE files
 .idea
+.vscode
+
+# Keys
 *.pem
-connections.json
-connections.json2
-api_access.log
-api_error.log
-explorer
-api/explorer
+
+# Temporary PM2 files
 .ecosystem.config.js.swp
 
-chains/*
-!chains/example.config.json
-
-api/**/*.js
-api/**/*.js.map
-api/tests
-
-hyperion-launcher.js
-hyperion-launcher.js.map
-
-launcher.js
-launcher.js.map
-
-connections/**/*.js
-connections/**/*.js.map
-
-definitions/**/*.js
-definitions/**/*.js.map
-
-workers/**/*.js
-workers/**/*.js.map
-
-helpers/**/*.js
-helpers/**/*.js.map
-
-interfaces/**/*.js
-interfaces/**/*.js.map
-
-modules/**/*.js
-modules/**/*.js.map
-
-addons/**/*.js
-addons/**/*.js.map
-
-scripts/hpm.js
-scripts/hpm.js.map
-
-plugins/.state.json
-plugins/repos
-plugins/*.js
-.gitmodules
-
-docker/redis/data
-docker/elasticsearch/data
-docker/rabbitmq/data
-docker/eosio/data
-
+# Configuration files
+config/connections.json
+config/chains/*
+!config/chains/example.config.json
 configuration_backups
 
-scripts/hyp-config.js
-scripts/hyp-config.js.map
+# Tests
+tests/api/ijhttp
+tests/api/ijhttp.zip
+tests/api/reports
 
-scripts/hyp-repair.js
-scripts/hyp-repair.js.map
+explorer
+.repair
+.cli
+*.deb
 
-scripts/repair-cli/*.js
-scripts/repair-cli/*.js.map
+# Snapshots
+snapshots
+
+plugins

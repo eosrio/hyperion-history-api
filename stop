@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+if [ $# -eq 0 ]; then
+  echo 'Please inform the chain name to stop the indexer. ex: "./stop vaulta-indexer"'
+  exit 1
+fi
+./hyp-control indexer stop "$@"

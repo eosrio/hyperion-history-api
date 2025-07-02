@@ -1,0 +1,47 @@
+### get_account
+GET {{server}}/v2/state/get_account?account={{system_account}}
+Content-Type: application/json
+
+> {%
+    client.test("Request executed successfully", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+    });
+    let publicKey = response.body.account.permissions[0].required_auth.keys[0].key;
+    client.global.set('test_public_key',publicKey);
+%}
+
+### get_key_accounts
+GET {{server}}/v2/state/get_key_accounts?public_key={{test_public_key}}
+Content-Type: application/json
+
+> assert.js
+
+### get_links
+GET {{server}}/v2/state/get_links?permission=active
+Content-Type: application/json
+
+> assert.js
+
+### get_proposals
+GET {{server}}/v2/state/get_proposals
+Content-Type: application/json
+
+> assert.js
+
+### get_tokens
+GET {{server}}/v2/state/get_tokens?account={{system_account}}
+Content-Type: application/json
+
+> assert.js
+
+### get_voters
+GET {{server}}/v2/state/get_voters?producer={{test_account}}
+Content-Type: application/json
+
+> assert.js
+
+### get_voter_scopes
+GET {{server}}/v2/state/get_voter_scopes?term={{test_account}}
+Content-Type: application/json
+
+> assert.js

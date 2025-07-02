@@ -1,23 +1,31 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
-    "target": "ES2020",
+    "module": "NodeNext",
+    "target": "ESNext",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "noImplicitAny": false,
-    "moduleResolution": "node",
+    "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
     "noEmitOnError": true,
     "sourceMap": true,
     "allowJs": false,
-    "typeRoots": [
-      "node_modules/@types",
-      "types"
-    ]
+    "outDir": "build",
+    "skipLibCheck": true,
+    "allowArbitraryExtensions": true,
+    "strict": true,
+    "typeRoots": ["types"],
+    "experimentalDecorators": true,
+    "useDefineForClassFields": true
   },
+  "include": [
+    "./src/**/*.ts"
+  ],
   "exclude": [
     "node_modules",
     "hyperion-explorer",
     "build",
-    "plugins/repos"
+    "tests",
+    "plugins"
   ]
 }

@@ -36,11 +36,11 @@ Made with ♥ by [Rio Blocks](https://rioblocks.io/?lang=en)
 
 ### How to use:
 
- - [For Infrastructure Providers](https://hyperion.docs.eosrio.io/providers/get-started/)
+- [For Infrastructure Providers](https://hyperion.docs.eosrio.io/providers/get-started/)
 
- - [For Developers](https://hyperion.docs.eosrio.io/dev/howtouse/)
+- [For Developers](https://hyperion.docs.eosrio.io/dev/howtouse/)
 
- - [API Reference](https://hyperion.docs.eosrio.io/api/v2/)
+- [API Reference](https://hyperion.docs.eosrio.io/api/v2/)
 
 ### Official plugins:
 
@@ -69,10 +69,10 @@ Hyperion operates by separating the concerns of historical event streams and cur
 3.  **History Storage:** Indexer worker processes consume data from RabbitMQ and index historical action traces and state deltas into **Elasticsearch**. This forms the backbone for historical queries.
 4.  **State Storage:** If configured, Indexer workers (or dedicated sync tools) process deltas or perform full scans to maintain the *current state* of specified accounts, proposals, voters, or contract tables within **MongoDB**.
 5.  **Data Serving:** The **API Server** handles client requests. It queries:
-    *   **Elasticsearch** for historical data (`/v2/history/*`, `/v1/*`).
-    *   **MongoDB** for current state data (`/v2/state/*`).
-    *   **Redis** for cached responses and transaction lookups.
-    *   The **Antelope Node** directly for real-time chain info or as a fallback.
+  *   **Elasticsearch** for historical data (`/v2/history/*`, `/v1/*`).
+  *   **MongoDB** for current state data (`/v2/state/*`).
+  *   **Redis** for cached responses and transaction lookups.
+  *   The **Antelope Node** directly for real-time chain info or as a fallback.
 
 
 ## 3. Architecture
@@ -108,9 +108,9 @@ This MongoDB integration complements Elasticsearch by focusing on **current stat
 **System Contract State Storage:**
 - Stores searchable state data for Antelope system contracts like token balances, proposals, and voter information
 - Maintains three primary collections by default:
-    - `accounts`: Stores token balances with indexes for code, scope, and symbol
-    - `proposals`: Tracks governance proposals with detailed approval status
-    - `voters`: Manages staking and voting records with optimized query paths
+  - `accounts`: Stores token balances with indexes for code, scope, and symbol
+  - `proposals`: Tracks governance proposals with detailed approval status
+  - `voters`: Manages staking and voting records with optimized query paths
 
 **Custom Contract State Tracking:**
 
@@ -160,7 +160,7 @@ A client library (for Web and Node.js) simplifying connection to the real-time s
 
 ### 3.9 Hyperion Plugins (Optional)
 Hyperion features an extensible plugin architecture. Plugins can add custom data handlers, API routes, or other functionalities. Managed via the `hpm` command-line tool.
-*   **Example:** [Hyperion Lightweight Explorer](https://github.com/eosrio/hyperion-explorer-plugin)
+*   **Example:** [DelphiOracle Plugin](https://github.com/eosrio/hyperion-delphioracle-plugin)
 
 ## 4. Getting Started
 
