@@ -1,7 +1,7 @@
 {
   "name": "hyperion-history",
   "version": "4.0.0-beta.3",
-  "description": "Scalable Full History API Solution for EOSIO based blockchains",
+  "description": "Scalable Full History API Solution for Antelope based blockchains",
   "main": "./build/indexer/launcher.js",
   "scripts": {
     "tsc": "tsc",
