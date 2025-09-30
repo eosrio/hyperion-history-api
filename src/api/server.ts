@@ -176,10 +176,11 @@ class HyperionApiServer {
       },
     } as any;
 
+    // add mongodb client if available
     if (this.manager.mongodbClient) {
       this.pluginParams.fastify_mongo = {
         client: this.manager.mongodbClient,
-      } as FastifyMongodbOptions;
+      } as unknown as FastifyMongodbOptions;
     }
 
     if (!this.conf.api.disable_rate_limit) {

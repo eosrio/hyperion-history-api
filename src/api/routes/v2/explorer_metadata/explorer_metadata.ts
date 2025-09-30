@@ -9,7 +9,8 @@ async function getExplorerMetadata(fastify: FastifyInstance) {
         chain_id: fastify.manager.conn.chains[fastify.manager.chain].chain_id,
         custom_core_token: fastify.manager.config.api.custom_core_token,
         theme: fastify.explorerTheme ?? {},
-        oracle: fastify.hasRoute({ url: '/v2/oracle/get_datapoints_histogram', method: 'GET' })
+        oracle: fastify.manager.config.api.explorer?.oracle || {},
+        oracle_price_historgram: fastify.hasRoute({ url: '/v2/oracle/get_datapoints_histogram', method: 'GET' })
     }
 }
 

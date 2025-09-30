@@ -135,20 +135,17 @@ export class HyperionModuleLoader {
     private async loadPlugins() {
         const base = join(import.meta.dirname, '../../../', 'plugins');
 
-        // hLog(`Loading plugins from ${base}`);
-
         if (!existsSync(base)) {
-            console.error('Plugin folder not found');
             return;
         }
 
         const state = join(base, '.state.json');
         if (!existsSync(state)) {
-            console.error('Plugin state file not found');
             return;
         }
 
-        let pState;
+        let pState: { [x: string]: { enabled: any; }; };
+
         try {
             const stateFile = JSON.parse(readFileSync(state).toString());
             pState = stateFile.plugins;
