@@ -98,48 +98,58 @@ export async function getLastIndexedBlockWithTotalBlocks(es_client: Client, chai
 
 export async function getFirstIndexedBlock(es_client: Client, chain: string, partition_size?: number): Promise<number> {
 
-    const indices = await es_client.cat.indices({
-        index: chain + '-action-*',
-        s: 'index',
-        v: true,
-        format: 'json'
-    });
-
-    const firstIndex = indices[0].index;
-
-    let firstIndexedBlock = 0;
-
-    if (firstIndex) {
-        const parts = firstIndex.split('-');
-        const blockChunk = parts[parts.length - 1];
-        const blockChunkSize = partition_size || 10000000;
-        const startBlock = (parseInt(blockChunk) - 1) * blockChunkSize;
-        const endBlock = startBlock + blockChunkSize;
-
-        // perform a search to get the first block in the index using a range query
-        const results = await es_client.search<any>({
-            index: chain + '-block-*',
-            size: 1,
-            query: { range: { block_num: { gte: startBlock, lte: endBlock } } },
-            sort: [{ block_num: { order: "asc" } }]
+    try {
+        const indices = await es_client.cat.indices({
+            index: chain + '-action-*',
+            s: 'index',
+            v: true,
+            format: 'json'
         });
-        if (results.hits?.hits?.length > 0) {
+
+        if (indices.length === 0) {
+            throw new Error('No indices found for chain: ' + chain);
+        }
+
+        // get the first index name
+        const firstIndex = indices[0].index;
+
+        let firstIndexedBlock = 0;
+
+        if (firstIndex) {
+            const parts = firstIndex.split('-');
+            const blockChunk = parts[parts.length - 1];
+            const blockChunkSize = partition_size || 10000000;
+            const startBlock = (parseInt(blockChunk) - 1) * blockChunkSize;
+            const endBlock = startBlock + blockChunkSize;
+
+            // perform a search to get the first block in the index using a range query
+            const results = await es_client.search<any>({
+                index: chain + '-block-*',
+                size: 1,
+                query: { range: { block_num: { gte: startBlock, lte: endBlock } } },
+                sort: [{ block_num: { order: "asc" } }]
+            });
+            if (results.hits?.hits?.length > 0) {
+                firstIndexedBlock = getLastResult(results);
+            }
+        }
+
+        // 2 is the minimum first block in the state history index
+        if (firstIndexedBlock < 2) {
+            // as a fallback, get the first block in the whole index (not recommended)
+            const results = await es_client.search<any>({
+                index: chain + '-block-*',
+                size: 1,
+                query: { bool: { filter: { match_all: {} } } },
+                sort: [{ block_num: { order: "asc" } }]
+            });
             firstIndexedBlock = getLastResult(results);
         }
+        return firstIndexedBlock;
+    } catch (e) {
+        console.error('Error getting first indexed block:', e);
+        throw new Error('Error getting first indexed block');
     }
-
-    // 2 is the minimum first block in the state history index
-    if (firstIndexedBlock < 2) {
-        // as a fallback, get the first block in the whole index (not recommended)
-        const results = await es_client.search<any>({
-            index: chain + '-block-*',
-            size: 1,
-            query: { bool: { filter: { match_all: {} } } },
-            sort: [{ block_num: { order: "asc" } }]
-        });
-        firstIndexedBlock = getLastResult(results);
-    }
-    return firstIndexedBlock;
 }
 
 
