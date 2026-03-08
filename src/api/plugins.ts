@@ -1,5 +1,4 @@
-import * as Fastify from "fastify";
-import {IncomingMessage, Server, ServerResponse} from "http";
+import { FastifyInstance } from "fastify";
 
 // fastify plugins
 import fastifySwagger from '@fastify/swagger';
@@ -14,7 +13,7 @@ import fastifyMongodb from "@fastify/mongodb";
 // custom plugins
 import fastify_antelope from "./plugins/fastify-antelope.js";
 
-export async function registerPlugins(server: Fastify.FastifyInstance<Server, IncomingMessage, ServerResponse>, params: any) {
+export async function registerPlugins(server: FastifyInstance, params: any) {
 
     if (params.fastify_mongo) {
         server.register(fastifyMongodb, params.fastify_mongo);
