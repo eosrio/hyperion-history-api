@@ -52,7 +52,8 @@ explorer
 .cli
 *.deb
 
+.agents
+
 # Snapshots
 snapshots
-
 plugins

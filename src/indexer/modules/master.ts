@@ -7,7 +7,7 @@ import cluster, { Worker } from 'cluster';
 
 import { createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync, WriteStream } from 'fs';
 
-import { bootstrap } from 'global-agent';
+import { createRequire } from 'node:module';
 import { Redis } from 'ioredis';
 import { Db, IndexDescription } from 'mongodb';
 import path from 'path';
@@ -185,6 +185,8 @@ export class HyperionMaster {
         this.conf = this.cm.config;
 
         if (this.conf.settings.use_global_agent) {
+            const require = createRequire(import.meta.url);
+            const { bootstrap } = require('global-agent');
             bootstrap();
         }
 

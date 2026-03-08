@@ -19,7 +19,7 @@ import { HyperionModuleLoader } from '../indexer/modules/loader.js';
 import { extendedActions } from './routes/v2-history/get_actions/definitions.js';
 import { CacheManager } from './helpers/cacheManager.js';
 
-import { bootstrap } from 'global-agent';
+import { createRequire } from 'node:module';
 import { FastifySwaggerUiOptions } from '@fastify/swagger-ui';
 import { QRYBasePublisher } from './qry-hub/base-publisher.js';
 import { getApiUsageHistory } from './helpers/functions.js';
@@ -60,6 +60,8 @@ class HyperionApiServer {
     this.conf = cm.config;
 
     if (this.conf.settings.use_global_agent) {
+      const require = createRequire(import.meta.url);
+      const { bootstrap } = require('global-agent');
       bootstrap();
     }
 
