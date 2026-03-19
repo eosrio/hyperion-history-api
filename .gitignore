@@ -1,5 +1,6 @@
 # Dependency directories
 node_modules/
+bun.lock
 
 # Logs
 logs
