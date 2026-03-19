@@ -1,0 +1,183 @@
+# Hyperion E2E Test Suite — Infrastructure Stack
+#
+# Port convention: default port + 10000 for clean separation.
+# This avoids any conflict with locally running services.
+#
+# Profiles:
+#   (default)  — infrastructure only (nodeos, ES, RabbitMQ, Redis, MongoDB)
+#   hyperion   — adds the Hyperion indexer and API services
+
+name: hyp-test
+
+services:
+
+  nodeos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SPRING_VERSION: ${SPRING_VERSION:-1.2.2}
+        CDT_VERSION: ${CDT_VERSION:-4.1.1}
+    container_name: hyp-test-nodeos
+    ports:
+      - "${NODEOS_HTTP_PORT:-18888}:8888"
+      - "${NODEOS_SHIP_PORT:-18080}:8080"
+    volumes:
+      - nodeos-data:/data/nodeos
+    networks:
+      - hyp-test
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8888/v1/chain/get_info"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION:-9.3.1}
+    container_name: hyp-test-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - cluster.name=hyp-test
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "${ES_PORT:-19200}:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    networks:
+      - hyp-test
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 15s
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: hyp-test-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-hyperion}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-hyperion}
+      RABBITMQ_DEFAULT_VHOST: /hyperion
+    ports:
+      - "${RABBITMQ_PORT:-15672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-25672}:15672"
+    networks:
+      - hyp-test
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:8-alpine
+    container_name: hyp-test-redis
+    ports:
+      - "${REDIS_PORT:-16379}:6379"
+    networks:
+      - hyp-test
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  mongodb:
+    image: mongo:8
+    container_name: hyp-test-mongodb
+    ports:
+      - "${MONGODB_PORT:-17017}:27017"
+    networks:
+      - hyp-test
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 10s
+      retries: 15
+      start_period: 5s
+
+  # ── Hyperion Services (started via --profile hyperion) ──────
+
+  hyp-indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile.hyperion
+    container_name: hyp-test-indexer
+    profiles: ["hyperion"]
+    working_dir: /hyperion
+    command: >
+      node --max-old-space-size=4096
+      ./build/indexer/launcher.js
+    environment:
+      CONFIG_JSON: /hyperion/config/chains/hyp-test.config.json
+      CHAIN_NAME: hyp-test
+    volumes:
+      - ../../:/hyperion:ro
+      - ./.run/config:/hyperion/config:rw
+    tmpfs:
+      - /hyperion/logs:rw,noexec,nosuid
+    networks:
+      - hyp-test
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      nodeos:
+        condition: service_healthy
+
+  hyp-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.hyperion
+    container_name: hyp-test-api
+    profiles: ["hyperion"]
+    working_dir: /hyperion
+    command: >
+      node --max-old-space-size=2048
+      ./build/api/server.js
+    environment:
+      CONFIG_JSON: /hyperion/config/chains/hyp-test.config.json
+      CHAIN_NAME: hyp-test
+    ports:
+      - "${HYP_API_PORT:-17000}:17000"
+    volumes:
+      - ../../:/hyperion:ro
+      - ./.run/config:/hyperion/config:rw
+    tmpfs:
+      - /hyperion/logs:rw,noexec,nosuid
+    networks:
+      - hyp-test
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  nodeos-data:
+    driver: local
+  es-data:
+    driver: local
+
+networks:
+  hyp-test:
+    name: hyp-test
+    driver: bridge
+

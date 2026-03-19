@@ -1,0 +1,14 @@
+# Dockerfile for running Hyperion indexer/API in the E2E test environment.
+# Uses Ubuntu 24.04 to match the host's glibc (required for native modules
+# like @eosrio/node-abieos which are compiled against GLIBCXX_3.4.32+).
+
+FROM ubuntu:24.04
+
+# Install Node.js 24.x
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /hyperion
