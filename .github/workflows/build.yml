@@ -1,8 +1,10 @@
-name: Development Build
+name: Build & Test
 
 on:
   push:
-    branches: [ "release/4.0" ]
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   build:
@@ -19,3 +21,6 @@ jobs:
           cache: 'npm'
       - run: npm ci --ignore-scripts
       - run: npm run build
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+      - run: bun test tests/unit
