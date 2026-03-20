@@ -166,6 +166,8 @@ interface ApiConfigs {
     limits: ApiLimits;
     v1_chain_cache?: CachedRouteConfig[];
     explorer?: ExplorerConfigs;
+    query_timeout?: string;           // ES search timeout (e.g., "5s"), default: "10s"
+    max_asc_window_days?: number;     // max range in days for sort=asc queries, default: 90
 }
 
 interface ExplorerConfigs {
@@ -320,6 +322,8 @@ export const HyperionApiConfigSchema = z.object({
     limits: ApiLimitsSchema,
     v1_chain_cache: z.array(CachedRouteConfigSchema).optional(),
     explorer: ExplorerConfigsSchema.optional(),
+    query_timeout: z.string().optional(),
+    max_asc_window_days: z.number().optional(),
 });
 
 // Zod schema for tiered index allocation settings

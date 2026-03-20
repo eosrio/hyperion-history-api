@@ -1,3 +1,92 @@
+# Changelog
+
+## 4.0.3 (2026-03-20)
+
+### Security
+
+*   **Configurable Query Guards for `sort=asc`**: Prevents unbounded ascending sort queries on `get_actions` (v1 & v2) that could overload Elasticsearch by forcing full reverse segment scans across all shards.
+
+### New Config Options
+
+Two new optional fields in the `api` section of the chain config:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `query_timeout` | `string` | `"10s"` | Elasticsearch search timeout per query |
+| `max_asc_window_days` | `number` | `90` | Maximum time range (in days) for `sort=asc` requests |
+
+### Behavior Changes
+
+*   `sort=asc` on `get_actions` now **requires** a valid `after` or `before` parameter:
+    *   ISO date strings (must contain `T`, e.g., `2026-03-19T00:00:00Z`)
+    *   Positive integer block numbers (e.g., `425000000`)
+*   ISO date `after` values must be within `max_asc_window_days` of the current time.
+*   All `get_actions` queries (v1 + v2) now include a configurable Elasticsearch `timeout`.
+*   `sort=desc` (default) is **unchanged** — no new restrictions apply.
+
+### Testing
+
+*   Added 17 unit tests for `getSortDir` validation covering bounds checks, max window enforcement, block number acceptance, and garbage input rejection.
+
+---
+
+## 4.0.2 (2026-03-18)
+
+### Testing
+
+*   **E2E High-Fidelity Test Framework**: 8-phase Docker-based test pipeline with port-isolated infrastructure, contract deployment, manifest-based load generation, and integrity checking.
+*   **CI Workflow**: Target main branch, integrate unit tests into CI pipeline.
+
+### Maintenance
+
+*   Updated all dependencies and fixed security vulnerabilities.
+
+---
+
+## 4.0.1 (2026-03-08)
+
+### Fixes
+
+*   **Dynamic `global-agent` Loading**: Load `global-agent` dynamically via `createRequire` to resolve ESM import errors.
+
+### Maintenance
+
+*   Upgraded all dependencies.
+*   Added unit test suite (Bun-based) for API helpers, common functions, and config validation.
+
+---
+
+## 4.0.0-beta.5 (2025-11-04)
+
+### Fixes
+
+*   **IndexerController**: Guard against missing chain config in `connect()` — reject and clear `connectionPromise` when config is not found.
+*   **getFirstIndexedBlock**: Handle empty `cat.indices` results, add try/catch with error logging.
+
+### Maintenance
+
+*   Dependency updates: `@elastic/elasticsearch` → 9.2.0, `commander` → 14.0.2, `ioredis` → 5.8.2, `typescript` → 5.9.3, `uWebSockets.js` → v20.55.0, `zod` → 4.1.12.
+
+---
+
+## 4.0.0-beta.4 (2025-09-30)
+
+### Features
+
+*   **RabbitMQ Install Script**: Added `rabbit.sh` for automated RabbitMQ installation on Ubuntu.
+*   **Explorer Oracle Metadata**: Explorer metadata route now includes oracle configuration.
+
+### Fixes
+
+*   MongoDB client typing workaround for type compatibility.
+*   Plugin loading cleanup — removed noisy error logs, improved type definitions.
+
+### Maintenance
+
+*   Dependency updates: `@elastic/elasticsearch` → 9.1.1, `fastify` → 5.6.1, `mongodb` → 6.20.0, `typescript` → 5.9.2, `zod` → 4.1.11.
+
+---
+
 # Changelog - Hyperion History API 4.0.0-beta.3 (pre-release)
 
 This changelog summarizes the significant changes leading up to the `4.0.0-beta.3` release, based on Pull Request #157.
