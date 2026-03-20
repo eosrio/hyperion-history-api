@@ -117,7 +117,9 @@ interface ApiConfigs {
     enable_caching: boolean,
     cache_life: number;
     limits: ApiLimits,
-    v1_chain_cache?: CachedRouteConfig[]
+    v1_chain_cache?: CachedRouteConfig[];
+    query_timeout?: string;           // ES search timeout (e.g., "5s"), default: "10s"
+    max_asc_window_days?: number;     // max range in days for sort=asc queries, default: 90
 }
 
 interface HubLocation {

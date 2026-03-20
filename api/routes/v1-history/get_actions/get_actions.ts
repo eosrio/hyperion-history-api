@@ -199,14 +199,26 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         }
     }
 
+    const maxAscWindowDays = fastify.manager.config.api.max_asc_window_days || 90;
+
     if (reqBody.sort) {
         if (reqBody.sort === 'asc' || reqBody.sort === '1') {
-            // sort=asc requires a valid time range to prevent full-index reverse scans
+            // sort=asc requires a valid, recent time range to prevent full-index reverse scans
             const after = reqBody.after;
             const before = reqBody.before;
             const isValidBound = (v) => v && (!isNaN(new Date(v).getTime()) || (Number.isInteger(Number(v)) && Number(v) > 0));
             if (!isValidBound(after) && !isValidBound(before)) {
                 return {error: 'sort=asc requires a valid "after" or "before" (ISO date or block number) to bound the search'};
+            }
+            // validate the time window is not too wide (only for ISO date strings, not block numbers)
+            if (typeof after === 'string' && after.includes('T')) {
+                const afterDate = new Date(after);
+                if (!isNaN(afterDate.getTime())) {
+                    const maxAge = Date.now() - (maxAscWindowDays * 86400000);
+                    if (afterDate.getTime() < maxAge) {
+                        return {error: `sort=asc "after" date must be within the last ${maxAscWindowDays} days`};
+                    }
+                }
             }
             sort_direction = 'asc';
         } else if (reqBody.sort === 'desc' || reqBody.sort === '-1') {
@@ -268,10 +280,12 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         queryStruct.bool['should'] = filterObj;
         queryStruct.bool['minimum_should_match'] = 1;
     }
+    const queryTimeout = fastify.manager.config.api.query_timeout || '10s';
     const esOpts = {
         "index": fastify.manager.chain + '-action-*',
         "from": from || 0,
         "size": (size > fastify.manager.config.api.limits.get_actions ? fastify.manager.config.api.limits.get_actions : size),
+        "timeout": queryTimeout,
         "body": {
             "query": queryStruct,
             "sort": {

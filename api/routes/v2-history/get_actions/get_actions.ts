@@ -23,7 +23,8 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
     const {skip, limit} = getSkipLimit(query, maxActions);
 
-    const sort_direction = getSortDir(query);
+    const maxAscWindowDays = fastify.manager.config.api.max_asc_window_days || 90;
+    const sort_direction = getSortDir(query, maxAscWindowDays);
 
     applyAccountFilters(query, queryStruct);
 
@@ -52,10 +53,12 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         indexPattern = fastify.manager.chain + '-action';
     }
 
+    const queryTimeout = fastify.manager.config.api.query_timeout || '10s';
     const esOpts = {
         "index": indexPattern,
         "from": skip || 0,
         "size": (limit > maxActions ? maxActions : limit) || 10,
+        "timeout": queryTimeout,
         "body": query_body
     };
 
