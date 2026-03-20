@@ -252,8 +252,12 @@ export function getSortDir(query) {
     let sort_direction = 'desc';
     if (query.sort) {
         if (query.sort === 'asc' || query.sort === '1') {
-            if (!query.after && !query.before) {
-                throw new Error('sort=asc requires "after" or "before" parameter to bound the search');
+            // sort=asc requires a valid time range to prevent full-index reverse scans
+            const after = query.after;
+            const before = query.before;
+            const isValidBound = (v) => v && (!isNaN(new Date(v).getTime()) || (Number.isInteger(Number(v)) && Number(v) > 0));
+            if (!isValidBound(after) && !isValidBound(before)) {
+                throw new Error('sort=asc requires a valid "after" or "before" (ISO date or block number) to bound the search');
             }
             sort_direction = 'asc';
         } else if (query.sort === 'desc' || query.sort === '-1') {
