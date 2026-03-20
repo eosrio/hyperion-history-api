@@ -252,10 +252,9 @@ export function getSortDir(query) {
     let sort_direction = 'desc';
     if (query.sort) {
         if (query.sort === 'asc' || query.sort === '1') {
-            if (!query.after && !query.before) {
-                throw new Error('sort=asc requires "after" or "before" parameter to bound the search');
-            }
-            sort_direction = 'asc';
+            // sort=asc is disabled to prevent DDoS via full-index reverse scans
+            // indices are sorted desc by global_sequence, asc forces segment scans on all shards
+            sort_direction = 'desc';
         } else if (query.sort === 'desc' || query.sort === '-1') {
             sort_direction = 'desc'
         } else {
