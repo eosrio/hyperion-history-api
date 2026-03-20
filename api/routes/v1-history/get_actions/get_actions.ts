@@ -201,9 +201,10 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
     if (reqBody.sort) {
         if (reqBody.sort === 'asc' || reqBody.sort === '1') {
-            // sort=asc is disabled to prevent DDoS via full-index reverse scans
-            // indices are sorted desc by global_sequence, asc forces segment scans on all shards
-            sort_direction = 'desc';
+            if (!reqBody.after && !reqBody.before) {
+                return {error: 'sort=asc requires "after" or "before" parameter to bound the search'};
+            }
+            sort_direction = 'asc';
         } else if (reqBody.sort === 'desc' || reqBody.sort === '-1') {
             sort_direction = 'desc'
         } else {
