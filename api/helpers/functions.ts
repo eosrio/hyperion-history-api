@@ -149,6 +149,9 @@ export function emitTraceInit(socket: Socket, firstBlock: number, totalResults: 
 }
 
 export async function streamPastActions(fastify: FastifyInstance, socket, data) {
+    if (!data.start_from) {
+        return {status: false, error: 'start_from is required for action stream requests'};
+    }
     const search_body = {query: {bool: {must: []}}, sort: {global_sequence: 'asc'}};
     await addBlockRangeOpts(data, search_body, fastify);
     if (data.account !== '') {
