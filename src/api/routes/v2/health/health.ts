@@ -174,8 +174,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
 
                 try {
                     const healthReport = await fastify.elastic.healthReport({
-                        verbose: false,
-                        feature: ['shards_availability', 'disk']
+                        verbose: false
                     });
                     esHealth = {
                         status: healthReport.status
