@@ -1758,6 +1758,40 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
+    async storeProposalTransaction(delta: HyperionDelta) {
+        const trx = delta['@proposal']['transaction'];
+        const transaction = Serializer.objectify(trx);
+        const proposalDoc = {
+            proposal_name: delta['@proposal']['proposal_name'],
+            proposer: delta['scope'],
+            expiration: transaction.expiration ?? null,
+            trx: {
+                ...transaction,
+                actions: trx.actions.map((action: any) => {
+                    const obj = Serializer.objectify(action);
+                    return {
+                        account: obj.account,
+                        name: obj.name,
+                        authorization: obj.authorization,
+                        data: action.data,  // already deserialized by the handler
+                    };
+                }),
+            },
+            block_num: delta['block_num'],
+        };
+        if (!this.conf.indexer.disable_indexing) {
+            const q = this.chain + ":index_table_proposals:" + (this.tbl_prop_emit_idx);
+            await this.preIndexingQueue.push({
+                queue: q,
+                content: bufferFromJson(proposalDoc)
+            });
+            this.tbl_prop_emit_idx++;
+            if (this.tbl_prop_emit_idx > (this.conf.scaling.indexing_queues)) {
+                this.tbl_prop_emit_idx = 1;
+            }
+        }
+    }
+
     async storeVoter(data) {
         if (data['@voters']) {
             const voterDoc: any = {
@@ -1908,6 +1942,11 @@ export default class MainDSWorker extends HyperionWorker {
             }
             delta['@proposal']['transaction'] = trx;
             delete delta['data'];
+
+            // Store decoded transaction data (expiration + actions) in MongoDB
+            if (this.conf.features.tables.proposals) {
+                await this.storeProposalTransaction(delta);
+            }
         };
 
         this.tableHandlers[systemContract + '.msig:approvals'] = (delta: HyperionDelta) => {
