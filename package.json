@@ -62,6 +62,7 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/amqplib": "0.10.8",
     "@types/async": "3.2.25",
     "@types/global-agent": "3.0.0",

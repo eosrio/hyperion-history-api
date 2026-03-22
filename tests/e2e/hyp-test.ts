@@ -25,12 +25,15 @@ import { LoadGenerator } from './lib/load-generator.js';
 import { IndexerRunner } from './lib/indexer-runner.js';
 import { IntegrityChecker } from './lib/integrity-checker.js';
 import { APITestSuite } from './lib/api-tests.js';
+import { ExplorerRunner } from './lib/explorer-runner.js';
 
 const E2E_ROOT = join(import.meta.dirname);
 const HYPERION_ROOT = join(E2E_ROOT, '../..');
 const REPORTS_DIR = join(E2E_ROOT, 'reports');
 const MANIFEST_PATH = join(REPORTS_DIR, 'manifest.json');
 const CHAIN_NAME = 'hyp-test';
+const EXPLORER_ROOT = join(HYPERION_ROOT, '..', 'hyperion-explorer');
+const EXPLORER_PORT = 14210;
 
 const program = new Command();
 
@@ -114,6 +117,51 @@ function createIndexerRunner(chainId: string, endpoints: any, verbose = false): 
     });
 }
 
+function createExplorerRunner(verbose = false): ExplorerRunner {
+    return new ExplorerRunner({
+        explorerRoot: EXPLORER_ROOT,
+        port: EXPLORER_PORT,
+        apiUrl: 'http://127.0.0.1:17000',
+        verbose,
+    });
+}
+
+async function runPlaywrightTests(): Promise<{ passed: number; total: number }> {
+    const testDir = join(E2E_ROOT, 'explorer-tests');
+    try {
+        execSync(
+            `bunx playwright test --config=${join(testDir, 'playwright.config.ts')}`,
+            {
+                cwd: testDir,
+                stdio: 'inherit',
+                timeout: 120_000,
+                env: {
+                    ...process.env,
+                    EXPLORER_URL: `http://127.0.0.1:${EXPLORER_PORT}`,
+                    HYP_API_URL: 'http://127.0.0.1:17000',
+                },
+            }
+        );
+        const reportPath = join(REPORTS_DIR, 'explorer-test-report.json');
+        if (existsSync(reportPath)) {
+            const raw = require('fs').readFileSync(reportPath, 'utf8');
+            const report = JSON.parse(raw);
+            const suites = report.suites || [];
+            let passed = 0, total = 0;
+            for (const suite of suites) {
+                for (const spec of suite.specs || []) {
+                    total++;
+                    if (spec.ok) passed++;
+                }
+            }
+            return { passed, total };
+        }
+        return { passed: 1, total: 1 };
+    } catch {
+        return { passed: 0, total: 1 };
+    }
+}
+
 // ── infra ────────────────────────────────────────────────────
 
 const infra = program.command('infra').description('Manage Docker infrastructure');
@@ -166,6 +214,44 @@ infra.command('status')
     .description('Show Docker service status')
     .action(() => {
         dockerCompose('--profile hyperion ps');
+    });
+
+// ── explorer ─────────────────────────────────────────────────
+
+const explorer = program.command('explorer').description('Manage the Hyperion Explorer for E2E testing');
+
+explorer.command('build')
+    .description('Build the explorer with e2e configuration (API → port 17000)')
+    .action(async () => {
+        if (!existsSync(EXPLORER_ROOT)) {
+            console.error(`❌ Explorer not found at ${EXPLORER_ROOT}`);
+            console.error('   Clone it alongside this repo: git clone https://github.com/eosrio/hyperion-explorer');
+            process.exit(1);
+        }
+        const runner = createExplorerRunner(true);
+        runner.install();
+        runner.build();
+        console.log('\n✅ Explorer built with e2e configuration');
+    });
+
+explorer.command('serve')
+    .description(`Serve the built explorer on port ${EXPLORER_PORT}`)
+    .action(async () => {
+        const runner = createExplorerRunner(true);
+        await runner.serve();
+        console.log(`\n🌐 Explorer running at ${runner.getBaseUrl()}`);
+        console.log('   Press Ctrl+C to stop\n');
+        // Keep process alive
+        await new Promise(() => {});
+    });
+
+explorer.command('test')
+    .description('Run Playwright smoke tests against a running explorer')
+    .action(async () => {
+        console.log('🧪 Running explorer smoke tests...\n');
+        const results = await runPlaywrightTests();
+        console.log(`\n${results.passed === results.total ? '✅' : '❌'} Explorer: ${results.passed}/${results.total} tests passed`);
+        process.exit(results.passed === results.total ? 0 : 1);
     });
 
 // ── deploy ───────────────────────────────────────────────────
@@ -251,8 +337,9 @@ program.command('index')
 // ── verify ───────────────────────────────────────────────────
 
 program.command('verify')
-    .description('Run integrity checks and optionally API tests')
+    .description('Run integrity checks and optionally API/explorer tests')
     .option('--with-api', 'Also run API endpoint tests (starts API container)')
+    .option('--with-explorer', 'Also run explorer smoke tests')
     .action(async (opts) => {
         registerCleanupHandler();
         console.log('🔍 Running verification suite...\n');
@@ -308,9 +395,33 @@ program.command('verify')
             runner.stopApi();
         }
 
+        // Explorer tests
+        let explorerPassed = 0;
+        let explorerTotal = 0;
+        if (opts.withExplorer) {
+            console.log('\n━━━ Explorer Tests ━━━\n');
+
+            if (!existsSync(EXPLORER_ROOT)) {
+                console.error(`❌ Explorer not found at ${EXPLORER_ROOT}`);
+                console.error('   Clone it: git clone https://github.com/eosrio/hyperion-explorer ../hyperion-explorer');
+            } else {
+                const explorer = createExplorerRunner(true);
+                explorer.install();
+                explorer.build();
+                await explorer.serve();
+
+                const results = await runPlaywrightTests();
+                explorerPassed = results.passed;
+                explorerTotal = results.total;
+
+                explorer.stop();
+            }
+        }
+
         // Summary
         const anyFailed = integrityReport.failed > 0 ||
-            apiResults.some((r: any) => !r.passed);
+            apiResults.some((r: any) => !r.passed) ||
+            (opts.withExplorer && explorerPassed < explorerTotal);
 
         console.log(`\n${anyFailed ? '❌' : '✅'} Verification ${anyFailed ? 'FAILED' : 'PASSED'}`);
         process.exit(anyFailed ? 1 : 0);
@@ -356,6 +467,7 @@ program.command('run')
     .option('--skip-infra', 'Skip Docker infrastructure setup (assume already running)')
     .option('--skip-deploy', 'Skip contract deployment (assume already deployed)')
     .option('--with-api', 'Include API tests in verification')
+    .option('--with-explorer', 'Include explorer smoke tests')
     .option('--keep', 'Keep infrastructure running after tests')
     .action(async (opts) => {
         registerCleanupHandler();
@@ -490,6 +602,28 @@ program.command('run')
             runner.stopApi();
         }
 
+        // ── Phase 6 (optional): Explorer ─────────────────────
+        let explorerPassed = 0;
+        let explorerTotal = 0;
+        if (opts.withExplorer) {
+            console.log('\n━━━ Phase 6: Explorer ━━━\n');
+
+            if (!existsSync(EXPLORER_ROOT)) {
+                console.error(`❌ Explorer not found at ${EXPLORER_ROOT}`);
+            } else {
+                const explorer = createExplorerRunner(true);
+                explorer.install();
+                explorer.build();
+                await explorer.serve();
+
+                const results = await runPlaywrightTests();
+                explorerPassed = results.passed;
+                explorerTotal = results.total;
+
+                explorer.stop();
+            }
+        }
+
         // ── Cleanup ──────────────────────────────────────────
         if (!opts.keep) {
             runner.cleanupConfigs();
@@ -505,10 +639,15 @@ program.command('run')
         if (opts.withApi) {
             console.log(`║  API Tests:  ${apiPassed}/${apiTotal} passed${' '.repeat(41 - `${apiPassed}/${apiTotal}`.length)}║`);
         }
+        if (opts.withExplorer) {
+            console.log(`║  Explorer:   ${explorerPassed}/${explorerTotal} passed${' '.repeat(41 - `${explorerPassed}/${explorerTotal}`.length)}║`);
+        }
         console.log(`║  Duration:   ${elapsed}s${' '.repeat(43 - elapsed.length)}║`);
         console.log('╚════════════════════════════════════════════════════════════╝\n');
 
-        const anyFailed = integrityReport.failed > 0 || (opts.withApi && apiPassed < apiTotal);
+        const anyFailed = integrityReport.failed > 0 ||
+            (opts.withApi && apiPassed < apiTotal) ||
+            (opts.withExplorer && explorerPassed < explorerTotal);
         process.exit(anyFailed ? 1 : 0);
     });
 
