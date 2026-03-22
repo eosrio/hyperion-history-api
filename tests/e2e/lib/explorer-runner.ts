@@ -9,7 +9,7 @@
  */
 
 import { execSync, spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 export interface ExplorerRunnerOptions {
@@ -82,6 +82,10 @@ export class ExplorerRunner {
             throw new Error('Explorer server entry not found. Run build first.');
         }
 
+        // Ensure themes dir exists — Angular SSR's app initializer does readdirSync('./themes')
+        const ssrCwd = join(this.explorerRoot, 'dist', 'hyperion-explorer');
+        mkdirSync(join(ssrCwd, 'themes'), { recursive: true });
+
         this.log(`🌐 Starting Angular SSR server from ${serverEntry} on port ${this.port}...`);
 
         this.serverProcess = spawn('node', [serverEntry], {
@@ -92,11 +96,9 @@ export class ExplorerRunner {
                 ...process.env,
                 HYP_EXPLORER_PORT: String(this.port),
                 HYP_API_URL: this.apiUrl,
-                // Angular v19+ SSRF protection blocks 127.0.0.1 by default — allow our URLs
-                ANGULAR_SSR_ALLOWED_URLS: [
-                    `http://127.0.0.1:${this.port}`,
-                    this.apiUrl,
-                ].join(','),
+                // Angular v21+ SSRF protection (CVE-2026-27739) blocks 127.0.0.1 by default.
+                // NG_ALLOWED_HOSTS is the official env var for AngularNodeAppEngine.
+                NG_ALLOWED_HOSTS: '127.0.0.1,localhost',
             },
         });
 
