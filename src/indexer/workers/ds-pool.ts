@@ -12,6 +12,7 @@ import { HyperionWorker } from "./hyperionWorker.js";
 import { HyperionActionAct } from "../../interfaces/hyperion-action.js";
 import { ABI, Action, Serializer } from "@wharfkit/antelope";
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
+import { groupActionTraces } from "../helpers/action-dedup.js";
 
 interface CustomAbiDef {
     abi: string;
@@ -493,59 +494,9 @@ export default class DSPoolWorker extends HyperionWorker {
                 // console.log(action_trace);
             }
 
-            const _finalTraces: ActionTrace[] = [];
-
-            if (_processedTraces.length > 1) {
-                const act_digests = {};
-
-                // collect digests & receipts
-                for (const _trace of _processedTraces) {
-
-                    if (act_digests[_trace.receipt.act_digest]) {
-                        act_digests[_trace.receipt.act_digest].push(_trace.receipt);
-                    } else {
-                        act_digests[_trace.receipt.act_digest] = [_trace.receipt];
-                    }
-                }
-
-                // Apply notified accounts to first trace instance
-                for (const _trace of _processedTraces) {
-                    if (act_digests[_trace.receipt.act_digest]) {
-                        // const notifiedSet = new Set();
-                        _trace['receipts'] = [];
-                        for (const _receipt of act_digests[_trace.receipt.act_digest]) {
-                            // notifiedSet.add(_receipt.receiver);
-                            _trace['code_sequence'] = _receipt['code_sequence'];
-                            delete _receipt['code_sequence'];
-                            _trace['abi_sequence'] = _receipt['abi_sequence'];
-                            delete _receipt['abi_sequence'];
-                            _trace['receipts'].push(_receipt);
-                        }
-                        // _trace['notified'] = [...notifiedSet];
-                        delete act_digests[_trace.receipt.act_digest];
-                        delete _trace['receipt'];
-                        delete _trace['receiver'];
-                        _finalTraces.push(_trace);
-                    }
-                }
-
-            } else if (_processedTraces.length === 1) {
-
-                // single action on trx
-                const _trace = _processedTraces[0];
-                _trace['code_sequence'] = _trace['receipt'].code_sequence;
-                _trace['abi_sequence'] = _trace['receipt'].abi_sequence;
-                _trace['act_digest'] = _trace['receipt'].act_digest;
-
-                // notified array is not required since receipts.receiver can be indexed directly
-                // _trace['notified'] = [_trace['receipt'].receiver];
-
-                delete _trace['receipt']['code_sequence'];
-                delete _trace['receipt']['abi_sequence'];
-                _trace['receipts'] = [_trace['receipt']];
-                delete _trace['receipt'];
-                _finalTraces.push(_trace);
-            }
+            // Group action traces: merge notification receipts while preserving
+            // genuinely distinct duplicate actions (fixes #148)
+            const _finalTraces = groupActionTraces(_processedTraces);
 
             // Submit Actions after deduplication
 
