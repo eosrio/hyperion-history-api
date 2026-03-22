@@ -4,10 +4,16 @@
 
 ### Fixes
 
+*   **Health Report Indicator Error**: Fixed `resource_not_found_exception: Did not find indicator shards_availability,disk` caused by the `@elastic/elasticsearch` client serializing the `feature` array into a comma-joined URI path. The health report now fetches all indicators and extracts `shards_availability` and `disk` locally. Also raised the version gate from ES 8.7 to 8.12 (when `shards_availability` was introduced).
 *   **Fastify Deprecation**: Moved `ignoreTrailingSlash` into `routerOptions` to resolve Fastify 5 deprecation warning ahead of Fastify 6 upgrade.
 *   **State Route Double-Callback**: Fixed `"Callback was already called"` error in the MongoDB state ingestor when a cargo batch contained both `permission` and `permission_link` messages. Both `bulkWrite` operations now resolve via `Promise.all` before invoking the callback once.
 *   **Streaming Debug Logs**: Gated all verbose `console.log`/`console.table` calls in `ws-router.ts` and `socketManager.ts` behind `debugLog` (controlled by `config.settings.debug`).
-*   **Stray Console Logs**: Replaced raw `console.log` calls with `hLog` across `server.ts`, `indexer.ts`, and `mongo-routes.ts` for consistent structured logging.
+*   **Stray Console Logs**: Replaced raw `console.log` calls with `hLog` across `server.ts`, `indexer.ts`, `mongo-routes.ts`, and `health.ts` for consistent structured logging.
+
+### Improvements
+
+*   **Config Wizard ES Host Prompt**: Added `--es-host` CLI option and interactive host:port prompt to `hyp-config connections init`.
+*   **Reference Config**: Set `mongodb.enabled: true` in `connections.ref.json` (mandatory in v4) and cleared the example chain entry.
 
 ## 4.0.3 (2026-03-20)
 
