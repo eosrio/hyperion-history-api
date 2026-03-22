@@ -58,3 +58,5 @@ explorer
 # Snapshots
 snapshots
 plugins
+# E2E test artifacts
+test-results/
