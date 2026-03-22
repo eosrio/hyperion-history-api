@@ -505,7 +505,17 @@ export class IndexerRunner {
                 console.log('🧹 Cleaned up sandboxed config files');
             }
         } catch {
-            console.log('⚠️  Could not clean up .run directory');
+            // .run/ may be root-owned from Docker volume mount — use docker to clean
+            try {
+                execSync(
+                    `docker run --rm -v "${runDir}:/cleanup" alpine:3 rm -rf /cleanup/config`,
+                    { stdio: 'pipe' }
+                );
+                rmSync(runDir, { recursive: true, force: true });
+                console.log('🧹 Cleaned up sandboxed config files (via docker)');
+            } catch {
+                console.log('⚠️  Could not clean up .run directory (may need manual removal)');
+            }
         }
     }
 }

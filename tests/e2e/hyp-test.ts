@@ -525,6 +525,8 @@ program.command('run')
         if (!opts.skipInfra) {
             console.log('━━━ Phase 1: Infrastructure ━━━\n');
             dockerCompose('down -v', { silent: true }); // Clean stale volumes for deterministic state
+            // Pre-create .run/config so Docker bind-mount doesn't create it as root
+            mkdirSync(join(E2E_ROOT, '.run', 'config', 'chains'), { recursive: true });
             dockerCompose('up -d');
 
             if (!await waitForService(
