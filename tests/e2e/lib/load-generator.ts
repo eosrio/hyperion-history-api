@@ -233,6 +233,59 @@ export class LoadGenerator {
     }
 
     /**
+     * Generate a transaction with duplicate identical actions.
+     * Tests that the indexer preserves both actions (issue #148).
+     */
+    private async generateDuplicateActions(): Promise<void> {
+        console.log(`   🔁 Generating duplicate identical actions in single TX...`);
+
+        try {
+            // Use cleos push transaction with a JSON transaction containing
+            // two byte-identical transfer actions
+            const actionsJson = JSON.stringify([
+                {
+                    account: 'eosio.token',
+                    name: 'transfer',
+                    authorization: [{ actor: 'alice', permission: 'active' }],
+                    data: { from: 'alice', to: 'bob', quantity: '0.0001 TST', memo: 'dup-test-148' },
+                },
+                {
+                    account: 'eosio.token',
+                    name: 'transfer',
+                    authorization: [{ actor: 'alice', permission: 'active' }],
+                    data: { from: 'alice', to: 'bob', quantity: '0.0001 TST', memo: 'dup-test-148' },
+                },
+            ]);
+
+            const output = this.cleos(`push actions ${actionsJson} -p alice@active`);
+            const trxMatch = output.match(/executed transaction:\s+([a-f0-9]+)/);
+            const trxId = trxMatch?.[1] ?? 'unknown';
+            const blockMatch = output.match(/#(\d+)/);
+            const blockNum = blockMatch ? parseInt(blockMatch[1]) : undefined;
+
+            this.manifest.push({
+                trxId,
+                action: 'transfer',
+                contract: 'eosio.token',
+                data: {
+                    type: 'duplicate-actions',
+                    expectedActionCount: 2,
+                    from: 'alice',
+                    to: 'bob',
+                    quantity: '0.0001 TST',
+                    memo: 'dup-test-148',
+                },
+                blockNum,
+                accounts: ['alice', 'bob', 'eosio.token'],
+            });
+
+            console.log(`      ✓ Duplicate actions TX: ${trxId.substring(0, 12)}...`);
+        } catch (err: any) {
+            console.log(`      ⚠ Duplicate actions failed: ${err.message?.substring(0, 120)}`);
+        }
+    }
+
+    /**
      * Run the full load generation pipeline.
      */
     async generate(): Promise<LoadManifest> {
@@ -243,6 +296,7 @@ export class LoadGenerator {
         await this.generateNestedActions();
         await this.generateIncrements();
         await this.generateBigPayload();
+        await this.generateDuplicateActions();
 
         const transferCount = this.manifest.filter(e => e.action === 'transfer').length;
         const customCount = this.manifest.filter(e => e.contract === 'hyp.test').length;

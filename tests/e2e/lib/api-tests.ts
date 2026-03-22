@@ -186,6 +186,23 @@ class APITestSuite {
             this.assert(data.actions?.length > 0, 'Should return legacy format actions');
         });
 
+        // ── Regression Tests ───────────────────────────────────
+
+        await this.test('Duplicate Actions in Same TX (#148)', 'GET /v2/history/get_actions?act.data.memo=dup-test-148', async () => {
+            // Look for the duplicate-action TX via the unique memo
+            const resp = await this.get('/v2/history/get_actions?act.name=transfer&act.data.memo=dup-test-148&limit=10');
+            this.assert(resp.status === 200, `Expected 200, got ${resp.status}`);
+            const data = await resp.json();
+            // There should be at least 2 actions with this memo (the two duplicates)
+            // Each action generates notification traces, so we check unique global_sequences
+            const actions = data.actions ?? [];
+            const globalSeqs = new Set(actions.map((a: any) => a.global_sequence));
+            this.assert(
+                globalSeqs.size >= 2,
+                `Expected ≥2 unique actions for duplicate TX, got ${globalSeqs.size} (total: ${actions.length})`
+            );
+        });
+
         // ── Negative / Error Path Tests ────────────────────────
 
         await this.test('Error — Non-existent Transaction', 'GET /v2/history/get_transaction?id=invalid', async () => {
