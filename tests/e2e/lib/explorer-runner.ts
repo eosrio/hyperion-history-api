@@ -91,6 +91,7 @@ export class ExplorerRunner {
             env: {
                 ...process.env,
                 HYP_EXPLORER_PORT: String(this.port),
+                HYP_API_URL: this.apiUrl,
             },
         });
 
@@ -109,8 +110,18 @@ export class ExplorerRunner {
             });
 
             this.serverProcess!.on('error', (err) => {
+                clearInterval(poll);
                 clearTimeout(timeout);
                 reject(err);
+            });
+
+            // Detect early crashes (bad imports, port collision, etc.)
+            this.serverProcess!.on('exit', (code) => {
+                if (code !== 0 && code !== null) {
+                    clearInterval(poll);
+                    clearTimeout(timeout);
+                    reject(new Error(`Explorer SSR server exited unexpectedly with code ${code}`));
+                }
             });
 
             // Poll until the server responds

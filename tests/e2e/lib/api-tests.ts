@@ -201,18 +201,18 @@ class APITestSuite {
         await this.test('Error — Malformed Account Name', 'GET /v2/history/get_actions?account=INVALID!!!', async () => {
             const resp = await this.get('/v2/history/get_actions?account=THIS_IS_INVALID!!!');
             // Should return 400 (Bad Request) with a JSON error, not crash
-            this.assert(resp.status === 400 || resp.status === 500 || resp.status === 200, `Unexpected status ${resp.status}`);
+            this.assert(resp.status === 400 || resp.status === 200, `Unexpected status ${resp.status}`);
             const contentType = resp.headers.get('content-type') ?? '';
             this.assert(contentType.includes('json'), `Error should be JSON, got ${contentType}`);
         });
 
         await this.test('Error — Extreme Pagination Limit', 'GET /v2/history/get_actions?limit=999999', async () => {
             const resp = await this.get('/v2/history/get_actions?limit=999999');
-            // Hyperion may cap the limit (200), reject it (400), or error internally (500)
-            // Any of these is acceptable — the test validates the API doesn't OOM/hang
+            // Hyperion may cap the limit (200) or reject it (400)
+            // A 500 would indicate an OOM/crash — that should NOT pass
             this.assert(
-                resp.status === 200 || resp.status === 400 || resp.status === 500,
-                `Expected 200, 400 or 500, got ${resp.status}`
+                resp.status === 200 || resp.status === 400,
+                `Expected 200 or 400, got ${resp.status}`
             );
             if (resp.status === 200) {
                 const data = await resp.json();

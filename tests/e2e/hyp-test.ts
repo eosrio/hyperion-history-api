@@ -128,6 +128,7 @@ function createExplorerRunner(verbose = false): ExplorerRunner {
 
 async function runPlaywrightTests(): Promise<{ passed: number; total: number }> {
     const testDir = join(E2E_ROOT, 'explorer-tests');
+    let execFailed = false;
     try {
         execSync(
             `bunx playwright test --config=${join(testDir, 'playwright.config.ts')}`,
@@ -142,8 +143,14 @@ async function runPlaywrightTests(): Promise<{ passed: number; total: number }> 
                 },
             }
         );
-        const reportPath = join(REPORTS_DIR, 'explorer-test-report.json');
-        if (existsSync(reportPath)) {
+    } catch {
+        execFailed = true;
+    }
+
+    // Parse JSON report regardless of exit code (Playwright exits non-zero on any test failure)
+    const reportPath = join(REPORTS_DIR, 'explorer-test-report.json');
+    if (existsSync(reportPath)) {
+        try {
             const raw = require('fs').readFileSync(reportPath, 'utf8');
             const report = JSON.parse(raw);
             const suites = report.suites || [];
@@ -155,11 +162,12 @@ async function runPlaywrightTests(): Promise<{ passed: number; total: number }> 
                 }
             }
             return { passed, total };
+        } catch {
+            // Report parsing failed
         }
-        return { passed: 1, total: 1 };
-    } catch {
-        return { passed: 0, total: 1 };
     }
+
+    return execFailed ? { passed: 0, total: 1 } : { passed: 1, total: 1 };
 }
 
 // ── infra ────────────────────────────────────────────────────
@@ -483,6 +491,7 @@ program.command('run')
         // ── Phase 1: Infrastructure ──────────────────────────
         if (!opts.skipInfra) {
             console.log('━━━ Phase 1: Infrastructure ━━━\n');
+            dockerCompose('down -v', { silent: true }); // Clean stale volumes for deterministic state
             dockerCompose('up -d');
 
             if (!await waitForService(
@@ -571,8 +580,20 @@ program.command('run')
 
         runner.stopIndexer();
 
+        // Abort pipeline if indexing failed — do not proceed to verification with empty data
+        const finalStatus = await runner.getIndexingStatus();
+        if (finalStatus.blocks < targetBlocks) {
+            console.error('\n❌ CRITICAL: Indexing failed or stalled. Aborting pipeline.');
+            console.error(`   Expected ≥${targetBlocks} blocks, got ${finalStatus.blocks}`);
+            if (!opts.keep) { runner.cleanupConfigs(); }
+            process.exit(1);
+        }
+
         // ── Phase 5: Verify ──────────────────────────────────
         console.log('\n━━━ Phase 5: Verify ━━━\n');
+
+        // Force ES refresh to ensure all recently indexed data is searchable
+        try { await fetch(`${esUrl}/_refresh`, { method: 'POST' }); } catch {}
 
         const checker = new IntegrityChecker({
             esUrl,
@@ -586,20 +607,23 @@ program.command('run')
         let apiPassed = 0;
         let apiTotal = 0;
 
-        if (opts.withApi) {
+        // Start API if needed for API tests OR explorer smoke tests
+        const needsApi = opts.withApi || opts.withExplorer;
+        if (needsApi) {
             // Ensure configs exist for the API container
             if (!existsSync(join(E2E_ROOT, '.run', 'config', 'connections.json'))) {
                 runner.generateConfigs();
             }
             runner.startApi();
-            if (await waitForService('http://127.0.0.1:17000/v2/health', 'Hyperion API')) {
-                const suite = new APITestSuite({ apiUrl: 'http://127.0.0.1:17000', chainName: CHAIN_NAME });
-                const apiResults = await suite.runAll();
-                writeFileSync(join(REPORTS_DIR, 'api-test-report.json'), JSON.stringify(apiResults, null, 2));
-                apiPassed = apiResults.filter((r: any) => r.passed).length;
-                apiTotal = apiResults.length;
-            }
-            runner.stopApi();
+            await waitForService('http://127.0.0.1:17000/v2/health', 'Hyperion API');
+        }
+
+        if (opts.withApi) {
+            const suite = new APITestSuite({ apiUrl: 'http://127.0.0.1:17000', chainName: CHAIN_NAME });
+            const apiResults = await suite.runAll();
+            writeFileSync(join(REPORTS_DIR, 'api-test-report.json'), JSON.stringify(apiResults, null, 2));
+            apiPassed = apiResults.filter((r: any) => r.passed).length;
+            apiTotal = apiResults.length;
         }
 
         // ── Phase 6 (optional): Explorer ─────────────────────
@@ -622,6 +646,11 @@ program.command('run')
 
                 explorer.stop();
             }
+        }
+
+        // Stop API after all phases that need it are done
+        if (needsApi) {
+            runner.stopApi();
         }
 
         // ── Cleanup ──────────────────────────────────────────

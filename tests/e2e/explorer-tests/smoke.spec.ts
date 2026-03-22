@@ -61,24 +61,30 @@ test.describe('Explorer Smoke Tests', () => {
             await page.waitForTimeout(500);
         }
 
-        // Check that some chain data is displayed (head block number)
+        // Verify actual chain data loaded (not just the Angular shell)
         const pageContent = await page.textContent('body');
         expect(pageContent).toBeTruthy();
+        // Check for evidence of a real block number (any digit sequence indicates data loaded)
+        expect(pageContent).toMatch(/\d+/);
     });
 
     test('API health endpoint responds', async ({ page }) => {
         // Direct API check to ensure the explorer has a healthy backend
         const response = await page.request.get(`${API_URL}/v2/health`);
-        expect(response.ok()).toBeTruthy();
+        expect(response.ok(), `API health returned ${response.status()}`).toBeTruthy();
     });
 
     test('navigating to /account/eosio renders account page', async ({ page }) => {
         await page.goto(`${BASE_URL}/account/eosio`, { waitUntil: 'networkidle' });
 
-        // Wait for account data to load
-        await page.waitForTimeout(2_000);
+        // Wait for Angular hydration and API data fetch
+        // Look for account-specific UI elements that only render with real data
+        const accountDataLocator = page.locator(
+            '.account-info, .mat-tab-label, .account-details, [class*="account"], app-account'
+        );
+        await expect(accountDataLocator.first()).toBeVisible({ timeout: 10_000 });
 
-        // The page should display the account name somewhere
+        // Verify the account name appears in rendered content (not just URL)
         const pageContent = await page.textContent('body');
         expect(pageContent?.toLowerCase()).toContain('eosio');
     });
@@ -86,12 +92,16 @@ test.describe('Explorer Smoke Tests', () => {
     test('navigating to /block/1 renders block page', async ({ page }) => {
         await page.goto(`${BASE_URL}/block/1`, { waitUntil: 'networkidle' });
 
-        // Wait for block data to load
-        await page.waitForTimeout(2_000);
+        // Wait for block data to load — look for block-specific content
+        const blockDataLocator = page.locator(
+            '.block-info, .block-details, [class*="block"], app-block'
+        );
+        await expect(blockDataLocator.first()).toBeVisible({ timeout: 10_000 });
 
-        // The page should not show an error
+        // Verify actual block data rendered (block number, producer, timestamp, etc.)
         const pageContent = await page.textContent('body');
-        // Block 1 should exist on any chain
         expect(pageContent).toBeTruthy();
+        // Block 1 should show producer or block num
+        expect(pageContent).toMatch(/block|producer|timestamp|\d+/i);
     });
 });
