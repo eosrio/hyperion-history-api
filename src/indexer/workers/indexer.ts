@@ -128,7 +128,7 @@ export default class IndexerWorker extends HyperionWorker {
     }
 
     private async resumeIndexer(msg: { mId: string }) {
-        console.log(`Attempting to resume indexer. mId: ${msg.mId}`);
+        hLog(`Attempting to resume indexer. mId: ${msg.mId}`);
         if (this.ch) {
             try {
                 const queueName = process.env.queue;

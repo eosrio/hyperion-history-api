@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.0.4 (2026-03-22)
+
+### Fixes
+
+*   **Fastify Deprecation**: Moved `ignoreTrailingSlash` into `routerOptions` to resolve Fastify 5 deprecation warning ahead of Fastify 6 upgrade.
+*   **State Route Double-Callback**: Fixed `"Callback was already called"` error in the MongoDB state ingestor when a cargo batch contained both `permission` and `permission_link` messages. Both `bulkWrite` operations now resolve via `Promise.all` before invoking the callback once.
+*   **Streaming Debug Logs**: Gated all verbose `console.log`/`console.table` calls in `ws-router.ts` and `socketManager.ts` behind `debugLog` (controlled by `config.settings.debug`).
+*   **Stray Console Logs**: Replaced raw `console.log` calls with `hLog` across `server.ts`, `indexer.ts`, and `mongo-routes.ts` for consistent structured logging.
+
 ## 4.0.3 (2026-03-20)
 
 ### Security

@@ -36,6 +36,9 @@ export class MongoRoutes {
 
         this.routes['state'] = (payload: Message[], callback: (indexed_size?: number) => void) => {
 
+            const promises: Promise<any>[] = [];
+            let totalIndexed = 0;
+
             // filter permission messages
             const permissionMessages = payload.filter((msg: Message) => {
                 const headers = msg.properties.headers as any;
@@ -45,7 +48,6 @@ export class MongoRoutes {
             if (permissionMessages.length > 0) {
                 const operations = payload.map((msg: Message) => {
                     const data = JSON.parse(msg.content.toString()) as IPermission & { present: number };
-                    // console.log('permission', data);
                     if (data.present !== 0) {
                         return {
                             updateOne: {
@@ -76,19 +78,15 @@ export class MongoRoutes {
                     }
                 });
 
-                // console.log(operations);
-
-                this.permissionsCollection?.bulkWrite(operations, { ordered: false })
-                    // .then((value) => {
-                    //     console.log(value);
-                    //     console.log('Permission messages indexed:', permissionMessages.length);
-                    // })
-                    .catch(reason => {
-                        hLog('error', 'mongo-routes', 'state', reason);
+                const p = this.permissionsCollection?.bulkWrite(operations, { ordered: false })
+                    .then(() => {
+                        totalIndexed += permissionMessages.length;
                     })
-                    .finally(() => {
-                        callback(payload.length);
+                    .catch(reason => {
+                        hLog('error', 'mongo-routes', 'state/permission', reason);
                     });
+
+                if (p) promises.push(p);
             }
 
             const permissionLinkMessages = payload.filter((msg: Message) => {
@@ -99,7 +97,6 @@ export class MongoRoutes {
             if (permissionLinkMessages.length > 0) {
                 const operations = permissionLinkMessages.map((msg: Message) => {
                     const data = JSON.parse(msg.content.toString()) as IPermission & { present: number };
-                    // console.log('permission_link', data);
                     if (data.present !== 0) {
                         return {
                             updateOne: {
@@ -143,22 +140,23 @@ export class MongoRoutes {
                     }
                 });
 
-                this.permissionsCollection?.bulkWrite(operations, { ordered: false })
-                    // .then((value) => {
-                    //     console.log(value);
-                    //     console.log('Permission link messages indexed:', permissionLinkMessages.length);
-                    // })
-                    .catch(reason => {
-                        hLog('error', 'mongo-routes', 'state', reason);
+                const p = this.permissionsCollection?.bulkWrite(operations, { ordered: false })
+                    .then(() => {
+                        totalIndexed += permissionLinkMessages.length;
                     })
-                    .finally(() => {
-                        callback(permissionLinkMessages.length);
+                    .catch(reason => {
+                        hLog('error', 'mongo-routes', 'state/permission_link', reason);
                     });
+
+                if (p) promises.push(p);
             }
 
-            if (permissionMessages.length === 0 && permissionLinkMessages.length === 0) {
-                // No permission messages, just ack
-                console.log('Unexpected state message without permissions', payload);
+            if (promises.length > 0) {
+                Promise.all(promises).finally(() => {
+                    callback(totalIndexed);
+                });
+            } else {
+                hLog('Unexpected state message without permissions or permission_links');
                 callback(0);
             }
         };

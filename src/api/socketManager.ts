@@ -6,7 +6,7 @@ import { Redis, RedisOptions } from "ioredis";
 import { Server, Socket } from 'socket.io';
 import { io, Socket as ClientSocket } from 'socket.io-client';
 import { App, TemplatedApp } from 'uWebSockets.js';
-import { hLog, sleep } from '../indexer/helpers/common_functions.js';
+import { debugLog, hLog, sleep } from '../indexer/helpers/common_functions.js';
 import {
     StreamActionsRequest,
     StreamDeltasRequest,
@@ -501,7 +501,7 @@ export class SocketManager {
         }
         const currentDeltaRequests = this.clientDeltaRequestMap.get(previousId);
         if (currentDeltaRequests) {
-            console.log('⚠️ currentDeltaRequests:', currentDeltaRequests);
+            debugLog('⚠️ currentDeltaRequests:', currentDeltaRequests);
             currentDeltaRequests.forEach((data, requestUUID) => {
                 if (!data.replayOnReconnect) {
                     this.attachDeltaRequests(data, newId, requestUUID);
@@ -514,7 +514,7 @@ export class SocketManager {
 
         const currentActionRequests = this.clientActionRequestMap.get(previousId);
         if (currentActionRequests) {
-            console.log('⚠️ currentActionRequests:', currentActionRequests);
+            debugLog('⚠️ currentActionRequests:', currentActionRequests);
             currentActionRequests.forEach((data, requestUUID) => {
                 if (!data.replayOnReconnect) {
                     this.attachActionRequests(data, newId, requestUUID);
@@ -537,11 +537,11 @@ export class SocketManager {
 
             const validation = await this.validateRequest(data, type);
             if (validation.status === 'ERROR') {
-                console.log('Invalid request: ', data);
+                debugLog('Invalid request: ', data);
                 return callback(validation);
             }
 
-            console.log(`Processing ${type.toUpperCase()} request:`, data);
+            debugLog(`Processing ${type.toUpperCase()} request:`, data);
 
             // generate random uuid for each request
             const requestUUID = randomUUID();

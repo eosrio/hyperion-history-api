@@ -108,9 +108,11 @@ class HyperionApiServer {
 
     this.fastify = fastify({
       exposeHeadRoutes: false,
-      ignoreTrailingSlash: false,
       trustProxy: true,
       pluginTimeout: 5000,
+      routerOptions: {
+        ignoreTrailingSlash: false,
+      },
       logger: this.conf.api.access_log ? loggerOpts : false,
       // logger: true,
       ajv: {
@@ -244,7 +246,6 @@ class HyperionApiServer {
         staticCSP: false,
         validatorUrl: 'https://validator.swagger.io/validator',
         transformStaticCSP: (header: string) => {
-          console.log(header);
           return header;
         },
       } as FastifySwaggerUiOptions;
@@ -285,8 +286,8 @@ class HyperionApiServer {
         done(null, data);
       });
       payload.on('error', (err: any) => {
-        console.log('---- Content Parsing Error -----');
-        console.log(err);
+        hLog('---- Content Parsing Error -----');
+        hLog(err);
       });
     });
   }
@@ -328,7 +329,7 @@ class HyperionApiServer {
           this.fastify.decorate('elastic_version', esInfo.version.number);
           return true;
         } catch (e: any) {
-          console.log(e.message);
+          hLog(e.message);
           return false;
         }
       },
@@ -364,7 +365,7 @@ class HyperionApiServer {
             return false;
           }
         } catch (e: any) {
-          console.log(e.message);
+          hLog(e.message);
           return false;
         }
       },
@@ -506,7 +507,7 @@ class HyperionApiServer {
 
         const getIndicesTime = this.logTime(tRef);
         times.push({ name: 'get_indices', time: getIndicesTime });
-        console.log(`Time to get indices: ${getIndicesTime}ms`);
+        hLog(`Time to get indices: ${getIndicesTime}ms`);
 
         const firstIndex = indices[0].index;
 
@@ -555,7 +556,7 @@ class HyperionApiServer {
 
         const histogramTime = this.logTime(tRefHistogram);
         times.push({ name: 'histogram', time: histogramTime });
-        console.log(`Time to get histogram: ${histogramTime}ms`);
+        hLog(`Time to get histogram: ${histogramTime}ms`);
 
         if (!histogramData.aggregations) {
           return reply.status(500).send({
@@ -587,12 +588,12 @@ class HyperionApiServer {
 
         const searchTime = this.logTime(tRefSearch);
         times.push({ name: 'search', time: searchTime });
-        console.log(`Time to search: ${searchTime}ms`);
+        hLog(`Time to search: ${searchTime}ms`);
 
         firstBlock = getLastResult(results);
 
         const timeMs = this.logTime(tRef);
-        console.log(`Total request time: ${timeMs}ms`);
+        hLog(`Total request time: ${timeMs}ms`);
         return {
           query_time_ms: timeMs,
           first: firstBlock,
@@ -702,10 +703,7 @@ class HyperionApiServer {
           }
         },
       });
-      console.log(
-        '\x1b[36m%s\x1b[0m',
-        `Instance Key: ${this.qryPublisher.publicKey.toString()}`,
-      );
+      hLog(`Instance Key: ${this.qryPublisher.publicKey.toString()}`);
       hLog(`Connecting API to QRY Hub...`);
       await this.qryPublisher.connect();
     }

@@ -4,7 +4,7 @@ import { Server, Socket } from "socket.io";
 import { ActionLink, DeltaLink } from "../../interfaces/stream-links.js";
 import { StreamActionsRequest, StreamDeltasRequest, StreamMessage } from "../../interfaces/stream-requests.js";
 import { RabbitQueueDef } from "../definitions/index-queues.js";
-import { hLog } from "../helpers/common_functions.js";
+import { debugLog, hLog } from "../helpers/common_functions.js";
 import { HyperionWorker } from "./hyperionWorker.js";
 
 interface TrackedRequest {
@@ -125,8 +125,8 @@ export default class WSRouter extends HyperionWorker {
                 }
 
                 default: {
-                    console.log('Unidentified message!');
-                    console.log(msg);
+                    hLog('Unidentified message!');
+                    debugLog(msg);
                 }
             }
         }
@@ -301,7 +301,7 @@ export default class WSRouter extends HyperionWorker {
 
         const { contract, action, account } = req;
 
-        console.log("Incoming Action Request for contract: ", contract, " action: ", action, " account: ", account);
+        debugLog("Incoming Action Request for contract: ", contract, " action: ", action, " account: ", account);
 
         if (contract && action) {
             if (!this.contractActionRelayMap.has(contract)) {
@@ -363,7 +363,7 @@ export default class WSRouter extends HyperionWorker {
 
         const { code, table, payer } = req;
 
-        console.log("Incoming Delta Request with code: ", code, " table: ", table, " payer: ", payer);
+        debugLog("Incoming Delta Request with code: ", code, " table: ", table, " payer: ", payer);
 
         if (code && table) {
             if (!this.codeTableRelayMap.has(code)) {
@@ -395,15 +395,15 @@ export default class WSRouter extends HyperionWorker {
 
     removeDeepLinks(map: Map<string, any>, path: string[], relay_id: string, id: string, reqUUID?: string) {
         if (map.has(path[0])) {
-            console.log("Removing deep links...", path);
+            debugLog("Removing deep links...", path);
             if (map.get(path[0]).has(path[1])) {
                 const currentLinks = map.get(path[0]).get(path[1]).links;
-                console.log(`currentLinks [${path}]`, currentLinks);
+                debugLog(`currentLinks [${path}]`, currentLinks);
                 currentLinks.forEach((item: ActionLink | DeltaLink, index: number) => {
-                    console.log(`ReqUUID: ${reqUUID} | Relay: ${relay_id} | Client: ${id}`);
+                    debugLog(`ReqUUID: ${reqUUID} | Relay: ${relay_id} | Client: ${id}`);
                     if ((reqUUID && item.reqUUID === reqUUID) || (item.relay === relay_id && item.client === id)) {
                         currentLinks.splice(index, 1);
-                        console.log("Removed!");
+                        debugLog("Removed!");
                     }
                 });
             }
@@ -412,7 +412,7 @@ export default class WSRouter extends HyperionWorker {
 
     removeSingleLevelLinks(map: Map<string, any>, path: string[], key: string, id: string, reqUUID?: string) {
         if (map.has(path[2])) {
-            console.log("Removing single level links...", path);
+            debugLog("Removing single level links...", path);
             const _links = map.get(path[2]).links;
             _links.forEach((item: ActionLink | DeltaLink, index: number) => {
                 if ((reqUUID && item.reqUUID === reqUUID) || (item.relay === key && item.client === id)) {
@@ -477,7 +477,7 @@ export default class WSRouter extends HyperionWorker {
                         break;
                     }
                     default: {
-                        console.log(data);
+                        debugLog(data);
                     }
                 }
             });
@@ -518,7 +518,7 @@ export default class WSRouter extends HyperionWorker {
     }
 
     private removeRequestByID(value: TrackedRequest, requestUUID: string) {
-        console.log(requestUUID, value);
+        debugLog(requestUUID, value);
         switch (value.type) {
             case 'action': {
                 const request = value.request as StreamActionsRequest;
@@ -589,7 +589,7 @@ export default class WSRouter extends HyperionWorker {
     private removeClient(id: any) {
         const clientInfo = this.clientMap.get(id);
         if (clientInfo) {
-            console.log("Removing client: ", id, clientInfo);
+            debugLog("Removing client: ", id, clientInfo);
 
             const requests = clientInfo.requests;
 
@@ -604,7 +604,7 @@ export default class WSRouter extends HyperionWorker {
 
     private removeClientRequest(client_socket_id: any, reqUUID: any) {
         let removed = false;
-        console.log("Removing client request: ", client_socket_id, reqUUID);
+        debugLog("Removing client request: ", client_socket_id, reqUUID);
         const clientInfo = this.clientMap.get(client_socket_id);
         if (clientInfo) {
             const requests = clientInfo.requests;
@@ -612,7 +612,7 @@ export default class WSRouter extends HyperionWorker {
                 const request = requests.get(reqUUID);
                 if (request) {
                     this.removeRequestByID(request, reqUUID);
-                    console.log("Removing request: ", request);
+                    debugLog("Removing request: ", request);
                     requests.delete(reqUUID);
                     removed = true;
                 }
@@ -651,28 +651,28 @@ export default class WSRouter extends HyperionWorker {
         });
 
         // Display tables
-        console.log("\n===== CONTRACT-ACTION REQUEST MAPPING =====");
+        debugLog("\n===== CONTRACT-ACTION REQUEST MAPPING =====");
         if (contractActionData.length > 0) {
-            console.table(contractActionData);
+            debugLog(JSON.stringify(contractActionData, null, 2));
         } else {
-            console.log("No active contract-action mappings");
+            debugLog("No active contract-action mappings");
         }
 
-        console.log("\n===== NOTIFIED ACCOUNT REQUEST MAPPING =====");
+        debugLog("\n===== NOTIFIED ACCOUNT REQUEST MAPPING =====");
         if (notifiedData.length > 0) {
-            console.table(notifiedData);
+            debugLog(JSON.stringify(notifiedData, null, 2));
         } else {
-            console.log("No active notified account mappings");
+            debugLog("No active notified account mappings");
         }
 
         // Display summary
         const totalContractActionRequests = contractActionData.reduce((sum, item) => sum + item.requests, 0);
         const totalNotifiedRequests = notifiedData.reduce((sum, item) => sum + item.requests, 0);
-        console.log(`\n===== SUMMARY =====`);
-        console.log(`Total Contract-Action Requests: ${totalContractActionRequests}`);
-        console.log(`Total Notified Account Requests: ${totalNotifiedRequests}`);
-        console.log(`Total Client Tracking Entries: ${this.clientMap.size}`);
-        console.log("=========================");
+        debugLog("\n===== SUMMARY =====");
+        debugLog(`Total Contract-Action Requests: ${totalContractActionRequests}`);
+        debugLog(`Total Notified Account Requests: ${totalNotifiedRequests}`);
+        debugLog(`Total Client Tracking Entries: ${this.clientMap.size}`);
+        debugLog("=========================");
     }
 
     private printDeltaClientTable() {
@@ -705,28 +705,28 @@ export default class WSRouter extends HyperionWorker {
         });
 
         // Display tables
-        console.log("\n===== CODE-TABLE REQUEST MAPPING =====");
+        debugLog("\n===== CODE-TABLE REQUEST MAPPING =====");
         if (codeTableData.length > 0) {
-            console.table(codeTableData);
+            debugLog(JSON.stringify(codeTableData, null, 2));
         } else {
-            console.log("No active code-table mappings");
+            debugLog("No active code-table mappings");
         }
 
-        console.log("\n===== PAYER REQUEST MAPPING =====");
+        debugLog("\n===== PAYER REQUEST MAPPING =====");
         if (payerData.length > 0) {
-            console.table(payerData);
+            debugLog(JSON.stringify(payerData, null, 2));
         } else {
-            console.log("No active payer mappings");
+            debugLog("No active payer mappings");
         }
 
         // Display summary
         const totalCodeTableRequests = codeTableData.reduce((sum, item) => sum + item.requests, 0);
         const totalPayerRequests = payerData.reduce((sum, item) => sum + item.requests, 0);
-        console.log(`\n===== SUMMARY =====`);
-        console.log(`Total Code-Table Requests: ${totalCodeTableRequests}`);
-        console.log(`Total Payer Requests: ${totalPayerRequests}`);
-        console.log(`Total Client Tracking Entries: ${this.clientMap.size}`);
-        console.log("=========================");
+        debugLog("\n===== SUMMARY =====");
+        debugLog(`Total Code-Table Requests: ${totalCodeTableRequests}`);
+        debugLog(`Total Payer Requests: ${totalPayerRequests}`);
+        debugLog(`Total Client Tracking Entries: ${this.clientMap.size}`);
+        debugLog("=========================");
     }
 
     private replaceRelay(newId: string, lastRelayId: string) {
