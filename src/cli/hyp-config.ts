@@ -19,6 +19,7 @@ interface ConnectionsInitOptions {
     amqpUser?: string;
     amqpPass?: string;
     amqpVhost?: string;
+    esHost?: string;
     esUser?: string;
     esPass?: string;
     esProtocol?: string;
@@ -747,6 +748,7 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
     if (options.amqpUser) conn.amqp.user = options.amqpUser;
     if (options.amqpPass) conn.amqp.pass = options.amqpPass;
     if (options.amqpVhost) conn.amqp.vhost = options.amqpVhost;
+    if (options.esHost) conn.elasticsearch.host = options.esHost;
     if (options.esUser) conn.elasticsearch.user = options.esUser;
     if (options.esPass) conn.elasticsearch.pass = options.esPass;
     if (options.esProtocol) conn.elasticsearch.protocol = options.esProtocol;
@@ -798,7 +800,10 @@ async function initConfig(options: ConnectionsInitOptions = {}) {
     while (!elastic_state) {
         elastic_state = await checkES(conn);
         if (!elastic_state) {
-            const es_user = await prompt('\n > Enter the elasticsearch user (or press ENTER to use "elastic"): ');
+            const es_host = await prompt('\n > Enter the elasticsearch host:port (or press ENTER to use "127.0.0.1:9200"): ');
+            conn.elasticsearch.host = es_host ? (es_host as string) : '127.0.0.1:9200';
+
+            const es_user = await prompt(' > Enter the elasticsearch user (or press ENTER to use "elastic"): ');
             conn.elasticsearch.user = es_user ? (es_user as string) : 'elastic';
 
             const es_pass = await prompt(' > Enter the elasticsearch password: ');
@@ -1091,6 +1096,7 @@ async function addOrUpdateContractConfig(shortName: string, account: string, tab
         .option('--amqp-user <user>', 'RabbitMQ username')
         .option('--amqp-pass <password>', 'RabbitMQ password')
         .option('--amqp-vhost <vhost>', 'RabbitMQ vhost')
+        .option('--es-host <host:port>', 'Elasticsearch host:port')
         .option('--es-user <user>', 'Elasticsearch username')
         .option('--es-pass <password>', 'Elasticsearch password')
         .option('--es-protocol <protocol>', 'Elasticsearch protocol (http/https)')

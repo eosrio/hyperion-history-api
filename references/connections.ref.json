@@ -20,26 +20,14 @@
     "port": 6379
    },
    "mongodb": {
-    "enabled": false,
+    "enabled": true,
     "host": "127.0.0.1",
     "port": 27017,
     "database_prefix": "hyperion",
     "user": "",
     "pass": ""
   },
-  "chains": {
-    "eos": {
-      "name": "",
-      "chain_id": "",
-      "http": "http://127.0.0.1:8888",
-      "ship": [
-        { "label": "primary", "url": "ws://127.0.0.1:8080" }
-      ],
-      "WS_ROUTER_HOST": "127.0.0.1",
-      "WS_ROUTER_PORT": 7001,
-      "control_port": 7002
-    }
-  },
+  "chains": {},
   "alerts": {
     "triggers": {
       "onApiStart": {
