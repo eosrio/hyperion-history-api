@@ -544,10 +544,14 @@ program.command('run')
         runner.stopIndexer(); // ensure clean state
         runner.startIndexer();
 
-        // Wait for indexing
+        // Wait for indexing — allow initial grace period for container startup + SHIP connect + ABI scan
         const targetBlocks = updatedInfo.head_block_num - 2;
         let stalledCount = 0;
         let lastBlocks = 0;
+
+        // Grace period: container deps healthchecks (~5s) + SHIP connect + ABI scan + worker launch (~10s)
+        console.log('   ⏳ Waiting for indexer to initialize (15s grace)...');
+        await new Promise(r => setTimeout(r, 15_000));
 
         for (let i = 0; i < 100; i++) {
             await new Promise(r => setTimeout(r, 3000));
@@ -568,8 +572,8 @@ program.command('run')
                     if (logs) console.log(logs);
                     break;
                 }
-                if (stalledCount >= 10) {
-                    console.log(` (stalled, continuing)`);
+                if (stalledCount >= 20) {
+                    console.log(` (stalled after 60s, giving up)`);
                     break;
                 }
             } else {
