@@ -92,6 +92,11 @@ export class ExplorerRunner {
                 ...process.env,
                 HYP_EXPLORER_PORT: String(this.port),
                 HYP_API_URL: this.apiUrl,
+                // Angular v19+ SSRF protection blocks 127.0.0.1 by default — allow our URLs
+                ANGULAR_SSR_ALLOWED_URLS: [
+                    `http://127.0.0.1:${this.port}`,
+                    this.apiUrl,
+                ].join(','),
             },
         });
 
