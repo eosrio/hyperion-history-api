@@ -91,7 +91,7 @@ async function checkStateHistory(fastify: FastifyInstance): Promise<ServiceRespo
         }
 
     } catch (e) {
-        console.log(e);
+        hLog(e);
         return createHealth(false, 'StateHistory', 'Error');
     }
 }
@@ -117,7 +117,7 @@ async function checkRabbit(fastify: FastifyInstance): Promise<ServiceResponse<an
             return createHealth(false, 'RabbitMq', 'OK', null, tRefRabbit);
         }
     } catch (e: any) {
-        console.log(e.message);
+        hLog(e.message);
         return createHealth(false, 'RabbitMq', 'Error');
     }
 }
@@ -167,8 +167,8 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
 
             const esVersion = fastify.elastic_version;
             const [major, minor, _] = esVersion.split('.').map(Number);
-            // check if version is higher than 8.7
-            if (major > 8 || (major === 8 && minor >= 7)) {
+            // shards_availability indicator requires ES 8.12+
+            if (major > 8 || (major === 8 && minor >= 12)) {
 
                 // console.log('Using new health report');
 
@@ -297,7 +297,7 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
         }
         return createHealth(cached, 'Elasticsearch', stat, data, tRefElastic1);
     } catch (e) {
-        console.log(e, 'Elasticsearch Error');
+        hLog(e, 'Elasticsearch Error');
         return createHealth(false, 'Elasticsearch', 'Error');
     }
 }
