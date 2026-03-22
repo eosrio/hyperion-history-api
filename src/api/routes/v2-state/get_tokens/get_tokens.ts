@@ -66,8 +66,10 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
                     const amount_arr = amount.split(".");
                     if (amount_arr.length === 2) {
                         precision = amount_arr[1].length;
-                        fastify.tokenCache.set(key, { precision });
+                    } else {
+                        precision = 0;
                     }
+                    fastify.tokenCache.set(key, { precision });
                 }
             } catch (e: any) {
                 errorMsg = e.message;
