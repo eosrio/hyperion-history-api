@@ -18,6 +18,5 @@ else
     nodeos \
         --data-dir "${DATA_DIR}" \
         --config-dir "${CONFIG_DIR}" \
-        --hard-replay-if-dirty \
         "$@"
 fi
