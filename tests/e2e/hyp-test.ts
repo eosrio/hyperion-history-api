@@ -153,15 +153,21 @@ async function runPlaywrightTests(): Promise<{ passed: number; total: number }> 
         try {
             const raw = require('fs').readFileSync(reportPath, 'utf8');
             const report = JSON.parse(raw);
-            const suites = report.suites || [];
-            let passed = 0, total = 0;
-            for (const suite of suites) {
-                for (const spec of suite.specs || []) {
-                    total++;
-                    if (spec.ok) passed++;
+            // Recursively count specs from nested suites (each describe() block is a sub-suite)
+            function countSpecs(suites: any[]): { passed: number; total: number } {
+                let passed = 0, total = 0;
+                for (const suite of suites) {
+                    for (const spec of suite.specs || []) {
+                        total++;
+                        if (spec.ok) passed++;
+                    }
+                    const nested = countSpecs(suite.suites || []);
+                    passed += nested.passed;
+                    total += nested.total;
                 }
+                return { passed, total };
             }
-            return { passed, total };
+            return countSpecs(report.suites || []);
         } catch {
             // Report parsing failed
         }
