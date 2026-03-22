@@ -50,7 +50,7 @@ export class ChainManager {
 
         const esPort = envDefaults.ES_PORT ?? '19200';
         const rmqPort = envDefaults.RABBITMQ_PORT ?? '15672';
-        const redisPort = envDefaults.REDIS_PORT ?? '16379';
+        const redisPort = envDefaults.REDIS_PORT ?? '16380';
         const nodeosHttpPort = envDefaults.NODEOS_HTTP_PORT ?? '18888';
         const nodeosSHiPPort = envDefaults.NODEOS_SHIP_PORT ?? '18080';
         const rmqUser = envDefaults.RABBITMQ_USER ?? 'hyperion';

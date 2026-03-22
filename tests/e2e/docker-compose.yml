@@ -83,7 +83,7 @@ services:
     image: redis:8-alpine
     container_name: hyp-test-redis
     ports:
-      - "${REDIS_PORT:-16379}:6379"
+      - "${REDIS_PORT:-16380}:6379"
     networks:
       - hyp-test
     healthcheck:
