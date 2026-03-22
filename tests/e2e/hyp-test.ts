@@ -254,10 +254,43 @@ explorer.command('serve')
     });
 
 explorer.command('test')
-    .description('Run Playwright smoke tests against a running explorer')
-    .action(async () => {
-        console.log('🧪 Running explorer smoke tests...\n');
+    .description('Run Playwright tests against a running explorer (auto-starts if needed)')
+    .option('--url <url>', 'Override explorer URL (skip build/serve)')
+    .option('--no-build', 'Skip build and serve — assume explorer is already running')
+    .action(async (opts) => {
+        const explorerUrl = opts.url ?? `http://127.0.0.1:${EXPLORER_PORT}`;
+        let managedExplorer: ExplorerRunner | null = null;
+
+        // Check if explorer is already serving at the target port
+        const alreadyRunning = await (async () => {
+            try {
+                const resp = await fetch(explorerUrl, { signal: AbortSignal.timeout(2000) });
+                return resp.ok || resp.status < 500;
+            } catch { return false; }
+        })();
+
+        if (alreadyRunning) {
+            console.log(`🌐 Explorer already running at ${explorerUrl}\n`);
+        } else if (opts.build !== false) {
+            console.log('🔧 Explorer not running — building and starting...\n');
+            if (!existsSync(EXPLORER_ROOT)) {
+                console.error(`❌ Explorer not found at ${EXPLORER_ROOT}`);
+                process.exit(1);
+            }
+            managedExplorer = createExplorerRunner(true);
+            managedExplorer.install();
+            managedExplorer.build();
+            await managedExplorer.serve();
+        } else {
+            console.error(`❌ Explorer not running at ${explorerUrl} and --no-build was set`);
+            process.exit(1);
+        }
+
+        console.log('🧪 Running explorer integration tests...\n');
         const results = await runPlaywrightTests();
+
+        if (managedExplorer) managedExplorer.stop();
+
         console.log(`\n${results.passed === results.total ? '✅' : '❌'} Explorer: ${results.passed}/${results.total} tests passed`);
         process.exit(results.passed === results.total ? 0 : 1);
     });
