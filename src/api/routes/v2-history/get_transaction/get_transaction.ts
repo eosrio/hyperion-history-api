@@ -1,5 +1,6 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
+import {regroupActions} from "../../../helpers/regroup-actions.js";
 import {API} from "@wharfkit/antelope";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
@@ -108,13 +109,28 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
                 highestBlockNum = action._source.block_num;
             }
         }
-        response.actions = [];
+        const rawActions: any[] = [];
         for (let action of hits) {
             if (action._source.block_num === highestBlockNum) {
                 mergeActionMeta(action._source);
-                response.actions.push(action._source);
+                rawActions.push(action._source);
             }
         }
+
+        // re-group notifications that were indexed as separate documents
+        const grouped = regroupActions(rawActions);
+
+        // add notified field derived from receipts
+        response.actions = grouped.map(action => {
+            if (action.receipts && action.receipts.length > 0) {
+                const receivers = new Set<string>(
+                    action.receipts.map((r: any) => r.receiver)
+                );
+                action.notified = [...receivers].join(',');
+            }
+            return action;
+        });
+
         response.executed = true;
     }
     return response;

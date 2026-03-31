@@ -1,6 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
 import {API} from "@wharfkit/antelope";
+import {regroupActions} from "../../../helpers/regroup-actions.js";
 
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
@@ -120,7 +121,16 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 
 
     if (hits.length > 0) {
-        const actions = hits;
+        const rawActions: any[] = [];
+        for (let action of hits) {
+            action = action._source;
+            mergeActionMeta(action);
+            rawActions.push(action);
+        }
+
+        // re-group notifications that were indexed as separate documents
+        const actions = regroupActions(rawActions);
+
         response.trx.trx = {
             "expiration": "",
             "ref_block_num": 0,
@@ -134,9 +144,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             "signatures": [],
             "context_free_data": []
         };
-        for (let action of actions) {
-            action = action._source;
-            mergeActionMeta(action);
+        for (const action of actions) {
             response.block_num = action.block_num;
             response.block_time = action['@timestamp'];
             for (const receipt of action.receipts) {

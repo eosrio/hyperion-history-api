@@ -5,16 +5,22 @@ import { ActionTrace } from "../../interfaces/action-trace.js";
  *
  * In Antelope, when an action notifies other accounts (e.g. eosio.token::transfer),
  * the same action appears multiple times — once per receiver — with the same
- * `act_digest` and `action_ordinal` but different `receiver`.
+ * `act_digest` but different `action_ordinal` and `receiver`. The
+ * `creator_action_ordinal` links each notification back to the parent action.
  *
  * These notification traces should be merged into a single document with
  * multiple receipts (the `receipts` array).
  *
- * However, genuinely distinct duplicate actions (same content, different
- * `action_ordinal`) must be kept as separate documents.
+ * However, genuinely distinct duplicate actions (same content and `act_digest`,
+ * but independent root actions with `creator_action_ordinal === 0`) must be
+ * kept as separate documents.
  *
- * The grouping key is `act_digest + ":" + action_ordinal` to distinguish
- * between these two cases.
+ * The grouping key is `act_digest + ":" + canonical_ordinal` where:
+ * - Root actions (creator_action_ordinal === 0): canonical = action_ordinal
+ * - Notifications (creator_action_ordinal > 0): canonical = creator_action_ordinal
+ *
+ * This ensures notifications merge with their parent while genuinely distinct
+ * duplicate actions remain separate (fixes #148 without breaking notifications).
  *
  * @param processedTraces - Array of parsed action traces with receipt data
  * @returns Array of grouped action traces with merged receipts
@@ -25,9 +31,12 @@ export function groupActionTraces(processedTraces: ActionTrace[]): ActionTrace[]
     if (processedTraces.length > 1) {
         const traceGroups: Record<string, any[]> = {};
 
-        // collect receipts grouped by act_digest + action_ordinal
+        // collect receipts grouped by act_digest + canonical ordinal
         for (const trace of processedTraces) {
-            const groupKey = `${trace.receipt.act_digest}:${trace.action_ordinal}`;
+            const canonical = trace.creator_action_ordinal > 0
+                ? trace.creator_action_ordinal
+                : trace.action_ordinal;
+            const groupKey = `${trace.receipt.act_digest}:${canonical}`;
             if (traceGroups[groupKey]) {
                 traceGroups[groupKey].push(trace.receipt);
             } else {
@@ -37,7 +46,10 @@ export function groupActionTraces(processedTraces: ActionTrace[]): ActionTrace[]
 
         // merge receipts into the first trace instance per group
         for (const trace of processedTraces) {
-            const groupKey = `${trace.receipt.act_digest}:${trace.action_ordinal}`;
+            const canonical = trace.creator_action_ordinal > 0
+                ? trace.creator_action_ordinal
+                : trace.action_ordinal;
+            const groupKey = `${trace.receipt.act_digest}:${canonical}`;
             if (traceGroups[groupKey]) {
                 trace['receipts'] = [];
                 for (const receipt of traceGroups[groupKey]) {
