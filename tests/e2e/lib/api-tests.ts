@@ -188,9 +188,10 @@ class APITestSuite {
 
         // ── Regression Tests ───────────────────────────────────
 
-        await this.test('Duplicate Actions in Same TX (#148)', 'GET /v2/history/get_actions?act.data.memo=dup-test-148', async () => {
+        await this.test('Duplicate Actions in Same TX (#148)', 'GET /v2/history/get_actions?transfer.memo=dup-test-148', async () => {
             // Look for the duplicate-action TX via the unique memo
-            const resp = await this.get('/v2/history/get_actions?act.name=transfer&act.data.memo=dup-test-148&limit=10');
+            // Hyperion maps transfer fields to @transfer, so use transfer.memo filter
+            const resp = await this.get('/v2/history/get_actions?act.name=transfer&transfer.memo=dup-test-148&limit=10');
             this.assert(resp.status === 200, `Expected 200, got ${resp.status}`);
             const data = await resp.json();
             // There should be at least 2 actions with this memo (the two duplicates)
@@ -225,8 +226,8 @@ class APITestSuite {
 
         await this.test('Error — Extreme Pagination Limit', 'GET /v2/history/get_actions?limit=999999', async () => {
             const resp = await this.get('/v2/history/get_actions?limit=999999');
-            // Hyperion may cap the limit (200) or reject it (400)
-            // A 500 would indicate an OOM/crash — that should NOT pass
+            // Hyperion should cap the limit (200) or reject it (400)
+            // A 500 would indicate an unhandled crash — that should NOT pass
             this.assert(
                 resp.status === 200 || resp.status === 400,
                 `Expected 200 or 400, got ${resp.status}`

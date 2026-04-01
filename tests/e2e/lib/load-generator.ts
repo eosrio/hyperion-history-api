@@ -240,24 +240,18 @@ export class LoadGenerator {
         console.log(`   🔁 Generating duplicate identical actions in single TX...`);
 
         try {
-            // Use cleos push transaction with a JSON transaction containing
-            // two byte-identical transfer actions
-            const actionsJson = JSON.stringify([
-                {
-                    account: 'eosio.token',
-                    name: 'transfer',
-                    authorization: [{ actor: 'alice', permission: 'active' }],
-                    data: { from: 'alice', to: 'bob', quantity: '0.0001 TST', memo: 'dup-test-148' },
-                },
-                {
-                    account: 'eosio.token',
-                    name: 'transfer',
-                    authorization: [{ actor: 'alice', permission: 'active' }],
-                    data: { from: 'alice', to: 'bob', quantity: '0.0001 TST', memo: 'dup-test-148' },
-                },
-            ]);
+            // Step 1: Serialize a single transfer using -sjd (sign, json, don't-broadcast)
+            const serialized = this.cleos(
+                `push action eosio.token transfer '["alice","bob","0.0001 TST","dup-test-148"]' -p alice@active -sjd`
+            );
+            const txn = JSON.parse(serialized);
 
-            const output = this.cleos(`push actions ${actionsJson} -p alice@active`);
+            // Step 2: Duplicate the action so the TX has two identical transfers
+            txn.actions = [txn.actions[0], txn.actions[0]];
+
+            // Step 3: Push the full transaction via 'push transaction'
+            const txnJson = JSON.stringify(txn).replace(/'/g, "'\\''");
+            const output = this.cleos(`push transaction '${txnJson}'`);
             const trxMatch = output.match(/executed transaction:\s+([a-f0-9]+)/);
             const trxId = trxMatch?.[1] ?? 'unknown';
             const blockMatch = output.match(/#(\d+)/);

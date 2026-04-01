@@ -86,14 +86,14 @@ export function applyTimeFilter(query, queryStruct) {
                 try {
                     _lte = new Date(query['before']).toISOString();
                 } catch (e: any) {
-                    throw new Error(e.message + ' [before]');
+                    badRequest(e.message + ' [before]');
                 }
             }
             if (query['after']) {
                 try {
                     _gte = new Date(query['after']).toISOString();
                 } catch (e: any) {
-                    throw new Error(e.message + ' [after]');
+                    badRequest(e.message + ' [after]');
                 }
             }
             if (!queryStruct.bool['filter']) {
@@ -230,6 +230,12 @@ export function applyCodeActionFilters(query, queryStruct) {
     }
 }
 
+function badRequest(message: string): never {
+    const err: any = new Error(message);
+    err.statusCode = 400;
+    throw err;
+}
+
 export function getSkipLimit(query: any, max?: number): { skip: number, limit: number } {
     let skip: number;
     let limit: number;
@@ -237,10 +243,10 @@ export function getSkipLimit(query: any, max?: number): { skip: number, limit: n
     if (query.skip) {
         skip = parseInt(query.skip, 10);
         if (skip < 0) {
-            throw new Error('invalid skip parameter');
+            badRequest('invalid skip parameter');
         }
         if (skip > 10000) {
-            throw new Error('skip is above maximum internal limit: 10000. please limit your search scope or use pagination with before/after parameters');
+            badRequest('skip is above maximum internal limit: 10000. please limit your search scope or use pagination with before/after parameters');
         }
     } else {
         skip = 0;
@@ -249,9 +255,9 @@ export function getSkipLimit(query: any, max?: number): { skip: number, limit: n
     if (query.limit) {
         limit = parseInt(query.limit, 10);
         if (limit < 1) {
-            throw new Error('invalid limit parameter');
+            badRequest('invalid limit parameter');
         } else if (limit > (max ?? 10000)) {
-            throw new Error(`limit too big, maximum: ${max}`);
+            badRequest(`limit too big, maximum: ${max}`);
         }
     } else {
         limit = 0;
@@ -269,7 +275,7 @@ export function getSortDir(query, maxAscWindowDays = 90) {
             const before = query.before;
             const isValidBound = (v) => v && (!isNaN(new Date(v).getTime()) || (Number.isInteger(Number(v)) && Number(v) > 0));
             if (!isValidBound(after) && !isValidBound(before)) {
-                throw new Error('sort=asc requires a valid "after" or "before" (ISO date or block number) to bound the search');
+                badRequest('sort=asc requires a valid "after" or "before" (ISO date or block number) to bound the search');
             }
             // validate the time window is not too wide (only for ISO date strings, not block numbers)
             if (typeof after === 'string' && after.includes('T')) {
@@ -277,7 +283,7 @@ export function getSortDir(query, maxAscWindowDays = 90) {
                 if (!isNaN(afterDate.getTime())) {
                     const maxAge = Date.now() - (maxAscWindowDays * 86400000);
                     if (afterDate.getTime() < maxAge) {
-                        throw new Error(`sort=asc "after" date must be within the last ${maxAscWindowDays} days`);
+                        badRequest(`sort=asc "after" date must be within the last ${maxAscWindowDays} days`);
                     }
                 }
             }
@@ -285,7 +291,7 @@ export function getSortDir(query, maxAscWindowDays = 90) {
         } else if (query.sort === 'desc' || query.sort === '-1') {
             sort_direction = 'desc'
         } else {
-            throw new Error('invalid sort direction');
+            badRequest('invalid sort direction');
         }
     }
     return sort_direction;
