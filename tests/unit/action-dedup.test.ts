@@ -322,20 +322,92 @@ describe('groupActionTraces', () => {
         const result = groupActionTraces(traces);
 
         // Should produce 2 docs:
-        // 1. Transfer (3 receipts: eosio.token, alice, bob)
-        // 2. Inline log action — the inline action (creator=1) and its
-        //    notification (creator=4) have different canonical ordinals,
-        //    so they stay separate (2 individual docs)
-        //    The inline action uses canonical=1 (its creator), and the
-        //    notification uses canonical=4 (its creator). Different keys.
+        // 1. Transfer (3 receipts: eosio.token, alice, bob) — ordinals 1,2,3
+        // 2. Inline log action (2 receipts: logger, alice) — ordinals 4,5
+        //    The inline action (ordinal=4, creator=1) has a different digest
+        //    from its creator (ordinal=1), so it's the head of its own
+        //    notification chain. Its notification (ordinal=5, creator=4) has
+        //    the same digest as ordinal=4, so it merges with it.
 
         // Transfer group: digest_transfer:1
         const transferGroup = result.find(r => r.act.name === 'transfer');
         expect(transferGroup).toBeDefined();
         expect(transferGroup!.receipts).toHaveLength(3);
 
-        // Inline actions: digest_inline_log:1 and digest_inline_log:4
+        // Inline action group: digest_inline_log:4 (ordinals 4+5 merged)
         const inlineGroups = result.filter(r => r.act.name === 'logaction');
-        expect(inlineGroups).toHaveLength(2);
+        expect(inlineGroups).toHaveLength(1);
+        expect(inlineGroups[0].receipts).toHaveLength(2);
+        const inlineReceivers = inlineGroups[0].receipts.map((r: any) => r.receiver);
+        expect(inlineReceivers).toContain('logger');
+        expect(inlineReceivers).toContain('alice');
+    });
+
+    it('should handle claimrewards → inline transfer with notifications', () => {
+        // Real-world scenario: eosio::claimrewards dispatches an inline
+        // eosio.token::transfer which then notifies sender and receiver
+        // via require_recipient
+        const claimDigest = 'digest_claimrewards';
+        const transferDigest = 'digest_transfer';
+        const traces = [
+            // Root: claimrewards
+            makeTrace({
+                global_sequence: 6000,
+                action_ordinal: 1,
+                creator_action_ordinal: 0,
+                act_digest: claimDigest,
+                receiver: 'eosio',
+                account: 'eosio',
+                name: 'claimrewards',
+            }),
+            // Inline transfer dispatched by claimrewards via .send()
+            makeTrace({
+                global_sequence: 6001,
+                action_ordinal: 2,
+                creator_action_ordinal: 1,
+                act_digest: transferDigest,
+                receiver: 'eosio.token',
+                account: 'eosio.token',
+                name: 'transfer',
+            }),
+            // Transfer notification to sender (require_recipient(from))
+            makeTrace({
+                global_sequence: 6002,
+                action_ordinal: 3,
+                creator_action_ordinal: 2,
+                act_digest: transferDigest,
+                receiver: 'eosio.bpay',
+                account: 'eosio.token',
+                name: 'transfer',
+            }),
+            // Transfer notification to receiver (require_recipient(to))
+            makeTrace({
+                global_sequence: 6003,
+                action_ordinal: 4,
+                creator_action_ordinal: 2,
+                act_digest: transferDigest,
+                receiver: 'ledgerwisete',
+                account: 'eosio.token',
+                name: 'transfer',
+            }),
+        ];
+        const result = groupActionTraces(traces);
+
+        // Should produce 2 docs:
+        // 1. claimrewards (1 receipt: eosio)
+        // 2. transfer (3 receipts: eosio.token, eosio.bpay, ledgerwisete)
+        expect(result).toHaveLength(2);
+
+        const claimGroup = result.find(r => r.act.name === 'claimrewards');
+        expect(claimGroup).toBeDefined();
+        expect(claimGroup!.receipts).toHaveLength(1);
+
+        const transferGroup = result.find(r => r.act.name === 'transfer');
+        expect(transferGroup).toBeDefined();
+        expect(transferGroup!.receipts).toHaveLength(3);
+        const receivers = transferGroup!.receipts.map((r: any) => r.receiver);
+        expect(receivers).toContain('eosio.token');
+        expect(receivers).toContain('eosio.bpay');
+        expect(receivers).toContain('ledgerwisete');
     });
 });

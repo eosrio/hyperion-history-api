@@ -17,10 +17,16 @@ import { ActionTrace } from "../../interfaces/action-trace.js";
  *
  * The grouping key is `act_digest + ":" + canonical_ordinal` where:
  * - Root actions (creator_action_ordinal === 0): canonical = action_ordinal
- * - Notifications (creator_action_ordinal > 0): canonical = creator_action_ordinal
+ * - Notifications (creator > 0, same act_digest as creator): canonical = creator_action_ordinal
+ * - Inline actions (creator > 0, different act_digest from creator): canonical = action_ordinal
  *
- * This ensures notifications merge with their parent while genuinely distinct
- * duplicate actions remain separate (fixes #148 without breaking notifications).
+ * Notifications are distinguished from inline actions by comparing act_digest:
+ * require_recipient() replays the exact same action (same digest), while
+ * an inline .send() dispatches a new action (different digest).
+ *
+ * This ensures notifications merge with their parent, inline actions become
+ * heads of their own notification chains, and genuinely distinct duplicate
+ * actions remain separate (fixes #148 without breaking notifications).
  *
  * @param processedTraces - Array of parsed action traces with receipt data
  * @returns Array of grouped action traces with merged receipts
@@ -29,14 +35,33 @@ export function groupActionTraces(processedTraces: ActionTrace[]): ActionTrace[]
     const finalTraces: ActionTrace[] = [];
 
     if (processedTraces.length > 1) {
+
+        // Pass 1: map each action_ordinal to its act_digest so we can
+        // distinguish notifications (same digest as creator) from inline
+        // actions (different digest from creator)
+        const digestByOrdinal: Record<number, string> = {};
+        for (const trace of processedTraces) {
+            digestByOrdinal[trace.action_ordinal] = trace.receipt.act_digest;
+        }
+
+        // Compute the canonical ordinal for grouping
+        const getCanonical = (trace: ActionTrace): number => {
+            const creator = trace.creator_action_ordinal;
+            // A notification has the same act_digest as its creator
+            // (require_recipient replays the exact same action).
+            // An inline action has a different act_digest from its creator
+            // (dispatched via .send() with new action content).
+            if (creator > 0 && digestByOrdinal[creator] === trace.receipt.act_digest) {
+                return creator; // notification: group with parent
+            }
+            return trace.action_ordinal; // root or inline action: own group
+        };
+
         const traceGroups: Record<string, any[]> = {};
 
         // collect receipts grouped by act_digest + canonical ordinal
         for (const trace of processedTraces) {
-            const canonical = trace.creator_action_ordinal > 0
-                ? trace.creator_action_ordinal
-                : trace.action_ordinal;
-            const groupKey = `${trace.receipt.act_digest}:${canonical}`;
+            const groupKey = `${trace.receipt.act_digest}:${getCanonical(trace)}`;
             if (traceGroups[groupKey]) {
                 traceGroups[groupKey].push(trace.receipt);
             } else {
@@ -46,10 +71,7 @@ export function groupActionTraces(processedTraces: ActionTrace[]): ActionTrace[]
 
         // merge receipts into the first trace instance per group
         for (const trace of processedTraces) {
-            const canonical = trace.creator_action_ordinal > 0
-                ? trace.creator_action_ordinal
-                : trace.action_ordinal;
-            const groupKey = `${trace.receipt.act_digest}:${canonical}`;
+            const groupKey = `${trace.receipt.act_digest}:${getCanonical(trace)}`;
             if (traceGroups[groupKey]) {
                 trace['receipts'] = [];
                 for (const receipt of traceGroups[groupKey]) {
