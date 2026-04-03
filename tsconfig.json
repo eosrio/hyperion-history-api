@@ -10,6 +10,7 @@
     "noEmitOnError": true,
     "sourceMap": true,
     "allowJs": false,
+    "rootDir": "./src",
     "outDir": "build",
     "skipLibCheck": true,
     "allowArbitraryExtensions": true,
