@@ -437,8 +437,27 @@ class HyperionApiServer {
 
       this.setupIndexerController();
 
-      // remove ES status key
-      await this.fastify.redis.del(`${this.chain}::es_status`);
+      // Remove ES status cache key so the first /v2/health after startup
+      // recomputes from ES rather than serving stale cached data.
+      // Tolerate READONLY: if the client is momentarily connected to a
+      // Redis replica (happens transiently during Sentinel failover, or
+      // permanently if the API is misconfigured to point at a replica),
+      // this DEL would throw and kill the process on startup. The delete
+      // is a cache-invalidation hint, not load-bearing — drop the error
+      // with a warning and continue. Other errors still propagate.
+      try {
+        await this.fastify.redis.del(`${this.chain}::es_status`);
+      } catch (e: any) {
+        if (typeof e?.message === 'string' && e.message.includes('READONLY')) {
+          hLog(
+            `Skipped startup cache invalidation (Redis client on a read-only replica). ` +
+            `Harmless during Sentinel failover; if persistent, check connections.redis ` +
+            `points at the primary or uses Sentinel mode.`
+          );
+        } else {
+          throw e;
+        }
+      }
     } catch (err) {
       hLog(err);
       process.exit(1);
