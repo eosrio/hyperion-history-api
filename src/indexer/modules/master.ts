@@ -1531,8 +1531,26 @@ export class HyperionMaster {
             }
         );
 
-        // Remove first indexed block from cache (v2/health)
-        await this.ioRedisClient.del(`${this.manager.chain}::fib`);
+        // Remove first indexed block from cache (v2/health).
+        // Tolerate READONLY: if ioredis is momentarily connected to a
+        // Redis replica (transient during Sentinel failover), this DEL
+        // would throw and kill startup. The delete is a cache-invalidation
+        // hint — if it fails, the stale cache expires on its own next read
+        // cycle. Non-READONLY errors still propagate.
+        try {
+            await this.ioRedisClient.del(`${this.manager.chain}::fib`);
+        } catch (e: any) {
+            if (typeof e?.message === 'string' && e.message.includes('READONLY')) {
+                hLog(
+                    `Skipped ${this.manager.chain}::fib cache invalidation ` +
+                    `(Redis client on a read-only replica). Harmless during ` +
+                    `Sentinel failover; if persistent, check connections.redis ` +
+                    `points at the primary or uses Sentinel mode.`
+                );
+            } else {
+                throw e;
+            }
+        }
 
         let rpcChainId = '';
         let configuredChainId = this.manager.conn.chains[this.chain].chain_id;

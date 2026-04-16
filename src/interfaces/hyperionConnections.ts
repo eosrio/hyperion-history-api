@@ -36,7 +36,7 @@ export interface HyperionChainData {
  * option works in practice. The previous form of this interface only
  * declared `host` and `port`, which obscured the fact that auth and
  * Sentinel mode are both supported. The common fields are now surfaced
- * explicitly; `[key: string]: any` preserves pass-through for the rest.
+ * explicitly; `[key: string]: unknown` preserves pass-through for the rest.
  *
  * Single-primary mode: set `host` + `port`.
  * Sentinel mode: omit `host`/`port`, set `sentinels[]` + `name`.
