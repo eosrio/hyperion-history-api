@@ -776,7 +776,7 @@ class HyperionApiServer {
               return {
                 ...headers,
                 'x-hyperion-chain': this.manager.chain,
-                'x-hyperion-server': this.manager.config.api.server_name.startsWith('http') ? this.manager.config.api.server_name : `https://${this.manager.config.api.server_name}`,
+                'x-hyperion-server': this.manager.config.api.server_name.includes('://') ? this.manager.config.api.server_name : `https://${this.manager.config.api.server_name}`,
               };
             },
           },
