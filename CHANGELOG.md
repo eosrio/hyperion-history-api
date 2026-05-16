@@ -1,5 +1,49 @@
 # Changelog
 
+## 4.0.6 (2026-05-16)
+
+### New Features
+
+*   **Optional pm2-independent deployment**: Hyperion can now run under **systemd** instead of pm2. Adds `systemd/hyperion-api@.service` and `systemd/hyperion-indexer@.service` unit templates (mirroring pm2 semantics — API `Restart=always`, indexer `Restart=no` with a graceful controller `ExecStop`), plus an opt-in `HYP_NO_PM2=1` mode for `./run` / `./stop` that routes to `systemctl`. **pm2 remains the default and is unchanged when `HYP_NO_PM2` is unset.** Scope is single-instance: pm2 cluster-mode scaling (`api.pm2_scaling`) is intentionally *not* reproduced without pm2.
+
+### Fixes
+
+*   **`sync all` skipped permissions**: `./hyp-control sync all <chain>` now runs the permissions synchronizer (previously only voters/accounts/proposals/contract-state) with a proper indexer pause on the `state` worker. The standalone `sync permissions` command was also routed through pause/resume, closing a pre-existing race with the live indexer.
+*   **Contract-state sync crashed on a bad chain config**: a malformed or missing `config/chains/<chain>.config.json` now produces a clear, actionable error naming the file and parse problem, and no longer aborts the rest of `sync all`.
+*   **`./stop <chain>-api` stopped the wrong thing**: `./stop` blindly treated every argument as an indexer, so stopping an API tried to reach a nonexistent indexer controller. It now mirrors `./run` routing — `-api` → `pm2 stop`, `-indexer` → graceful controller stop, bare chain → both.
+*   **Redis on a replica / Sentinel topology** (PR #164, thanks @rwcii): startup cache-invalidation `DEL`s now tolerate `READONLY` (transient Sentinel failover or replica-pointed clients) instead of crash-looping; non-`READONLY` errors still propagate. `RedisConfig` now surfaces auth + Sentinel fields (passthrough was always supported, now discoverable in the types).
+*   **Indexer status check no longer assumes pm2**: the `hyp-es-config` repartition guard now probes the indexer control socket (`isOnline()`) instead of shelling out to `pm2 jlist` — works under pm2, systemd, or bare node, and fixes a latent bug where the old process-name filter never matched real pm2 names.
+*   **Query validation**: invalid query parameters now return HTTP **400** instead of 500; E2E test suite fixes.
+*   **Action regrouping**: correctly handles notifications and inline actions.
+
+### Maintenance
+
+*   Dependency refresh: `@wharfkit/antelope` 1.2.0, `amqplib` 2.0.1, `mongodb` 7.2.0, `fastify` 5.8.5, `undici` 8.3.0, `ws` 8.20.1, `zod` 4.4.3, `typescript` 6.0.3, `uWebSockets.js` v20.67.0, plus Fastify plugin patches. Reconciled `package.json` / `bun.lock` / `package-lock.json` (they had drifted three ways on `uWebSockets.js`).
+
+### Upgrade Notes
+
+*   **Platform requirement — glibc ≥ 2.38 (Ubuntu 24.04+)**: `uWebSockets.js` prebuilt binaries require `GLIBC_2.38`. Hyperion's API/stream and indexer-controller **will not start on Ubuntu 22.04 (glibc 2.35)** — the symptom is `GLIBC_2.38 not found ... uws_linux_x64_*.node`. This is unchanged by the dependency bump (all versions in range need 2.38); it is now documented. Remediation: upgrade the OS, run in a glibc ≥ 2.38 container, or build `uWebSockets.js` from source.
+*   If you relied on `./hyp-control sync all <chain>` to populate state, re-run it once after upgrading to backfill the MongoDB `permissions` collection that was previously skipped.
+
+## 4.0.5 (2026-03-31)
+
+### Fixes
+
+*   **Notification Dedup Regression** (High — affects transaction query correctness): A v4.0.4 regression stored notification traces (e.g. `eosio.token::transfer` notifications) as **separate documents** instead of merging them into a single action with multiple receipts, causing `get_transaction` to return duplicate transfer actions (exchanges triple-counting deposits).
+    *   **Indexer**: dedup grouping key changed to `creator_action_ordinal`, correctly distinguishing notifications (merge with parent) from genuinely distinct duplicate actions (kept separate, per #148).
+    *   **API (no re-index required)**: `v1` and `v2` `get_transaction` re-group fragmented notification documents on read, so v4.0.4-indexed data returns correct responses immediately after upgrading. The v2 response now includes a `notified` field (comma-separated notified accounts).
+*   **Duplicate identical actions in the same transaction** (#148): genuinely distinct duplicate actions are now preserved instead of being collapsed.
+*   **Proposal transaction data** (#154): the indexer now stores proposal transaction data in MongoDB during live indexing.
+*   **0-precision tokens** (#131): `/v2/state/get_tokens` now handles 0-precision tokens correctly.
+
+### Testing
+
+*   Comprehensive Playwright explorer E2E suite (standalone execution, recursive nested-suite report parsing, SSR SSRF/themes fixes).
+
+### Upgrade Notes
+
+*   Pull and rebuild from `v4.0.5`, then restart the API. Optionally re-index from blocks to reclaim ~3× storage overhead from fragmented v4.0.4 documents.
+
 ## 4.0.4 (2026-03-22)
 
 ### Fixes
