@@ -25,6 +25,10 @@
 *   **Platform requirement — glibc ≥ 2.38 (Ubuntu 24.04+)**: `uWebSockets.js` prebuilt binaries require `GLIBC_2.38`. Hyperion's API/stream and indexer-controller **will not start on Ubuntu 22.04 (glibc 2.35)** — the symptom is `GLIBC_2.38 not found ... uws_linux_x64_*.node`. This is unchanged by the dependency bump (all versions in range need 2.38); it is now documented. Remediation: upgrade the OS, run in a glibc ≥ 2.38 container, or build `uWebSockets.js` from source.
 *   If you relied on `./hyp-control sync all <chain>` to populate state, re-run it once after upgrading to backfill the MongoDB `permissions` collection that was previously skipped.
 
+### Acknowledgements
+
+*   Thanks to [@eosusa](https://github.com/eosusa) for the field reports that drove several of these fixes — the launcher / process-management issues (`./stop` on the API process, the glibc startup failure) and the `sync all` failures (contract-state on a bad chain config). And to [@rwcii](https://github.com/rwcii) (#164) for the Redis replica/Sentinel resilience work.
+
 ## 4.0.5 (2026-03-31)
 
 ### Fixes
