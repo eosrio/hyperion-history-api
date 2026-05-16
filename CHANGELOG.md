@@ -22,7 +22,7 @@
 
 ### Upgrade Notes
 
-*   **Platform requirement — glibc ≥ 2.38 (Ubuntu 24.04+)**: `uWebSockets.js` prebuilt binaries require `GLIBC_2.38`. Hyperion's API/stream and indexer-controller **will not start on Ubuntu 22.04 (glibc 2.35)** — the symptom is `GLIBC_2.38 not found ... uws_linux_x64_*.node`. This is unchanged by the dependency bump (all versions in range need 2.38); it is now documented. Remediation: upgrade the OS, run in a glibc ≥ 2.38 container, or build `uWebSockets.js` from source.
+*   **Platform requirement — glibc ≥ 2.38 (Ubuntu 24.04+)**: `uWebSockets.js` prebuilt binaries require `GLIBC_2.38`. Hyperion's API/stream and indexer-controller **will not start on Ubuntu 22.04 (glibc 2.35)** — the symptom is `GLIBC_2.38 not found ... uws_linux_x64_*.node`. This is unchanged by the dependency bump (all versions in range need 2.38); it is now documented. Remediation: upgrade the OS, run in a glibc ≥ 2.38 container, build `uWebSockets.js` from source, or — to stay on Ubuntu 22.04 — force-install the last glibc-2.35-compatible build after each rebuild: `npm install --no-save github:uNetworking/uWebSockets.js#v20.52.0` ([v20.52.0](https://github.com/uNetworking/uWebSockets.js/releases/tag/v20.52.0)).
 *   If you relied on `./hyp-control sync all <chain>` to populate state, re-run it once after upgrading to backfill the MongoDB `permissions` collection that was previously skipped.
 
 ### Acknowledgements
