@@ -181,6 +181,14 @@ We appreciate community contributions to Hyperion! Here’s how you can help:
 *   **Suggest Enhancements:** Have an idea? Open an Issue or discuss it on our [Hyperion Telegram group](https://t.me/EOSHyperion) first.
 *   **Submit Code:** Pull Requests (PRs) are welcome for bug fixes and improvements. For larger features, please discuss them in an issue or on the [Telegram group](https://t.me/EOSHyperion) beforehand.
 
+### Branching model
+
+*   **`main`** — the stable branch. It only ever advances to **tagged releases**, so its `HEAD` always matches the latest published version. This is the branch to clone for production (as referenced in the [install guide](https://hyperion.docs.eosrio.io/providers/install/manual_install/#hyperion)).
+*   **`dev`** — the active development branch. All day-to-day work lands here.
+*   **PRs** should target **`dev`**. Releases are cut by merging `dev` into `main` and tagging.
+
+(The legacy `develop` branch is abandoned 2020-era history kept only for archival reasons — do not use it.)
+
 ## 7. License
 
 Hyperion History API is licensed under the [Attribution-NonCommercial-ShareAlike 4.0 International](https://github.com/eosrio/hyperion-history-api/blob/main/license.md).

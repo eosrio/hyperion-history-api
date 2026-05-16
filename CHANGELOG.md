@@ -2,7 +2,7 @@
 
 ## 4.0.7 (2026-05-16)
 
-> **4.0.6 was skipped.** The 4.0.6 version sat on `main` untagged for a period and some operators deployed it directly from `main` before any release tag existed. To avoid ambiguity between those pre-tag production deployments and the official artifact, this work is released as **4.0.7**. There is no separate 4.0.6 entry. Going forward, `main` only advances to tagged releases and active development happens on `develop`.
+> **4.0.6 was skipped.** The 4.0.6 version sat on `main` untagged for a period and some operators deployed it directly from `main` before any release tag existed. To avoid ambiguity between those pre-tag production deployments and the official artifact, this work is released as **4.0.7**. There is no separate 4.0.6 entry. Going forward, `main` only advances to tagged releases and active development happens on `dev`.
 
 ### New Features
 
