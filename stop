@@ -1,6 +1,47 @@
 #!/usr/bin/env bash
+# Counterpart to ./run — stops Hyperion processes.
+#
+# Routing is intentional and asymmetric (mirrors how the processes run):
+#   *-api      -> `pm2 stop` (the API has autorestart:true; just exiting it
+#                  makes pm2 respawn it, so it MUST be stopped via pm2)
+#   *-indexer  -> graceful `hyp-control indexer stop` (controller IPC: the
+#                  indexer flushes and halts cleanly; autorestart is false so
+#                  pm2 won't bring it back — never hard-kill it mid-write)
+#   <chain>    -> both of the above
+
 if [ $# -eq 0 ]; then
-  echo 'Please inform the chain name to stop the indexer. ex: "./stop vaulta-indexer"'
+  echo 'Please inform the app name. ex: "./stop wax-indexer", "./stop wax-api", or "./stop wax" for both'
   exit 1
 fi
-./hyp-control indexer stop "$@"
+
+if [[ "$1" == *-api ]]; then
+  echo -e "\n-->> Stopping $1 (pm2)..."
+  (
+    set -x
+    pm2 stop "$1"
+  )
+  echo -e "\n-->> Saving pm2 state..."
+  (
+    set -x
+    pm2 save
+  )
+elif [[ "$1" == *-indexer ]]; then
+  echo -e "\n-->> Gracefully stopping $1..."
+  (
+    set -x
+    ./hyp-control indexer stop "$1"
+  )
+else
+  # Chain name without suffix: stop both indexer (graceful) and api (pm2)
+  echo -e "\n-->> Stopping $1-indexer and $1-api..."
+  (
+    set -x
+    ./hyp-control indexer stop "$1-indexer"
+    pm2 stop "$1-api"
+  )
+  echo -e "\n-->> Saving pm2 state..."
+  (
+    set -x
+    pm2 save
+  )
+fi
