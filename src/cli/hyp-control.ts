@@ -59,6 +59,13 @@ async function syncProposals(chain: string, host?: string) {
     await syncWithPauseResume(chain, 'table-proposals', new ProposalSynchronizer(chain), host);
 }
 
+async function syncPermissions(chain: string, host?: string) {
+    // Pause type 'state': the indexer's 'state' ingestor worker (mongo-routes
+    // 'state' route) is what writes permission/permission_link deltas live.
+    // Pausing it avoids racing the bulk PermissionsSynchronizer upserts.
+    await syncWithPauseResume(chain, 'state', new PermissionsSynchronizer(chain), host);
+}
+
 type ContractStateSyncResult = 'synced' | 'disabled' | 'config-error';
 
 async function syncContractState(chain: string, host?: string, contract?: string, table?: string): Promise<ContractStateSyncResult> {
@@ -515,10 +522,9 @@ async function getScalingInfo(chain: string, host?: string) {
 
     sync.command('permissions <chain>')
         .description('Sync permissions for a specific chain')
-        .action(async (chain: string) => {
+        .action(async (chain: string, args: any) => {
             try {
-                const synchronizer = new PermissionsSynchronizer(chain);
-                await synchronizer.run();
+                await syncPermissions(chain, args.host);
                 console.log('Sync completed for permissions');
             } catch (error) {
                 console.error('Error syncing permissions:', error);
@@ -580,16 +586,17 @@ async function getScalingInfo(chain: string, host?: string) {
         });
 
     sync.command('all <chain>')
-        .description('Sync voters, accounts, proposals, and contract state for a specific chain')
+        .description('Sync voters, accounts, proposals, permissions, and contract state for a specific chain')
         .action(async (chain: string) => {
             try {
                 await syncVoters(chain);
                 await syncAccounts(chain, undefined, undefined);
                 await syncProposals(chain);
+                await syncPermissions(chain);
                 const contractStateResult = await syncContractState(chain);
 
                 if (contractStateResult === 'config-error') {
-                    console.log(`Sync completed for voters, accounts and proposals.`);
+                    console.log(`Sync completed for voters, accounts, proposals and permissions.`);
                     console.log(`Note: Contract state sync was skipped due to an invalid config (see error above).`);
                 } else {
                     console.log(`Sync completed for all components`);
