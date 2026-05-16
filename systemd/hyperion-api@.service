@@ -1,0 +1,38 @@
+# Hyperion API/stream server (systemd) — pm2-independent deployment.
+#
+# Templated by chain short name. For chain "wax":
+#   sudo cp systemd/hyperion-api@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now hyperion-api@wax
+#   journalctl -u hyperion-api@wax -f
+#
+# Mirrors pm2/ecosystem_settings.cjs addApiServer():
+#   - autorestart:true   -> Restart=always
+#   - CONFIG_JSON env
+#
+# SCOPE: single instance. pm2's exec_mode:'cluster' / pm2_scaling (multi-worker
+# load balancing) is NOT replicated here — the `api.pm2_scaling` config value is
+# a no-op without pm2. Operators needing a multi-instance API should keep pm2,
+# or front several hyperion-api@<chain> units with a reverse proxy.
+#
+# EDIT BEFORE USE: User= and WorkingDirectory= for your install.
+
+[Unit]
+Description=Hyperion API/stream server (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hyperion
+WorkingDirectory=/opt/hyperion-history-api
+Environment=CONFIG_JSON=config/chains/%i.config.json
+# Tune heap to match your chain config's api.node_max_old_space_size.
+ExecStart=/usr/bin/env node --enable-source-maps --max-old-space-size=2048 build/api/server.js
+
+# Matches pm2 autorestart:true.
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

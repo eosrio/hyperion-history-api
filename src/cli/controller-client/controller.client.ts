@@ -265,6 +265,23 @@ export class IndexerController {
         this.connectionPromise = null;
     }
 
+    /**
+     * Lightweight, process-manager-agnostic liveness probe. Returns true if
+     * the indexer's control WebSocket accepts a connection (works whether the
+     * indexer runs under pm2, systemd, or bare node). Uses connect()'s built-in
+     * 5s timeout and always tears the socket down afterward.
+     */
+    async isOnline(): Promise<boolean> {
+        try {
+            await this.connect();
+            return true;
+        } catch {
+            return false;
+        } finally {
+            this.close();
+        }
+    }
+
     async stop(): Promise<void> {
         return this._sendRequestAndAwaitResponse<void>(
             { event: 'stop_indexer' },

@@ -6,6 +6,20 @@ if [ $# -eq 0 ]; then
   exit 1
 fi
 
+# Opt-in non-pm2 mode: drive systemd instead of pm2. Default (unset) keeps the
+# exact pm2 behavior below unchanged. Units: see systemd/ (install once first).
+if [ -n "${HYP_NO_PM2:-}" ]; then
+  case "$1" in
+    *-api)     units=("hyperion-api@${1%-api}") ;;
+    *-indexer) units=("hyperion-indexer@${1%-indexer}") ;;
+    *)         units=("hyperion-indexer@$1" "hyperion-api@$1") ;;
+  esac
+  echo -e "\n-->> [HYP_NO_PM2] Starting via systemd: ${units[*]}"
+  for u in "${units[@]}"; do ( set -x; systemctl start "$u" ); done
+  echo -e "\n-->> Follow logs: journalctl -f $(printf -- '-u %s ' "${units[@]}")"
+  exit 0
+fi
+
 # Check if the argument ends with -api or -indexer
 if [[ "$1" == *-api ]] || [[ "$1" == *-indexer ]]; then
   # Standard case: start the specific service

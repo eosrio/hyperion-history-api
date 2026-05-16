@@ -4,6 +4,7 @@ import path from 'path';
 import {readFile, writeFile} from 'fs/promises';
 import {existsSync, writeFileSync, mkdirSync} from 'fs';
 import {HyperionConnections} from '../interfaces/hyperionConnections.js';
+import {IndexerController} from './controller-client/controller.client.js';
 
 const program = new Command();
 const rootDir = path.join(import.meta.dirname, '../../');
@@ -530,25 +531,15 @@ async function updateChainConfigPartitions(chain: string, partitionSizes: Record
     }
 }
 
-// Check if the indexer is running
+// Check if the indexer is running.
+// Process-manager agnostic: probes the indexer's control WebSocket instead of
+// shelling out to `pm2 jlist`, so it works under pm2, systemd, or bare node.
 async function checkIndexerStatus(chain: string): Promise<boolean> {
+    const controller = new IndexerController(chain);
     try {
-        // Run PM2 command to list processes
-        const {execSync} = await import('child_process');
-        const pm2Output = execSync('pm2 jlist').toString();
-
-        // Parse PM2 output
-        const pm2Processes = JSON.parse(pm2Output);
-
-        // Check if any indexer process for the chain is running
-        const indexerProcess = pm2Processes.find((proc: any) => {
-            const name = proc.name || '';
-            return name.includes('hyp-') && name.includes(chain) && !name.includes('api');
-        });
-
-        return !!indexerProcess && ['online', 'launching'].includes(indexerProcess.pm2_env?.status);
+        return await controller.isOnline();
     } catch (error) {
-        console.warn(`⚠️ Couldn't check PM2 status: ${error}`);
+        console.warn(`⚠️ Couldn't determine indexer status: ${error}`);
         console.warn('⚠️ Proceeding with the operation, but make sure the indexer is stopped before continuing.');
         return false;
     }
@@ -1096,10 +1087,10 @@ async function listTasks(options: any) {
         .option('-y, --yes', "Don't ask for confirmation")
         .action(async (chain, options) => {
             // Check if indexer is running
-            const pm2Status = await checkIndexerStatus(chain);
-            if (pm2Status) {
+            const indexerRunning = await checkIndexerStatus(chain);
+            if (indexerRunning) {
                 console.error(`❌ The indexer for chain ${chain} is still running! Stop it before repartitioning indices.`);
-                console.error(`   Use: ./hyp-control stop chain=${chain}`);
+                console.error(`   Use: ./hyp-control indexer stop ${chain}   (or: ./stop ${chain}-indexer)`);
                 process.exit(1);
             }
 

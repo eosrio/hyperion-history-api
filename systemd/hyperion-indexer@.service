@@ -1,0 +1,41 @@
+# Hyperion indexer (systemd) — pm2-independent deployment.
+#
+# Templated by chain short name. For chain "wax":
+#   sudo cp systemd/hyperion-indexer@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now hyperion-indexer@wax
+#   journalctl -u hyperion-indexer@wax -f
+#
+# Mirrors pm2/ecosystem_settings.cjs addIndexer():
+#   - autorestart:false  -> Restart=no  (do NOT auto-restart the indexer)
+#   - graceful controller stop, never a hard kill mid-write
+#   - CONFIG_JSON / TRACE_LOGS env
+#
+# EDIT BEFORE USE: User= and WorkingDirectory= for your install.
+
+[Unit]
+Description=Hyperion indexer (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hyperion
+WorkingDirectory=/opt/hyperion-history-api
+Environment=CONFIG_JSON=config/chains/%i.config.json
+Environment=TRACE_LOGS=false
+# Tune heap to match your chain config's indexer.node_max_old_space_size.
+ExecStart=/usr/bin/env node --enable-source-maps --max-old-space-size=2048 build/indexer/launcher.js
+
+# Graceful stop via the indexer controller (same path as `./stop %i-indexer`).
+# The launcher also handles SIGINT, used as the fallback stop signal.
+ExecStop=/usr/bin/env ./hyp-control indexer stop %i
+KillSignal=SIGINT
+# Allow a long flush/halt window — never SIGKILL an indexer early.
+TimeoutStopSec=600
+
+# Indexer must not be auto-restarted (matches pm2 autorestart:false).
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
