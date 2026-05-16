@@ -3,7 +3,7 @@ import { request } from 'undici';
 import { IndexerController } from './controller-client/controller.client.js';
 import { printHeapStats, printMemoryUsage, printUsageMap } from './stats.control.js';
 import { AccountSynchronizer } from './sync-modules/sync-accounts.js';
-import { ContractStateSynchronizer } from './sync-modules/sync-contract-state.js';
+import { ConfigLoadError, ContractStateSynchronizer } from './sync-modules/sync-contract-state.js';
 import { ProposalSynchronizer } from './sync-modules/sync-proposals.js';
 import { VoterSynchronizer } from './sync-modules/sync-voters.js';
 import { QueueManager } from './queue-manager/queue.manager.js';
@@ -59,15 +59,27 @@ async function syncProposals(chain: string, host?: string) {
     await syncWithPauseResume(chain, 'table-proposals', new ProposalSynchronizer(chain), host);
 }
 
-async function syncContractState(chain: string, host?: string, contract?: string, table?: string) {
-    const contractStateSynchronizer = new ContractStateSynchronizer(chain);
+type ContractStateSyncResult = 'synced' | 'disabled' | 'config-error';
+
+async function syncContractState(chain: string, host?: string, contract?: string, table?: string): Promise<ContractStateSyncResult> {
+    let contractStateSynchronizer: ContractStateSynchronizer;
+    try {
+        contractStateSynchronizer = new ContractStateSynchronizer(chain);
+    } catch (error) {
+        if (error instanceof ConfigLoadError) {
+            console.error(`\n❌ Contract state sync skipped: ${error.message}`);
+            console.error(`   Fix the config file above and re-run the sync.`);
+            return 'config-error';
+        }
+        throw error;
+    }
     // Check if contract state is enabled before proceeding
     if (!contractStateSynchronizer.isEnabled()) {
         console.log(`Contract state synchronization is not enabled for chain: ${chain}`);
-        return false; // Return false to indicate no sync was performed
+        return 'disabled';
     }
     await syncWithPauseResume(chain, 'dynamic-table', contractStateSynchronizer, host, contract, table);
-    return true; // Return true to indicate sync was performed
+    return 'synced';
 }
 
 async function stopIndexer(chain: string, host?: string) {
@@ -550,14 +562,17 @@ async function getScalingInfo(chain: string, host?: string) {
         .description('Sync contract state for a specific chain')
         .action(async (chain: string, contract?: string, table?: string, args?: any) => {
             try {
-                const syncPerformed = await syncContractState(chain, args.host, contract, table);
-                // Only show completion message if sync was actually performed
-                if (syncPerformed) {
+                const result = await syncContractState(chain, args.host, contract, table);
+                if (result === 'synced') {
                     console.log('Sync completed for contractState');
-                } else {
+                    process.exit(0);
+                } else if (result === 'disabled') {
                     console.log('Contract state synchronization skipped - feature is disabled in config');
+                    process.exit(0);
+                } else {
+                    // config-error: actionable message already printed by syncContractState
+                    process.exit(1);
                 }
-                process.exit(0);
             } catch (error) {
                 console.error('Error syncing contract state:', error);
                 process.exit(1);
@@ -571,11 +586,16 @@ async function getScalingInfo(chain: string, host?: string) {
                 await syncVoters(chain);
                 await syncAccounts(chain, undefined, undefined);
                 await syncProposals(chain);
-                const contractStateSynced = await syncContractState(chain);
+                const contractStateResult = await syncContractState(chain);
 
-                console.log(`Sync completed for all components`);
-                if (!contractStateSynced) {
-                    console.log(`Note: Contract state sync was skipped (feature is disabled in config)`);
+                if (contractStateResult === 'config-error') {
+                    console.log(`Sync completed for voters, accounts and proposals.`);
+                    console.log(`Note: Contract state sync was skipped due to an invalid config (see error above).`);
+                } else {
+                    console.log(`Sync completed for all components`);
+                    if (contractStateResult === 'disabled') {
+                        console.log(`Note: Contract state sync was skipped (feature is disabled in config)`);
+                    }
                 }
             } catch (error) {
                 console.error('Error during sync:', error);

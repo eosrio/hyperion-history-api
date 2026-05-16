@@ -5,6 +5,39 @@ import { join } from 'node:path';
 import { cargo } from 'async';
 import { findAndValidatePrimaryKey } from '../utils/check-primary-key.js';
 
+/**
+ * Raised when a JSON config file is missing or cannot be parsed.
+ * Carries the offending path so callers can produce an actionable message
+ * instead of a raw SyntaxError/ENOENT stack trace.
+ */
+export class ConfigLoadError extends Error {
+    constructor(public readonly path: string, message: string) {
+        super(message);
+        this.name = 'ConfigLoadError';
+    }
+}
+
+/**
+ * Read and parse a JSON config file, turning fs/JSON failures into a
+ * ConfigLoadError that names the file and the underlying problem.
+ */
+function readJsonConfig<T>(path: string, label: string): T {
+    let raw: string;
+    try {
+        raw = readFileSync(path, 'utf-8');
+    } catch (err: any) {
+        if (err?.code === 'ENOENT') {
+            throw new ConfigLoadError(path, `${label} not found: ${path}`);
+        }
+        throw new ConfigLoadError(path, `Unable to read ${label} (${path}): ${err?.message ?? err}`);
+    }
+    try {
+        return JSON.parse(raw) as T;
+    } catch (err: any) {
+        throw new ConfigLoadError(path, `Invalid JSON in ${label} (${path}): ${err?.message ?? err}`);
+    }
+}
+
 interface ChainConfig {
     features: {
         contract_state: {
@@ -43,19 +76,24 @@ export class ContractStateSynchronizer {
     private loadConfig(): ChainConfig {
         const configDir = join(import.meta.dirname, '../../../config/chains');
         const configPath = join(configDir, `${this.chain}.config.json`);
-        return JSON.parse(readFileSync(configPath, 'utf-8'));
+        return readJsonConfig<ChainConfig>(configPath, `chain config for "${this.chain}"`);
     }
 
     private loadConnections() {
         const configDir = join(import.meta.dirname, '../../../config');
-        return JSON.parse(readFileSync(join(configDir, 'connections.json'), 'utf-8'));
+        const connectionsPath = join(configDir, 'connections.json');
+        return readJsonConfig<any>(connectionsPath, 'connections.json');
     }
 
     private createAPIClient(): APIClient {
         const connections = this.loadConnections();
-        const endpoint = connections.chains[this.chain].http;
+        const chainConn = connections.chains?.[this.chain];
+        if (!chainConn) {
+            throw new Error(`Chain "${this.chain}" not found in connections.json`);
+        }
+        const endpoint = chainConn.http;
         if (!endpoint) {
-            throw new Error('No HTTP Endpoint!');
+            throw new Error(`No HTTP endpoint configured for chain "${this.chain}" in connections.json`);
         }
         return new APIClient({ url: endpoint });
     }
