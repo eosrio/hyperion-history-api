@@ -650,18 +650,32 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     pushToActionsQueue(payload: any, block_num: number) {
-        if (!this.conf.indexer.disable_indexing) {
-            const q = this.chain + ":index_actions:" + (this.act_emit_idx);
-            this.preIndexingQueue.push({
-                queue: q,
-                content: payload,
-                headers: { block_num }
-            });
-            this.act_emit_idx++;
-            if (this.act_emit_idx > (this.conf.scaling.ad_idx_queues)) {
-                this.act_emit_idx = 1;
+        if (this.conf.indexer.disable_indexing) return;
+        const q = this.chain + ":index_actions:" + (this.act_emit_idx);
+        this.act_emit_idx++;
+        if (this.act_emit_idx > (this.conf.scaling.ad_idx_queues)) {
+            this.act_emit_idx = 1;
+        }
+        // Hot path: publish directly via the AMQP channel. amqplib buffers
+        // internally and returns false on backpressure; the cargo wrapper
+        // around processMessages is the natural throttling point so we
+        // don't need a per-push async queue here. Fall back to the
+        // preIndexingQueue only when the channel isn't ready.
+        if (this.ch_ready && this.ch) {
+            try {
+                this.ch.sendToQueue(q, payload, { headers: { block_num } });
+                return;
+            } catch (e: any) {
+                hLog(e.message);
             }
         }
+        // Channel temporarily unavailable — queue for the async worker
+        // which will retry once ch_ready returns true.
+        this.preIndexingQueue.push({
+            queue: q,
+            content: payload,
+            headers: { block_num }
+        });
     }
 
     pushToActionStreamingQueue(payload: any, uniqueAction: any) {
