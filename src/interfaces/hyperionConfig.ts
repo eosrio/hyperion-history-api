@@ -145,6 +145,20 @@ interface ApiConfigs {
     disable_rate_limit?: boolean;
     disable_tx_cache?: boolean;
     tx_cache_expiration_sec?: number | string;
+    /**
+     * tx_cache_mode controls how the DS Pool flushes Redis tx-cache writes.
+     *   • 'auto' (default) — per-trace flush for live-reader traces,
+     *     end-of-cargo batch flush for parallel/historical traces.
+     *     Matches throughput needs during batch indexing and latency
+     *     needs during live indexing automatically.
+     *   • 'sync'           — always flush per-trace. Lowest cache
+     *     latency. Safest in failure modes. ~5–6× slower DS Pool
+     *     CPU envelope.
+     *   • 'batch'          — always batch-flush at end of cargo. Highest
+     *     throughput. Bounded cache-loss window of one cargo on
+     *     worker/Redis failure.
+     */
+    tx_cache_mode?: 'auto' | 'sync' | 'batch';
     rate_limit_rpm?: number;
     rate_limit_allow?: string[];
     custom_core_token?: string;
@@ -301,6 +315,7 @@ export const HyperionApiConfigSchema = z.object({
     disable_rate_limit: z.boolean().optional(),
     disable_tx_cache: z.boolean().optional(),
     tx_cache_expiration_sec: z.union([z.number(), z.string()]).optional(),
+    tx_cache_mode: z.enum(['auto', 'sync', 'batch']).optional(),
     rate_limit_rpm: z.number().optional(),
     rate_limit_allow: z.array(z.string()).optional(),
     custom_core_token: z.string().optional(),

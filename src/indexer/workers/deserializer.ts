@@ -4,7 +4,6 @@ import { debugLog, hLog } from "../helpers/common_functions.js";
 import { createHash } from "crypto";
 import { Message, Options } from "amqplib";
 
-import flatstr from 'flatstr';
 
 import { index_queues, RabbitQueueDef } from "../definitions/index-queues.js";
 import { HyperionDelta } from "../../interfaces/hyperion-delta.js";
@@ -48,12 +47,14 @@ interface HyperionLightBlock {
     trx_count: number;
 }
 
-function bufferFromJson(data: any, useFlatstr?: boolean) {
-    if (useFlatstr) {
-        return Buffer.from(flatstr(JSON.stringify(data)));
-    } else {
-        return Buffer.from(JSON.stringify(data));
-    }
+function bufferFromJson(data: any, _useFlatstr?: boolean) {
+    // flatstr was historically used to force V8 to flatten cons-strings
+    // before passing to Buffer.from. On Node 24 with modern V8,
+    // JSON.stringify already produces a flat string, and the explicit
+    // flatten is at best a no-op and at worst adds an extra function call
+    // per AMQP payload. The parameter is kept for API compatibility but
+    // ignored.
+    return Buffer.from(JSON.stringify(data));
 }
 
 export default class MainDSWorker extends HyperionWorker {

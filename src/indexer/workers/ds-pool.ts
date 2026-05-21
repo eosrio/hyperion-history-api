@@ -2,7 +2,6 @@ import { cargo, queue } from "async";
 import { ConsumeMessage, Message } from "amqplib";
 import { join, resolve } from "path";
 import { existsSync, readdirSync, readFileSync } from "fs";
-import flatstr from 'flatstr';
 import { Redis, RedisValue } from "ioredis";
 
 import { debugLog, hLog } from "../helpers/common_functions.js";
@@ -425,28 +424,96 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
+    // Per-batch Redis pipeline accumulator. processTraces appends its
+    // tx-cache writes here instead of doing its own round-trip; processMessages
+    // flushes the whole batch with a single .exec() at the end.
+    //
+    // Hyperion has two operating modes with different cache-visibility needs:
+    //
+    //   • Batch indexing (historical catch-up): no live API traffic, throughput
+    //     wins. We accumulate cache writes across the whole cargo and flush
+    //     once at the end. Cargo-sized flush amortises Redis RTTs.
+    //
+    //   • Live indexing (caught up to chain head): API calls may hit
+    //     `get_transaction(id)` for transactions submitted moments earlier.
+    //     We flush per-trace so the cache is visible as fast as possible.
+    //
+    // The master tags each AMQP message with `live = 'true' | 'false'` based
+    // on which reader produced it (continuous vs parallel). processTraces
+    // reads that flag and flushes immediately for live traces; non-live
+    // traces remain queued for the end-of-batch flush. No config knob is
+    // needed for the common case — it follows the master's reader mode
+    // automatically. Operators who want to override may set
+    // `api.tx_cache_mode: 'sync' | 'batch' | 'auto'` (default 'auto').
+    private redisBatchPipeline: any = null;
+    private redisBatchHasOps = false;
+
     async processMessages(messages: Message[]) {
         const stop = this.profiler.start('process_messages_batch');
         try {
-            for (const data of messages) {
-                const parsedData = JSON.parse(Buffer.from(data.content).toString());
-                await this.processTraces(parsedData, data.properties.headers);
-                // ack message
-                if (this.ch_ready && this.ch) {
-                    try {
-                        this.ch.ack(data);
-                    } catch (e) {
-                        console.log(e);
-                        console.log(parsedData);
-                        console.log(data.properties.headers);
+            this.redisBatchPipeline = this.ioRedisClient
+                ? this.ioRedisClient.pipeline()
+                : null;
+            this.redisBatchHasOps = false;
+
+            try {
+                for (const data of messages) {
+                    const parsedData = JSON.parse(Buffer.from(data.content).toString());
+                    await this.processTraces(parsedData, data.properties.headers);
+                    // ack message
+                    if (this.ch_ready && this.ch) {
+                        try {
+                            this.ch.ack(data);
+                        } catch (e) {
+                            console.log(e);
+                            console.log(parsedData);
+                            console.log(data.properties.headers);
+                        }
+                    } else {
+                        hLog("Channel is not ready!");
                     }
-                } else {
-                    hLog("Channel is not ready!");
                 }
+            } finally {
+                // ALWAYS attempt the end-of-batch flush — even if the for-loop
+                // threw partway through. We want completed traces' cache
+                // writes to persist even when a later trace in the same
+                // batch fails to deserialize. Worst case the flush itself
+                // fails and we log it; the durable AMQP path for those
+                // traces is unaffected.
+                await this.flushRedisBatch();
             }
         } finally {
             stop();
         }
+    }
+
+    private async flushRedisBatch(): Promise<void> {
+        if (this.redisBatchPipeline && this.redisBatchHasOps) {
+            try {
+                const stopRedis = this.profiler.start('redis_batch_exec');
+                await this.redisBatchPipeline.exec();
+                stopRedis();
+            } catch (e) {
+                hLog(e);
+            }
+        }
+        this.redisBatchPipeline = null;
+        this.redisBatchHasOps = false;
+    }
+
+    /**
+     * Resolve the tx-cache flush policy. Returns `true` if the given trace
+     * should be flushed to Redis immediately (per-trace, lower latency) or
+     * `false` if it can ride on the end-of-cargo batch flush (higher
+     * throughput).
+     */
+    private shouldFlushTxCacheNow(live: string | undefined): boolean {
+        const mode = this.conf.api.tx_cache_mode ?? 'auto';
+        if (mode === 'sync') return true;
+        if (mode === 'batch') return false;
+        // 'auto' (default): per-trace flush for live traces, end-of-batch
+        // for historical/parallel traces.
+        return live === 'true';
     }
 
     async processTraces(transaction_trace, extra) {
@@ -532,7 +599,7 @@ export default class DSPoolWorker extends HyperionWorker {
                         }
                     }
 
-                    const payload = Buffer.from(flatstr(JSON.stringify(uniqueAction)));
+                    const payload = Buffer.from(JSON.stringify(uniqueAction));
                     redisPayload.set(uniqueAction.global_sequence.toString(), payload);
                     this.actionDsCounter++;
                     this.pushToActionsQueue(payload, block_num);
@@ -541,13 +608,39 @@ export default class DSPoolWorker extends HyperionWorker {
                     }
                 }
 
-                // save payload to redis
-                if (this.ioRedisClient && !this.conf.api.disable_tx_cache) {
-                    try {
-                        await this.ioRedisClient.hset('trx_' + trx_data.trx_id, redisPayload);
-                        await this.ioRedisClient.expire('trx_' + trx_data.trx_id, this.txCacheExpiration);
-                    } catch (e) {
-                        hLog(e);
+                // Queue tx-cache writes onto the batch-level pipeline.
+                // For batch indexing traces (live !== 'true') the actual
+                // round-trip happens once at the end of the cargo via
+                // processMessages → ~N traces collapse into one Redis
+                // network exchange.
+                //
+                // For live indexing traces (live === 'true'), flush
+                // immediately so the cache is visible for API queries that
+                // may arrive moments after the action — at the cost of
+                // doing the same one-pipeline round-trip per trace that
+                // the experiment-1 per-trace pipeline already proved is
+                // safe and ~half the cost of two separate awaits.
+                if (this.redisBatchPipeline && !this.conf.api.disable_tx_cache && redisPayload.size > 0) {
+                    this.redisBatchPipeline
+                        .hset('trx_' + trx_data.trx_id, redisPayload)
+                        .expire('trx_' + trx_data.trx_id, this.txCacheExpiration);
+                    this.redisBatchHasOps = true;
+
+                    if (this.shouldFlushTxCacheNow(live)) {
+                        // Flush the current pipeline now; create a fresh
+                        // one for any subsequent traces in the same batch.
+                        const stopLive = this.profiler.start('redis_live_flush');
+                        try {
+                            await this.redisBatchPipeline.exec();
+                        } catch (e) {
+                            hLog(e);
+                        } finally {
+                            stopLive();
+                        }
+                        this.redisBatchPipeline = this.ioRedisClient
+                            ? this.ioRedisClient.pipeline()
+                            : null;
+                        this.redisBatchHasOps = false;
                     }
                 }
             }
