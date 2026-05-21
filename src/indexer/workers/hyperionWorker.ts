@@ -14,6 +14,7 @@ import { getHeapStatistics, HeapInfo } from "node:v8";
 import { HyperionActionAct } from "../../interfaces/hyperion-action.js";
 import { Action, APIClient } from "@wharfkit/antelope";
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
+import { WorkerProfiler } from "../helpers/profiler.js";
 
 export abstract class HyperionWorker {
 
@@ -22,15 +23,17 @@ export abstract class HyperionWorker {
     mLoader: HyperionModuleLoader;
     chain: string;
     chainId: string;
-
-    // AMQP Channels
-    ch?: Channel;
-    cch?: ConfirmChannel;
+    profiler: WorkerProfiler;
 
     rpc: APIClient;
     client: Client;
     ship: StateHistorySocket;
 
+    // AMQP Channels
+    ch?: Channel;
+    cch?: ConfirmChannel;
+
+    pushedBlocks = 0;
     cch_ready = false;
     ch_ready = false;
 
@@ -47,6 +50,16 @@ export abstract class HyperionWorker {
         const cm = new ConfigurationModule();
         this.configModule = cm;
         this.conf = cm.config;
+
+        const isProfilingEnabled = !!this.conf.settings?.ds_profiling;
+        const workerRole = process.env.worker_role || 'unknown';
+        const workerId = process.env.worker_id || 'unknown';
+        this.profiler = new WorkerProfiler(workerRole, workerId, isProfilingEnabled);
+        this.profiler.startReporting();
+
+        process.on('SIGINT', () => this.profiler.stopReporting());
+        process.on('SIGTERM', () => this.profiler.stopReporting());
+
         this.filters = cm.filters;
         this.manager = new ConnectionManager(cm);
         this.mLoader = new HyperionModuleLoader(cm);

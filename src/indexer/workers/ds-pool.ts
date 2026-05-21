@@ -200,6 +200,7 @@ export default class DSPoolWorker extends HyperionWorker {
         get_json: boolean,
         fetch_offset: number
     ) {
+        const stopAbiFetch = this.profiler.start('fetch_abi_es');
         try {
             const _includes = ["block", "actions", "tables"];
             if (get_json) {
@@ -234,6 +235,8 @@ export default class DSPoolWorker extends HyperionWorker {
         } catch (e) {
             hLog(e);
             return null;
+        } finally {
+            stopAbiFetch();
         }
     }
 
@@ -331,10 +334,13 @@ export default class DSPoolWorker extends HyperionWorker {
         self.recordContractUsage(action.account);
         const [_status, actionType] = await self.verifyLocalType(action.account, action.name, block_num, "action");
         if (_status && actionType) {
+            const stopAbieos = self.profiler.start('abieos_deserialization');
             try {
                 return self.abieos.binToJson(action.account, actionType, Buffer.from(action.data, 'hex'));
             } catch (e: any) {
                 debugLog(`(abieos) ${action.account}::${action.name} (type: "${actionType}") @ ${block_num} >>> ${e.message}`);
+            } finally {
+                stopAbieos();
             }
         }
         return self.deserializeActionAtBlock(action, block_num);
@@ -400,139 +406,153 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     async deserializeActionAtBlock(action: HyperionActionAct, block_num: number): Promise<any | null> {
-        const contract = await this.getContractAtBlock(action.account, block_num, action.name);
-        if (!contract) {
-            return null;
-        }
+        const stopAntelope = this.profiler.start('antelope_deserialization');
         try {
-            const typedAction = Action.from(action);
-            const decodedData = typedAction.decodeData(contract);
-            return Serializer.objectify(decodedData);
-        } catch (e: any) {
-            debugLog(`(antelope) ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
-            return null;
+            const contract = await this.getContractAtBlock(action.account, block_num, action.name);
+            if (!contract) {
+                return null;
+            }
+            try {
+                const typedAction = Action.from(action);
+                const decodedData = typedAction.decodeData(contract);
+                return Serializer.objectify(decodedData);
+            } catch (e: any) {
+                debugLog(`(antelope) ${action.account}::${action.name} @ ${block_num} >>> ${e.message}`);
+                return null;
+            }
+        } finally {
+            stopAntelope();
         }
     }
 
     async processMessages(messages: Message[]) {
-        for (const data of messages) {
-            const parsedData = JSON.parse(Buffer.from(data.content).toString());
-            await this.processTraces(parsedData, data.properties.headers);
-            // ack message
-            if (this.ch_ready && this.ch) {
-                // console.log(data.fields.deliveryTag);
-                try {
-                    this.ch.ack(data);
-                } catch (e) {
-                    console.log(e);
-                    console.log(parsedData);
-                    console.log(data.properties.headers);
+        const stop = this.profiler.start('process_messages_batch');
+        try {
+            for (const data of messages) {
+                const parsedData = JSON.parse(Buffer.from(data.content).toString());
+                await this.processTraces(parsedData, data.properties.headers);
+                // ack message
+                if (this.ch_ready && this.ch) {
+                    try {
+                        this.ch.ack(data);
+                    } catch (e) {
+                        console.log(e);
+                        console.log(parsedData);
+                        console.log(data.properties.headers);
+                    }
+                } else {
+                    hLog("Channel is not ready!");
                 }
-            } else {
-                hLog("Channel is not ready!");
             }
+        } finally {
+            stop();
         }
     }
 
     async processTraces(transaction_trace, extra) {
-        const { cpu_usage_us, net_usage_words, signatures } = transaction_trace;
-        const { block_num, block_id, producer, ts, inline_count, filtered, live } = extra;
+        const stopTraces = this.profiler.start('process_traces');
+        try {
+            const { cpu_usage_us, net_usage_words, signatures } = transaction_trace;
+            const { block_num, block_id, producer, ts, inline_count, filtered, live } = extra;
 
-        if (transaction_trace.status === 0) {
-            let action_count = 0;
-            const trx_id = transaction_trace['id'].toLowerCase();
-            const _actDataArray: any[] = [];
-            const _processedTraces: ActionTrace[] = [];
-            let action_traces: ActionTrace[] = transaction_trace['action_traces'];
-            const trx_data = {
-                trx_id,
-                block_num,
-                block_id,
-                producer,
-                cpu_usage_us,
-                net_usage_words,
-                ts,
-                inline_count,
-                filtered,
-                signatures
-            };
+            if (transaction_trace.status === 0) {
+                let action_count = 0;
+                const trx_id = transaction_trace['id'].toLowerCase();
+                const _actDataArray: any[] = [];
+                const _processedTraces: ActionTrace[] = [];
+                let action_traces: ActionTrace[] = transaction_trace['action_traces'];
+                const trx_data = {
+                    trx_id,
+                    block_num,
+                    block_id,
+                    producer,
+                    cpu_usage_us,
+                    net_usage_words,
+                    ts,
+                    inline_count,
+                    filtered,
+                    signatures
+                };
 
-            const usageIncluded = { status: false };
+                const usageIncluded = { status: false };
 
-            // perform action flattening if necessary
-            if (this.mLoader.parser?.flatten) {
-                const trace_counters = { trace_index: 0 };
-                action_traces = await this.mLoader.parser.flattenInlineActions(action_traces, 0, trace_counters, 0);
-                action_traces.sort((a, b) => {
-                    return a[1].receipt[1].global_sequence - b[1].receipt[1].global_sequence;
-                });
-            }
+                // perform action flattening if necessary
+                if (this.mLoader.parser?.flatten) {
+                    const trace_counters = { trace_index: 0 };
+                    action_traces = await this.mLoader.parser.flattenInlineActions(action_traces, 0, trace_counters, 0);
+                    action_traces.sort((a, b) => {
+                        return a[1].receipt[1].global_sequence - b[1].receipt[1].global_sequence;
+                    });
+                }
 
-            for (const action_trace of action_traces) {
+                for (const action_trace of action_traces) {
 
-                // print original trace, uncomment below
-                // console.log(trx_id, JSON.stringify(action_trace[1], null, 2));
+                    // print original trace, uncomment below
+                    // console.log(trx_id, JSON.stringify(action_trace[1], null, 2));
 
-                if (action_trace[0].startsWith('action_trace_')) {
-                    const ds_status = await this.mLoader.parser?.parseAction(this,
-                        ts,
-                        action_trace[1],
-                        trx_data,
-                        _actDataArray,
-                        _processedTraces,
-                        transaction_trace,
-                        usageIncluded
-                    );
-                    if (ds_status) {
-                        this.temp_ds_counter++;
-                        action_count++;
-                        // print deserialized trace, uncomment below
-                        // console.log(trx_id, JSON.stringify(action_trace[1], null, 2));
+                    if (action_trace[0].startsWith('action_trace_')) {
+                        const ds_status = await this.mLoader.parser?.parseAction(this,
+                            ts,
+                            action_trace[1],
+                            trx_data,
+                            _actDataArray,
+                            _processedTraces,
+                            transaction_trace,
+                            usageIncluded
+                        );
+                        if (ds_status) {
+                            this.temp_ds_counter++;
+                            action_count++;
+                            // print deserialized trace, uncomment below
+                            // console.log(trx_id, JSON.stringify(action_trace[1], null, 2));
+                        }
+                    }
+
+                    // console.log(action_trace);
+                }
+
+                // Group action traces: merge notification receipts while preserving
+                // genuinely distinct duplicate actions (fixes #148)
+                const _finalTraces = groupActionTraces(_processedTraces);
+
+                // Submit Actions after deduplication
+
+                const redisPayload = new Map<string, RedisValue>();
+
+                for (const uniqueAction of _finalTraces) {
+
+                    cleanActionTrace(uniqueAction);
+
+                    // remove contract console logs by default
+                    if (!this.conf.features.contract_console) {
+                        delete uniqueAction.console;
+                    } else {
+                        if (uniqueAction.console) {
+                            console.log(uniqueAction.block_num, uniqueAction.act.account, uniqueAction.act.name, uniqueAction.console);
+                        }
+                    }
+
+                    const payload = Buffer.from(flatstr(JSON.stringify(uniqueAction)));
+                    redisPayload.set(uniqueAction.global_sequence.toString(), payload);
+                    this.actionDsCounter++;
+                    this.pushToActionsQueue(payload, block_num);
+                    if (live === 'true') {
+                        this.pushToActionStreamingQueue(payload, uniqueAction);
                     }
                 }
 
-                // console.log(action_trace);
-            }
-
-            // Group action traces: merge notification receipts while preserving
-            // genuinely distinct duplicate actions (fixes #148)
-            const _finalTraces = groupActionTraces(_processedTraces);
-
-            // Submit Actions after deduplication
-
-            const redisPayload = new Map<string, RedisValue>();
-
-            for (const uniqueAction of _finalTraces) {
-
-                cleanActionTrace(uniqueAction);
-
-                // remove contract console logs by default
-                if (!this.conf.features.contract_console) {
-                    delete uniqueAction.console;
-                } else {
-                    if (uniqueAction.console) {
-                        console.log(uniqueAction.block_num, uniqueAction.act.account, uniqueAction.act.name, uniqueAction.console);
+                // save payload to redis
+                if (this.ioRedisClient && !this.conf.api.disable_tx_cache) {
+                    try {
+                        await this.ioRedisClient.hset('trx_' + trx_data.trx_id, redisPayload);
+                        await this.ioRedisClient.expire('trx_' + trx_data.trx_id, this.txCacheExpiration);
+                    } catch (e) {
+                        hLog(e);
                     }
                 }
-
-                const payload = Buffer.from(flatstr(JSON.stringify(uniqueAction)));
-                redisPayload.set(uniqueAction.global_sequence.toString(), payload);
-                this.actionDsCounter++;
-                this.pushToActionsQueue(payload, block_num);
-                if (live === 'true') {
-                    this.pushToActionStreamingQueue(payload, uniqueAction);
-                }
             }
-
-            // save payload to redis
-            if (this.ioRedisClient && !this.conf.api.disable_tx_cache) {
-                try {
-                    await this.ioRedisClient.hset('trx_' + trx_data.trx_id, redisPayload);
-                    await this.ioRedisClient.expire('trx_' + trx_data.trx_id, this.txCacheExpiration);
-                } catch (e) {
-                    hLog(e);
-                }
-            }
+        } finally {
+            stopTraces();
         }
     }
 

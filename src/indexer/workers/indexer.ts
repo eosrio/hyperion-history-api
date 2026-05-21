@@ -34,35 +34,40 @@ export default class IndexerWorker extends HyperionWorker {
         this.indexQueue = cargo((payload: ConsumeMessage[], callback) => {
 
             if (this.ch_ready && payload && process.env.type && this.ch) {
+                const stopDb = this.profiler.start('db_indexing');
+                const doneCallback = (indexed_size?: number) => {
+                    stopDb();
+                    if (indexed_size) {
+                        this.temp_indexed_count += indexed_size;
+                    }
+                    try {
+                        callback();
+                    } catch (e: any) {
+                        hLog(`${e.message} on ${process.env.type}`);
+                    }
+                };
 
                 if (this.mongoRoutes.routes[process.env.type]) {
                     // call route type
                     (this.mongoRoutes.routes[process.env.type] as any)(payload, (indexed_size?: number) => {
-                        if (indexed_size) {
-                            this.temp_indexed_count += indexed_size;
-                        }
-                        // console.log('MongoDB indexed: ', indexed_size, ' on ', process.env.type);
                         try {
                             this.ch?.ackAll();
-                            callback();
                         } catch (e: any) {
                             hLog(`${e.message} on ${process.env.type}`);
                         }
+                        doneCallback(indexed_size);
                     });
                 } else if (this.esRoutes.routes[process.env.type]) {
                     // call route type
                     (this.esRoutes.routes[process.env.type] as RouteFunction)(payload, this.ch, (indexed_size?: number) => {
-                        if (indexed_size) {
-                            this.temp_indexed_count += indexed_size;
-                        }
-                        // console.log('ES indexed: ', indexed_size, ' on ', process.env.type);
-                        try {
-                            callback();
-                        } catch (e: any) {
-                            hLog(`${e.message} on ${process.env.type}`);
-                        }
+                        doneCallback(indexed_size);
                     });
+                } else {
+                    stopDb();
+                    callback();
                 }
+            } else {
+                callback();
             }
 
         }, this.conf.prefetch.index);

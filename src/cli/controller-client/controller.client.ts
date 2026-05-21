@@ -364,6 +364,25 @@ export class IndexerController {
         );
     }
 
+    /**
+     * Request profiling metrics from all workers via the indexer master process.
+     */
+    async getProfilingReport(): Promise<any> {
+        return this._sendRequestAndAwaitResponse<any>(
+            { event: 'get_profiling' },
+            (message, resolve) => {
+                if (message.event === 'profiling_report_response') {
+                    resolve(message.data);
+                    return true;
+                }
+                return false;
+            },
+            'profiling report response',
+            10000,
+            () => { /* ignore parse errors */ }
+        );
+    }
+
     async reloadContractStateConfig(contractName: string): Promise<any> {
         return this._sendRequestAndAwaitResponse<any>(
             { event: 'reload_contract_config', data: { contract: contractName } },

@@ -23,6 +23,9 @@ export default class HyperionParser extends BaseParser {
         usageIncluded
     ): Promise<boolean> {
 
+        const stopParseAction = worker.profiler.start('parse_action');
+        try {
+
         // check filters
         if (this.checkBlacklist(action.act)) {
             return false;
@@ -74,6 +77,9 @@ export default class HyperionParser extends BaseParser {
         }
 
         return true;
+        } finally {
+            stopParseAction();
+        }
     }
 
     public async parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void> {
@@ -81,11 +87,13 @@ export default class HyperionParser extends BaseParser {
 
             let allowProcessing = true;
 
+            const stopResult = worker.profiler.start('deserialize_result');
             const ds_msg = Serializer.decode({
                 data: message.content,
                 type: 'result',
                 abi: worker.shipABI
             }) as [string, GetBlocksResultV0];
+            stopResult();
 
             if (!ds_msg) {
                 if (worker.ch && worker.ch_ready) {
@@ -100,7 +108,9 @@ export default class HyperionParser extends BaseParser {
             let deltas: any[] = [];
 
             if (res.block && res.block.length) {
+                const stopBlock = worker.profiler.start('deserialize_block');
                 block = worker.deserializeNative('signed_block', res.block.array);
+                stopBlock();
                 if (block === null) {
                     hLog('incompatible block');
                     process.exit(1);
@@ -131,19 +141,23 @@ export default class HyperionParser extends BaseParser {
             }
 
             if (allowProcessing && res.traces && res.traces.length) {
+                const stopTraces = worker.profiler.start('deserialize_traces');
                 traces = worker.deserializeNative('transaction_trace[]', res.traces.array);
+                stopTraces();
                 if (!traces) {
                     hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res['this_block']['block_num']}`);
                 }
             }
 
             if (allowProcessing && res.deltas && res.deltas.length) {
+                const stopDeltas = worker.profiler.start('deserialize_deltas');
                 const decodedDeltas = Serializer.decode({
                     data: res.deltas.array,
                     type: 'table_delta[]',
                     abi: worker.shipABI
                 });
                 deltas = Serializer.objectify(decodedDeltas);
+                stopDeltas();
                 if (!deltas) {
                     hLog(`[WARNING] table_delta[] deserialization failed on block ${res['this_block']['block_num']}`);
                 }
@@ -151,7 +165,9 @@ export default class HyperionParser extends BaseParser {
 
             let result;
             try {
+                const stopProcess = worker.profiler.start('process_block');
                 result = await worker.processBlock(res, block, traces, deltas);
+                stopProcess();
                 if (result) {
                     const evPayload = {
                         event: 'consumed_block',

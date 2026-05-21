@@ -84,6 +84,7 @@ export class HyperionMaster {
     private dsPoolMap: Map<number, Worker> = new Map();
     public globalUsageMap = {};
     private totalContractHits = 0;
+    public profilingData: Record<string, Record<string, { totalTimeMs: number; count: number }>> = {};
 
     // producer monitoring
     lastProducedBlockNum = 0;
@@ -408,6 +409,22 @@ export class HyperionMaster {
             add_index: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.size) {
                     this.indexerMonitor.indexedObjects += msg.size;
+                }
+            },
+            profiling_report: (_worker: Worker, msg: WorkerMessage) => {
+                if (msg.worker_role && msg.worker_id !== undefined && msg.worker_id !== null && msg.metrics) {
+                    const key = `${msg.worker_role}:${msg.worker_id}`;
+                    if (!this.profilingData[key]) {
+                        this.profilingData[key] = {};
+                    }
+                    const metrics = msg.metrics as Record<string, { totalTimeMs: number; count: number }>;
+                    for (const mName in metrics) {
+                        if (!this.profilingData[key][mName]) {
+                            this.profilingData[key][mName] = { totalTimeMs: 0, count: 0 };
+                        }
+                        this.profilingData[key][mName].totalTimeMs += metrics[mName].totalTimeMs;
+                        this.profilingData[key][mName].count += metrics[mName].count;
+                    }
                 }
             },
             ds_report: (_worker: Worker, msg: WorkerMessage) => {
@@ -2086,5 +2103,9 @@ export class HyperionMaster {
                 hLog(`Contract state is enabled but no contracts were defined!`);
             }
         }
+    }
+
+    getProfilingReport(): Record<string, Record<string, { totalTimeMs: number; count: number }>> {
+        return this.profilingData;
     }
 }

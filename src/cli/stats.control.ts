@@ -457,3 +457,84 @@ export async function printHeapStats(chain: string, host?: string) {
         indexerController.close();
     }
 }
+
+export async function printProfilingReport(chain: string, host?: string) {
+    const indexerController = new IndexerController(chain, host);
+    try {
+        const report = await indexerController.getProfilingReport();
+        console.log('\n⏱️  Execution Profiling Report for Chain:', chain.toUpperCase());
+        console.log('='.repeat(90));
+
+        if (!report || Object.keys(report).length === 0) {
+            console.log('❌ No profiling data available.');
+            console.log('   This might indicate that:');
+            console.log('   • Profiling is not enabled in settings (ds_profiling: true)');
+            console.log('   • The indexer is starting up or has not processed any blocks yet');
+            return;
+        }
+
+        console.log('Worker Name/ID'.padEnd(25) + 
+                    'Operation/Metric'.padEnd(25) + 
+                    'Count'.padStart(10) + 
+                    'Total Time'.padStart(15) + 
+                    'Avg Time'.padStart(15));
+        console.log('-'.repeat(90));
+
+        // Sort workers alphabetically
+        const sortedWorkers = Object.keys(report).sort();
+
+        for (const workerKey of sortedWorkers) {
+            const metrics = report[workerKey];
+            const sortedMetrics = Object.keys(metrics).sort();
+            for (const mName of sortedMetrics) {
+                const metric = metrics[mName];
+                const count = metric.count;
+                const totalTime = metric.totalTimeMs;
+                const avgTime = count > 0 ? (totalTime / count) : 0;
+
+                const workerDisplay = workerKey.padEnd(25);
+                const operationDisplay = mName.padEnd(25);
+                const countDisplay = count.toLocaleString().padStart(10);
+                const totalDisplay = `${totalTime.toFixed(2)} ms`.padStart(15);
+                const avgDisplay = `${avgTime.toFixed(4)} ms`.padStart(15);
+
+                console.log(workerDisplay + operationDisplay + countDisplay + totalDisplay + avgDisplay);
+            }
+        }
+
+        console.log('='.repeat(90));
+        console.log('\n🔍 METRICS GUIDE (metrics nest — child times are included in parent totals):');
+        console.log('');
+        console.log('   DS Master (deserializer):');
+        console.log('     process_messages_batch ⊃ process_block ⊃ process_deltas');
+        console.log('       • process_messages_batch: whole AMQP cargo batch from ship');
+        console.log('       • deserialize_result: ship message envelope decode (JS)');
+        console.log('       • deserialize_block: native signed_block decode');
+        console.log('       • deserialize_traces: native transaction_trace[] decode');
+        console.log('       • deserialize_deltas: table_delta[] decode + objectify');
+        console.log('       • process_block: master processBlock body (post-decode work)');
+        console.log('       • process_deltas: extracting / mapping table delta rows');
+        console.log('');
+        console.log('   DS Pool (action workers):');
+        console.log('     process_messages_batch ⊃ process_traces ⊃ parse_action ⊃ deserialize_action_data');
+        console.log('       • process_messages_batch: AMQP cargo batch from ds_pool queue');
+        console.log('       • process_traces: flatten + per-action loop + redis tx cache');
+        console.log('       • parse_action: full per-action pipeline (filter + decode + extras)');
+        console.log('       • deserialize_action_data: action data decoding incl. retries + extras');
+        console.log('       • abieos_deserialization: native binary-to-JSON via node-abieos');
+        console.log('       • antelope_deserialization: JS antelope fallback');
+        console.log('       • fetch_abi_es: Elasticsearch ABI lookup (IO-bound; spikes → ES slow)');
+        console.log('');
+        console.log('   Indexer:');
+        console.log('       • db_indexing: bulk write to Elasticsearch/MongoDB via route');
+        console.log('');
+        console.log('   Tip: parents (process_*_batch) bound everything else — if a child sums to');
+        console.log('        most of its parent, the bottleneck is there; otherwise look at the');
+        console.log('        gap (queueing, AMQP, GC) or check fetch_abi_es / db_indexing for IO.');
+        console.log('');
+    } catch (error: any) {
+        console.error('❌ Error fetching profiling report:', error.message);
+    } finally {
+        indexerController.close();
+    }
+}

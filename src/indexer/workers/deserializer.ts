@@ -252,7 +252,12 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     async processMessages(messages: Message[]) {
-        await this.mLoader.parser?.parseMessage(this, messages);
+        const stop = this.profiler.start('process_messages_batch');
+        try {
+            await this.mLoader.parser?.parseMessage(this, messages);
+        } finally {
+            stop();
+        }
     }
 
     private initConsumer() {
@@ -1638,63 +1643,68 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     async processDeltas(deltas: [string, TableDelta][], block_num: number, block_ts: string, block_id: string) {
-        const deltaStruct = extractDeltaStruct(deltas);
+        const stopDeltas = this.profiler.start('process_deltas');
+        try {
+            const deltaStruct = extractDeltaStruct(deltas);
 
-        for (const key in deltaStruct) {
-            if (this.deltaStructHandlers[key] && deltaStruct.hasOwnProperty(key)) {
-                if (this.conf.indexer.abi_scan_mode && key !== 'account') {
-                    continue;
-                }
-                if (deltaStruct[key].length > 0) {
-                    for (const row of deltaStruct[key]) {
-                        let data = this.deserializeNative(key, row.data);
+            for (const key in deltaStruct) {
+                if (this.deltaStructHandlers[key] && deltaStruct.hasOwnProperty(key)) {
+                    if (this.conf.indexer.abi_scan_mode && key !== 'account') {
+                        continue;
+                    }
+                    if (deltaStruct[key].length > 0) {
+                        for (const row of deltaStruct[key]) {
+                            let data = this.deserializeNative(key, row.data);
 
-                        // TODO: fallback deserialization
+                            // TODO: fallback deserialization
 
-                        // if (!data) {
-                        //     try {
-                        //         const type = this.types.get(key);
-                        //         if (type) {
-                        //             data = type.deserialize(
-                        //                 new Serialize.SerialBuffer({
-                        //                     textEncoder: this.txEnc,
-                        //                     textDecoder: this.txDec,
-                        //                     array: Buffer.from(row.data, 'hex')
-                        //                 }),
-                        //                 new Serialize.SerializerState({
-                        //                     bytesAsUint8Array: true
-                        //                 }));
-                        //         }
-                        //     } catch (e: any) {
-                        //         hLog(`Delta struct [${key}] deserialization error: ${e.message}`);
-                        //         hLog(row.data);
-                        //     }
-                        // }
+                            // if (!data) {
+                            //     try {
+                            //         const type = this.types.get(key);
+                            //         if (type) {
+                            //             data = type.deserialize(
+                            //                 new Serialize.SerialBuffer({
+                            //                     textEncoder: this.txEnc,
+                            //                     textDecoder: this.txDec,
+                            //                     array: Buffer.from(row.data, 'hex')
+                            //                 }),
+                            //                 new Serialize.SerializerState({
+                            //                     bytesAsUint8Array: true
+                            //                 }));
+                            //         }
+                            //     } catch (e: any) {
+                            //         hLog(`Delta struct [${key}] deserialization error: ${e.message}`);
+                            //         hLog(row.data);
+                            //     }
+                            // }
 
-                        if (data) {
-                            try {
-                                // convert present boolean to byte (for pre-2.1 compatibility)
-                                if (row.present === true) {
-                                    row.present = 1;
-                                } else if (row.present === false) {
-                                    row.present = 0;
+                            if (data) {
+                                try {
+                                    // convert present boolean to byte (for pre-2.1 compatibility)
+                                    if (row.present === true) {
+                                        row.present = 1;
+                                    } else if (row.present === false) {
+                                        row.present = 0;
+                                    }
+                                    await this.deltaStructHandlers[key](
+                                        data[1],
+                                        block_num,
+                                        block_ts,
+                                        row,
+                                        block_id
+                                    );
+                                } catch (e: any) {
+                                    hLog(`Delta struct [${key}] processing error: ${e.message}`);
+                                    // hLog(e);
+                                    // hLog(data[1]);
                                 }
-                                await this.deltaStructHandlers[key](
-                                    data[1],
-                                    block_num,
-                                    block_ts,
-                                    row,
-                                    block_id
-                                );
-                            } catch (e: any) {
-                                hLog(`Delta struct [${key}] processing error: ${e.message}`);
-                                // hLog(e);
-                                // hLog(data[1]);
                             }
                         }
                     }
                 }
             }
+        } finally {
+            stopDeltas();
         }
     }
 

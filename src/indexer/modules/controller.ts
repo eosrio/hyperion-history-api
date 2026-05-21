@@ -320,20 +320,27 @@ export class LocalHyperionController {
                                     }));
                                     break;
                                 }
-                                case 'get_heap': {
-                                    this.master.requestDataFromWorkers(
-                                        {
-                                            event: 'request_v8_heap_stats'
-                                        },
-                                        'v8_heap_report'
-                                    ).then((value) => {
-                                        ws.send(JSON.stringify({
-                                            event: 'v8_heap_report',
-                                            data: value
-                                        }));
-                                    });
-                                    break;
-                                }
+                                 case 'get_heap': {
+                                     this.master.requestDataFromWorkers(
+                                         {
+                                             event: 'request_v8_heap_stats'
+                                         },
+                                         'v8_heap_report'
+                                     ).then((value) => {
+                                         ws.send(JSON.stringify({
+                                             event: 'v8_heap_report',
+                                             data: value
+                                         }));
+                                     });
+                                     break;
+                                 }
+                                 case 'get_profiling': {
+                                     ws.send(JSON.stringify({
+                                         event: 'profiling_report_response',
+                                         data: this.master.getProfilingReport()
+                                     }));
+                                     break;
+                                 }
                                 case 'reload_contract_config': {
                                     const contract = message.data?.contract;
                                     if (!contract) {

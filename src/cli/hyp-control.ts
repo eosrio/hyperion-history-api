@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { request } from 'undici';
 import { IndexerController } from './controller-client/controller.client.js';
-import { printHeapStats, printMemoryUsage, printUsageMap } from './stats.control.js';
+import { printHeapStats, printMemoryUsage, printUsageMap, printProfilingReport } from './stats.control.js';
 import { AccountSynchronizer } from './sync-modules/sync-accounts.js';
 import { ConfigLoadError, ContractStateSynchronizer } from './sync-modules/sync-contract-state.js';
 import { ProposalSynchronizer } from './sync-modules/sync-proposals.js';
@@ -645,6 +645,18 @@ async function getScalingInfo(chain: string, host?: string) {
                 await printHeapStats(chain, args.host);
             } catch (error: any) {
                 console.error('Error fetching heap stats:', error.message);
+            }
+        });
+
+    stats
+        .command('get-profiling <chain>')
+        .description('Get execution profiling report from all indexer workers')
+        .option('-h, --host <host>', 'Optional host for the indexer controller')
+        .action(async (chain: string, args: any) => {
+            try {
+                await printProfilingReport(chain, args.host);
+            } catch (error: any) {
+                console.error('Error fetching profiling report:', error.message);
             }
         });
 

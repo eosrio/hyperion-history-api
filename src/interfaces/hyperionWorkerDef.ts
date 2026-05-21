@@ -44,6 +44,8 @@ export interface WorkerMessage {
     block_num?: number;
     block_ts?: string;
     mId?: string;
+    worker_role?: string;
+    metrics?: any;
 }
 
 export type WorkerMessageHandler = (worker: Worker, msg: WorkerMessage) => Promise<void> | void;

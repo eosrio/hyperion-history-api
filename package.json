@@ -27,7 +27,7 @@
   "dependencies": {
     "@elastic/elasticsearch": "8.19.1",
     "@eosrio/hyperion-plugin-core": "^0.1.0",
-    "@eosrio/node-abieos": "4.1.0-f7d5b45",
+    "@eosrio/node-abieos": "4.2.0-f7d5b45",
     "@fastify/autoload": "6.3.1",
     "@fastify/cors": "11.2.0",
     "@fastify/formbody": "8.0.2",

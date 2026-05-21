@@ -156,6 +156,8 @@ export abstract class BaseParser {
     }
 
     async deserializeActionData(worker: DSPoolWorker, action: ActionTrace, trx_data) {
+        const stopDsActionData = worker.profiler.start('deserialize_action_data');
+        try {
         let act = action.act;
         const original_act = Object.assign({}, act);
         let ds_act: any | null = null;
@@ -226,6 +228,9 @@ export abstract class BaseParser {
                     message: error_message
                 }
             });
+        }
+        } finally {
+            stopDsActionData();
         }
     }
 
