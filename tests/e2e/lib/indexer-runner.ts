@@ -222,7 +222,7 @@ export class IndexerRunner {
                 allow_custom_abi: false,
                 rate_monitoring: true,
                 max_ws_payload_mb: 256,
-                ds_profiling: false,
+                ds_profiling: true,
                 auto_mode_switch: true,
                 use_global_agent: false,
                 index_partition_size: 10000000,

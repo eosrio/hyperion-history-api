@@ -94,7 +94,7 @@ COPY nodeos/genesis.json /config/genesis.json
 
 # Bootstrap script for first-run initialization
 COPY nodeos/start.sh /start.sh
-RUN chmod +x /start.sh
+RUN tr -d '\r' < /start.sh > /start.sh.tmp && mv /start.sh.tmp /start.sh && chmod +x /start.sh
 
 EXPOSE 8888 8080
 

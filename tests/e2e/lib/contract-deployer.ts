@@ -49,17 +49,24 @@ export class ContractDeployer {
         };
     }
 
-    /**
-     * Run a cleos command inside the nodeos container.
-     */
     private cleos(args: string): string {
-        const cmd = `docker exec ${CONTAINER} cleos -u http://127.0.0.1:8888 ${args}`;
+        // Run cleos via `bash -lc` inside the container so single-quoted JSON
+        // payloads (e.g. push action '["..."]') are parsed by Linux sh, not
+        // by Windows cmd.exe (which strips the apostrophes and causes
+        // "Unexpected char '39'" JSON parse errors on the chain side).
+        const inner = `cleos -u http://127.0.0.1:8888 ${args}`;
+        const escaped = inner.replace(/"/g, '\\"');
+        const cmd = `docker exec ${CONTAINER} bash -lc "${escaped}"`;
         try {
             const result = execSync(cmd, {
-                stdio: this.config.verbose ? 'inherit' : 'pipe',
+                stdio: 'pipe',
                 timeout: 30000,
             });
-            return result?.toString().trim() ?? '';
+            const output = result?.toString().trim() ?? '';
+            if (this.config.verbose && output) {
+                console.log(output);
+            }
+            return output;
         } catch (err: any) {
             const output = err.stderr?.toString() ?? err.stdout?.toString() ?? err.message;
             if (this.config.verbose) {
@@ -150,9 +157,17 @@ export class ContractDeployer {
         console.log('   ⚙️  Activating PREACTIVATE_FEATURE...');
         try {
             // Activate PREACTIVATE_FEATURE via producer API
-            execSync(`docker exec ${CONTAINER} curl -sf -X POST http://127.0.0.1:8888/v1/producer/schedule_protocol_feature_activations -d '{"protocol_features_to_activate": ["0ec7e080177b2c02b278d5088611686b49d739925a92d9bfcacd7fc6b74053bd"]}'`, {
-                stdio: this.config.verbose ? 'inherit' : 'pipe',
+            const response = await fetch(`${this.endpoints.nodeosHttp}/v1/producer/schedule_protocol_feature_activations`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    protocol_features_to_activate: ["0ec7e080177b2c02b278d5088611686b49d739925a92d9bfcacd7fc6b74053bd"]
+                }),
+                headers: { 'Content-Type': 'application/json' }
             });
+            if (!response.ok) {
+                const body = await response.text();
+                throw new Error(`HTTP ${response.status}: ${body}`);
+            }
         } catch (err: any) {
             if (!this.isExpectedError(err.message)) {
                 console.warn(`   ⚠️  PREACTIVATE_FEATURE activation failed: ${err.message}`);
@@ -170,10 +185,11 @@ export class ContractDeployer {
         // Dynamically activate ALL supported protocol features in dependency order
         console.log('   ⚙️  Activating all supported protocol features...');
         try {
-            const featuresJson = execSync(
-                `docker exec ${CONTAINER} curl -sf http://127.0.0.1:8888/v1/producer/get_supported_protocol_features`,
-                { stdio: 'pipe' }
-            ).toString();
+            const response = await fetch(`${this.endpoints.nodeosHttp}/v1/producer/get_supported_protocol_features`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const featuresJson = await response.text();
             const features = JSON.parse(featuresJson) as Array<{
                 feature_digest: string;
                 specification: Array<{ name: string; value: string }>;

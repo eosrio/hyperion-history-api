@@ -61,8 +61,13 @@ export class LoadGenerator {
      * Run a cleos command inside the nodeos container and return the output.
      */
     private cleos(args: string): string {
-        // Merge stderr into stdout — cleos prints the execution trace to stderr
-        const cmd = `docker exec ${CONTAINER} cleos -u http://127.0.0.1:8888 ${args} 2>&1`;
+        // Run cleos via `bash -lc` inside the container so single-quoted JSON
+        // payloads (e.g. push action '[...]') are parsed by Linux sh, not by
+        // Windows cmd.exe — otherwise the apostrophes are passed through
+        // literally and cleos rejects the data with a JSON parse error.
+        const inner = `cleos -u http://127.0.0.1:8888 ${args} 2>&1`;
+        const escaped = inner.replace(/"/g, '\\"');
+        const cmd = `docker exec ${CONTAINER} bash -lc "${escaped}"`;
         try {
             const result = execSync(cmd, { stdio: 'pipe', timeout: 30000 });
             return result?.toString().trim() ?? '';
