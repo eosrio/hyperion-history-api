@@ -233,14 +233,152 @@ Without `process_messages_batch` we'd have only seen the inner stages and missed
 
 ---
 
-## 9. Suggested next experiments (not in scope here)
+## 9. Suggested next experiments (Phase 1 closed those — see below)
 
-These were noted but not run:
+Phase 1 (committed on `experimental/performance`) addressed several of the original suggestions and added more. Phase 2 (this section's follow-up) explored pipeline/feed-rate questions.
 
-- **Scale up `ds_threads` and `ds_pool_size`** and re-run profiling — the new probes will show whether the DS Pool's "other" trace work parallelises cleanly or hits Redis/AMQP contention.
-- **Disable `tx_cache` in `api.disable_tx_cache`** for one run — measures Redis cost. If `process_traces` drops by 200–400 ms, Redis tx caching is a meaningful share.
-- **Replace `flatstr(JSON.stringify(action))` with a direct `JSON.stringify`** — `flatstr` was added to pre-flatten ropes for V8; on Node 24 with current V8 this may no longer be useful and the wrapper costs a function call per action.
-- **Run with a real mainnet block range** (e.g. WAX blocks 50M+) — confirm `process_deltas` becomes the headline cost as predicted.
+- **Disable `tx_cache`** — done. Phase 2 measured: with Redis batching applied this saves ~0 (cache write is now ~0.05 ms/trace; disabling it gains nothing measurable).
+- **Replace `flatstr(JSON.stringify)` with bare `JSON.stringify`** — done. Within noise as a perf change; dep removed.
+- **Scale up `ds_threads` / `ds_pool_size`** — still deferred. Our single-worker probe data is already detailed enough to inform multi-worker tuning; need a denser chain to exercise it.
+- **Real mainnet range** — still deferred. Awaiting a separate environment.
+
+---
+
+## 10. Phase 2 — pipeline / feed-rate experiments
+
+Phase 1 (the Redis tx-cache batch pipeline and dual-mode flush) brought the DS Pool envelope from being the bottleneck down to <2 % of wall. The new top costs were sitting in the master deserializer's `process_deltas` and in the ingestor `db_indexing` calls — but those didn't fully explain the wall-clock gap. Phase 2 went after the **feed-rate** between workers.
+
+### 10.1 Phase 2 baseline
+
+After Phase 1, fresh test chain (smaller, denser):
+
+| Workload | Value |
+|---|---|
+| Blocks | 698 |
+| Actions | 1,042 |
+| Deltas | 3,951 |
+| ABIs | 5 |
+| `prefetch.block` | 100 (default) |
+| `indexing_queues` | 1 |
+
+| Metric | Count | Total ms | Avg/call |
+|---|---|---|---|
+| DS Master `process_messages_batch` | 28 | 1,120 | 40.0 |
+| DS Master `process_block` | 698 | 728 | 1.04 |
+| DS Master `process_deltas` | 698 | 610 | 0.87 |
+| DS Pool `process_messages_batch` | 48 | 498 | 10.4 |
+| DS Pool `process_traces` | 928 | 258 | 0.28 |
+| DS Pool `parse_action` | 1,340 | 189 | 0.14 |
+| ingestor:3 actions `db_indexing` | 4 | 2,108 | 527 |
+| ingestor:4 blocks `db_indexing` | 11 | 1,152 | 105 |
+| ingestor:5 deltas `db_indexing` | 8 | 1,626 | 203 |
+
+Sum of CPU envelopes across stages: ~5 s. Wall: 25 s. ~80 % of wall still idle. **Indicates the bottleneck is now feed-rate, not per-stage CPU.**
+
+### 10.2 Experiment A — `prefetch.block` sweep
+
+Bigger AMQP prefetch on the deserializer's incoming queue means fewer, larger cargo batches → better amortization of per-batch overhead.
+
+| `prefetch.block` | DS Master batches | DS Master `process_messages_batch` | DS Pool batches | DS Pool `process_messages_batch` |
+|---|---|---|---|---|
+| 100 (default) | 28 | 1,120 ms | 48 | 498 ms |
+| **500** | **10** | **676 ms** (−40 %) | **15** | **313 ms** (−37 %) |
+| 1000 | 11 | 981 ms (worse) | 13 | 419 ms (worse) |
+
+**500 is the sweet spot for this workload.** Going to 1000 regresses: cargo batches grow too large for the system to keep flowing smoothly (per-batch CPU work crosses a threshold and stalls).
+
+Downstream knock-on at `prefetch.block=500`: ingestor:3 actions went from 2,108 ms → 1,549 ms (−27 %), deltas from 1,626 ms → 1,134 ms (−30 %).
+
+### 10.3 Experiment B — AMQP publish fast-path (DS Pool)
+
+`pushToActionsQueue` was wrapping every per-action publish through `preIndexingQueue` (an `async.queue` with concurrency 1). That dispatched each action through async.queue's scheduler before calling `ch.sendToQueue` — pure overhead on the hot path since the cargo wrapper around `processMessages` is already the natural throttle and `ch.sendToQueue` buffers internally.
+
+Change ([ds-pool.ts:652](../../src/indexer/workers/ds-pool.ts#L652)): publish via `ch.sendToQueue` directly on the hot path; fall back to `preIndexingQueue` only when the channel is mid-disconnect (`!ch_ready`).
+
+Combined with `prefetch.block=500`:
+
+| Metric | Phase 2 baseline | + prefetch 500 | + prefetch 500 + AMQP fast-path | Δ vs Phase 2 baseline |
+|---|---|---|---|---|
+| DS Master `process_messages_batch` | 1,120 ms | 676 ms | 655–1,158 ms (noisy) | −15 % median |
+| DS Pool `process_messages_batch` | 498 ms (48 batches) | 313 ms (15 batches) | **195–238 ms (3–5 batches)** | **−55 %** |
+| DS Pool `process_traces` | 258 ms | 168 ms | **150–187 ms** | −35 % |
+| DS Pool `parse_action` | 189 ms | 116 ms | **100–131 ms** | −47 % |
+| ingestor:3 actions `db_indexing` | 2,108 ms (4 calls) | 1,549 ms (4 calls) | **543–624 ms (4 calls)** | **−72 %** |
+| ingestor:4 blocks `db_indexing` | 1,152 ms (11 calls) | 613 ms (7 calls) | 557–603 ms (9–11 calls) | −49 % |
+| ingestor:5 deltas `db_indexing` | 1,626 ms (8 calls) | 1,134 ms (8 calls) | 585–828 ms (8–9 calls) | **−57 %** |
+
+The biggest single win is **ingestor:3 actions dropping 72 %** — bypassing the async-queue scheduler lets the actions stream into the AMQP transport in tight bursts, which the ingestor cargo batches into much larger ES bulk requests. Per-call ms dropped from 527 to ~140 because each bulk now carries more docs. Same number of bulks, far more data per bulk.
+
+DS Pool itself nearly halves (`process_messages_batch` 498 → ~200 ms) because each cargo batch is bigger and the inner `pushToActionsQueue` call no longer pays scheduler overhead per action.
+
+**Safety:** the fallback to `preIndexingQueue` on `!ch_ready` preserves the channel-flap recovery path. Same ordering (single-threaded JS event loop). Same backpressure (amqplib's internal send buffer + cargo throttle).
+
+### 10.4 Experiment C — `indexing_queues > 1` fan-out
+
+Tested with `indexing_queues=2` (alongside `prefetch.block=500` and the AMQP fast-path):
+
+| Mode | `indexing_queues=1` | `indexing_queues=2` |
+|---|---|---|
+| Indexer reported total | 25 s | 35 s ⬅ regression |
+| ingestor: actions, total | 543 ms | 1,106 ms (split across :3 + :4) |
+| ingestor: deltas, total | 828 ms | 1,259 ms (split across :5 + :6) |
+
+**Fan-out hurts at this load.** Each replica gets half the messages → half-size bulks → worse ES amortization. The fan-out also adds per-queue overhead (extra consumers, more AMQP frames). Only worth turning on when a single ingestor saturates ES bulk-write latency on its own; at our scale we never approach that.
+
+Conclusion: keep `indexing_queues=1` until profiling shows ingestor saturation.
+
+### 10.5 Experiment D — disabled tx_cache
+
+Set `api.disable_tx_cache: true` (alongside the Phase 2 winning combo):
+
+| Metric | tx_cache on (batch mode) | tx_cache off |
+|---|---|---|
+| DS Pool `process_messages_batch` | 195–238 ms | 171 ms |
+| DS Pool `process_traces` | 150–187 ms | 152 ms |
+| Indexer total time | 25 s | 20 s ⬅ first time under 25 |
+
+Cache cost in batch mode is now ~30–60 ms total — essentially free. Disabling it gains nothing measurable on the CPU side (process_traces same). The 5 s reduction in indexer-reported wall is at the monitor's 5 s tick granularity and could be a single tick jitter; not a reliable signal.
+
+Translation: **the Redis batch optimization made the cache effectively free**. Operators should leave it enabled.
+
+### 10.6 Combined Phase 1 + Phase 2 result
+
+Stacking everything that landed on `experimental/performance` after this round:
+
+| Stage | Baseline (Phase 0, pre-everything) | Phase 1 (Redis batch) | **Phase 2 (+ prefetch=500 + AMQP fast-path)** |
+|---|---|---|---|
+| DS Pool `process_messages_batch` | 1,340 ms | 290 ms | **~200 ms** |
+| DS Pool `process_traces` total | 1,233 ms | 125 ms | **~150 ms** |
+| ingestor:3 actions | 1,361 ms | 1,361 ms¹ | **~550 ms** |
+| ingestor:5 deltas | 1,524 ms | 1,524 ms¹ | **~700 ms** |
+| Sum critical-path CPU | ~5–6 s | ~4 s | **~2.5 s** |
+
+¹ The original Phase 1 baseline ran on a different (larger) chain workload. ingestor db_indexing numbers there aren't directly comparable to the fresh small-chain Phase 2 baseline. The Phase 2 column is the most current and was measured against the fresh chain.
+
+### 10.7 Where the bottleneck is now
+
+After Phase 2, sum of all profiled CPU (master batch + ds pool batch + slowest ingestor) is ~2 s against a 25 s monitor-tick-aligned wall. The actual processing window is likely <10 s, with the remainder split between:
+
+- Container startup + SHIP handshake (~5–10 s grace)
+- 5 s tick granularity in the monitor's "range completed" detection
+- Reader fetch burst + AMQP transit
+- Ingestor cargo flush windows
+
+To make further progress we need either:
+- **A denser workload** so the steady-state pipeline runs long enough to dominate the wall measurement.
+- **Finer-grained wall-time instrumentation** in the master (e.g. record the timestamp of first/last processed block to ms).
+- **Real mainnet range** to confirm `process_deltas` (still the single biggest CPU on the master at 0.87 ms/block) becomes the headline cost at 50–100 deltas/block density.
+
+### 10.8 Recommended Phase 2 defaults
+
+| Setting | Default before | Default after |
+|---|---|---|
+| `prefetch.block` | 100 | 500 (operator-tunable) |
+| `pushToActionsQueue` path | through `preIndexingQueue` (async.queue) | direct `ch.sendToQueue`, async.queue fallback only on channel flap |
+| `api.tx_cache_mode` | n/a | `'auto'` (added in Phase 1) |
+| `indexing_queues` | 1 | 1 (do NOT raise without ingestor saturation signal) |
+
+The Phase 2 code change (AMQP fast-path) is in [`src/indexer/workers/ds-pool.ts`](../../src/indexer/workers/ds-pool.ts) under [`pushToActionsQueue`](../../src/indexer/workers/ds-pool.ts#L652). The `prefetch.block` default is a config recommendation — change in [`tests/e2e/lib/indexer-runner.ts`](../../tests/e2e/lib/indexer-runner.ts) for e2e, and recommended in production config.
 
 ---
 

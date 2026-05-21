@@ -30,12 +30,13 @@ const HYPERION_ROOT = join(E2E_ROOT, '../..');
 const REPORTS_DIR = join(E2E_ROOT, 'reports');
 const CHAIN_NAME = 'hyp-test';
 
-// Fixed end-of-workload block. The deploy script generates txs up to ~block
-// 2,400 then the chain idles. Capping stop_on here means every bench run
-// processes exactly the same workload regardless of how long the chain has
-// been idle since the deploy.
-const STOP_ON = 2400;
-const START_ON = 2;
+// Fixed end-of-workload block. The deploy script lands its transactions
+// in the early hundreds of blocks and the chain idles afterwards. Cap
+// stop_on here so every bench run processes exactly the same workload
+// regardless of how long the chain has idled. Override via env when
+// re-benching after a fresh deploy.
+const STOP_ON = parseInt(process.env.STOP_ON ?? '2400', 10);
+const START_ON = parseInt(process.env.START_ON ?? '2', 10);
 
 const label = process.argv[2];
 if (!label) {
@@ -51,11 +52,37 @@ function patchChainConfig(): void {
     c.indexer.start_on = START_ON;
     c.indexer.stop_on = STOP_ON;
     c.settings.auto_stop = 0;
-    // Optionally force a tx_cache_mode via TX_CACHE_MODE=auto|sync|batch
+
+    // Knobs via env vars so we can sweep without recompiling.
     if (process.env.TX_CACHE_MODE) {
         c.api.tx_cache_mode = process.env.TX_CACHE_MODE;
     }
+    if (process.env.PREFETCH_BLOCK) {
+        c.prefetch.block = parseInt(process.env.PREFETCH_BLOCK, 10);
+    }
+    if (process.env.PREFETCH_INDEX) {
+        c.prefetch.index = parseInt(process.env.PREFETCH_INDEX, 10);
+    }
+    if (process.env.INDEXING_QUEUES) {
+        c.scaling.indexing_queues = parseInt(process.env.INDEXING_QUEUES, 10);
+        c.scaling.ad_idx_queues = parseInt(process.env.INDEXING_QUEUES, 10);
+        c.scaling.dyn_idx_queues = parseInt(process.env.INDEXING_QUEUES, 10);
+    }
+    if (process.env.DS_THREADS) {
+        c.scaling.ds_threads = parseInt(process.env.DS_THREADS, 10);
+    }
+    if (process.env.DS_POOL_SIZE) {
+        c.scaling.ds_pool_size = parseInt(process.env.DS_POOL_SIZE, 10);
+    }
+    if (process.env.BATCH_SIZE) {
+        c.scaling.batch_size = parseInt(process.env.BATCH_SIZE, 10);
+    }
+    if (process.env.DISABLE_TX_CACHE === '1' || process.env.DISABLE_TX_CACHE === 'true') {
+        c.api.disable_tx_cache = true;
+    }
+
     writeFileSync(path, JSON.stringify(c, null, 2));
+    console.log(`   ⚙️  knobs: prefetch.block=${c.prefetch.block}, prefetch.index=${c.prefetch.index}, indexing_queues=${c.scaling.indexing_queues}, ds_threads=${c.scaling.ds_threads}, ds_pool_size=${c.scaling.ds_pool_size}, batch_size=${c.scaling.batch_size}, tx_cache_mode=${c.api.tx_cache_mode ?? 'auto'}`);
 }
 
 function snapshot(): string {
