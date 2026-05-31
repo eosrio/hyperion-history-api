@@ -17,6 +17,10 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 block_hint: {
                     description: 'block hint to speed up tx recovery',
                     type: 'integer'
+                },
+                hydrate: {
+                    description: 'hydrate cold-tier act.data from the configured archive (default: true). Set false to skip archive lookups.',
+                    type: 'boolean'
                 }
             },
             required: ["id"]

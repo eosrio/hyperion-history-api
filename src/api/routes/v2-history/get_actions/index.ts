@@ -119,6 +119,10 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 description: "perform reversibility check",
                 type: 'boolean'
             },
+            "hydrate": {
+                description: "hydrate cold-tier act.data from the configured archive (default: true). Set false to skip archive lookups.",
+                type: 'boolean'
+            },
         }),
         response: extendResponseSchema({
             "simple_actions": {

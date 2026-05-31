@@ -1,5 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {getTrackTotalHits, mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
+import {hydrateActions} from "../../../helpers/archive-hydration.js";
+import {isHydrationDisabled} from "../../../helpers/archive-query.js";
 import {
     addSortedBy,
     applyAccountFilters,
@@ -86,6 +88,16 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     if (results.hits.length > 0) {
+        // Cold-tier archive hydration: for any hit whose block was dropped from
+        // ES (act.data absent) and is owned by a configured archive, re-fetch
+        // the full act.data and write it back onto the hit BEFORE shaping the
+        // response below. Best-effort: failures leave act.data absent and never
+        // fail the request. Skipped entirely when disabled via ?hydrate=false
+        // or when no archives are configured. Applies to simple mode too.
+        if (!isHydrationDisabled(query)) {
+            await hydrateActions(fastify, results.hits);
+        }
+
         const actions = results.hits;
         for (let action of actions.map(a => a._source)) {
 

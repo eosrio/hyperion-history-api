@@ -130,6 +130,55 @@ interface CachedRouteConfig {
     ttl: number
 }
 
+/**
+ * A single cold-tier archive entry.
+ *
+ * An archive owns a contiguous, inclusive range of blocks
+ * [first_block, last_block] for which the live Elasticsearch indices no
+ * longer carry `act.data` (it was dropped to save space). The archive can
+ * re-decode and serve the full `act.data` on demand via its `/actions`
+ * endpoint (see ArchiveRegistry / hydrateActions).
+ */
+export interface ArchiveEntry {
+    /** Base URL of the archive service, e.g. "http://archive-01:7000". No trailing slash required. */
+    url: string;
+    /** First block owned by this archive (inclusive). */
+    first_block: number;
+    /** Last block owned by this archive (inclusive). */
+    last_block: number;
+}
+
+/**
+ * Cold-tier archive hydration configuration. Lives under `api.archives` in
+ * the chain config (e.g. config/<chain>.config.json).
+ *
+ * Example:
+ *   "archives": {
+ *     "enabled": true,
+ *     "timeout_ms": 2000,
+ *     "max_batch": 20000,
+ *     "actions": [
+ *       { "url": "http://archive-01:7000", "first_block": 1, "last_block": 100000000 }
+ *     ],
+ *     "deltas": []
+ *   }
+ *
+ * When `enabled` is false (or the section is absent) the API behaves exactly
+ * as before: cold docs simply return without `act.data`.
+ */
+export interface ArchivesConfig {
+    /** Master switch. When false/absent, hydration is fully skipped. */
+    enabled?: boolean;
+    /** Per-archive HTTP request timeout in ms (default 2000). */
+    timeout_ms?: number;
+    /** Hard cap on items per POST to an archive (default/spec limit: 20000). */
+    max_batch?: number;
+    /** Archives that serve action `act.data`. */
+    actions?: ArchiveEntry[];
+    /** Archives that serve delta `value`/`data` (TODO: delta archive not yet implemented end-to-end). */
+    deltas?: ArchiveEntry[];
+}
+
 interface ApiConfigs {
     enabled?: boolean;
     log_errors?: boolean;
@@ -182,6 +231,7 @@ interface ApiConfigs {
     explorer?: ExplorerConfigs;
     query_timeout?: string;           // ES search timeout (e.g., "5s"), default: "10s"
     max_asc_window_days?: number;     // max range in days for sort=asc queries, default: 90
+    archives?: ArchivesConfig;        // cold-tier archive hydration (see ArchivesConfig)
 }
 
 interface ExplorerConfigs {
@@ -293,6 +343,22 @@ const CachedRouteConfigSchema = z.object({
     ttl: z.number()
 });
 
+// Zod schema for a single archive entry
+const ArchiveEntrySchema = z.object({
+    url: z.string(),
+    first_block: z.number(),
+    last_block: z.number()
+});
+
+// Zod schema for cold-tier archive hydration configuration
+const ArchivesConfigSchema = z.object({
+    enabled: z.boolean().optional(),
+    timeout_ms: z.number().optional(),
+    max_batch: z.number().optional(),
+    actions: z.array(ArchiveEntrySchema).optional(),
+    deltas: z.array(ArchiveEntrySchema).optional()
+});
+
 // Zod schema for explorer configurations
 const ExplorerConfigsSchema = z.object({
     home_redirect: z.boolean().optional(),
@@ -339,6 +405,7 @@ export const HyperionApiConfigSchema = z.object({
     explorer: ExplorerConfigsSchema.optional(),
     query_timeout: z.string().optional(),
     max_asc_window_days: z.number().optional(),
+    archives: ArchivesConfigSchema.optional(),
 });
 
 // Zod schema for tiered index allocation settings

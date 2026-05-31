@@ -1,6 +1,8 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
 import {regroupActions} from "../../../helpers/regroup-actions.js";
+import {hydrateActions} from "../../../helpers/archive-hydration.js";
+import {isHydrationDisabled} from "../../../helpers/archive-query.js";
 import {API} from "@wharfkit/antelope";
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
@@ -103,6 +105,14 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
     }
 
     if (hits.length > 0) {
+        // Cold-tier archive hydration before shaping the response: re-fetch any
+        // dropped act.data from the owning archive. Best-effort; skipped via
+        // ?hydrate=false or when no archives are configured. The cached (Redis)
+        // path normally already carries act.data, so those hits are no-ops.
+        if (!isHydrationDisabled(query)) {
+            await hydrateActions(fastify, hits);
+        }
+
         let highestBlockNum = 0;
         for (let action of hits) {
             if (action._source.block_num > highestBlockNum) {

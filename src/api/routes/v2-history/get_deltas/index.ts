@@ -36,6 +36,10 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 description: 'delta present flag',
                 type: 'number'
             },
+            "hydrate": {
+                description: "hydrate cold-tier delta value/data from the configured delta archive (default: true). No-op unless a delta archive is configured (TODO).",
+                type: 'boolean'
+            },
         }),
         response: extendResponseSchema({
             "deltas": {
