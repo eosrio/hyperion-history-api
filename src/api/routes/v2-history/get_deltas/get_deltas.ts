@@ -86,11 +86,10 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
         query: queryStruct,
         sort: [{block_num: {order: sort_direction}}]
     });
-    // Cold-tier archive hydration for deltas. Currently a no-op unless a delta
-    // archive is configured under api.archives.deltas (TODO: the /deltas wire
-    // contract is not finalized yet — see hydrateDeltas). Skipped via
-    // ?hydrate=false. When no delta archive is configured, dropped delta
-    // value/data simply remain absent, matching pre-hydration behavior.
+    // Cold-tier archive hydration for deltas: re-fetch any dropped data/value from the configured
+    // delta archive (api.archives.deltas) before the response is shaped. Best-effort — failures leave
+    // the delta without data/value and never fail the request. Skipped via ?hydrate=false, and a clean
+    // no-op when no delta archive is configured (behaves exactly as before).
     if (!isHydrationDisabled(query)) {
         await hydrateDeltas(fastify, results.hits.hits as any[]);
     }
