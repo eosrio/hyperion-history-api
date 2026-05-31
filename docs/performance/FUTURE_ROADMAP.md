@@ -656,7 +656,7 @@ The performance investigation's central finding is that nodeos serializes SHIP o
 
 ### What's built
 - **[`abi-scanner`](https://github.com/eosrio/abi-scanner)** — the read engine, shipped. Parallel work-stealing chunked reader of the state-history log, checkpoint/resume (stop & continue from any block), streaming early-exit for huge entries, snapshot-init-delta handling, pure-Rust `rs_abieos` decode. It extracts every contract ABI (`setabi`) into the Hyperion `<chain>-abi-v1` shape — i.e. it walks the `account` table, **table 0 of ~19**.
-- **`delta-proto`** (prototype, branch `proto/delta-indexer`) — the same engine pointed at the `contract_row` table: decodes each row's `value` against the contract ABI **active at that block** (binary-searched in the ABI index; one Abieos context per worker; `delete_contract`+`set_abi` on version change) and emits Hyperion `<chain>-delta-v1`-shaped docs.
+- **`delta-proto`** (prototype, branch `proto/delta-indexer`) — the same engine pointed at the `contract_row` table: decodes each row's `value` against the contract ABI **active at that block** and emits Hyperion `<chain>-delta-v1`-shaped docs. Each `(account, valid_from)` ABI version is parsed once into a standalone `rs_abieos` **`AbiHandle`** (0.6+) and range-queried per row, so the hot path is pure-Rust `decode_table_row_into` into a reused buffer — **zero FFI, no abieos-context `set_abi`/`delete_contract` churn**. (The rs_abieos ergonomics for exactly this task — `AbiHandle`, `decode_table_row_native`, the `*_into` buffer-reuse forms — were added in 0.6.0 and validated against the C++ backend differential.)
 
 ### Benchmark — `wax-dense-190m` range (blocks 190,373,745–190,376,745; 3,001 blocks; 1.47M `contract_row` deltas; ~470/block)
 
@@ -664,14 +664,20 @@ The performance investigation's central finding is that nodeos serializes SHIP o
 |---|---|---|---|
 | 1 thread, cold | 421 blk/s | 145 MB | 99.85% |
 | 8 threads, cold | 1,228 blk/s | 204 MB | 99.85% |
-| 8 threads, warm (decode-bound ceiling) | 13,150 blk/s | 218 MB | 99.85% |
+| 8 threads, warm (decode-bound ceiling) | **~18,600 blk/s** | 218 MB | 99.85% |
+
+> The warm ceiling rose from **13,150 → ~18,600 blk/s (~1.4×)** when the per-row decode moved from the
+> abieos-context path (per-row `name_to_string` + `bin_to_json` FFI + `set_abi`/`delete_contract` on
+> version change) to the parse-once `rs_abieos` 0.6 `AbiHandle` path (zero FFI). Output is
+> **byte-identical** across the two paths (`cmp`: IDENTICAL; 1,469,591 docs). The cold rows are I/O-bound
+> on the contended production pool and are unchanged by the decode speedup.
 
 vs **Hyperion baseline, same range:** ~10 blk/s (1 worker) → ~54 blk/s (4 workers), `process_deltas` ≈ 94% of the master batch, Node heap cap **4 GiB**.
 
 **Headline wins (the defensible ones):**
 - **Memory: ~145–218 MB, flat regardless of delta volume**, vs Hyperion's GB-scale buffering / 4 GiB cap → **~20–28× less**. This is the win for batch indexing and the "massive-delta" episodes — bounded memory is structural (streaming), not tuned.
 - **Decode correctness: 99.85%** using **version-correct** per-block ABIs — *more* correct than the bench's seed-current-ABIs path (which suffered ~9.5k historical-mismatch failures).
-- **Throughput:** decode-bound ceiling ~13k blk/s (8 threads); cold-disk on the *contended production* pool is I/O-limited to ~1.2k blk/s at 8 threads — still ~20× the 4-worker SHIP baseline.
+- **Throughput:** decode-bound ceiling ~18.6k blk/s (8 threads, `rs_abieos` 0.6 `AbiHandle`); cold-disk on the *contended production* pool is I/O-limited to ~1.2k blk/s at 8 threads — still ~20× the 4-worker SHIP baseline.
 
 **Honest caveats:**
 - `delta-proto` decodes **only `contract_row` deltas** — no traces/actions/blocks, no ES `_bulk`, no RabbitMQ/SHIP. Hyperion's numbers are the *full* pipeline, so the throughput comparison is the delta-decode *slice* (which is ~94% of the master cost), not a total-system replacement.
