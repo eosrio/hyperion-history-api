@@ -6,6 +6,7 @@ import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Client } from '@elastic/elasticsearch';
+import { esConnectionOptions } from '../../indexer/helpers/es-connection.js';
 
 const execAsync = promisify(exec);
 
@@ -187,7 +188,8 @@ export class SnapshotManager {
             },
             tls: {
                 rejectUnauthorized: false
-            }
+            },
+            ...esConnectionOptions()
         });
     }
 

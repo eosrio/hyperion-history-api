@@ -1,4 +1,5 @@
 import {Client} from "@elastic/elasticsearch";
+import {esConnectionOptions} from "../../indexer/helpers/es-connection.js";
 import {APIClient} from "@wharfkit/antelope";
 import {readFileSync} from "fs";
 import {Collection, MongoClient, Document as MongoDoc} from "mongodb";
@@ -40,7 +41,8 @@ export abstract class Synchronizer<T extends MongoDoc> {
             pingTimeout: 100,
             tls: _es.protocol === 'https' ? {
                 rejectUnauthorized: false
-            } : undefined
+            } : undefined,
+            ...esConnectionOptions()
         });
     }
 

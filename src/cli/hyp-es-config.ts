@@ -1,5 +1,6 @@
 import {Command} from 'commander';
 import {Client} from '@elastic/elasticsearch';
+import {esConnectionOptions} from '../indexer/helpers/es-connection.js';
 import path from 'path';
 import {readFile, writeFile} from 'fs/promises';
 import {existsSync, writeFileSync, mkdirSync} from 'fs';
@@ -183,7 +184,8 @@ async function createEsClient(): Promise<Client | null> {
         node: es_url,
         tls: {
             rejectUnauthorized: false
-        }
+        },
+        ...esConnectionOptions()
     });
 }
 

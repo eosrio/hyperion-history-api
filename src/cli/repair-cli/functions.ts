@@ -1,5 +1,6 @@
 import {readFileSync} from "node:fs";
 import {Client} from "@elastic/elasticsearch";
+import {esConnectionOptions} from "../../indexer/helpers/es-connection.js";
 import {HyperionBlock} from "./interfaces.js";
 import path from "path";
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
@@ -21,7 +22,8 @@ export function initESClient(config: any) {
         },
         tls: {
             rejectUnauthorized: false
-        }
+        },
+        ...esConnectionOptions()
     });
 }
 

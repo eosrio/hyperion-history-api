@@ -6,6 +6,7 @@ import {amqpConnect, checkQueueSize, getAmpqUrl} from "./amqp.js";
 import {StateHistorySocket} from "./state-history.js";
 import {exec} from "child_process";
 import {hLog} from "../helpers/common_functions.js";
+import {esConnectionOptions} from "../helpers/es-connection.js";
 import {join} from "node:path";
 import {existsSync, readFileSync} from "fs";
 import {MongoClient} from "mongodb";
@@ -115,7 +116,8 @@ export class ConnectionManager {
             },
             tls: _es.protocol === 'https' ? {
                 rejectUnauthorized: false
-            } : undefined
+            } : undefined,
+            ...esConnectionOptions()
         });
     }
 
@@ -140,7 +142,8 @@ export class ConnectionManager {
                         pingTimeout: 100,
                         tls: _es.protocol === 'https' ? {
                             rejectUnauthorized: false
-                        } : undefined
+                        } : undefined,
+                        ...esConnectionOptions()
                     }));
                 }
             }

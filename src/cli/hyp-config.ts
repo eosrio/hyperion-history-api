@@ -10,6 +10,7 @@ import * as readline from 'readline';
 import * as amqp from 'amqplib';
 import { Redis } from 'ioredis';
 import { Client } from '@elastic/elasticsearch';
+import { esConnectionOptions } from '../indexer/helpers/es-connection.js';
 import { APIClient } from '@wharfkit/antelope';
 import { StateHistorySocket } from '../indexer/connections/state-history.js';
 import { MongoClient } from 'mongodb';
@@ -622,7 +623,8 @@ async function checkES(conn: HyperionConnections): Promise<boolean> {
         node: es_url,
         tls: {
             rejectUnauthorized: false
-        }
+        },
+        ...esConnectionOptions()
     });
     try {
         const result = await client.cat.health();
