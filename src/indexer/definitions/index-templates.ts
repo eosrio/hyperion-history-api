@@ -50,7 +50,6 @@ const transferProps = {
 };
 
 export const action = {
-    order: 0,
     index_patterns: [
         chain + "-action-*"
     ],

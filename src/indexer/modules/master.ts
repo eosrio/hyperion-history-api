@@ -769,16 +769,36 @@ export class HyperionMaster {
         let updateCounter = 0;
         for (const index of indicesList) {
             try {
-                if (indexConfig[index.name]) {
-                    const creation_status = await this.esClient['indices'].putTemplate({
-                        name: `${this.conf.settings.chain}-${index.type}`,
-                        ...indexConfig[index.name]
+                const cfg = indexConfig[index.name];
+                if (cfg) {
+                    const name = `${this.conf.settings.chain}-${index.type}`;
+                    const { index_patterns, settings, mappings, aliases } = cfg;
+                    // Composable index template (the legacy `_template` API is deprecated). Each type's
+                    // index_patterns are disjoint, so an index matches exactly one template — there are
+                    // no legacy merge semantics to preserve. priority 200 keeps it above any
+                    // ES-managed default templates.
+                    const creation_status = await this.esClient['indices'].putIndexTemplate({
+                        name,
+                        index_patterns,
+                        priority: 200,
+                        template: {
+                            settings,
+                            ...(mappings ? { mappings } : {}),
+                            ...(aliases ? { aliases } : {})
+                        }
                     });
                     if (!creation_status || !creation_status.acknowledged) {
-                        hLog(`Failed to create template: ${this.conf.settings.chain}-${index}`);
+                        hLog(`Failed to create template: ${name}`);
                     } else {
                         updateCounter++;
-                        debugLog(`${this.conf.settings.chain}-${index.type} template updated!`);
+                        debugLog(`${name} template updated!`);
+                        // Drop a superseded legacy template lingering from a pre-composable run.
+                        try {
+                            await this.esClient['indices'].deleteTemplate({ name });
+                            debugLog(`removed legacy template ${name}`);
+                        } catch (_) {
+                            // no legacy template to remove — expected on fresh installs
+                        }
                     }
                 } else {
                     hLog(`${index.name} template not found!`);
