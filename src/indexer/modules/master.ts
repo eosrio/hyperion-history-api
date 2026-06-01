@@ -796,8 +796,13 @@ export class HyperionMaster {
                         try {
                             await this.esClient['indices'].deleteTemplate({ name });
                             debugLog(`removed legacy template ${name}`);
-                        } catch (_) {
-                            // no legacy template to remove — expected on fresh installs
+                        } catch (err: any) {
+                            const statusCode = err?.meta?.statusCode ?? err?.statusCode;
+                            if (statusCode !== 404) {
+                                // 404 = no legacy template (fresh install) — expected. Anything else
+                                // (auth/connection) is worth surfacing, but must not abort the migration.
+                                hLog(`could not remove legacy template ${name}: ${err.message}`);
+                            }
                         }
                     }
                 } else {

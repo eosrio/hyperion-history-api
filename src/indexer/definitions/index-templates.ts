@@ -473,8 +473,7 @@ export const tableAccounts = {
     }
 };
 
-// noinspection JSUnusedGlobalSymbols
-export const tableDelBand = {
+export const tableDelband = {
     "index_patterns": [chain + "-table-delband-*"],
     "settings": {
         "index": {
