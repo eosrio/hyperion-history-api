@@ -877,8 +877,10 @@ export function setCacheByHash(fastify, hash, response, expiration?: number) {
 }
 
 export function getRouteName(filename: string) {
-    // console.log('getRouteName:', filename);
-    const arr = filename.split("/");
+    // The route name is the directory that contains the route's index file. Split on BOTH POSIX
+    // and Windows separators — `import.meta.filename` uses backslashes on Windows, so splitting on
+    // "/" alone returns a single element and yields `undefined` (routes register as ".../undefined").
+    const arr = filename.split(/[/\\]/);
     return arr[arr.length - 2];
 }
 
