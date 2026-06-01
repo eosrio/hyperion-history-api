@@ -82,6 +82,9 @@ export interface MainSettings {
     max_retained_blocks?: number;
     es_replicas: number;
     tiered_index_allocation?: TieredIndexAllocationSettings;
+    /** Route action/delta reads through the per-type read alias (`<chain>-<type>-read`) instead of
+     *  the `<chain>-<type>-*` wildcard. Default off; requires the read aliases to be installed. */
+    use_read_aliases?: boolean;
 }
 
 export interface IndexerConfigs {
@@ -443,6 +446,7 @@ export const HyperionSettingsConfigSchema = z.object({
     max_retained_blocks: z.number().optional(),
     es_replicas: z.number(),
     tiered_index_allocation: TieredIndexAllocationSettingsSchema.optional(),
+    use_read_aliases: z.boolean().optional(),
 });
 
 // Zod schema for scaling configurations

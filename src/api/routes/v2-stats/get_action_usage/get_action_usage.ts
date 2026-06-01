@@ -3,7 +3,7 @@ import {timedQuery} from "../../../helpers/functions.js";
 
 async function getLastSeq(fastify: FastifyInstance, date: string) {
     const req = await fastify.elastic.search<any>({
-        index: fastify.manager.chain + '-action-*',
+        index: fastify.manager.readIndexset('action'),
         "size": 1,
         "query": {
             "bool": {
@@ -22,7 +22,7 @@ async function getLastSeq(fastify: FastifyInstance, date: string) {
 
 async function getTxCount(fastify: FastifyInstance, dateFrom: string, dateTo: string) {
     const req = await fastify.elastic.count({
-        index: fastify.manager.chain + '-action-*',
+        index: fastify.manager.readIndexset('action'),
         "query": {
             "bool": {
                 "must": [
@@ -37,7 +37,7 @@ async function getTxCount(fastify: FastifyInstance, dateFrom: string, dateTo: st
 
 async function getUniqueActors(fastify: FastifyInstance, dateFrom: string, dateTo: string) {
     const req = await fastify.elastic.search<any, any>({
-        index: fastify.manager.chain + '-action-*',
+        index: fastify.manager.readIndexset('action'),
         size: 0,
         "aggs": {
             "unique_actors": {

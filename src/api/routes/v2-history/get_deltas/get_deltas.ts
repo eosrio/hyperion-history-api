@@ -80,7 +80,7 @@ async function getDeltas(fastify: FastifyInstance, request: FastifyRequest) {
     applyTimeFilter(query, queryStruct);
 
     const results = await fastify.elastic.search<any>({
-        "index": fastify.manager.chain + '-delta-*',
+        "index": fastify.manager.readIndexset('delta'),
         "from": skip || 0,
         "size": (limit > maxDeltas ? maxDeltas : limit) || 10,
         query: queryStruct,

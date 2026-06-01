@@ -773,6 +773,13 @@ export class HyperionMaster {
                 if (cfg) {
                     const name = `${this.conf.settings.chain}-${index.type}`;
                     const { index_patterns, settings, mappings, aliases } = cfg;
+                    // Tiered types auto-join a per-type READ ALIAS when use_read_aliases is enabled, so
+                    // new partitions are query-visible via `<chain>-<type>-read` (the tiering substrate).
+                    const readAlias =
+                        this.conf.settings.use_read_aliases === true && (index.type === 'action' || index.type === 'delta')
+                            ? { [`${this.conf.settings.chain}-${index.type}-read`]: {} }
+                            : undefined;
+                    const tmplAliases = { ...(aliases || {}), ...(readAlias || {}) };
                     // Composable index template (the legacy `_template` API is deprecated). Each type's
                     // index_patterns are disjoint, so an index matches exactly one template — there are
                     // no legacy merge semantics to preserve. priority 200 keeps it above any
@@ -784,7 +791,7 @@ export class HyperionMaster {
                         template: {
                             settings,
                             ...(mappings ? { mappings } : {}),
-                            ...(aliases ? { aliases } : {})
+                            ...(Object.keys(tmplAliases).length > 0 ? { aliases: tmplAliases } : {})
                         }
                     });
                     if (!creation_status || !creation_status.acknowledged) {

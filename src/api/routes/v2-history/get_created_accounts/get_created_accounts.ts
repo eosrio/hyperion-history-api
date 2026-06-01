@@ -9,7 +9,7 @@ async function getCreatedAccounts(fastify: FastifyInstance, request: FastifyRequ
     const {skip, limit} = getSkipLimit(query);
     const maxActions = fastify.manager.config.api.limits.get_created_accounts ?? 0;
     const results = await fastify.elastic.search<any>({
-        index: fastify.manager.chain + '-action-*',
+        index: fastify.manager.readIndexset('action'),
         from: skip || 0,
         size: (limit > maxActions ? maxActions : limit) || 100,
         query: {

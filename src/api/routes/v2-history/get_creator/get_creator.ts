@@ -30,7 +30,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     const results = await fastify.elastic.search<any>({
-        index: fastify.manager.chain + '-action-*',
+        index: fastify.manager.readIndexset('action'),
         size: 1,
         query: {
             bool: {

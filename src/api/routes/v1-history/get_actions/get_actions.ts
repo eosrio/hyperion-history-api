@@ -281,7 +281,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
     const queryTimeout = fastify.manager.config.api.query_timeout || '10s';
     const esOpts = {
-        "index": fastify.manager.chain + '-action-*',
+        "index": fastify.manager.readIndexset('action'),
         "from": from || 0,
         "size": (size > getActionsLimit ? getActionsLimit : size),
         "timeout": queryTimeout,

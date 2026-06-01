@@ -94,7 +94,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             const idxPart = Math.ceil(blockHint / conf.settings.index_partition_size).toString().padStart(6, '0');
             indexPattern = fastify.manager.chain + `-action-${conf.settings.index_version}-${idxPart}`;
         } else {
-            indexPattern = fastify.manager.chain + '-action-*';
+            indexPattern = fastify.manager.readIndexset('action');
         }
         let pResults;
         try {

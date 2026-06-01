@@ -50,7 +50,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
     // Perform search
 
-    let indexPattern = fastify.manager.chain + '-action-*';
+    let indexPattern = fastify.manager.readIndexset('action');
     if (query.hot_only) {
         indexPattern = fastify.manager.chain + '-action';
     }

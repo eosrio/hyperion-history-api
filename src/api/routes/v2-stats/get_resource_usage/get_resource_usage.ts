@@ -48,7 +48,7 @@ async function getResourceUsage(fastify: FastifyInstance, request: FastifyReques
     }
 
     const results = await fastify.elastic.search<any, any>({
-        index: fastify.manager.chain + "-action-*",
+        index: fastify.manager.readIndexset('action'),
         ...searchBody
     });
     if (results) {
