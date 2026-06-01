@@ -53,7 +53,7 @@ export class ConnectionManager {
      * fallback and the flag is a safe, reversible toggle.
      */
     readIndexset(type: 'action' | 'delta'): string {
-        return this.config.settings.use_read_aliases
+        return this.config.settings.use_read_aliases === true
             ? `${this.chain}-${type}-read`
             : `${this.chain}-${type}-*`;
     }

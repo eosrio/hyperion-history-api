@@ -776,7 +776,7 @@ export class HyperionMaster {
                     // Tiered types auto-join a per-type READ ALIAS when use_read_aliases is enabled, so
                     // new partitions are query-visible via `<chain>-<type>-read` (the tiering substrate).
                     const readAlias =
-                        this.conf.settings.use_read_aliases && (index.type === 'action' || index.type === 'delta')
+                        this.conf.settings.use_read_aliases === true && (index.type === 'action' || index.type === 'delta')
                             ? { [`${this.conf.settings.chain}-${index.type}-read`]: {} }
                             : undefined;
                     const tmplAliases = { ...(aliases || {}), ...(readAlias || {}) };
@@ -791,7 +791,7 @@ export class HyperionMaster {
                         template: {
                             settings,
                             ...(mappings ? { mappings } : {}),
-                            ...(Object.keys(tmplAliases).length ? { aliases: tmplAliases } : {})
+                            ...(Object.keys(tmplAliases).length > 0 ? { aliases: tmplAliases } : {})
                         }
                     });
                     if (!creation_status || !creation_status.acknowledged) {
