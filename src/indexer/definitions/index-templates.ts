@@ -50,7 +50,6 @@ const transferProps = {
 };
 
 export const action = {
-    order: 0,
     index_patterns: [
         chain + "-action-*"
     ],
@@ -474,8 +473,7 @@ export const tableAccounts = {
     }
 };
 
-// noinspection JSUnusedGlobalSymbols
-export const tableDelBand = {
+export const tableDelband = {
     "index_patterns": [chain + "-table-delband-*"],
     "settings": {
         "index": {
