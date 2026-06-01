@@ -8,7 +8,7 @@ async function getControlledAccounts(fastify: FastifyInstance, request: FastifyR
     }
     let controlling_account = body["controlling_account"];
     const results = await fastify.elastic.search<any>({
-        index: fastify.manager.chain + '-action-*',
+        index: fastify.manager.readIndexset('action'),
         size: 100,
         query: {
             bool: {

@@ -46,6 +46,18 @@ export class ConnectionManager {
         this.prepareIngestClients();
     }
 
+    /**
+     * Read index target for a tiered type. With `settings.use_read_aliases` enabled, reads resolve
+     * through the per-type read alias (`<chain>-<type>-read`); otherwise the wildcard
+     * (`<chain>-<type>-*`). Physical index names are unchanged, so the wildcard stays a valid
+     * fallback and the flag is a safe, reversible toggle.
+     */
+    readIndexset(type: 'action' | 'delta'): string {
+        return this.config.settings.use_read_aliases
+            ? `${this.chain}-${type}-read`
+            : `${this.chain}-${type}-*`;
+    }
+
     get nodeosApiClient() {
         return new APIClient({fetch, url: this.conn.chains[this.chain].http});
     }

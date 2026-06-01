@@ -132,7 +132,7 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
 
     // Fallback to action search
     const results = await fastify.elastic.search<any>({
-        index: fastify.manager.chain + '-action-*',
+        index: fastify.manager.readIndexset('action'),
         size: (limit > maxDocs ? maxDocs : limit) || 100,
         from: skip || 0,
         query: {

@@ -77,7 +77,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
 
             // lookup all actions on block
             const getActionsResponse = await fastify.elastic.search<any>({
-                index: fastify.manager.chain + "-action-*",
+                index: fastify.manager.readIndexset('action'),
                 size: fastify.manager.config.api.limits.get_actions || 1000,
                 query: {
                     bool: {

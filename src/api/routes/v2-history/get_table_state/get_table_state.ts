@@ -20,7 +20,7 @@ async function getTableState(fastify: FastifyInstance, request: FastifyRequest) 
         after_key = query.after_key;
     }
     const results = await fastify.elastic.search<any, any>({
-        index: fastify.manager.chain + '-delta-*',
+        index: fastify.manager.readIndexset('delta'),
         query: {
             bool: {
                 must: mustArray
