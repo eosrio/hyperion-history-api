@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ESNext",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "noImplicitAny": false,
+    "resolveJsonModule": true,
+    "noEmitOnError": false,
+    "sourceMap": false,
+    "skipLibCheck": true,
+    "strict": false,
+    "outDir": "./dist",
+    "rootDir": "."
+  },
+  "include": ["cold-hydration-e2e.ts"]
+}
