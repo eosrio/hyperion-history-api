@@ -60,3 +60,6 @@ snapshots
 plugins
 # E2E test artifacts
 test-results/
+tests/e2e/.fixtures/
+tests/e2e/dist/
+reports/

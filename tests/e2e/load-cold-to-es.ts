@@ -8,7 +8,7 @@ const ES = process.env.ES || 'http://localhost:9200';
 const CHAIN = 'wax';
 const T = process.env.TEMP || '/tmp';
 const PART = 10_000_000;
-const tplDir = 'P:/eosrio/abi-scanner/bench/templates';
+const tplDir = 'P:/eosrio/hyperion-tools/bench/templates';
 
 const part = (block: number) => String(Math.max(1, Math.ceil(block / PART))).padStart(6, '0');
 
