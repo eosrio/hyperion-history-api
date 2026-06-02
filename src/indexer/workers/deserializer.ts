@@ -704,11 +704,26 @@ export default class MainDSWorker extends HyperionWorker {
     //     });
     // }
 
+    /**
+     * Per-block memo for ABI lookups. At mainnet delta density the same
+     * (contract, block) ABI is fetched once per row of that contract's tables —
+     * hundreds of identical ES round-trips per block, across both verifyLocalType
+     * (cache-miss path) and the contract_row fallback. The ES result is
+     * deterministic for a fixed (contract, block), so caching it per block is
+     * format-safe. Cleared at the start of each block in processDeltas.
+     */
+    private deltaAbiCache = new Map<string, HyperionAbi | null>();
+
     async fetchAbiHexAtBlockElastic(
         contract_name: string,
         last_block: number,
         get_json: boolean
     ): Promise<HyperionAbi | null> {
+        const cacheKey = contract_name + '|' + last_block + '|' + (get_json ? 'j' : 'h');
+        const cached = this.deltaAbiCache.get(cacheKey);
+        if (cached !== undefined) {
+            return cached;
+        }
         try {
             const _includes = ["actions", "tables", "block"];
             if (get_json) {
@@ -731,6 +746,7 @@ export default class MainDSWorker extends HyperionWorker {
                 _source: { includes: _includes }
             });
             const results = queryResult.hits.hits;
+            let result: HyperionAbi | null;
             if (results.length > 0) {
                 const nextRefResponse: estypes.SearchResponse<any, any> = await this.client.search({
                     index: `${this.chain}-abi-*`,
@@ -748,15 +764,18 @@ export default class MainDSWorker extends HyperionWorker {
                 });
                 const nextRef = nextRefResponse.hits.hits;
                 if (nextRef.length > 0) {
-                    return {
+                    result = {
                         valid_until: nextRef[0]._source.block,
                         ...results[0]._source
                     };
+                } else {
+                    result = results[0]._source;
                 }
-                return results[0]._source;
             } else {
-                return null;
+                result = null;
             }
+            this.deltaAbiCache.set(cacheKey, result);
+            return result;
         } catch (e) {
             hLog(e);
             return null;
@@ -782,12 +801,29 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     // [abiStatus, resultType, valid_from, valid_until]
+    /**
+     * Per-block memo of table/action type resolution, keyed (field|contract|type|block).
+     * At mainnet density the same (code, table) is resolved hundreds of times per
+     * block; this skips the repeated getAbiDataType native (NAPI) calls and any ES
+     * fallback. abieos state is constant within a block in batch mode, so the result
+     * is deterministic and format-safe; the block in the key keeps it correct across
+     * ABI changes, and it is cleared per block in processDeltas. Side effects
+     * (loadAbiHex, registerAutoBlacklist) run on the first miss and are idempotent.
+     */
+    private verifyTypeCache = new Map<string, [boolean, string | undefined, number, number | undefined] | [boolean, string]>();
+
     async verifyLocalType(
         contract: string,
         type: string,
         block_num: number,
         field: string
     ): Promise<[boolean, string | undefined, number, number | undefined] | [boolean, string]> {
+
+        const vkey = field + '|' + contract + '|' + type + '|' + block_num;
+        const vCached = this.verifyTypeCache.get(vkey);
+        if (vCached !== undefined) {
+            return vCached;
+        }
 
         let abiStatus: boolean;
         let resultType: string | undefined;
@@ -832,6 +868,7 @@ export default class MainDSWorker extends HyperionWorker {
                             resultType = this.getAbiDataType(field, contract, type);
                             // console.log(`getAbiDataType (2) ${type} (${field}) >>> "${resultType}"`);
                             abiStatus = true;
+                            this.verifyTypeCache.set(vkey, [abiStatus, resultType]);
                             return [abiStatus, resultType];
                         } catch (e: any) {
                             console.log(e.message);
@@ -869,7 +906,9 @@ export default class MainDSWorker extends HyperionWorker {
             this.registerAutoBlacklist(contract, field, type, valid_from, valid_until);
         }
 
-        return [abiStatus, resultType, valid_from, valid_until];
+        const result: [boolean, string | undefined, number, number | undefined] = [abiStatus, resultType, valid_from, valid_until];
+        this.verifyTypeCache.set(vkey, result);
+        return result;
     }
 
     async processContractRowNative(row: HyperionDelta, block: number) {
@@ -891,26 +930,34 @@ export default class MainDSWorker extends HyperionWorker {
             }
         }
 
+        const stopVerify = this.profiler.start('ds_row_verify');
         const [abiStatus, tableType, validFrom, validUntil] = await this.verifyLocalType(row['code'], row['table'], block, "table");
+        stopVerify();
 
         if (abiStatus && tableType) {
             let result: string;
+            const stopDecode = this.profiler.start('ds_row_abieos');
             try {
                 if (typeof row.value === 'string') {
                     result = this.abieos.hexToJson(row['code'], tableType, row.value);
                 } else {
                     result = this.abieos.binToJson(row['code'], tableType, row.value);
                 }
+                stopDecode();
                 row['data'] = result;
                 delete row.value;
                 return row;
             } catch (e) {
+                stopDecode();
                 debugLog('primary node-abieos deserialization failed', e, row);
             }
         }
 
         // Fallback to Antelope Deserializer
-        return await this.deserializeContractRowAntelope(row, block, validFrom, validUntil, tableType);
+        const stopFallback = this.profiler.start('ds_row_fallback');
+        const fallbackRow = await this.deserializeContractRowAntelope(row, block, validFrom, validUntil, tableType);
+        stopFallback();
+        return fallbackRow;
     }
 
     // async getContractAtBlock(accountName: string, block_num: number, check_action?: string) {
@@ -1645,6 +1692,8 @@ export default class MainDSWorker extends HyperionWorker {
 
     async processDeltas(deltas: [string, TableDelta][], block_num: number, block_ts: string, block_id: string) {
         const stopDeltas = this.profiler.start('process_deltas');
+        this.deltaAbiCache.clear(); // per-block ABI-lookup memo (see fetchAbiHexAtBlockElastic)
+        this.verifyTypeCache.clear(); // per-block type-resolution memo (see verifyLocalType)
         try {
             const deltaStruct = extractDeltaStruct(deltas);
 

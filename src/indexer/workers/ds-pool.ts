@@ -193,12 +193,26 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
+    /** Per-cargo ABI-lookup memo (cleared each batch in processMessages). At
+     *  mainnet density the same (contract, block) ABI is fetched once per action
+     *  of that contract; the ES result is deterministic, so caching it per batch
+     *  is format-safe. */
+    private poolAbiCache = new Map<string, any>();
+    /** Per-cargo type-resolution memo, keyed (field|contract|type|block). Skips
+     *  repeated getAbiDataType native calls; block in the key keeps it correct. */
+    private poolTypeCache = new Map<string, [boolean, string]>();
+
     async fetchAbiHexAtBlockElastic(
         contract_name: string,
         last_block: number,
         get_json: boolean,
         fetch_offset: number
     ) {
+        const cacheKey = contract_name + '|' + last_block + '|' + (get_json ? 'j' : 'h') + '|' + fetch_offset;
+        const cached = this.poolAbiCache.get(cacheKey);
+        if (cached !== undefined) {
+            return cached;
+        }
         const stopAbiFetch = this.profiler.start('fetch_abi_es');
         try {
             const _includes = ["block", "actions", "tables"];
@@ -225,12 +239,15 @@ export default class DSPoolWorker extends HyperionWorker {
             // const t_end = process.hrtime.bigint();
             const results = queryResult.hits.hits;
             // const duration = (Number(t_end - t_start) / 1000 / 1000).toFixed(2);
+            let result: any;
             if (results.length > 0) {
                 // hLog(`fetch abi from elastic took: ${duration} ms`);
-                return results[fetch_offset]._source;
+                result = results[fetch_offset]._source;
             } else {
-                return null;
+                result = null;
             }
+            this.poolAbiCache.set(cacheKey, result);
+            return result;
         } catch (e) {
             hLog(e);
             return null;
@@ -240,6 +257,12 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     async verifyLocalType(contract: string, type: string, block_num: number, field: string): Promise<[boolean, string]> {
+
+        const vkey = field + '|' + contract + '|' + type + '|' + block_num;
+        const vCached = this.poolTypeCache.get(vkey);
+        if (vCached !== undefined) {
+            return vCached;
+        }
 
         let _status: boolean;
         let resultType = '';
@@ -297,6 +320,7 @@ export default class DSPoolWorker extends HyperionWorker {
                     if (resultType) {
                         _status = true;
                         // early return since the loaded abi should work
+                        this.poolTypeCache.set(vkey, [_status, resultType]);
                         return [_status, resultType];
                     } else {
                         _status = false;
@@ -326,7 +350,9 @@ export default class DSPoolWorker extends HyperionWorker {
                 }
             }
         }
-        return [_status, resultType];
+        const verifyResult: [boolean, string] = [_status, resultType];
+        this.poolTypeCache.set(vkey, verifyResult);
+        return verifyResult;
     }
 
     async deserializeActionAtBlockNative(self: DSPoolWorker, action: HyperionActionAct, block_num: number): Promise<any> {
@@ -450,6 +476,8 @@ export default class DSPoolWorker extends HyperionWorker {
 
     async processMessages(messages: Message[]) {
         const stop = this.profiler.start('process_messages_batch');
+        this.poolAbiCache.clear();   // per-cargo ABI-lookup memo
+        this.poolTypeCache.clear();  // per-cargo type-resolution memo
         try {
             this.redisBatchPipeline = this.ioRedisClient
                 ? this.ioRedisClient.pipeline()
