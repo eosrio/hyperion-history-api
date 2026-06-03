@@ -168,6 +168,12 @@ interface ApiConfigs {
     explorer?: ExplorerConfigs;
     query_timeout?: string;           // ES search timeout (e.g., "5s"), default: "10s"
     max_asc_window_days?: number;     // max range in days for sort=asc queries, default: 90
+    // Hot-first routing for unbounded latest-N get_actions polls (e.g. account=eosio.token,
+    // desc, no time bound). When enabled, the recent action partition(s) are searched first and
+    // the full <chain>-action-* set is queried only if that window returns fewer than `limit`
+    // hits — so heavy polling never fans out to old/warm shards. Default off.
+    hot_first_actions?: boolean;
+    hot_first_window?: number;        // number of newest action partitions in the hot window, default: 2
 }
 
 interface ExplorerConfigs {
@@ -324,6 +330,8 @@ export const HyperionApiConfigSchema = z.object({
     explorer: ExplorerConfigsSchema.optional(),
     query_timeout: z.string().optional(),
     max_asc_window_days: z.number().optional(),
+    hot_first_actions: z.boolean().optional(),
+    hot_first_window: z.number().optional(),
 });
 
 // Zod schema for tiered index allocation settings
