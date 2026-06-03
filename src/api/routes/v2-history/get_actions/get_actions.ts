@@ -89,12 +89,18 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     let hotFirstUsed = false;
     if (hotFirstEligible) {
         const hotIndex = await resolveHotIndices(fastify, 'action', hotWindow);
-        esResults = await fastify.elastic.search<any>({...esOpts, index: hotIndex});
-        if (esResults.hits.hits.length < size) {
-            // The account is sparse within the hot window — widen to the full set for correctness.
+        if (hotIndex === fullPattern) {
+            // Resolver degraded to the wildcard — phase 1 would already be the full search, so run it
+            // once and don't claim the hot-first path (no redundant second query, accurate flag).
             esResults = await fastify.elastic.search<any>(esOpts);
         } else {
-            hotFirstUsed = true;
+            esResults = await fastify.elastic.search<any>({...esOpts, index: hotIndex});
+            if (esResults.hits.hits.length < size) {
+                // The account is sparse within the hot window — widen to the full set for correctness.
+                esResults = await fastify.elastic.search<any>(esOpts);
+            } else {
+                hotFirstUsed = true;
+            }
         }
     } else {
         esResults = await fastify.elastic.search<any>(esOpts);

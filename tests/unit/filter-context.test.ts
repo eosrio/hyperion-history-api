@@ -69,6 +69,13 @@ describe('applyGenericFilters — filter context', () => {
         expect(qs.bool.must_not).toEqual([{ term: { producer: 'eosio' } }]);
         expect(qs.bool.filter).toBeUndefined();
     });
+
+    it('keeps the @transfer.memo full-text match in must so sortedBy=_score still ranks by relevance', () => {
+        const qs = newQueryStruct();
+        applyGenericFilters({ 'transfer.memo': 'hello' }, qs, new Set(['transfer']));
+        expect(qs.bool.must).toEqual([{ match: { '@transfer.memo': { query: 'hello' } } }]);
+        expect(qs.bool.filter).toBeUndefined();
+    });
 });
 
 describe('applyCodeActionFilters — filter context', () => {

@@ -35,6 +35,13 @@ export async function resolveHotIndices(
     const win = Math.max(1, Math.floor(window));
     const key = `${chain}-${type}-${win}`;
     const fallback = `${chain}-${type}-*`;
+    // Scope the lookup to the active index_version so that on a multi-version cluster (during/after a
+    // reindex) a higher-version low partition (e.g. <chain>-<type>-v2-000001) can't sort ahead of the
+    // live latest partition of the running version and cause newest actions to be missed. When the
+    // version is unknown, fall back to all versions (correctness is still preserved by the caller's
+    // widen-on-shortfall step).
+    const version = fastify.manager.config?.settings?.index_version;
+    const searchPattern = version ? `${chain}-${type}-${version}-*` : fallback;
     const now = Date.now();
 
     const cached = cache.get(key);
@@ -49,13 +56,15 @@ export async function resolveHotIndices(
     const inflight = (async () => {
         try {
             const records = await fastify.elastic.cat.indices({
-                index: fallback,
+                index: searchPattern,
                 h: 'index',
                 s: 'index:desc',
                 format: 'json'
             });
-            const names = (records as Array<{ index?: string }>)
-                .map(r => r.index)
+            // Some client/transport configurations can return a non-array under error/empty states;
+            // guard so we degrade to the wildcard rather than throwing on .map.
+            const names = (Array.isArray(records) ? records : [])
+                .map((r: { index?: string }) => r.index)
                 .filter((n): n is string => typeof n === 'string' && n.length > 0)
                 .slice(0, win);
             const value = names.length > 0 ? names.join(',') : fallback;

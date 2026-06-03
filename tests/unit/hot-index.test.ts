@@ -3,13 +3,14 @@ import { resolveHotIndices } from '../../src/api/helpers/hot-index.js';
 
 // Build a minimal fastify-like stub whose elastic.cat.indices is backed by `impl`, counting calls
 // so we can assert caching. Each test uses a unique chain so the module-level cache never collides.
-function makeFastify(chain: string, impl: () => any) {
+function makeFastify(chain: string, impl: () => any, opts: { version?: string } = {}) {
     let calls = 0;
+    let lastIndex: string | undefined;
     const instance: any = {
-        manager: { chain },
-        elastic: { cat: { indices: async () => { calls++; return impl(); } } }
+        manager: { chain, config: { settings: { index_version: opts.version } } },
+        elastic: { cat: { indices: async (p: any) => { calls++; lastIndex = p?.index; return impl(); } } }
     };
-    return { instance, getCalls: () => calls };
+    return { instance, getCalls: () => calls, getLastIndex: () => lastIndex };
 }
 
 describe('resolveHotIndices', () => {
@@ -51,5 +52,22 @@ describe('resolveHotIndices', () => {
         ]);
         const res = await resolveHotIndices(instance, 'action', 0);
         expect(res).toBe('chainE-action-v1-000009');
+    });
+
+    it('scopes the _cat lookup to the active index_version when set', async () => {
+        const { instance, getLastIndex } = makeFastify(
+            'chainF',
+            () => [{ index: 'chainF-action-v2-000010' }],
+            { version: 'v2' }
+        );
+        const res = await resolveHotIndices(instance, 'action', 1);
+        expect(getLastIndex()).toBe('chainF-action-v2-*');
+        expect(res).toBe('chainF-action-v2-000010');
+    });
+
+    it('ignores a non-array _cat response and degrades to the wildcard', async () => {
+        const { instance } = makeFastify('chainG', () => ({ unexpected: true }) as any);
+        const res = await resolveHotIndices(instance, 'action', 2);
+        expect(res).toBe('chainG-action-*');
     });
 });

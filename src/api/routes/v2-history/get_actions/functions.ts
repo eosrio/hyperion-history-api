@@ -169,7 +169,12 @@ export function applyGenericFilters(query, queryStruct, allowedExtraParams: Set<
                                 _qObj[pkey].operator = query.match_operator;
                             }
 
-                            (queryStruct.bool.filter ??= []).push({
+                            // Keep the memo full-text match in scoring context: it is the only
+                            // relevance-bearing clause, so an explicit sortedBy=_score (with
+                            // fuzziness/operator) must still rank by it. It is selective and rare,
+                            // so its scoring cost is negligible — unlike the high-cardinality
+                            // keyword clauses moved to filter context.
+                            queryStruct.bool.must.push({
                                 match: _qObj
                             });
                         } else {
