@@ -26,20 +26,19 @@ export function processMultiVars(queryStruct, parts, field) {
     });
 
     if (must.length > 1) {
-        (queryStruct.bool.filter ??= []).push({
+        queryStruct.bool.must.push({
             bool: {
                 should: must.map(elem => {
                     const _q = {};
                     _q[field] = elem;
                     return {term: _q}
-                }),
-                minimum_should_match: 1
+                })
             }
         });
     } else if (must.length === 1) {
         const mustQuery = {};
         mustQuery[field] = must[0];
-        (queryStruct.bool.filter ??= []).push({term: mustQuery});
+        queryStruct.bool.must.push({term: mustQuery});
     }
 
     if (mustNot.length > 1) {
@@ -66,7 +65,7 @@ function addRangeQuery(queryStruct, prop, pkey, query) {
         "gte": parts[0],
         "lte": parts[1]
     };
-    (queryStruct.bool.filter ??= []).push({range: _termQuery});
+    queryStruct.bool.must.push({range: _termQuery});
 }
 
 // A bound is a block number when it is a bare positive integer; any other value
@@ -183,7 +182,7 @@ export function applyGenericFilters(query, queryStruct, allowedExtraParams: Set<
                                 andParts.forEach(value => {
                                     const _q = {};
                                     _q[pkey] = value;
-                                    (queryStruct.bool.filter ??= []).push({term: _q});
+                                    queryStruct.bool.must.push({term: _q});
                                 });
                             } else {
                                 if (parts[0].startsWith("!")) {
@@ -191,7 +190,7 @@ export function applyGenericFilters(query, queryStruct, allowedExtraParams: Set<
                                     queryStruct.bool.must_not.push({term: _qObj});
                                 } else {
                                     _qObj[pkey] = parts[0];
-                                    (queryStruct.bool.filter ??= []).push({term: _qObj});
+                                    queryStruct.bool.must.push({term: _qObj});
                                 }
                             }
                         }
@@ -234,9 +233,8 @@ export function applyCodeActionFilters(query, queryStruct) {
             }
         }
         if (filterObj.length > 0) {
-            // Code:name filter in filter context (was a scoring root-level should+msm). Semantics
-            // are identical — "match >= 1 of the code:name pairs" — minus the wasted scoring.
-            (queryStruct.bool.filter ??= []).push({bool: {should: filterObj, minimum_should_match: 1}});
+            queryStruct.bool['should'] = filterObj;
+            queryStruct.bool['minimum_should_match'] = 1;
         }
     }
 }
@@ -313,10 +311,11 @@ export function getSortDir(query, maxAscWindowDays = 90) {
 
 export function applyAccountFilters(query, queryStruct) {
     if (query.account) {
-        // Filter context: the account match is a pure include and results are sorted by
-        // global_sequence (never _score), so scoring this should-clause across millions of docs
-        // is wasted work. filter context skips scoring and is cacheable. minimum_should_match is
-        // explicit (a should-only bool defaults to 1, but filter context makes it worth stating).
-        (queryStruct.bool.filter ??= []).push({bool: {should: makeShouldArray(query), minimum_should_match: 1}});
+        // Scoring (must) context, NOT filter. Filter context routes this clause through ES's query
+        // cache; for a low-selectivity account like eosio.token over large/old (cold-tier) segments,
+        // *building* the cached bitset (full per-segment bulkScorer enumeration) costs far more than
+        // the BM25 it would save and defeats index-sort early termination. Observed dominating
+        // node-6 hot_threads (IndicesQueryCache.bulkScorer). See memory: filter-context-query-cache-tradeoff.
+        queryStruct.bool.must.push({"bool": {should: makeShouldArray(query)}});
     }
 }
