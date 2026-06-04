@@ -41,6 +41,7 @@
     "tx_cache_expiration_sec": 3600,
     "hot_first_actions": false,
     "hot_first_window": 2,
+    "hot_first_transaction": false,
     "v1_chain_cache": [
       {"path": "get_block","ttl": 3000},
       {"path": "get_info","ttl": 500}

@@ -175,6 +175,12 @@ interface ApiConfigs {
     // hits — so heavy polling never fans out to old/warm shards. Default off.
     hot_first_actions?: boolean;
     hot_first_window?: number;        // number of newest action partitions in the hot window, default: 2
+    // Recent-first routing for get_transaction. Without a block_hint, a trx_id lookup has no block
+    // range to prune on and fans out across EVERY action partition (cold tier included). All of a
+    // transaction's documents share one block (one partition), so the hot window is probed first and
+    // the full <chain>-action-* set is queried only on a miss (older/non-existent trx). Reuses
+    // hot_first_window. Default off.
+    hot_first_transaction?: boolean;
 }
 
 interface ExplorerConfigs {
@@ -334,6 +340,7 @@ export const HyperionApiConfigSchema = z.object({
     max_asc_window_days: z.number().optional(),
     hot_first_actions: z.boolean().optional(),
     hot_first_window: z.number().optional(),
+    hot_first_transaction: z.boolean().optional(),
 });
 
 // Zod schema for tiered index allocation settings
