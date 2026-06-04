@@ -152,6 +152,10 @@ describe('extendResponseSchema', () => {
         expect(props.cached).toBeDefined();
         expect(props.lib).toBeDefined();
         expect(props.total).toBeDefined();
+        // hot_only / hot_first must be declared or fast-json-stringify silently strips them
+        // from the response even when the handler sets them.
+        expect(props.hot_only).toBeDefined();
+        expect(props.hot_first).toBeDefined();
         expect(props.actions).toEqual({ type: 'array' });
     });
 });
