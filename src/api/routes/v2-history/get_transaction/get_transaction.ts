@@ -102,6 +102,16 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             size: _size,
             query: {bool: {must: [{term: {trx_id: trxId}}]}},
             sort: {global_sequence: "asc"}
+        }).catch((err: any) => {
+            // Without a block_hint a 404 just means the probed index set isn't present yet (e.g. a
+            // hot window that resolved to a not-yet-created name, or a freshly provisioned chain).
+            // Treat it as a miss so we fall back to the full pattern instead of surfacing the
+            // (here misleading) "no data near block_hint" error. With a block_hint the 404 is real
+            // and is handled by the outer catch below.
+            if (err?.meta?.statusCode === 404 && !blockHint) {
+                return {hits: {hits: []}};
+            }
+            throw err;
         });
 
         let pResults;
@@ -111,13 +121,15 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         } catch (e: any) {
             console.log(e.message);
             if (e?.meta?.statusCode === 404) {
+                // Only reachable with a block_hint now (see runSearch catch), so the message fits.
                 response.error = 'no data near block_hint'
                 return response;
             }
             throw e;
         }
         hits = pResults[1].hits.hits;
-        response.lib = pResults[0].last_irreversible_block_num;
+        // $getInfo resolves null on failure — don't turn a recoverable lib-lookup miss into a 500.
+        response.lib = pResults[0]?.last_irreversible_block_num;
 
         // Recent-first miss: the trx isn't in the hot window, so widen to the full set — the only
         // path that can reach cold shards. A non-empty hit set is already complete (single partition).
