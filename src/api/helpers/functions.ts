@@ -781,6 +781,7 @@ export function extendResponseSchema(responseProps: any) {
         query_time_ms: {type: "number"},
         cached: {type: "boolean"},
         hot_only: {type: "boolean"},
+        hot_first: {type: "boolean"},
         lib: {type: "number"},
         last_indexed_block: {type: "number"},
         last_indexed_block_time: {type: "string"},
