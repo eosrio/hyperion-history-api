@@ -168,7 +168,10 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
     // Bound concurrent replays (per API process). A reconnect storm or many simultaneous
     // deep-`start_from` subscriptions would otherwise spawn parallel full-history scrolls that
     // all pound the oldest (cold-tier) shards at once. Apply backpressure instead.
-    const maxConcurrent = fastify.manager.config.api.stream_max_concurrent_replays ?? DEFAULT_MAX_CONCURRENT_REPLAYS;
+    let maxConcurrent = fastify.manager.config.api.stream_max_concurrent_replays ?? DEFAULT_MAX_CONCURRENT_REPLAYS;
+    if (!Number.isFinite(maxConcurrent) || maxConcurrent < 1) {
+        maxConcurrent = DEFAULT_MAX_CONCURRENT_REPLAYS;
+    }
     if (activeHistoryReplays >= maxConcurrent) {
         const errorMsg = `Server busy: ${activeHistoryReplays} history replays already running (max ${maxConcurrent}). Please retry shortly.`;
         hLog(`[${requestUUID}] Rejected ${dataKind} replay — ${errorMsg}`);
@@ -193,18 +196,6 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
         let totalFiltered = 0;
         let longScroll = false;
 
-        const esQuery = {
-            index: fastify.manager.chain + `-${dataKind}-*`,
-            scroll: `${MAX_SCROLL_TIME_SEC}s`,
-            size: fastify.manager.config.api.stream_scroll_batch || 500,
-            ...search_body
-        };
-
-        const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
-        currentScrollId = init_response._scroll_id;
-
-        const totalHits = getTotalValue(init_response);
-
         // Cap a single replay so it can't scroll the entire history. When unset, fall back to a
         // finite default; an explicit -1 opts into unbounded replay but is logged loudly so it
         // can't silently melt the cold tier.
@@ -212,8 +203,29 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
         if (scrollLimit === undefined || scrollLimit === null) {
             scrollLimit = DEFAULT_STREAM_SCROLL_LIMIT;
         }
+        // ES only tracks total hits up to 10k by default — which would let a 60k-doc replay slip a
+        // 50k cap and silently truncate at 10k. Track up to (cap + 1) so "over the limit" is
+        // detectable; for unlimited (-1), track to just past the warn threshold.
+        const trackTotalHits = scrollLimit === -1
+            ? UNBOUNDED_REPLAY_WARN_THRESHOLD + 1
+            : scrollLimit + 1;
+
+        const esQuery = {
+            index: fastify.manager.chain + `-${dataKind}-*`,
+            scroll: `${MAX_SCROLL_TIME_SEC}s`,
+            size: fastify.manager.config.api.stream_scroll_batch || 500,
+            ...search_body,
+            track_total_hits: trackTotalHits
+        };
+
+        const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
+        currentScrollId = init_response._scroll_id;
+
+        const totalHits = getTotalValue(init_response);
+
+        // Reject an over-cap replay up front instead of scrolling the whole cold tier.
         if (scrollLimit !== -1 && totalHits > scrollLimit) {
-            const errorMsg = `Requested ${totalHits} ${dataKind}s, limit is ${scrollLimit}.`;
+            const errorMsg = `Requested at least ${totalHits} ${dataKind}s, limit is ${scrollLimit}. Narrow the range with start_from/read_until.`;
             socket.emit('message', {
                 reqUUID: requestUUID,
                 type: `${dataKind}_trace`,
@@ -224,7 +236,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
             return {status: false, error: errorMsg};
         }
         if (scrollLimit === -1 && totalHits > UNBOUNDED_REPLAY_WARN_THRESHOLD) {
-            hLog(`[WARN][${requestUUID}] Unbounded ${dataKind} replay of ${totalHits} docs (api.stream_scroll_limit=-1) — set a finite limit to protect old/cold indices.`);
+            hLog(`[WARN][${requestUUID}] Unbounded ${dataKind} replay of ${totalHits}+ docs (api.stream_scroll_limit=-1) — set a finite limit to protect old/cold indices.`);
         }
 
         if (totalHits > 10000) {
@@ -247,6 +259,15 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
             const rp = responseQueue.shift();
 
             if (rp) {
+
+                // Empty page = scroll exhausted. This is the authoritative terminator: relying only
+                // on `counter === total` can loop forever if the scroll ends early (docs deleted/
+                // merged mid-scroll, or a capped total that counter never exactly reaches) — an
+                // infinite empty-scroll loop would peg CPU and spam ES.
+                if (!rp.hits?.hits || rp.hits.hits.length === 0) {
+                    hLog(`${counter} past ${dataKind}s streamed to ${socket.id} (${totalFiltered} filtered)`);
+                    break;
+                }
 
                 currentScrollId = rp._scroll_id;
                 const enqueuedMessages: any[] = [];
@@ -314,8 +335,11 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                         }
                     }
                 } else {
+                    // Client gone — return a failure status so the caller stops immediately and
+                    // does NOT launch its follow-up "fill" replays (which would scroll the cold
+                    // tier for a socket that no longer exists). finally still clears the scroll.
                     hLog(`LOST CLIENT During ${dataKind.toUpperCase()} history replay!`);
-                    break;
+                    return {status: false, error: 'client disconnected', lastTransmittedBlock, counter};
                 }
 
                 if (longScroll) {
