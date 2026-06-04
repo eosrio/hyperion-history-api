@@ -134,7 +134,8 @@ interface ApiConfigs {
     enabled?: boolean;
     log_errors?: boolean;
     stream_scroll_batch?: number;
-    stream_scroll_limit?: number;
+    stream_scroll_limit?: number;            // per-request doc cap for stream history replay; -1 = unlimited (default: 50000)
+    stream_max_concurrent_replays?: number;  // max concurrent stream history replays per API process (default: 4)
     pm2_scaling?: number;
 
     // Node.js options
@@ -297,6 +298,7 @@ export const HyperionApiConfigSchema = z.object({
     log_errors: z.boolean().optional(),
     stream_scroll_batch: z.number().optional(),
     stream_scroll_limit: z.number().optional(),
+    stream_max_concurrent_replays: z.number().optional(),
     pm2_scaling: z.number().optional(),
     
     // Node.js options

@@ -19,6 +19,16 @@ const actionQueryFields = ['receiver', 'act', 'account'];
 
 const MAX_SCROLL_TIME_SEC = 120;
 
+// --- Streaming history-replay hardening ---------------------------------------------------
+// A stream subscription with a past `start_from` scrolls `<chain>-<type>-*` (every index,
+// including the oldest cold-tier shards). Left unbounded it can walk the entire history and,
+// multiplied by reconnect storms, pin the cold tier. These guards bound a single replay's size
+// and the number of concurrent replays per API process.
+const DEFAULT_STREAM_SCROLL_LIMIT = 50_000;       // per-request doc cap when stream_scroll_limit is unset
+const DEFAULT_MAX_CONCURRENT_REPLAYS = 4;         // concurrent history replays per API process
+const UNBOUNDED_REPLAY_WARN_THRESHOLD = 100_000;  // warn when an explicit -1 (unlimited) replay exceeds this
+let activeHistoryReplays = 0;                      // in-flight replay counter (per process)
+
 export function getTotalValue(searchResponse: estypes.SearchResponse): number {
     if (searchResponse.hits.total) {
         if (typeof searchResponse.hits.total === 'number') {
@@ -155,30 +165,16 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
         });
     }
 
-    const responseQueue: estypes.SearchResponse<any, any>[] = [];
-
-    let counter = 0;
-    let total = 0;
-    let totalFiltered = 0;
-    let longScroll = false;
-
-    const esQuery = {
-        index: fastify.manager.chain + `-${dataKind}-*`,
-        scroll: `${MAX_SCROLL_TIME_SEC}s`,
-        size: fastify.manager.config.api.stream_scroll_batch || 500,
-        ...search_body
-    };
-
-    // console.dir(esQuery, {depth: Infinity, colors: true});
-    // console.dir(onDemandFilters);
-
-    const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
-
-    const totalHits = getTotalValue(init_response);
-
-    const scrollLimit = fastify.manager.config.api.stream_scroll_limit;
-    if (scrollLimit && scrollLimit !== -1 && totalHits > scrollLimit) {
-        const errorMsg = `Requested ${totalHits} ${dataKind}s, limit is ${scrollLimit}.`;
+    // Bound concurrent replays (per API process). A reconnect storm or many simultaneous
+    // deep-`start_from` subscriptions would otherwise spawn parallel full-history scrolls that
+    // all pound the oldest (cold-tier) shards at once. Apply backpressure instead.
+    let maxConcurrent = fastify.manager.config.api.stream_max_concurrent_replays ?? DEFAULT_MAX_CONCURRENT_REPLAYS;
+    if (!Number.isFinite(maxConcurrent) || maxConcurrent < 1) {
+        maxConcurrent = DEFAULT_MAX_CONCURRENT_REPLAYS;
+    }
+    if (activeHistoryReplays >= maxConcurrent) {
+        const errorMsg = `Server busy: ${activeHistoryReplays} history replays already running (max ${maxConcurrent}). Please retry shortly.`;
+        hLog(`[${requestUUID}] Rejected ${dataKind} replay — ${errorMsg}`);
         socket.emit('message', {
             reqUUID: requestUUID,
             type: `${dataKind}_trace`,
@@ -188,133 +184,207 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
         });
         return {status: false, error: errorMsg};
     }
+    activeHistoryReplays++;
 
-    if (totalHits > 10000) {
-        total = totalHits;
-        longScroll = true;
-        hLog(`Attention! Long scroll (${dataKind}s) is running!`);
-    }
+    // Tracked outside the try so the finally can always release the scroll context.
+    let currentScrollId: estypes.ScrollId | undefined;
+    try {
+        const responseQueue: estypes.SearchResponse<any, any>[] = [];
 
-    // emit the first block
-    if (init_response.hits.hits.length > 0) {
-        emitTraceInit(socket, requestUUID, init_response.hits.hits[0]._source.block_num, totalHits);
-    }
+        let counter = 0;
+        let total = 0;
+        let totalFiltered = 0;
+        let longScroll = false;
 
-    responseQueue.push(init_response);
+        // Cap a single replay so it can't scroll the entire history. When unset, fall back to a
+        // finite default; an explicit -1 opts into unbounded replay but is logged loudly so it
+        // can't silently melt the cold tier.
+        let scrollLimit = fastify.manager.config.api.stream_scroll_limit;
+        if (scrollLimit === undefined || scrollLimit === null) {
+            scrollLimit = DEFAULT_STREAM_SCROLL_LIMIT;
+        }
+        // ES only tracks total hits up to 10k by default — which would let a 60k-doc replay slip a
+        // 50k cap and silently truncate at 10k. Track up to (cap + 1) so "over the limit" is
+        // detectable; for unlimited (-1), track to just past the warn threshold.
+        const trackTotalHits = scrollLimit === -1
+            ? UNBOUNDED_REPLAY_WARN_THRESHOLD + 1
+            : scrollLimit + 1;
 
-    let lastTransmittedBlock = 0;
-    let pendingScrollId: estypes.ScrollId | undefined = '';
+        const esQuery = {
+            index: fastify.manager.chain + `-${dataKind}-*`,
+            scroll: `${MAX_SCROLL_TIME_SEC}s`,
+            size: fastify.manager.config.api.stream_scroll_batch || 500,
+            ...search_body,
+            track_total_hits: trackTotalHits
+        };
 
-    while (responseQueue.length) {
-        let filterCount = 0;
-        const rp = responseQueue.shift();
+        const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
+        currentScrollId = init_response._scroll_id;
 
-        if (rp) {
+        const totalHits = getTotalValue(init_response);
 
-            pendingScrollId = rp._scroll_id;
-            const enqueuedMessages: any[] = [];
-            counter += rp.hits.hits.length;
-
-            for (const doc of rp.hits.hits) {
-                let allow = false;
-
-                if (dataKind === 'action') {
-                    mergeActionMeta(doc._source);
-                } else if (dataKind === 'delta') {
-                    mergeDeltaMeta(doc._source);
-                }
-
-                // const tRef = process.hrtime.bigint();
-                if (onDemandFilters.length > 0) {
-                    if (data.filter_op === 'or') {
-                        allow = onDemandFilters.some(filter => {
-                            return checkMetaFilter(filter, doc._source, dataKind);
-                        });
-                    } else {
-                        allow = onDemandFilters.every(filter => {
-                            // console.log(doc._source);
-                            return checkMetaFilter(filter, doc._source, dataKind);
-                        });
-                    }
-                } else {
-                    allow = true;
-                }
-                // console.log('Filter time: ', Number(process.hrtime.bigint() - tRef) / 10e6, 'ms');
-
-                if (allow) {
-                    enqueuedMessages.push(doc._source);
-                } else {
-                    filterCount++;
-                }
-
-                // set the last block
-                if (doc._source.block_num > lastTransmittedBlock) {
-                    lastTransmittedBlock = doc._source.block_num;
-                }
-            }
-
-            totalFiltered += filterCount;
-
-            if (socket.connected) {
-                if (enqueuedMessages.length > 0) {
-                    try {
-
-                        // Wait for 120 s
-                        const ackResponse = await socket
-                            .timeout(MAX_SCROLL_TIME_SEC * 1000)
-                            .emitWithAck('message', {
-                                reqUUID: requestUUID,
-                                type: `${dataKind}_trace`,
-                                mode: 'history',
-                                messages: enqueuedMessages,
-                                filtered: filterCount
-                            });
-
-                        if (ackResponse.status !== true) {
-                            hLog(`${dataKind}_trace scroll TIMEOUT`);
-                            return {status: ackResponse.status, error: ackResponse.error};
-                        }
-                    } catch (e: any) {
-                        hLog(`${dataKind}_trace scroll NACK`, e);
-                        return {status: false, error: e};
-                    }
-                }
-            } else {
-                hLog(`LOST CLIENT During ${dataKind.toUpperCase()} history replay!`);
-                break;
-            }
-
-            if (longScroll) {
-                hLog(`[${requestUUID}] Progress: ${counter + totalFiltered}/${total}`);
-            }
-
-            if (getTotalValue(rp) === counter) {
-                hLog(`${counter} past ${dataKind}s streamed to ${socket.id} (${totalFiltered} filtered)`);
-                break;
-            }
-
-            const next_response = await fastify.elastic.scroll({
-                scroll_id: rp._scroll_id ?? "",
-                scroll: `${MAX_SCROLL_TIME_SEC}s`
+        // Reject an over-cap replay up front instead of scrolling the whole cold tier.
+        if (scrollLimit !== -1 && totalHits > scrollLimit) {
+            const errorMsg = `Requested at least ${totalHits} ${dataKind}s, limit is ${scrollLimit}. Narrow the range with start_from/read_until.`;
+            socket.emit('message', {
+                reqUUID: requestUUID,
+                type: `${dataKind}_trace`,
+                mode: 'history',
+                messages: [],
+                error: errorMsg
             });
-            responseQueue.push(next_response);
+            return {status: false, error: errorMsg};
+        }
+        if (scrollLimit === -1 && totalHits > UNBOUNDED_REPLAY_WARN_THRESHOLD) {
+            hLog(`[WARN][${requestUUID}] Unbounded ${dataKind} replay of ${totalHits}+ docs (api.stream_scroll_limit=-1) — set a finite limit to protect old/cold indices.`);
         }
 
-        // TODO: Apply dynamic delay for request throttling
-        await new Promise(resolve => setTimeout(resolve, 200));
-    }
+        if (totalHits > 10000) {
+            total = totalHits;
+            longScroll = true;
+            hLog(`Attention! Long scroll (${dataKind}s) is running!`);
+        }
 
-    if (counter === 0) {
-        // No data found yet, make sure the last transmitted block is reset
-        lastTransmittedBlock = Number(data.start_from) - 1;
-        if (head && lastTransmittedBlock < 0) {
-            lastTransmittedBlock = head + lastTransmittedBlock;
+        // emit the first block
+        if (init_response.hits.hits.length > 0) {
+            emitTraceInit(socket, requestUUID, init_response.hits.hits[0]._source.block_num, totalHits);
+        }
+
+        responseQueue.push(init_response);
+
+        let lastTransmittedBlock = 0;
+
+        while (responseQueue.length) {
+            let filterCount = 0;
+            const rp = responseQueue.shift();
+
+            if (rp) {
+
+                // Empty page = scroll exhausted. This is the authoritative terminator: relying only
+                // on `counter === total` can loop forever if the scroll ends early (docs deleted/
+                // merged mid-scroll, or a capped total that counter never exactly reaches) — an
+                // infinite empty-scroll loop would peg CPU and spam ES.
+                if (!rp.hits?.hits || rp.hits.hits.length === 0) {
+                    hLog(`${counter} past ${dataKind}s streamed to ${socket.id} (${totalFiltered} filtered)`);
+                    break;
+                }
+
+                currentScrollId = rp._scroll_id;
+                const enqueuedMessages: any[] = [];
+                counter += rp.hits.hits.length;
+
+                for (const doc of rp.hits.hits) {
+                    let allow = false;
+
+                    if (dataKind === 'action') {
+                        mergeActionMeta(doc._source);
+                    } else if (dataKind === 'delta') {
+                        mergeDeltaMeta(doc._source);
+                    }
+
+                    if (onDemandFilters.length > 0) {
+                        if (data.filter_op === 'or') {
+                            allow = onDemandFilters.some(filter => {
+                                return checkMetaFilter(filter, doc._source, dataKind);
+                            });
+                        } else {
+                            allow = onDemandFilters.every(filter => {
+                                return checkMetaFilter(filter, doc._source, dataKind);
+                            });
+                        }
+                    } else {
+                        allow = true;
+                    }
+
+                    if (allow) {
+                        enqueuedMessages.push(doc._source);
+                    } else {
+                        filterCount++;
+                    }
+
+                    // set the last block
+                    if (doc._source.block_num > lastTransmittedBlock) {
+                        lastTransmittedBlock = doc._source.block_num;
+                    }
+                }
+
+                totalFiltered += filterCount;
+
+                if (socket.connected) {
+                    if (enqueuedMessages.length > 0) {
+                        try {
+
+                            // Wait for 120 s
+                            const ackResponse = await socket
+                                .timeout(MAX_SCROLL_TIME_SEC * 1000)
+                                .emitWithAck('message', {
+                                    reqUUID: requestUUID,
+                                    type: `${dataKind}_trace`,
+                                    mode: 'history',
+                                    messages: enqueuedMessages,
+                                    filtered: filterCount
+                                });
+
+                            if (ackResponse.status !== true) {
+                                hLog(`${dataKind}_trace scroll TIMEOUT`);
+                                return {status: ackResponse.status, error: ackResponse.error};
+                            }
+                        } catch (e: any) {
+                            hLog(`${dataKind}_trace scroll NACK`, e);
+                            return {status: false, error: e};
+                        }
+                    }
+                } else {
+                    // Client gone — return a failure status so the caller stops immediately and
+                    // does NOT launch its follow-up "fill" replays (which would scroll the cold
+                    // tier for a socket that no longer exists). finally still clears the scroll.
+                    hLog(`LOST CLIENT During ${dataKind.toUpperCase()} history replay!`);
+                    return {status: false, error: 'client disconnected', lastTransmittedBlock, counter};
+                }
+
+                if (longScroll) {
+                    hLog(`[${requestUUID}] Progress: ${counter + totalFiltered}/${total}`);
+                }
+
+                if (getTotalValue(rp) === counter) {
+                    hLog(`${counter} past ${dataKind}s streamed to ${socket.id} (${totalFiltered} filtered)`);
+                    break;
+                }
+
+                const next_response = await fastify.elastic.scroll({
+                    scroll_id: rp._scroll_id ?? "",
+                    scroll: `${MAX_SCROLL_TIME_SEC}s`
+                });
+                currentScrollId = next_response._scroll_id;
+                responseQueue.push(next_response);
+            }
+
+            // TODO: Apply dynamic delay for request throttling
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
+
+        if (counter === 0) {
+            // No data found yet, make sure the last transmitted block is reset
+            lastTransmittedBlock = Number(data.start_from) - 1;
+            if (head && lastTransmittedBlock < 0) {
+                lastTransmittedBlock = head + lastTransmittedBlock;
+            }
+        }
+
+        return {status: true, lastTransmittedBlock, counter};
+    } finally {
+        activeHistoryReplays--;
+        // Always release the scroll context — on success, early return, timeout/NACK, or
+        // disconnect — so old/cold indices aren't pinned by orphaned scrolls (which hold file
+        // handles and block segment merges until the keepalive expires).
+        if (currentScrollId) {
+            try {
+                await fastify.elastic.clearScroll({scroll_id: currentScrollId});
+            } catch (e: any) {
+                hLog(`[${requestUUID}] Failed to clear scroll context: ${e?.message ?? e}`);
+            }
         }
     }
-
-    // destroy scroll context
-    await fastify.elastic.clearScroll({scroll_id: pendingScrollId});
-    return {status: true, lastTransmittedBlock, counter};
 }
 
 
