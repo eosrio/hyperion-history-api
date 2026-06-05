@@ -181,6 +181,12 @@ interface ApiConfigs {
     // the full <chain>-action-* set is queried only on a miss (older/non-existent trx). Reuses
     // hot_first_window. Default off.
     hot_first_transaction?: boolean;
+    // Diagnostic: when true, log one line per get_transaction served WITHOUT a block_hint —
+    // which phase served it (hot vs widened), per-phase timings, and how many partitions back the
+    // trx actually was (`parts_back`). Aggregating parts_back reveals the block-age distribution of
+    // lookups, i.e. the hot_first_window that would capture a given fraction of them. Default off;
+    // noisy under load (one line per request) — enable briefly to sample, then disable.
+    hot_first_transaction_profiling?: boolean;
 }
 
 interface ExplorerConfigs {
@@ -341,6 +347,7 @@ export const HyperionApiConfigSchema = z.object({
     hot_first_actions: z.boolean().optional(),
     hot_first_window: z.number().optional(),
     hot_first_transaction: z.boolean().optional(),
+    hot_first_transaction_profiling: z.boolean().optional(),
 });
 
 // Zod schema for tiered index allocation settings
