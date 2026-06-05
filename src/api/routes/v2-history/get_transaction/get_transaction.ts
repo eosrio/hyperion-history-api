@@ -1,6 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
 import {resolveHotIndices} from "../../../helpers/hot-index.js";
+import {hLog} from "../../../../indexer/helpers/common_functions.js";
 import {regroupActions} from "../../../helpers/regroup-actions.js";
 import {API} from "@wharfkit/antelope";
 
@@ -114,6 +115,11 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             throw err;
         });
 
+        // Opt-in diagnostic (api.hot_first_transaction_profiling): only for the no-block_hint path,
+        // where the fan-out happens. Times each phase and records how far back the trx actually was.
+        const profile = conf.api.hot_first_transaction_profiling === true && !blockHint;
+        const tStart = profile ? Date.now() : 0;
+
         let pResults;
         try {
             // execute get_info and the (phase-1) search in parallel
@@ -131,11 +137,38 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         // $getInfo resolves null on failure — don't turn a recoverable lib-lookup miss into a 500.
         response.lib = pResults[0]?.last_irreversible_block_num;
 
+        const phase1Ms = profile ? Date.now() - tStart : 0;
+        const phase1Hits = hits.length;
+        let widenMs = 0;
+        let widened = false;
+
         // Recent-first miss: the trx isn't in the hot window, so widen to the full set — the only
         // path that can reach cold shards. A non-empty hit set is already complete (single partition).
         if (recentFirst && hits.length === 0) {
-            const widened = await runSearch(fullPattern);
-            hits = widened.hits.hits;
+            const tWiden = profile ? Date.now() : 0;
+            const widenedRes = await runSearch(fullPattern);
+            hits = widenedRes.hits.hits;
+            widenMs = profile ? Date.now() - tWiden : 0;
+            widened = true;
+        }
+
+        if (profile) {
+            // parts_back = how many partitions older than head the trx is; a hot_first_window of
+            // (parts_back + 1) would have served this lookup from the hot path. -1 = not found.
+            const partSize = conf.settings.index_partition_size;
+            let foundBlock = 0;
+            for (const h of hits) {
+                const bn = h?._source?.block_num ?? 0;
+                if (bn > foundBlock) foundBlock = bn;
+            }
+            const headBlock = Number(pResults[0]?.head_block_num ?? 0);
+            const foundPart = foundBlock ? Math.ceil(foundBlock / partSize) : 0;
+            const headPart = headBlock ? Math.ceil(headBlock / partSize) : 0;
+            const partsBack = (foundPart && headPart) ? (headPart - foundPart) : -1;
+            const served = recentFirst ? (widened ? 'full' : 'hot') : 'full';
+            hLog(`[gtx-profile] trx=${trxId.slice(0, 12)} served=${served} hot_hits=${phase1Hits} ` +
+                `found_block=${foundBlock || 'none'} found_part=${foundPart || '-'} head_part=${headPart || '-'} ` +
+                `parts_back=${partsBack} phase1_ms=${phase1Ms} widen_ms=${widenMs} total_ms=${phase1Ms + widenMs}`);
         }
     }
 
