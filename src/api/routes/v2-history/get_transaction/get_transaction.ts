@@ -76,13 +76,11 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         const fullPattern = fastify.manager.chain + '-action-*';
 
         // Resolve the index target. A block_hint pins the single partition (no fan-out). Without one,
-        // a trx_id term query has no block range to prune on, so it fans out across EVERY action
-        // partition — including cold-tier shards holding old history (the dominant cold-node CPU
-        // sink observed on the WAX cluster). All of a transaction's documents share one block, hence
-        // one partition, so a recent-first probe is exact: if the hot window returns any hit it
-        // returns them all, and only a miss (older or non-existent trx) needs to widen to the full
-        // set. Opt-in via api.hot_first_transaction; reuses hot_first_window. See memory:
-        // filter-context-query-cache-tradeoff / stream-replay-cold-tier-hardening.
+        // a trx_id term query has no block range to prune on, so it fans out across every action
+        // partition, including older/cold-tier shards. All of a transaction's documents share one
+        // block, hence one partition, so a recent-first probe is exact: if the hot window returns any
+        // hit it returns them all, and only a miss (older or non-existent trx) needs to widen to the
+        // full set. Opt-in via api.hot_first_transaction; reuses hot_first_window.
         let indexPattern: string;
         let recentFirst = false;
         if (blockHint) {
@@ -161,10 +159,15 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
                 const bn = h?._source?.block_num ?? 0;
                 if (bn > foundBlock) foundBlock = bn;
             }
-            const headBlock = Number(pResults[0]?.head_block_num ?? 0);
+            // head_block_num is a Wharfkit UInt32 (fresh from get_info) or a plain number (from the
+            // redis cache); unwrap .value when present before coercing.
+            const headRaw: any = pResults[0]?.head_block_num;
+            const headBlock = Number(headRaw?.value ?? headRaw ?? 0);
             const foundPart = foundBlock ? Math.ceil(foundBlock / partSize) : 0;
             const headPart = headBlock ? Math.ceil(headBlock / partSize) : 0;
-            const partsBack = (foundPart && headPart) ? (headPart - foundPart) : -1;
+            // Clamp: ES/get_info micro-lag can place a hit one block past the reported head, which
+            // would yield a negative value and collide with the -1 "not found" sentinel.
+            const partsBack = (foundPart && headPart) ? Math.max(0, headPart - foundPart) : -1;
             const served = recentFirst ? (widened ? 'full' : 'hot') : 'full';
             hLog(`[gtx-profile] trx=${trxId.slice(0, 12)} served=${served} hot_hits=${phase1Hits} ` +
                 `found_block=${foundBlock || 'none'} found_part=${foundPart || '-'} head_part=${headPart || '-'} ` +
