@@ -98,6 +98,47 @@ describe('getSortDir', () => {
         const todayDateOnly = new Date(Date.now() - 3600000).toISOString().split('T')[0];
         expect(getSortDir({ sort: 'asc', after: todayDateOnly })).toBe('asc');
     });
+
+    // sort=asc bounded by a global_sequence range (the default sort field)
+    it('should return asc with a global_sequence range bound', () => {
+        expect(getSortDir({ sort: 'asc', global_sequence: '1000-2000' })).toBe('asc');
+    });
+
+    it('should return asc with a single positive global_sequence value', () => {
+        expect(getSortDir({ sort: 'asc', global_sequence: '123456789' })).toBe('asc');
+    });
+
+    it('should return asc with a block_num range bound', () => {
+        expect(getSortDir({ sort: 'asc', block_num: '425000000-425100000' })).toBe('asc');
+    });
+
+    it('should throw for sort=asc with a global_sequence range whose upper bound is 0', () => {
+        expect(() => getSortDir({ sort: 'asc', global_sequence: '0-0' })).toThrow('sort=asc requires');
+    });
+
+    it('should throw for sort=asc with a non-numeric global_sequence', () => {
+        expect(() => getSortDir({ sort: 'asc', global_sequence: 'garbage' })).toThrow('sort=asc requires');
+    });
+
+    it('should still apply the recency window to an old "after" date alongside a global_sequence bound', () => {
+        const oldDate = new Date('2020-01-01T00:00:00Z').toISOString();
+        expect(getSortDir({ sort: 'asc', global_sequence: '1000-2000' })).toBe('asc');
+        expect(() => getSortDir({ sort: 'asc', after: oldDate, global_sequence: '1000-2000' })).toThrow('within the last');
+    });
+
+    // require_bounded_asc = false disables the guard entirely
+    it('should return asc without any bound when requireBoundedAsc is false', () => {
+        expect(getSortDir({ sort: 'asc' }, 90, false)).toBe('asc');
+    });
+
+    it('should skip the max window check when requireBoundedAsc is false', () => {
+        const oldDate = new Date('2020-01-01T00:00:00Z').toISOString();
+        expect(getSortDir({ sort: 'asc', after: oldDate }, 90, false)).toBe('asc');
+    });
+
+    it('should still reject an invalid sort direction when requireBoundedAsc is false', () => {
+        expect(() => getSortDir({ sort: 'invalid' }, 90, false)).toThrow('invalid sort direction');
+    });
 });
 
 describe('applyTimeFilter (mixed date / block-number bounds)', () => {

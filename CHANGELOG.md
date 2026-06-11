@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.1.0 (unreleased)
+
+### Improvements
+
+*   **`sort=asc` now accepts a `global_sequence` (or `block_num`) range as a valid bound** on `get_actions` (v2). Previously only `after`/`before` (ISO date or block number) satisfied the bound requirement, so a request like `get_actions?account=X&global_sequence=<from>-<to>&sort=asc` was rejected as unbounded even though the range already constrains the scan. Because `global_sequence` is the default sort field, such a range bounds the candidate set directly — there is no full-index reverse scan to guard against. Bare positive `global_sequence`/`block_num` values are accepted too; `0` and non-numeric input are not.
+
+### New Config Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `require_bounded_asc` | `boolean` | `true` | When `false`, disables the `sort=asc` bound requirement (and the `max_asc_window_days` window check) on `get_actions` (v1 & v2). For self-hosted operators who accept the performance cost of unbounded ascending scans on their own infrastructure. |
+
+### Behavior Changes
+
+*   `sort=asc` on `get_actions` (v2) is satisfied by **any** of: a valid `after`/`before`, or a `global_sequence`/`block_num` range/value.
+*   Setting `api.require_bounded_asc: false` makes `sort=asc` behave as it did before the v4.0.3 guard — no bound required, no window cap. The guard remains **on by default**.
+
 ## 4.0.8 (2026-06-02)
 
 ### Fixes

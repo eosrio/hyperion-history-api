@@ -25,7 +25,8 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     const {skip, limit} = getSkipLimit(query, maxActions);
 
     const maxAscWindowDays = fastify.manager.config.api.max_asc_window_days || 90;
-    const sort_direction = getSortDir(query, maxAscWindowDays);
+    const requireBoundedAsc = fastify.manager.config.api.require_bounded_asc !== false;
+    const sort_direction = getSortDir(query, maxAscWindowDays, requireBoundedAsc);
 
     applyAccountFilters(query, queryStruct);
 

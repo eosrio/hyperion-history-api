@@ -197,25 +197,28 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     }
 
     const maxAscWindowDays = fastify.manager.config.api.max_asc_window_days || 90;
+    const requireBoundedAsc = fastify.manager.config.api.require_bounded_asc !== false;
 
     if (reqBody.sort) {
         if (reqBody.sort === 'asc' || reqBody.sort === '1') {
-            // sort=asc requires a valid, recent time range to prevent full-index reverse scans
-            const after = reqBody.after;
-            const before = reqBody.before;
-            const isValidBound = (v) => v && (!isNaN(new Date(v).getTime()) || (Number.isInteger(Number(v)) && Number(v) > 0));
-            if (!isValidBound(after) && !isValidBound(before)) {
-                return {error: 'sort=asc requires a valid "after" or "before" (ISO date or block number) to bound the search'};
-            }
-            // Apply the recency window to a *date* "after" bound. Block-number bounds are
-            // exempt. Classified the same way as the range filter below so a date without
-            // a 'T' (e.g. "2026-01-01", or "0" which parses to year 2000) cannot slip past.
-            if (after && !isBlockNumber(after)) {
-                const afterDate = new Date(after);
-                if (!isNaN(afterDate.getTime())) {
-                    const maxAge = Date.now() - (maxAscWindowDays * 86400000);
-                    if (afterDate.getTime() < maxAge) {
-                        return {error: `sort=asc "after" date must be within the last ${maxAscWindowDays} days — use block numbers for "after"/"before" to query older ranges`};
+            if (requireBoundedAsc) {
+                // sort=asc requires a valid, recent time range to prevent full-index reverse scans
+                const after = reqBody.after;
+                const before = reqBody.before;
+                const isValidBound = (v) => v && (!isNaN(new Date(v).getTime()) || (Number.isInteger(Number(v)) && Number(v) > 0));
+                if (!isValidBound(after) && !isValidBound(before)) {
+                    return {error: 'sort=asc requires a valid "after" or "before" (ISO date or block number) to bound the search'};
+                }
+                // Apply the recency window to a *date* "after" bound. Block-number bounds are
+                // exempt. Classified the same way as the range filter below so a date without
+                // a 'T' (e.g. "2026-01-01", or "0" which parses to year 2000) cannot slip past.
+                if (after && !isBlockNumber(after)) {
+                    const afterDate = new Date(after);
+                    if (!isNaN(afterDate.getTime())) {
+                        const maxAge = Date.now() - (maxAscWindowDays * 86400000);
+                        if (afterDate.getTime() < maxAge) {
+                            return {error: `sort=asc "after" date must be within the last ${maxAscWindowDays} days — use block numbers for "after"/"before" to query older ranges`};
+                        }
                     }
                 }
             }

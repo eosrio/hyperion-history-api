@@ -275,27 +275,56 @@ export function getSkipLimit(query: any, max?: number): { skip: number, limit: n
     return {skip, limit};
 }
 
-export function getSortDir(query, maxAscWindowDays = 90) {
+// A range (or single positive value) on a monotonic field bounds an asc scan as
+// effectively as after/before. global_sequence is the default sort field, so a
+// global_sequence range constrains the candidate set directly; block_num ranges
+// likewise. Accepts "<from>-<to>" ranges and bare positive values; rejects 0 and
+// non-numeric input. Digit-string checks avoid Number() precision loss on uint64.
+function hasMonotonicBound(query): boolean {
+    const isBoundValue = (v) => {
+        if (v === undefined || v === null) {
+            return false;
+        }
+        const s = String(v).trim();
+        if (s === '') {
+            return false;
+        }
+        const parts = s.split('-');
+        if (parts.length === 2) {
+            // "<from>-<to>" range — upper bound must be a positive integer
+            return /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1]) && !/^0+$/.test(parts[1]);
+        }
+        // single positive value (matches at most a handful of docs)
+        return /^\d+$/.test(s) && !/^0+$/.test(s);
+    };
+    return isBoundValue(query.global_sequence) || isBoundValue(query.block_num);
+}
+
+export function getSortDir(query, maxAscWindowDays = 90, requireBoundedAsc = true) {
     let sort_direction = 'desc';
     if (query.sort) {
         if (query.sort === 'asc' || query.sort === '1') {
-            // sort=asc requires a valid, recent time range to prevent full-index reverse scans
-            const after = query.after;
-            const before = query.before;
-            const isValidBound = (v) => v && (!isNaN(new Date(v).getTime()) || (Number.isInteger(Number(v)) && Number(v) > 0));
-            if (!isValidBound(after) && !isValidBound(before)) {
-                badRequest('sort=asc requires a valid "after" or "before" (ISO date or block number) to bound the search');
-            }
-            // Apply the recency window to a *date* "after" bound. Block-number bounds are
-            // exempt — they bound the reverse scan just as well. Classified the same way
-            // as applyTimeFilter so a date without a 'T' (e.g. "2026-01-01", or "0" which
-            // parses to year 2000) cannot slip past the window check.
-            if (after && !isBlockNumber(after)) {
-                const afterDate = new Date(after);
-                if (!isNaN(afterDate.getTime())) {
-                    const maxAge = Date.now() - (maxAscWindowDays * 86400000);
-                    if (afterDate.getTime() < maxAge) {
-                        badRequest(`sort=asc "after" date must be within the last ${maxAscWindowDays} days — use block numbers for "after"/"before" to query older ranges`);
+            if (requireBoundedAsc) {
+                // sort=asc requires a valid, recent time range to prevent full-index reverse scans
+                const after = query.after;
+                const before = query.before;
+                const isValidBound = (v) => v && (!isNaN(new Date(v).getTime()) || (Number.isInteger(Number(v)) && Number(v) > 0));
+                // A global_sequence/block_num range also bounds the scan — global_sequence is the
+                // default sort field, so such a range constrains the candidate set directly.
+                if (!isValidBound(after) && !isValidBound(before) && !hasMonotonicBound(query)) {
+                    badRequest('sort=asc requires a valid "after"/"before" (ISO date or block number) or a global_sequence/block_num range to bound the search');
+                }
+                // Apply the recency window to a *date* "after" bound. Block-number bounds are
+                // exempt — they bound the reverse scan just as well. Classified the same way
+                // as applyTimeFilter so a date without a 'T' (e.g. "2026-01-01", or "0" which
+                // parses to year 2000) cannot slip past the window check.
+                if (after && !isBlockNumber(after)) {
+                    const afterDate = new Date(after);
+                    if (!isNaN(afterDate.getTime())) {
+                        const maxAge = Date.now() - (maxAscWindowDays * 86400000);
+                        if (afterDate.getTime() < maxAge) {
+                            badRequest(`sort=asc "after" date must be within the last ${maxAscWindowDays} days — use block numbers for "after"/"before" to query older ranges`);
+                        }
                     }
                 }
             }
