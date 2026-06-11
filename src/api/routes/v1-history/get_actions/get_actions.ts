@@ -205,7 +205,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
                 // sort=asc requires a valid, recent time range to prevent full-index reverse scans
                 const after = reqBody.after;
                 const before = reqBody.before;
-                const isValidBound = (v) => v && (!isNaN(new Date(v).getTime()) || (Number.isInteger(Number(v)) && Number(v) > 0));
+                const isValidBound = (v) => (typeof v === 'string' || typeof v === 'number') && v && (!isNaN(new Date(v).getTime()) || (Number.isInteger(Number(v)) && Number(v) > 0));
                 if (!isValidBound(after) && !isValidBound(before)) {
                     return {error: 'sort=asc requires a valid "after" or "before" (ISO date or block number) to bound the search'};
                 }

@@ -120,6 +120,18 @@ describe('getSortDir', () => {
         expect(() => getSortDir({ sort: 'asc', global_sequence: 'garbage' })).toThrow('sort=asc requires');
     });
 
+    it('should accept a range with a 0 lower bound (0-2000 is a valid "from start" bound)', () => {
+        expect(getSortDir({ sort: 'asc', global_sequence: '0-2000' })).toBe('asc');
+    });
+
+    it('should reject an array global_sequence (param repeated in the URL)', () => {
+        expect(() => getSortDir({ sort: 'asc', global_sequence: ['1000-2000', '3000-4000'] })).toThrow('sort=asc requires');
+    });
+
+    it('should reject an array after bound (param repeated in the URL)', () => {
+        expect(() => getSortDir({ sort: 'asc', after: ['425000000', '425100000'] })).toThrow('sort=asc requires');
+    });
+
     it('should still apply the recency window to an old "after" date alongside a global_sequence bound', () => {
         const oldDate = new Date('2020-01-01T00:00:00Z').toISOString();
         expect(getSortDir({ sort: 'asc', global_sequence: '1000-2000' })).toBe('asc');

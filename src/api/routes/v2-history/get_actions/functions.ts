@@ -278,11 +278,15 @@ export function getSkipLimit(query: any, max?: number): { skip: number, limit: n
 // A range (or single positive value) on a monotonic field bounds an asc scan as
 // effectively as after/before. global_sequence is the default sort field, so a
 // global_sequence range constrains the candidate set directly; block_num ranges
-// likewise. Accepts "<from>-<to>" ranges and bare positive values; rejects 0 and
-// non-numeric input. Digit-string checks avoid Number() precision loss on uint64.
+// likewise. Accepts "<from>-<to>" ranges and bare positive values. A bare 0 and
+// non-numeric input are rejected; in a range only the *upper* bound must be
+// positive (a 0 lower bound is a valid "from the start" bound). Digit-string
+// checks avoid Number() precision loss on uint64. Array inputs (a query param
+// repeated in the URL) are rejected here and would also break downstream filter
+// building, so they fail fast as unbounded rather than 500 later.
 function hasMonotonicBound(query): boolean {
     const isBoundValue = (v) => {
-        if (v === undefined || v === null) {
+        if (typeof v !== 'string' && typeof v !== 'number') {
             return false;
         }
         const s = String(v).trim();
@@ -308,11 +312,11 @@ export function getSortDir(query, maxAscWindowDays = 90, requireBoundedAsc = tru
                 // sort=asc requires a valid, recent time range to prevent full-index reverse scans
                 const after = query.after;
                 const before = query.before;
-                const isValidBound = (v) => v && (!isNaN(new Date(v).getTime()) || (Number.isInteger(Number(v)) && Number(v) > 0));
+                const isValidBound = (v) => (typeof v === 'string' || typeof v === 'number') && v && (!isNaN(new Date(v).getTime()) || (Number.isInteger(Number(v)) && Number(v) > 0));
                 // A global_sequence/block_num range also bounds the scan — global_sequence is the
                 // default sort field, so such a range constrains the candidate set directly.
                 if (!isValidBound(after) && !isValidBound(before) && !hasMonotonicBound(query)) {
-                    badRequest('sort=asc requires a valid "after"/"before" (ISO date or block number) or a global_sequence/block_num range to bound the search');
+                    badRequest('sort=asc requires a valid "after"/"before" (ISO date or block number) or a global_sequence/block_num range or value to bound the search');
                 }
                 // Apply the recency window to a *date* "after" bound. Block-number bounds are
                 // exempt — they bound the reverse scan just as well. Classified the same way

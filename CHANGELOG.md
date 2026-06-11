@@ -8,9 +8,11 @@
 
 ### New Config Options
 
+One new optional field in the `api` section of the chain config:
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `require_bounded_asc` | `boolean` | `true` | When `false`, disables the `sort=asc` bound requirement (and the `max_asc_window_days` window check) on `get_actions` (v1 & v2). For self-hosted operators who accept the performance cost of unbounded ascending scans on their own infrastructure. |
+| `api.require_bounded_asc` | `boolean` | `true` | When `false`, disables the `sort=asc` bound requirement (and the `max_asc_window_days` window check) on `get_actions` (v1 & v2). For self-hosted operators who accept the performance cost of unbounded ascending scans on their own infrastructure. |
 
 ### Behavior Changes
 
