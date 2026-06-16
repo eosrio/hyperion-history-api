@@ -1407,20 +1407,15 @@ export default class MainDSWorker extends HyperionWorker {
                         }
 
                         if (typeof row.present !== "undefined") {
-
-                            if (row.present === 1 || row.present === true) {
+                            const isPresent = row.present === 1 || row.present === true;
+                            const isDeletion = row.present === 0 || row.present === false;
+                            // present=1 rows (create/modify) are always indexed. Row deletions (present=0)
+                            // are only indexed when features.index_deltas_deletions is enabled, so get_deltas
+                            // can surface removals (e.g. a row leaving a table). Off by default: the legacy
+                            // delta-updater that tracked removals via a deleted_at marker was removed.
+                            if (isPresent || (isDeletion && this.conf.features.index_deltas_deletions === true)) {
                                 await this.pushToDeltaQueue(buff, block_num);
                             }
-
-                            // if (row.present === 0) {
-                            //     if (this.ch_ready && this.ch) {
-                            //         this.ch.sendToQueue(this.deltaRemovalQueue, buff);
-                            //     } else {
-                            //         hLog('Channel is not ready!');
-                            //     }
-                            // } else {
-                            //     await this.pushToDeltaQueue(buff, block_num);
-                            // }
                         }
                         this.temp_delta_counter++;
                     }

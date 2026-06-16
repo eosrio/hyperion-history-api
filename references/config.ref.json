@@ -131,6 +131,7 @@
     "index_deltas": true,
     "index_transfer_memo": true,
     "index_all_deltas": true,
+    "index_deltas_deletions": false,
     "deferred_trx": false,
     "failed_trx": false,
     "resource_limits": false,
