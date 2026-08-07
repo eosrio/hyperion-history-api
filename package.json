@@ -1,6 +1,6 @@
 {
   "name": "hyperion-history",
-  "version": "4.1.0-dev",
+  "version": "4.1.0",
   "description": "Scalable Full History API Solution for Antelope based blockchains",
   "main": "./build/indexer/launcher.js",
   "scripts": {

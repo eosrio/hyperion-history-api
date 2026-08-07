@@ -1,23 +1,51 @@
 # Changelog
 
-## 4.1.0 (unreleased)
+## 4.1.0 (2026-08-07)
+
+### New Features
+
+*   **Hot-first routing for `get_actions` account polls** (PRs #176, #177 — opt-in, default off): unbounded newest-first account polls (e.g. `?account=X&limit=100`, desc, no time bound) previously fanned out across **every** `<chain>-action-*` partition — including old/warm/cold ones — even though the latest N actions all live in the newest partitions. With `api.hot_first_actions: true`, an eligible poll searches only the newest `api.hot_first_window` partitions first and widens to the full set **only if** that window returns fewer than `limit` hits, so heavy pollers on busy contracts never touch old shards. Eligibility is intentionally narrow: default `global_sequence`-desc sort, `skip=0`, no `after`/`before`; everything else keeps the existing path. The newest partitions are resolved via a TTL-cached (30s), stampede-safe `_cat/indices` lookup that degrades to the `<chain>-action-*` wildcard on any error — never failing a request. Responses served from the hot window carry `hot_first: true`. Also fixed along the way: `?hot_only=true` previously targeted a `<chain>-action` alias that nothing ever creates (guaranteed `index_not_found`); it now routes through the same resolver and actually works.
+
+*   **Recent-first routing for `get_transaction`** (PR #180 — opt-in, default off): without a `block_hint`, a `trx_id` lookup carries no block range, so shard pre-filtering (`can_match`) cannot prune anything and every action partition — cold tier included — pays a term-dictionary seek per lookup. Since all of a transaction's action documents share a single block (hence a single partition), a recent-first probe is exact: with `api.hot_first_transaction: true`, the hot window (reusing `api.hot_first_window`) is searched first, a non-empty result is returned as-is (it is provably complete), and only a miss widens to the full `<chain>-action-*` set. Recent-transaction lookups never fan out to old shards; older or non-existent ids still resolve correctly via the fallback.
+
+*   **Opt-in profiling for the `get_transaction` recent-first path** (PR #181): `api.hot_first_transaction_profiling: true` logs one `[gtx-profile]` line per `get_transaction` served without a `block_hint` — which phase served it (`hot`/`full`), per-phase Elasticsearch timings, and `parts_back` (how many partitions older than head the transaction was found in). Aggregating `parts_back` over a sample shows the block-age distribution of lookups, letting operators size `hot_first_window` from data instead of guessing. One log line per request — enable briefly to sample, then disable.
 
 ### Improvements
 
-*   **`sort=asc` now accepts a `global_sequence` (or `block_num`) range as a valid bound** on `get_actions` (v2). Previously only `after`/`before` (ISO date or block number) satisfied the bound requirement, so a request like `get_actions?account=X&global_sequence=<from>-<to>&sort=asc` was rejected as unbounded even though the range already constrains the scan. Because `global_sequence` is the default sort field, such a range bounds the candidate set directly — there is no full-index reverse scan to guard against. Bare positive `global_sequence`/`block_num` values are accepted too; `0` and non-numeric input are not.
+*   **`sort=asc` now accepts a `global_sequence` (or `block_num`) range as a valid bound** on `get_actions` (v2) (PR #182). Previously only `after`/`before` (ISO date or block number) satisfied the bound requirement, so a request like `get_actions?account=X&global_sequence=<from>-<to>&sort=asc` was rejected as unbounded even though the range already constrains the scan. Because `global_sequence` is the default sort field, such a range bounds the candidate set directly — there is no full-index reverse scan to guard against. Bare positive `global_sequence`/`block_num` values are accepted too; `0` and non-numeric input are not.
+
+### Fixes
+
+*   **Stream history replay hardened against unbounded cold-tier walks** (PR #178): a history replay (`start_from` in the streaming API) scrolls `<chain>-<type>-*` — every index, including the oldest cold-tier shards — and had three weaknesses that let a single aggressive client saturate a cold tier: (1) `stream_scroll_limit` unset *or* `-1` both meant **unlimited**, so one subscription could scroll all of history; (2) no concurrency limit — reconnect storms spawned unbounded parallel full-history scrolls; (3) early exits (scroll-limit reject, ack timeout, NACK) leaked the scroll context, pinning old segments until the 120s keepalive expired. Now: replays are capped at `api.stream_max_concurrent_replays` concurrent per API process (default 4, clear "server busy, retry" rejection beyond that), `stream_scroll_limit` defaults to **50000** when unset (`-1` still means unlimited but logs a loud warning past 100k docs), and the scroll context is released in a `finally` on every exit path.
+
+*   **Row deletions (`present=0` deltas) can be indexed again** (opt-in): deletion deltas stopped being indexed when the delta-updater worker was removed in 4.0, so `get_deltas` only ever returned create/modify rows and operators tracking row removals (e.g. rows deleted from a deposits table) lost that history. Indexing of `present=0` contract-row deltas as distinct deletion documents is restored behind `features.index_deltas_deletions` (default off, to preserve current index sizes). Operators that need deletion history should enable it and reindex the affected range.
+
+*   **`get_transaction` no longer masks Elasticsearch errors**: a non-404 ES error previously fell through to a `TypeError` on an undefined result; it now propagates with the real cause.
 
 ### New Config Options
 
-One new optional field in the `api` section of the chain config:
+New optional fields in the chain config:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `api.hot_first_actions` | `boolean` | `false` | Hot-first routing for unbounded latest-N `get_actions` account polls: search the newest partitions first, widen only if the window returns fewer than `limit` hits. |
+| `api.hot_first_window` | `number` | `2` | Number of newest action partitions in the hot window (shared by `hot_first_actions` and `hot_first_transaction`). |
+| `api.hot_first_transaction` | `boolean` | `false` | Recent-first routing for `get_transaction` without a `block_hint`: probe the hot window first, widen to all partitions only on a miss. |
+| `api.hot_first_transaction_profiling` | `boolean` | `false` | Diagnostic: log one line per hint-less `get_transaction` with phase timings and `parts_back`, to size `hot_first_window` from data. Noisy — sample briefly. |
+| `api.stream_max_concurrent_replays` | `number` | `4` | Maximum concurrent stream history replays per API process; excess replays are rejected with a retry message. |
 | `api.require_bounded_asc` | `boolean` | `true` | When `false`, disables the `sort=asc` bound requirement (and the `max_asc_window_days` window check) on `get_actions` (v1 & v2). For self-hosted operators who accept the performance cost of unbounded ascending scans on their own infrastructure. |
+| `features.index_deltas_deletions` | `boolean` | `false` | Index `present=0` contract-row deltas as deletion documents (restores pre-4.0 deletion history in `get_deltas`). |
 
 ### Behavior Changes
 
+*   `api.stream_scroll_limit` left **unset** now defaults to `50000` docs per replay (previously unlimited). Existing configs with an explicit `-1` keep unlimited scrolls (now logged past 100k docs), but the new concurrency cap applies regardless.
+*   With `api.hot_first_actions` enabled, a poll served from the hot window reports a `total` that reflects the hot window only (these polls already cap `total` at 10k, so the impact is limited) and carries `hot_first: true` in the response.
 *   `sort=asc` on `get_actions` (v2) is satisfied by **any** of: a valid `after`/`before`, or a `global_sequence`/`block_num` range/value.
 *   Setting `api.require_bounded_asc: false` makes `sort=asc` behave as it did before the v4.0.3 guard — no bound required, no window cap. The guard remains **on by default**.
+
+### Internal
+
+*   `get_actions` account/generic/code-action filters briefly moved to Elasticsearch filter context (PR #176) and were reverted back to scoring context (PR #179): for low-selectivity accounts over large cold-tier segments, building the query-cache bitset costs far more than the BM25 scoring it saves and defeats index-sort early termination. Net change across the two PRs: none (time-range filters remain in filter context, as before).
 
 ## 4.0.8 (2026-06-02)
 
