@@ -144,6 +144,32 @@ async function checkNodeos(fastify: FastifyInstance): Promise<ServiceResponse<No
     }
 }
 
+/**
+ * Fetch [lastIndexedBlock, totalIndexedBlocks] with a short-TTL Redis cache.
+ *
+ * The underlying getLastIndexedBlockWithTotalBlocks is an ES aggregation that
+ * otherwise runs on EVERY /v2/health call — the one uncached phase in the
+ * health check. Under aggressive health polling (e.g. a load-balancer probe
+ * retry-storm) that saturates the Elasticsearch search pool. A few seconds of
+ * staleness is immaterial for a health probe (chain blocks are ~500ms), so
+ * concurrent probes share one cached result.
+ *
+ * Returns the block pair plus a `cache` flag (true = served from Redis).
+ */
+export async function getCachedLastIndexedBlocks(
+    fastify: FastifyInstance
+): Promise<{ indexedBlocks: [number, number]; cache: boolean }> {
+    const key = `${fastify.manager.chain}::last_indexed_blocks`;
+    const cachedValue = await fastify.redis.get(key);
+    if (cachedValue) {
+        return { indexedBlocks: JSON.parse(cachedValue), cache: true };
+    }
+    const indexedBlocks = await getLastIndexedBlockWithTotalBlocks(fastify.elastic, fastify.manager.chain);
+    // cache for 3 seconds
+    await fastify.redis.set(key, JSON.stringify(indexedBlocks), 'EX', 3);
+    return { indexedBlocks, cache: false };
+}
+
 // Test Elasticsearch connection and indexed range
 async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<ESService>> {
     try {
@@ -246,13 +272,17 @@ async function checkElastic(fastify: FastifyInstance): Promise<ServiceResponse<E
         }
 
 
-        // Last indexed block
+        // Last indexed block (short-TTL cached; see getCachedLastIndexedBlocks)
         const tRefElastic3 = process.hrtime.bigint();
-        let indexedBlocks = await getLastIndexedBlockWithTotalBlocks(fastify.elastic, fastify.manager.chain);
+        const lastBlocksResult = await getCachedLastIndexedBlocks(fastify);
+        const indexedBlocks = lastBlocksResult.indexedBlocks;
+        if (lastBlocksResult.cache) {
+            cached = true;
+        }
         times.push({
             phase: 'last_indexed_block',
             phase_time_ms: Number(process.hrtime.bigint() - tRefElastic3) / 1000000,
-            cache: false
+            cache: lastBlocksResult.cache
         });
 
         // Calculate missing blocks
