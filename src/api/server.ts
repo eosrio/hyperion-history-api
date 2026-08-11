@@ -18,6 +18,7 @@ import { SocketManager } from './socketManager.js';
 import { HyperionModuleLoader } from '../indexer/modules/loader.js';
 import { extendedActions } from './routes/v2-history/get_actions/definitions.js';
 import { CacheManager } from './helpers/cacheManager.js';
+import { buildAccessLoggerOptions } from './helpers/access-logger.js';
 
 import { createRequire } from 'node:module';
 import { FastifySwaggerUiOptions } from '@fastify/swagger-ui';
@@ -85,26 +86,7 @@ class HyperionApiServer {
       './logs/' + this.chain + '/api.access.log',
     );
 
-    const loggerOpts = {
-      stream: logStream,
-      redact: ['req.headers.authorization'],
-      level: 'info',
-      prettyPrint: true,
-      serializers: {
-        res: (reply: { statusCode: any }) => {
-          return {
-            statusCode: reply.statusCode,
-          };
-        },
-        req: (request: any) => {
-          return {
-            method: request.method,
-            url: request.url,
-            ip: request.headers['x-real-ip'],
-          };
-        },
-      },
-    };
+    const loggerOpts = buildAccessLoggerOptions(logStream);
 
     this.fastify = fastify({
       exposeHeadRoutes: false,
