@@ -26,4 +26,6 @@ jobs:
           bun-version-file: .bun-version
       - run: npm run typecheck
       - run: npm run build
+      - name: Typecheck Elasticsearch qualification runner
+        run: bun check -p scripts/qualification/tsconfig.json
       - run: bun test tests/unit
