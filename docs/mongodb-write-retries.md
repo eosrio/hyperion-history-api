@@ -39,6 +39,9 @@ cannot complete the failed request. They can leave some consumers paused, includ
 workers that finish draining after the deadline. Those workers are not automatically
 resumed: check their status and resume or restart them manually before retrying.
 When synchronization itself fails after a successful pause, the CLI attempts to
-resume workers and propagates the failure. A resume failure also prevents a success
-result. This barrier covers the selected workers; it does not coordinate worker
+resume workers and propagates the failure. Detected resume request errors also
+prevent a success result. Resume retains the existing first-response protocol:
+completion does not confirm that every worker resumed. Check worker status after
+synchronization; all-worker resume confirmation remains follow-up reliability work.
+This pause barrier covers the selected workers; it does not coordinate worker
 replacement or concurrent independent sync operations.
