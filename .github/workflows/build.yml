@@ -28,4 +28,7 @@ jobs:
       - run: npm run build
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
+      - name: Verify Elasticsearch evidence checksums
+        working-directory: docs/performance/evidence/es955-20261018
+        run: sha256sum -c SHA256SUMS
       - run: bun test tests/unit
