@@ -1,15 +1,21 @@
-import { ConsumeMessage } from "amqplib";
+import { Channel, ConsumeMessage } from "amqplib";
 import { cargo, QueueObject } from "async";
 
 import { RabbitQueueDef } from "../definitions/index-queues.js";
 import { hLog } from "../helpers/common_functions.js";
 import { ElasticRoutes, RouteFunction } from '../helpers/elastic-routes.js';
 import { MongoRoutes } from "../helpers/mongo-routes.js";
+import { indexMongoBatch } from "../helpers/mongo-batch.js";
 import { HyperionWorker } from "./hyperionWorker.js";
+
+interface IndexDelivery {
+    message: ConsumeMessage;
+    channel: Channel;
+}
 
 export default class IndexerWorker extends HyperionWorker {
 
-    private indexQueue: QueueObject<any>;
+    private indexQueue: QueueObject<IndexDelivery>;
     private temp_indexed_count = 0;
     private consumerTag: string | undefined;
 
@@ -31,9 +37,14 @@ export default class IndexerWorker extends HyperionWorker {
 
         this.mongoRoutes = new MongoRoutes(this.manager);
 
-        this.indexQueue = cargo((payload: ConsumeMessage[], callback) => {
+        this.indexQueue = cargo((deliveries: IndexDelivery[], callback) => {
+            const channel = this.ch;
+            // Closed-channel deliveries are requeued by RabbitMQ. Never write them
+            // or settle their old delivery tags on a replacement channel.
+            const payload = deliveries.filter(delivery => delivery.channel === channel)
+                .map(delivery => delivery.message);
 
-            if (this.ch_ready && payload && process.env.type && this.ch) {
+            if (this.ch_ready && payload.length > 0 && process.env.type && channel) {
                 const stopDb = this.profiler.start('db_indexing');
                 const doneCallback = (indexed_size?: number) => {
                     stopDb();
@@ -48,18 +59,13 @@ export default class IndexerWorker extends HyperionWorker {
                 };
 
                 if (this.mongoRoutes.routes[process.env.type]) {
-                    // call route type
-                    (this.mongoRoutes.routes[process.env.type] as any)(payload, (indexed_size?: number) => {
-                        try {
-                            this.ch?.ackAll();
-                        } catch (e: any) {
-                            hLog(`${e.message} on ${process.env.type}`);
-                        }
-                        doneCallback(indexed_size);
-                    });
+                    void indexMongoBatch(payload, this.mongoRoutes.routes[process.env.type], channel,
+                        () => this.ch_ready && this.ch === channel,
+                        reason => hLog('MongoDB batch remains pending:', process.env.type, reason)
+                    ).then(doneCallback);
                 } else if (this.esRoutes.routes[process.env.type]) {
                     // call route type
-                    (this.esRoutes.routes[process.env.type] as RouteFunction)(payload, this.ch, (indexed_size?: number) => {
+                    (this.esRoutes.routes[process.env.type] as RouteFunction)(payload, channel, (indexed_size?: number) => {
                         doneCallback(indexed_size);
                     });
                 } else {
@@ -76,17 +82,22 @@ export default class IndexerWorker extends HyperionWorker {
     async assertQueues(): Promise<void> {
         try {
             const queueName = process.env.queue;
-            if (this.ch && queueName) {
+            const channel = this.ch;
+            if (channel && queueName) {
                 this.ch_ready = true;
                 hLog('Starting consumer on:', queueName);
-                this.ch.on('close', () => {
+                channel.on('close', () => {
                     hLog('Channel closed for queue:', queueName);
-                    this.indexQueue.pause();
-                    this.ch_ready = false;
+                    if (this.ch === channel) {
+                        this.indexQueue.pause();
+                        this.ch_ready = false;
+                    }
                 });
-                await this.ch.assertQueue(queueName, RabbitQueueDef);
-                await this.ch.prefetch(this.conf.prefetch.index);
-                const consume = await this.ch.consume(queueName, this.indexQueue.push);
+                await channel.assertQueue(queueName, RabbitQueueDef);
+                await channel.prefetch(this.conf.prefetch.index);
+                const consume = await channel.consume(queueName, message => {
+                    if (message) this.indexQueue.push({ message, channel });
+                });
                 this.consumerTag = consume.consumerTag;
                 this.indexQueue.resume();
             }
@@ -134,7 +145,8 @@ export default class IndexerWorker extends HyperionWorker {
 
     private async resumeIndexer(msg: { mId: string }) {
         hLog(`Attempting to resume indexer. mId: ${msg.mId}`);
-        if (this.ch) {
+        const channel = this.ch;
+        if (channel) {
             try {
                 const queueName = process.env.queue;
                 if (!queueName) {
@@ -142,7 +154,9 @@ export default class IndexerWorker extends HyperionWorker {
                     return;
                 }
 
-                const consume = await this.ch.consume(queueName, this.indexQueue.push);
+                const consume = await channel.consume(queueName, message => {
+                    if (message) this.indexQueue.push({ message, channel });
+                });
                 this.consumerTag = consume.consumerTag;
 
                 hLog(`[IPC] Indexer resumed! ConsumerTag: ${this.consumerTag}`);
