@@ -181,6 +181,14 @@ We appreciate community contributions to Hyperion! Here’s how you can help:
 *   **Suggest Enhancements:** Have an idea? Open an Issue or discuss it on our [Hyperion Telegram group](https://t.me/EOSHyperion) first.
 *   **Submit Code:** Pull Requests (PRs) are welcome for bug fixes and improvements. For larger features, please discuss them in an issue or on the [Telegram group](https://t.me/EOSHyperion) beforehand.
 
+### Hyperion 4.5 development
+
+The [4.5 component homes](https://github.com/eosrio/hyperion-tools/blob/458e1127b99c025251055e160129010edcecc78a/docs/architecture/hyperion-4.5-component-homes.md)
+assign ownership for the existing Node runtime and planned adapter packages.
+Follow the [4.5 release tracker](https://github.com/eosrio/hyperion-tools/issues/24)
+for implementation and qualification progress. These assignments do not replace
+the current plugin loader or establish support for unfinished components.
+
 ### Branching model
 
 *   **`main`** — the stable branch. It only ever advances to **tagged releases**, so its `HEAD` always matches the latest published version. This is the branch to clone for production (as referenced in the [install guide](https://hyperion.docs.eosrio.io/providers/install/manual_install/#hyperion)).
