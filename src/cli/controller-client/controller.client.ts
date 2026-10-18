@@ -1,6 +1,7 @@
 import { WebSocket, RawData } from "ws";
 import { readConnectionConfig } from "../repair-cli/functions.js";
 import { HyperionConnections } from "../../interfaces/hyperionConnections.js";
+import { randomUUID } from 'node:crypto';
 
 export class IndexerController {
 
@@ -192,12 +193,21 @@ export class IndexerController {
     }
 
     async pause(type: string): Promise<string> {
+        const mId = randomUUID();
         return this._sendRequestAndAwaitResponse<string>(
-            { event: 'pause_indexer', type: type },
-            (message, resolve) => {
+            { event: 'pause_indexer', type: type, mId },
+            (message, resolve, reject) => {
+                if (message.mId !== mId) return false;
                 if (message.event === 'indexer_paused') {
+                    if (message.complete !== true || !Array.isArray(message.workerIds) || message.workerIds.length === 0) {
+                        reject(new Error('Controller did not confirm an all-worker pause; upgrade the controller before synchronizing.'));
+                        return true;
+                    }
                     console.log('Indexer paused');
-                    resolve(message.mId);
+                    resolve(mId);
+                    return true;
+                } else if (message.event === 'indexer_pause_failed') {
+                    reject(new Error(`Indexer pause ${mId} failed: ${message.error || 'unknown error'}`));
                     return true;
                 }
                 return false;

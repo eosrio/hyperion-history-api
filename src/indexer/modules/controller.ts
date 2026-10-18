@@ -3,12 +3,15 @@ import { App, HttpRequest, HttpResponse, RecognizedString, TemplatedApp, WebSock
 import { HyperionWorkerDef } from "../../interfaces/hyperionWorkerDef.js";
 import { hLog } from "../helpers/common_functions.js";
 import { HyperionMaster } from "./master.js";
+import { IndexerPauseCoordinator, PauseTarget } from "../helpers/indexer-pause-coordinator.js";
 
 export interface WebSocketData {
     socketId: string;
 }
 
 export class LocalHyperionController {
+
+    readonly pauses = new IndexerPauseCoordinator();
 
     private localController?: TemplatedApp;
     master: HyperionMaster;
@@ -223,14 +226,32 @@ export class LocalHyperionController {
                                     break;
                                 }
                                 case 'pause_indexer': {
-                                    const mId = randomUUID();
+                                    const mId = typeof message.mId === 'string' && message.mId ? message.mId : randomUUID();
                                     ws.subscribe(mId);
-                                    // forward to the workers of type message.type
-                                    this.master.workerMap.forEach((worker: HyperionWorkerDef) => {
-                                        if (worker.wref && worker.type === message.type) {
-                                            worker.wref.send({ event: 'pause_indexer', mId });
-                                        }
-                                    });
+                                    const definitions = this.master.workerMap.filter(worker => worker.type === message.type);
+                                    if (definitions.some(worker => !worker.wref)) {
+                                        this.publish(mId, { event: 'indexer_pause_failed', mId,
+                                            error: 'Not every targeted worker is running; synchronization cannot start safely' });
+                                        break;
+                                    }
+                                    const workers: PauseTarget[] = definitions
+                                        .map(({ wref }) => ({
+                                            id: wref!.id,
+                                            send: (request, callback) => { wref!.send(request, callback); },
+                                            onFailure: listener => {
+                                                const child = wref!.process as unknown as {
+                                                    once(event: string, callback: () => void): void;
+                                                    off(event: string, callback: () => void): void;
+                                                };
+                                                child.once('exit', listener);
+                                                child.once('disconnect', listener);
+                                                return () => {
+                                                    child.off('exit', listener);
+                                                    child.off('disconnect', listener);
+                                                };
+                                            }
+                                        }));
+                                    this.pauses.pause(mId, message.type, workers, response => this.publish(mId, response));
                                     break;
                                 }
                                 // resume all indexer workers

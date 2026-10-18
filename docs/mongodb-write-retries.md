@@ -22,3 +22,23 @@ transactions or channel-only reconnection. Existing channel recovery limitations
 are tracked separately in [issue 187](https://github.com/eosrio/hyperion-history-api/issues/187).
 The focused regressions inject database and AMQP boundary failures; they do not
 replace qualification against live MongoDB and RabbitMQ services.
+
+## Online state synchronization
+
+State sync commands require a reachable controller that confirms every targeted
+worker has cancelled delivery and drained both pending and running cargo work.
+An empty pending queue is insufficient while a MongoDB batch is still retrying.
+The controller waits up to eight seconds for all workers; the client also bounds
+its request. Zero workers, failed IPC, worker exit, failed cancellation or timeout
+abort synchronization. An unreachable controller is not treated as proof that
+writing state is safe. Older controllers without the aggregate pause response
+must be upgraded before using these sync commands.
+
+Failed pauses clear controller timers and worker listeners, and late responses
+cannot complete the failed request. They can leave some consumers paused, including
+workers that finish draining after the deadline. Those workers are not automatically
+resumed: check their status and resume or restart them manually before retrying.
+When synchronization itself fails after a successful pause, the CLI attempts to
+resume workers and propagates the failure. A resume failure also prevents a success
+result. This barrier covers the selected workers; it does not coordinate worker
+replacement or concurrent independent sync operations.

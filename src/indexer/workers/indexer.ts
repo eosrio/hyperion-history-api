@@ -6,6 +6,7 @@ import { hLog } from "../helpers/common_functions.js";
 import { ElasticRoutes, RouteFunction } from '../helpers/elastic-routes.js';
 import { MongoRoutes } from "../helpers/mongo-routes.js";
 import { indexMongoBatch } from "../helpers/mongo-batch.js";
+import { pauseIndexerQueue } from "../helpers/indexer-pause.js";
 import { HyperionWorker } from "./hyperionWorker.js";
 
 interface IndexDelivery {
@@ -125,21 +126,18 @@ export default class IndexerWorker extends HyperionWorker {
     }
 
     private async pauseIndexer(msg: any) {
-        if (this.indexQueue && this.ch && this.consumerTag) {
-            await this.ch.cancel(this.consumerTag);
-            if (this.indexQueue.length() > 0) {
-                this.indexQueue.drain(() => {
-                    process.send?.({
-                        event: 'indexer_paused',
-                        mId: msg.mId
-                    });
-                });
-            } else {
-                process.send?.({
-                    event: 'indexer_paused',
-                    mId: msg.mId
-                });
+        try {
+            const channel = this.ch;
+            if (!channel || !this.consumerTag || !this.ch_ready) {
+                throw new Error('Indexer consumer is not ready to pause');
             }
+            await pauseIndexerQueue(channel, this.consumerTag, this.indexQueue);
+            if (!this.ch_ready || this.ch !== channel) {
+                throw new Error('Indexer channel changed while pausing');
+            }
+            process.send?.({ event: 'indexer_paused', mId: msg.mId });
+        } catch (reason) {
+            process.send?.({ event: 'indexer_pause_failed', mId: msg.mId, error: String(reason) });
         }
     }
 
