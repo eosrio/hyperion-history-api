@@ -189,6 +189,10 @@ Follow the [4.5 release tracker](https://github.com/eosrio/hyperion-tools/issues
 for implementation and qualification progress. These assignments do not replace
 the current plugin loader or establish support for unfinished components.
 
+Changes for this release target `release/4.5`. Follow the
+[development build guide](docs/development-build.md) to install the locked npm
+dependencies, compile, and run unit tests before opening a pull request.
+
 ### Branching model
 
 *   **`main`** — the stable branch. It only ever advances to **tagged releases**, so its `HEAD` always matches the latest published version. This is the branch to clone for production (as referenced in the [install guide](https://hyperion.docs.eosrio.io/providers/install/manual_install/#hyperion)).
