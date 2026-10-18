@@ -5,6 +5,7 @@
   "main": "./build/indexer/launcher.js",
   "scripts": {
     "tsc": "tsc",
+    "typecheck": "bun check -p tsconfig.json",
     "build": "tsc",
     "build:watch": "tsc --watch",
     "postinstall": "npm run build && npm run fix-permissions",
@@ -55,7 +56,7 @@
     "nodemailer": "8.0.7",
     "socket.io": "4.8.3",
     "socket.io-client": "4.8.3",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "undici": "8.3.0",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0",
     "ws": "8.20.1",

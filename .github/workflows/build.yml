@@ -20,7 +20,10 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
       - run: npm ci --ignore-scripts
-      - run: npm run build
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: npm run typecheck
+      - run: npm run build
       - run: bun test tests/unit
