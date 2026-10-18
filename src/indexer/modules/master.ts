@@ -520,10 +520,11 @@ export class HyperionMaster {
                     this.wsRouterWorker.send(msg);
                 }
             },
-            indexer_paused: (_worker: Worker, msg: WorkerMessage) => {
-                if (msg.mId) {
-                    this.localController.publish(msg.mId, { event: 'indexer_paused', mId: msg.mId });
-                }
+            indexer_paused: (worker: Worker, msg: WorkerMessage) => {
+                this.localController.pauses.onWorkerResponse(worker.id, msg);
+            },
+            indexer_pause_failed: (worker: Worker, msg: WorkerMessage) => {
+                this.localController.pauses.onWorkerResponse(worker.id, msg);
             },
             indexer_resumed: (_worker: Worker, msg: WorkerMessage) => {
                 hLog(`[IPC] Resuming indexer`);

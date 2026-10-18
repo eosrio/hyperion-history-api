@@ -44,6 +44,7 @@ export interface WorkerMessage {
     block_num?: number;
     block_ts?: string;
     mId?: string;
+    error?: string;
     worker_role?: string;
     metrics?: any;
 }

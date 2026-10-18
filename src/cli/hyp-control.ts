@@ -10,41 +10,11 @@ import { QueueManager } from './queue-manager/queue.manager.js';
 import { PermissionsSynchronizer } from './sync-modules/sync-permissions.js';
 import { readConnectionConfig } from './repair-cli/functions.js';
 import { SnapshotManager } from './snapshot/snapshot.manager.js';
+import { runPausedSync } from './sync-modules/sync-with-pause.js';
 
 async function syncWithPauseResume(chain: string, type: string, synchronizer: any, host?: string, contract?: string, table?: string) {
-    const indexerController = new IndexerController(chain, host);
-    let pauseMId: string | null = null;
-    let shouldResume = false;
-
-    try {
-        // Try to pause the indexer
-        try {
-            pauseMId = await indexerController.pause(type);
-            shouldResume = true;
-        } catch (error) {
-            console.warn(`⚠️ Warning: Indexer seems to be offline or can't be reached. Proceeding with synchronization without pausing.`);
-            console.warn(`   ${(error as Error).message}`);
-        }
-
-        // Perform the synchronization
-        await synchronizer.run(contract, table);
-        console.log(`${type} synchronization completed.`);
-
-        // Resume the indexer if we previously paused it
-        if (shouldResume && pauseMId) {
-            console.log(`Resuming indexer...`);
-            try {
-                await indexerController.resume(type, pauseMId);
-            } catch (error) {
-                console.warn(`⚠️ Warning: Failed to resume indexer. It may need to be manually restarted.`);
-                console.warn(`   ${(error as Error).message}`);
-            }
-        }
-    } catch (error) {
-        console.error(`Error during ${type} synchronization:`, error);
-    } finally {
-        indexerController.close();
-    }
+    await runPausedSync(new IndexerController(chain, host), type, synchronizer, contract, table);
+    console.log(`${type} synchronization completed.`);
 }
 
 async function syncVoters(chain: string, host?: string) {
@@ -528,6 +498,7 @@ async function getScalingInfo(chain: string, host?: string) {
                 console.log('Sync completed for permissions');
             } catch (error) {
                 console.error('Error syncing permissions:', error);
+                process.exitCode = 1;
             }
         });
 
@@ -539,6 +510,7 @@ async function getScalingInfo(chain: string, host?: string) {
                 console.log('Sync completed for voters');
             } catch (error) {
                 console.error('Error syncing voters:', error);
+                process.exitCode = 1;
             }
         });
 
@@ -550,6 +522,7 @@ async function getScalingInfo(chain: string, host?: string) {
                 console.log('Sync completed for accounts');
             } catch (error) {
                 console.error('Error syncing accounts:', error);
+                process.exitCode = 1;
             }
         });
 
@@ -561,6 +534,7 @@ async function getScalingInfo(chain: string, host?: string) {
                 console.log('Sync completed for proposals');
             } catch (error) {
                 console.error('Error syncing proposals:', error);
+                process.exitCode = 1;
             }
         });
 
@@ -606,6 +580,7 @@ async function getScalingInfo(chain: string, host?: string) {
                 }
             } catch (error) {
                 console.error('Error during sync:', error);
+                process.exitCode = 1;
             }
         });
 

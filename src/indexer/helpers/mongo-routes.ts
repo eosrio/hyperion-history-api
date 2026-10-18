@@ -1,17 +1,17 @@
-import { BulkWriteResult, Collection, Db } from "mongodb";
-import { ConnectionManager } from "../connections/manager.class.js";
-import { Message } from "amqplib";
-import { hLog } from "./common_functions.js";
+import type { Collection, Db } from "mongodb";
+import type { ConnectionManager } from "../connections/manager.class.js";
+import type { Message } from "amqplib";
 import { IAccount } from "../../interfaces/table-account.js";
 import { IProposal } from "../../interfaces/table-proposal.js";
 import { IVoter } from "../../interfaces/table-voter.js";
 import { IPermission } from "../../interfaces/table-permissions.js";
-import { last } from "lodash";
+
+export type MongoRouteFunction = (payload: Message[]) => Promise<number>;
 
 export class MongoRoutes {
 
     cm: ConnectionManager;
-    routes: Record<string, any> = {};
+    routes: Record<string, MongoRouteFunction> = {};
     private db?: Db;
     private accountsCollection?: Collection<IAccount>;
     private proposalsCollection?: Collection<IProposal>;
@@ -34,19 +34,11 @@ export class MongoRoutes {
 
     addRoutes() {
 
-        this.routes['state'] = (payload: Message[], callback: (indexed_size?: number) => void) => {
-
-            const promises: Promise<any>[] = [];
-            let totalIndexed = 0;
-
-            // filter permission messages
-            const permissionMessages = payload.filter((msg: Message) => {
-                const headers = msg.properties.headers as any;
-                return headers.type === 'permission';
-            });
-
-            if (permissionMessages.length > 0) {
-                const operations = payload.map((msg: Message) => {
+        this.routes['state'] = async (payload: Message[]) => {
+            // Permissions and links share keys: preserve their delivered order on replay.
+            const operations: any[] = payload.map((msg: Message) => {
+                const type = msg.properties.headers?.type;
+                if (type === 'permission') {
                     const data = JSON.parse(msg.content.toString()) as IPermission & { present: number };
                     if (data.present !== 0) {
                         return {
@@ -76,26 +68,7 @@ export class MongoRoutes {
                             }
                         };
                     }
-                });
-
-                const p = this.permissionsCollection?.bulkWrite(operations, { ordered: false })
-                    .then(() => {
-                        totalIndexed += permissionMessages.length;
-                    })
-                    .catch(reason => {
-                        hLog('error', 'mongo-routes', 'state/permission', reason);
-                    });
-
-                if (p) promises.push(p);
-            }
-
-            const permissionLinkMessages = payload.filter((msg: Message) => {
-                const headers = msg.properties.headers as any;
-                return headers.type === 'permission_link';
-            });
-
-            if (permissionLinkMessages.length > 0) {
-                const operations = permissionLinkMessages.map((msg: Message) => {
+                } else if (type === 'permission_link') {
                     const data = JSON.parse(msg.content.toString()) as IPermission & { present: number };
                     if (data.present !== 0) {
                         return {
@@ -138,30 +111,14 @@ export class MongoRoutes {
                             }
                         };
                     }
-                });
-
-                const p = this.permissionsCollection?.bulkWrite(operations, { ordered: false })
-                    .then(() => {
-                        totalIndexed += permissionLinkMessages.length;
-                    })
-                    .catch(reason => {
-                        hLog('error', 'mongo-routes', 'state/permission_link', reason);
-                    });
-
-                if (p) promises.push(p);
-            }
-
-            if (promises.length > 0) {
-                Promise.all(promises).finally(() => {
-                    callback(totalIndexed);
-                });
-            } else {
-                hLog('Unexpected state message without permissions or permission_links');
-                callback(0);
-            }
+                }
+                throw new Error(`Unexpected MongoDB state message type: ${type}`);
+            });
+            await this.permissionsCollection!.bulkWrite(operations, { ordered: true });
+            return payload.length;
         };
 
-        this.routes['table-accounts'] = (payload: Message[], callback: (indexed_size?: number) => void) => {
+        this.routes['table-accounts'] = async (payload: Message[]) => {
             // index
             const operations = payload.map((msg: Message) => {
                 const data = JSON.parse(msg.content.toString()) as IAccount & { present: number };
@@ -195,16 +152,11 @@ export class MongoRoutes {
                 }
             });
 
-            this.accountsCollection?.bulkWrite(operations, { ordered: false }).catch(reason => {
-                hLog('error', 'mongo-routes', 'table-accounts', reason);
-            }).finally(() => {
-                // TODO: ack
-                // channel.ackAll();
-                callback(payload.length);
-            });
+            await this.accountsCollection!.bulkWrite(operations, { ordered: true });
+            return payload.length;
         };
 
-        this.routes['table-proposals'] = (payload: Message[], callback: (indexed_size?: number) => void) => {
+        this.routes['table-proposals'] = async (payload: Message[]) => {
             const operations = payload.map((msg: Message) => {
                 const data = JSON.parse(msg.content.toString()) as IProposal;
                 return {
@@ -221,14 +173,11 @@ export class MongoRoutes {
                 };
             });
 
-            this.proposalsCollection?.bulkWrite(operations, { ordered: false }).catch(reason => {
-                hLog('error', 'mongo-routes', 'table-proposals', reason);
-            }).finally(() => {
-                callback(payload.length);
-            });
+            await this.proposalsCollection!.bulkWrite(operations, { ordered: true });
+            return payload.length;
         };
 
-        this.routes['table-voters'] = (payload: Message[], callback: (indexed_size?: number) => void) => {
+        this.routes['table-voters'] = async (payload: Message[]) => {
             const operations = payload.map((msg: Message) => {
                 const data = JSON.parse(msg.content.toString()) as IVoter;
                 return {
@@ -252,16 +201,13 @@ export class MongoRoutes {
                 };
             });
 
-            this.votersCollection?.bulkWrite(operations, { ordered: false }).catch(reason => {
-                hLog('error', 'mongo-routes', 'table-voters', reason);
-            }).finally(() => {
-                callback(payload.length);
-            });
+            await this.votersCollection!.bulkWrite(operations, { ordered: true });
+            return payload.length;
         };
     }
 
     private addDynamicRoutes() {
-        this.routes['dynamic-table'] = (payload: Message[], callback: (indexed_size?: number) => void) => {
+        this.routes['dynamic-table'] = async (payload: Message[]) => {
             const groupedOps = new Map<string, any[]>();
             payload.forEach((msg: Message) => {
                 const delta = JSON.parse(msg.content.toString()) as any;
@@ -307,17 +253,15 @@ export class MongoRoutes {
                 // hLog(msg.properties.headers, delta);
             });
 
-            const promises: Promise<BulkWriteResult>[] = [];
-
-            groupedOps.forEach((value, key) => {
-                if (this.db) {
-                    promises.push(this.db.collection(key).bulkWrite(value, { ordered: false }))
-                }
-            });
-
-            Promise.all(promises).finally(() => {
-                callback(payload.length);
-            });
+            // Drain every collection before a failed batch is retried; otherwise an old
+            // in-flight write could complete after its replay.
+            const results = await Promise.allSettled([...groupedOps].map(async ([key, operations]) => {
+                return await this.db!.collection(key).bulkWrite(operations, { ordered: true });
+            }));
+            for (const result of results) {
+                if (result.status === 'rejected') throw result.reason;
+            }
+            return payload.length;
         }
 
     }
