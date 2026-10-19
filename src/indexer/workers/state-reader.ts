@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import {cargo, QueueObject} from 'async';
-import {Channel, ConfirmChannel} from 'amqplib';
+import {ConfirmChannel} from 'amqplib';
 import {ABI, API, Bytes, Checksum256, Serializer, UInt32} from '@wharfkit/antelope';
 
 import {HyperionWorker} from './hyperionWorker.js';
@@ -33,7 +33,6 @@ export default class StateReader extends HyperionWorker {
 
     private shipABI?: ABI;
 
-    private qStatusMap: Record<string, any> = {};
     private recovery = false;
     private allowRequests = true;
     private pendingRequest: [number, number] | null = null;
@@ -133,68 +132,63 @@ export default class StateReader extends HyperionWorker {
         }
     }
 
-    recursiveDistribute(data: any[], channel: Channel | ConfirmChannel, cb: () => void) {
+    recursiveDistribute(data: any[], channel: ConfirmChannel, cb: () => void) {
         if (data.length > 0) {
             const q = this.isLiveReader ? this.chain + ':live_blocks' : this.chain + ':blocks:' + this.currentIdx;
-            if (!this.qStatusMap[q]) {
-                this.qStatusMap[q] = true;
-            }
-            if (this.qStatusMap[q] === true) {
-                if (this.cch_ready) {
-                    const d = data.pop();
-                    const result = channel.sendToQueue(
-                        q,
-                        d.content,
-                        {
-                            persistent: true,
-                            mandatory: true
-                        },
-                        (err: any) => {
-                            if (err !== null) {
-                                console.log('Message nacked!');
-                                console.log(err.message);
-                            } else {
-                                if (process.send) {
-                                    process.send({
-                                        event: 'read_block',
-                                        live: this.isLiveReader,
-                                        block_num: d.num
-                                    });
-                                }
+            if (this.cch_ready && channel === this.cch) {
+                const d = data.pop();
+                const result = channel.sendToQueue(
+                    q,
+                    d.content,
+                    {
+                        persistent: true,
+                        mandatory: true
+                    },
+                    (err: any) => {
+                        if (err !== null) {
+                            console.log('Message nacked!');
+                            console.log(err.message);
+                        } else {
+                            if (process.send) {
+                                process.send({
+                                    event: 'read_block',
+                                    live: this.isLiveReader,
+                                    block_num: d.num
+                                });
                             }
                         }
-                    );
-
-                    if (!this.isLiveReader) {
-                        this.local_distributed_count++;
-                        debugLog(`Block Number: ${d.num} - Range progress: ${this.local_distributed_count}/${this.range_size}`);
-                        if (this.local_distributed_count === this.range_size) {
-                            this.signalReaderCompletion();
-                        }
-                        this.currentIdx++;
-                        if (this.currentIdx > this.conf.scaling.ds_queues) {
-                            this.currentIdx = 1;
-                        }
                     }
-                    if (result) {
-                        if (data.length > 0) {
-                            this.recursiveDistribute(data, channel, cb);
-                        } else {
-                            cb();
-                        }
+                );
+
+                if (!this.isLiveReader) {
+                    this.local_distributed_count++;
+                    debugLog(`Block Number: ${d.num} - Range progress: ${this.local_distributed_count}/${this.range_size}`);
+                    if (this.local_distributed_count === this.range_size) {
+                        this.signalReaderCompletion();
+                    }
+                    this.currentIdx++;
+                    if (this.currentIdx > this.conf.scaling.ds_queues) {
+                        this.currentIdx = 1;
+                    }
+                }
+                if (result) {
+                    if (data.length > 0) {
+                        this.recursiveDistribute(data, channel, cb);
                     } else {
-                        // Send failed
-                        this.qStatusMap[q] = false;
-                        this.drainCount++;
-                        setTimeout(() => {
-                            this.recursiveDistribute(data, channel, cb);
-                        }, 500);
+                        cb();
                     }
                 } else {
-                    console.log('channel is not ready!');
+                    // The message was accepted into the publisher buffer.
+                    // Wait for that channel to drain before sending more.
+                    this.drainCount++;
+                    channel.once('drain', () => {
+                        if (channel === this.cch && this.cch_ready) {
+                            this.recursiveDistribute(data, channel, cb);
+                        }
+                    });
                 }
             } else {
-                console.log(`waiting for [${q}] to drain!`);
+                console.log('channel is not ready!');
             }
         } else {
             cb();
@@ -206,23 +200,19 @@ export default class StateReader extends HyperionWorker {
             if (this.isLiveReader) {
                 const live_queue = this.chain + ':live_blocks';
                 await this.ch.assertQueue(live_queue, RabbitQueueDef);
-                this.ch.on('drain', () => {
-                    this.qStatusMap[live_queue] = true;
-                });
             } else {
                 for (let i = 0; i < this.conf.scaling.ds_queues; i++) {
                     await this.ch.assertQueue(this.chain + ':blocks:' + (i + 1), RabbitQueueDef);
-                    this.ch.on('drain', () => {
-                        this.qStatusMap[this.chain + ':blocks:' + (i + 1)] = true;
-                    });
                 }
             }
         }
 
         if (this.cch) {
+            const publisher = this.cch;
             this.cch_ready = true;
             this.stageOneDistQueue.resume();
-            this.cch.on('close', () => {
+            publisher.on('close', () => {
+                if (publisher !== this.cch) return;
                 this.cch_ready = false;
                 this.stageOneDistQueue.pause();
             });
