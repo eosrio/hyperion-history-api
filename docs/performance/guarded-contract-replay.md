@@ -2,7 +2,7 @@
 
 [API #195](https://github.com/eosrio/hyperion-history-api/issues/195) qualifies a finite, known-genesis action replay. The runner deploys a small no-op contract on a disposable Spring chain, submits six actions under each of two incompatible action ABI revisions, waits for irreversibility, captures SHIP, audits the capture, and starts the production Hyperion master and workers against that capture. An independent oracle compares every contract action and every block with the verified input.
 
-This case supplies ABI history proven against captured account deltas. It bootstraps those two references into its new ABI index before starting the workers. The worker RPC proxy refuses current ABI retrieval for the contract. This establishes correctness using supplied block-valid history; it does not qualify automatic ABI discovery, historical mainnet input, fork recovery, contract computation, state-table indexing, or sustained throughput.
+This case supplies ABI history proven against captured account deltas. It bootstraps those two references into its new ABI index before starting the workers. The worker RPC proxy refuses current ABI retrieval for the contract. Genesis block 1 remains a verified input anchor; when Spring advertises trace retention starting at 2, the actual worker range is 2 through the finite end. The status is preserved exactly. This establishes correctness using supplied block-valid history; it does not qualify automatic ABI discovery, historical mainnet input, fork recovery, contract computation, state-table indexing, or sustained throughput.
 
 ## Run
 

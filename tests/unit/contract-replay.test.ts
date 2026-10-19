@@ -133,7 +133,9 @@ describe('guarded contract replay input', () => {
             value[1].trace_begin_block = begin; const replacement = Buffer.from(Serializer.encode({object: value, type: 'result', abi: protocol}).array);
             const input = m.inputs.find(input => input.file === 'status.bin')!; input.bytes = replacement.length; input.sha256 = digest(replacement);
             await writeFile(join(root, 'status.bin'), replacement); await writeFile(join(root, 'manifest.json'), JSON.stringify(m));
-            if (begin === 2) expect((await auditFixture(root)).records.length).toBe(6); else await expect(auditFixture(root)).rejects.toThrow('missing after genesis');
+            if (begin === 2) { const audited = await auditFixture(root); expect(audited.records.length).toBe(6); expect(audited.replayStart).toBe(2);
+                expect(audited.records.filter(record => record.blockNum >= audited.replayStart).map(record => record.blockNum)).toEqual([2, 3, 4, 5, 6]);
+            } else await expect(auditFixture(root)).rejects.toThrow('missing after genesis');
         }
     }));
     test('tampering, truncation, missing and symlink inputs fail before replay', async () => temporary(async root => {

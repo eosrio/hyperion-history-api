@@ -202,7 +202,9 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         const fixture = await captureFixture(state.spring.shipUrl, join(output, 'fixture'), end, {schemaVersion: 1,
             origin: 'known-genesis', complete: true, chainId: state.spring.chainId, genesisSha256: digest(genesis),
             range: {start: 1, end}, flags: {fetch_block: true, fetch_traces: true, fetch_deltas: true}, expected, abiHistory}, genesis);
+        const replayRecords = fixture.records.filter(record => record.blockNum >= fixture.replayStart);
         report.fixture = {manifestSha256: digest(await readFile(join(output, 'fixture/manifest.json'))), blocks: fixture.records.length,
+            replayRange: {start: fixture.replayStart, end}, replayBlocks: replayRecords.length,
             actions: fixture.actions, abiHistory: fixture.manifest.abiHistory};
         // Bootstrap only ABI deployments independently proven in captured account deltas, never current RPC ABIs.
         const abiIndex = `${chain}-abi-v1`; await client.indices.create({index: abiIndex, mappings: {properties: {account: {type: 'keyword'}, block: {type: 'long'}}}, settings: {number_of_replicas: 1}});
@@ -232,7 +234,7 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
             amqp: {protocol: 'http', host: new URL(state.core.broker.url).host, api: new URL(state.core.broker.managementUrl).host, user: 'qualifier', pass: 'qualifier-test-only', vhost: '/', frameMax: '0x10000'},
             redis: {host: redisUrl.hostname, port: Number(redisUrl.port)}, mongodb: {enabled: false, host: mongo.hostname, port: Number(mongo.port), database_prefix: chain, user: '', pass: ''},
             chains: {[chain]: {chain_id: state.spring.chainId, http: rpcUrl, ship: [{label: 'verified-capture', url: replay.url}], control_port: controlPort}}, alerts: {enabled: false}};
-        const config = {api: {enabled: false, disable_tx_cache: true}, indexer: {enabled: true, start_on: 1, stop_on: end + 1, rewrite: false,
+        const config = {api: {enabled: false, disable_tx_cache: true}, indexer: {enabled: true, start_on: fixture.replayStart, stop_on: end + 1, rewrite: false,
             purge_queues: false, live_reader: false, live_only_mode: false, abi_scan_mode: false, fetch_block: true, fetch_traces: true,
             fetch_deltas: true, process_deltas: true, disable_reading: false, disable_indexing: false},
             settings: {chain, parser: '3.2', index_version: 'v1', index_partition_size: 10000000, es_replicas: 1, auto_stop: 0,
@@ -256,7 +258,7 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         };
         await wait('finite verified output and queue drain', async () => {
             await client.indices.refresh({index: chain + '-*'}); const blocks = await all(chain + '-block-*', 'block_num');
-            assertBlockOutputs(blocks, fixture.records); const actions = await all(chain + '-action-*', 'global_sequence');
+            assertBlockOutputs(blocks, replayRecords); const actions = await all(chain + '-action-*', 'global_sequence');
             assertActionOutputs(actions, fixture.actions); const queueState = await queues();
             assert.ok(queueState.length > 0); assert.ok(queueState.every(queue => queue.ready === 0 && queue.unacked === 0 && queue.messages === 0));
             report.finalQueues = queueState; report.finalBlocks = blocks; report.finalActions = actions; return true;
@@ -269,7 +271,7 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         const rows = await events(); const readerCompletion = rows.filter(row => row.kind === 'ipc_receive' && row.event === 'completed' && row.role === 'reader');
         assert.equal(readerCompletion.length, 1, 'finite reader completion evidence missing'); report.readerCompletion = readerCompletion;
         const readBlocks = rows.filter(row => row.kind === 'ipc_send' && row.event === 'read_block' && row.role === 'reader').map(row => row.message.block_num);
-        assert.deepEqual(readBlocks.sort((left, right) => left - right), fixture.records.map(record => record.blockNum), 'reader confirm coverage differs');
+        assert.deepEqual(readBlocks.sort((left, right) => left - right), replayRecords.map(record => record.blockNum), 'reader confirm coverage differs');
         redis = new Redis(state.redis.url, {connectTimeout: 5000, maxRetriesPerRequest: 1});
         report.lastIndexedBeforeShutdown = await redis.get(chain + '::last_indexed_block');
         report.durableCopies = [];
@@ -277,7 +279,7 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
             const copy = new Client({node: node.url, maxRetries: 0, requestTimeout: 15000});
             try {
                 const identity: any = await copy.nodes.info({node_id: '_local'}); const nodeId = Object.keys(identity.nodes)[0];
-                for (const [index, field, expected, check] of [[chain + '-block-*', 'block_num', fixture.records, assertBlockOutputs],
+                for (const [index, field, expected, check] of [[chain + '-block-*', 'block_num', replayRecords, assertBlockOutputs],
                     [chain + '-action-*', 'global_sequence', fixture.actions, assertActionOutputs]] as const) {
                     const result: any = await copy.search({index, size: 20000, sort: [{[field]: 'asc'}], track_total_hits: true,
                         preference: `_only_nodes:${nodeId}`, allow_partial_search_results: false});
@@ -322,6 +324,7 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
     const [state, output] = process.argv.slice(2); assert.ok(state && output, 'usage: node contract-replay.ts STATE_FILE NEW_OUTPUT_DIRECTORY');
-    const report = await runContractReplay(state, output); console.log(JSON.stringify({status: report.status, error: report.error, blocks: report.fixture?.blocks, actions: report.fixture?.actions.length}));
+    const report = await runContractReplay(state, output); console.log(JSON.stringify({status: report.status, error: report.error,
+        capturedBlocks: report.fixture?.blocks, replayedBlocks: report.fixture?.replayBlocks, actions: report.fixture?.actions.length}));
     if (report.status !== 'passed') process.exitCode = 1;
 }

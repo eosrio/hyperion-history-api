@@ -196,7 +196,7 @@ export async function auditFixture(root: string) {
     assert.deepEqual(deployments, manifest.abiHistory.map(entry => ({block: entry.block, abiHex: entry.abiHex})), 'captured ABI deployment coverage differs');
     assert.equal(found.length, expected.size); assert.equal(new Set(found.map(entry => entry.trxId)).size, expected.size);
     let sequence = 0; for (const action of found) { assert.ok(action.globalSequence > sequence); sequence = action.globalSequence; }
-    return {manifest, abi, files, records, actions: found};
+    return {manifest, abi, files, records, actions: found, replayStart: traceBegin};
 }
 export async function captureFixture(url: string, directory: string, end: number, base: Omit<ContractFixture, 'inputs' | 'shards' | 'blocks'>, genesis: Buffer) {
     await mkdir(directory); await mkdir(join(directory, 'shards')); const frames: Buffer[] = [];
