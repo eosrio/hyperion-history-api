@@ -87,9 +87,12 @@ Every archived artifact was read back and checked against its manifest digest.
    default mixed window 1 reports server `took=200 ms` with client wall **55.66 ms**; Bun's
    default mixed window 2 reports **200 ms** versus **62.17 ms**. Values are retained and
    flagged in `timing_warnings`; they are not corrected or subtracted to infer network wait.
-   The cause is unresolved. Reproduce with independent client/server clock observations on
-   a controlled Linux host before using bulk `took` for attribution. No ES regression or
-   VM-clock cause is established by this observation.
+   The [subsequent clock-control experiment](elasticsearch-9.5.5-clock.md) reproduced this
+   with raw HTTP clients on Windows and inside the Linux ES container. It traced bulk
+   timing to ES's default 200 ms cached clock: overshoots disappeared at an explicit
+   zero interval and returned at 200 ms. The original values and warnings remain unchanged.
+   Use client wall time for request latency; do not use short bulk `took` values to derive
+   precise network overhead. This finding does not establish an ES performance regression.
 
 ## Remaining #198 acceptance
 

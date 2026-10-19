@@ -36,6 +36,10 @@ Per-sample `request_ok` means the client completed the request; only the overall
 Reported `took` values are preserved unchanged. `timing_warnings` flags any value
 exceeding client wall time by more than five milliseconds, requiring investigation
 before interpreting performance even if data compatibility checks pass.
+The [clock-control follow-up](performance/elasticsearch-9.5.5-clock.md) explains the
+observed short-bulk warnings using ES's default cached clock. Preserve the raw field
+and warning; it is unsuitable for precise short-request latency attribution. The
+qualification fixture defaults and production settings are unchanged by that diagnostic.
 
 Install from the canonical npm lock, then build and run:
 

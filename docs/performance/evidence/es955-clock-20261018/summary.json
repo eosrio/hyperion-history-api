@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "experiment": "ES9.5.5 bulk cached-clock A/B/A diagnostic",
+  "localDate": "2026-10-18",
+  "utcDate": "2026-10-19",
+  "anomalyRule": "raw tookMs > client wallMs + 5ms",
+  "experiments": [
+    {
+      "stage": "default",
+      "client": "node",
+      "clockInterval": "200ms (source default, setting absent)",
+      "clusterUuid": "UQ4WLz8USDm57gAnPZIe_g",
+      "samples": 100,
+      "successfulItems": 100,
+      "anomalies": 3,
+      "wallMedianMs": 15.029099999999971,
+      "wallMaxMs": 37.960800000000006,
+      "tookHistogram": {
+        "0": 97,
+        "200": 3
+      },
+      "maxOvershootMs": 185.77179999999998,
+      "cleanup": "deleted",
+      "rawReport": "es198-clock-baseline2.json"
+    },
+    {
+      "stage": "default",
+      "client": "java",
+      "clockInterval": "200ms (source default, setting absent)",
+      "clusterUuid": "UQ4WLz8USDm57gAnPZIe_g",
+      "samples": 100,
+      "successfulItems": 100,
+      "anomalies": 4,
+      "wallMedianMs": 11.3788935,
+      "wallMaxMs": 63.759782,
+      "tookHistogram": {
+        "0": 96,
+        "200": 4
+      },
+      "maxOvershootMs": 189.309259,
+      "cleanup": "deleted",
+      "rawReport": "es198-clock-java-baseline.jsonl"
+    },
+    {
+      "stage": "direct",
+      "client": "node",
+      "clockInterval": "0ms",
+      "clusterUuid": "UQ4WLz8USDm57gAnPZIe_g",
+      "samples": 100,
+      "successfulItems": 100,
+      "anomalies": 0,
+      "wallMedianMs": 30.438049999999862,
+      "wallMaxMs": 82.28930000000003,
+      "tookHistogram": {
+        "11": 2,
+        "12": 38,
+        "13": 29,
+        "14": 5,
+        "15": 2,
+        "16": 6,
+        "17": 6,
+        "18": 1,
+        "19": 3,
+        "20": 3,
+        "21": 2,
+        "23": 2,
+        "43": 1
+      },
+      "maxOvershootMs": -3.434900000000198,
+      "cleanup": "deleted",
+      "rawReport": "es198-clock-direct.json"
+    },
+    {
+      "stage": "direct",
+      "client": "java",
+      "clockInterval": "0ms",
+      "clusterUuid": "UQ4WLz8USDm57gAnPZIe_g",
+      "samples": 100,
+      "successfulItems": 100,
+      "anomalies": 0,
+      "wallMedianMs": 15.044406,
+      "wallMaxMs": 107.056231,
+      "tookHistogram": {
+        "11": 48,
+        "12": 41,
+        "13": 4,
+        "15": 1,
+        "16": 2,
+        "17": 1,
+        "20": 2,
+        "101": 1
+      },
+      "maxOvershootMs": -2.7665539999999993,
+      "cleanup": "deleted",
+      "rawReport": "es198-clock-java-direct.jsonl"
+    },
+    {
+      "stage": "restored",
+      "client": "node",
+      "clockInterval": "200ms",
+      "clusterUuid": "UQ4WLz8USDm57gAnPZIe_g",
+      "samples": 100,
+      "successfulItems": 100,
+      "anomalies": 9,
+      "wallMedianMs": 30.66215000000011,
+      "wallMaxMs": 88.61619999999994,
+      "tookHistogram": {
+        "0": 91,
+        "200": 8,
+        "209": 1
+      },
+      "maxOvershootMs": 171.03859999999986,
+      "cleanup": "deleted",
+      "rawReport": "es198-clock-restored.json"
+    },
+    {
+      "stage": "restored",
+      "client": "java",
+      "clockInterval": "200ms",
+      "clusterUuid": "UQ4WLz8USDm57gAnPZIe_g",
+      "samples": 100,
+      "successfulItems": 100,
+      "anomalies": 8,
+      "wallMedianMs": 15.063355999999999,
+      "wallMaxMs": 94.157043,
+      "tookHistogram": {
+        "0": 92,
+        "200": 8
+      },
+      "maxOvershootMs": 185.987793,
+      "cleanup": "deleted",
+      "rawReport": "es198-clock-java-restored.jsonl"
+    }
+  ],
+  "failedSetupReport": "es198-clock-baseline.json",
+  "limitations": [
+    "100 sequential single-document bulk samples per client/stage; diagnostic only",
+    "Same volume/cluster, digest/resources/request corpus, different new index per run; warmed state and container restart order uncontrolled",
+    "Windows Node24.19 raw fetch; Linux Java27 HttpClient colocated in ES container; no Elasticsearch JS library",
+    "Default interval established from exact server-build source; explicit0ms/200ms confirmed in node settings",
+    "No throughput/runtimes ranking; clock setting is not a production tuning recommendation"
+  ]
+}
