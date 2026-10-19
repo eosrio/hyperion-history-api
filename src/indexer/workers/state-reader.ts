@@ -38,6 +38,7 @@ export default class StateReader extends HyperionWorker {
     private pendingRequest: [number, number] | null = null;
     private completionSignaled = false;
     private stageOneDistQueue: QueueObject<any>;
+    private pendingDistribution?: {publisher: ConfirmChannel; resume: () => void};
     private blockReadingQueue: QueueObject<WebSocket.MessageEvent>;
     private range_size = parseInt(process.env.last_block ?? '0') - parseInt(process.env.first_block ?? '0');
     private completionMonitoring: NodeJS.Timeout | null | undefined;
@@ -181,9 +182,20 @@ export default class StateReader extends HyperionWorker {
                     // The message was accepted into the publisher buffer.
                     // Wait for that channel to drain before sending more.
                     this.drainCount++;
+                    const pending = {
+                        publisher: channel,
+                        resume: () => {
+                            if (this.pendingDistribution !== pending || !this.cch || !this.cch_ready) return;
+                            this.pendingDistribution = undefined;
+                            // data contains only messages not yet accepted by
+                            // sendToQueue; the popped message is never retried.
+                            this.recursiveDistribute(data, this.cch, cb);
+                        }
+                    };
+                    this.pendingDistribution = pending;
                     channel.once('drain', () => {
                         if (channel === this.cch && this.cch_ready) {
-                            this.recursiveDistribute(data, channel, cb);
+                            pending.resume();
                         }
                     });
                 }
@@ -210,12 +222,16 @@ export default class StateReader extends HyperionWorker {
         if (this.cch) {
             const publisher = this.cch;
             this.cch_ready = true;
-            this.stageOneDistQueue.resume();
             publisher.on('close', () => {
                 if (publisher !== this.cch) return;
                 this.cch_ready = false;
                 this.stageOneDistQueue.pause();
             });
+            this.stageOneDistQueue.resume();
+            // resume() only starts queued cargo; a batch already waiting on an
+            // old publisher's drain needs its own continuation after reconnect.
+            const pending = this.pendingDistribution;
+            if (pending && pending.publisher !== publisher) pending.resume();
         }
     }
 

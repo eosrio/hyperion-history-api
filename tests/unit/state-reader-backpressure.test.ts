@@ -22,22 +22,26 @@ async function probe(body: string) {
             process.env.CONFIG_JSON = join(dir, 'chain.json');
             const {default: StateReader} = await import(${JSON.stringify(source)});
             const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-            const until = async (predicate, timeout = 1000) => {
+            const until = async (predicate, timeout = 1000, message = 'reader did not make expected progress') => {
                 const deadline = Date.now() + timeout;
                 while (!predicate()) {
-                    assert(Date.now() < deadline, 'reader did not make expected progress');
+                    assert(Date.now() < deadline, message);
                     await sleep(5);
                 }
             };
-            function fixture(live = false) {
+            function fixture(live = false, autoConfirm = true) {
                 const ch = Object.assign(new EventEmitter(), {async assertQueue() {}});
                 const sent = [];
+                const confirms = [];
+                let confirmed = 0;
                 let allowWrite = false;
                 function publisher() {
                     return Object.assign(new EventEmitter(), {
                         sendToQueue(queue, content, options, confirm) {
                             sent.push({queue, value: content.toString(), options});
-                            queueMicrotask(() => confirm(null));
+                            const acknowledge = () => {confirmed++; confirm(null);};
+                            confirms.push(acknowledge);
+                            if (autoConfirm) queueMicrotask(acknowledge);
                             return allowWrite;
                         }
                     });
@@ -55,7 +59,7 @@ async function probe(body: string) {
                     callback();
                 }), 2);
                 reader.stageOneDistQueue = queue;
-                return {reader, ch, cch, sent, queue, publisher,
+                return {reader, ch, cch, sent, confirms, queue, publisher, confirmed: () => confirmed,
                     allowWrite: () => {allowWrite = true;}, completions: () => completions};
             }
             ${body}
@@ -93,6 +97,73 @@ describe('StateReader confirm-channel backpressure', () => {
             assert(f.sent.every(value => value.queue === ${JSON.stringify(live ? 'drain-test:live_blocks' : 'drain-test:blocks:1')}));
             assert(f.sent.every(value => value.options.persistent === true && value.options.mandatory === true));
             f.cch.emit('drain');
+            await sleep(10);
+            assert.equal(f.completions(), 1);
+            assert.equal(f.sent.length, 2);
+        `);
+    }, 15000);
+
+    it('finishes a confirmed final-message cargo after publisher replacement without republishing it', async () => {
+        await probe(`
+            const f = fixture();
+            let connections = 0;
+            f.reader.events.on('ready', () => connections++);
+            f.reader.onConnect();
+            await until(() => connections === 1);
+            f.queue.push({num: 1, content: Buffer.from('one')});
+            await until(() => f.confirmed() === 1);
+            assert.equal(f.completions(), 0);
+            assert.equal(f.queue.running(), 1);
+            f.cch.emit('close');
+            assert.equal(f.queue.paused, true);
+            const replacement = f.publisher();
+            f.reader.ch = Object.assign(new EventEmitter(), {async assertQueue() {}});
+            f.reader.cch = replacement;
+            f.reader.onConnect();
+            await until(() => connections === 2);
+            await until(() => f.completions() === 1, 1000, 'replacement left confirmed empty cargo running');
+            assert.equal(f.queue.idle(), true);
+            assert.equal(f.sent.length, 1, 'republished the accepted final message');
+            f.cch.emit('drain');
+            replacement.emit('drain');
+            await sleep(10);
+            assert.equal(f.completions(), 1);
+            assert.equal(f.sent.length, 1);
+        `);
+    }, 15000);
+
+    it('continues only unsent cargo after replacement and ignores late confirms and old drains', async () => {
+        await probe(`
+            const f = fixture(false, false);
+            const reports = [];
+            process.send = message => {reports.push(message); return true;};
+            let connections = 0;
+            f.reader.events.on('ready', () => connections++);
+            f.reader.onConnect();
+            await until(() => connections === 1);
+            f.queue.push([{num: 1, content: Buffer.from('one')}, {num: 2, content: Buffer.from('two')}]);
+            await until(() => f.sent.length === 1);
+            assert.equal(f.confirms.length, 1);
+            assert.equal(reports.length, 0);
+            f.cch.emit('close');
+            const replacement = f.publisher();
+            f.reader.ch = Object.assign(new EventEmitter(), {async assertQueue() {}});
+            f.reader.cch = replacement;
+            f.reader.onConnect();
+            await until(() => connections === 2);
+            await until(() => f.sent.length === 2, 1000, 'replacement did not continue unsent active cargo');
+            assert.equal(f.completions(), 0, 'replacement buffer still requires its own drain');
+            assert.deepEqual(f.sent.map(value => value.value).sort(), ['one', 'two']);
+            f.cch.emit('drain');
+            await sleep(10);
+            assert.equal(f.completions(), 0, 'old drain completed replacement cargo');
+            replacement.emit('drain');
+            await until(() => f.completions() === 1);
+            assert.equal(f.queue.idle(), true);
+            f.confirms.forEach(confirm => confirm());
+            assert.deepEqual(reports.map(value => value.block_num).sort(), [1, 2]);
+            f.cch.emit('drain');
+            replacement.emit('drain');
             await sleep(10);
             assert.equal(f.completions(), 1);
             assert.equal(f.sent.length, 2);
