@@ -13,6 +13,10 @@ import { ABI, Action, Serializer } from "@wharfkit/antelope";
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
 import { groupActionTraces } from "../helpers/action-dedup.js";
 
+type ActionAbiIdentity =
+    | {kind: "historical"; block: number; hex: string}
+    | {kind: "custom"; abi: string; startingBlock: number; endingBlock: number};
+
 interface CustomAbiDef {
     abi: string;
     startingBlock: number;
@@ -203,7 +207,7 @@ export default class DSPoolWorker extends HyperionWorker {
     private poolTypeCache = new Map<string, [boolean, string]>();
     // Native contexts are mutable per contract. A cached type name alone does
     // not prove that the ABI currently loaded belongs to this action's block.
-    private loadedActionAbis = new Map<string, {block: number; hex: string}>();
+    private loadedActionAbis = new Map<string, ActionAbiIdentity>();
 
     private clearTypeCacheForContract(contract: string) {
         for (const key of this.poolTypeCache.keys()) {
@@ -265,131 +269,78 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    async verifyLocalType(contract: string, type: string, block_num: number, field: string): Promise<[boolean, string]> {
+    private clearActionAbiContext(contract: string) {
+        this.loadedActionAbis.delete(contract);
+        this.clearTypeCacheForContract(contract);
+        this.abieos.deleteContract(contract);
+    }
 
-        const vkey = field + '|' + contract + '|' + type + '|' + block_num;
-        const selectedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false, 0);
-        if (selectedAbi?.abi_hex) {
-            const loaded = this.loadedActionAbis.get(contract);
-            if (loaded?.block !== selectedAbi.block || loaded?.hex !== selectedAbi.abi_hex) {
-                this.clearTypeCacheForContract(contract);
-                let status = false;
-                try {
-                    status = this.loadAbiHex(contract, selectedAbi.block, selectedAbi.abi_hex);
-                } catch (error: any) {
-                    debugLog(`Failed to load ${contract} ABI at ${selectedAbi.block}: ${error.message}`);
-                }
-                if (!status) {
-                    this.loadedActionAbis.delete(contract);
-                    return [false, ''];
-                }
-                this.loadedActionAbis.set(contract, {block: selectedAbi.block, hex: selectedAbi.abi_hex});
-            }
-        } else if (this.loadedActionAbis.has(contract)) {
-            // A previously decoded, later block cannot supply an ABI for a
-            // block with no historical reference. Preserve the normal fallback.
-            this.loadedActionAbis.delete(contract);
-            this.abieos.deleteContract(contract);
-            this.clearTypeCacheForContract(contract);
-        }
-        const vCached = this.poolTypeCache.get(vkey);
-        if (vCached !== undefined) {
-            return vCached;
-        }
+    private loadActionAbi(contract: string, identity: ActionAbiIdentity, load: () => boolean): boolean {
+        const loaded = this.loadedActionAbis.get(contract);
+        const matches = loaded?.kind === "custom" && identity.kind === "custom"
+            ? loaded.abi === identity.abi && loaded.startingBlock === identity.startingBlock && loaded.endingBlock === identity.endingBlock
+            : loaded?.kind === "historical" && identity.kind === "historical"
+                && loaded.block === identity.block && loaded.hex === identity.hex;
+        if (matches) return true;
 
-        let _status: boolean;
-        let resultType = '';
-
+        // A rejecting native loader may still replace part of its mutable
+        // contract context. Never retain that context or a previously cached type.
+        this.clearActionAbiContext(contract);
         try {
-            resultType = this.getAbiDataType(field, contract, type);
-            _status = !!resultType;
-        } catch (e: any) {
-            debugLog(`(abieos) ${contract}::${type} (type: "${type}") @ ${block_num} >>> ${e.message}`);
-            _status = false;
+            if (load()) {
+                this.loadedActionAbis.set(contract, identity);
+                return true;
+            }
+        } catch (error: any) {
+            debugLog(`Failed to load ${identity.kind} ABI for ${contract}: ${error.message}`);
+        }
+        this.clearActionAbiContext(contract);
+        return false;
+    }
+
+    async verifyLocalType(contract: string, type: string, block_num: number, field: string): Promise<[boolean, string]> {
+        const vkey = field + '|' + contract + '|' + type + '|' + block_num;
+        const resolveLoadedType = (): string => {
+            const cached = this.poolTypeCache.get(vkey);
+            if (cached?.[0]) return cached[1];
+            const resultType = this.getAbiDataType(field, contract, type);
+            if (resultType) this.poolTypeCache.set(vkey, [true, resultType]);
+            return resultType;
+        };
+
+        // Explicit operator overrides precede historical schemas even when both
+        // schemas declare the action. Preserve the existing exclusive bounds.
+        const custom = this.conf.settings.allow_custom_abi
+            ? this.customAbiMap.get(contract)?.find(entry => entry.startingBlock < block_num && entry.endingBlock > block_num)
+            : undefined;
+        if (custom?.abi && this.loadActionAbi(contract, {kind: "custom", abi: custom.abi,
+            startingBlock: custom.startingBlock, endingBlock: custom.endingBlock}, () => this.abieos.loadAbi(contract, custom.abi))) {
+            const resultType = resolveLoadedType();
+            if (resultType) return [true, resultType];
         }
 
-        if (!_status) {
-
-            if (this.conf.settings.allow_custom_abi) {
-                if (this.customAbiMap.has(contract)) {
-                    const list = this.customAbiMap.get(contract);
-                    if (list) {
-                        const matchingAbi = list.find(entry => {
-                            return entry.startingBlock < block_num && entry.endingBlock > block_num;
-                        });
-                        if (matchingAbi && matchingAbi.abi) {
-                            this.loadedActionAbis.delete(contract);
-                            this.clearTypeCacheForContract(contract);
-                            _status = this.abieos.loadAbi(contract, matchingAbi.abi);
-                        }
-                    }
-                }
-            }
-
-            if (!_status) {
-                const savedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false, 0);
-                if (savedAbi) {
-                    if (savedAbi[field + 's'] && savedAbi[field + 's'].includes(type)) {
-                        if (savedAbi.abi_hex) {
-
-                            // _status = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
-
-                            try {
-
-                                _status = this.loadAbiHex(contract, savedAbi.block, savedAbi.abi_hex);
-
-                            } catch (error: any) {
-
-                                debugLog(`(abieos) ${contract}::${type} (field: "${field}") @ ${block_num} >>> ${error.message}`);
-
-                            }
-                        }
-                    }
-                }
-            }
-
-            // successful load from ES cache
-            if (_status) {
-                try {
-                    resultType = this.getAbiDataType(field, contract, type);
-                    if (resultType) {
-                        _status = true;
-                        // early return since the loaded abi should work
-                        this.poolTypeCache.set(vkey, [_status, resultType]);
-                        return [_status, resultType];
-                    } else {
-                        _status = false;
-                    }
-                } catch (e: any) {
-                    debugLog(`(abieos/cached) >> ${e.message}`);
-                    _status = false;
-                }
-            }
-
-            if (!_status) {
-                try {
-                    this.loadedActionAbis.delete(contract);
-                    this.clearTypeCacheForContract(contract);
-                    _status = await this.loadCurrentAbiHex(contract);
-                } catch (error: any) {
-                    debugLog(`(abieos/current) >> ${error.message}`);
-                    _status = false;
-                }
-            }
-
-            if (_status) {
-                try {
-                    resultType = this.getAbiDataType(field, contract, type);
-                    _status = true;
-                } catch (e: any) {
-                    debugLog(`(abieos/current) >> ${e.message}`);
-                    _status = false;
-                }
-            }
+        const historical = await this.fetchAbiHexAtBlockElastic(contract, block_num, false, 0);
+        if (historical?.abi_hex && this.loadActionAbi(contract,
+            {kind: "historical", block: historical.block, hex: historical.abi_hex},
+            () => this.loadAbiHex(contract, historical.block, historical.abi_hex))) {
+            const resultType = resolveLoadedType();
+            if (resultType) return [true, resultType];
         }
-        const verifyResult: [boolean, string] = [_status, resultType];
-        this.poolTypeCache.set(vkey, verifyResult);
-        return verifyResult;
+
+        // Missing/rejected historical ABIs retain the existing current fallback.
+        // Its unknown deployment identity must never stand in for a historical
+        // or custom selection on the next action.
+        this.clearActionAbiContext(contract);
+        let resultType = '';
+        try {
+            if (await this.loadCurrentAbiHex(contract)) resultType = this.getAbiDataType(field, contract, type);
+        } catch (error: any) {
+            debugLog(`(abieos/current) >> ${error.message}`);
+        }
+        if (!resultType) this.clearActionAbiContext(contract);
+        const result: [boolean, string] = [!!resultType, resultType];
+        this.poolTypeCache.set(vkey, result);
+        return result;
     }
 
     async deserializeActionAtBlockNative(self: DSPoolWorker, action: HyperionActionAct, block_num: number): Promise<any> {
