@@ -104,6 +104,11 @@ export default class HyperionParser extends BaseParser {
             let traces = [];
             let deltas: any[] = [];
 
+            // Observe full source inputs before root-only, whitelist or max-inline filtering.
+            // Storage failure escapes without reaching the source acknowledgment below.
+            const observation = worker.usesExtensionProtocol
+                ? await worker.prepareProtocolAbiObservations(res) : undefined;
+
             if (res.block && res.block.length) {
                 const stopBlock = worker.profiler.start('deserialize_block');
                 block = worker.deserializeNative('signed_block', protocolBytes(res.block));
@@ -142,7 +147,7 @@ export default class HyperionParser extends BaseParser {
 
             if (allowProcessing && res.traces && res.traces.length) {
                 const stopTraces = worker.profiler.start('deserialize_traces');
-                traces = worker.deserializeNative('transaction_trace[]', protocolBytes(res.traces));
+                traces = observation?.traces ?? worker.deserializeNative('transaction_trace[]', protocolBytes(res.traces));
                 stopTraces();
                 if (!traces) {
                     hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res['this_block']['block_num']}`);
@@ -151,7 +156,7 @@ export default class HyperionParser extends BaseParser {
 
             if (allowProcessing && res.deltas && res.deltas.length) {
                 const stopDeltas = worker.profiler.start('deserialize_deltas');
-                deltas = worker.decodeShipValue('table_delta[]', res.deltas);
+                deltas = observation?.deltas ?? worker.decodeShipValue('table_delta[]', res.deltas);
                 stopDeltas();
                 if (!deltas) {
                     hLog(`[WARNING] table_delta[] deserialization failed on block ${res['this_block']['block_num']}`);

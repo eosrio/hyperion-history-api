@@ -18,10 +18,12 @@ import { GetBlocksResultV0 } from "./state-reader.js";
 import { de } from "zod/v4/locales";
 import { log } from "console";
 import {protocolBytes, protocolNumber} from "../protocol/contract-cache.js";
-import type {ProtocolAbiDeployment, ProtocolNormalizedDelta} from "@eosrio/hyperion-sdk/protocol";
+import type {ProtocolAbiDeployment, ProtocolNormalizedDelta, ProtocolAbiAccountRowInput, ProtocolBlockAbiSource} from "@eosrio/hyperion-sdk/protocol";
 import {protocolDeployment, type IndexedProtocolAbi} from "../protocol/deployments.js";
 import {protocolStateKey} from '../helpers/protocol-document-id.js';
 import {assertCompleteProtocolSearch} from '../protocol/search.js';
+import {ProtocolAbiObservationStore, protocolAbiCaptureDigest, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
+import {assertProtocolAbiObservationFacts} from '../protocol/abi-observation-facts.js';
 
 interface QueuePayload {
     queue: string;
@@ -68,6 +70,7 @@ export default class MainDSWorker extends HyperionWorker {
     ch_ready = false;
     private consumerQueue;
     private preIndexingQueue;
+    private protocolAbiObservationStore?: ProtocolAbiObservationStore;
 
     shipABI?: string;
 
@@ -107,6 +110,14 @@ export default class MainDSWorker extends HyperionWorker {
             this.processMessages(payload).then(() => {
                 cb();
             }).catch((err) => {
+                if (this.usesExtensionProtocol) {
+                    // Preserve unacknowledged broker deliveries for supervised
+                    // replacement. nackAll + resuming cargo would reuse stale tags.
+                    hLog('Protocol source processing failed; supervised replacement required:', err.message);
+                    this.ch_ready = false;
+                    this.consumerQueue.kill();
+                    return process.exit(1);
+                }
                 hLog('NACK ALL', err.message);
                 if (this.ch && this.ch_ready) {
                     this.ch.nackAll();
@@ -284,6 +295,56 @@ export default class MainDSWorker extends HyperionWorker {
         } finally {
             stop();
         }
+    }
+
+    /** Journal PREPARE precedes history filters and source ACK; it grants no decoding authority. */
+    async prepareProtocolAbiObservations(res: GetBlocksResultV0): Promise<{traces?: any; deltas?: any[]}> {
+        if (!this.usesExtensionProtocol) return {};
+        const position: ProtocolBlockAbiSource = {chainId: this.chainId, blockNum: protocolNumber(res.this_block?.block_num),
+            blockId: res.this_block?.block_id?.toString().toLowerCase() ?? '',
+            previousBlockId: res.prev_block?.block_id?.toString().toLowerCase() ?? null};
+        const section = (value: unknown) => value === null || value === undefined ? null : Buffer.from(protocolBytes(value)).toString('hex');
+        const capture: ProtocolAbiObservationRecord['capture'] = {kind: 'unattested-ship-result-sections-v1', schemaJson: this.protocolShipAbiJson ?? null,
+            blockHex: section(res.block), tracesHex: section(res.traces), deltasHex: section(res.deltas)};
+        const source = {...position, inputSha256: protocolAbiCaptureDigest(position, capture)};
+        const decoded: {traces?: any; deltas?: any[]} = {};
+        let observation: ProtocolAbiObservationRecord['observation'];
+        try {
+            if (res.traces && protocolBytes(res.traces).length) decoded.traces = this.decodeShipValue('transaction_trace[]', res.traces);
+            if (res.deltas && protocolBytes(res.deltas).length) decoded.deltas = this.decodeShipValue('table_delta[]', res.deltas);
+            let accountRows: ProtocolAbiAccountRowInput[] | undefined;
+            if (decoded.deltas !== undefined) {
+                accountRows = [];
+                let ordinal = 0;
+                for (const delta of decoded.deltas) {
+                    if (!Array.isArray(delta) || !['table_delta_v0', 'table_delta_v1'].includes(delta[0])
+                        || !Array.isArray(delta[1]?.rows)) throw new Error('Unsupported ABI observation delta framing');
+                    for (const row of delta[1].rows) {
+                        if (delta[1].name === 'account') {
+                            if (![true, false, 0, 1].includes(row.present)) throw new Error('Invalid ABI account presence');
+                            const raw = protocolBytes(row.data);
+                            accountRows.push({ordinal, present: row.present === true || row.present === 1,
+                                raw, value: this.decodeShipValue('account', raw)});
+                        }
+                        ordinal++;
+                    }
+                }
+            }
+            const provider = this.protocol;
+            if (typeof provider.observeBlockAbi !== 'function') throw new Error('Selected provider has no ABI observation hook');
+            const facts = provider.observeBlockAbi({traces: decoded.traces, accountRows}, position);
+            assertProtocolAbiObservationFacts(facts);
+            // Validate malformed provider output here so raw source survives as an incomplete record.
+            observation = {status: 'observed', facts};
+        } catch (error: any) {
+            observation = {status: 'incomplete', error: {code: 'protocol_abi_observation_incomplete',
+                message: String(error?.message ?? error).slice(0, 4096)}};
+        }
+        this.protocolAbiObservationStore ??= new ProtocolAbiObservationStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
+        await this.protocolAbiObservationStore.prepare({schemaVersion: 1,
+            protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
+            source, capture, observation});
+        return decoded;
     }
 
     private initConsumer() {

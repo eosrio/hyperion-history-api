@@ -39,7 +39,7 @@ async function installedComponent(packageRoot: string, module: string, runtime: 
 }
 
 /** Immutable executable selection is made once per worker lifetime. */
-export async function loadChainProtocol(configuration?: ChainProtocolConfiguration): Promise<{provider: ProtocolProvider; decoder: ContractDecoder; id: string}> {
+export async function loadChainProtocol(configuration?: ChainProtocolConfiguration): Promise<{provider: ProtocolProvider; decoder: ContractDecoder; id: string; components?: readonly ProtocolComponent[]}> {
     if (configuration === undefined || configuration.provider === 'antelope') {
         if (configuration && Object.keys(configuration).some(key => key !== 'provider')) throw new Error('Invalid Antelope protocol configuration');
         const {createAntelopeProvider} = await import('./antelope.js');
@@ -71,5 +71,6 @@ export async function loadChainProtocol(configuration?: ChainProtocolConfigurati
         || !['decodeAbi', 'encodeAbi', 'decodeValue', 'encodeValue'].every(method => typeof provider.contractCodec[method] === 'function')) {
         throw new Error('Protocol provider does not implement the selected interface');
     }
-    return {provider, decoder: createContractDecoder(provider.contractCodec), id: selection.descriptor.manifest.package};
+    return {provider, decoder: createContractDecoder(provider.contractCodec), id: selection.descriptor.manifest.package,
+        components: selection.profile.components};
 }

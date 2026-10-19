@@ -6,6 +6,7 @@ import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {EventEmitter} from 'node:events';
+import {observationMemoryClient} from './protocol-observation-memory.mjs';
 
 // A real selected extension must work when importing the legacy addon is impossible.
 registerHooks({resolve(specifier, context, next) {
@@ -58,6 +59,7 @@ try {
     const {default: Pool} = await import('../../build/indexer/workers/ds-pool.js');
     const {MongoRoutes} = await import('../../build/indexer/helpers/mongo-routes.js');
     const {ElasticRoutes} = await import('../../build/indexer/helpers/elastic-routes.js');
+    const {ProtocolAbiObservationStore} = await import('../../build/indexer/protocol/abi-observation-store.js');
     const reader = new Reader(); workers.push(reader);
     await reader.protocolReady;
     const requests = []; const distributed = [];
@@ -81,6 +83,7 @@ try {
 
     const main = new Deserializer(); workers.push(main);
     await main.protocolReady;
+    main.protocolAbiObservationStore = new ProtocolAbiObservationStore(observationMemoryClient().client,chain);
     const originalConfig=main.conf;
     const originalProvider=main.protocol;
     const originalFilters=Object.fromEntries(Object.entries(main.filters).map(([key,value])=>[key,[...value]]));
@@ -108,6 +111,9 @@ try {
     const capturedBlock = output.find(value=>value.queue.includes('index_blocks'));
     assert.equal(JSON.parse(capturedBlock.content)['@timestamp'],fixture.expected.block.timestamp);
     output.length = 0; poolMessages.length = 0;
+    // Captured and transformed block6350 are independent engineering fixtures,
+    // not two competing byte representations in one authoritative journal.
+    main.protocolAbiObservationStore = new ProtocolAbiObservationStore(observationMemoryClient().client,chain);
     await main.mLoader.parser.parseMessage(main,[{content:Buffer.from(fixture.frameHex,'hex')}]);
     const blockDocument = JSON.parse(output.find(value=>value.queue.includes('index_blocks')).content);
     assert.equal(blockDocument.cpu_usage,479);

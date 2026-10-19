@@ -1,6 +1,6 @@
 import { Client } from "@elastic/elasticsearch";
 import { EventEmitter } from "events";
-import type {ProtocolProvider, ProtocolShipSession} from "@eosrio/hyperion-sdk/protocol";
+import type {ProtocolProvider, ProtocolShipSession, ProtocolComponent} from "@eosrio/hyperion-sdk/protocol";
 import {loadChainProtocol} from "../protocol/selection.js";
 import {ContractDecoder, protocolBytes} from "../protocol/contract-cache.js";
 import { Channel, ConfirmChannel } from "amqplib";
@@ -48,9 +48,11 @@ export abstract class HyperionWorker {
     protected abieos!: ContractDecoder;
     protocol!: ProtocolProvider;
     protocolId!: string;
+    protocolComponents?: readonly ProtocolComponent[];
     protocolReady!: Promise<void>;
     shipSession?: ProtocolShipSession;
     private protocolShipAbi?: unknown;
+    protected protocolShipAbiJson?: string;
     configModule: ConfigurationModule;
 
     protected constructor() {
@@ -137,6 +139,7 @@ export abstract class HyperionWorker {
         const selected = await loadChainProtocol(this.conf.settings.protocol);
         this.protocol = selected.provider;
         this.protocolId = selected.id;
+        this.protocolComponents = selected.components;
         this.abieos = selected.decoder;
     }
 
@@ -147,6 +150,7 @@ export abstract class HyperionWorker {
         this.shipSession?.close?.();
         this.shipSession = replacement;
         this.protocolShipAbi = handshake;
+        this.protocolShipAbiJson = abiString;
     }
 
     decodeShipResult(bytes: Uint8Array): any {
