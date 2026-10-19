@@ -1,0 +1,654 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-19T12:06:12.036705+00:00",
+  "archive": "raw-evidence.tar.gz",
+  "archiveSha256": "f693d46a1ab5fd4a1e2cad7a18d97f717f60644f31849e41c12ea3ca19a8050e",
+  "sourceCommit": "d2353930a5037404bbb3e5da9f665546cccb0954",
+  "sourceHashes": {
+    "scripts/qualification/es955-workers.ts": "ec559d35ef8fcc698219dc8ad50016a09b2bcc978a1117461957404c897af255",
+    "scripts/qualification/es955-worker-observer.mjs": "7573af5828c9a509ce73c767549c4b4feddd25bf64995770eca87760d6eaa1c5",
+    "scripts/qualification/es955-worker-fixture.ps1": "f27ac582b264332f6319fe57199b89d8fb4e631d37604933fd72b8a6729817ce",
+    "src/indexer/modules/queueMonitor.ts": "5de2a7c4efe5e040bb5a9c13240e49d6bb86aa55a95d89d436f398a54e354acb",
+    "src/indexer/modules/master.ts": "7a90727a00aa963097206df36cd04ca45604a334ed4ca58cb2e09602650b7272",
+    "src/indexer/modules/loader.ts": "fcb636ff00198b213ebbd5e789063c7144b99696f21d620b57d995340efbffb7",
+    "src/indexer/workers/hyperionWorker.ts": "b2b56a6287d9c23ba2f34dafad3952d35b51f4b4a5e53e0884f8009516dcdbe0",
+    "src/indexer/workers/state-reader.ts": "7a70b3dc295bef25af248a48794137b8daf21b89b3e57c0929e7c6228e8ff93f",
+    "src/indexer/workers/indexer.ts": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+    "src/indexer/helpers/elastic-routes.ts": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+    "build/indexer/launcher.js": "72f3fbfdd0c83ea7f1542b90a9e010f2fc9e4a08cea67eaa8578f0cd312decd7",
+    "build/indexer/modules/master.js": "4ddfcb8a02c793947e807c94aff62c8abb93210929e0b4aff00be2f8997fd836",
+    "build/indexer/modules/queueMonitor.js": "860863abdef6cb73e2af87d55cfc9120565c63deea7dbd7dfd18a6b6a4a23ccd",
+    "build/indexer/modules/loader.js": "6f56a030d78ffa6b1916248313d62a27aeae301082efd25ee7eaad62d8b22963",
+    "build/indexer/workers/hyperionWorker.js": "938e8d711ecc9135e36cd04345219bc0659d772cc798e6f6342baf3b074ed101",
+    "build/indexer/workers/state-reader.js": "8d7eef750fa6bd6f713c388ba043022e4a5915bea09c96c55a7ad2083608ad56",
+    "build/indexer/workers/indexer.js": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+    "build/indexer/helpers/elastic-routes.js": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+    "package-lock.json": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+  },
+  "memberCount": 86,
+  "members": [
+    {
+      "path": "README.json",
+      "sizeBytes": 683,
+      "sha256": "259b10d79a8a4c9efeb800bdedf955322d0219462b76a6a689016ed751e00c83",
+      "role": "Evidence scope and original immutable archive identity"
+    },
+    {
+      "path": "run/profile/config/chain.json",
+      "sizeBytes": 2074,
+      "sha256": "91cc9a071eecbe4c9ef26f54df051796ab099fdee1f9d892aa2444bc6df14eff",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/config/connections.json",
+      "sizeBytes": 965,
+      "sha256": "9a7169d8356102fbaf3aa607b909a332d2f7835cb4ead6159750f5ec492763a1",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/logs/hyp-es955-2c5ff796dc0f/2026-10-19T11-58-59.034Z_ds_err_1_10069.log",
+      "sizeBytes": 40,
+      "sha256": "ddb05f950a579efc86fa72d99208e79f95607dba659c7da5cfe06e38a97d6044",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/master.stderr.log",
+      "sizeBytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/master.stdout.log",
+      "sizeBytes": 10026,
+      "sha256": "b11a2fc85d38c3ba57a9f929fb2be4b11449c6ca129990c3ff06add82e29fd2f",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-105380.cpuprofile",
+      "sizeBytes": 443405,
+      "sha256": "daebaf7fc43461abe97695473246c85f005b28d799084481f80ba9013307cc6d",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-105380.jsonl",
+      "sizeBytes": 171547,
+      "sha256": "f40e5a4d58e18e4ca90c59dfd4d1b169f33b29ef3556bce379686d57d48ed9f8",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-106008.cpuprofile",
+      "sizeBytes": 477861,
+      "sha256": "978201391554aa060a9b4ec71d2bc29fe3f045711392e97f2ed386105fc5629f",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-106008.jsonl",
+      "sizeBytes": 389717,
+      "sha256": "3e08c099d19010a6d915ee488667846222d955ecef0183a50a8fa2d0e3a05656",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-119056.cpuprofile",
+      "sizeBytes": 317060,
+      "sha256": "16d10f10e4c6cef65eccf3702e121fd32135b0c8688483ed181b817cffc93951",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-119056.jsonl",
+      "sizeBytes": 2308002,
+      "sha256": "e06d060fe1335b825f328fdf8ba985e502c7de153f5dd81c7e80684f46784c51",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-121912.cpuprofile",
+      "sizeBytes": 455085,
+      "sha256": "7b2cb23dc76e0020535e91ca94362e19e24b06e95ca23c70b8a5b24377c9f0a5",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-121912.jsonl",
+      "sizeBytes": 382719,
+      "sha256": "b2489b219b280564900f46a5eb8eab7fdef28e237b4cab6d99a98246e6fd5715",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-123768.cpuprofile",
+      "sizeBytes": 196107,
+      "sha256": "01a06af170e86fdfb4bf9fa108f3f43bd3d150c0722ac9a271264488186b4a47",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-123768.jsonl",
+      "sizeBytes": 339091,
+      "sha256": "a799a933c5e1f7e550c999d09cd5015622f31e8527d1e088f24e24d82dd87a35",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-12780.cpuprofile",
+      "sizeBytes": 464906,
+      "sha256": "47b1ea4ec2e384d65fb63525b4809352cfa03b5e0500986bd0a3284f3a372986",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-12780.jsonl",
+      "sizeBytes": 173396,
+      "sha256": "cdf55d05781a2c8f21a424ef3209a35fe498744b5a4188b8e3bb861592a843f1",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-15928.cpuprofile",
+      "sizeBytes": 561564,
+      "sha256": "1d1333fa20027e321442c333d4225575884625d8e76dac15d7a25c93d12bf30e",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-15928.jsonl",
+      "sizeBytes": 230291,
+      "sha256": "2e08b635917b40a9eb72d452d1f35eef07c6b6b13e2cca00a508c09482b082f4",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-38480.cpuprofile",
+      "sizeBytes": 496591,
+      "sha256": "0efe128ce68d976dc78909be7cbb18508dfe4cb2e10e628cbccf0e27de5a6d6b",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-38480.jsonl",
+      "sizeBytes": 266322,
+      "sha256": "ff1a4a139f0af5b6a5bdb928c6ca672f97914251363f4299e934834a9f9d8da3",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-58708.cpuprofile",
+      "sizeBytes": 429014,
+      "sha256": "74cd326d339a55ba9caf1c270fe63197dd123e77b7ebba6cc42614ff4acdaad0",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-58708.jsonl",
+      "sizeBytes": 171732,
+      "sha256": "c02beffa5d11d95b2739b2b55a7d8d2a8337ef6c60a0341c1055edf66b7bb9f2",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-67008.cpuprofile",
+      "sizeBytes": 454180,
+      "sha256": "1efd46faae74c75c40d6a722c6c47ea1c7601084794cf15529041153321ab6ea",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-67008.jsonl",
+      "sizeBytes": 171450,
+      "sha256": "ab0a1b4905cfda6329cf55edd4e8f93f50badae52efcc8336b66112cd1d492f6",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-69280.cpuprofile",
+      "sizeBytes": 433999,
+      "sha256": "f0c2155fb41ce0b517afba7741b0f1806318767629bdca576776754d9a538ce0",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-69280.jsonl",
+      "sizeBytes": 171781,
+      "sha256": "ad3fbf28ae25f061b20ff6ed977ab0d8ff4b08f6feac4eba09720c9cd36b07e0",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-73012.cpuprofile",
+      "sizeBytes": 191826,
+      "sha256": "7458901b8618553863cbbae3658f47848ede961efe0b196f6443a26f07ee0349",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-73012.jsonl",
+      "sizeBytes": 291708,
+      "sha256": "1b355c97ecd850ca14a9f0fa9d14833d39472dd63fbf2c2b7605945c441a0a0c",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-75308.cpuprofile",
+      "sizeBytes": 451628,
+      "sha256": "4131904b0a76a9e1687518d11fb6f4fb5fe62d1690ec927e7f07333b7471749d",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/observer/worker-75308.jsonl",
+      "sizeBytes": 171552,
+      "sha256": "64840d7e752eefadb1d795529f58aad6a00be2107c178cfab1beb0455351af84",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/package.json",
+      "sizeBytes": 2396,
+      "sha256": "9f035801acd00ac688794486e3a557cf2837a80db6bdcd59463f9b89e9bb748f",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/report.json",
+      "sizeBytes": 40288306,
+      "sha256": "faf6b78a1780733b34ac12a67ef9ad84522bc006bbd2ff6c9f1e0b1befd5725d",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/build/indexer/helpers/elastic-routes.js",
+      "sizeBytes": 17677,
+      "sha256": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/build/indexer/launcher.js",
+      "sizeBytes": 1946,
+      "sha256": "72f3fbfdd0c83ea7f1542b90a9e010f2fc9e4a08cea67eaa8578f0cd312decd7",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/build/indexer/modules/loader.js",
+      "sizeBytes": 7708,
+      "sha256": "6f56a030d78ffa6b1916248313d62a27aeae301082efd25ee7eaad62d8b22963",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/build/indexer/modules/master.js",
+      "sizeBytes": 84036,
+      "sha256": "4ddfcb8a02c793947e807c94aff62c8abb93210929e0b4aff00be2f8997fd836",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/build/indexer/modules/queueMonitor.js",
+      "sizeBytes": 5758,
+      "sha256": "860863abdef6cb73e2af87d55cfc9120565c63deea7dbd7dfd18a6b6a4a23ccd",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/build/indexer/workers/hyperionWorker.js",
+      "sizeBytes": 11235,
+      "sha256": "938e8d711ecc9135e36cd04345219bc0659d772cc798e6f6342baf3b074ed101",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/build/indexer/workers/indexer.js",
+      "sizeBytes": 6784,
+      "sha256": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/build/indexer/workers/state-reader.js",
+      "sizeBytes": 41894,
+      "sha256": "8d7eef750fa6bd6f713c388ba043022e4a5915bea09c96c55a7ad2083608ad56",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/package-lock.json",
+      "sizeBytes": 126283,
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/scripts/qualification/es955-worker-fixture.ps1",
+      "sizeBytes": 14084,
+      "sha256": "f27ac582b264332f6319fe57199b89d8fb4e631d37604933fd72b8a6729817ce",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/scripts/qualification/es955-worker-observer.mjs",
+      "sizeBytes": 18891,
+      "sha256": "7573af5828c9a509ce73c767549c4b4feddd25bf64995770eca87760d6eaa1c5",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/scripts/qualification/es955-workers.ts",
+      "sizeBytes": 38855,
+      "sha256": "ec559d35ef8fcc698219dc8ad50016a09b2bcc978a1117461957404c897af255",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/src/indexer/helpers/elastic-routes.ts",
+      "sizeBytes": 22066,
+      "sha256": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/src/indexer/modules/loader.ts",
+      "sizeBytes": 8584,
+      "sha256": "fcb636ff00198b213ebbd5e789063c7144b99696f21d620b57d995340efbffb7",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/src/indexer/modules/master.ts",
+      "sizeBytes": 90247,
+      "sha256": "7a90727a00aa963097206df36cd04ca45604a334ed4ca58cb2e09602650b7272",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/src/indexer/modules/queueMonitor.ts",
+      "sizeBytes": 6296,
+      "sha256": "5de2a7c4efe5e040bb5a9c13240e49d6bb86aa55a95d89d436f398a54e354acb",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/src/indexer/workers/hyperionWorker.ts",
+      "sizeBytes": 12824,
+      "sha256": "b2b56a6287d9c23ba2f34dafad3952d35b51f4b4a5e53e0884f8009516dcdbe0",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/src/indexer/workers/indexer.ts",
+      "sizeBytes": 7279,
+      "sha256": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/sources/src/indexer/workers/state-reader.ts",
+      "sizeBytes": 44374,
+      "sha256": "7a70b3dc295bef25af248a48794137b8daf21b89b3e57c0929e7c6228e8ff93f",
+      "role": "Fresh 60-second steady-phase profile follow-up; separate from original five-minute totals",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "run/profile/symlinks.json",
+      "sizeBytes": 708,
+      "sha256": "286cd42b45d4e7c59e579d1e6a08c3be79d0c0fd331e71d539effccbb5a36cc3",
+      "role": "owned relative log-link metadata; no extractable symlinks",
+      "status": "passed",
+      "fixtureRun": "10fdc8832248"
+    },
+    {
+      "path": "supporting/AGENTS.md",
+      "sizeBytes": 775,
+      "sha256": "246edc56ca0555ed6c6737b975c1b5f6e72cbfe8af431b1a335935a32887ed1b",
+      "role": "Supporting source at correction commit"
+    },
+    {
+      "path": "supporting/scripts/qualification/check-worker-observer.mjs",
+      "sizeBytes": 17282,
+      "sha256": "f6b3b9dcae170c1946039ae36e0c2f06e396f2e8b9c5cd91cc4e4650f31c2d83",
+      "role": "Supporting source at correction commit"
+    },
+    {
+      "path": "supporting/tests/unit/es955-workers.test.ts",
+      "sizeBytes": 7204,
+      "sha256": "4a618a1b32bb9113f385e9db2e775e1f3877bc531f871aadf34a3deb0f3cb27c",
+      "role": "Supporting source at correction commit"
+    },
+    {
+      "path": "validation/es198-pr207-amqp-review-probe.json",
+      "sizeBytes": 3189,
+      "sha256": "2a3bfd7f710f3bd6e929ade0b66a19a1f327b89208841fc488d5884f1f0bc7a1",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-amqp-review-probe.mjs",
+      "sizeBytes": 3529,
+      "sha256": "7e5e6739e842b8c824e36d2a60792e57338b5fabdfded543ec57bff5ebcd719e",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-comments.json",
+      "sizeBytes": 2352,
+      "sha256": "2fc3f195b6be22471604569c58c947c050ad4f2afa0f267f27916afd24a5f481",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-observer-fix.patch",
+      "sizeBytes": 17519,
+      "sha256": "33c2f2eeb65777c3c59c80c5ade85a81aa806e38407f2c813cb1a95a19bb3ec5",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-observer-green-final.log",
+      "sizeBytes": 849,
+      "sha256": "02a3bf5138b6ab850f0bf6a9eac41c36992a4e5d33acd6afb0fdacdd23b2c4c3",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-observer-green.log",
+      "sizeBytes": 849,
+      "sha256": "fce79473889b784f8a4f84a5095d76a24d9095624de4bcb89a525b287e3e3252",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-observer-nonzero-red.log",
+      "sizeBytes": 980,
+      "sha256": "9ecdd97f529913a586b14f013eea8adc5e656cc5650711d6f98fc69887bf17d8",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-observer-predead-red.log",
+      "sizeBytes": 980,
+      "sha256": "9ecdd97f529913a586b14f013eea8adc5e656cc5650711d6f98fc69887bf17d8",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-observer-ready-red.log",
+      "sizeBytes": 722,
+      "sha256": "ee49fa1a638fe56fc61668fcfb82af9aaf5ac93df217f66eb6b692663c30cc42",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-observer-received.patch",
+      "sizeBytes": 17519,
+      "sha256": "33c2f2eeb65777c3c59c80c5ade85a81aa806e38407f2c813cb1a95a19bb3ec5",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-observer-root-green.json",
+      "sizeBytes": 848,
+      "sha256": "96afbe24f4e964fdd6627af2ebae18e845a1a33bd76441901e2d895a55c5bd69",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-observer-signal-red.log",
+      "sizeBytes": 980,
+      "sha256": "9ecdd97f529913a586b14f013eea8adc5e656cc5650711d6f98fc69887bf17d8",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-original-evidence-audit.json",
+      "sizeBytes": 80039,
+      "sha256": "d5152ea0e8e37c79d57d8a92410b2853447bb2dabd027f0072d9a94d133c9422",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-original-evidence-audit.log",
+      "sizeBytes": 957,
+      "sha256": "37e82793fe1c693d6af4fbe4d223d6c9e67a123cc59861af769b91f9715fab2c",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-original-evidence-audit.py",
+      "sizeBytes": 7289,
+      "sha256": "9f1789c395e4074ce8717525b02e6062b5d8053a577ff46bc8225689af526bd7",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-package-review.py",
+      "sizeBytes": 7610,
+      "sha256": "d85dc2ebbf1c22330a2b7c0df352ddedf7c9d515d3c1bd0002347ea3ffa03867",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-profile-final.log",
+      "sizeBytes": 39,
+      "sha256": "f9152bcd2b5bb5e422ffee229d29d0bf6ba457b98275a3d284a595c7aae00435",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-profile-preflight-green.log",
+      "sizeBytes": 794,
+      "sha256": "18e9d6860070e647fd9b327b2c8789ad0081942e27d7d226aa7c855a49f76fc6",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-profile-preflight-red.log",
+      "sizeBytes": 1364,
+      "sha256": "6770e4c54351e20f5b02197a59d4b0e986e99e5b33c2a5d63a3a7f362fb71fa1",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-review-postflight.json",
+      "sizeBytes": 375596,
+      "sha256": "12dee37401398e6c61c1d721af974274fd5dde85efa231be7fff7762a7b32386",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-review-reply.json",
+      "sizeBytes": 542,
+      "sha256": "25c43674dc77d40a6a6a2b7f885b0c08ffeb858bbc8cfe59cd27d51258288e10",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-review-state.json",
+      "sizeBytes": 15935,
+      "sha256": "31c8308a999e73cb130baf6aa4780b6d28e34c081d9063b990c8a2e24a6a51b3",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-review-state.json.cleanup.json",
+      "sizeBytes": 1535,
+      "sha256": "32ed762cbdf26e401b56d60977cfbfa9c16515062d4400134131d2ed0a88f6e0",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-review-state.json.core.json",
+      "sizeBytes": 8371,
+      "sha256": "56bff442f6381c6e53bba8954ff48d7f5b05b372dc6e07312b3043f0ac5dba72",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-review-state.json.core.json.cleanup.json",
+      "sizeBytes": 797,
+      "sha256": "7639601b75ef1655077ea5c0fe43a705ffe50279af956eadabefed7f5efd7ac4",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-review.json",
+      "sizeBytes": 7245,
+      "sha256": "5893219c9b692b5d987cd60438631b442ef580a4370178e2bcde4f9b9ef153da",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-runtime.json",
+      "sizeBytes": 349,
+      "sha256": "50e1899835e64cb98e7a12109eaa99ac98145974ad86f9446d98193350b1b528",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-spec-review-observer-cases.json",
+      "sizeBytes": 765,
+      "sha256": "9c97aeadec35913f34249163c4b627504385fe5bc54209231a486bdb34212abd",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    },
+    {
+      "path": "validation/es198-pr207-unit-green.log",
+      "sizeBytes": 43751,
+      "sha256": "0b920e9917aad0af96fd94036dc5ce9356f0b0b31fa408c327fa1a9870b35431",
+      "role": "Review reproduction, original-evidence audit, fixture/postflight/cleanup or validation"
+    }
+  ],
+  "sourceProvenance": "Run snapshots are byte-exact and hash-checked; original measurements remain untouched. Supporting files are distinguished from measured snapshots."
+}

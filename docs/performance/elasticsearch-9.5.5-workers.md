@@ -182,7 +182,8 @@ samples, exact forwarded queue/IPC/range observations, and optional **10 ms CPU 
 The profile run requires a saved CPU profile for the master and every worker, covering
 startup through post-recovery flush. Automatic early flush, missing data, observer errors,
 unclean shutdown and incomplete statistics fail qualification. CI independently exercises
-real normal and late-child profile/shutdown paths with **87 assertions**.
+real profile/shutdown paths with **302 assertions**, including abnormal child exits
+and readiness arriving before a delayed queue response.
 
 The unprofiled control still runs the observer and forwarding proxy. One sequential
 control/profile pair cannot establish collector overhead, a runtime ranking, production
@@ -221,6 +222,51 @@ actions queued in its owned fixture; its failed postflight remains recorded befo
 guarded fixture removal. An initial postflight array-decoding bug also remains as an
 excluded audit control; the corrected flat-array decoder has zero/one/multiple and
 malformed-response regressions.
+
+## Review corrections and bounded follow-up
+
+[Review 5570640946](https://github.com/eosrio/hyperion-history-api/pull/207#pullrequestreview-5570640946)
+identified four qualification defects, corrected in
+`d2353930a5037404bbb3e5da9f665546cccb0954`:
+
+- Track every child from fork time, including children that die before shutdown.
+  Require actual master and child exit code zero with no terminating signal;
+  a completed flush alone is insufficient.
+- Subscribe to checker readiness before asynchronous module/queue initialization.
+  A delayed queue-response case deterministically exercises the former race.
+- Reject profile runs above **600 steady seconds** before reading inputs or creating
+  resources, reserving 300 seconds below the 900-second observer cap. Control runs
+  still allow 900 steady seconds. This headroom does not guarantee completion under
+  every cumulative deadline; explicit post-recovery flush coverage remains required.
+- Observe AMQP connection/channel errors immediately on acquisition and through
+  cleanup, producing a failed report through the existing cleanup path. Negative
+  probes use the installed AMQP models and exact acquisition statements; they do
+  not constitute a real broker-handshake fault qualification.
+
+Validation passed **226 unit tests**, project/runner typechecks, TS7 build and the
+**302** real child-process observation assertions. Independent Spec and Standards
+reviews found no remaining issues in the correction range.
+
+A fresh full-worker profile then passed **60 steady seconds**, three sink-stall
+waves, **17,440 exact action sources on each data node**, and **13** CPU profiles
+covering final post-recovery flush. The runner recorded the master's actual OS exit
+as code zero/no signal and all 12 child exits likewise. Independent postflight found
+all 13 observed processes gone and three complete idle samples; guarded cleanup
+removed seven containers, seven volumes and the network with no owned residue.
+This shorter follow-up is **excluded** from the original two five-minute totals.
+
+The original archive remains byte-for-byte unchanged. An independent audit found
+all 13 own exit records code zero and all 12 parent-observed child exits code zero/no
+signal in each original run; all original shutdowns were successful and unforced.
+The original 13 profiles ended through explicit final flush, with the longest
+**416.684 seconds**, below the cap. Those reports did not capture the parent's
+observation of the master's OS exit; the fresh follow-up adds that evidence.
+
+The supplemental [summary](evidence/es955-worker-review-20261019/summary.json),
+[manifest](evidence/es955-worker-review-20261019/manifest.json),
+[raw follow-up and regression evidence](evidence/es955-worker-review-20261019/raw-evidence.tar.gz)
+and [checksums](evidence/es955-worker-review-20261019/SHA256SUMS) preserve the fresh
+measured bytes, the original-evidence audit, negative controls and cleanup receipts.
 
 ## Reproduction and remaining acceptance
 

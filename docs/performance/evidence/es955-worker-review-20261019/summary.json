@@ -1,0 +1,5173 @@
+{
+  "schemaVersion": 1,
+  "scope": "Bounded review-correction follow-up; not a five-minute sustained qualification",
+  "mode": "profile",
+  "status": "passed",
+  "startedAt": "2026-10-19T11:58:55.875Z",
+  "completedAt": "2026-10-19T12:01:54.011Z",
+  "sourceCommit": "d2353930a5037404bbb3e5da9f665546cccb0954",
+  "runtime": {
+    "node": "v24.19.0",
+    "bun": null
+  },
+  "fixtureRun": "10fdc8832248",
+  "nominalPhaseSecondsTotal": 60,
+  "targetPublisherActionsPerSecond": 200,
+  "publisherConfirmedActions": 17440,
+  "exactPhysicalCopies": [
+    {
+      "node": "MXGS9yNCTZmgU3CZpGYDZw",
+      "count": 17440,
+      "exactSources": true,
+      "sha256": "c4c6cd9ad159ede9d9cb8a998e3d08f8a968bc4fbe5f0f9955060690f69eff7d"
+    },
+    {
+      "node": "WPbUakulSouyIdS6hb0eHA",
+      "count": 17440,
+      "exactSources": true,
+      "sha256": "c4c6cd9ad159ede9d9cb8a998e3d08f8a968bc4fbe5f0f9955060690f69eff7d"
+    }
+  ],
+  "phases": [
+    {
+      "name": "warmup",
+      "startedAt": 1792411142067,
+      "elapsedMs": 10312.1997,
+      "confirmedFrom": 0,
+      "confirmedTo": 1940,
+      "snapshots": 10,
+      "queries": 0,
+      "bulks": 185
+    },
+    {
+      "name": "write",
+      "startedAt": 1792411152383,
+      "elapsedMs": 20571.3109,
+      "confirmedFrom": 1940,
+      "confirmedTo": 5800,
+      "snapshots": 20,
+      "queries": 0,
+      "bulks": 420
+    },
+    {
+      "name": "read",
+      "startedAt": 1792411176878,
+      "elapsedMs": 20622.894399999997,
+      "confirmedFrom": 5800,
+      "confirmedTo": 5800,
+      "snapshots": 20,
+      "queries": 171,
+      "bulks": 84
+    },
+    {
+      "name": "mixed",
+      "startedAt": 1792411197501,
+      "elapsedMs": 20673.06390000001,
+      "confirmedFrom": 5800,
+      "confirmedTo": 9680,
+      "snapshots": 20,
+      "queries": 180,
+      "bulks": 419
+    }
+  ],
+  "queries": 1202,
+  "bulkResponses": 1773,
+  "backpressureWaves": [
+    {
+      "wave": 0,
+      "at": 1792411222062,
+      "from": 9680,
+      "paused": {
+        "kind": "ipc_send",
+        "sequence": 3706,
+        "at": 1792411232203,
+        "isoAt": "2026-10-19T12:00:32.203Z",
+        "monotonicMs": 96178.543,
+        "pid": 119056,
+        "role": "reader",
+        "workerId": 1,
+        "direction": "master_outgoing",
+        "observerRole": "master",
+        "live": false,
+        "event": "pause",
+        "peer": {
+          "clusterId": 1,
+          "pid": 123768,
+          "role": "reader",
+          "workerId": 1
+        },
+        "message": {
+          "event": "pause"
+        }
+      },
+      "pendingRange": {
+        "kind": "ipc_send",
+        "sequence": 3744,
+        "at": 1792411233401,
+        "isoAt": "2026-10-19T12:00:33.401Z",
+        "monotonicMs": 97376.8264,
+        "pid": 119056,
+        "role": "reader",
+        "workerId": 1,
+        "direction": "master_outgoing",
+        "observerRole": "master",
+        "live": false,
+        "event": "new_range",
+        "peer": {
+          "clusterId": 1,
+          "pid": 123768,
+          "role": "reader",
+          "workerId": 1
+        },
+        "message": {
+          "event": "new_range",
+          "target": "1",
+          "range": {
+            "first_block": 265,
+            "last_block": 273
+          }
+        }
+      },
+      "liveProgress": 7,
+      "heldRequests": 2,
+      "queuesAtRelease": [
+        {
+          "name": "hyp-es955-2c5ff796dc0f:blocks:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:ds_pool:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_abis:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_actions:1",
+          "messages": 940,
+          "ready": 908,
+          "unacked": 32,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_blocks:1",
+          "messages": 20,
+          "ready": 0,
+          "unacked": 20,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_deltas:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_dynamic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_generic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_state:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:live_blocks",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        }
+      ],
+      "releasedAt": 1792411235253,
+      "resumed": {
+        "kind": "ipc_send",
+        "sequence": 4289,
+        "at": 1792411251863,
+        "isoAt": "2026-10-19T12:00:51.863Z",
+        "monotonicMs": 115839.1229,
+        "pid": 119056,
+        "role": "reader",
+        "workerId": 1,
+        "direction": "master_outgoing",
+        "observerRole": "master",
+        "live": false,
+        "event": "resume",
+        "peer": {
+          "clusterId": 1,
+          "pid": 123768,
+          "role": "reader",
+          "workerId": 1
+        },
+        "message": {
+          "event": "resume"
+        }
+      },
+      "resumedRequest": {
+        "kind": "ship_range_request",
+        "sequence": 478,
+        "at": 1792411251864,
+        "isoAt": "2026-10-19T12:00:51.864Z",
+        "monotonicMs": 112778.132,
+        "pid": 123768,
+        "role": "reader",
+        "workerId": "1",
+        "first_block": 265,
+        "last_block": 273,
+        "live": false,
+        "boundary": "StateReader.requestBlockRange invocation; not a wire-send confirmation"
+      },
+      "afterDrain": [
+        {
+          "name": "hyp-es955-2c5ff796dc0f:blocks:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:ds_pool:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_abis:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_actions:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_blocks:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_deltas:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_dynamic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_generic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_state:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:live_blocks",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        }
+      ],
+      "to": 12160
+    },
+    {
+      "wave": 1,
+      "at": 1792411252248,
+      "from": 12160,
+      "paused": {
+        "kind": "ipc_send",
+        "sequence": 4767,
+        "at": 1792411261934,
+        "isoAt": "2026-10-19T12:01:01.934Z",
+        "monotonicMs": 125910.1326,
+        "pid": 119056,
+        "role": "reader",
+        "workerId": 1,
+        "direction": "master_outgoing",
+        "observerRole": "master",
+        "live": false,
+        "event": "pause",
+        "peer": {
+          "clusterId": 1,
+          "pid": 123768,
+          "role": "reader",
+          "workerId": 1
+        },
+        "message": {
+          "event": "pause"
+        }
+      },
+      "pendingRange": {
+        "kind": "ipc_send",
+        "sequence": 4866,
+        "at": 1792411265254,
+        "isoAt": "2026-10-19T12:01:05.254Z",
+        "monotonicMs": 129229.9414,
+        "pid": 119056,
+        "role": "reader",
+        "workerId": 1,
+        "direction": "master_outgoing",
+        "observerRole": "master",
+        "live": false,
+        "event": "new_range",
+        "peer": {
+          "clusterId": 1,
+          "pid": 123768,
+          "role": "reader",
+          "workerId": 1
+        },
+        "message": {
+          "event": "new_range",
+          "target": "1",
+          "range": {
+            "first_block": 329,
+            "last_block": 337
+          }
+        }
+      },
+      "liveProgress": 10,
+      "heldRequests": 2,
+      "queuesAtRelease": [
+        {
+          "name": "hyp-es955-2c5ff796dc0f:blocks:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:ds_pool:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_abis:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_actions:1",
+          "messages": 1900,
+          "ready": 1868,
+          "unacked": 32,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_blocks:1",
+          "messages": 64,
+          "ready": 32,
+          "unacked": 32,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_deltas:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_dynamic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_generic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_state:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:live_blocks",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        }
+      ],
+      "releasedAt": 1792411267083,
+      "resumed": {
+        "kind": "ipc_send",
+        "sequence": 5372,
+        "at": 1792411282095,
+        "isoAt": "2026-10-19T12:01:22.095Z",
+        "monotonicMs": 146071.1724,
+        "pid": 119056,
+        "role": "reader",
+        "workerId": 1,
+        "direction": "master_outgoing",
+        "observerRole": "master",
+        "live": false,
+        "event": "resume",
+        "peer": {
+          "clusterId": 1,
+          "pid": 123768,
+          "role": "reader",
+          "workerId": 1
+        },
+        "message": {
+          "event": "resume"
+        }
+      },
+      "resumedRequest": {
+        "kind": "ship_range_request",
+        "sequence": 598,
+        "at": 1792411282096,
+        "isoAt": "2026-10-19T12:01:22.096Z",
+        "monotonicMs": 143010.0626,
+        "pid": 123768,
+        "role": "reader",
+        "workerId": "1",
+        "first_block": 329,
+        "last_block": 337,
+        "live": false,
+        "boundary": "StateReader.requestBlockRange invocation; not a wire-send confirmation"
+      },
+      "afterDrain": [
+        {
+          "name": "hyp-es955-2c5ff796dc0f:blocks:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:ds_pool:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_abis:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_actions:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_blocks:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_deltas:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_dynamic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_generic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_state:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:live_blocks",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        }
+      ],
+      "to": 14960
+    },
+    {
+      "wave": 2,
+      "at": 1792411282264,
+      "from": 14960,
+      "paused": {
+        "kind": "ipc_send",
+        "sequence": 5829,
+        "at": 1792411292166,
+        "isoAt": "2026-10-19T12:01:32.166Z",
+        "monotonicMs": 156142.3637,
+        "pid": 119056,
+        "role": "reader",
+        "workerId": 1,
+        "direction": "master_outgoing",
+        "observerRole": "master",
+        "live": false,
+        "event": "pause",
+        "peer": {
+          "clusterId": 1,
+          "pid": 123768,
+          "role": "reader",
+          "workerId": 1
+        },
+        "message": {
+          "event": "pause"
+        }
+      },
+      "pendingRange": {
+        "kind": "ipc_send",
+        "sequence": 5865,
+        "at": 1792411293401,
+        "isoAt": "2026-10-19T12:01:33.401Z",
+        "monotonicMs": 157376.888,
+        "pid": 119056,
+        "role": "reader",
+        "workerId": 1,
+        "direction": "master_outgoing",
+        "observerRole": "master",
+        "live": false,
+        "event": "new_range",
+        "peer": {
+          "clusterId": 1,
+          "pid": 123768,
+          "role": "reader",
+          "workerId": 1
+        },
+        "message": {
+          "event": "new_range",
+          "target": "1",
+          "range": {
+            "first_block": 385,
+            "last_block": 393
+          }
+        }
+      },
+      "liveProgress": 7,
+      "heldRequests": 2,
+      "queuesAtRelease": [
+        {
+          "name": "hyp-es955-2c5ff796dc0f:blocks:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:ds_pool:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_abis:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_actions:1",
+          "messages": 960,
+          "ready": 928,
+          "unacked": 32,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_blocks:1",
+          "messages": 52,
+          "ready": 20,
+          "unacked": 32,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_deltas:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_dynamic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_generic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_state:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:live_blocks",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        }
+      ],
+      "releasedAt": 1792411295335,
+      "resumed": {
+        "kind": "ipc_send",
+        "sequence": 6412,
+        "at": 1792411311839,
+        "isoAt": "2026-10-19T12:01:51.839Z",
+        "monotonicMs": 175815.1501,
+        "pid": 119056,
+        "role": "reader",
+        "workerId": 1,
+        "direction": "master_outgoing",
+        "observerRole": "master",
+        "live": false,
+        "event": "resume",
+        "peer": {
+          "clusterId": 1,
+          "pid": 123768,
+          "role": "reader",
+          "workerId": 1
+        },
+        "message": {
+          "event": "resume"
+        }
+      },
+      "resumedRequest": {
+        "kind": "ship_range_request",
+        "sequence": 707,
+        "at": 1792411311840,
+        "isoAt": "2026-10-19T12:01:51.840Z",
+        "monotonicMs": 172754.0696,
+        "pid": 123768,
+        "role": "reader",
+        "workerId": "1",
+        "first_block": 385,
+        "last_block": 393,
+        "live": false,
+        "boundary": "StateReader.requestBlockRange invocation; not a wire-send confirmation"
+      },
+      "afterDrain": [
+        {
+          "name": "hyp-es955-2c5ff796dc0f:blocks:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:ds_pool:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_abis:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_actions:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_blocks:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_deltas:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_dynamic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_generic:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:index_state:1",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        },
+        {
+          "name": "hyp-es955-2c5ff796dc0f:live_blocks",
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0,
+          "consumers": 1
+        }
+      ],
+      "to": 17440
+    }
+  ],
+  "workers": {
+    "processCount": 13,
+    "cpuProfileCount": 13,
+    "byRole": {
+      "continuous_reader": {
+        "processes": [
+          {
+            "pid": 73012,
+            "workerId": "2",
+            "sampleCount": 174,
+            "observedFrom": "2026-10-19T11:58:59.092Z",
+            "flushedAt": "2026-10-19T12:01:53.523Z",
+            "sampledElapsedMs": 174810.1739,
+            "cpuUserMicros": 922000,
+            "cpuSystemMicros": 1296000,
+            "peakRssBytes": 117862400,
+            "firstRssBytes": 116051968,
+            "lastRssBytes": 98783232,
+            "peakHeapUsedBytes": 40473168,
+            "lastHeapUsedBytes": 32689488,
+            "perIntervalLoopMeanMs": {
+              "count": 173,
+              "min": 20.47488,
+              "mean": 20.626622301986302,
+              "p50": 20.601514666666667,
+              "p95": 20.812028731914893,
+              "p99": 20.865902461276598,
+              "max": 21.052219914893616
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 173,
+              "min": 20.905983,
+              "mean": 22.19226905780347,
+              "p50": 21.217279,
+              "p95": 30.1498358,
+              "p99": 30.773738520000002,
+              "max": 31.981567
+            },
+            "profile": {
+              "file": "observer/worker-73012.cpuprofile",
+              "sha256": "7458901b8618553863cbbae3658f47848ede961efe0b196f6443a26f07ee0349",
+              "durationMs": 173642.063,
+              "samples": 16854,
+              "sampledSelfMs": 173641.861
+            }
+          }
+        ],
+        "cpuProfileCount": 1,
+        "processCount": 1,
+        "sampleCount": 174,
+        "cpuUserMicros": 922000,
+        "cpuSystemMicros": 1296000,
+        "largestObservedProcessRssBytes": 117862400,
+        "hotFunctionsBySampledSelfTime": [
+          {
+            "function": "(idle)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 172593.981,
+            "shareOfRoleProfileSamples": 0.9939652800657325
+          },
+          {
+            "function": "(program)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 603.94,
+            "shareOfRoleProfileSamples": 0.0034780783649859637
+          },
+          {
+            "function": "mean",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 51.751,
+            "shareOfRoleProfileSamples": 0.00029803297259063584
+          },
+          {
+            "function": "(garbage collector)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 40.917,
+            "shareOfRoleProfileSamples": 0.00023564018356149732
+          },
+          {
+            "function": "post",
+            "url": "node:inspector",
+            "line": 115,
+            "column": 7,
+            "sampledSelfMs": 37.731,
+            "shareOfRoleProfileSamples": 0.00021729207336703215
+          },
+          {
+            "function": "nextTick",
+            "url": "node:internal/process/task_queues",
+            "line": 113,
+            "column": 18,
+            "sampledSelfMs": 30.602,
+            "shareOfRoleProfileSamples": 0.0001762363051384251
+          },
+          {
+            "function": "push",
+            "url": "node:internal/fixed_queue",
+            "line": 102,
+            "column": 7,
+            "sampledSelfMs": 20.524,
+            "shareOfRoleProfileSamples": 0.00011819730496899017
+          },
+          {
+            "function": "writeString",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 20.4,
+            "shareOfRoleProfileSamples": 0.00011748319145231921
+          },
+          {
+            "function": "",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+            "line": 274,
+            "column": 30,
+            "sampledSelfMs": 10.782,
+            "shareOfRoleProfileSamples": 6.209332207053459e-05
+          },
+          {
+            "function": "addChunk",
+            "url": "node:internal/streams/readable",
+            "line": 552,
+            "column": 18,
+            "sampledSelfMs": 10.527,
+            "shareOfRoleProfileSamples": 6.0624782177380605e-05
+          },
+          {
+            "function": "abiEncode",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@wharfkit/antelope/lib/antelope.js",
+            "line": 1629,
+            "column": 19,
+            "sampledSelfMs": 10.511,
+            "shareOfRoleProfileSamples": 6.0532638497810155e-05
+          },
+          {
+            "function": "get allFields",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@wharfkit/antelope/lib/antelope.js",
+            "line": 2205,
+            "column": 22,
+            "sampledSelfMs": 10.476,
+            "shareOfRoleProfileSamples": 6.033107419874981e-05
+          },
+          {
+            "function": "onStreamRead",
+            "url": "node:internal/stream_base_commons",
+            "line": 166,
+            "column": 22,
+            "sampledSelfMs": 10.44,
+            "shareOfRoleProfileSamples": 6.01237509197163e-05
+          },
+          {
+            "function": "sample",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+            "line": 72,
+            "column": 16,
+            "sampledSelfMs": 10.41,
+            "shareOfRoleProfileSamples": 5.995098152052171e-05
+          },
+          {
+            "function": "encodeInner",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@wharfkit/antelope/lib/antelope.js",
+            "line": 1721,
+            "column": 25,
+            "sampledSelfMs": 10.391,
+            "shareOfRoleProfileSamples": 5.984156090103181e-05
+          },
+          {
+            "function": "writeOrBuffer",
+            "url": "node:internal/streams/writable",
+            "line": 546,
+            "column": 23,
+            "sampledSelfMs": 10.386,
+            "shareOfRoleProfileSamples": 5.9812766001166044e-05
+          },
+          {
+            "function": "writeBuffer",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 10.352,
+            "shareOfRoleProfileSamples": 5.961696068207884e-05
+          },
+          {
+            "function": "channel.onread",
+            "url": "node:internal/child_process",
+            "line": 654,
+            "column": 28,
+            "sampledSelfMs": 10.305,
+            "shareOfRoleProfileSamples": 5.934628862334066e-05
+          },
+          {
+            "function": "concat",
+            "url": "node:buffer",
+            "line": 628,
+            "column": 32,
+            "sampledSelfMs": 10.3,
+            "shareOfRoleProfileSamples": 5.931749372347489e-05
+          },
+          {
+            "function": "parsersCb",
+            "url": "node:_http_common",
+            "line": 166,
+            "column": 65,
+            "sampledSelfMs": 10.288,
+            "shareOfRoleProfileSamples": 5.924838596379706e-05
+          }
+        ]
+      },
+      "deserializer": {
+        "processes": [
+          {
+            "pid": 106008,
+            "workerId": "3",
+            "sampleCount": 175,
+            "observedFrom": "2026-10-19T11:58:59.095Z",
+            "flushedAt": "2026-10-19T12:01:53.541Z",
+            "sampledElapsedMs": 174808.5421,
+            "cpuUserMicros": 1000000,
+            "cpuSystemMicros": 1500000,
+            "peakRssBytes": 117747712,
+            "firstRssBytes": 117055488,
+            "lastRssBytes": 103575552,
+            "peakHeapUsedBytes": 40567672,
+            "lastHeapUsedBytes": 34224168,
+            "perIntervalLoopMeanMs": {
+              "count": 174,
+              "min": 20.50082133333333,
+              "mean": 20.642984272613877,
+              "p50": 20.619605333333332,
+              "p95": 20.829014059574465,
+              "p99": 20.92225470638298,
+              "max": 21.724013714285714
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 174,
+              "min": 20.971519,
+              "mean": 22.489298862068967,
+              "p50": 21.282815,
+              "p95": 30.748671,
+              "p99": 31.35831964000001,
+              "max": 34.799615
+            },
+            "profile": {
+              "file": "observer/worker-106008.cpuprofile",
+              "sha256": "978201391554aa060a9b4ec71d2bc29fe3f045711392e97f2ed386105fc5629f",
+              "durationMs": 174421.036,
+              "samples": 16939,
+              "sampledSelfMs": 174420.871
+            }
+          },
+          {
+            "pid": 121912,
+            "workerId": "4",
+            "sampleCount": 175,
+            "observedFrom": "2026-10-19T11:58:59.101Z",
+            "flushedAt": "2026-10-19T12:01:53.538Z",
+            "sampledElapsedMs": 174802.3757,
+            "cpuUserMicros": 953000,
+            "cpuSystemMicros": 1297000,
+            "peakRssBytes": 119205888,
+            "firstRssBytes": 116015104,
+            "lastRssBytes": 103256064,
+            "peakHeapUsedBytes": 42115040,
+            "lastHeapUsedBytes": 33597224,
+            "perIntervalLoopMeanMs": {
+              "count": 174,
+              "min": 20.46532266666667,
+              "mean": 20.62781419548382,
+              "p50": 20.608511999999997,
+              "p95": 20.84790794893617,
+              "p99": 20.902794348936172,
+              "max": 20.925679659574467
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 174,
+              "min": 20.889599,
+              "mean": 22.15079035632184,
+              "p50": 21.225471,
+              "p95": 30.078565399999995,
+              "p99": 30.8568054,
+              "max": 30.965759
+            },
+            "profile": {
+              "file": "observer/worker-121912.cpuprofile",
+              "sha256": "7b2cb23dc76e0020535e91ca94362e19e24b06e95ca23c70b8a5b24377c9f0a5",
+              "durationMs": 174415.435,
+              "samples": 16944,
+              "sampledSelfMs": 174415.157
+            }
+          }
+        ],
+        "cpuProfileCount": 2,
+        "processCount": 2,
+        "sampleCount": 350,
+        "cpuUserMicros": 1953000,
+        "cpuSystemMicros": 2797000,
+        "largestObservedProcessRssBytes": 119205888,
+        "hotFunctionsBySampledSelfTime": [
+          {
+            "function": "(idle)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 344945.143,
+            "shareOfRoleProfileSamples": 0.9888460918950722
+          },
+          {
+            "function": "(program)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 1396.877,
+            "shareOfRoleProfileSamples": 0.00400439429381417
+          },
+          {
+            "function": "lstat",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 337.368,
+            "shareOfRoleProfileSamples": 0.000967124875071677
+          },
+          {
+            "function": "internalModuleStat",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 330.273,
+            "shareOfRoleProfileSamples": 0.0009467858061954542
+          },
+          {
+            "function": "readFileUtf8",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 166.821,
+            "shareOfRoleProfileSamples": 0.0004782218194503694
+          },
+          {
+            "function": "processTimers",
+            "url": "node:internal/timers",
+            "line": 556,
+            "column": 25,
+            "sampledSelfMs": 84.184,
+            "shareOfRoleProfileSamples": 0.00024132828390076728
+          },
+          {
+            "function": "compileFunctionForCJSLoader",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 78.429,
+            "shareOfRoleProfileSamples": 0.000224830561366213
+          },
+          {
+            "function": "wrapSafe",
+            "url": "node:internal/modules/cjs/loader",
+            "line": 1762,
+            "column": 18,
+            "sampledSelfMs": 75.962,
+            "shareOfRoleProfileSamples": 0.0002177584707506187
+          },
+          {
+            "function": "(garbage collector)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 71.778,
+            "shareOfRoleProfileSamples": 0.00020576429680021469
+          },
+          {
+            "function": "normalizeString",
+            "url": "node:path",
+            "line": 92,
+            "column": 25,
+            "sampledSelfMs": 62.293,
+            "shareOfRoleProfileSamples": 0.00017857387138922473
+          },
+          {
+            "function": "binToJson",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@eosrio/node-abieos/dist/abieos.js",
+            "line": 133,
+            "column": 12,
+            "sampledSelfMs": 52.552,
+            "shareOfRoleProfileSamples": 0.00015064957682639363
+          },
+          {
+            "function": "resolve",
+            "url": "node:path",
+            "line": 190,
+            "column": 10,
+            "sampledSelfMs": 49.492,
+            "shareOfRoleProfileSamples": 0.00014187754712079224
+          },
+          {
+            "function": "readPackageJSON",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 45.94,
+            "shareOfRoleProfileSamples": 0.00013169511263899612
+          },
+          {
+            "function": "ChannelWrap",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 41.669,
+            "shareOfRoleProfileSamples": 0.00011945153784402109
+          },
+          {
+            "function": "mean",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 41.493,
+            "shareOfRoleProfileSamples": 0.00011894700280213028
+          },
+          {
+            "function": "parseMessage",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/build/indexer/modules/parsers/3.2-parser.js",
+            "line": 60,
+            "column": 23,
+            "sampledSelfMs": 41.415,
+            "shareOfRoleProfileSamples": 0.00011872340204492869
+          },
+          {
+            "function": "deserializePackageJSON",
+            "url": "node:internal/modules/package_json_reader",
+            "line": 44,
+            "column": 32,
+            "sampledSelfMs": 31.643,
+            "shareOfRoleProfileSamples": 9.071024051449182e-05
+          },
+          {
+            "function": "record",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+            "line": 51,
+            "column": 16,
+            "sampledSelfMs": 31.551,
+            "shareOfRoleProfileSamples": 9.04465062880489e-05
+          },
+          {
+            "function": "writeBuffer",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 31.173,
+            "shareOfRoleProfileSamples": 8.936290261853343e-05
+          },
+          {
+            "function": "getNearestParentPackageJSON",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 30.801,
+            "shareOfRoleProfileSamples": 8.829649900726424e-05
+          }
+        ]
+      },
+      "ds_pool_worker": {
+        "processes": [
+          {
+            "pid": 12780,
+            "workerId": "12",
+            "sampleCount": 175,
+            "observedFrom": "2026-10-19T11:58:59.150Z",
+            "flushedAt": "2026-10-19T12:01:53.541Z",
+            "sampledElapsedMs": 174752.4108,
+            "cpuUserMicros": 562000,
+            "cpuSystemMicros": 1125000,
+            "peakRssBytes": 124977152,
+            "firstRssBytes": 124968960,
+            "lastRssBytes": 102182912,
+            "peakHeapUsedBytes": 39229112,
+            "lastHeapUsedBytes": 34172120,
+            "perIntervalLoopMeanMs": {
+              "count": 174,
+              "min": 20.487168,
+              "mean": 20.618283107002526,
+              "p50": 20.60356266666667,
+              "p95": 20.764734093617022,
+              "p99": 20.94375957787234,
+              "max": 21.16539733333333
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 174,
+              "min": 20.889599,
+              "mean": 21.805408103448276,
+              "p50": 21.184511,
+              "p95": 26.22259099999999,
+              "p99": 30.917753880000006,
+              "max": 36.438015
+            },
+            "profile": {
+              "file": "observer/worker-12780.cpuprofile",
+              "sha256": "47b1ea4ec2e384d65fb63525b4809352cfa03b5e0500986bd0a3284f3a372986",
+              "durationMs": 174365.45,
+              "samples": 16929,
+              "sampledSelfMs": 174365.262
+            }
+          }
+        ],
+        "cpuProfileCount": 1,
+        "processCount": 1,
+        "sampleCount": 175,
+        "cpuUserMicros": 562000,
+        "cpuSystemMicros": 1125000,
+        "largestObservedProcessRssBytes": 124977152,
+        "hotFunctionsBySampledSelfTime": [
+          {
+            "function": "(idle)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 172684.712,
+            "shareOfRoleProfileSamples": 0.9903618990346827
+          },
+          {
+            "function": "(program)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 607.305,
+            "shareOfRoleProfileSamples": 0.003482947193919853
+          },
+          {
+            "function": "lstat",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 204.061,
+            "shareOfRoleProfileSamples": 0.0011703076499262794
+          },
+          {
+            "function": "internalModuleStat",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 200.276,
+            "shareOfRoleProfileSamples": 0.001148600344488342
+          },
+          {
+            "function": "readFileUtf8",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 115.202,
+            "shareOfRoleProfileSamples": 0.0006606935273609717
+          },
+          {
+            "function": "processTimers",
+            "url": "node:internal/timers",
+            "line": 556,
+            "column": 25,
+            "sampledSelfMs": 41.592,
+            "shareOfRoleProfileSamples": 0.0002385337510633282
+          },
+          {
+            "function": "compileFunctionForCJSLoader",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 30.659,
+            "shareOfRoleProfileSamples": 0.0001758320415909449
+          },
+          {
+            "function": "normalizeString",
+            "url": "node:path",
+            "line": 92,
+            "column": 25,
+            "sampledSelfMs": 25.886,
+            "shareOfRoleProfileSamples": 0.00014845846989866595
+          },
+          {
+            "function": "cpuUsage",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 20.866,
+            "shareOfRoleProfileSamples": 0.00011966833164280165
+          },
+          {
+            "function": "containsModuleSyntax",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 20.825,
+            "shareOfRoleProfileSamples": 0.00011943319306342108
+          },
+          {
+            "function": "listOnTimeout",
+            "url": "node:internal/timers",
+            "line": 576,
+            "column": 25,
+            "sampledSelfMs": 20.769,
+            "shareOfRoleProfileSamples": 0.00011911202817451104
+          },
+          {
+            "function": "(garbage collector)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 20.662,
+            "shareOfRoleProfileSamples": 0.0001184983738332008
+          },
+          {
+            "function": "parse",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 20.589,
+            "shareOfRoleProfileSamples": 0.00011807971246015735
+          },
+          {
+            "function": "getNearestParentPackageJSON",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 20.543,
+            "shareOfRoleProfileSamples": 0.00011781589844426695
+          },
+          {
+            "function": "realpathSync",
+            "url": "node:fs",
+            "line": 2772,
+            "column": 22,
+            "sampledSelfMs": 20.538,
+            "shareOfRoleProfileSamples": 0.00011778722300775713
+          },
+          {
+            "function": "mean",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 20.449,
+            "shareOfRoleProfileSamples": 0.00011727680023788225
+          },
+          {
+            "function": "ChannelWrap",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 20.446,
+            "shareOfRoleProfileSamples": 0.00011725959497597635
+          },
+          {
+            "function": "record",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+            "line": 51,
+            "column": 16,
+            "sampledSelfMs": 20.427,
+            "shareOfRoleProfileSamples": 0.00011715062831723902
+          },
+          {
+            "function": "readPackageJSON",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 20.332,
+            "shareOfRoleProfileSamples": 0.00011660579502355233
+          },
+          {
+            "function": "pushAsyncContext",
+            "url": "node:internal/async_hooks",
+            "line": 547,
+            "column": 26,
+            "sampledSelfMs": 10.648,
+            "shareOfRoleProfileSamples": 6.10672095913233e-05
+          }
+        ]
+      },
+      "ingestor": {
+        "processes": [
+          {
+            "pid": 15928,
+            "workerId": "5",
+            "sampleCount": 175,
+            "observedFrom": "2026-10-19T11:58:59.106Z",
+            "flushedAt": "2026-10-19T12:01:53.537Z",
+            "sampledElapsedMs": 174796.0262,
+            "cpuUserMicros": 1844000,
+            "cpuSystemMicros": 2062000,
+            "peakRssBytes": 132952064,
+            "firstRssBytes": 116826112,
+            "lastRssBytes": 114106368,
+            "peakHeapUsedBytes": 45706608,
+            "lastHeapUsedBytes": 38322784,
+            "perIntervalLoopMeanMs": {
+              "count": 174,
+              "min": 20.460652936170213,
+              "mean": 20.721112261981173,
+              "p50": 20.628327489361702,
+              "p95": 21.118502743385754,
+              "p99": 21.350364382608696,
+              "max": 21.71933257142857
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 174,
+              "min": 20.873215,
+              "mean": 23.951523781609193,
+              "p50": 21.594110999999998,
+              "p95": 30.7912694,
+              "p99": 30.965759,
+              "max": 34.308095
+            },
+            "profile": {
+              "file": "observer/worker-15928.cpuprofile",
+              "sha256": "1d1333fa20027e321442c333d4225575884625d8e76dac15d7a25c93d12bf30e",
+              "durationMs": 174406.112,
+              "samples": 16955,
+              "sampledSelfMs": 174405.739
+            }
+          },
+          {
+            "pid": 38480,
+            "workerId": "6",
+            "sampleCount": 175,
+            "observedFrom": "2026-10-19T11:58:59.107Z",
+            "flushedAt": "2026-10-19T12:01:53.538Z",
+            "sampledElapsedMs": 174796.2369,
+            "cpuUserMicros": 1172000,
+            "cpuSystemMicros": 1344000,
+            "peakRssBytes": 120909824,
+            "firstRssBytes": 116838400,
+            "lastRssBytes": 105160704,
+            "peakHeapUsedBytes": 43033104,
+            "lastHeapUsedBytes": 35206168,
+            "perIntervalLoopMeanMs": {
+              "count": 174,
+              "min": 20.477269333333332,
+              "mean": 20.67709759674546,
+              "p50": 20.629264340425532,
+              "p95": 20.884702229787234,
+              "p99": 21.08575512865865,
+              "max": 22.444909714285714
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 174,
+              "min": 20.938751,
+              "mean": 23.34785812643678,
+              "p50": 21.331967,
+              "p95": 30.8420598,
+              "p99": 31.1844854,
+              "max": 31.801343
+            },
+            "profile": {
+              "file": "observer/worker-38480.cpuprofile",
+              "sha256": "0efe128ce68d976dc78909be7cbb18508dfe4cb2e10e628cbccf0e27de5a6d6b",
+              "durationMs": 174403.753,
+              "samples": 16952,
+              "sampledSelfMs": 174403.568
+            }
+          },
+          {
+            "pid": 58708,
+            "workerId": "11",
+            "sampleCount": 175,
+            "observedFrom": "2026-10-19T11:58:59.148Z",
+            "flushedAt": "2026-10-19T12:01:53.532Z",
+            "sampledElapsedMs": 174754.9257,
+            "cpuUserMicros": 735000,
+            "cpuSystemMicros": 1047000,
+            "peakRssBytes": 116670464,
+            "firstRssBytes": 116658176,
+            "lastRssBytes": 101126144,
+            "peakHeapUsedBytes": 39480384,
+            "lastHeapUsedBytes": 32762304,
+            "perIntervalLoopMeanMs": {
+              "count": 174,
+              "min": 20.44074666666667,
+              "mean": 20.622455803226693,
+              "p50": 20.608682666666667,
+              "p95": 20.772376329078014,
+              "p99": 20.922445562553193,
+              "max": 20.99888476595745
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 174,
+              "min": 20.938751,
+              "mean": 21.789024103448277,
+              "p50": 21.159934999999997,
+              "p95": 27.797093399999994,
+              "p99": 30.75407772,
+              "max": 30.998527
+            },
+            "profile": {
+              "file": "observer/worker-58708.cpuprofile",
+              "sha256": "74cd326d339a55ba9caf1c270fe63197dd123e77b7ebba6cc42614ff4acdaad0",
+              "durationMs": 174356.812,
+              "samples": 16932,
+              "sampledSelfMs": 174356.626
+            }
+          },
+          {
+            "pid": 67008,
+            "workerId": "9",
+            "sampleCount": 175,
+            "observedFrom": "2026-10-19T11:58:59.131Z",
+            "flushedAt": "2026-10-19T12:01:53.528Z",
+            "sampledElapsedMs": 174771.0071,
+            "cpuUserMicros": 641000,
+            "cpuSystemMicros": 1063000,
+            "peakRssBytes": 117149696,
+            "firstRssBytes": 117080064,
+            "lastRssBytes": 101609472,
+            "peakHeapUsedBytes": 39470264,
+            "lastHeapUsedBytes": 32812304,
+            "perIntervalLoopMeanMs": {
+              "count": 174,
+              "min": 20.484778666666667,
+              "mean": 20.62446552623182,
+              "p50": 20.609877333333337,
+              "p95": 20.777868164539008,
+              "p99": 21.011524847659576,
+              "max": 21.50634057142857
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 174,
+              "min": 20.955135,
+              "mean": 21.78186787356322,
+              "p50": 21.200895,
+              "p95": 27.086847,
+              "p99": 31.209225240000002,
+              "max": 35.454975
+            },
+            "profile": {
+              "file": "observer/worker-67008.cpuprofile",
+              "sha256": "1efd46faae74c75c40d6a722c6c47ea1c7601084794cf15529041153321ab6ea",
+              "durationMs": 174381.083,
+              "samples": 16935,
+              "sampledSelfMs": 174380.92
+            }
+          },
+          {
+            "pid": 69280,
+            "workerId": "10",
+            "sampleCount": 175,
+            "observedFrom": "2026-10-19T11:58:59.133Z",
+            "flushedAt": "2026-10-19T12:01:53.539Z",
+            "sampledElapsedMs": 174769.2737,
+            "cpuUserMicros": 750000,
+            "cpuSystemMicros": 1359000,
+            "peakRssBytes": 117129216,
+            "firstRssBytes": 117059584,
+            "lastRssBytes": 100941824,
+            "peakHeapUsedBytes": 39468872,
+            "lastHeapUsedBytes": 32753112,
+            "perIntervalLoopMeanMs": {
+              "count": 174,
+              "min": 20.49058133333333,
+              "mean": 20.61515537994768,
+              "p50": 20.609877333333333,
+              "p95": 20.713872521985817,
+              "p99": 20.846015074042555,
+              "max": 20.998536170212763
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 174,
+              "min": 20.889599,
+              "mean": 21.56642768965517,
+              "p50": 21.217279,
+              "p95": 21.9783158,
+              "p99": 30.015323160000005,
+              "max": 30.998527
+            },
+            "profile": {
+              "file": "observer/worker-69280.cpuprofile",
+              "sha256": "f0c2155fb41ce0b517afba7741b0f1806318767629bdca576776754d9a538ce0",
+              "durationMs": 174382.913,
+              "samples": 16935,
+              "sampledSelfMs": 174382.745
+            }
+          },
+          {
+            "pid": 75308,
+            "workerId": "8",
+            "sampleCount": 175,
+            "observedFrom": "2026-10-19T11:58:59.122Z",
+            "flushedAt": "2026-10-19T12:01:53.533Z",
+            "sampledElapsedMs": 174779.3843,
+            "cpuUserMicros": 1031000,
+            "cpuSystemMicros": 1000000,
+            "peakRssBytes": 116682752,
+            "firstRssBytes": 116666368,
+            "lastRssBytes": 101515264,
+            "peakHeapUsedBytes": 39304464,
+            "lastHeapUsedBytes": 32808840,
+            "perIntervalLoopMeanMs": {
+              "count": 174,
+              "min": 20.47041361702128,
+              "mean": 20.615853713540393,
+              "p50": 20.610048,
+              "p95": 20.733620834042554,
+              "p99": 20.812398388652483,
+              "max": 20.904763914893618
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 174,
+              "min": 20.938751,
+              "mean": 21.574996333333335,
+              "p50": 21.168127,
+              "p95": 22.147070999999997,
+              "p99": 30.67527068,
+              "max": 30.982143
+            },
+            "profile": {
+              "file": "observer/worker-75308.cpuprofile",
+              "sha256": "4131904b0a76a9e1687518d11fb6f4fb5fe62d1690ec927e7f07333b7471749d",
+              "durationMs": 174391.572,
+              "samples": 16936,
+              "sampledSelfMs": 174391.384
+            }
+          },
+          {
+            "pid": 105380,
+            "workerId": "7",
+            "sampleCount": 175,
+            "observedFrom": "2026-10-19T11:58:59.115Z",
+            "flushedAt": "2026-10-19T12:01:53.532Z",
+            "sampledElapsedMs": 174788.0941,
+            "cpuUserMicros": 922000,
+            "cpuSystemMicros": 984000,
+            "peakRssBytes": 116338688,
+            "firstRssBytes": 116260864,
+            "lastRssBytes": 100741120,
+            "peakHeapUsedBytes": 39710072,
+            "lastHeapUsedBytes": 32785952,
+            "perIntervalLoopMeanMs": {
+              "count": 174,
+              "min": 20.443136,
+              "mean": 20.617822983754323,
+              "p50": 20.607488,
+              "p95": 20.76081130212766,
+              "p99": 20.92367174808511,
+              "max": 21.32143542857143
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 174,
+              "min": 20.873215,
+              "mean": 21.762847367816093,
+              "p50": 21.176319,
+              "p95": 26.722302999999997,
+              "p99": 30.669044760000002,
+              "max": 30.998527
+            },
+            "profile": {
+              "file": "observer/worker-105380.cpuprofile",
+              "sha256": "daebaf7fc43461abe97695473246c85f005b28d799084481f80ba9013307cc6d",
+              "durationMs": 174397.549,
+              "samples": 16941,
+              "sampledSelfMs": 174397.384
+            }
+          }
+        ],
+        "cpuProfileCount": 7,
+        "processCount": 7,
+        "sampleCount": 1225,
+        "cpuUserMicros": 7095000,
+        "cpuSystemMicros": 8859000,
+        "largestObservedProcessRssBytes": 132952064,
+        "hotFunctionsBySampledSelfTime": [
+          {
+            "function": "(idle)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 1206526.841,
+            "shareOfRoleProfileSamples": 0.9883744478699847
+          },
+          {
+            "function": "(program)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 5125.607,
+            "shareOfRoleProfileSamples": 0.00419884483002855
+          },
+          {
+            "function": "internalModuleStat",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 1418.727,
+            "shareOfRoleProfileSamples": 0.0011622066477535082
+          },
+          {
+            "function": "lstat",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 1187.549,
+            "shareOfRoleProfileSamples": 0.000972827994626895
+          },
+          {
+            "function": "readFileUtf8",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 737.023,
+            "shareOfRoleProfileSamples": 0.0006037617033772064
+          },
+          {
+            "function": "(garbage collector)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 248.278,
+            "shareOfRoleProfileSamples": 0.00020338679822893727
+          },
+          {
+            "function": "compileFunctionForCJSLoader",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 225.405,
+            "shareOfRoleProfileSamples": 0.00018464947057247766
+          },
+          {
+            "function": "wrapSafe",
+            "url": "node:internal/modules/cjs/loader",
+            "line": 1762,
+            "column": 18,
+            "sampledSelfMs": 216.568,
+            "shareOfRoleProfileSamples": 0.00017741029055673272
+          },
+          {
+            "function": "mean",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 178.174,
+            "shareOfRoleProfileSamples": 0.0001459583184480408
+          },
+          {
+            "function": "processTimers",
+            "url": "node:internal/timers",
+            "line": 556,
+            "column": 25,
+            "sampledSelfMs": 177.678,
+            "shareOfRoleProfileSamples": 0.00014555200032109617
+          },
+          {
+            "function": "listOnTimeout",
+            "url": "node:internal/timers",
+            "line": 576,
+            "column": 25,
+            "sampledSelfMs": 149.813,
+            "shareOfRoleProfileSamples": 0.00012272527732248438
+          },
+          {
+            "function": "getNearestParentPackageJSON",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 128.862,
+            "shareOfRoleProfileSamples": 0.00010556243240793512
+          },
+          {
+            "function": "realpathSync",
+            "url": "node:fs",
+            "line": 2772,
+            "column": 22,
+            "sampledSelfMs": 124.708,
+            "shareOfRoleProfileSamples": 0.00010215951809477404
+          },
+          {
+            "function": "writeBuffer",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 123.997,
+            "shareOfRoleProfileSamples": 0.0001015770741668353
+          },
+          {
+            "function": "ChannelWrap",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 103.508,
+            "shareOfRoleProfileSamples": 8.479269492698039e-05
+          },
+          {
+            "function": "writev",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 102.546,
+            "shareOfRoleProfileSamples": 8.400463436625316e-05
+          },
+          {
+            "function": "normalizeString",
+            "url": "node:path",
+            "line": 92,
+            "column": 25,
+            "sampledSelfMs": 98.885,
+            "shareOfRoleProfileSamples": 8.100558061072049e-05
+          },
+          {
+            "function": "post",
+            "url": "node:inspector",
+            "line": 115,
+            "column": 7,
+            "sampledSelfMs": 92.196,
+            "shareOfRoleProfileSamples": 7.552602022537278e-05
+          },
+          {
+            "function": "dispatch",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 73.232,
+            "shareOfRoleProfileSamples": 5.9990905387918114e-05
+          },
+          {
+            "function": "normalize",
+            "url": "node:path",
+            "line": 350,
+            "column": 12,
+            "sampledSelfMs": 71.992,
+            "shareOfRoleProfileSamples": 5.89751100705566e-05
+          }
+        ]
+      },
+      "master": {
+        "processes": [
+          {
+            "pid": 119056,
+            "workerId": null,
+            "sampleCount": 178,
+            "observedFrom": "2026-10-19T11:58:56.024Z",
+            "flushedAt": "2026-10-19T12:01:53.535Z",
+            "sampledElapsedMs": 177938.8824,
+            "cpuUserMicros": 2843000,
+            "cpuSystemMicros": 2156000,
+            "peakRssBytes": 173961216,
+            "firstRssBytes": 130224128,
+            "lastRssBytes": 170090496,
+            "peakHeapUsedBytes": 61874296,
+            "lastHeapUsedBytes": 55290312,
+            "perIntervalLoopMeanMs": {
+              "count": 177,
+              "min": 20.46839466666667,
+              "mean": 20.728223628694394,
+              "p50": 20.66527863829787,
+              "p95": 21.02312581091582,
+              "p99": 21.126872884472053,
+              "max": 22.791668093023254
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 177,
+              "min": 21.004287,
+              "mean": 25.207847497175145,
+              "p50": 22.183935,
+              "p95": 30.877285399999998,
+              "p99": 31.305235480000007,
+              "max": 94.437375
+            },
+            "profile": {
+              "file": "observer/worker-119056.cpuprofile",
+              "sha256": "16d10f10e4c6cef65eccf3702e121fd32135b0c8688483ed181b817cffc93951",
+              "durationMs": 176995.38,
+              "samples": 17194,
+              "sampledSelfMs": 176995.215
+            }
+          }
+        ],
+        "cpuProfileCount": 1,
+        "processCount": 1,
+        "sampleCount": 178,
+        "cpuUserMicros": 2843000,
+        "cpuSystemMicros": 2156000,
+        "largestObservedProcessRssBytes": 173961216,
+        "hotFunctionsBySampledSelfTime": [
+          {
+            "function": "(idle)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 173577.035,
+            "shareOfRoleProfileSamples": 0.9806877265015328
+          },
+          {
+            "function": "(program)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 970.211,
+            "shareOfRoleProfileSamples": 0.005481566267201065
+          },
+          {
+            "function": "writeString",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 102.897,
+            "shareOfRoleProfileSamples": 0.0005813546993346685
+          },
+          {
+            "function": "(garbage collector)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 102.516,
+            "shareOfRoleProfileSamples": 0.0005792020987686023
+          },
+          {
+            "function": "DOMException",
+            "url": "node:internal/per_context/domexception",
+            "line": 72,
+            "column": 14,
+            "sampledSelfMs": 72.281,
+            "shareOfRoleProfileSamples": 0.0004083782716950851
+          },
+          {
+            "function": "nextTick",
+            "url": "node:internal/process/task_queues",
+            "line": 113,
+            "column": 18,
+            "sampledSelfMs": 71.976,
+            "shareOfRoleProfileSamples": 0.00040665506126818173
+          },
+          {
+            "function": "spawn",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 62.082,
+            "shareOfRoleProfileSamples": 0.00035075524499348753
+          },
+          {
+            "function": "listOnTimeout",
+            "url": "node:internal/timers",
+            "line": 576,
+            "column": 25,
+            "sampledSelfMs": 51.426,
+            "shareOfRoleProfileSamples": 0.00029055022758666104
+          },
+          {
+            "function": "execute",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@elastic/transport/node_modules/undici/lib/dispatcher/client-h1.js",
+            "line": 243,
+            "column": 11,
+            "sampledSelfMs": 41.583,
+            "shareOfRoleProfileSamples": 0.00023493855469482606
+          },
+          {
+            "function": "parse",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 41.392,
+            "shareOfRoleProfileSamples": 0.00023385942947666693
+          },
+          {
+            "function": "writeUtf8String",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 41.287,
+            "shareOfRoleProfileSamples": 0.000233266193100192
+          },
+          {
+            "function": "runMicrotasks",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 40.782,
+            "shareOfRoleProfileSamples": 0.00023041300862286022
+          },
+          {
+            "function": "checkQueues",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/build/indexer/modules/queueMonitor.js",
+            "line": 27,
+            "column": 22,
+            "sampledSelfMs": 36.897,
+            "shareOfRoleProfileSamples": 0.00020846326269328806
+          },
+          {
+            "function": "post",
+            "url": "node:inspector",
+            "line": 115,
+            "column": 7,
+            "sampledSelfMs": 34.4,
+            "shareOfRoleProfileSamples": 0.00019435553667368916
+          },
+          {
+            "function": "checkQueueSize",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/build/indexer/connections/amqp.js",
+            "line": 72,
+            "column": 37,
+            "sampledSelfMs": 31.691,
+            "shareOfRoleProfileSamples": 0.00017905003816063615
+          },
+          {
+            "function": "record",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+            "line": 51,
+            "column": 16,
+            "sampledSelfMs": 31.194,
+            "shareOfRoleProfileSamples": 0.00017624205264532152
+          },
+          {
+            "function": "Readable.pipe",
+            "url": "node:internal/streams/readable",
+            "line": 911,
+            "column": 35,
+            "sampledSelfMs": 31.192,
+            "shareOfRoleProfileSamples": 0.00017623075290481723
+          },
+          {
+            "function": "base64Slice",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 31.152,
+            "shareOfRoleProfileSamples": 0.00017600475809473155
+          },
+          {
+            "function": "processTimers",
+            "url": "node:internal/timers",
+            "line": 556,
+            "column": 25,
+            "sampledSelfMs": 31.133,
+            "shareOfRoleProfileSamples": 0.00017589741055994083
+          },
+          {
+            "function": "wasm-function[20]",
+            "url": "wasm://wasm/0002f80e",
+            "line": 1,
+            "column": 2844,
+            "sampledSelfMs": 31.05,
+            "shareOfRoleProfileSamples": 0.00017542847132901305
+          }
+        ]
+      },
+      "reader": {
+        "processes": [
+          {
+            "pid": 123768,
+            "workerId": "1",
+            "sampleCount": 174,
+            "observedFrom": "2026-10-19T11:58:59.086Z",
+            "flushedAt": "2026-10-19T12:01:53.527Z",
+            "sampledElapsedMs": 174816.4618,
+            "cpuUserMicros": 1203000,
+            "cpuSystemMicros": 1031000,
+            "peakRssBytes": 119263232,
+            "firstRssBytes": 119046144,
+            "lastRssBytes": 101744640,
+            "peakHeapUsedBytes": 41597952,
+            "lastHeapUsedBytes": 33480728,
+            "perIntervalLoopMeanMs": {
+              "count": 173,
+              "min": 20.492629333333333,
+              "mean": 20.621494651744353,
+              "p50": 20.61448533333333,
+              "p95": 20.784724970212768,
+              "p99": 20.852488497021277,
+              "max": 20.90092936170213
+            },
+            "perIntervalLoopP99Ms": {
+              "count": 173,
+              "min": 20.955135,
+              "mean": 21.935902075144508,
+              "p50": 21.250047,
+              "p95": 29.1438582,
+              "p99": 30.822235159999998,
+              "max": 30.982143
+            },
+            "profile": {
+              "file": "observer/worker-123768.cpuprofile",
+              "sha256": "01a06af170e86fdfb4bf9fa108f3f43bd3d150c0722ac9a271264488186b4a47",
+              "durationMs": 173650.224,
+              "samples": 16855,
+              "sampledSelfMs": 173650.071
+            }
+          }
+        ],
+        "cpuProfileCount": 1,
+        "processCount": 1,
+        "sampleCount": 174,
+        "cpuUserMicros": 1203000,
+        "cpuSystemMicros": 1031000,
+        "largestObservedProcessRssBytes": 119263232,
+        "hotFunctionsBySampledSelfTime": [
+          {
+            "function": "(idle)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 172585.519,
+            "shareOfRoleProfileSamples": 0.9938695562065161
+          },
+          {
+            "function": "(program)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 678.283,
+            "shareOfRoleProfileSamples": 0.0039060335310775658
+          },
+          {
+            "function": "post",
+            "url": "node:inspector",
+            "line": 115,
+            "column": 7,
+            "sampledSelfMs": 38.8,
+            "shareOfRoleProfileSamples": 0.00022343785854253985
+          },
+          {
+            "function": "writeString",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 30.726,
+            "shareOfRoleProfileSamples": 0.00017694205261799172
+          },
+          {
+            "function": "writeBuffer",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 30.535,
+            "shareOfRoleProfileSamples": 0.00017584213944836223
+          },
+          {
+            "function": "abiDecode",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@wharfkit/antelope/lib/antelope.js",
+            "line": 1209,
+            "column": 19,
+            "sampledSelfMs": 20.658,
+            "shareOfRoleProfileSamples": 0.00011896338355081928
+          },
+          {
+            "function": "memoryUsage",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 10.566,
+            "shareOfRoleProfileSamples": 6.084650549898134e-05
+          },
+          {
+            "function": "mean",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 10.537,
+            "shareOfRoleProfileSamples": 6.0679502975843876e-05
+          },
+          {
+            "function": "wrappedFn",
+            "url": "node:internal/errors",
+            "line": 537,
+            "column": 21,
+            "sampledSelfMs": 10.514,
+            "shareOfRoleProfileSamples": 6.054705269887278e-05
+          },
+          {
+            "function": "record",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+            "line": 51,
+            "column": 16,
+            "sampledSelfMs": 10.513,
+            "shareOfRoleProfileSamples": 6.054129399117839e-05
+          },
+          {
+            "function": "remove",
+            "url": "node:internal/linkedlist",
+            "line": 16,
+            "column": 16,
+            "sampledSelfMs": 10.494,
+            "shareOfRoleProfileSamples": 6.0431878544984874e-05
+          },
+          {
+            "function": "resolve",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@wharfkit/antelope/lib/antelope.js",
+            "line": 2072,
+            "column": 12,
+            "sampledSelfMs": 10.451,
+            "shareOfRoleProfileSamples": 6.018425411412587e-05
+          },
+          {
+            "function": "startLoop",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/ws/lib/receiver.js",
+            "line": 149,
+            "column": 12,
+            "sampledSelfMs": 10.429,
+            "shareOfRoleProfileSamples": 6.0057562544849175e-05
+          },
+          {
+            "function": "getData",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/ws/lib/receiver.js",
+            "line": 457,
+            "column": 10,
+            "sampledSelfMs": 10.417,
+            "shareOfRoleProfileSamples": 5.998845805251643e-05
+          },
+          {
+            "function": "pushConfirmCallback",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/amqplib/lib/channel.js",
+            "line": 246,
+            "column": 22,
+            "sampledSelfMs": 10.406,
+            "shareOfRoleProfileSamples": 5.992511226787808e-05
+          },
+          {
+            "function": "isEmpty",
+            "url": "node:internal/fixed_queue",
+            "line": 98,
+            "column": 10,
+            "sampledSelfMs": 10.362,
+            "shareOfRoleProfileSamples": 5.9671729129324685e-05
+          },
+          {
+            "function": "",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+            "line": 274,
+            "column": 30,
+            "sampledSelfMs": 10.343,
+            "shareOfRoleProfileSamples": 5.956231368313118e-05
+          },
+          {
+            "function": "(garbage collector)",
+            "url": "",
+            "line": null,
+            "column": null,
+            "sampledSelfMs": 10.315,
+            "shareOfRoleProfileSamples": 5.940106986768811e-05
+          },
+          {
+            "function": "readableAddChunkPushByteMode",
+            "url": "node:internal/streams/readable",
+            "line": 465,
+            "column": 38,
+            "sampledSelfMs": 10.295,
+            "shareOfRoleProfileSamples": 5.9285895713800195e-05
+          },
+          {
+            "function": "sample",
+            "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+            "line": 72,
+            "column": 16,
+            "sampledSelfMs": 10.289,
+            "shareOfRoleProfileSamples": 5.925134346763382e-05
+          }
+        ]
+      }
+    },
+    "interpretation": "Process CPU deltas and individual RSS peaks are observed values. Interval loop p99 distributions are not a combined global p99. CPU profiles show sampled self time, including idle/runtime frames; they do not establish causality or wall-time capacity."
+  },
+  "serverNodes": [
+    {
+      "id": "MXGS9yNCTZmgU3CZpGYDZw",
+      "name": "hyp-es955-replicas-10fdc8832248-a",
+      "roles": [
+        "data",
+        "ingest",
+        "master"
+      ],
+      "samples": 338,
+      "heapUsedBytes": {
+        "initial": 192429720,
+        "final": 604897280,
+        "peak": 697977344
+      },
+      "heapMaxBytes": 1073741824,
+      "peakIndexingPressureCurrentBytes": 61350,
+      "processCpuMillisDelta": 45270,
+      "pressureRejectionDeltas": {
+        "coordinating": 0,
+        "primary": 0,
+        "replica": 0
+      },
+      "gc": {
+        "young": {
+          "countDelta": 9,
+          "timeMillisDelta": 289
+        },
+        "G1 Concurrent GC": {
+          "countDelta": 2,
+          "timeMillisDelta": 26
+        },
+        "old": {
+          "countDelta": 0,
+          "timeMillisDelta": 0
+        }
+      },
+      "breakers": {
+        "eql_sequence": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 0,
+          "limitBytes": 536870912
+        },
+        "model_inference": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 0,
+          "limitBytes": 536870912
+        },
+        "inflight_requests": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 18341,
+          "limitBytes": 1073741824
+        },
+        "request": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 61228,
+          "limitBytes": 644245094
+        },
+        "fielddata": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 0,
+          "limitBytes": 429496729
+        },
+        "parent": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 702171648,
+          "limitBytes": 1020054732
+        }
+      },
+      "threadPools": {
+        "write": {
+          "peakActive": 2,
+          "peakQueue": 5,
+          "rejectedDelta": 0,
+          "completedDelta": 9230
+        },
+        "write_coordination": {
+          "peakActive": 1,
+          "peakQueue": 0,
+          "rejectedDelta": 0,
+          "completedDelta": 1775
+        },
+        "search": {
+          "peakActive": 3,
+          "peakQueue": 1,
+          "rejectedDelta": 0,
+          "completedDelta": 8512
+        },
+        "search_coordination": {
+          "peakActive": 0,
+          "peakQueue": 0,
+          "rejectedDelta": 0,
+          "completedDelta": 2457
+        }
+      },
+      "mergesDeltas": {
+        "total": 13,
+        "total_time_in_millis": 331,
+        "total_throttled_time_in_millis": 0
+      },
+      "refreshDeltas": {
+        "total": 569,
+        "total_time_in_millis": 2935
+      },
+      "flushDeltas": {
+        "total": 15,
+        "total_time_in_millis": 16646
+      }
+    },
+    {
+      "id": "-2EzRtpvQ0qxUrMK5ixEjw",
+      "name": "hyp-es955-replicas-10fdc8832248-witness",
+      "roles": [
+        "master"
+      ],
+      "samples": 338,
+      "heapUsedBytes": {
+        "initial": 134217728,
+        "final": 285212672,
+        "peak": 285212672
+      },
+      "heapMaxBytes": 536870912,
+      "peakIndexingPressureCurrentBytes": 0,
+      "processCpuMillisDelta": 3500,
+      "pressureRejectionDeltas": {
+        "coordinating": 0,
+        "primary": 0,
+        "replica": 0
+      },
+      "gc": {
+        "young": {
+          "countDelta": 0,
+          "timeMillisDelta": 0
+        },
+        "G1 Concurrent GC": {
+          "countDelta": 0,
+          "timeMillisDelta": 0
+        },
+        "old": {
+          "countDelta": 0,
+          "timeMillisDelta": 0
+        }
+      },
+      "breakers": {
+        "request": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 0,
+          "limitBytes": 322122547
+        },
+        "fielddata": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 0,
+          "limitBytes": 214748364
+        },
+        "eql_sequence": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 0,
+          "limitBytes": 268435456
+        },
+        "model_inference": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 0,
+          "limitBytes": 268435456
+        },
+        "inflight_requests": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 544,
+          "limitBytes": 536870912
+        },
+        "parent": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 285212672,
+          "limitBytes": 510027366
+        }
+      },
+      "threadPools": {
+        "write": {
+          "peakActive": 0,
+          "peakQueue": 0,
+          "rejectedDelta": 0,
+          "completedDelta": 0
+        },
+        "write_coordination": {
+          "peakActive": 0,
+          "peakQueue": 0,
+          "rejectedDelta": 0,
+          "completedDelta": 0
+        },
+        "search": {
+          "peakActive": 0,
+          "peakQueue": 0,
+          "rejectedDelta": 0,
+          "completedDelta": 4
+        },
+        "search_coordination": {
+          "peakActive": 0,
+          "peakQueue": 0,
+          "rejectedDelta": 0,
+          "completedDelta": 0
+        }
+      },
+      "mergesDeltas": {
+        "total": 0,
+        "total_time_in_millis": 0,
+        "total_throttled_time_in_millis": 0
+      },
+      "refreshDeltas": {
+        "total": 0,
+        "total_time_in_millis": 0
+      },
+      "flushDeltas": {
+        "total": 0,
+        "total_time_in_millis": 0
+      }
+    },
+    {
+      "id": "WPbUakulSouyIdS6hb0eHA",
+      "name": "hyp-es955-replicas-10fdc8832248-b",
+      "roles": [
+        "data",
+        "ingest",
+        "master"
+      ],
+      "samples": 338,
+      "heapUsedBytes": {
+        "initial": 135859496,
+        "final": 490355200,
+        "peak": 697973248
+      },
+      "heapMaxBytes": 1073741824,
+      "peakIndexingPressureCurrentBytes": 40536,
+      "processCpuMillisDelta": 35310,
+      "pressureRejectionDeltas": {
+        "coordinating": 0,
+        "primary": 0,
+        "replica": 0
+      },
+      "gc": {
+        "young": {
+          "countDelta": 7,
+          "timeMillisDelta": 198
+        },
+        "G1 Concurrent GC": {
+          "countDelta": 0,
+          "timeMillisDelta": 0
+        },
+        "old": {
+          "countDelta": 0,
+          "timeMillisDelta": 0
+        }
+      },
+      "breakers": {
+        "model_inference": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 0,
+          "limitBytes": 536870912
+        },
+        "inflight_requests": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 35772,
+          "limitBytes": 1073741824
+        },
+        "request": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 34864,
+          "limitBytes": 644245094
+        },
+        "fielddata": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 0,
+          "limitBytes": 429496729
+        },
+        "eql_sequence": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 0,
+          "limitBytes": 536870912
+        },
+        "parent": {
+          "trippedDelta": 0,
+          "peakEstimatedBytes": 702167552,
+          "limitBytes": 1020054732
+        }
+      },
+      "threadPools": {
+        "write": {
+          "peakActive": 2,
+          "peakQueue": 5,
+          "rejectedDelta": 0,
+          "completedDelta": 9226
+        },
+        "write_coordination": {
+          "peakActive": 0,
+          "peakQueue": 0,
+          "rejectedDelta": 0,
+          "completedDelta": 0
+        },
+        "search": {
+          "peakActive": 2,
+          "peakQueue": 1,
+          "rejectedDelta": 0,
+          "completedDelta": 7439
+        },
+        "search_coordination": {
+          "peakActive": 0,
+          "peakQueue": 0,
+          "rejectedDelta": 0,
+          "completedDelta": 1220
+        }
+      },
+      "mergesDeltas": {
+        "total": 13,
+        "total_time_in_millis": 204,
+        "total_throttled_time_in_millis": 0
+      },
+      "refreshDeltas": {
+        "total": 571,
+        "total_time_in_millis": 2851
+      },
+      "flushDeltas": {
+        "total": 15,
+        "total_time_in_millis": 17871
+      }
+    }
+  ],
+  "cleanup": [
+    {
+      "name": "workers",
+      "ok": true,
+      "shutdown": {
+        "kind": "shutdown",
+        "sequence": 6654,
+        "at": 1792411313961,
+        "isoAt": "2026-10-19T12:01:53.961Z",
+        "monotonicMs": 177937.0415,
+        "pid": 119056,
+        "role": "master",
+        "workerId": null,
+        "success": true,
+        "requestId": null,
+        "children": 12,
+        "exited": 12,
+        "childExits": [
+          {
+            "clusterId": 1,
+            "pid": 123768,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "clusterId": 2,
+            "pid": 73012,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "clusterId": 3,
+            "pid": 106008,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "clusterId": 4,
+            "pid": 121912,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "clusterId": 5,
+            "pid": 15928,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "clusterId": 6,
+            "pid": 38480,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "clusterId": 7,
+            "pid": 105380,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "clusterId": 8,
+            "pid": 75308,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "clusterId": 9,
+            "pid": 67008,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "clusterId": 10,
+            "pid": 69280,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "clusterId": 11,
+            "pid": 58708,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "clusterId": 12,
+            "pid": 12780,
+            "code": 0,
+            "signal": null
+          }
+        ],
+        "failedChildren": [],
+        "forced": [],
+        "unresolved": []
+      }
+    },
+    {
+      "name": "publisher",
+      "ok": true
+    },
+    {
+      "name": "broker",
+      "ok": true
+    },
+    {
+      "name": "client",
+      "ok": true
+    }
+  ],
+  "masterOsExit": {
+    "code": 0,
+    "signal": null
+  },
+  "postflight": {
+    "status": "passed",
+    "observedPids": 13,
+    "idleSamples": 3,
+    "brokerMessages": 0,
+    "brokerConnections": 0
+  },
+  "fixtureCleanup": {
+    "containers": 7,
+    "volumes": 7,
+    "networks": 1,
+    "remainingContainers": 0,
+    "remainingVolumes": 0,
+    "remainingNetworks": 0
+  },
+  "originalEvidenceAudit": {
+    "schemaVersion": 1,
+    "auditedAt": "2026-10-19T11:53:13.622954+00:00",
+    "archiveSha256": "c848bcb53563b6cd3292e293f212e8d4a4ca357bb57f4bd6ba914cca63c659fe",
+    "summarySha256": "e561d469db8fc1ac4dad9006a72264518ed3c0b780ce4464849a2bcd729b5771",
+    "manifestSha256": "16bf27c43104593fe2ee0a040da1c1804a20103b2ec72e0d56495937bc888438",
+    "runs": [
+      {
+        "mode": "control",
+        "reportSha256": "839c5c232c805a12dc21be5948dfab1f5594d95a8f85de73b5a0b586fcc2498a",
+        "status": "passed",
+        "nominalSteadySeconds": 300,
+        "durationSeconds": 423.003,
+        "masterPid": 78916,
+        "parentObservedChildExitRecords": [
+          {
+            "kind": "worker_exit",
+            "sequence": 15957,
+            "at": 1792406612825,
+            "isoAt": "2026-10-19T10:43:32.825Z",
+            "monotonicMs": 422729.6276,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 1,
+            "childPid": 123192,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 15958,
+            "at": 1792406612830,
+            "isoAt": "2026-10-19T10:43:32.830Z",
+            "monotonicMs": 422734.8166,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 11,
+            "childPid": 84460,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 15959,
+            "at": 1792406612830,
+            "isoAt": "2026-10-19T10:43:32.830Z",
+            "monotonicMs": 422735.0717,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 6,
+            "childPid": 54792,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 15960,
+            "at": 1792406612830,
+            "isoAt": "2026-10-19T10:43:32.830Z",
+            "monotonicMs": 422735.0972,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 10,
+            "childPid": 116872,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 15961,
+            "at": 1792406612830,
+            "isoAt": "2026-10-19T10:43:32.830Z",
+            "monotonicMs": 422735.1109,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 9,
+            "childPid": 27252,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 15962,
+            "at": 1792406612831,
+            "isoAt": "2026-10-19T10:43:32.831Z",
+            "monotonicMs": 422735.893,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 2,
+            "childPid": 120708,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 15963,
+            "at": 1792406612832,
+            "isoAt": "2026-10-19T10:43:32.832Z",
+            "monotonicMs": 422736.5215,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 3,
+            "childPid": 37416,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 15964,
+            "at": 1792406612832,
+            "isoAt": "2026-10-19T10:43:32.832Z",
+            "monotonicMs": 422736.842,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 7,
+            "childPid": 92212,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 15965,
+            "at": 1792406612832,
+            "isoAt": "2026-10-19T10:43:32.832Z",
+            "monotonicMs": 422736.9033,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 4,
+            "childPid": 117288,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 15966,
+            "at": 1792406612832,
+            "isoAt": "2026-10-19T10:43:32.832Z",
+            "monotonicMs": 422736.9522,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 8,
+            "childPid": 37872,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 15967,
+            "at": 1792406612833,
+            "isoAt": "2026-10-19T10:43:32.833Z",
+            "monotonicMs": 422737.2939,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 12,
+            "childPid": 63704,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 15968,
+            "at": 1792406612833,
+            "isoAt": "2026-10-19T10:43:32.833Z",
+            "monotonicMs": 422737.5924,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 5,
+            "childPid": 66604,
+            "code": 0,
+            "signal": null
+          }
+        ],
+        "masterParentObservedOsExit": null,
+        "masterParentObservedOsExitNote": "Original report has no parent-side master exitCode/signal field. Master own observer exit record plus successful shutdown and postflight disappearance are separate evidence.",
+        "pids": [
+          {
+            "pid": 27252,
+            "role": "ingestor",
+            "workerId": "9",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 543,
+              "at": 1792406612808,
+              "isoAt": "2026-10-19T10:43:32.808Z",
+              "monotonicMs": 419808.0424,
+              "pid": 27252,
+              "role": "ingestor",
+              "workerId": "9",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 541,
+              "at": 1792406612806,
+              "isoAt": "2026-10-19T10:43:32.806Z",
+              "monotonicMs": 419805.3393,
+              "pid": 27252,
+              "role": "ingestor",
+              "workerId": "9",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 539,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419691.9391,
+              "pid": 27252,
+              "role": "ingestor",
+              "workerId": "9",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-27252.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419807.0193,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15961,
+              "at": 1792406612830,
+              "isoAt": "2026-10-19T10:43:32.830Z",
+              "monotonicMs": 422735.1109,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 9,
+              "childPid": 27252,
+              "code": 0,
+              "signal": null
+            }
+          },
+          {
+            "pid": 37416,
+            "role": "deserializer",
+            "workerId": "3",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1799,
+              "at": 1792406612808,
+              "isoAt": "2026-10-19T10:43:32.808Z",
+              "monotonicMs": 419838.4406,
+              "pid": 37416,
+              "role": "deserializer",
+              "workerId": "3",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1797,
+              "at": 1792406612805,
+              "isoAt": "2026-10-19T10:43:32.805Z",
+              "monotonicMs": 419835.6826,
+              "pid": 37416,
+              "role": "deserializer",
+              "workerId": "3",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1794,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419721.8945,
+              "pid": 37416,
+              "role": "deserializer",
+              "workerId": "3",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-37416.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419837.7202,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15963,
+              "at": 1792406612832,
+              "isoAt": "2026-10-19T10:43:32.832Z",
+              "monotonicMs": 422736.5215,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 3,
+              "childPid": 37416,
+              "code": 0,
+              "signal": null
+            }
+          },
+          {
+            "pid": 37872,
+            "role": "ingestor",
+            "workerId": "8",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 543,
+              "at": 1792406612808,
+              "isoAt": "2026-10-19T10:43:32.808Z",
+              "monotonicMs": 419803.6976,
+              "pid": 37872,
+              "role": "ingestor",
+              "workerId": "8",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 541,
+              "at": 1792406612806,
+              "isoAt": "2026-10-19T10:43:32.806Z",
+              "monotonicMs": 419800.906,
+              "pid": 37872,
+              "role": "ingestor",
+              "workerId": "8",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 539,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419687.4669,
+              "pid": 37872,
+              "role": "ingestor",
+              "workerId": "8",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-37872.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419803.0898,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15966,
+              "at": 1792406612832,
+              "isoAt": "2026-10-19T10:43:32.832Z",
+              "monotonicMs": 422736.9522,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 8,
+              "childPid": 37872,
+              "code": 0,
+              "signal": null
+            }
+          },
+          {
+            "pid": 54792,
+            "role": "ingestor",
+            "workerId": "6",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1287,
+              "at": 1792406612808,
+              "isoAt": "2026-10-19T10:43:32.808Z",
+              "monotonicMs": 419819.5974,
+              "pid": 54792,
+              "role": "ingestor",
+              "workerId": "6",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1285,
+              "at": 1792406612805,
+              "isoAt": "2026-10-19T10:43:32.805Z",
+              "monotonicMs": 419816.9291,
+              "pid": 54792,
+              "role": "ingestor",
+              "workerId": "6",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1283,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419703.2499,
+              "pid": 54792,
+              "role": "ingestor",
+              "workerId": "6",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-54792.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419818.81930000003,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15959,
+              "at": 1792406612830,
+              "isoAt": "2026-10-19T10:43:32.830Z",
+              "monotonicMs": 422735.0717,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 6,
+              "childPid": 54792,
+              "code": 0,
+              "signal": null
+            }
+          },
+          {
+            "pid": 63704,
+            "role": "ds_pool_worker",
+            "workerId": "12",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 543,
+              "at": 1792406612808,
+              "isoAt": "2026-10-19T10:43:32.808Z",
+              "monotonicMs": 419782.4631,
+              "pid": 63704,
+              "role": "ds_pool_worker",
+              "workerId": "12",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 541,
+              "at": 1792406612805,
+              "isoAt": "2026-10-19T10:43:32.805Z",
+              "monotonicMs": 419779.6381,
+              "pid": 63704,
+              "role": "ds_pool_worker",
+              "workerId": "12",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 539,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419666.2449,
+              "pid": 63704,
+              "role": "ds_pool_worker",
+              "workerId": "12",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-63704.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419781.392,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15967,
+              "at": 1792406612833,
+              "isoAt": "2026-10-19T10:43:32.833Z",
+              "monotonicMs": 422737.2939,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 12,
+              "childPid": 63704,
+              "code": 0,
+              "signal": null
+            }
+          },
+          {
+            "pid": 66604,
+            "role": "ingestor",
+            "workerId": "5",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1028,
+              "at": 1792406612808,
+              "isoAt": "2026-10-19T10:43:32.808Z",
+              "monotonicMs": 419832.9384,
+              "pid": 66604,
+              "role": "ingestor",
+              "workerId": "5",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1026,
+              "at": 1792406612806,
+              "isoAt": "2026-10-19T10:43:32.806Z",
+              "monotonicMs": 419830.2107,
+              "pid": 66604,
+              "role": "ingestor",
+              "workerId": "5",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1024,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419716.3992,
+              "pid": 66604,
+              "role": "ingestor",
+              "workerId": "5",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-66604.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419832.0218,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15968,
+              "at": 1792406612833,
+              "isoAt": "2026-10-19T10:43:32.833Z",
+              "monotonicMs": 422737.5924,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 5,
+              "childPid": 66604,
+              "code": 0,
+              "signal": null
+            }
+          },
+          {
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 15971,
+              "at": 1792406612868,
+              "isoAt": "2026-10-19T10:43:32.868Z",
+              "monotonicMs": 422772.5776,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 15969,
+              "at": 1792406612866,
+              "isoAt": "2026-10-19T10:43:32.866Z",
+              "monotonicMs": 422770.9502,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "success": true,
+              "requestId": null,
+              "children": 12,
+              "exited": 12,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 15916,
+              "at": 1792406612691,
+              "isoAt": "2026-10-19T10:43:32.691Z",
+              "monotonicMs": 422596.0778,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-78916.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 422771.9557,
+            "parentObservedChildExit": null
+          },
+          {
+            "pid": 84460,
+            "role": "ingestor",
+            "workerId": "11",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 543,
+              "at": 1792406612808,
+              "isoAt": "2026-10-19T10:43:32.808Z",
+              "monotonicMs": 419789.5679,
+              "pid": 84460,
+              "role": "ingestor",
+              "workerId": "11",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 541,
+              "at": 1792406612806,
+              "isoAt": "2026-10-19T10:43:32.806Z",
+              "monotonicMs": 419786.8561,
+              "pid": 84460,
+              "role": "ingestor",
+              "workerId": "11",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 539,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419673.4471,
+              "pid": 84460,
+              "role": "ingestor",
+              "workerId": "11",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-84460.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419788.9011,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15958,
+              "at": 1792406612830,
+              "isoAt": "2026-10-19T10:43:32.830Z",
+              "monotonicMs": 422734.8166,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 11,
+              "childPid": 84460,
+              "code": 0,
+              "signal": null
+            }
+          },
+          {
+            "pid": 92212,
+            "role": "ingestor",
+            "workerId": "7",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 543,
+              "at": 1792406612809,
+              "isoAt": "2026-10-19T10:43:32.809Z",
+              "monotonicMs": 419815.8759,
+              "pid": 92212,
+              "role": "ingestor",
+              "workerId": "7",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 541,
+              "at": 1792406612806,
+              "isoAt": "2026-10-19T10:43:32.806Z",
+              "monotonicMs": 419813.0186,
+              "pid": 92212,
+              "role": "ingestor",
+              "workerId": "7",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 539,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419699.6136,
+              "pid": 92212,
+              "role": "ingestor",
+              "workerId": "7",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-92212.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419815.2841,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15964,
+              "at": 1792406612832,
+              "isoAt": "2026-10-19T10:43:32.832Z",
+              "monotonicMs": 422736.842,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 7,
+              "childPid": 92212,
+              "code": 0,
+              "signal": null
+            }
+          },
+          {
+            "pid": 116872,
+            "role": "ingestor",
+            "workerId": "10",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 543,
+              "at": 1792406612810,
+              "isoAt": "2026-10-19T10:43:32.810Z",
+              "monotonicMs": 419797.5762,
+              "pid": 116872,
+              "role": "ingestor",
+              "workerId": "10",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 541,
+              "at": 1792406612807,
+              "isoAt": "2026-10-19T10:43:32.807Z",
+              "monotonicMs": 419794.8617,
+              "pid": 116872,
+              "role": "ingestor",
+              "workerId": "10",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 539,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419679.9864,
+              "pid": 116872,
+              "role": "ingestor",
+              "workerId": "10",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-116872.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419796.707,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15960,
+              "at": 1792406612830,
+              "isoAt": "2026-10-19T10:43:32.830Z",
+              "monotonicMs": 422735.0972,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 10,
+              "childPid": 116872,
+              "code": 0,
+              "signal": null
+            }
+          },
+          {
+            "pid": 117288,
+            "role": "deserializer",
+            "workerId": "4",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1884,
+              "at": 1792406612808,
+              "isoAt": "2026-10-19T10:43:32.808Z",
+              "monotonicMs": 419833.7835,
+              "pid": 117288,
+              "role": "deserializer",
+              "workerId": "4",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1882,
+              "at": 1792406612806,
+              "isoAt": "2026-10-19T10:43:32.806Z",
+              "monotonicMs": 419831.026,
+              "pid": 117288,
+              "role": "deserializer",
+              "workerId": "4",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1878,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419717.3175,
+              "pid": 117288,
+              "role": "deserializer",
+              "workerId": "4",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-117288.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419833.2088,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15965,
+              "at": 1792406612832,
+              "isoAt": "2026-10-19T10:43:32.832Z",
+              "monotonicMs": 422736.9033,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 4,
+              "childPid": 117288,
+              "code": 0,
+              "signal": null
+            }
+          },
+          {
+            "pid": 120708,
+            "role": "continuous_reader",
+            "workerId": "2",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1384,
+              "at": 1792406612807,
+              "isoAt": "2026-10-19T10:43:32.807Z",
+              "monotonicMs": 419846.3462,
+              "pid": 120708,
+              "role": "continuous_reader",
+              "workerId": "2",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1382,
+              "at": 1792406612805,
+              "isoAt": "2026-10-19T10:43:32.805Z",
+              "monotonicMs": 419844.4018,
+              "pid": 120708,
+              "role": "continuous_reader",
+              "workerId": "2",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1379,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419730.7627,
+              "pid": 120708,
+              "role": "continuous_reader",
+              "workerId": "2",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-120708.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419845.74720000004,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15962,
+              "at": 1792406612831,
+              "isoAt": "2026-10-19T10:43:32.831Z",
+              "monotonicMs": 422735.893,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 2,
+              "childPid": 120708,
+              "code": 0,
+              "signal": null
+            }
+          },
+          {
+            "pid": 123192,
+            "role": "reader",
+            "workerId": "1",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1766,
+              "at": 1792406612807,
+              "isoAt": "2026-10-19T10:43:32.807Z",
+              "monotonicMs": 419842.3307,
+              "pid": 123192,
+              "role": "reader",
+              "workerId": "1",
+              "code": 0,
+              "profileState": "disabled",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1764,
+              "at": 1792406612805,
+              "isoAt": "2026-10-19T10:43:32.805Z",
+              "monotonicMs": 419840.9222,
+              "pid": 123192,
+              "role": "reader",
+              "workerId": "1",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1761,
+              "at": 1792406612692,
+              "isoAt": "2026-10-19T10:43:32.692Z",
+              "monotonicMs": 419727.2337,
+              "pid": 123192,
+              "role": "reader",
+              "workerId": "1",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-control-final\\observer\\worker-123192.jsonl",
+              "profilePath": null,
+              "profileState": "disabled",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 419841.7022,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 15957,
+              "at": 1792406612825,
+              "isoAt": "2026-10-19T10:43:32.825Z",
+              "monotonicMs": 422729.6276,
+              "pid": 78916,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 1,
+              "childPid": 123192,
+              "code": 0,
+              "signal": null
+            }
+          }
+        ],
+        "masterStderrBytes": 0,
+        "runnerValidationLog": "{\"status\":\"passed\",\"confirmed\":48260}\r\n",
+        "allOwnExitCodesZero": true,
+        "allParentObservedChildExitCodesZeroAndSignalsNull": true,
+        "allShutdownsUnforcedSuccessful": true,
+        "allFlushesExplicitPostRecovery": true,
+        "maximumObserverLifetimeMs": 422771.9557
+      },
+      {
+        "mode": "profile",
+        "reportSha256": "1ef1068659f12dc9d5bddc2db6a017487cdff766e8faca30e311eb0ed2c83696",
+        "status": "passed",
+        "nominalSteadySeconds": 300,
+        "durationSeconds": 417.871,
+        "masterPid": 69076,
+        "parentObservedChildExitRecords": [
+          {
+            "kind": "worker_exit",
+            "sequence": 16378,
+            "at": 1792407311899,
+            "isoAt": "2026-10-19T10:55:11.899Z",
+            "monotonicMs": 417590.7582,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 8,
+            "childPid": 60204,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 16379,
+            "at": 1792407311900,
+            "isoAt": "2026-10-19T10:55:11.900Z",
+            "monotonicMs": 417591.5029,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 1,
+            "childPid": 114604,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 16380,
+            "at": 1792407311901,
+            "isoAt": "2026-10-19T10:55:11.901Z",
+            "monotonicMs": 417592.1961,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 7,
+            "childPid": 86612,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 16381,
+            "at": 1792407311902,
+            "isoAt": "2026-10-19T10:55:11.902Z",
+            "monotonicMs": 417593.1498,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 9,
+            "childPid": 116324,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 16382,
+            "at": 1792407311902,
+            "isoAt": "2026-10-19T10:55:11.902Z",
+            "monotonicMs": 417593.6927,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 2,
+            "childPid": 84664,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 16383,
+            "at": 1792407311903,
+            "isoAt": "2026-10-19T10:55:11.903Z",
+            "monotonicMs": 417593.9789,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 12,
+            "childPid": 86776,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 16384,
+            "at": 1792407311903,
+            "isoAt": "2026-10-19T10:55:11.903Z",
+            "monotonicMs": 417594.1763,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 3,
+            "childPid": 123192,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 16385,
+            "at": 1792407311903,
+            "isoAt": "2026-10-19T10:55:11.903Z",
+            "monotonicMs": 417594.1987,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 10,
+            "childPid": 46020,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 16386,
+            "at": 1792407311903,
+            "isoAt": "2026-10-19T10:55:11.903Z",
+            "monotonicMs": 417594.2236,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 4,
+            "childPid": 48172,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 16387,
+            "at": 1792407311903,
+            "isoAt": "2026-10-19T10:55:11.903Z",
+            "monotonicMs": 417594.5513,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 11,
+            "childPid": 113036,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 16388,
+            "at": 1792407311903,
+            "isoAt": "2026-10-19T10:55:11.903Z",
+            "monotonicMs": 417594.5764,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 6,
+            "childPid": 10692,
+            "code": 0,
+            "signal": null
+          },
+          {
+            "kind": "worker_exit",
+            "sequence": 16389,
+            "at": 1792407311904,
+            "isoAt": "2026-10-19T10:55:11.904Z",
+            "monotonicMs": 417595.3602,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "childClusterId": 5,
+            "childPid": 117532,
+            "code": 0,
+            "signal": null
+          }
+        ],
+        "masterParentObservedOsExit": null,
+        "masterParentObservedOsExitNote": "Original report has no parent-side master exitCode/signal field. Master own observer exit record plus successful shutdown and postflight disappearance are separate evidence.",
+        "pids": [
+          {
+            "pid": 10692,
+            "role": "ingestor",
+            "workerId": "6",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1307,
+              "at": 1792407311880,
+              "isoAt": "2026-10-19T10:55:11.880Z",
+              "monotonicMs": 414601.1231,
+              "pid": 10692,
+              "role": "ingestor",
+              "workerId": "6",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1305,
+              "at": 1792407311876,
+              "isoAt": "2026-10-19T10:55:11.876Z",
+              "monotonicMs": 414597.5602,
+              "pid": 10692,
+              "role": "ingestor",
+              "workerId": "6",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1301,
+              "at": 1792407311457,
+              "isoAt": "2026-10-19T10:55:11.457Z",
+              "monotonicMs": 414178.0163,
+              "pid": 10692,
+              "role": "ingestor",
+              "workerId": "6",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-10692.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-10692.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414600.1912,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16388,
+              "at": 1792407311903,
+              "isoAt": "2026-10-19T10:55:11.903Z",
+              "monotonicMs": 417594.5764,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 6,
+              "childPid": 10692,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406897301,
+              "isoAt": "2026-10-19T10:48:17.301Z",
+              "monotonicMs": 21.4751,
+              "pid": 10692,
+              "role": "ingestor",
+              "workerId": "6",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 414147533,
+            "profileElapsedThroughFlushMs": 414156.54120000004
+          },
+          {
+            "pid": 46020,
+            "role": "ingestor",
+            "workerId": "10",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 563,
+              "at": 1792407311880,
+              "isoAt": "2026-10-19T10:55:11.880Z",
+              "monotonicMs": 414561.5995,
+              "pid": 46020,
+              "role": "ingestor",
+              "workerId": "10",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 561,
+              "at": 1792407311877,
+              "isoAt": "2026-10-19T10:55:11.877Z",
+              "monotonicMs": 414558.4694,
+              "pid": 46020,
+              "role": "ingestor",
+              "workerId": "10",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 559,
+              "at": 1792407311451,
+              "isoAt": "2026-10-19T10:55:11.451Z",
+              "monotonicMs": 414133.3025,
+              "pid": 46020,
+              "role": "ingestor",
+              "workerId": "10",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-46020.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-46020.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414560.7977,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16385,
+              "at": 1792407311903,
+              "isoAt": "2026-10-19T10:55:11.903Z",
+              "monotonicMs": 417594.1987,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 10,
+              "childPid": 46020,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406897336,
+              "isoAt": "2026-10-19T10:48:17.336Z",
+              "monotonicMs": 16.8488,
+              "pid": 46020,
+              "role": "ingestor",
+              "workerId": "10",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 414107287,
+            "profileElapsedThroughFlushMs": 414116.4537
+          },
+          {
+            "pid": 48172,
+            "role": "deserializer",
+            "workerId": "4",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1990,
+              "at": 1792407311879,
+              "isoAt": "2026-10-19T10:55:11.879Z",
+              "monotonicMs": 414614.9821,
+              "pid": 48172,
+              "role": "deserializer",
+              "workerId": "4",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1988,
+              "at": 1792407311876,
+              "isoAt": "2026-10-19T10:55:11.876Z",
+              "monotonicMs": 414611.4623,
+              "pid": 48172,
+              "role": "deserializer",
+              "workerId": "4",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1985,
+              "at": 1792407311464,
+              "isoAt": "2026-10-19T10:55:11.464Z",
+              "monotonicMs": 414199.7412,
+              "pid": 48172,
+              "role": "deserializer",
+              "workerId": "4",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-48172.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-48172.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414614.17370000004,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16386,
+              "at": 1792407311903,
+              "isoAt": "2026-10-19T10:55:11.903Z",
+              "monotonicMs": 417594.2236,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 4,
+              "childPid": 48172,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406897286,
+              "isoAt": "2026-10-19T10:48:17.286Z",
+              "monotonicMs": 20.4908,
+              "pid": 48172,
+              "role": "deserializer",
+              "workerId": "4",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 414162418,
+            "profileElapsedThroughFlushMs": 414179.25039999996
+          },
+          {
+            "pid": 60204,
+            "role": "ingestor",
+            "workerId": "8",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 563,
+              "at": 1792407311878,
+              "isoAt": "2026-10-19T10:55:11.878Z",
+              "monotonicMs": 414579.7344,
+              "pid": 60204,
+              "role": "ingestor",
+              "workerId": "8",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 561,
+              "at": 1792407311876,
+              "isoAt": "2026-10-19T10:55:11.876Z",
+              "monotonicMs": 414577.7371,
+              "pid": 60204,
+              "role": "ingestor",
+              "workerId": "8",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 559,
+              "at": 1792407311463,
+              "isoAt": "2026-10-19T10:55:11.463Z",
+              "monotonicMs": 414164.2666,
+              "pid": 60204,
+              "role": "ingestor",
+              "workerId": "8",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-60204.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-60204.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414578.577,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16378,
+              "at": 1792407311899,
+              "isoAt": "2026-10-19T10:55:11.899Z",
+              "monotonicMs": 417590.7582,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 8,
+              "childPid": 60204,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406897321,
+              "isoAt": "2026-10-19T10:48:17.321Z",
+              "monotonicMs": 21.5464,
+              "pid": 60204,
+              "role": "ingestor",
+              "workerId": "8",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 414127536,
+            "profileElapsedThroughFlushMs": 414142.7202
+          },
+          {
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 16392,
+              "at": 1792407311937,
+              "isoAt": "2026-10-19T10:55:11.937Z",
+              "monotonicMs": 417628.1024,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 16390,
+              "at": 1792407311935,
+              "isoAt": "2026-10-19T10:55:11.935Z",
+              "monotonicMs": 417626.6494,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "success": true,
+              "requestId": null,
+              "children": 12,
+              "exited": 12,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 16338,
+              "at": 1792407311455,
+              "isoAt": "2026-10-19T10:55:11.455Z",
+              "monotonicMs": 417146.0208,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-69076.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-69076.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 417627.44289999997,
+            "parentObservedChildExit": null,
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406894780,
+              "isoAt": "2026-10-19T10:48:14.780Z",
+              "monotonicMs": 469.8986,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 416684062,
+            "profileElapsedThroughFlushMs": 416676.1222
+          },
+          {
+            "pid": 84664,
+            "role": "continuous_reader",
+            "workerId": "2",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1391,
+              "at": 1792407311880,
+              "isoAt": "2026-10-19T10:55:11.880Z",
+              "monotonicMs": 414626.5739,
+              "pid": 84664,
+              "role": "continuous_reader",
+              "workerId": "2",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1389,
+              "at": 1792407311876,
+              "isoAt": "2026-10-19T10:55:11.876Z",
+              "monotonicMs": 414623.0699,
+              "pid": 84664,
+              "role": "continuous_reader",
+              "workerId": "2",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1387,
+              "at": 1792407311446,
+              "isoAt": "2026-10-19T10:55:11.446Z",
+              "monotonicMs": 414193.1241,
+              "pid": 84664,
+              "role": "continuous_reader",
+              "workerId": "2",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-84664.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-84664.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414625.6754,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16382,
+              "at": 1792407311902,
+              "isoAt": "2026-10-19T10:55:11.902Z",
+              "monotonicMs": 417593.6927,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 2,
+              "childPid": 84664,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406898136,
+              "isoAt": "2026-10-19T10:48:18.136Z",
+              "monotonicMs": 882.993,
+              "pid": 84664,
+              "role": "continuous_reader",
+              "workerId": "2",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 413341516,
+            "profileElapsedThroughFlushMs": 413310.1311
+          },
+          {
+            "pid": 86612,
+            "role": "ingestor",
+            "workerId": "7",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 563,
+              "at": 1792407311879,
+              "isoAt": "2026-10-19T10:55:11.879Z",
+              "monotonicMs": 414590.0329,
+              "pid": 86612,
+              "role": "ingestor",
+              "workerId": "7",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 561,
+              "at": 1792407311876,
+              "isoAt": "2026-10-19T10:55:11.876Z",
+              "monotonicMs": 414587.4715,
+              "pid": 86612,
+              "role": "ingestor",
+              "workerId": "7",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 559,
+              "at": 1792407311449,
+              "isoAt": "2026-10-19T10:55:11.449Z",
+              "monotonicMs": 414160.057,
+              "pid": 86612,
+              "role": "ingestor",
+              "workerId": "7",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-86612.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-86612.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414589.1864,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16380,
+              "at": 1792407311901,
+              "isoAt": "2026-10-19T10:55:11.901Z",
+              "monotonicMs": 417592.1961,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 7,
+              "childPid": 86612,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406897310,
+              "isoAt": "2026-10-19T10:48:17.310Z",
+              "monotonicMs": 19.3748,
+              "pid": 86612,
+              "role": "ingestor",
+              "workerId": "7",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 414138211,
+            "profileElapsedThroughFlushMs": 414140.6822
+          },
+          {
+            "pid": 86776,
+            "role": "ds_pool_worker",
+            "workerId": "12",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 563,
+              "at": 1792407311879,
+              "isoAt": "2026-10-19T10:55:11.879Z",
+              "monotonicMs": 414543.0356,
+              "pid": 86776,
+              "role": "ds_pool_worker",
+              "workerId": "12",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 561,
+              "at": 1792407311876,
+              "isoAt": "2026-10-19T10:55:11.876Z",
+              "monotonicMs": 414540.5475,
+              "pid": 86776,
+              "role": "ds_pool_worker",
+              "workerId": "12",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 559,
+              "at": 1792407311464,
+              "isoAt": "2026-10-19T10:55:11.464Z",
+              "monotonicMs": 414128.5926,
+              "pid": 86776,
+              "role": "ds_pool_worker",
+              "workerId": "12",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-86776.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-86776.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414541.9932,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16383,
+              "at": 1792407311903,
+              "isoAt": "2026-10-19T10:55:11.903Z",
+              "monotonicMs": 417593.9789,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 12,
+              "childPid": 86776,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406897358,
+              "isoAt": "2026-10-19T10:48:17.358Z",
+              "monotonicMs": 20.7938,
+              "pid": 86776,
+              "role": "ds_pool_worker",
+              "workerId": "12",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 414089399,
+            "profileElapsedThroughFlushMs": 414107.7988
+          },
+          {
+            "pid": 113036,
+            "role": "ingestor",
+            "workerId": "11",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 563,
+              "at": 1792407311880,
+              "isoAt": "2026-10-19T10:55:11.880Z",
+              "monotonicMs": 414556.7063,
+              "pid": 113036,
+              "role": "ingestor",
+              "workerId": "11",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 561,
+              "at": 1792407311876,
+              "isoAt": "2026-10-19T10:55:11.876Z",
+              "monotonicMs": 414553.4312,
+              "pid": 113036,
+              "role": "ingestor",
+              "workerId": "11",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 559,
+              "at": 1792407311458,
+              "isoAt": "2026-10-19T10:55:11.458Z",
+              "monotonicMs": 414135.1597,
+              "pid": 113036,
+              "role": "ingestor",
+              "workerId": "11",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-113036.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-113036.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414555.631,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16387,
+              "at": 1792407311903,
+              "isoAt": "2026-10-19T10:55:11.903Z",
+              "monotonicMs": 417594.5513,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 11,
+              "childPid": 113036,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406897345,
+              "isoAt": "2026-10-19T10:48:17.345Z",
+              "monotonicMs": 21.0354,
+              "pid": 113036,
+              "role": "ingestor",
+              "workerId": "11",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 414103762,
+            "profileElapsedThroughFlushMs": 414114.1243
+          },
+          {
+            "pid": 114604,
+            "role": "reader",
+            "workerId": "1",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1990,
+              "at": 1792407311879,
+              "isoAt": "2026-10-19T10:55:11.879Z",
+              "monotonicMs": 414632.4253,
+              "pid": 114604,
+              "role": "reader",
+              "workerId": "1",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1988,
+              "at": 1792407311876,
+              "isoAt": "2026-10-19T10:55:11.876Z",
+              "monotonicMs": 414629.7854,
+              "pid": 114604,
+              "role": "reader",
+              "workerId": "1",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1986,
+              "at": 1792407311447,
+              "isoAt": "2026-10-19T10:55:11.447Z",
+              "monotonicMs": 414200.6229,
+              "pid": 114604,
+              "role": "reader",
+              "workerId": "1",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-114604.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-114604.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414631.4324,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16379,
+              "at": 1792407311900,
+              "isoAt": "2026-10-19T10:55:11.900Z",
+              "monotonicMs": 417591.5029,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 1,
+              "childPid": 114604,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406898140,
+              "isoAt": "2026-10-19T10:48:18.140Z",
+              "monotonicMs": 892.3369,
+              "pid": 114604,
+              "role": "reader",
+              "workerId": "1",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 413341784,
+            "profileElapsedThroughFlushMs": 413308.286
+          },
+          {
+            "pid": 116324,
+            "role": "ingestor",
+            "workerId": "9",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 563,
+              "at": 1792407311879,
+              "isoAt": "2026-10-19T10:55:11.879Z",
+              "monotonicMs": 414573.2064,
+              "pid": 116324,
+              "role": "ingestor",
+              "workerId": "9",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 561,
+              "at": 1792407311876,
+              "isoAt": "2026-10-19T10:55:11.876Z",
+              "monotonicMs": 414570.6812,
+              "pid": 116324,
+              "role": "ingestor",
+              "workerId": "9",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 559,
+              "at": 1792407311463,
+              "isoAt": "2026-10-19T10:55:11.463Z",
+              "monotonicMs": 414157.685,
+              "pid": 116324,
+              "role": "ingestor",
+              "workerId": "9",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-116324.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-116324.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414571.8276,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16381,
+              "at": 1792407311902,
+              "isoAt": "2026-10-19T10:55:11.902Z",
+              "monotonicMs": 417593.1498,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 9,
+              "childPid": 116324,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406897327,
+              "isoAt": "2026-10-19T10:48:17.327Z",
+              "monotonicMs": 20.3613,
+              "pid": 116324,
+              "role": "ingestor",
+              "workerId": "9",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 414120194,
+            "profileElapsedThroughFlushMs": 414137.3237
+          },
+          {
+            "pid": 117532,
+            "role": "ingestor",
+            "workerId": "5",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1043,
+              "at": 1792407311880,
+              "isoAt": "2026-10-19T10:55:11.880Z",
+              "monotonicMs": 414609.1545,
+              "pid": 117532,
+              "role": "ingestor",
+              "workerId": "5",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1041,
+              "at": 1792407311876,
+              "isoAt": "2026-10-19T10:55:11.876Z",
+              "monotonicMs": 414605.6025,
+              "pid": 117532,
+              "role": "ingestor",
+              "workerId": "5",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1039,
+              "at": 1792407311458,
+              "isoAt": "2026-10-19T10:55:11.458Z",
+              "monotonicMs": 414187.6386,
+              "pid": 117532,
+              "role": "ingestor",
+              "workerId": "5",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-117532.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-117532.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414608.26170000003,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16389,
+              "at": 1792407311904,
+              "isoAt": "2026-10-19T10:55:11.904Z",
+              "monotonicMs": 417595.3602,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 5,
+              "childPid": 117532,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406897292,
+              "isoAt": "2026-10-19T10:48:17.292Z",
+              "monotonicMs": 19.7158,
+              "pid": 117532,
+              "role": "ingestor",
+              "workerId": "5",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 414155817,
+            "profileElapsedThroughFlushMs": 414167.9228
+          },
+          {
+            "pid": 123192,
+            "role": "deserializer",
+            "workerId": "3",
+            "ownExit": {
+              "kind": "exit",
+              "sequence": 1804,
+              "at": 1792407311879,
+              "isoAt": "2026-10-19T10:55:11.879Z",
+              "monotonicMs": 414623.0156,
+              "pid": 123192,
+              "role": "deserializer",
+              "workerId": "3",
+              "code": 0,
+              "profileState": "saved",
+              "flushed": true,
+              "droppedRecords": 0
+            },
+            "shutdown": {
+              "kind": "shutdown",
+              "sequence": 1802,
+              "at": 1792407311876,
+              "isoAt": "2026-10-19T10:55:11.876Z",
+              "monotonicMs": 414619.5091,
+              "pid": 123192,
+              "role": "deserializer",
+              "workerId": "3",
+              "success": true,
+              "requestId": null,
+              "children": 0,
+              "exited": 0,
+              "forced": [],
+              "unresolved": []
+            },
+            "flush": {
+              "kind": "flush",
+              "sequence": 1799,
+              "at": 1792407311453,
+              "isoAt": "2026-10-19T10:55:11.453Z",
+              "monotonicMs": 414196.151,
+              "pid": 123192,
+              "role": "deserializer",
+              "workerId": "3",
+              "event": "qualifier_flushed",
+              "reason": "qualifier_flush",
+              "requestId": null,
+              "logfile": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-123192.jsonl",
+              "profilePath": "C:\\Users\\igorl\\.codex\\scratch\\es198-workers-node-profile-final\\observer\\worker-123192.cpuprofile",
+              "profileState": "saved",
+              "droppedRecords": 0,
+              "success": true,
+              "error": null
+            },
+            "observerLifetimeMs": 414622.3358,
+            "parentObservedChildExit": {
+              "kind": "worker_exit",
+              "sequence": 16384,
+              "at": 1792407311903,
+              "isoAt": "2026-10-19T10:55:11.903Z",
+              "monotonicMs": 417594.1763,
+              "pid": 69076,
+              "role": "master",
+              "workerId": null,
+              "childClusterId": 3,
+              "childPid": 123192,
+              "code": 0,
+              "signal": null
+            },
+            "profileMaximumMs": 900000,
+            "profileStartRecord": {
+              "kind": "profile_started",
+              "sequence": 2,
+              "at": 1792406897274,
+              "isoAt": "2026-10-19T10:48:17.274Z",
+              "monotonicMs": 15.5866,
+              "pid": 123192,
+              "role": "deserializer",
+              "workerId": "3",
+              "samplingIntervalMicros": 10000,
+              "maximumDurationMs": 900000
+            },
+            "profileDurationMicros": 414170673,
+            "profileElapsedThroughFlushMs": 414180.56440000003
+          }
+        ],
+        "masterStderrBytes": 0,
+        "runnerValidationLog": "{\"status\":\"passed\",\"confirmed\":47700}\r\n",
+        "allOwnExitCodesZero": true,
+        "allParentObservedChildExitCodesZeroAndSignalsNull": true,
+        "allShutdownsUnforcedSuccessful": true,
+        "allFlushesExplicitPostRecovery": true,
+        "maximumObserverLifetimeMs": 417627.44289999997,
+        "maximumProfileDurationMs": 416684.062
+      }
+    ],
+    "notes": [
+      "All410original archive members were independently byte/hash verified. Archive and summary remained unchanged.",
+      "Both final runs contain13own code0exit records and12master-observed child exits code0/signalnull. No published final exercised the nonzero-child falsepass.",
+      "Original profile run has13caps900000ms, explicit qualifier_flush receipts after recovery,13savedprofiles, and actual duration far below cap. Nominal steady input300s; incompatible900s profile path was not exercised.",
+      "Readiness-race finding affects observer regression synchronization, not the actual recorded full-worker run outcomes.",
+      "Unhandled AMQP error listeners were absent in original runner. A passed completed report, passed final validation log and empty masterstderr show no observed fatal path in these finals; this does not establish failure-path coverage.",
+      "Four confirmed harness defects require corrections and regression coverage, but inspected original outcomes do not demonstrate invalid measurements. Keep originals as historical evidence and distinguish hardening from a rerun.",
+      "Proposed profile<=600steadysec guard before state read/Docker/output is appropriate to remove deterministic900s incompatibility;300s is headroom, not a guaranteed lifecycle budget because cumulative existing per-stage deadlines can exceed it. Final explicit post-recovery flush/overallcap rejection must remain."
+    ],
+    "verifiedArchiveMembers": 410
+  },
+  "interpretation": "This shorter correction follow-up is excluded from the original two five-minute totals. No abnormal shutdown or early profile cap was found in those original logs. Their parent-observed master OS exit field was absent; the new run captures it. AMQP error probes use installed models and exact acquisition statements without a broker handshake."
+}
