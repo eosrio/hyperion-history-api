@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 1,
+  "status": "passed-finite-output",
+  "issue": "https://github.com/eosrio/hyperion-history-api/issues/195",
+  "sourceCommit": "4448aa090e60a71ae30c2739591ad0b4b8a6085f",
+  "fixtureRun": "0f90d31ef585",
+  "startedAt": "2026-10-19T16:51:46.406Z",
+  "completedAt": "2026-10-19T16:51:59.954Z",
+  "runtime": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "arch": "x64",
+    "executable": "/var/snap/docker/common/hyperion-qualification/run-20261019-195-208/tools/node-v24.19.0-linux-x64/bin/node",
+    "executableSha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+    "versions": {
+      "node": "24.19.0",
+      "acorn": "8.17.0",
+      "ada": "3.4.4",
+      "amaro": "1.1.10",
+      "ares": "1.34.6",
+      "brotli": "1.2.0",
+      "cldr": "48.0",
+      "icu": "78.3",
+      "llhttp": "9.4.3",
+      "merve": "1.2.2",
+      "modules": "137",
+      "napi": "10",
+      "nbytes": "0.1.4",
+      "ncrypto": "0.0.1",
+      "nghttp2": "1.69.0",
+      "nghttp3": "",
+      "ngtcp2": "",
+      "openssl": "3.5.7",
+      "simdjson": "4.6.4",
+      "simdutf": "6.4.0",
+      "sqlite": "3.53.3",
+      "tz": "2026b",
+      "undici": "7.29.0",
+      "unicode": "17.0",
+      "uv": "1.52.1",
+      "uvwasi": "0.0.23",
+      "v8": "13.6.233.17-node.51",
+      "zlib": "1.3.2.1-motley-3246f1b",
+      "zstd": "1.5.7"
+    }
+  },
+  "capturedBlocks": 88,
+  "workerReplayRange": {
+    "start": 2,
+    "end": 88
+  },
+  "replayedBlocks": 87,
+  "actions": 12,
+  "abiDeployments": 2,
+  "exactPhysicalCopies": [
+    {
+      "node": "oX_D7rDnSr2Xcji4Y4VbMg",
+      "index": "hyp-replay-0f90d31ef585-block-*",
+      "count": 87,
+      "sha256": "3677083590b7bd5c23090780f279e45667b3082b3bc634eec36a94b9ecc14600"
+    },
+    {
+      "node": "oX_D7rDnSr2Xcji4Y4VbMg",
+      "index": "hyp-replay-0f90d31ef585-action-*",
+      "count": 12,
+      "sha256": "9850a65233eb9d7879f4b50aa0296871705e54b623b3ae3d2e3a551344b05601"
+    },
+    {
+      "node": "pvxEY2ZiQKe-VBgBokxr-Q",
+      "index": "hyp-replay-0f90d31ef585-block-*",
+      "count": 87,
+      "sha256": "3677083590b7bd5c23090780f279e45667b3082b3bc634eec36a94b9ecc14600"
+    },
+    {
+      "node": "pvxEY2ZiQKe-VBgBokxr-Q",
+      "index": "hyp-replay-0f90d31ef585-action-*",
+      "count": 12,
+      "sha256": "9850a65233eb9d7879f4b50aa0296871705e54b623b3ae3d2e3a551344b05601"
+    }
+  ],
+  "bulkAccounting": {
+    "requests": 15,
+    "successfulItems": 101,
+    "failedItems": 0,
+    "repeatedAttempts": 0,
+    "attemptsAfterObservedFailure": 0,
+    "acknowledgedCopies": {
+      "1": 19,
+      "2": 82
+    },
+    "limits": [
+      "Repeated IDs alone do not establish retries; only attempts following an observed failure are correlated."
+    ]
+  },
+  "observedProcesses": 11,
+  "readerConfirmedBlocks": 87,
+  "masterOsExit": {
+    "code": 0,
+    "signal": null
+  },
+  "lastIndexedRedis": null,
+  "persistedRestartAcceptance": "open-not-established",
+  "postflight": {
+    "status": "passed",
+    "consecutiveIdleSamples": 3,
+    "observedPidsAlive": []
+  },
+  "fixtureCleanup": {
+    "containers": 7,
+    "volumes": 7,
+    "networks": 1,
+    "remaining": 0
+  },
+  "excludedPilots": [
+    {
+      "pilot": 1,
+      "sourceCommit": "37e3ee6bb897a3647b88d272e55d43240ecf7dc6",
+      "reportSha256": "29a754fd8a1753de28fec3420fcc958638b7325809edb684b2181b6755c331b5",
+      "fixtureRun": "7fb838af5d45",
+      "error": {
+        "message": "refusing existing projection\n\ntrue !== false\n",
+        "stack": "AssertionError [ERR_ASSERTION]: refusing existing projection\n\ntrue !== false\n\n    at runContractReplay (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:122:16)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:276:20"
+      },
+      "capturedBlocks": null
+    },
+    {
+      "pilot": 2,
+      "sourceCommit": "37e3ee6bb897a3647b88d272e55d43240ecf7dc6",
+      "reportSha256": "26600f6b320cf1c104a4bf28f06feba64c27f1a3ab86af7b4ae4bb31d03dc353",
+      "fixtureRun": "7fb838af5d45",
+      "error": {
+        "message": "contract account must not already exist\n\n400 !== 500\n",
+        "stack": "AssertionError [ERR_ASSERTION]: contract account must not already exist\n\n400 !== 500\n\n    at runContractReplay (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:131:16)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:280:20"
+      },
+      "capturedBlocks": null
+    },
+    {
+      "pilot": 3,
+      "sourceCommit": "37e3ee6bb897a3647b88d272e55d43240ecf7dc6",
+      "reportSha256": "54325c66a88f629ba3cd1b4c0063b24b3c49106b24b6aefa094d0e79f163ee24",
+      "fixtureRun": "7fb838af5d45",
+      "error": {
+        "message": "account absence was not established",
+        "stack": "AssertionError [ERR_ASSERTION]: account absence was not established\n    at assertContractAbsent (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:69:12)\n    at runContractReplay (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:138:65)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:286:20"
+      },
+      "capturedBlocks": null
+    },
+    {
+      "pilot": 4,
+      "sourceCommit": "37e3ee6bb897a3647b88d272e55d43240ecf7dc6",
+      "reportSha256": "35cd69ff3ad279da57043ad3b1c1325b45efa5c9130ddaf3a2df9c44960ee7ae",
+      "fixtureRun": "7fb838af5d45",
+      "error": {
+        "message": "The expression evaluated to a falsy value:\n\n  assert.ok(block.this_block && block.prev_block)\n",
+        "stack": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert.ok(block.this_block && block.prev_block)\n\n    at decodeBlock (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-fixture.ts:122:12)\n    at WebSocket.<anonymous> (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-fixture.ts:203:29)\n    at WebSocket.emit (node:events:509:28)\n    at Receiver.receiverOnMessage (/var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/node_modules/ws/lib/websocket.js:1225:20)\n    at Receiver.emit (node:events:509:28)\n    at Receiver.dataMessage (/var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/node_modules/ws/lib/receiver.js:569:14)\n    at Receiver.getData (/var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/node_modules/ws/lib/receiver.js:496:10)\n    at Receiver.startLoop (/var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/node_modules/ws/lib/receiver.js:167:16)\n    at Receiver._write (/var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/node_modules/ws/lib/receiver.js:94:10)\n    at writeOrBuffer (node:internal/streams/writable:570:12)"
+      },
+      "capturedBlocks": null
+    },
+    {
+      "pilot": 5,
+      "sourceCommit": "37e3ee6bb897a3647b88d272e55d43240ecf7dc6",
+      "reportSha256": "364a561cf836fe2e6afabe83025c246b193a3497648faafc7fd66bff402d250e",
+      "fixtureRun": "0c7352d4c93d",
+      "error": {
+        "message": "Expected values to be strictly equal:\n\n2 !== 1\n",
+        "stack": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n2 !== 1\n\n    at auditFixture (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-fixture.ts:152:71)\n    at async runContractReplay (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:199:25)\n    at async file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:315:20"
+      },
+      "capturedBlocks": null
+    },
+    {
+      "pilot": 6,
+      "sourceCommit": "37e3ee6bb897a3647b88d272e55d43240ecf7dc6",
+      "reportSha256": "9e7cd4a899bc1b47dd840e86b30d9dffbd468e21731267e769a9d2a6398a7da0",
+      "fixtureRun": "48090d493ca1",
+      "error": {
+        "message": "finite verified output and queue drain: AssertionError [ERR_ASSERTION]: block output coverage differs\n\n0 !== 25\n",
+        "stack": "Error: finite verified output and queue drain: AssertionError [ERR_ASSERTION]: block output coverage differs\n\n0 !== 25\n\n    at wait (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:136:17)\n    at async runContractReplay (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:257:9)\n    at async file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay/scripts/qualification/contract-replay.ts:325:20"
+      },
+      "capturedBlocks": 25
+    },
+    {
+      "pilot": 7,
+      "sourceCommit": "81f34ef31494b01c8e7372c28f7cc4872327dff2",
+      "reportSha256": "05cac07b5f740f7897e8adfde85689d2dd55c51d67527c36eaf057b1ead6200c",
+      "fixtureRun": "184708d1bcce",
+      "error": {
+        "message": "master exited 0",
+        "stack": "Error: master exited 0\n    at wait (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay-final/scripts/qualification/contract-replay.ts:133:59)\n    at async runContractReplay (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay-final/scripts/qualification/contract-replay.ts:259:9)\n    at async file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay-final/scripts/qualification/contract-replay.ts:327:20"
+      },
+      "capturedBlocks": 2027
+    },
+    {
+      "pilot": 8,
+      "sourceCommit": "a94811e109490226b53be75edc27133a6af6c310",
+      "reportSha256": "625a2de0fc8746306f04d00e2d5e64cb249fe962e2ce76170bb706190925598a",
+      "fixtureRun": "c5b56289d92e",
+      "error": {
+        "message": "Expected values to be strictly equal:\n+ actual - expected\n\n+ '0E656F73696F3A3A6162692F312E320001067265636F726400020873657175656E63650675696E743634046D656D6F06737472696E670100000000A44B91BA067265636F726400000000000000'\n- '0e656f73696f3a3a6162692f312e320001067265636f726400020873657175656e63650675696e743634046d656d6f06737472696e670100000000a44b91ba067265636f726400000000000000'\n",
+        "stack": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ '0E656F73696F3A3A6162692F312E320001067265636F726400020873657175656E63650675696E743634046D656D6F06737472696E670100000000A44B91BA067265636F726400000000000000'\n- '0e656f73696f3a3a6162692f312e320001067265636f726400020873657175656e63650675696e743634046d656d6f06737472696e670100000000a44b91ba067265636f726400000000000000'\n\n    at runContractReplay (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay-final/scripts/qualification/contract-replay.ts:292:78)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay-final/scripts/qualification/contract-replay.ts:349:20"
+      },
+      "capturedBlocks": 578
+    },
+    {
+      "pilot": 9,
+      "sourceCommit": "4b3a64165ab12ab3888b2e1bc21b126067b02dd7",
+      "reportSha256": "2ff3b8af37e213c4e9003ee9588ae61e3a7588f10d5830dcccef00d6f3c30065",
+      "fixtureRun": "57d73733f9a6",
+      "error": {
+        "message": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'REQUEST'\n- 'request'\n",
+        "stack": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ 'REQUEST'\n- 'request'\n\n    at runContractReplay (file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay-final/scripts/qualification/contract-replay.ts:324:20)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///var/snap/docker/common/hyperion-qualification/run-20261019-195-208/replay-final/scripts/qualification/contract-replay.ts:356:20"
+      },
+      "capturedBlocks": 348
+    }
+  ],
+  "limits": [
+    "Known-genesis no-op contract; no historical mainnet ABI or contract-compute qualification.",
+    "Verified captured ABI history is bootstrapped into a new isolated ABI index before replay.",
+    "Finite reader/deserializer/pool/indexer correctness run, not sustained throughput or automatic ABI discovery.",
+    "No reset, purge or deletion is exposed; exact fixture cleanup is a separate ownership-checked command.",
+    "Qualifier shutdown bypasses production gracefulStop checkpoint persistence; a null Redis cursor is not synthesized. #195 remains open for persisted checkpoint and restart acceptance.",
+    "No throughput, CPU profile, automatic ABI discovery, historical mainnet, fork recovery, contract computation, state projection or host power-loss durability claim.",
+    "Failed pilots are excluded. Their report source hash metadata is retained; final measured source/build/native binary snapshots are archived in full.",
+    "Known public genesis key and isolated fixture test credentials are retained as raw evidence; no production credentials are included."
+  ]
+}
