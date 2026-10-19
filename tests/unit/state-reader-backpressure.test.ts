@@ -45,7 +45,7 @@ async function probe(body: string) {
                 const cch = publisher();
                 const reader = Object.assign(Object.create(StateReader.prototype), {
                     chain: 'drain-test', conf: {scaling: {ds_queues: 1}},
-                    ch, cch, cch_ready: true, isLiveReader: live,
+                    ch, cch, ch_ready: true, cch_ready: true, isLiveReader: live, events: new EventEmitter(),
                     currentIdx: 1, drainCount: 0,
                     local_distributed_count: 0, range_size: 1000
                 });
@@ -122,23 +122,37 @@ describe('StateReader confirm-channel backpressure', () => {
         `);
     }, 15000);
 
-    it('ignores a replaced publisher close and drain event', async () => {
+    it('ignores replaced channel close and drain events through the actual onConnect lifecycle', async () => {
         await probe(`
             const f = fixture();
-            await f.reader.assertQueues();
+            let connections = 0;
+            f.reader.events.on('ready', () => connections++);
+            f.reader.onConnect();
+            await until(() => connections === 1);
             const old = f.cch;
+            const oldConsumer = f.ch;
             const replacement = f.publisher();
+            const replacementConsumer = Object.assign(new EventEmitter(), {async assertQueue() {}});
             f.reader.cch = replacement;
-            await f.reader.assertQueues();
+            f.reader.ch = replacementConsumer;
+            f.reader.onConnect();
+            await until(() => connections === 2);
+            assert.equal(f.reader.ch_ready, true);
             assert.equal(f.reader.cch_ready, true);
             assert.equal(f.queue.paused, false);
+            oldConsumer.emit('close');
             old.emit('close');
             old.emit('drain');
-            assert.equal(f.reader.cch_ready, true, 'stale close disabled the replacement publisher');
+            assert.deepEqual({consumer: f.reader.ch_ready, publisher: f.reader.cch_ready},
+                {consumer: true, publisher: true}, 'stale close disabled replacement channels');
             assert.equal(f.queue.paused, false, 'stale close paused replacement cargo');
+            replacementConsumer.emit('close');
+            assert.equal(f.reader.ch_ready, false);
+            assert.equal(f.reader.cch_ready, true);
             replacement.emit('close');
             assert.equal(f.reader.cch_ready, false);
             assert.equal(f.queue.paused, true);
+            assert.equal(connections, 2);
         `);
     }, 15000);
 });

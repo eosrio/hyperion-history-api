@@ -145,11 +145,13 @@ export abstract class HyperionWorker {
         this.cch_ready = true;
         this.assertQueues().then(() => {
             if (this.ch && this.cch) {
-                this.ch.on('close', () => {
-                    this.ch_ready = false;
+                const consumer = this.ch;
+                const publisher = this.cch;
+                consumer.on('close', () => {
+                    if (consumer === this.ch) this.ch_ready = false;
                 });
-                this.cch.on('close', () => {
-                    this.cch_ready = false;
+                publisher.on('close', () => {
+                    if (publisher === this.cch) this.cch_ready = false;
                 });
                 this.events.emit('ready');
             } else {
