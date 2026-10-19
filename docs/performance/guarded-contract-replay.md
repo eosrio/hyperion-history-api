@@ -9,7 +9,7 @@ This case supplies ABI history proven against captured account deltas. It bootst
 Use Node.js 24 with dependencies from `npm ci` and the pinned TypeScript build. Bun 1.4.3 runs the checker and focused tests. The fixture requires Docker and PowerShell 7, including on Linux. Every service uses the existing image digests and resource limits in the worker fixture; production nodeos services are outside the test.
 
 ```sh
-npm ci
+npm ci --allow-git=root
 npm run typecheck
 npm run build
 bun check -p scripts/qualification/tsconfig.json
@@ -58,6 +58,14 @@ The read-only audit manifest is retained with the qualification evidence. Its SH
 
 The tracked unit cases cover binary framing, full ABI-encoded capture auditing, manifest and input tampering, missing files, symlinks where supported, ordering/coverage failures, ABI epoch mismatch, exact output mismatches, shared resource refusal, bulk body preservation and active upstream cleanup. The actual pinned Spring genesis envelope is retained as a decoder regression fixture with exact digests.
 
-The first Linux capture passed an offline audit of 712 contiguous blocks, both ABI deployments and all 12 submitted actions. That audited capture alone is not a successful worker replay. A fresh bare-metal Linux reader-to-storage run is being executed separately.
+The fresh bare-metal Hyperion-1 Linux run passed at source `4448aa090e60a71ae30c2739591ad0b4b8a6085f`, using Node.js 24.19.0, the pinned native decoder, Spring 1.2.2 and Elasticsearch 9.5.5. It captured 88 contiguous blocks including genesis, replayed blocks 2–88 through the actual master and workers, and matched all 12 signed actions across both ABI revisions. All 87 reader confirmations and both ABI outputs matched. Both physical data-node copies independently returned the exact 87 blocks and 12 actions.
+
+The raw forwarding ledger observed 15 bulk requests and 101 successful items, with zero failed items, repeated attempts or attempts correlated with an observed failure. Receipt acknowledgments reported one successful copy for 19 items and two copies for 82 items; the final reads established both physical copies after indexing. These are separate observations. No sink failure or retry was injected in this case.
+
+The master and all ten children exited with code zero and complete observer flushes. Independent postflight verified 39 measured source/build/native snapshots, six fixture inputs, all 11 observed processes gone, and three consecutive idle samples with nine empty queues, no broker connections or unacknowledged deliveries, and no active Elasticsearch search/write tasks. Ownership-checked cleanup removed exactly seven containers, seven volumes and one network, with none remaining. The Redis checkpoint was null under qualifier shutdown, so persisted restart acceptance remains open.
+
+The [summary](evidence/guarded-replay-20261019/summary.json), [member manifest](evidence/guarded-replay-20261019/manifest.json) and [raw archive](evidence/guarded-replay-20261019/raw-evidence.tar.gz) retain the finite result, complete captured binary inputs, measured source and native binaries, byte-preserved bulk exchanges, observer logs, preparation/check logs, independent postflight and cleanup receipts. Archive SHA-256: `7edb7d7a5594bd9be32f9cbfd2bda563dedf8468bd5895813eb938d6e0617a50`. Nine failed pilots are retained and explicitly excluded from acceptance. Earlier capture-only audits and dense-load results are separate evidence.
+
+Linux validation passed 263 unit cases with 2,054 assertions, application and qualifier typechecks, and the build. Bun 1.4.3 ran tests and the TypeScript 7 checker. A separate native-import probe failed under Bun at the pinned uWebSockets.js module (`napi_register_module_v1` missing); the actual worker replay therefore ran on Node.js. This evidence establishes no Bun worker-runtime or throughput result.
 
 Preparing this case also exposed a production decoder defect: a native ABI context and cached type name could survive an ABI deployment and silently decode newer action bytes with an older schema. A separate runtime change binds selection to the action's block and invalidates type memos when the selected, custom or fallback ABI context changes. Its regression executes the actual compiled pool with the installed native decoder, including shuffled blocks and repeated custom/current fallback calls. This is a correctness change; its added historical ABI lookups still need representative profiling.
