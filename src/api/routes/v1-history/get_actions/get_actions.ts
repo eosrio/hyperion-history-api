@@ -1,5 +1,6 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
+import {assertActionSearchActive, searchActions} from "../../../helpers/action-search.js";
 import {hLog} from "../../../../indexer/helpers/common_functions.js";
 import {Abieos} from "@eosrio/node-abieos";
 import {terms} from "../../v2-history/get_actions/definitions.js";
@@ -293,7 +294,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
 
     const pResults = await Promise.all([
         fastify.antelope.chain.get_info(),
-        fastify.elastic.search<any>(esOpts)
+        searchActions<any>(fastify, request, esOpts)
     ]);
     const results = pResults[1];
     const response: any = {
@@ -360,6 +361,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             response.actions.push(act);
         }
     }
+    assertActionSearchActive(request);
     return response;
 }
 
