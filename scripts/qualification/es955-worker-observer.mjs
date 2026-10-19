@@ -36,6 +36,8 @@ let shutdownPromise;
 // Hyperion reassigns Worker.id to its stable slot ID on respawn; key identity by the object.
 const childIdentities = new WeakMap();
 const ownedWorkers = new Set();
+const childExitOutcomes = new WeakMap();
+const watchedWorkers = new WeakSet();
 let shutdownSignal;
 
 function safeString(value, limit = 256) {
@@ -151,6 +153,25 @@ if (typeof process.send === 'function') {
     };
 }
 
+function trackWorker(worker) {
+    ownedWorkers.add(worker);
+    if (watchedWorkers.has(worker)) return;
+    watchedWorkers.add(worker);
+    // Install immediately after fork, retaining outcomes even when the worker
+    // is already absent from cluster.workers by the time shutdown starts.
+    worker.once('exit', (code, signal) => {
+        childExitOutcomes.set(worker, {code, signal: signal ?? null});
+        record('worker_exit', {
+            childClusterId: worker.id, childPid: worker.process?.pid, code, signal: signal ?? null
+        }, true);
+    });
+    if (worker.isDead()) {
+        childExitOutcomes.set(worker, {
+            code: worker.process?.exitCode ?? null, signal: worker.process?.signalCode ?? null
+        });
+    }
+}
+
 if (cluster.isPrimary) {
     const originalFork = cluster.fork;
     cluster.fork = function (...args) {
@@ -158,7 +179,7 @@ if (cluster.isPrimary) {
         childIdentities.set(worker, {
             role: args[0]?.worker_role || 'unknown', workerId: args[0]?.worker_id || null
         });
-        ownedWorkers.add(worker);
+        trackWorker(worker);
         if (shutdownSignal) {
             record('shutdown_late_child', { childClusterId: worker.id, childPid: worker.process?.pid }, true);
         }
@@ -172,15 +193,13 @@ if (cluster.isPrimary) {
         return Reflect.apply(originalSend, this, args);
     };
     cluster.on('fork', worker => {
+        trackWorker(worker);
         record('worker_fork', { childClusterId: worker.id, childPid: worker.process?.pid });
         worker.on('message', message => observeIpc('master_incoming', message, {
             clusterId: worker.id, pid: worker.process?.pid, ...childIdentities.get(worker)
         }));
         worker.on('disconnect', () => record('worker_disconnect', {
             childClusterId: worker.id, childPid: worker.process?.pid
-        }));
-        worker.on('exit', (code, signal) => record('worker_exit', {
-            childClusterId: worker.id, childPid: worker.process?.pid, code, signal
         }));
     });
 
@@ -335,14 +354,10 @@ async function shutdown(message) {
         const sent = new Set();
         const discoverChildren = () => {
             if (!cluster.isPrimary) return;
-            for (const worker of Object.values(cluster.workers || {}).filter(Boolean)) ownedWorkers.add(worker);
+            for (const worker of Object.values(cluster.workers || {}).filter(Boolean)) trackWorker(worker);
             for (const worker of ownedWorkers) {
-                if (!children.has(worker) && !worker.isDead()) {
-                    children.add(worker);
-                    worker.once('exit', () => exited.add(worker));
-                }
-                if (!children.has(worker)) continue;
-                if (worker.isDead()) exited.add(worker);
+                children.add(worker);
+                if (childExitOutcomes.has(worker)) exited.add(worker);
                 else if (!sent.has(worker) && worker.isConnected()) {
                     try { worker.send(message); sent.add(worker); } catch (error) {
                         record('observer_error', { operation: 'shutdown_propagate', error: errorText(error) }, true);
@@ -377,10 +392,18 @@ async function shutdown(message) {
             forceRemaining();
         }
         discoverChildren();
-        const success = result.success && exited.size === children.size && forced.size === 0;
+        const childExits = [...children].map(worker => ({
+            clusterId: worker.id, pid: worker.process?.pid,
+            code: childExitOutcomes.get(worker)?.code ?? null,
+            signal: childExitOutcomes.get(worker)?.signal ?? null
+        }));
+        const failedChildren = childExits.filter(outcome => outcome.code !== 0 || outcome.signal !== null);
+        const success = result.success && exited.size === children.size && forced.size === 0 &&
+            failedChildren.length === 0;
         record('shutdown', {
             success, requestId: message.requestId ?? null,
             children: children.size, exited: exited.size,
+            childExits, failedChildren,
             forced: [...forced].map(worker => ({ clusterId: worker.id, pid: worker.process?.pid })),
             unresolved: [...children].filter(worker => !exited.has(worker)).map(worker => ({
                 clusterId: worker.id, pid: worker.process?.pid

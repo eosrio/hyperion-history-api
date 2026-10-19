@@ -26,8 +26,37 @@ function alive(pid) {
 if (mode === 'master') {
     cluster.setupPrimary({ exec: source, execArgv: process.execArgv });
     const worker = cluster.fork({ ES198_OBSERVER_CHECK_MODE: 'worker', worker_role: 'reader', worker_id: '1' });
+    // Capture one-time readiness before imports or queue HTTP can yield to it.
+    const ready = new Promise((resolve, reject) => {
+        const cleanup = () => {
+            worker.off('message', onMessage);
+            worker.off('exit', onExit);
+            worker.off('error', onError);
+        };
+        const onMessage = message => {
+            if (message?.event === 'ready') { cleanup(); resolve(message); }
+        };
+        const onExit = (code, signal) => { cleanup(); reject(new Error(`Worker exited before ready: ${code}/${signal}`)); };
+        const onError = error => { cleanup(); reject(error); };
+        worker.on('message', onMessage);
+        worker.once('exit', onExit);
+        worker.once('error', onError);
+    });
+    // Surface readiness failure at the await below, without an intervening
+    // unhandled rejection while the deterministic slow queue request runs.
+    void ready.catch(() => {});
     // Hyperion assigns stable slot IDs; wrappers must preserve identity after that change.
     worker.id = 17;
+    process.prependListener('message', message => {
+        if (message?.event === 'qualifier_shutdown' && process.env.ES198_OBSERVER_CHECK_CASE === 'signal-after-flush') {
+            worker.kill('SIGKILL');
+        }
+        if (message?.event === 'fixture_exit_child') {
+            worker.once('exit', (code, signal) => process.send({event: 'fixture_child_exited', code, signal}));
+            if (message.signal) worker.kill('SIGKILL');
+            else worker.send({event: 'fixture_exit', code: 7});
+        }
+    });
     if (process.env.ES198_LATE_TEST === '1') process.on('message', message => {
         if (message?.event === 'qualifier_shutdown') setTimeout(() => {
             cluster.fork({ ES198_OBSERVER_CHECK_MODE: 'worker', worker_role: 'reader', worker_id: '2' });
@@ -38,12 +67,10 @@ if (mode === 'master') {
         protocol: 'http', api: `127.0.0.1:${process.env.ES198_HTTP_PORT}`, user: 'fixture', pass: 'fixture', vhost: '/'
     } } }, 'fixture:queue');
     assert.equal(queue, 7);
-    worker.once('message', message => {
-        if (message.event !== 'ready') return;
-        const sent = worker.send({ event: 'pause', marker: 'unchanged' }, undefined, undefined, error => {
-            assert.ifError(error);
-            process.send({ event: 'master_ready', queue, sendReturnBoolean: typeof sent === 'boolean' });
-        });
+    await ready;
+    const sent = worker.send({ event: 'pause', marker: 'unchanged' }, undefined, undefined, error => {
+        assert.ifError(error);
+        process.send({ event: 'master_ready', queue, sendReturnBoolean: typeof sent === 'boolean' });
     });
     setInterval(() => {}, 1000);
 } else if (mode === 'worker') {
@@ -53,6 +80,10 @@ if (mode === 'master') {
     assert.equal(returned, undefined);
     assert.equal(reader.baseRequest.start_block_num, 17);
     assert.equal(reader.baseRequest.end_block_num, 25);
+    process.prependListener('message', message => {
+        if (message.event === 'fixture_exit' || (message.event === 'qualifier_shutdown' &&
+            process.env.ES198_OBSERVER_CHECK_CASE === 'nonzero-after-flush')) process.exit(7);
+    });
     process.on('message', message => {
         if (message.event === 'qualifier_shutdown' && process.env.ES198_LATE_TEST === '1' && process.env.worker_id === '1') {
             const until = Date.now() + 200;
@@ -64,6 +95,7 @@ if (mode === 'master') {
         }
     });
     process.send({ event: 'ready' });
+    process.send({ event: 'read_block', block_num: 17171, id: '1' });
     setInterval(() => {}, 1000);
 } else {
     const negative = spawnSync(process.execPath,
@@ -75,12 +107,20 @@ if (mode === 'master') {
     assert.notEqual(negative.status, 0);
     assert.match(negative.stderr, /must name an existing absolute qualification directory/);
     const cases = [];
-    for (const late of [false, true]) cases.push(await runCase(late));
+    const caseNames = ['normal', 'late-child-shutdown', 'ready-before-queue-response',
+        'nonzero-after-flush', 'signal-after-flush', 'nonzero-before-shutdown', 'signal-before-shutdown'];
+    const selected = process.env.ES198_CHECK_CASE;
+    if (selected) assert.ok(caseNames.includes(selected));
+    for (const name of selected ? [selected] : caseNames) cases.push(await runCase(name));
     console.log(JSON.stringify({status: 'passed', runtime: process.version, assertions,
         relativeDirectoryGuard: 'passed', cases, realDockerCalls: 0, externalNetworkCalls: 0}));
 }
 
-async function runCase(late) {
+async function runCase(name) {
+    const late = name === 'late-child-shutdown';
+    const abnormal = /^(nonzero|signal)-/.test(name);
+    const signalExit = name.startsWith('signal-');
+    const beforeShutdown = name.endsWith('-before-shutdown');
     const beforeAssertions = assertions;
     const temporaryRoot = realpathSync(tmpdir());
     const directory = mkdtempSync(join(temporaryRoot, 'hyperion-worker-observer-check-'));
@@ -90,11 +130,37 @@ async function runCase(late) {
     writeFileSync(config, JSON.stringify({ settings: { chain: 'fixture', parser: '3.2' }, indexer: {}, scaling: {}, plugins: {} }));
     writeFileSync(join(configDirectory, 'connections.json'), JSON.stringify({ chains: { fixture: { chain_id: '0'.repeat(64) } } }));
     let requests = 0;
-    const server = http.createServer((request, response) => {
+    let serverError;
+    const server = http.createServer(async (request, response) => {
+        try {
         assert.equal(request.url, '/api/queues/%2F/fixture%3Aqueue');
         requests++;
+        if (name === 'ready-before-queue-response') {
+            // The following FIFO IPC message proves ready was already delivered
+            // while the production manager still awaits this HTTP response.
+            const deadline = Date.now() + 5000;
+            let delivered = false;
+            while (!delivered && Date.now() < deadline) {
+                delivered = readdirSync(directory).filter(file => file.endsWith('.jsonl')).some(file =>
+                    (() => {
+                        const text = readFileSync(join(directory, file), 'utf8');
+                        return text.slice(0, text.lastIndexOf('\n') + 1).split('\n').filter(Boolean);
+                    })().some(line => {
+                        const row = JSON.parse(line);
+                        return row.kind === 'ipc_receive' && row.direction === 'master_incoming' &&
+                            row.message?.event === 'read_block' && row.message?.block_num === 17171;
+                    }));
+                if (!delivered) await sleep(10);
+            }
+            assert.ok(delivered, 'worker ready did not arrive before queue HTTP response');
+        }
         response.setHeader('Content-Type', 'application/json');
         response.end(JSON.stringify({ messages: 7 }));
+        } catch (error) {
+            serverError = error;
+            response.writeHead(500, {'Content-Type': 'application/json'});
+            response.end(JSON.stringify({error: error.message}));
+        }
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const child = fork(source, [], {
@@ -102,6 +168,7 @@ async function runCase(late) {
         execPath: process.execPath,
         env: { ...process.env, ES198_OBSERVER_CHECK_MODE: 'master', ES198_OBSERVER_DIR: directory,
             ES198_LATE_TEST: late ? '1' : '0', ES198_CPU_PROFILE: '1', ES198_PROFILE_MAX_MS: '30000',
+            ES198_OBSERVER_CHECK_CASE: name,
             CONFIG_JSON: config, ES198_HTTP_PORT: String(server.address().port), worker_role: '', worker_id: '' },
         stdio: ['ignore', 'pipe', 'pipe', 'ipc']
     });
@@ -117,16 +184,24 @@ async function runCase(late) {
             await new Promise(resolve => setTimeout(resolve, 25));
         }
         const ready = messages.find(message => message.event === 'master_ready');
-        assert.ok(ready, stderr);
+        assert.ok(ready, serverError?.stack || stderr);
         assert.equal(ready.sendReturnBoolean, true);
         await new Promise(resolve => setTimeout(resolve, 2300));
         child.send({ event: 'qualifier_flush', requestId: 'smoke-flush' });
         while (readdirSync(directory).filter(name => name.endsWith('.cpuprofile')).length < 2 && Date.now() < deadline) {
             await new Promise(resolve => setTimeout(resolve, 25));
         }
+        if (beforeShutdown) {
+            child.send({event: 'fixture_exit_child', signal: signalExit});
+            while (!messages.some(message => message.event === 'fixture_child_exited') && Date.now() < deadline) await sleep(10);
+            const outcome = messages.find(message => message.event === 'fixture_child_exited');
+            assert.ok(outcome, 'child did not exit before master shutdown');
+            if (signalExit) assert.equal(outcome.signal, 'SIGKILL');
+            else assert.equal(outcome.code, 7);
+        }
         child.send({ event: 'qualifier_shutdown', requestId: 'smoke-shutdown' });
         const exited = await Promise.race([exit, new Promise((_, reject) => setTimeout(() => reject(new Error('Shutdown timeout')), 10000).unref())]);
-        assert.deepEqual(exited, { code: 0, signal: null }, stderr);
+        assert.deepEqual(exited, { code: abnormal ? 1 : 0, signal: null }, stderr);
         assert.equal(requests, 1);
         const files = readdirSync(directory).filter(name => name.endsWith('.jsonl'));
         const expectedProcesses = late ? 3 : 2;
@@ -140,8 +215,22 @@ async function runCase(late) {
             assert.ok(own.some(row => row.kind === 'sample' && Number.isFinite(row.memory.rss)));
             assert.ok(own.some(row => row.kind === 'profile_saved'));
             assert.ok(own.some(row => row.kind === 'flush' && row.success && row.profileState === 'saved'));
-            assert.ok(own.some(row => row.kind === 'shutdown' && row.success));
-            assert.ok(own.some(row => row.kind === 'exit' && row.code === 0));
+            if (start.role === 'master') {
+                const shutdown = own.find(row => row.kind === 'shutdown');
+                assert.equal(shutdown?.success, !abnormal);
+                assert.ok(own.some(row => row.kind === 'exit' && row.code === (abnormal ? 1 : 0)));
+                assert.equal(shutdown.children, late ? 2 : 1);
+                assert.equal(shutdown.exited, late ? 2 : 1);
+                assert.equal(shutdown.failedChildren.length, abnormal ? 1 : 0);
+                if (abnormal) {
+                    assert.equal(shutdown.childExits.length, 1);
+                    assert.equal(shutdown.childExits[0].code, signalExit ? null : 7);
+                    assert.equal(shutdown.childExits[0].signal, signalExit ? 'SIGKILL' : null);
+                }
+            } else if (!abnormal) {
+                assert.ok(own.some(row => row.kind === 'shutdown' && row.success));
+                assert.ok(own.some(row => row.kind === 'exit' && row.code === 0));
+            }
         }
         assert.ok(records.every(row => Number.isFinite(row.at)));
         assert.ok(records.some(row => row.kind === 'queue_sample' && row.queue === 'fixture:queue' && row.size === 7));
@@ -166,7 +255,7 @@ async function runCase(late) {
         }
         assert.ok(!records.some(row => row.kind === 'observer_error'));
         assert.equal(stderr, '');
-        return {case: late ? 'late-child-shutdown' : 'normal', assertions: assertions - beforeAssertions,
+        return {case: name, assertions: assertions - beforeAssertions,
             processes: expectedProcesses, profiles: profiles.length, requests, records: records.length};
     } finally {
         if (child.exitCode === null) {

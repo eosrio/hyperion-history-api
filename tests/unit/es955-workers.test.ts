@@ -1,5 +1,69 @@
 import {test, expect} from 'bun:test';
-import {assertOwnedBinding, assertPausedRange, assertSortedPage, loadDocument} from '../../scripts/qualification/es955-workers.ts';
+import {EventEmitter} from 'node:events';
+import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
+import {assertOwnedBinding, assertPausedRange, assertSortedPage, loadDocument, runWorkerQualification,
+    validateWorkerRunOptions, observeAmqpErrors, assertSuccessfulWorkerShutdown} from '../../scripts/qualification/es955-workers.ts';
+
+test('incompatible profiling duration is rejected before manifest or output access', async () => {
+    await expect(runWorkerQualification('nonexistent-profile-preflight.json', 'unused-profile-preflight', 900, 200, true))
+        .rejects.toThrow(/profiling.*600/);
+});
+
+test('profiling lifecycle headroom is validated without restricting long controls', () => {
+    expect(() => validateWorkerRunOptions(300, 200, true)).not.toThrow();
+    expect(() => validateWorkerRunOptions(600, 200, true)).not.toThrow();
+    expect(() => validateWorkerRunOptions(601, 200, true)).toThrow(/profiling.*600/);
+    expect(() => validateWorkerRunOptions(900, 200, false)).not.toThrow();
+});
+
+test('asynchronous AMQP model and publisher errors are captured during work and cleanup', async () => {
+    const {ChannelModel, ConfirmChannel} = createRequire(import.meta.url)(
+        fileURLToPath(new URL('../../node_modules/amqplib/lib/channel_model.js', import.meta.url)));
+    const transport = new EventEmitter();
+    // Use the installed amqplib classes and the real connection-error forwarder.
+    // No connection handshake or external listener is needed for these events.
+    const broker = new ChannelModel(transport); const publisher = new ConfirmChannel(transport);
+    const failures: {source: string; error: Error}[] = [];
+    const capture = (source: string, error: Error) => { failures.push({source, error}); };
+    expect(observeAmqpErrors(broker, 'connection', capture)).toBe(broker);
+    expect(observeAmqpErrors(publisher, 'publisher', capture)).toBe(publisher);
+    const error = new Error('broker failed asynchronously');
+    await new Promise<void>(resolve => setImmediate(() => { transport.emit('error', error); resolve(); }));
+    expect(failures).toEqual([{source: 'connection', error}]);
+    await new Promise<void>(resolve => setImmediate(() => { publisher.emit('error', 'publisher failed during close'); resolve(); }));
+    expect(failures).toHaveLength(2);
+    expect(failures[1].source).toBe('publisher');
+    expect(failures[1].error.message).toBe('publisher failed during close');
+    publisher.emit('error', error);
+    expect(failures).toHaveLength(3);
+});
+
+test('shutdown oracle rejects failed, signalled, missing and unclean process exits', () => {
+    const rows = (): any[] => [{kind: 'start', pid: 1}, {kind: 'start', pid: 2},
+        {kind: 'worker_fork', pid: 1, childPid: 2},
+        {kind: 'worker_exit', pid: 1, childPid: 2, code: 0, signal: null},
+        {kind: 'exit', pid: 2, code: 0}, {kind: 'exit', pid: 1, code: 0},
+        {kind: 'shutdown', pid: 1, success: true, forced: [], unresolved: [], failedChildren: [],
+            childExits: [{pid: 2, clusterId: 1, code: 0, signal: null}]}];
+    expect(() => assertSuccessfulWorkerShutdown(rows(), 1, 0, null)).not.toThrow();
+    expect(() => assertSuccessfulWorkerShutdown(rows(), 1, 1, null)).toThrow();
+    expect(() => assertSuccessfulWorkerShutdown(rows(), 1, null, 'SIGTERM')).toThrow();
+    const childFailure = rows(); childFailure[4].code = 1;
+    expect(() => assertSuccessfulWorkerShutdown(childFailure, 1, 0, null)).toThrow();
+    const childSignal = rows(); childSignal[3].code = null; childSignal[3].signal = 'SIGKILL';
+    expect(() => assertSuccessfulWorkerShutdown(childSignal, 1, 0, null)).toThrow();
+    expect(() => assertSuccessfulWorkerShutdown(rows().filter(row => !(row.kind === 'exit' && row.pid === 2)), 1, 0, null)).toThrow();
+    const forced = rows(); forced[6].forced = [{pid: 2}];
+    expect(() => assertSuccessfulWorkerShutdown(forced, 1, 0, null)).toThrow();
+    const falseSuccess = rows(); falseSuccess[6].success = false;
+    expect(() => assertSuccessfulWorkerShutdown(falseSuccess, 1, 0, null)).toThrow();
+    const missingChild = rows(); missingChild[6].childExits = [];
+    expect(() => assertSuccessfulWorkerShutdown(missingChild, 1, 0, null)).toThrow();
+    expect(() => assertSuccessfulWorkerShutdown(rows().filter(row => row.kind !== 'worker_exit'), 1, 0, null)).toThrow();
+    const failedChild = rows(); failedChild[6].childExits[0].code = 1;
+    expect(() => assertSuccessfulWorkerShutdown(failedChild, 1, 0, null)).toThrow();
+});
 
 const page = () => ({timed_out: false, _shards: {failed: 0}, hits: {hits: [3, 2, 1].map(n =>
     ({_id: String(n), _source: loadDocument(n, 'oracle')}))}});

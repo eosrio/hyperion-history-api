@@ -4,7 +4,7 @@ import {spawn, execFileSync, type ChildProcess} from 'node:child_process';
 import {mkdir, open, readFile, readdir, writeFile} from 'node:fs/promises';
 import {createServer, request} from 'node:http';
 import {createServer as createTcpServer} from 'node:net';
-import {once} from 'node:events';
+import {once, type EventEmitter} from 'node:events';
 import {performance} from 'node:perf_hooks';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
@@ -24,6 +24,55 @@ async function bounded<T>(operation: Promise<T>, label: string, ms = 10000): Pro
 }
 const canonical = (value: any): string => JSON.stringify(value, (_key, entry) => entry && typeof entry === 'object' && !Array.isArray(entry)
     ? Object.fromEntries(Object.keys(entry).sort().map(key => [key, entry[key]])) : entry);
+
+const observerMaximumDurationMs = 900000;
+const profileLifecycleReserveMs = 300000;
+
+export function validateWorkerRunOptions(seconds: number, rate: number, profile: boolean) {
+    assert.ok(Number.isInteger(seconds) && seconds >= 60 && seconds <= 900);
+    assert.ok(Number.isInteger(rate) && rate >= 40 && rate <= 2000 && rate % 20 === 0);
+    // Leave five minutes for startup, warmup, fault waves and recovery within
+    // the observer's bounded lifetime. Its final flush still checks coverage.
+    if (profile) assert.ok(seconds * 1000 + profileLifecycleReserveMs <= observerMaximumDurationMs,
+        'profiling supports at most 600 steady seconds within the 900-second observer lifetime');
+}
+
+export function observeAmqpErrors<T extends Pick<EventEmitter, 'on'>>(source: T, name: string,
+    capture: (name: string, error: Error) => void): T {
+    source.on('error', error => capture(name, error instanceof Error ? error : new Error(String(error))));
+    return source;
+}
+
+export function assertSuccessfulWorkerShutdown(rows: any[], masterPid: number, exitCode: number | null, signal: string | null) {
+    assert.equal(exitCode, 0, 'master process did not exit successfully');
+    assert.equal(signal, null, 'master process exited by signal');
+    const shutdown = rows.find(row => row.kind === 'shutdown' && row.pid === masterPid);
+    assert.ok(shutdown?.success, 'full-worker shutdown did not complete cleanly');
+    assert.deepEqual(shutdown.forced, []); assert.deepEqual(shutdown.unresolved, []);
+    assert.deepEqual(shutdown.failedChildren, []);
+    const forks = rows.filter(row => row.kind === 'worker_fork');
+    assert.equal(shutdown.childExits?.length, forks.length, 'tracked child exit evidence incomplete');
+    const childExits = rows.filter(row => row.kind === 'worker_exit');
+    assert.equal(childExits.length, forks.length, 'parent-observed child exits incomplete');
+    for (const fork of forks) {
+        const exit = shutdown.childExits.find((row: any) => row.pid === fork.childPid);
+        assert.equal(exit?.code, 0, `tracked child failed: ${fork.childPid}`);
+        assert.equal(exit.signal, null, `tracked child exited by signal: ${fork.childPid}`);
+        assert.ok(childExits.some(row => row.childPid === fork.childPid), `child exit missing: ${fork.childPid}`);
+    }
+    const starts = rows.filter(row => row.kind === 'start');
+    assert.ok(starts.some(row => row.pid === masterPid), 'master start evidence missing');
+    for (const start of starts) {
+        const exit = rows.find(row => row.kind === 'exit' && row.pid === start.pid);
+        assert.ok(exit, `owned worker exit evidence missing: ${start.pid}`);
+        assert.equal(exit.code, 0, `owned process failed: ${start.pid}`);
+    }
+    for (const exit of childExits) {
+        assert.equal(exit.code, 0, `child process failed: ${exit.childPid}`);
+        assert.equal(exit.signal, null, `child process exited by signal: ${exit.childPid}`);
+    }
+    return shutdown;
+}
 
 export function assertPausedRange(pause: any, pending: any, rows: any[], releasedAt: number) {
     assert.equal(pause.event, 'pause'); assert.equal(pause.role, 'reader');
@@ -65,8 +114,7 @@ async function freePort(): Promise<number> {
 }
 
 export async function runWorkerQualification(stateFile: string, outputDirectory: string, seconds = 300, rate = 400, profile = true) {
-    assert.ok(Number.isInteger(seconds) && seconds >= 60 && seconds <= 900);
-    assert.ok(Number.isInteger(rate) && rate >= 40 && rate <= 2000 && rate % 20 === 0);
+    validateWorkerRunOptions(seconds, rate, profile);
     const stateBytes = await readFile(stateFile); const state = JSON.parse(stateBytes.toString());
     assert.equal(state.status, 'ready'); validateFixture(state.core);
     assert.equal(state.run, state.core.run); assert.equal(state.network, state.core.network);
@@ -105,7 +153,7 @@ export async function runWorkerQualification(stateFile: string, outputDirectory:
         seconds, rate, profile, windows: [], snapshots: [], queries: [], bulks: [], faults: [], cleanup: [], sourceHashes: {},
         limits: ['Dense actions enter the real indexing queue; they do not measure SHIP action decoding.',
             'Actual genesis blocks traverse the production master, readers, deserializers and indexers.',
-            'Controlled bulk-response gating is a sink stall, not proof of native ES saturation.',
+            'Controlled bulk-request forwarding gates are sink stalls, not proof of native ES saturation.',
             'Observer/proxy overhead and other host workloads preclude a runtime speed ranking.']};
     let master: ChildProcess | undefined; let broker: any; let publisher: any; let producerTask: Promise<void> | undefined;
     let client: Client | undefined; let proxy: ReturnType<typeof createServer> | undefined;
@@ -138,6 +186,7 @@ export async function runWorkerQualification(stateFile: string, outputDirectory:
         const deadline = performance.now() + timeout; let error: any;
         while (performance.now() < deadline) {
             if (master && master.exitCode !== null) throw new Error(`master exited ${master.exitCode}`);
+            if (producerError) throw producerError;
             try { const value = await check(); if (value && performance.now() <= deadline) return value; } catch (e) { error = e; }
             await sleep(250);
         }
@@ -196,7 +245,7 @@ export async function runWorkerQualification(stateFile: string, outputDirectory:
         });
         proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening');
         const proxyPort = (proxy.address() as any).port; const controlPort = await freePort();
-        report.proxy = {url: `http://127.0.0.1:${proxyPort}`, mode: 'forward every request, optionally hold bulk responses'};
+        report.proxy = {url: `http://127.0.0.1:${proxyPort}`, mode: 'gate bulk request forwarding before Elasticsearch dispatch'};
         await mkdir(join(outputDir, 'config'));
         await mkdir(join(outputDir, 'config', 'chains'));
         await writeFile(join(outputDir, 'package.json'), await readFile(join(repo, 'package.json')), {flag: 'wx'});
@@ -231,7 +280,7 @@ export async function runWorkerQualification(stateFile: string, outputDirectory:
         master = spawn(process.execPath, ['--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href,
             join(repo, 'build/indexer/launcher.js')], {cwd: outputDir, env: {...process.env, CONFIG_JSON: configFile,
             CHAIN_NAME: chain, ES198_OBSERVER_DIR: join(outputDir, 'observer'), ES198_CPU_PROFILE: profile ? '1' : '0',
-            ES198_PROFILE_MAX_MS: '900000'},
+            ES198_PROFILE_MAX_MS: String(observerMaximumDurationMs)},
             stdio: ['ignore', stdout.fd, stderr.fd, 'ipc']});
         master.on('error', error => { report.masterProcessErrors ??= []; report.masterProcessErrors.push(String(error)); });
         await stdout.close(); await stderr.close(); report.masterPid = master.pid;
@@ -242,9 +291,16 @@ export async function runWorkerQualification(stateFile: string, outputDirectory:
             const q = await queues(); assert.ok(q.some(row => row.name === actionQueue && row.consumers === 1));
             const blocks = await client!.count({index: `${chain}-block-*`}); assert.ok(blocks.count > 0); return workers;
         }, 120_000);
-        const connecting = connect(state.core.broker.url, {timeout: 10000});
+        const captureAmqpError = (source: string, error: Error) => {
+            report.amqpErrors ??= []; report.amqpErrors.push({source, at: Date.now(), message: error.message});
+            producerError ??= error;
+        };
+        const connecting = connect(state.core.broker.url, {timeout: 10000})
+            .then(connection => observeAmqpErrors(connection, 'connection', captureAmqpError));
         connecting.then(connection => { if (stopping) (connection as any).connection.stream.destroy(); }).catch(() => {});
-        broker = await bounded(connecting, 'AMQP connect'); publisher = await bounded(broker.createConfirmChannel(), 'publisher creation');
+        broker = await bounded(connecting, 'AMQP connect');
+        publisher = await bounded(broker.createConfirmChannel()
+            .then((channel: any) => observeAmqpErrors(channel, 'publisher', captureAmqpError)), 'publisher creation');
         assert.equal((await bounded<any>(publisher.checkQueue(actionQueue), 'action queue check')).consumerCount, 1);
         producerTask = (async () => {
             while (!stopping) {
@@ -431,10 +487,8 @@ export async function runWorkerQualification(stateFile: string, outputDirectory:
             if (master.exitCode === null) master.kill();
             try {
                 const rows = await events(); report.shutdownEvents = rows.filter(row => ['shutdown', 'exit'].includes(row.kind));
-                const shutdown = rows.find(row => row.kind === 'shutdown' && row.pid === report.masterPid);
-                assert.ok(shutdown?.success, 'full-worker shutdown did not complete cleanly');
-                assert.ok(rows.filter(row => row.kind === 'start').every(start =>
-                    rows.some(row => row.kind === 'exit' && row.pid === start.pid)), 'owned worker exit evidence missing');
+                report.masterExit = {code: master.exitCode, signal: master.signalCode};
+                const shutdown = assertSuccessfulWorkerShutdown(rows, report.masterPid, master.exitCode, master.signalCode);
                 report.cleanup.push({name: 'workers', ok: true, shutdown});
             } catch (error) { report.cleanup.push({name: 'workers', ok: false, error: String(error)}); report.status = 'failed'; }
         }
@@ -446,6 +500,10 @@ export async function runWorkerQualification(stateFile: string, outputDirectory:
             }
         }
         if (proxy) { proxy.closeAllConnections(); await new Promise<void>(resolve => proxy!.close(() => resolve())); }
+        if (producerError) {
+            report.status = 'failed';
+            report.error ??= {message: String(producerError.message ?? producerError), stack: producerError.stack};
+        }
         report.completedAt = new Date().toISOString(); await reportFile.writeFile(JSON.stringify(report, null, 2) + '\n'); await reportFile.close();
     }
     return report;
