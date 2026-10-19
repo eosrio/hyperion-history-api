@@ -34,4 +34,29 @@ jobs:
       - name: Verify Elasticsearch clock-control evidence checksums
         working-directory: docs/performance/evidence/es955-clock-20261018
         run: sha256sum -c SHA256SUMS
+      - name: Verify Elasticsearch failure-recovery evidence checksums
+        working-directory: docs/performance/evidence/es955-failures-20261019
+        run: sha256sum -c SHA256SUMS
+      - name: Verify Elasticsearch review follow-up evidence checksums
+        working-directory: docs/performance/evidence/es955-failure-review-20261019
+        run: sha256sum -c SHA256SUMS
       - run: bun test tests/unit
+
+  es955-fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile disposable fixture and check production result consumers
+        env:
+          ES_IMAGE: docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c
+        run: |
+          output="$(mktemp -d)"
+          for script in build.sh check-late-results.sh
+          do
+            docker run --rm --network none --cpus 2 --memory 1g \
+              --user "$(id -u):$(id -g)" --entrypoint /bin/bash \
+              --mount "type=bind,src=$PWD/scripts/qualification/fixture,dst=/fixture,readonly" \
+              --mount "type=bind,src=$output,dst=/output" \
+              "$ES_IMAGE" "/fixture/$script"
+          done
+          printf '42d8f960965927ca1a716c900dfe651c2c93412724e320a71e8c72686eac2456  %s\n' "$output/hyperion-qualifier.jar" | sha256sum -c -

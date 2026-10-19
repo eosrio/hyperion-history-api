@@ -1,0 +1,393 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-19T03:55:00.881Z",
+  "baseCommit": "de8b19053486a820e51d690e1653d9684ccc2de1",
+  "sourceState": "Harness and fixture source recorded by SHA256 before commit; final raw reports independently record measured source hashes.",
+  "image": "docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c",
+  "serverCommit": "48acba663b09e70b115dd879329141506c377890",
+  "fixture": {
+    "clusterName": "hyperion-es198-835e92b67eee",
+    "cpuLimit": 4,
+    "memoryLimitBytes": 3221225472,
+    "containerId": "3c05017ab512fcdda441a411b26b295be5d4a1342ea019a11a4e29ee951bde97",
+    "heap": "1g",
+    "run": "835e92b67eee",
+    "pluginDirectory": "C:\\Users\\igorl\\.codex\\scratch\\es198-fault-build13",
+    "image": "docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c",
+    "container": "hyp-es955-failure-835e92b67eee",
+    "dockerArgs": [
+      "run",
+      "-d",
+      "--name",
+      "hyp-es955-failure-835e92b67eee",
+      "--label",
+      "io.eosrio.qualifier=es198-failures",
+      "--label",
+      "io.eosrio.run=835e92b67eee",
+      "--cpus",
+      "4",
+      "--memory",
+      "3g",
+      "-p",
+      "127.0.0.1::9200",
+      "--mount",
+      "type=volume,src=hyp-es955-failure-835e92b67eee-data,dst=/usr/share/elasticsearch/data",
+      "--mount",
+      "type=bind,src=C:\\Users\\igorl\\.codex\\scratch\\es198-fault-build13,dst=/usr/share/elasticsearch/plugins/hyperion-qualifier,readonly",
+      "-e",
+      "cluster.name=hyperion-es198-835e92b67eee",
+      "-e",
+      "node.name=hyp-es955-failure-835e92b67eee",
+      "-e",
+      "discovery.type=single-node",
+      "-e",
+      "xpack.security.enabled=false",
+      "-e",
+      "xpack.security.autoconfiguration.enabled=false",
+      "-e",
+      "xpack.ml.enabled=false",
+      "-e",
+      "ingest.geoip.downloader.enabled=false",
+      "-e",
+      "cluster.routing.allocation.disk.watermark.low=20gb",
+      "-e",
+      "cluster.routing.allocation.disk.watermark.high=10gb",
+      "-e",
+      "cluster.routing.allocation.disk.watermark.flood_stage=5gb",
+      "-e",
+      "ES_JAVA_OPTS=-Xms1g -Xmx1g",
+      "docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c"
+    ],
+    "createdAt": "2026-10-19T03:26:16.7602684Z",
+    "pluginJarSha256": "b4b5dc18a313d2d1ed409843ec88b2e0f130fd6d99dda3ce8afaacbaac7622d1",
+    "volume": "hyp-es955-failure-835e92b67eee-data",
+    "clusterUuid": "DYiEZJsZSjusjItnLkAyzw",
+    "url": "http://127.0.0.1:58548"
+  },
+  "node": {
+    "version": "v24.19.0",
+    "platform": "win32",
+    "arch": "x64",
+    "executableSha256": "3602f2bb1a10f2cbab4c36886218a33c1ab3db87290e73b033c46c77147d0237"
+  },
+  "bun": {
+    "version": "1.4.3",
+    "executableSha256": "095db4abae203d42f29fdec26da4a882fcde6333cdd84e40c0c7828c0cf543f6"
+  },
+  "sourceFiles": [
+    {
+      "path": "scripts/qualification/es955-failures.ts",
+      "bytes": 24287,
+      "sha256": "cfaacacbd00388df176ff46d2dcda32f6ba9d5338e55c3c11094e9bfbf94bd6c"
+    },
+    {
+      "path": "scripts/qualification/fixture/HyperionQualifierPlugin.java",
+      "bytes": 16615,
+      "sha256": "aebe33fec3e6c58fc9ef1e32bdd450c0b98d8645d26b46e62790e533f239f2d9"
+    },
+    {
+      "path": "scripts/qualification/fixture/HyperionLateResultCheck.java",
+      "bytes": 15065,
+      "sha256": "7b37cad36f2a1e439f9e043d78a44bd49152762b7c02bf4d4485604928b4717b"
+    },
+    {
+      "path": "scripts/qualification/fixture/build.sh",
+      "bytes": 935,
+      "sha256": "0c87898a9aa108544ea81f628a58f70512c8e25f5831af667b1e9596bd8b9b77"
+    },
+    {
+      "path": "scripts/qualification/fixture/check-late-results.sh",
+      "bytes": 700,
+      "sha256": "879f2e8037924f9895f228e1c758e8482f7a87142b614f942aa3f89fd14e342e"
+    },
+    {
+      "path": "scripts/qualification/tsconfig.json",
+      "bytes": 364,
+      "sha256": "0156fcff3745521452a4d71a7310b013adb91bb9de2659c98f076c78384d21e8"
+    },
+    {
+      "path": "build/api/routes/v2-history/get_actions/functions.js",
+      "bytes": 10670,
+      "sha256": "91a0358de5a910663b9dafd1d132b815a94186739e6dfcef81150a2ce6ddda52"
+    },
+    {
+      "path": "build/indexer/helpers/es-connection.js",
+      "bytes": 1566,
+      "sha256": "f83d17954e0bb29bfd70ae226adf80040fcbb78b414276e8e6de2917702d1152"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 126283,
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "README.md",
+      "bytes": 1092,
+      "sha256": "156db89356c96475e8dac4c97c2a0753119eedf57d9c63b85b09760dc9e6ecc0"
+    },
+    {
+      "path": "cleanup.json",
+      "bytes": 488,
+      "sha256": "98d0ba57764f39b5867b84544005fd6e5099292f5444ac66aea6e50bc532472e"
+    },
+    {
+      "path": "es198-api-contract-audit-node-green.json",
+      "bytes": 7649,
+      "sha256": "cf31567f8e2daaa17e4022390726d33b2b7ac07f4ec0acebf8da545694a40bc9"
+    },
+    {
+      "path": "es198-api-contract-audit-node.mjs",
+      "bytes": 5656,
+      "sha256": "8ede3b66e619be3c34575e658137b2d37aff715a7485011b817bfe14c78cfbfd"
+    },
+    {
+      "path": "es198-api-contract-audit.json",
+      "bytes": 14513,
+      "sha256": "cf9c5ed6e5655bfc1e63fa4fa6bdacdf90530d21f7a3b1e01662ebc6553720f9"
+    },
+    {
+      "path": "es198-api-contract-audit.ts",
+      "bytes": 5372,
+      "sha256": "5886f98a6641a70fb46dce417560c5b729a821c00117350711c54df67639501d"
+    },
+    {
+      "path": "es198-api-contract-findings.md",
+      "bytes": 4097,
+      "sha256": "7d9cd2814c5cdc7ed9405a64ffa5efa903a96b2f14684dd35ffd27093d401d00"
+    },
+    {
+      "path": "es198-api-node-healthy.json",
+      "bytes": 1161,
+      "sha256": "9972d605a194ab67078adeef7a23dd5fe826cf41bfbd9c057186e83e221ea452"
+    },
+    {
+      "path": "es198-api-node-healthy.mjs",
+      "bytes": 2138,
+      "sha256": "309410bcc2c8e6c36633330fce287458b276d85487c758b596c927efba67eb42"
+    },
+    {
+      "path": "es198-failure-client-binary-hashes.json",
+      "bytes": 355,
+      "sha256": "2f4570d6a07da19bedd469714f0e449ff5f9fe9a66e6c3aed8c2b2bdc1ed58b8"
+    },
+    {
+      "path": "es198-failure-docker-version.json",
+      "bytes": 1146,
+      "sha256": "353700863285e40c6ef550dd7b7f7b90cf589c9c81ba02d4390dddb431186ac3"
+    },
+    {
+      "path": "es198-failure-draft-plugin5-state.json",
+      "bytes": 2103,
+      "sha256": "03ccf8c24215b470e4bd36e2ae3451ca7a2cfec7f7ff97675abd1dc962fb00b1"
+    },
+    {
+      "path": "es198-failure-final-inspect.json",
+      "bytes": 12806,
+      "sha256": "035ad4fbd2db8d015d01022616c0ca478277e3642d21625066f02109588dd5ab"
+    },
+    {
+      "path": "es198-failure-postflight-stats.json",
+      "bytes": 18872,
+      "sha256": "55d14f485fcadeb5e743bb8d61549cecf82f722a276848a4f94e8388cf3468cd"
+    },
+    {
+      "path": "es198-failure-restart.ps1",
+      "bytes": 1807,
+      "sha256": "def982bed8d79861fe30abe67f95f87c77e1f34b78cc83ab777db1ff7d54753a"
+    },
+    {
+      "path": "es198-failure-server-binary-hashes.txt",
+      "bytes": 225,
+      "sha256": "547ec7437bd3257266ad3d1941788d83c6dbb4e75edc433af830e03f2eb2c7b4"
+    },
+    {
+      "path": "es198-failure-source-review.md",
+      "bytes": 16639,
+      "sha256": "ab185c82005cfcfc07de85103fe5faf970f1933c37aa09715803afa30c479458"
+    },
+    {
+      "path": "es198-failure-state.json",
+      "bytes": 2105,
+      "sha256": "f1a696189d1a71249cc753802df7d1a84788f026e9118a0d0c37ec47cbdb1689"
+    },
+    {
+      "path": "es198-failures-bun-default-final.json",
+      "bytes": 18745559,
+      "sha256": "550974d9cf1ee3e419d35426264e358ee73b7953b9d3b1a72bcf56b2b53b006c"
+    },
+    {
+      "path": "es198-failures-node-control1.json",
+      "bytes": 18582047,
+      "sha256": "3cc4e8603dacc92bf5353f73094ac465590bff8dc784aba86443082c9324ad88"
+    },
+    {
+      "path": "es198-failures-node-default-final.json",
+      "bytes": 18679455,
+      "sha256": "90da879770f436cb2e9a73dd7d81d29a6b18437adc59787f4010f06a2bf71859"
+    },
+    {
+      "path": "es198-failures-node-draft1.json",
+      "bytes": 23363082,
+      "sha256": "b7f7e9a56142065a1205e938626e6c9105e3e3e50053aff3a1a812a067c55000"
+    },
+    {
+      "path": "es198-failures-node-draft2.json",
+      "bytes": 2798724,
+      "sha256": "475f90d2f3be931fb770e4c92b2c418155b019b50ca23b7ab7649c9b3d0c8171"
+    },
+    {
+      "path": "es198-failures-node-draft3.json",
+      "bytes": 3342289,
+      "sha256": "b66a7535c68524b7030379e496e1b84a5d7c32a30ce112bd032611956093c4f1"
+    },
+    {
+      "path": "es198-failures-node-draft4.json",
+      "bytes": 3106875,
+      "sha256": "e37e5a0c436614b3f875e2a2d24ea9c9b3d158414dc664315b0c8826f57c1a2c"
+    },
+    {
+      "path": "es198-failures-node-draft5.json",
+      "bytes": 3112171,
+      "sha256": "4367f257435d408541afdc38f4aa3171ec62fc89f8850719d476e67e26ce9439"
+    },
+    {
+      "path": "es198-failures-node-http-final.json",
+      "bytes": 18697187,
+      "sha256": "059b677b6b072da0b7c108b0a95bff42bc818cbdf4e01453d37baf1c7280ba64"
+    },
+    {
+      "path": "es198-failures-node-http-preaudit.json",
+      "bytes": 18522648,
+      "sha256": "a36adac9038583eb5b3147352ccdd0c24e0009fc814009132d7492f9f2b6daca"
+    },
+    {
+      "path": "es198-fastify-signal-bun.jsonl",
+      "bytes": 381,
+      "sha256": "b530a2b8d256a8596b763917b73e50669f7c82bd9e565faf5211c0992f2c52ab"
+    },
+    {
+      "path": "es198-fastify-signal-control.mjs",
+      "bytes": 1423,
+      "sha256": "577634512be8b3c229d4cb3eba54e3bcd77aae3ae298f088ab3c6d9bc0b79395"
+    },
+    {
+      "path": "es198-fastify-signal-node.jsonl",
+      "bytes": 383,
+      "sha256": "9929c6aee2786fa59c727ec0b1592fbdb998ebb3046d2636288d01a80d497f6e"
+    },
+    {
+      "path": "es198-mixed-terms-repro.json",
+      "bytes": 10711,
+      "sha256": "fc522f450c2c3d79b513c30a4150bcc30673709c161b6a12fe57cbd24bdf6fa2"
+    },
+    {
+      "path": "es198-mixed-terms-repro.mjs",
+      "bytes": 2414,
+      "sha256": "384082eae99b7eaac113cfe38fc01b4d7c0a59c278121c181d62efa048c032dc"
+    },
+    {
+      "path": "es198-mixed-terms-repro2.json",
+      "bytes": 11725,
+      "sha256": "5183ba8ec390b4be56ad33abb2dedc41a3f0b328165d256b26eeeee1e511cc61"
+    },
+    {
+      "path": "es198-mixed-terms-repro2.mjs",
+      "bytes": 2419,
+      "sha256": "9a2116fc39e915d94a9e305ddaca351a22c30790ffe5e906f67d9158ed6424f0"
+    },
+    {
+      "path": "hyperion-qualifier.jar",
+      "bytes": 14503,
+      "sha256": "b4b5dc18a313d2d1ed409843ec88b2e0f130fd6d99dda3ce8afaacbaac7622d1"
+    },
+    {
+      "path": "internal-author-result.json",
+      "bytes": 418,
+      "sha256": "26172d2130a0c299feef1339e05821358b7e19af487e1723ff5adefd6d002acd"
+    },
+    {
+      "path": "internal-late-results-command.json",
+      "bytes": 632,
+      "sha256": "c15db5defd2382459b997cc107e68ecbba27319af58431fde0211f4f7789190f"
+    },
+    {
+      "path": "internal-late-results.json",
+      "bytes": 419,
+      "sha256": "6fdace30af30ab4002cbcacd50ab51e76c846c6682c1e4b3a3161213c5e65be8"
+    },
+    {
+      "path": "internal-root-stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "internal-root-stdout.txt",
+      "bytes": 419,
+      "sha256": "6fdace30af30ab4002cbcacd50ab51e76c846c6682c1e4b3a3161213c5e65be8"
+    },
+    {
+      "path": "source/scripts/qualification/es955-failures.ts",
+      "bytes": 24287,
+      "sha256": "cfaacacbd00388df176ff46d2dcda32f6ba9d5338e55c3c11094e9bfbf94bd6c"
+    },
+    {
+      "path": "source/scripts/qualification/es955.ts",
+      "bytes": 22531,
+      "sha256": "78a1b7ed891eb1d6226d32400a3c360a0471c8f6caa47f94dcc6b6438cbe4be9"
+    },
+    {
+      "path": "source/scripts/qualification/fixture/HyperionLateResultCheck.java",
+      "bytes": 15065,
+      "sha256": "7b37cad36f2a1e439f9e043d78a44bd49152762b7c02bf4d4485604928b4717b"
+    },
+    {
+      "path": "source/scripts/qualification/fixture/HyperionQualifierPlugin.java",
+      "bytes": 16615,
+      "sha256": "aebe33fec3e6c58fc9ef1e32bdd450c0b98d8645d26b46e62790e533f239f2d9"
+    },
+    {
+      "path": "source/scripts/qualification/fixture/README.md",
+      "bytes": 6557,
+      "sha256": "561a5895bebae6203152a5a3e172dd22ed12e0ef578ff70f78e3c5640a2e35a1"
+    },
+    {
+      "path": "source/scripts/qualification/fixture/build.sh",
+      "bytes": 935,
+      "sha256": "0c87898a9aa108544ea81f628a58f70512c8e25f5831af667b1e9596bd8b9b77"
+    },
+    {
+      "path": "source/scripts/qualification/fixture/check-late-results.sh",
+      "bytes": 700,
+      "sha256": "879f2e8037924f9895f228e1c758e8482f7a87142b614f942aa3f89fd14e342e"
+    },
+    {
+      "path": "source/scripts/qualification/fixture/plugin-descriptor.properties",
+      "bytes": 277,
+      "sha256": "bb7a454e62b4fa8d724e883d97a41d35ca8ddb5b310ed9c07a17f7cf69b527c7"
+    },
+    {
+      "path": "source/scripts/qualification/tsconfig.json",
+      "bytes": 364,
+      "sha256": "0156fcff3745521452a4d71a7310b013adb91bb9de2659c98f076c78384d21e8"
+    },
+    {
+      "path": "source-review-status.json",
+      "bytes": 717,
+      "sha256": "8a9a72b1e136961c6436beb91446a3a3dd50e3ad848e9ae24dad15ccb969931e"
+    }
+  ],
+  "supersededArtifacts": [
+    {
+      "path": "es198-failure-source-review.md",
+      "statusFile": "source-review-status.json"
+    }
+  ],
+  "sourceReferences": [
+    "https://github.com/elastic/elasticsearch/blob/48acba663b09e70b115dd879329141506c377890/server/src/main/java/org/elasticsearch/action/search/TransportSearchAction.java#L2199-L2206",
+    "https://github.com/elastic/elasticsearch/blob/48acba663b09e70b115dd879329141506c377890/server/src/test/java/org/elasticsearch/action/search/ArraySearchPhaseResultsTests.java",
+    "https://github.com/elastic/elasticsearch/blob/48acba663b09e70b115dd879329141506c377890/server/src/test/java/org/elasticsearch/action/search/QueryPhaseResultConsumerTests.java",
+    "https://github.com/elastic/elasticsearch/blob/48acba663b09e70b115dd879329141506c377890/server/src/internalClusterTest/java/org/elasticsearch/search/SearchTimeoutIT.java#L684"
+  ]
+}

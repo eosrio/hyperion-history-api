@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "localDate": "2026-10-19",
+  "scope": "Fresh qualification after PR203 evidence-oracle review",
+  "runs": [
+    {
+      "name": "node-http",
+      "report": "es198-pr203-node-http.json",
+      "status": "passed",
+      "trials": 87,
+      "trialKinds": {
+        "healthy-control": 12,
+        "precollection-timeout": 20,
+        "strict-precollection-timeout": 10,
+        "collection-deadline": 10,
+        "partial-shard-failure": 10,
+        "strict-shard-failure": 10,
+        "http-abort": 5,
+        "task-cancel": 5,
+        "late-script-after-client-abort": 5
+      },
+      "acknowledgedDocuments": 1000,
+      "runtime": {
+        "node": "v24.19.0",
+        "bun": null,
+        "selected_connection": "HttpConnection"
+      },
+      "startedAt": "2026-10-19T05:10:37.013Z",
+      "completedAt": "2026-10-19T05:10:55.848Z",
+      "verifiedCollectionDeadlines": 10,
+      "verifiedHttpTaskCancellations": 5,
+      "verifiedExplicitTaskCancellations": 5,
+      "maxPerCaseRecoveryMs": 1845.6364999999996,
+      "peakSampledRequestBreakerBytes": 2104,
+      "finalCounters": {
+        "PD4XeCEwRfiekupqwA7cFA": {
+          "requestBytes": 0,
+          "requestTrips": 0,
+          "openContexts": 0,
+          "queryCurrent": 0,
+          "fetchCurrent": 0,
+          "heapBytes": 127217280,
+          "gc": {
+            "young": {
+              "collection_count": 16,
+              "collection_time_in_millis": 161
+            },
+            "G1 Concurrent GC": {
+              "collection_count": 10,
+              "collection_time_in_millis": 24
+            },
+            "old": {
+              "collection_count": 0,
+              "collection_time_in_millis": 0
+            }
+          }
+        }
+      },
+      "cleanup": [
+        {
+          "index": "hyp-es955-3eaca7c1373chttp-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-3eaca7c1373chttp-fail",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-3eaca7c1373chttp-slow",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-3eaca7c1373chttp-healthy",
+          "ok": true
+        }
+      ],
+      "sourceHashes": {
+        "scripts/qualification/es955-failures.ts": "321e9423e7cfccc795ec0a5ced0a8f13dd1bcd5c77c7d9c4e1eb3f7f1c21fb02",
+        "scripts/qualification/fixture/HyperionQualifierPlugin.java": "c3783847c586d930126ee32cc45e8724ca2409b64d1b38f0eecb44467a48bc31",
+        "build/api/routes/v2-history/get_actions/functions.js": "91a0358de5a910663b9dafd1d132b815a94186739e6dfcef81150a2ce6ddda52",
+        "build/indexer/helpers/es-connection.js": "f83d17954e0bb29bfd70ae226adf80040fcbb78b414276e8e6de2917702d1152",
+        "package-lock.json": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+      }
+    },
+    {
+      "name": "node-default",
+      "report": "es198-pr203-node-default.json",
+      "status": "passed",
+      "trials": 87,
+      "trialKinds": {
+        "healthy-control": 12,
+        "precollection-timeout": 20,
+        "strict-precollection-timeout": 10,
+        "collection-deadline": 10,
+        "partial-shard-failure": 10,
+        "strict-shard-failure": 10,
+        "http-abort": 5,
+        "task-cancel": 5,
+        "late-script-after-client-abort": 5
+      },
+      "acknowledgedDocuments": 1000,
+      "runtime": {
+        "node": "v24.19.0",
+        "bun": null,
+        "selected_connection": "UndiciConnection"
+      },
+      "startedAt": "2026-10-19T05:11:24.144Z",
+      "completedAt": "2026-10-19T05:11:41.883Z",
+      "verifiedCollectionDeadlines": 10,
+      "verifiedHttpTaskCancellations": 5,
+      "verifiedExplicitTaskCancellations": 5,
+      "maxPerCaseRecoveryMs": 1786.155999999999,
+      "peakSampledRequestBreakerBytes": 2104,
+      "finalCounters": {
+        "PD4XeCEwRfiekupqwA7cFA": {
+          "requestBytes": 0,
+          "requestTrips": 0,
+          "openContexts": 0,
+          "queryCurrent": 0,
+          "fetchCurrent": 0,
+          "heapBytes": 672476800,
+          "gc": {
+            "young": {
+              "collection_count": 16,
+              "collection_time_in_millis": 161
+            },
+            "G1 Concurrent GC": {
+              "collection_count": 10,
+              "collection_time_in_millis": 24
+            },
+            "old": {
+              "collection_count": 0,
+              "collection_time_in_millis": 0
+            }
+          }
+        }
+      },
+      "cleanup": [
+        {
+          "index": "hyp-es955-3eaca7c1373cnode-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-3eaca7c1373cnode-fail",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-3eaca7c1373cnode-slow",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-3eaca7c1373cnode-healthy",
+          "ok": true
+        }
+      ],
+      "sourceHashes": {
+        "scripts/qualification/es955-failures.ts": "321e9423e7cfccc795ec0a5ced0a8f13dd1bcd5c77c7d9c4e1eb3f7f1c21fb02",
+        "scripts/qualification/fixture/HyperionQualifierPlugin.java": "c3783847c586d930126ee32cc45e8724ca2409b64d1b38f0eecb44467a48bc31",
+        "build/api/routes/v2-history/get_actions/functions.js": "91a0358de5a910663b9dafd1d132b815a94186739e6dfcef81150a2ce6ddda52",
+        "build/indexer/helpers/es-connection.js": "f83d17954e0bb29bfd70ae226adf80040fcbb78b414276e8e6de2917702d1152",
+        "package-lock.json": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+      }
+    },
+    {
+      "name": "bun-default",
+      "report": "es198-pr203-bun-default.json",
+      "status": "passed",
+      "trials": 87,
+      "trialKinds": {
+        "healthy-control": 12,
+        "precollection-timeout": 20,
+        "strict-precollection-timeout": 10,
+        "collection-deadline": 10,
+        "partial-shard-failure": 10,
+        "strict-shard-failure": 10,
+        "http-abort": 5,
+        "task-cancel": 5,
+        "late-script-after-client-abort": 5
+      },
+      "acknowledgedDocuments": 1000,
+      "runtime": {
+        "node": "v26.3.0",
+        "bun": "1.4.3",
+        "selected_connection": "HttpConnection"
+      },
+      "startedAt": "2026-10-19T05:12:18.549Z",
+      "completedAt": "2026-10-19T05:12:36.069Z",
+      "verifiedCollectionDeadlines": 10,
+      "verifiedHttpTaskCancellations": 5,
+      "verifiedExplicitTaskCancellations": 5,
+      "maxPerCaseRecoveryMs": 1740.4394000000002,
+      "peakSampledRequestBreakerBytes": 2104,
+      "finalCounters": {
+        "PD4XeCEwRfiekupqwA7cFA": {
+          "requestBytes": 0,
+          "requestTrips": 0,
+          "openContexts": 0,
+          "queryCurrent": 0,
+          "fetchCurrent": 0,
+          "heapBytes": 626056576,
+          "gc": {
+            "young": {
+              "collection_count": 17,
+              "collection_time_in_millis": 178
+            },
+            "G1 Concurrent GC": {
+              "collection_count": 10,
+              "collection_time_in_millis": 24
+            },
+            "old": {
+              "collection_count": 0,
+              "collection_time_in_millis": 0
+            }
+          }
+        }
+      },
+      "cleanup": [
+        {
+          "index": "hyp-es955-3eaca7c1373cbun-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-3eaca7c1373cbun-fail",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-3eaca7c1373cbun-slow",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-3eaca7c1373cbun-healthy",
+          "ok": true
+        }
+      ],
+      "sourceHashes": {
+        "scripts/qualification/es955-failures.ts": "321e9423e7cfccc795ec0a5ced0a8f13dd1bcd5c77c7d9c4e1eb3f7f1c21fb02",
+        "scripts/qualification/fixture/HyperionQualifierPlugin.java": "c3783847c586d930126ee32cc45e8724ca2409b64d1b38f0eecb44467a48bc31",
+        "build/api/routes/v2-history/get_actions/functions.js": "91a0358de5a910663b9dafd1d132b815a94186739e6dfcef81150a2ce6ddda52",
+        "build/indexer/helpers/es-connection.js": "f83d17954e0bb29bfd70ae226adf80040fcbb78b414276e8e6de2917702d1152",
+        "package-lock.json": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+      }
+    }
+  ],
+  "totalTrials": 261,
+  "verifiedCollectionDeadlines": 30,
+  "verifiedHttpTaskCancellations": 15,
+  "verifiedExplicitTaskCancellations": 15,
+  "cleanup": {
+    "remainingSearchTasks": 0,
+    "remainingKeys": 0,
+    "remainingOwnedVolumes": 0,
+    "remainingOwnedContainers": 0,
+    "container": "hyp-es955-review-3eaca7c1373c",
+    "volumeRemoved": true,
+    "remainingIndices": 0,
+    "volume": "hyp-es955-review-3eaca7c1373c-data",
+    "containerRemoved": true,
+    "run": "3eaca7c1373c",
+    "completedAt": "2026-10-19T05:13:41.5150120Z"
+  },
+  "originalEvidence": "../es955-failures-20261019",
+  "limits": [
+    "Same bounded synthetic single-node corpus; zero replicas; unchanged server/client pins",
+    "Original 261 cases retained separately; independent raw-event audit confirmed their intended paths",
+    "Separate retained native counters establish which exception occurred, even after diagnostic event eviction",
+    "Resource-accounting recovery is not sustained memory-pressure, heap-leak freedom or runtime performance qualification"
+  ]
+}

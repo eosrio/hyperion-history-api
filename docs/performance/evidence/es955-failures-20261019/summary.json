@@ -1,0 +1,583 @@
+{
+  "schemaVersion": 1,
+  "localDate": "2026-10-19",
+  "scope": "Finite ES9.5.5 timeout, shard-failure, cancellation and exposed-accounting recovery qualification",
+  "runs": [
+    {
+      "name": "node-http",
+      "report": "es198-failures-node-http-final.json",
+      "runtime": {
+        "node": "v24.19.0",
+        "bun": null,
+        "selected_connection": "HttpConnection"
+      },
+      "startedAt": "2026-10-19T03:45:25.641Z",
+      "completedAt": "2026-10-19T03:45:43.016Z",
+      "status": "passed",
+      "acknowledgedDocuments": 1000,
+      "trials": 87,
+      "trialKinds": {
+        "healthy-control": 12,
+        "precollection-timeout": 20,
+        "strict-precollection-timeout": 10,
+        "collection-deadline": 10,
+        "partial-shard-failure": 10,
+        "strict-shard-failure": 10,
+        "http-abort": 5,
+        "task-cancel": 5,
+        "late-script-after-client-abort": 5
+      },
+      "rounds": 5,
+      "cleanup": [
+        {
+          "index": "hyp-es955-236890446f1b-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-236890446f1b-fail",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-236890446f1b-slow",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-236890446f1b-healthy",
+          "ok": true
+        }
+      ],
+      "snapshotCount": 147,
+      "finalRecoveryMs": 217.16709999999875,
+      "maxPerCaseRecoveryMs": 1831.041000000001,
+      "peakSampledRequestBreakerBytes": 2104,
+      "baselineCounters": {
+        "tZ5S_hA9SxiMbXWTKYQfwg": {
+          "requestBytes": 0,
+          "requestTrips": 0,
+          "openContexts": 0,
+          "queryCurrent": 0,
+          "fetchCurrent": 0,
+          "heapBytes": 211501600,
+          "gc": {
+            "young": {
+              "collection_count": 16,
+              "collection_time_in_millis": 173
+            },
+            "G1 Concurrent GC": {
+              "collection_count": 10,
+              "collection_time_in_millis": 24
+            },
+            "old": {
+              "collection_count": 0,
+              "collection_time_in_millis": 0
+            }
+          }
+        }
+      },
+      "finalCounters": {
+        "tZ5S_hA9SxiMbXWTKYQfwg": {
+          "requestBytes": 0,
+          "requestTrips": 0,
+          "openContexts": 0,
+          "queryCurrent": 0,
+          "fetchCurrent": 0,
+          "heapBytes": 626737696,
+          "gc": {
+            "young": {
+              "collection_count": 16,
+              "collection_time_in_millis": 173
+            },
+            "G1 Concurrent GC": {
+              "collection_count": 10,
+              "collection_time_in_millis": 24
+            },
+            "old": {
+              "collection_count": 0,
+              "collection_time_in_millis": 0
+            }
+          }
+        }
+      },
+      "heapObservationBytes": {
+        "minimum": 211501600,
+        "maximum": 626737696
+      },
+      "sourceHashes": {
+        "scripts/qualification/es955-failures.ts": "cfaacacbd00388df176ff46d2dcda32f6ba9d5338e55c3c11094e9bfbf94bd6c",
+        "scripts/qualification/fixture/HyperionQualifierPlugin.java": "aebe33fec3e6c58fc9ef1e32bdd450c0b98d8645d26b46e62790e533f239f2d9",
+        "build/api/routes/v2-history/get_actions/functions.js": "91a0358de5a910663b9dafd1d132b815a94186739e6dfcef81150a2ce6ddda52",
+        "build/indexer/helpers/es-connection.js": "f83d17954e0bb29bfd70ae226adf80040fcbb78b414276e8e6de2917702d1152",
+        "package-lock.json": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+      }
+    },
+    {
+      "name": "node-default",
+      "report": "es198-failures-node-default-final.json",
+      "runtime": {
+        "node": "v24.19.0",
+        "bun": null,
+        "selected_connection": "UndiciConnection"
+      },
+      "startedAt": "2026-10-19T03:46:11.388Z",
+      "completedAt": "2026-10-19T03:46:28.941Z",
+      "status": "passed",
+      "acknowledgedDocuments": 1000,
+      "trials": 87,
+      "trialKinds": {
+        "healthy-control": 12,
+        "precollection-timeout": 20,
+        "strict-precollection-timeout": 10,
+        "collection-deadline": 10,
+        "partial-shard-failure": 10,
+        "strict-shard-failure": 10,
+        "http-abort": 5,
+        "task-cancel": 5,
+        "late-script-after-client-abort": 5
+      },
+      "rounds": 5,
+      "cleanup": [
+        {
+          "index": "hyp-es955-f4160818fcd2-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-f4160818fcd2-fail",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-f4160818fcd2-slow",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-f4160818fcd2-healthy",
+          "ok": true
+        }
+      ],
+      "snapshotCount": 146,
+      "finalRecoveryMs": 232.33370000000286,
+      "maxPerCaseRecoveryMs": 1823.1445999999996,
+      "peakSampledRequestBreakerBytes": 2104,
+      "baselineCounters": {
+        "tZ5S_hA9SxiMbXWTKYQfwg": {
+          "requestBytes": 0,
+          "requestTrips": 0,
+          "openContexts": 0,
+          "queryCurrent": 0,
+          "fetchCurrent": 0,
+          "heapBytes": 677069344,
+          "gc": {
+            "young": {
+              "collection_count": 16,
+              "collection_time_in_millis": 173
+            },
+            "G1 Concurrent GC": {
+              "collection_count": 10,
+              "collection_time_in_millis": 24
+            },
+            "old": {
+              "collection_count": 0,
+              "collection_time_in_millis": 0
+            }
+          }
+        }
+      },
+      "finalCounters": {
+        "tZ5S_hA9SxiMbXWTKYQfwg": {
+          "requestBytes": 0,
+          "requestTrips": 0,
+          "openContexts": 0,
+          "queryCurrent": 0,
+          "fetchCurrent": 0,
+          "heapBytes": 579849728,
+          "gc": {
+            "young": {
+              "collection_count": 17,
+              "collection_time_in_millis": 190
+            },
+            "G1 Concurrent GC": {
+              "collection_count": 10,
+              "collection_time_in_millis": 24
+            },
+            "old": {
+              "collection_count": 0,
+              "collection_time_in_millis": 0
+            }
+          }
+        }
+      },
+      "heapObservationBytes": {
+        "minimum": 210750976,
+        "maximum": 677069344
+      },
+      "sourceHashes": {
+        "scripts/qualification/es955-failures.ts": "cfaacacbd00388df176ff46d2dcda32f6ba9d5338e55c3c11094e9bfbf94bd6c",
+        "scripts/qualification/fixture/HyperionQualifierPlugin.java": "aebe33fec3e6c58fc9ef1e32bdd450c0b98d8645d26b46e62790e533f239f2d9",
+        "build/api/routes/v2-history/get_actions/functions.js": "91a0358de5a910663b9dafd1d132b815a94186739e6dfcef81150a2ce6ddda52",
+        "build/indexer/helpers/es-connection.js": "f83d17954e0bb29bfd70ae226adf80040fcbb78b414276e8e6de2917702d1152",
+        "package-lock.json": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+      }
+    },
+    {
+      "name": "bun-default",
+      "report": "es198-failures-bun-default-final.json",
+      "runtime": {
+        "node": "v26.3.0",
+        "bun": "1.4.3",
+        "selected_connection": "HttpConnection"
+      },
+      "startedAt": "2026-10-19T03:46:52.199Z",
+      "completedAt": "2026-10-19T03:47:09.273Z",
+      "status": "passed",
+      "acknowledgedDocuments": 1000,
+      "trials": 87,
+      "trialKinds": {
+        "healthy-control": 12,
+        "precollection-timeout": 20,
+        "strict-precollection-timeout": 10,
+        "collection-deadline": 10,
+        "partial-shard-failure": 10,
+        "strict-shard-failure": 10,
+        "http-abort": 5,
+        "task-cancel": 5,
+        "late-script-after-client-abort": 5
+      },
+      "rounds": 5,
+      "cleanup": [
+        {
+          "index": "hyp-es955-e74edfed0dd1-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-e74edfed0dd1-fail",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-e74edfed0dd1-slow",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-e74edfed0dd1-healthy",
+          "ok": true
+        }
+      ],
+      "snapshotCount": 149,
+      "finalRecoveryMs": 213.8930999999975,
+      "maxPerCaseRecoveryMs": 1743.7422000000006,
+      "peakSampledRequestBreakerBytes": 2104,
+      "baselineCounters": {
+        "tZ5S_hA9SxiMbXWTKYQfwg": {
+          "requestBytes": 0,
+          "requestTrips": 0,
+          "openContexts": 0,
+          "queryCurrent": 0,
+          "fetchCurrent": 0,
+          "heapBytes": 697290240,
+          "gc": {
+            "young": {
+              "collection_count": 17,
+              "collection_time_in_millis": 190
+            },
+            "G1 Concurrent GC": {
+              "collection_count": 10,
+              "collection_time_in_millis": 24
+            },
+            "old": {
+              "collection_count": 0,
+              "collection_time_in_millis": 0
+            }
+          }
+        }
+      },
+      "finalCounters": {
+        "tZ5S_hA9SxiMbXWTKYQfwg": {
+          "requestBytes": 0,
+          "requestTrips": 0,
+          "openContexts": 0,
+          "queryCurrent": 0,
+          "fetchCurrent": 0,
+          "heapBytes": 535546096,
+          "gc": {
+            "young": {
+              "collection_count": 18,
+              "collection_time_in_millis": 204
+            },
+            "G1 Concurrent GC": {
+              "collection_count": 10,
+              "collection_time_in_millis": 24
+            },
+            "old": {
+              "collection_count": 0,
+              "collection_time_in_millis": 0
+            }
+          }
+        }
+      },
+      "heapObservationBytes": {
+        "minimum": 170641648,
+        "maximum": 697290240
+      },
+      "sourceHashes": {
+        "scripts/qualification/es955-failures.ts": "cfaacacbd00388df176ff46d2dcda32f6ba9d5338e55c3c11094e9bfbf94bd6c",
+        "scripts/qualification/fixture/HyperionQualifierPlugin.java": "aebe33fec3e6c58fc9ef1e32bdd450c0b98d8645d26b46e62790e533f239f2d9",
+        "build/api/routes/v2-history/get_actions/functions.js": "91a0358de5a910663b9dafd1d132b815a94186739e6dfcef81150a2ce6ddda52",
+        "build/indexer/helpers/es-connection.js": "f83d17954e0bb29bfd70ae226adf80040fcbb78b414276e8e6de2917702d1152",
+        "package-lock.json": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+      }
+    }
+  ],
+  "totalFinalTrials": 261,
+  "internalProductionClassCheck": {
+    "schema_version": 1,
+    "scope": "offline-production-class-check",
+    "status": "passed",
+    "server_version": "9.5.5",
+    "java_major": 27,
+    "assertions_enabled": true,
+    "array_race_rounds": 200,
+    "query_consumer_race_rounds": 200,
+    "shards_per_round": 8,
+    "checks": 5429,
+    "early_breaker_peak_bytes": 23,
+    "final_breaker_bytes": 0,
+    "production_jar": "file:/usr/share/elasticsearch/lib/elasticsearch-9.5.5.jar",
+    "completed_at": "2026-10-19T03:48:08.082866839Z"
+  },
+  "failedDevelopmentAttempts": [
+    {
+      "report": "es198-failures-node-draft1.json",
+      "status": "failed",
+      "trialsBeforeFailure": 12,
+      "error": {
+        "message": "slow script did not enter: hyp-es955-eca2e7c32eb0-http-abort-0",
+        "stack": "Error: slow script did not enter: hyp-es955-eca2e7c32eb0-http-abort-0\n    at waitForEntry (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-failures.ts:180:15)\n    at async runFailureQualification (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-failures.ts:249:33)\n    at async file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-failures.ts:298:20"
+      },
+      "cleanup": [
+        {
+          "index": "hyp-es955-eca2e7c32eb0-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-eca2e7c32eb0-fail",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-eca2e7c32eb0-slow",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-eca2e7c32eb0-healthy",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "report": "es198-failures-node-draft2.json",
+      "status": "failed",
+      "trialsBeforeFailure": 13,
+      "error": {
+        "message": "task-cancel unexpectedly succeeded\n\ntrue !== false\n",
+        "stack": "AssertionError [ERR_ASSERTION]: task-cancel unexpectedly succeeded\n\ntrue !== false\n\n    at runFailureQualification (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-failures.ts:262:24)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-failures.ts:298:20"
+      },
+      "cleanup": [
+        {
+          "index": "hyp-es955-8643d8d7d220-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-8643d8d7d220-fail",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-8643d8d7d220-slow",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-8643d8d7d220-healthy",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "report": "es198-failures-node-draft3.json",
+      "status": "failed",
+      "trialsBeforeFailure": 14,
+      "error": {
+        "message": "mixed-type reduction did not fail before held response delivery\n\ntrue !== false\n",
+        "stack": "AssertionError [ERR_ASSERTION]: mixed-type reduction did not fail before held response delivery\n\ntrue !== false\n\n    at runFailureQualification (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-failures.ts:314:24)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-failures.ts:361:20"
+      },
+      "cleanup": [
+        {
+          "index": "hyp-es955-861eedc83ca4-late",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-861eedc83ca4-agg-d",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-861eedc83ca4-agg-c",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-861eedc83ca4-agg-b",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-861eedc83ca4-agg-a",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-861eedc83ca4-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-861eedc83ca4-fail",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-861eedc83ca4-slow",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-861eedc83ca4-healthy",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "report": "es198-failures-node-draft4.json",
+      "status": "failed",
+      "trialsBeforeFailure": 14,
+      "error": {
+        "message": "response arrived before parent failure was observed\n\n1 !== 0\n",
+        "stack": "AssertionError [ERR_ASSERTION]: response arrived before parent failure was observed\n\n1 !== 0\n\n    at runFailureQualification (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-failures.ts:320:24)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-failures.ts:361:20"
+      },
+      "cleanup": [
+        {
+          "index": "hyp-es955-4820f616ac15-late",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-4820f616ac15-agg-d",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-4820f616ac15-agg-c",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-4820f616ac15-agg-b",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-4820f616ac15-agg-a",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-4820f616ac15-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-4820f616ac15-fail",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-4820f616ac15-slow",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-4820f616ac15-healthy",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "report": "es198-failures-node-draft5.json",
+      "status": "failed",
+      "trialsBeforeFailure": 14,
+      "error": {
+        "message": "response arrived before parent failure was observed\n\n1 !== 0\n",
+        "stack": "AssertionError [ERR_ASSERTION]: response arrived before parent failure was observed\n\n1 !== 0\n\n    at runFailureQualification (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-failures.ts:320:24)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-failures.ts:364:20"
+      },
+      "cleanup": [
+        {
+          "index": "hyp-es955-27324d7357e0-late",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-27324d7357e0-agg-d",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-27324d7357e0-agg-c",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-27324d7357e0-agg-b",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-27324d7357e0-agg-a",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-27324d7357e0-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-27324d7357e0-fail",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-27324d7357e0-slow",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-27324d7357e0-healthy",
+          "ok": true
+        }
+      ]
+    }
+  ],
+  "earlierControl": {
+    "report": "es198-failures-node-control1.json",
+    "status": "passed",
+    "trials": 77,
+    "limit": "Earlier runner control before the ten strict precollection timeout cases were added; excluded from final totals."
+  },
+  "earlierPreAuditControl": {
+    "report": "es198-failures-node-http-preaudit.json",
+    "status": "passed",
+    "trials": 87,
+    "limit": "Earlier runner before recovery guards were hardened after review; excluded from final totals."
+  },
+  "apiAudit": {
+    "red": "es198-api-contract-audit.json",
+    "green": "es198-api-contract-audit-node-green.json",
+    "healthyHttp": "es198-api-node-healthy.json",
+    "sourceFixCommit": "de8b19053486a820e51d690e1653d9684ccc2de1",
+    "separateFromRealEsFixture": true
+  },
+  "cleanup": {
+    "clusterUuid": "DYiEZJsZSjusjItnLkAyzw",
+    "soleVolumeConsumerVerified": true,
+    "residualOwnedResources": 0,
+    "remainingProbeIndices": 0,
+    "volume": "hyp-es955-failure-835e92b67eee-data",
+    "volumeRemoved": true,
+    "containerRemoved": true,
+    "containerId": "3c05017ab512fcdda441a411b26b295be5d4a1342ea019a11a4e29ee951bde97",
+    "remainingSearchTasks": 0,
+    "remainingProbeKeys": 0,
+    "ownershipLabelsVerified": true,
+    "completedAt": "2026-10-19T03:48:42.2925446Z"
+  },
+  "limits": [
+    "Four synthetic single-primary indices, zero replicas; not complete API/plugin/retained-history upgrade qualification",
+    "Five finite fault waves per runtime/transport on one sequentially reused server; no runtime performance ranking",
+    "Exposed request-breaker bytes, task/context/current-work counters recover; JVM heap and GC are observations, not exact-equality or leak-free guarantees",
+    "Native plugin injects deterministic faults. No production fixture installation or live settings change.",
+    "Late bounded script completion after HTTP abort does not establish successful shard delivery after closed REST coordinator consumer",
+    "Offline production-class close/consume checks are separate internal coverage, not a replacement for full distributed integration"
+  ]
+}

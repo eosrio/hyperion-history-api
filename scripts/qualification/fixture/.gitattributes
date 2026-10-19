@@ -1,0 +1,2 @@
+build.sh text eol=lf
+check-late-results.sh text eol=lf

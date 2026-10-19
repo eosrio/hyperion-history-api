@@ -80,3 +80,10 @@ fork recovery, historical ABI correctness, or the full API/plugin surface.
 Small runs may produce no merges or pressure events. Compare repeated controlled
 runs and their raw evidence before making optimization claims. Broader release
 qualification remains tracked in [#198](https://github.com/eosrio/hyperion-history-api/issues/198).
+
+The separate [failure and recovery slice](performance/elasticsearch-9.5.5-failures.md)
+uses `scripts/qualification/es955-failures.ts` and the exact-version disposable native
+fixture in `scripts/qualification/fixture`. Its finite server cases cover timeouts,
+failed-shard policy, HTTP/task cancellation and exposed resource-accounting recovery.
+An offline production-class check covers close/late-consume separately. Neither adds
+those cases to this initial runner's scope or qualifies distributed transport ordering.
