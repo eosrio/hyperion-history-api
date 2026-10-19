@@ -41,8 +41,9 @@ export default class StateReader extends HyperionWorker {
     private assignmentId = process.env.reader_assignment;
     private rangeRequested = false;
     private confirmRange?: ReaderConfirmRange;
-    private publications = new Map<object, ConfirmChannel>();
+    private publications = new Map<object, {publisher: ConfirmChannel; deadline: number}>();
     private confirmationDeadline?: NodeJS.Timeout;
+    private confirmationDeadlineAt?: number;
     private publisherFailure?: string;
     private finishing = false;
     private liveCheckpoint?: LiveReaderCheckpoint;
@@ -155,10 +156,8 @@ export default class StateReader extends HyperionWorker {
                 // Record ownership before calling sendToQueue: a callback may
                 // fail synchronously and channel replacement cannot erase it.
                 this.publications ??= new Map();
-                this.publications.set(token, channel);
-                if (!this.confirmationDeadline) this.confirmationDeadline = setTimeout(() => {
-                    this.failPublisherRecovery('Block publisher confirmation deadline exceeded (60000ms)');
-                }, 60000).unref();
+                this.publications.set(token, {publisher: channel, deadline: performance.now() + 60000});
+                this.scheduleConfirmationDeadline();
                 let result: boolean;
                 try {
                     result = channel.sendToQueue(
@@ -170,10 +169,7 @@ export default class StateReader extends HyperionWorker {
                     },
                     (err: any) => {
                         if (!this.publications.delete(token) || this.publisherFailure) return;
-                        if (!this.publications.size && this.confirmationDeadline) {
-                            clearTimeout(this.confirmationDeadline);
-                            this.confirmationDeadline = undefined;
-                        }
+                        this.scheduleConfirmationDeadline();
                         const successful = !err && channel === this.cch;
                         range?.settle(token, d.num, successful);
                         if (err) {
@@ -264,7 +260,7 @@ export default class StateReader extends HyperionWorker {
 
         if (this.cch) {
             const publisher = this.cch;
-            if (Array.from(this.publications?.values() ?? []).some(channel => channel !== publisher)) {
+            if (Array.from(this.publications?.values() ?? []).some(publication => publication.publisher !== publisher)) {
                 this.failPublisherRecovery('Publisher replaced with unknown block confirmations');
                 return;
             }
@@ -427,21 +423,57 @@ export default class StateReader extends HyperionWorker {
         });
     }
 
+    private scheduleConfirmationDeadline() {
+        // Map insertion order follows publication time. Settling a newer token
+        // cannot extend the deadline of an older, still-unconfirmed block.
+        const oldest = this.publications?.values().next().value;
+        if (oldest && this.confirmationDeadline && this.confirmationDeadlineAt === oldest.deadline) return;
+        if (this.confirmationDeadline) clearTimeout(this.confirmationDeadline);
+        this.confirmationDeadline = undefined;
+        this.confirmationDeadlineAt = undefined;
+        if (!oldest || this.publisherFailure) return;
+        this.confirmationDeadlineAt = oldest.deadline;
+        const timer = setTimeout(() => {
+            if (this.confirmationDeadline !== timer) return;
+            this.confirmationDeadline = undefined;
+            this.confirmationDeadlineAt = undefined;
+            const pending = this.publications.values().next().value;
+            if (pending && pending.deadline <= performance.now()) {
+                this.failPublisherRecovery('Block publisher confirmation deadline exceeded (60000ms)');
+            } else this.scheduleConfirmationDeadline();
+        }, Math.max(0, oldest.deadline - performance.now())).unref();
+        this.confirmationDeadline = timer;
+    }
+
     async finishReader(): Promise<void> {
+        const deadline = performance.now() + 10000;
         this.finishing = true;
         this.allowRequests = false;
         this.ship.close(true);
-        const deadline = Date.now() + 10000;
         while (!this.stageOneDistQueue.idle() || this.publications.size || !this.blockReadingQueue.idle()) {
             if (this.publisherFailure) throw new Error(this.publisherFailure);
-            if (Date.now() >= deadline) throw new Error('Reader finish deadline exceeded');
+            if (performance.now() >= deadline) throw new Error('Reader finish deadline exceeded');
             await new Promise(resolve => setTimeout(resolve, 5));
         }
         if (this.publisherFailure || !this.confirmRange?.complete) throw new Error(this.publisherFailure ?? 'Reader range is incomplete');
         if (this.completionMonitoring) clearInterval(this.completionMonitoring);
         this.profiler.stopReporting();
-        await this.cch?.close();
-        await this.ch?.close();
+        for (const channel of [this.cch, this.ch]) {
+            if (!channel) continue;
+            const remaining = deadline - performance.now();
+            if (remaining <= 0) throw new Error('Reader finish deadline exceeded');
+            let timeout: NodeJS.Timeout | undefined;
+            try {
+                await Promise.race([
+                    new Promise<never>((_resolve, reject) => {
+                        timeout = setTimeout(() => reject(new Error('Reader finish deadline exceeded')), remaining);
+                    }),
+                    channel.close()
+                ]);
+            } finally {
+                if (timeout) clearTimeout(timeout);
+            }
+        }
     }
 
     private signalReaderCompletion() {
@@ -1146,6 +1178,8 @@ export default class StateReader extends HyperionWorker {
         this.blockReadingQueue?.pause();
         if (this.completionMonitoring) clearInterval(this.completionMonitoring);
         if (this.confirmationDeadline) clearTimeout(this.confirmationDeadline);
+        this.confirmationDeadline = undefined;
+        this.confirmationDeadlineAt = undefined;
         process.send?.({event: 'reader_recovery_required', error: reason, assignment_id: this.assignmentId});
         hLog(`Reader publication outcome incomplete; supervised source replay required: ${reason}`);
         this.ship?.close(true);

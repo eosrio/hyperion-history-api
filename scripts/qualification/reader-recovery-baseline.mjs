@@ -193,6 +193,7 @@ async function main() {
         if (cleanup.length) {report.status = 'failed'; report.error ??= cleanup.join('; ');}
         writeFileSync(join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');
     }
+    if (report.status !== 'defects-reproduced') process.exitCode = 1;
     console.log(JSON.stringify({status: report.status, cases: report.cases.length, output}));
 }
 

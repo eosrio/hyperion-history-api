@@ -4,7 +4,8 @@ import {describe, expect, it} from 'bun:test';
 // Isolate that real import in a child, with owned temporary configuration and no
 // worker construction or network connections. Production methods remain intact.
 async function probe(body: string, fails = false) {
-    const source = new URL('../../src/indexer/workers/state-reader.ts', import.meta.url).href;
+    const node = process.env.READER_RECOVERY_NODE;
+    const source = new URL(node ? '../../build/indexer/workers/state-reader.js' : '../../src/indexer/workers/state-reader.ts', import.meta.url).href;
     const asyncSource = new URL('../../node_modules/async/dist/async.mjs', import.meta.url).href;
     const script = `
         import assert from 'node:assert/strict';
@@ -67,13 +68,47 @@ async function probe(body: string, fails = false) {
                 return {reader, ch, cch, sent, confirms, queue, publisher, confirmed: () => confirmed,
                     allowWrite: () => {allowWrite = true;}, completions: () => completions};
             }
+            function virtualClock() {
+                let now = 0;
+                const timers = new Map();
+                const nativeSetTimeout = globalThis.setTimeout;
+                const nativeClearTimeout = globalThis.clearTimeout;
+                const nativeNow = Object.getOwnPropertyDescriptor(performance, 'now');
+                Object.defineProperty(performance, 'now', {configurable: true, value: () => now});
+                globalThis.setTimeout = (callback, delay, ...args) => {
+                    if (delay <= 5) return nativeSetTimeout(callback, delay, ...args);
+                    const timer = {at: now + delay, fire: () => callback(...args), unref() {return this;}};
+                    timers.set(timer, timer);
+                    return timer;
+                };
+                globalThis.clearTimeout = timer => {
+                    if (!timers.delete(timer)) nativeClearTimeout(timer);
+                };
+                return {
+                    timers,
+                    advance(milliseconds) {
+                        now += milliseconds;
+                        for (const timer of [...timers.values()].sort((a, b) => a.at - b.at))
+                            if (timer.at <= now && timers.delete(timer)) timer.fire();
+                    },
+                    bounded(promise) {
+                        return Promise.race([promise, new Promise(resolve => nativeSetTimeout(() => resolve('unbounded'), 100))]);
+                    },
+                    restore() {
+                        globalThis.setTimeout = nativeSetTimeout;
+                        globalThis.clearTimeout = nativeClearTimeout;
+                        if (nativeNow) Object.defineProperty(performance, 'now', nativeNow);
+                        else delete performance.now;
+                    }
+                };
+            }
             ${body}
             console.log('reader-drain-probe-passed');
         } finally {
             cleanup();
         }
     `;
-    const child = Bun.spawn([process.execPath, '--eval', script], {stdout: 'pipe', stderr: 'pipe'});
+    const child = Bun.spawn([node ?? process.execPath, ...(node ? ['--input-type=module'] : []), '--eval', script], {stdout: 'pipe', stderr: 'pipe'});
     const [code, stdout, stderr] = await Promise.all([
         child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()
     ]);
@@ -85,6 +120,89 @@ async function probe(body: string, fails = false) {
 }
 
 describe('StateReader confirm-channel backpressure', () => {
+    it('keeps overlapping healthy confirms alive beyond a full confirmation window', async () => {
+        await probe(`
+            const clock = virtualClock();
+            try {
+                const f = fixture(true, false); f.allowWrite();
+                const failures = [];
+                f.reader.failPublisherRecovery = reason => failures.push(reason);
+                const publish = num => f.reader.recursiveDistribute([{num, content: Buffer.from(String(num))}], f.cch, () => {});
+                publish(1);
+                for (let num = 2; num <= 70; num++) {
+                    clock.advance(1000); publish(num); f.confirms[num - 2]();
+                    assert.deepEqual(failures, [], 'healthy one-second confirms must not expire');
+                }
+                f.confirms.at(-1)();
+                assert.equal(f.reader.publications.size, 0);
+                assert.equal(clock.timers.size, 0, 'drained confirmation timer remains armed');
+            } finally {clock.restore();}
+        `);
+    }, 15000);
+
+    it('does not postpone a lost older confirm when a newer publication settles', async () => {
+        await probe(`
+            const clock = virtualClock();
+            try {
+                const f = fixture(true, false); f.allowWrite();
+                const failures = [];
+                f.reader.failPublisherRecovery = reason => failures.push(reason);
+                f.reader.recursiveDistribute([{num: 1, content: Buffer.from('one')}], f.cch, () => {});
+                clock.advance(30000);
+                f.reader.recursiveDistribute([{num: 2, content: Buffer.from('two')}], f.cch, () => {});
+                clock.advance(1000); f.confirms[1]();
+                clock.advance(28999); assert.equal(failures.length, 0);
+                clock.advance(1); assert.equal(failures.length, 1);
+                assert.match(failures[0], /confirmation deadline exceeded/);
+            } finally {clock.restore();}
+        `);
+    }, 15000);
+
+    it.each(['confirm', 'ordinary'])('bounds a stalled %s channel close by the reader finish deadline', async channel => {
+        await probe(`
+            const clock = virtualClock();
+            try {
+                const f = fixture();
+                f.reader.publications = new Map(); f.reader.confirmRange = {complete: true};
+                f.reader.blockReadingQueue = {idle: () => true};
+                f.reader.ship = {close() {}}; f.reader.profiler = {stopReporting() {}};
+                const closed = [];
+                f.cch.close = () => {closed.push('confirm'); return ${JSON.stringify(channel)} === 'confirm' ? new Promise(() => {}) : Promise.resolve();};
+                f.ch.close = () => {closed.push('ordinary'); return new Promise(() => {});};
+                const result = f.reader.finishReader().then(() => 'finished', error => error.message);
+                await sleep(0);
+                clock.advance(10000);
+                assert.equal(await clock.bounded(result), 'Reader finish deadline exceeded');
+                assert.deepEqual(closed, ${JSON.stringify(channel === 'confirm' ? ['confirm'] : ['confirm', 'ordinary'])});
+                assert.equal(clock.timers.size, 0);
+            } finally {clock.restore();}
+        `);
+    }, 15000);
+
+    it('shares one finish budget across both channel closes and clears successful deadlines', async () => {
+        await probe(`
+            const clock = virtualClock();
+            try {
+                const f = fixture();
+                f.reader.publications = new Map(); f.reader.confirmRange = {complete: true};
+                f.reader.blockReadingQueue = {idle: () => true};
+                f.reader.ship = {close() {}}; f.reader.profiler = {stopReporting() {}};
+                let release; let ordinary = false;
+                f.cch.close = () => new Promise(resolve => {release = resolve;});
+                f.ch.close = () => {ordinary = true; return new Promise(() => {});};
+                let outcome;
+                const result = f.reader.finishReader().then(() => outcome = 'finished', error => outcome = error.message);
+                clock.advance(7000); release(); await sleep(0);
+                assert.equal(ordinary, true);
+                clock.advance(2999); await sleep(0); assert.equal(outcome, undefined);
+                clock.advance(1); await clock.bounded(result);
+                assert.equal(outcome, 'Reader finish deadline exceeded');
+                assert.equal(clock.timers.size, 0);
+                f.cch.close = async () => {}; f.ch.close = async () => {};
+                await f.reader.finishReader(); assert.equal(clock.timers.size, 0);
+            } finally {clock.restore();}
+        `);
+    }, 15000);
     it.each(['nack', 'unknown-close', 'replaced', 'return'])('requires source replay after %s without unsupported completion', async failure => {
         await probe(`
             const f = fixture(false, false);

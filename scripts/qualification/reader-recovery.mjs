@@ -320,6 +320,7 @@ async function main() {
         report.finishedAt = new Date().toISOString();
         writeFileSync(join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');
     }
+    if (report.status !== 'passed') process.exitCode = 1;
     console.log(JSON.stringify({status: report.status, cases: report.cases.length, output}));
 }
 

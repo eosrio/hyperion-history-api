@@ -40,9 +40,12 @@ affected reader incomplete and pauses its automatic replay. Other workers keep
 running. Operators must restore a suitable source and restart the affected
 indexer after investigating the incomplete range.
 
-Unknown confirmations have a 60-second deadline. Clean channel-only loss has a
-one-second replacement grace period. Reader finishing has a 10-second drain
-deadline. These bounds fail closed; timing out does not manufacture progress.
+Each outstanding publication has a 60-second deadline measured with a monotonic
+clock. Confirming newer work cannot postpone a lost older confirmation, and a
+continuously nonempty healthy window does not expire just because it stays open.
+Clean channel-only loss has a one-second replacement grace period. Reader finishing
+shares one 10-second deadline across draining and both channel-close operations.
+These bounds fail closed; timing out does not manufacture progress.
 
 The master keeps these assignment and checkpoint records in memory. This work
 qualifies worker replacement while that master remains alive. It does not claim
