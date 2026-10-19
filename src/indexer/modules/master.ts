@@ -4,6 +4,7 @@ import { API, APIClient } from '@wharfkit/antelope';
 import { queue, QueueObject } from 'async';
 
 import cluster, { Worker } from 'cluster';
+import {randomUUID} from 'node:crypto';
 
 import { createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync, WriteStream } from 'fs';
 
@@ -359,7 +360,8 @@ export class HyperionMaster {
                     this.indexerMonitor.total_range = this.head - msg.block_num;
                 }
             },
-            repair_reader_ready: () => {
+            repair_reader_ready: (worker: Worker) => {
+                if (this.repairReader?.wref !== worker) return;
                 this.sendPendingRepairRanges();
             },
             kill_worker: (_worker: Worker, msg: WorkerMessage) => {
@@ -372,7 +374,11 @@ export class HyperionMaster {
                     }
                 }
             },
-            completed: (_worker: Worker, msg: WorkerMessage) => {
+            completed: (worker: Worker, msg: WorkerMessage) => {
+                const definition = this.workerMap.find(value => value.wref === worker);
+                if (!definition?.reader_assignment || definition.reader_assignment !== msg.assignment_id ||
+                    msg.id !== definition.worker_id?.toString()) return;
+                definition.reader_assignment = undefined;
                 // hLog(`Worker ${msg.id} completed range! (last assigned block: ${this.lastAssignedBlock})`);
                 if (this.repairReader && msg.id === this.repairReader.worker_id?.toString()) {
                     this.sendPendingRepairRanges();
@@ -388,20 +394,26 @@ export class HyperionMaster {
                         }
                         this.lastAssignedBlock = end;
                         this.activeReadersCount++;
+                        this.retainReaderAssignment(definition, start, end);
                         messageAllWorkers(cluster, {
                             event: 'new_range',
                             target: msg.id,
                             data: {
                                 first_block: start,
-                                last_block: end
+                                last_block: end,
+                                assignment_id: definition.reader_assignment
                             }
                         });
                     } else {
-                        if (this.lastAssignedBlock >= this.head) {
+                        // Retire only the completed reader; other assigned
+                        // ranges still need their own successful confirmation.
+                        this.workerMap = this.workerMap.filter(value => value !== definition);
+                        definition.wref?.send({event: 'finish', target: definition.worker_id?.toString()});
+                        if (this.lastAssignedBlock >= this.head && this.activeReadersCount === 0) {
                             hLog(`Parallel readers finished the requested range`);
                             const readers = this.workerMap.filter((value) => value.worker_role === 'reader');
                             this.workerMap = this.workerMap.filter((value) => value.worker_role !== 'reader');
-                            readers.forEach((value) => value.wref?.kill());
+                            readers.forEach((value) => value.wref?.send({event: 'finish', target: value.worker_id?.toString()}));
                         }
                     }
                 }
@@ -444,6 +456,24 @@ export class HyperionMaster {
                 } else {
                     this.indexerMonitor.livePushedBlocks++;
                 }
+            },
+            live_checkpoint: (worker: Worker, msg: WorkerMessage) => {
+                if (this.liveReader?.wref !== worker) return;
+                const {nextBlock, blockId} = msg.data ?? {};
+                if (!Number.isSafeInteger(nextBlock) || nextBlock < (this.liveReader.worker_last_processed_block ?? 0) ||
+                    typeof blockId !== 'string' || !/^[0-9a-f]{64}$/i.test(blockId)) return;
+                this.liveReader.worker_last_processed_block = nextBlock;
+                this.liveReader.worker_last_processed_block_id = blockId;
+            },
+            reader_recovery_required: (worker: Worker, msg: WorkerMessage) => {
+                const definition = this.workerMap.find(value => value.wref === worker);
+                hLog(`Reader ${definition?.worker_id} requires source replay; progress is incomplete: ${msg.error}`);
+            },
+            reader_source_incomplete: (worker: Worker, msg: WorkerMessage) => {
+                const definition = this.workerMap.find(value => value.wref === worker);
+                if (!definition || definition.reader_assignment !== msg.assignment_id) return;
+                definition.reader_incomplete = msg.error ?? 'Requested source is unavailable';
+                hLog(`Reader ${definition.worker_id} is incomplete; automatic replay paused: ${definition.reader_incomplete}`);
             },
             ds_ready: (worker: Worker, msg: WorkerMessage) => {
                 // send the ship abi to the deserializer
@@ -1003,6 +1033,7 @@ export class HyperionMaster {
                     worker_role: 'reader',
                     first_block: start,
                     last_block: end,
+                    reader_assignment: randomUUID(),
                     validated_ship_servers: JSON.stringify(this.validatedShipServers)
                 });
                 this.activeReadersCount++;
@@ -1115,12 +1146,13 @@ export class HyperionMaster {
     launchWorkers() {
         let launchedCount = 0;
         this.workerMap.forEach((wrk: HyperionWorkerDef) => {
-            if (!wrk.wref && wrk.worker_id) {
-                wrk.wref = cluster.fork(wrk);
-                wrk.wref.id = wrk.worker_id;
-                wrk.wref.on('message', (msg) => {
-                    if (wrk.wref) {
-                        this.handleMessage(wrk.wref, msg);
+            if (!wrk.wref && wrk.worker_id && !wrk.reader_incomplete) {
+                const worker = cluster.fork(wrk);
+                wrk.wref = worker;
+                worker.id = wrk.worker_id;
+                worker.on('message', (msg) => {
+                    if (wrk.wref === worker) {
+                        this.handleMessage(worker, msg);
                     }
                 });
                 if (wrk.worker_role === 'ds_pool_worker' && wrk.local_id) {
@@ -1489,18 +1521,19 @@ export class HyperionMaster {
     }
 
     private sendPendingRepairRanges() {
+        // A supervised replacement must receive the interrupted instruction
+        // before any pending range is shifted out of the scheduler.
+        if (!this.repairReader?.wref || !this.repairReader.worker_id) return;
+        if (this.repairReader.reader_assignment) {
+            this.dispatchRepairAssignment();
+            return;
+        }
         if (this.pendingRepairRanges.length > 0) {
             const nextRange = this.pendingRepairRanges.shift();
             // hLog('Sending repair range: ', nextRange);
             if (this.repairReader && this.repairReader.wref && this.repairReader.worker_id && nextRange) {
-                this.repairReader.wref.send({
-                    event: 'new_range',
-                    target: this.repairReader.worker_id.toString(),
-                    data: {
-                        first_block: nextRange.start,
-                        last_block: nextRange.end + 1
-                    }
-                });
+                this.retainReaderAssignment(this.repairReader, nextRange.start, nextRange.end + 1);
+                this.dispatchRepairAssignment();
             }
         } else {
             if (this.connectedController) {
@@ -1513,6 +1546,19 @@ export class HyperionMaster {
                 hLog('No connected controller to send repair completion message.');
             }
         }
+    }
+
+    private retainReaderAssignment(worker: HyperionWorkerDef, first: number, end: number) {
+        worker.first_block = first;
+        worker.last_block = end;
+        worker.reader_assignment = randomUUID();
+    }
+
+    private dispatchRepairAssignment() {
+        const reader = this.repairReader;
+        reader?.wref?.send({event: 'new_range', target: reader.worker_id?.toString(), data: {
+            first_block: reader.first_block, last_block: reader.last_block, assignment_id: reader.reader_assignment
+        }});
     }
 
     // --------- END OF REPAIR FUNCTIONS ------------
@@ -1952,7 +1998,7 @@ export class HyperionMaster {
 
     private handleWorkerDisconnect(worker: any) {
         if (!this.mode_transition && !this.shutdownStarted) {
-            const workerReference = this.workerMap.find((value) => value.worker_id === worker.id);
+            const workerReference = this.workerMap.find((value) => value.wref === worker);
             if (workerReference) {
                 hLog(`The worker #${worker.id} has disconnected, attempting to re-launch in 5 seconds...`);
                 workerReference.wref = undefined;

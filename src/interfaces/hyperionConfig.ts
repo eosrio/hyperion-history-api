@@ -56,6 +56,7 @@ export interface TieredIndexAllocationSettings {
 }
 
 export interface MainSettings {
+    reader_recovery_window_blocks?: number;
     use_global_agent?: boolean;
     process_prefix?: string;
     ignore_snapshot?: boolean;
@@ -423,6 +424,7 @@ const TieredIndexAllocationSettingsSchema = z.object({
 });
 
 export const HyperionSettingsConfigSchema = z.object({
+    reader_recovery_window_blocks: z.number().int().positive().optional(),
     use_global_agent: z.boolean().optional(),
     process_prefix: z.string().optional(),
     ignore_snapshot: z.boolean().optional(),

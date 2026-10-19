@@ -3,7 +3,7 @@ import {describe, expect, it} from 'bun:test';
 // StateReader imports queue definitions that load configuration at module scope.
 // Isolate that real import in a child, with owned temporary configuration and no
 // worker construction or network connections. Production methods remain intact.
-async function probe(body: string) {
+async function probe(body: string, fails = false) {
     const source = new URL('../../src/indexer/workers/state-reader.ts', import.meta.url).href;
     const asyncSource = new URL('../../node_modules/async/dist/async.mjs', import.meta.url).href;
     const script = `
@@ -14,6 +14,11 @@ async function probe(body: string) {
         import {join} from 'node:path';
         import {cargo} from ${JSON.stringify(asyncSource)};
         const dir = mkdtempSync(join(tmpdir(), 'hyperion-reader-drain-'));
+        const cleanup = () => {
+            process.chdir(${JSON.stringify(process.cwd())});
+            rmSync(dir, {recursive: true, force: true});
+        };
+        process.once('exit', cleanup);
         try {
             mkdirSync(join(dir, 'config'));
             writeFileSync(join(dir, 'chain.json'), JSON.stringify({settings: {chain: 'drain-test'}, indexer: {}}));
@@ -39,7 +44,7 @@ async function probe(body: string) {
                     return Object.assign(new EventEmitter(), {
                         sendToQueue(queue, content, options, confirm) {
                             sent.push({queue, value: content.toString(), options});
-                            const acknowledge = () => {confirmed++; confirm(null);};
+                            const acknowledge = (error = null) => {confirmed++; confirm(error);};
                             confirms.push(acknowledge);
                             if (autoConfirm) queueMicrotask(acknowledge);
                             return allowWrite;
@@ -65,18 +70,51 @@ async function probe(body: string) {
             ${body}
             console.log('reader-drain-probe-passed');
         } finally {
-            process.chdir(${JSON.stringify(process.cwd())});
-            rmSync(dir, {recursive: true, force: true});
+            cleanup();
         }
     `;
     const child = Bun.spawn([process.execPath, '--eval', script], {stdout: 'pipe', stderr: 'pipe'});
     const [code, stdout, stderr] = await Promise.all([
         child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()
     ]);
-    expect({code, stdout, stderr}).toEqual({code: 0, stdout: 'reader-drain-probe-passed\n', stderr: ''});
+    if (fails) {
+        expect(code).toBe(1);
+        expect(stderr).toBe('');
+        expect(stdout).toContain('reader-recovery-failure-accounted');
+    } else expect({code, stdout, stderr}).toEqual({code: 0, stdout: 'reader-drain-probe-passed\n', stderr: ''});
 }
 
 describe('StateReader confirm-channel backpressure', () => {
+    it.each(['nack', 'unknown-close', 'replaced', 'return'])('requires source replay after %s without unsupported completion', async failure => {
+        await probe(`
+            const f = fixture(false, false);
+            const reports = [];
+            process.send = msg => {reports.push(msg); return true;};
+            process.on('exit', code => {
+                assert.equal(code, 1);
+                assert.equal(reports.filter(msg => msg.event === 'completed').length, 0);
+                assert.equal(reports.filter(msg => msg.event === 'read_block').length, 0);
+                assert.equal(reports.filter(msg => msg.event === 'reader_recovery_required').length, 1);
+                console.log('reader-recovery-failure-accounted');
+            });
+            await f.reader.assertQueues();
+            f.queue.push({num: 10, content: Buffer.from('ten')});
+            await until(() => f.sent.length === 1);
+            if (${JSON.stringify(failure)} === 'nack') {
+                // Invoke the production callback retained by sendToQueue.
+                f.confirms[0](new Error('message nacked'));
+            } else if (${JSON.stringify(failure)} === 'unknown-close') f.cch.emit('close');
+            else if (${JSON.stringify(failure)} === 'return') f.cch.emit('return', {});
+            else {
+                f.reader.cch = f.publisher();
+                await f.reader.assertQueues();
+                f.confirms[0]();
+            }
+            await sleep(1000);
+            throw new Error('Reader did not fail closed');
+        `, true);
+    }, 15000);
+
     it.each([false, true])('waits for the publisher drain and completes each payload once (live=%s)', async live => {
         await probe(`
             const f = fixture(${live});
@@ -132,7 +170,7 @@ describe('StateReader confirm-channel backpressure', () => {
         `);
     }, 15000);
 
-    it('continues only unsent cargo after replacement and ignores late confirms and old drains', async () => {
+    it('continues only unsent cargo after known-success replacement and ignores duplicate confirms and old drains', async () => {
         await probe(`
             const f = fixture(false, false);
             const reports = [];
@@ -145,6 +183,7 @@ describe('StateReader confirm-channel backpressure', () => {
             await until(() => f.sent.length === 1);
             assert.equal(f.confirms.length, 1);
             assert.equal(reports.length, 0);
+            f.confirms[0]();
             f.cch.emit('close');
             const replacement = f.publisher();
             f.reader.ch = Object.assign(new EventEmitter(), {async assertQueue() {}});

@@ -237,6 +237,16 @@ if (['reader', 'continuous_reader', 'repair_reader'].includes(role)) {
         });
         return Reflect.apply(originalRequest, this, args);
     };
+    const originalFinish = StateReader.prototype.finishReader;
+    if (typeof originalFinish === 'function') {
+        StateReader.prototype.finishReader = async function (...args) {
+            const result = await Reflect.apply(originalFinish, this, args);
+            // Production IPC exits immediately after this promise resolves.
+            // Keep profiling through its confirmed drain and channel cleanup.
+            await flush('worker_finished');
+            return result;
+        };
+    }
 }
 
 function inspectorPost(method, params = {}) {

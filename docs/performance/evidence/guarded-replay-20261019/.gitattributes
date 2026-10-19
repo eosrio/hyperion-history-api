@@ -1,0 +1,5 @@
+raw-evidence.tar.gz binary
+summary.json -text
+manifest.json -text
+SHA256SUMS -text
+.gitattributes -text
