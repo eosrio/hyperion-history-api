@@ -1,5 +1,6 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {getTrackTotalHits, mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
+import {assertActionSearchActive, searchActions} from "../../../helpers/action-search.js";
 import {hydrateActions} from "../../../helpers/archive-hydration.js";
 import {isHydrationDisabled} from "../../../helpers/archive-query.js";
 import {
@@ -64,7 +65,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         ...query_body
     };
 
-    const esResults = await fastify.elastic.search<any>(esOpts);
+    const esResults = await searchActions<any>(fastify, request, esOpts);
 
     const results = esResults.hits;
     const response: any = {
@@ -142,6 +143,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             }
         }
     }
+    assertActionSearchActive(request);
     return response;
 }
 
