@@ -53,6 +53,27 @@ test('production pool selects historical ABI before native decode across shuffle
             assert.deepEqual(nativeLoads, [10, 20, 10, 20, 20, 20], 'fallback and explicit eviction must invalidate active ABI identity');
             pool.loadedActionAbis.clear(); pool.loadAbiHex = () => {throw new Error('invalid contract ABI');};
             assert.deepEqual(await pool.verifyLocalType('hyp.replay', 'record', 21, 'action'), [false, ''], 'a malformed contract ABI must not escape the selection boundary');
+            // The historical ABI may contain the same struct name while only
+            // a custom/current fallback declares the action. Cached type names
+            // must be invalidated when the historical context is reloaded.
+            const missingActionAbi = {...abi(1), actions: []};
+            const historical = {block: 10, actions: [], tables: [], abi: JSON.stringify(missingActionAbi),
+                abi_hex: Buffer.from(Serializer.encode({object: ABI.from(missingActionAbi)}).array).toString('hex')};
+            for (const mode of ['custom', 'current']) {
+                engine.deleteContract('hyp.replay'); let fallbackCalls = 0;
+                const fallback = Object.assign(Object.create(Pool.prototype), {chain: 'epoch-test',
+                    conf: {settings: {allow_custom_abi: mode === 'custom'}}, profiler: {start: () => () => {}}, abieos: engine,
+                    failedAbiMap: new Map(), poolAbiCache: new Map(), poolTypeCache: new Map(), loadedActionAbis: new Map(),
+                    contracts: new Map(), contractUsage: {}, totalHits: 0,
+                    customAbiMap: new Map([['hyp.replay', [{startingBlock: 0, endingBlock: 100, abi: JSON.stringify(abi(2))}]]]),
+                    client: {search: async () => ({hits: {hits: [{_source: historical}]}})},
+                    loadCurrentAbiHex: async () => {assert.equal(mode, 'current'); fallbackCalls++; return engine.loadAbi('hyp.replay', JSON.stringify(abi(2)));}});
+                const expectedFallback = {sequence: '1', revision: 2, memo: 'correct-' + mode};
+                const data = Buffer.from(Serializer.encode({object: expectedFallback, type: 'record', abi: abi(2)}).array).toString('hex');
+                for (let attempt = 0; attempt < 2; attempt++) assert.deepEqual(await fallback.deserializeActionAtBlockNative(fallback,
+                    {account: 'hyp.replay', name: 'record', authorization: [], data}, 21), expectedFallback, mode + ' fallback ABI identity was lost');
+                assert.equal(fallbackCalls, mode === 'current' ? 2 : 0);
+            }
             console.log('action-abi-epoch-probe-passed');
         } finally { process.chdir(previous); rmSync(directory, {recursive: true, force: true}); }
     `;
