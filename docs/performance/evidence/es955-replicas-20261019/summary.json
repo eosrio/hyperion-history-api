@@ -1,0 +1,425 @@
+{
+  "schemaVersion": 1,
+  "measuredDate": "2026-10-19",
+  "issue": "https://github.com/eosrio/hyperion-history-api/issues/198",
+  "server": {
+    "number": "9.5.5",
+    "build_flavor": "default",
+    "build_type": "docker",
+    "build_hash": "48acba663b09e70b115dd879329141506c377890",
+    "build_date": "2026-09-30T22:12:03.984586187Z",
+    "build_snapshot": false,
+    "lucene_version": "10.5.1",
+    "minimum_wire_compatibility_version": "8.19.0",
+    "minimum_index_compatibility_version": "8.0.0"
+  },
+  "clientVersion": "8.19.1",
+  "transportVersion": "8.10.1",
+  "runs": [
+    {
+      "mode": "node-http",
+      "status": "passed",
+      "runtime": {
+        "node": "v24.19.0",
+        "bun": null,
+        "transport": "http",
+        "connection": "HttpConnection"
+      },
+      "startedAt": "2026-10-19T08:58:55.396Z",
+      "completedAt": "2026-10-19T08:59:28.352Z",
+      "finalReport": "reports/final/node-http.json",
+      "pressureDocuments": 640,
+      "brokerDocuments": 642,
+      "replicatedSeeds": 120,
+      "degradedSingleCopyWrites": 1,
+      "soloReplayedDocuments": 120,
+      "persistedDocuments": 1523,
+      "pressure": {
+        "bulkRequests": 81,
+        "submittedNdjsonBytes": 4116480,
+        "initialStatus": 429,
+        "nativeStages": [
+          "coordinating"
+        ],
+        "counterDelta": {
+          "coordinating": 1,
+          "primary": 0,
+          "replica": 0
+        },
+        "recoverySampleCount": 4,
+        "recoveryGateMs": 799.4907999999996
+      },
+      "broker": {
+        "bulkRequests": 83,
+        "submittedNdjsonBytes": 4106793,
+        "publisherConfirmedMessages": 646,
+        "queuesDeleted": 3,
+        "failedMessagesDiscardedOnlyDuringFixtureCleanup": 1,
+        "preRetryPressureDocumentsObservedPresent": 0,
+        "channelErrors": []
+      },
+      "translog": {
+        "before": {
+          "node": "oDONnUpxTYKxq6BDj4dJ_w",
+          "operations": 120,
+          "size_in_bytes": 75198,
+          "uncommitted_operations": 120,
+          "uncommitted_size_in_bytes": 75198,
+          "earliest_last_modified_age": 20,
+          "flush_before": 0,
+          "flush_after": 0
+        },
+        "recoveryType": "EXISTING_STORE",
+        "stage": "DONE",
+        "recoveredOperations": 120
+      },
+      "indicesRemoved": 4,
+      "physicalCopies": {
+        "pressure": {
+          "BeforeCrash": [
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 640,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 640,
+              "exactSources": true
+            }
+          ],
+          "AfterRecovery": [
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 640,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 640,
+              "exactSources": true
+            }
+          ]
+        },
+        "broker": {
+          "BeforeCrash": [
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 642,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 642,
+              "exactSources": true
+            }
+          ],
+          "AfterRecovery": [
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 642,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 642,
+              "exactSources": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "mode": "node-default",
+      "status": "passed",
+      "runtime": {
+        "node": "v24.19.0",
+        "bun": null,
+        "transport": "default",
+        "connection": "Connection"
+      },
+      "startedAt": "2026-10-19T08:59:29.486Z",
+      "completedAt": "2026-10-19T09:00:01.012Z",
+      "finalReport": "reports/final/node-default.json",
+      "pressureDocuments": 640,
+      "brokerDocuments": 642,
+      "replicatedSeeds": 120,
+      "degradedSingleCopyWrites": 1,
+      "soloReplayedDocuments": 120,
+      "persistedDocuments": 1523,
+      "pressure": {
+        "bulkRequests": 81,
+        "submittedNdjsonBytes": 4116480,
+        "initialStatus": 429,
+        "nativeStages": [
+          "coordinating"
+        ],
+        "counterDelta": {
+          "coordinating": 1,
+          "primary": 0,
+          "replica": 0
+        },
+        "recoverySampleCount": 4,
+        "recoveryGateMs": 800.7317000000003
+      },
+      "broker": {
+        "bulkRequests": 83,
+        "submittedNdjsonBytes": 4106793,
+        "publisherConfirmedMessages": 646,
+        "queuesDeleted": 3,
+        "failedMessagesDiscardedOnlyDuringFixtureCleanup": 1,
+        "preRetryPressureDocumentsObservedPresent": 0,
+        "channelErrors": []
+      },
+      "translog": {
+        "before": {
+          "node": "LXTu3bTQSqKyWwvcO7Wi3Q",
+          "operations": 120,
+          "size_in_bytes": 75198,
+          "uncommitted_operations": 120,
+          "uncommitted_size_in_bytes": 75198,
+          "earliest_last_modified_age": 21,
+          "flush_before": 0,
+          "flush_after": 0
+        },
+        "recoveryType": "EXISTING_STORE",
+        "stage": "DONE",
+        "recoveredOperations": 120
+      },
+      "indicesRemoved": 4,
+      "physicalCopies": {
+        "pressure": {
+          "BeforeCrash": [
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 640,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 640,
+              "exactSources": true
+            }
+          ],
+          "AfterRecovery": [
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 640,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 640,
+              "exactSources": true
+            }
+          ]
+        },
+        "broker": {
+          "BeforeCrash": [
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 642,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 642,
+              "exactSources": true
+            }
+          ],
+          "AfterRecovery": [
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 642,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 642,
+              "exactSources": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "mode": "bun-default",
+      "status": "passed",
+      "runtime": {
+        "node": "v26.3.0",
+        "bun": "1.4.3",
+        "transport": "default",
+        "connection": "HttpConnection"
+      },
+      "startedAt": "2026-10-19T09:00:02.020Z",
+      "completedAt": "2026-10-19T09:00:33.549Z",
+      "finalReport": "reports/final/bun-default.json",
+      "pressureDocuments": 640,
+      "brokerDocuments": 642,
+      "replicatedSeeds": 120,
+      "degradedSingleCopyWrites": 1,
+      "soloReplayedDocuments": 120,
+      "persistedDocuments": 1523,
+      "pressure": {
+        "bulkRequests": 81,
+        "submittedNdjsonBytes": 4116480,
+        "initialStatus": 429,
+        "nativeStages": [
+          "coordinating"
+        ],
+        "counterDelta": {
+          "coordinating": 1,
+          "primary": 0,
+          "replica": 0
+        },
+        "recoverySampleCount": 4,
+        "recoveryGateMs": 786.0889999999999
+      },
+      "broker": {
+        "bulkRequests": 83,
+        "submittedNdjsonBytes": 4106793,
+        "publisherConfirmedMessages": 646,
+        "queuesDeleted": 3,
+        "failedMessagesDiscardedOnlyDuringFixtureCleanup": 1,
+        "preRetryPressureDocumentsObservedPresent": 0,
+        "channelErrors": []
+      },
+      "translog": {
+        "before": {
+          "node": "oDONnUpxTYKxq6BDj4dJ_w",
+          "operations": 120,
+          "size_in_bytes": 75198,
+          "uncommitted_operations": 120,
+          "uncommitted_size_in_bytes": 75198,
+          "earliest_last_modified_age": 21,
+          "flush_before": 0,
+          "flush_after": 0
+        },
+        "recoveryType": "EXISTING_STORE",
+        "stage": "DONE",
+        "recoveredOperations": 120
+      },
+      "indicesRemoved": 4,
+      "physicalCopies": {
+        "pressure": {
+          "BeforeCrash": [
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 640,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 640,
+              "exactSources": true
+            }
+          ],
+          "AfterRecovery": [
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 640,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 640,
+              "exactSources": true
+            }
+          ]
+        },
+        "broker": {
+          "BeforeCrash": [
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 642,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 642,
+              "exactSources": true
+            }
+          ],
+          "AfterRecovery": [
+            {
+              "preference": "_only_nodes:LXTu3bTQSqKyWwvcO7Wi3Q",
+              "count": 642,
+              "exactSources": true
+            },
+            {
+              "preference": "_only_nodes:oDONnUpxTYKxq6BDj4dJ_w",
+              "count": 642,
+              "exactSources": true
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "unitValidation": {
+    "passed": 211,
+    "failed": 0,
+    "assertions": 1824
+  },
+  "totals": {
+    "finalRuns": 3,
+    "persistedDocuments": 4569,
+    "pressureDocuments": 1920,
+    "brokerDocuments": 1926,
+    "translogReplayedOperations": 360
+  },
+  "excludedDevelopmentRuns": [
+    "node-http-draft1 failed",
+    "node-http-draft2 pilot passed",
+    "node-http preaudit passed",
+    "node-default preaudit passed",
+    "bun-default preaudit passed",
+    "es198-replicas-node-http-postcleanup-control.json",
+    "es198-replicas-node-http-pre-copy-verification-control.json",
+    "es198-replicas-node-default-pre-copy-verification-control.json",
+    "es198-replicas-bun-default-pre-copy-verification-control.json"
+  ],
+  "sourceHashes": {
+    "scripts/qualification/es955-replicas.ts": "7c29683b0df4e6b4fa61b86bd53da0ba09ba34bff3ec2b502ab6c62893d6d1ac",
+    "scripts/qualification/es955-pressure.ts": "838b0d438158c113f3046c3113169e0a943a14d7cc1e4477822bd0c58408db40",
+    "scripts/qualification/es955-broker.ts": "65c37acc3e28401c12f12da34373f88f4d4e45ca06834a9ec59f428679e58b92",
+    "src/indexer/helpers/elastic-routes.ts": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+    "src/indexer/helpers/indexer-settlement-recovery.ts": "baef8d09189e8dcb4f4688252f2eb842973aac2edfbc951cadb0981cd74da646",
+    "src/indexer/workers/indexer.ts": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+    "build/indexer/helpers/elastic-routes.js": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+    "build/indexer/helpers/indexer-settlement-recovery.js": "aaedf2b56733ad1b401e482fccb3a8268ac54f721e66df9928f7de4caa67ed7e",
+    "build/indexer/workers/indexer.js": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+    "build/indexer/helpers/es-connection.js": "f83d17954e0bb29bfd70ae226adf80040fcbb78b414276e8e6de2917702d1152",
+    "package-lock.json": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+  },
+  "sourceProvenance": "Final raw reports independently hash exact archived measured bytes. Git checkout HEAD is context only; normalized Git blobs may have different line endings. Precommit draft1/draft2 main-runner byte snapshots were not saved; their original reports retain hashes but exact runner bytes are unavailable. No reconstruction is represented as measured source.",
+  "cleanup": {
+    "run": "3de23cbc398b",
+    "inspectedAt": "2026-10-19T09:01:01.9038692Z",
+    "containers": [
+      "7963fd768cb79b9e0a8f75774c09702428b600de3a4422eb7e61cf3aaf235915",
+      "ab7cc7913bdc682dfd6a5fd5a4ae0c852f6ca9e787a74cc79f6c0a2d1393648c",
+      "9306dde0dadc725fe7d995b058a6b5dbdfd0d5e0326283fe197341696ca62f8f",
+      "843aa8bc5db038990131b97d00a326ab111f7d2e7beb40a4b5dfd40adb4476ff"
+    ],
+    "volumes": [
+      "hyp-es955-replicas-3de23cbc398b-a-data",
+      "hyp-es955-replicas-3de23cbc398b-b-data",
+      "hyp-es955-replicas-3de23cbc398b-witness-data",
+      "hyp-es955-replicas-3de23cbc398b-rabbit-data"
+    ],
+    "network": "hyp-es955-replicas-3de23cbc398b",
+    "remainingContainers": 0,
+    "remainingVolumes": 0,
+    "remainingNetworks": 0,
+    "completedAt": "2026-10-19T09:01:08.8366265Z"
+  },
+  "limits": [
+    "Static one-MiB pressure budget is an admission/recovery fixture, not production capacity or throughput.",
+    "Process SIGKILL is not host power loss, OS crash, hardware failure or broker-restart durability.",
+    "Built ElasticRoutes and actual AMQP settlement do not qualify full worker/master/reader backpressure.",
+    "Synthetic mappings do not qualify retained-history upgrade, full APIs or plugin schemas.",
+    "Coordinating admission rejection does not directly qualify translated-update expansion rejection inside the primary item loop (Elastic158235).",
+    "Bun process.version is a compatibility value; this does not qualify the entire runtime."
+  ]
+}

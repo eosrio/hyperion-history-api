@@ -288,7 +288,7 @@ export class ElasticRoutes {
     ingestNodeCounters = {};
     retryOnConflict: number = 3;
 
-    constructor(connectionManager: ConnectionManager) {
+    constructor(connectionManager: ConnectionManager, private readonly onSettlementFailure?: (channel: Channel) => void) {
         this.routes = {
             generic: this.handleGenericRoute.bind(this)
         };
@@ -303,44 +303,112 @@ export class ElasticRoutes {
         this.resetCounters();
     }
 
-    createGenericBuilder(
+    async createGenericBuilder(
         collection: Message[],
         channel: Channel,
         index_name: string,
-        method: any
+        method: BulkGeneratorFunction
     ): Promise<number> {
-        return new Promise<number>((resolve) => {
-            const messageMap = new Map();
-            let maxBlockNum: number;
-            const bulkResult = this.bulkAction({
-                index: index_name,
-                operations: method(collection, messageMap, (maxBlock: number) => {
+        if (collection.length === 0) return 0;
+        let channelOpen = true;
+        const onClose = () => { channelOpen = false; };
+        channel.once('close', onClose);
+        try {
+            let maxBlockNum = 0;
+            let statuses: number[];
+            let response: estypes.BulkResponse;
+            try {
+                const operations = method(collection, new Map(), maxBlock => {
                     maxBlockNum = maxBlock;
-                })
-            });
-            if (bulkResult) {
-                bulkResult.then((resp: any) => {
-                    if (resp.errors) {
-                        this.ackOrNack(resp, messageMap, channel);
-                    } else {
-                        if (maxBlockNum > 0) {
-                            ElasticRoutes.reportMaxBlock(maxBlockNum, index_name);
-                        }
-                        channel.ackAll();
-                    }
-                    resolve(messageMap.size);
-                }).catch((err) => {
-                    try {
-                        channel.nackAll();
-                        hLog('NackAll', err);
-                    } finally {
-                        resolve(0);
-                    }
-                });
-            } else {
-                hLog("[FATAL ERROR] Unexpected Index Request with no operations!");
+                }, this.getIndexPartition.bind(this), index_name, this.retryOnConflict);
+                const bulkResult = this.bulkAction({ index: index_name, operations });
+                if (!bulkResult) throw new Error('Unexpected index request with no operations');
+                response = await bulkResult;
+                if (!channelOpen) return 0;
+                statuses = this.validateBulkResponse(response, operations, collection.length);
+            } catch (reason) {
+                if (!channelOpen) return 0;
+                hLog('Elasticsearch batch remains pending:', reason);
+                try {
+                    // A bulk rejection must not requeue prefetched deliveries or
+                    // other generic subrequests sharing this channel.
+                    for (const message of collection) channel.nack(message, false, true);
+                } catch (settlementError) {
+                    hLog('Failed to requeue Elasticsearch batch:', settlementError);
+                    await this.closeChannel(channel);
+                }
+                return 0;
             }
-        })
+
+            let indexed = 0;
+            try {
+                for (let i = 0; i < collection.length; i++) {
+                    const status = statuses[i];
+                    if (status === 200 || status === 201) {
+                        channel.ack(collection[i]);
+                        indexed++;
+                    } else if (status === 404) {
+                        // Preserve the existing missing-document disposition.
+                        channel.ack(collection[i]);
+                    } else {
+                        hLog('Retrying Elasticsearch bulk item:', response.items[i]);
+                        channel.nack(collection[i], false, true);
+                    }
+                }
+            } catch (reason) {
+                // Some tags may already be settled. Closing returns only the
+                // remaining deliveries without acknowledging any tag twice.
+                hLog('Failed to settle Elasticsearch batch:', reason);
+                await this.closeChannel(channel);
+                return 0;
+            }
+            if (indexed === collection.length && maxBlockNum > 0) {
+                ElasticRoutes.reportMaxBlock(maxBlockNum, index_name);
+            }
+            return indexed;
+        } finally {
+            channel.removeListener('close', onClose);
+        }
+    }
+
+    private async closeChannel(channel: Channel): Promise<void> {
+        try {
+            await channel.close();
+        } catch (reason) {
+            hLog('Failed to close Elasticsearch delivery channel:', reason);
+        } finally {
+            // Closing an individual AMQP channel does not reconnect its still
+            // open connection. Let the host recover its consumer as well.
+            this.onSettlementFailure?.(channel);
+        }
+    }
+
+    private validateBulkResponse(response: estypes.BulkResponse, operations: any[], count: number): number[] {
+        if (!response || typeof response.errors !== 'boolean' || !Array.isArray(response.items) || response.items.length !== count) {
+            throw new Error('Incomplete Elasticsearch bulk response');
+        }
+        const statuses: number[] = [];
+        let offset = 0;
+        for (const item of response.items) {
+            const operation = operations[offset];
+            const operationKeys = operation && Object.keys(operation);
+            const kind = operationKeys?.[0];
+            if (operationKeys?.length !== 1 || !['index', 'update', 'delete'].includes(kind)) {
+                throw new Error('Invalid Elasticsearch bulk operation');
+            }
+            const itemKeys = item && Object.keys(item);
+            const result = item?.[kind];
+            if (itemKeys?.length !== 1 || itemKeys[0] !== kind || !result ||
+                operation[kind]._id == null || result._id !== String(operation[kind]._id) ||
+                !Number.isInteger(result.status) || result.status < 200 || result.status > 599 ||
+                (result.status < 300 && result.error != null)) {
+                throw new Error('Invalid Elasticsearch bulk item response');
+            }
+            statuses.push(result.status);
+            offset += kind === 'delete' ? 1 : 2;
+        }
+        if (offset !== operations.length) throw new Error('Incomplete Elasticsearch bulk operation results');
+        return statuses;
     }
 
     async handleGenericRoute(payload: Message[], ch: Channel, cb: (indexed_size: number) => void): Promise<void> {
@@ -371,81 +439,6 @@ export class ElasticRoutes {
     resetCounters() {
         for (let idx = 0; idx < this.cm.ingestClients.length; idx++) {
             this.ingestNodeCounters[idx] = {status: true, docs: 0};
-        }
-    }
-
-    ackOrNack(resp, messageMap, channel: Channel) {
-        for (const item of resp.items) {
-            let id, itemBody;
-            if (item['index']) {
-                id = item.index._id;
-                itemBody = item.index;
-            } else if (item['update']) {
-                id = item.update._id;
-                itemBody = item.update;
-            } else if (item['delete']) {
-                id = item.delete._id;
-                itemBody = item.delete;
-            } else {
-                console.log(item);
-                throw new Error('FATAL ERROR - CANNOT EXTRACT ID');
-            }
-            const message = messageMap.get(id);
-            const status = itemBody.status;
-            if (message) {
-                switch (status) {
-                    case 200: {
-                        channel.ack(message);
-                        break;
-                    }
-                    case 201: {
-                        channel.ack(message);
-                        break;
-                    }
-                    case 404: {
-                        channel.ack(message);
-                        break;
-                    }
-                    case 409: {
-                        console.log(item);
-                        channel.nack(message);
-                        break;
-                    }
-                    default: {
-                        console.log(item, message.fields.deliveryTag);
-                        console.info(`nack id: ${id} - status: ${status}`);
-                        channel.nack(message);
-                    }
-                }
-            } else {
-                hLog(`Indexing error: ${item.index._index} :: ${item.index._id}`, item?.index?.error);
-                // throw new Error('Message not found');
-            }
-        }
-    }
-
-    onResponse(resp, messageMap, callback: (size: number) => void, payloads, channel: Channel, index_name: string, maxBlockNum: number) {
-        if (resp.errors) {
-            this.ackOrNack(resp, messageMap, channel);
-            if (maxBlockNum > 0) {
-                ElasticRoutes.reportMaxBlock(maxBlockNum, index_name);
-            }
-        } else {
-            channel.ackAll();
-        }
-        callback(messageMap.size);
-    }
-
-    onError(err: any, channel: Channel, callback: (size?: number) => void) {
-        try {
-            channel.nackAll();
-            if (err.meta) {
-                hLog('NackAll:', JSON.stringify(err.meta.meta, null, 2));
-            } else {
-                hLog('NackAll:', err);
-            }
-        } finally {
-            callback();
         }
     }
 
@@ -489,23 +482,11 @@ export class ElasticRoutes {
                          bulkGenerator: BulkGeneratorFunction,
                          routerFunction: PartitionRoutingFunction): (payloads: Message[], channel: Channel, cb: (size?: number) => void) => void {
         return (payloads: Message[], channel: Channel, cb: (size?: number) => void) => {
-            let _index = `${this.chain}-${indexName}-${this.cm.config.settings.index_version}`;
-            // write directly to index
-            const messageMap = new Map();
-            let maxBlockNum = 0;
-            const bulkResult = this.bulkAction({
-                index: _index,
-                operations: bulkGenerator(payloads, messageMap, (maxBlock: number) => {
-                    maxBlockNum = maxBlock;
-                }, routerFunction, _index, this.retryOnConflict)
-            });
-            if (bulkResult) {
-                bulkResult.then(resp => {
-                    this.onResponse(resp, messageMap, cb, payloads, channel, _index, maxBlockNum);
-                }).catch(err => {
-                    this.onError(err, channel, cb);
-                });
-            }
+            const index = `${this.chain}-${indexName}-${this.cm.config.settings.index_version}`;
+            void this.createGenericBuilder(payloads, channel, index,
+                (collection, messageMap, maxBlockCb, _router, indexName, retries) =>
+                    bulkGenerator(collection, messageMap, maxBlockCb, routerFunction, indexName, retries)
+            ).then(cb);
         };
     }
 

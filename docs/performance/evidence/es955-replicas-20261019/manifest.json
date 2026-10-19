@@ -1,0 +1,443 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-19T09:02:39.092697+00:00",
+  "archive": "raw-evidence.tar.gz",
+  "qualificationPreparationCommit": "1a122d84a8b3bc1f05f5450ab940bbd117d9d228",
+  "initialRuntimeCorrectionCommit": "3bd95443e56fe2056938561b534e7e52bbc0baa4",
+  "finalRuntimeCorrectionCommit": "361213c023774dea96e8016863f565a0ee6a2bea",
+  "archiveFreezeHead": "0116466a583951eac5bf7d2cf08e6dbdd7205bba",
+  "sourceProvenance": "Final raw reports independently hash exact archived measured bytes. Git checkout HEAD is context only; normalized Git blobs may have different line endings. Precommit draft1/draft2 main-runner byte snapshots were not saved; their original reports retain hashes but exact runner bytes are unavailable. No reconstruction is represented as measured source.",
+  "finalSourceHashes": {
+    "scripts/qualification/es955-replicas.ts": "7c29683b0df4e6b4fa61b86bd53da0ba09ba34bff3ec2b502ab6c62893d6d1ac",
+    "scripts/qualification/es955-pressure.ts": "838b0d438158c113f3046c3113169e0a943a14d7cc1e4477822bd0c58408db40",
+    "scripts/qualification/es955-broker.ts": "65c37acc3e28401c12f12da34373f88f4d4e45ca06834a9ec59f428679e58b92",
+    "src/indexer/helpers/elastic-routes.ts": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+    "src/indexer/helpers/indexer-settlement-recovery.ts": "baef8d09189e8dcb4f4688252f2eb842973aac2edfbc951cadb0981cd74da646",
+    "src/indexer/workers/indexer.ts": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+    "build/indexer/helpers/elastic-routes.js": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+    "build/indexer/helpers/indexer-settlement-recovery.js": "aaedf2b56733ad1b401e482fccb3a8268ac54f721e66df9928f7de4caa67ed7e",
+    "build/indexer/workers/indexer.js": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+    "build/indexer/helpers/es-connection.js": "f83d17954e0bb29bfd70ae226adf80040fcbb78b414276e8e6de2917702d1152",
+    "package-lock.json": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+  },
+  "fixtureManifestSha256": "8fd08db7b9fed0c5ceb0e227006a2ad92ec48f844b8016a4a8358a47b442ab73",
+  "members": [
+    {
+      "path": "README.json",
+      "sha256": "6c1bcfeb9507a46039f35d6c014d27850b69b93af50a6df26c169119de531916",
+      "sizeBytes": 681,
+      "role": "archive interpretation"
+    },
+    {
+      "path": "fixture/active-creation.ps1",
+      "sha256": "af6d4aa6868c1505547dc60821e2cc5fdf6d303227d9f928b2e859095d9bb27b",
+      "sizeBytes": 9471,
+      "role": "hardened helper used to create the final physical-copy fixture"
+    },
+    {
+      "path": "fixture/active-state.json",
+      "sha256": "8fd08db7b9fed0c5ceb0e227006a2ad92ec48f844b8016a4a8358a47b442ab73",
+      "sizeBytes": 8283,
+      "role": "final physical-copy fixture manifest"
+    },
+    {
+      "path": "fixture/cleanup.json",
+      "sha256": "a2fafffbb3da526750d4e88eeb5ab662c52428b46f183941807165ba5bc24140",
+      "sizeBytes": 797,
+      "role": "owner exact-resource cleanup receipt"
+    },
+    {
+      "path": "fixture/es198-replicas-state.json",
+      "sha256": "0f1c6fb1c9b1bc01171cec122e83764c1dc93ed6d5efc2ecc8a4e20d4c22691a",
+      "sizeBytes": 496,
+      "role": "original fixture intent/manifest"
+    },
+    {
+      "path": "fixture/es198-replicas-state2.json",
+      "sha256": "0743cd46698650fe21f204d207523852f75e6f0a3e14bb2c379126de7b2f8aa3",
+      "sizeBytes": 8283,
+      "role": "original fixture intent/manifest"
+    },
+    {
+      "path": "fixture/original-creation.ps1",
+      "sha256": "079638df7f818de8562091e46550c0e3629a42bcc187ae4162a949f961913449",
+      "sizeBytes": 7579,
+      "role": "original creation helper snapshot from qualification commit 1a122d8"
+    },
+    {
+      "path": "fixture/postflight.json",
+      "sha256": "70170adb55493fab9a219645417b1577e9c1c1e98971c8df008f2ab030fffd15",
+      "sizeBytes": 107229,
+      "role": "owner postflight observation before fixture removal"
+    },
+    {
+      "path": "logs/final/bun-default.log",
+      "sha256": "774504464d4b5ae1b30fa04d62ee4cc9832156affb110cfe55db9b5ed4839dc8",
+      "sizeBytes": 2621,
+      "role": "final runner console output"
+    },
+    {
+      "path": "logs/final/node-default.log",
+      "sha256": "44782dc3b8061aacf3813e770ce8accbdc53e4b212fe85dbe5241520b83c4177",
+      "sizeBytes": 3173,
+      "role": "final runner console output"
+    },
+    {
+      "path": "logs/final/node-http.log",
+      "sha256": "2ca00dbd6c994f347afc1a36c3138228162c8fd20efea4f5c372c3397906c073",
+      "sizeBytes": 3178,
+      "role": "final runner console output"
+    },
+    {
+      "path": "reports/development/bun-default-preaudit.json",
+      "sha256": "4aa7244f9cbf1a45bedd8898f7d66608a2752a4d34bfebe56253b374aa45ebb7",
+      "sizeBytes": 11016256,
+      "role": "passed before cleanup-oracle audit; excluded from final totals"
+    },
+    {
+      "path": "reports/development/es198-replicas-bun-default-pre-copy-verification-control.json",
+      "sha256": "21c84c88a08591f955aed72499bca2e7fc8fa7866bbe955ab222c49075ee1c0f",
+      "sizeBytes": 11017044,
+      "role": "additional development/control run; excluded from final totals"
+    },
+    {
+      "path": "reports/development/es198-replicas-node-default-pre-copy-verification-control.json",
+      "sha256": "abc7bfa93ea740cfde13318054c5f1b3b5cd38278b1e789fceb929b4bf928b7e",
+      "sizeBytes": 11016962,
+      "role": "additional development/control run; excluded from final totals"
+    },
+    {
+      "path": "reports/development/es198-replicas-node-http-postcleanup-control.json",
+      "sha256": "79e3ac18214b0ee457a13bc353189ea33811852664654f7c85113e1004c52c06",
+      "sizeBytes": 10943593,
+      "role": "additional development/control run; excluded from final totals"
+    },
+    {
+      "path": "reports/development/es198-replicas-node-http-pre-copy-verification-control.json",
+      "sha256": "5c8d30a53dda40e42da1f2e8acb3b639a93a682181015bb60cfe71a95ad6da41",
+      "sizeBytes": 11016916,
+      "role": "additional development/control run; excluded from final totals"
+    },
+    {
+      "path": "reports/development/node-default-preaudit.json",
+      "sha256": "ccf876e5e244a71f044f158a6067ea27d798357a78a56b88e893b726c1c0a4a1",
+      "sizeBytes": 11016203,
+      "role": "passed before cleanup-oracle audit; excluded from final totals"
+    },
+    {
+      "path": "reports/development/node-http-draft1.json",
+      "sha256": "f0510fb7e51d20c476effaf371853ade2fffd9faa0edf1661990a8e07f6da5ef",
+      "sizeBytes": 5148306,
+      "role": "failed single-sample queue oracle"
+    },
+    {
+      "path": "reports/development/node-http-draft2.json",
+      "sha256": "3298be4aa7d3147b0dd93f2dc3de73baeeb8e83c614d705d7bf82e27c93d34c1",
+      "sizeBytes": 11016050,
+      "role": "passed pilot before ephemeral-port correction; excluded from final totals"
+    },
+    {
+      "path": "reports/development/node-http-preaudit.json",
+      "sha256": "234aa60d47b964dc50c98ef3d3bde6992a6831c0ca5ac91f9e1a37e0559644da",
+      "sizeBytes": 11016161,
+      "role": "passed before cleanup-oracle audit; excluded from final totals"
+    },
+    {
+      "path": "reports/development/prior-bundle/SHA256SUMS",
+      "sha256": "9dfce8a78eddbcd0303decb6603d1cc0104f8b82a7a68d88046f2349667ba794",
+      "sizeBytes": 245,
+      "role": "superseded pre-physical-copy bundle; excluded from final aggregate"
+    },
+    {
+      "path": "reports/development/prior-bundle/manifest.json",
+      "sha256": "7235b074c6f0f10b9b8def580e8b9fc91cff9cfe260b9b06268844ec4ccfc307",
+      "sizeBytes": 16848,
+      "role": "superseded pre-physical-copy bundle; excluded from final aggregate"
+    },
+    {
+      "path": "reports/development/prior-bundle/raw-evidence.tar.gz",
+      "sha256": "799a903d593f26bc9da3020fefd23fe2f1ff38279c321156f4fc661969bd097c",
+      "sizeBytes": 1849138,
+      "role": "superseded pre-physical-copy bundle; excluded from final aggregate"
+    },
+    {
+      "path": "reports/development/prior-bundle/summary.json",
+      "sha256": "105851153f1e7b562559da7d6c665eb07d79b2d5431ff0fe7517f20a815ef241",
+      "sizeBytes": 9333,
+      "role": "superseded pre-physical-copy bundle; excluded from final aggregate"
+    },
+    {
+      "path": "reports/final/bun-default.json",
+      "sha256": "4bd7f0f9b95a3f89d3ec438384e89aaf3d1400ad84d91105825c9b2a407af1cb",
+      "sizeBytes": 28344925,
+      "role": "final measured run"
+    },
+    {
+      "path": "reports/final/node-default.json",
+      "sha256": "75f86323b094c305986c187a3017abfea761579554761db7a32fb9646d8352a1",
+      "sizeBytes": 28345000,
+      "role": "final measured run"
+    },
+    {
+      "path": "reports/final/node-http.json",
+      "sha256": "250f076ac9dc70e01654b9a147d54147d62a624eeca68ad73db3e6e8d32e547c",
+      "sizeBytes": 28344535,
+      "role": "final measured run"
+    },
+    {
+      "path": "sources/measured/build/indexer/helpers/elastic-routes.js",
+      "sha256": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+      "sizeBytes": 17677,
+      "role": "exact source/build bytes independently hashed by all final runs"
+    },
+    {
+      "path": "sources/measured/build/indexer/helpers/es-connection.js",
+      "sha256": "f83d17954e0bb29bfd70ae226adf80040fcbb78b414276e8e6de2917702d1152",
+      "sizeBytes": 1566,
+      "role": "exact source/build bytes independently hashed by all final runs"
+    },
+    {
+      "path": "sources/measured/build/indexer/helpers/indexer-settlement-recovery.js",
+      "sha256": "aaedf2b56733ad1b401e482fccb3a8268ac54f721e66df9928f7de4caa67ed7e",
+      "sizeBytes": 548,
+      "role": "exact source/build bytes independently hashed by all final runs"
+    },
+    {
+      "path": "sources/measured/build/indexer/workers/indexer.js",
+      "sha256": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+      "sizeBytes": 6784,
+      "role": "exact source/build bytes independently hashed by all final runs"
+    },
+    {
+      "path": "sources/measured/package-lock.json",
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb",
+      "sizeBytes": 126283,
+      "role": "exact source/build bytes independently hashed by all final runs"
+    },
+    {
+      "path": "sources/measured/scripts/qualification/es955-broker.ts",
+      "sha256": "65c37acc3e28401c12f12da34373f88f4d4e45ca06834a9ec59f428679e58b92",
+      "sizeBytes": 24763,
+      "role": "exact source/build bytes independently hashed by all final runs"
+    },
+    {
+      "path": "sources/measured/scripts/qualification/es955-pressure.ts",
+      "sha256": "838b0d438158c113f3046c3113169e0a943a14d7cc1e4477822bd0c58408db40",
+      "sizeBytes": 16176,
+      "role": "exact source/build bytes independently hashed by all final runs"
+    },
+    {
+      "path": "sources/measured/scripts/qualification/es955-replicas.ts",
+      "sha256": "7c29683b0df4e6b4fa61b86bd53da0ba09ba34bff3ec2b502ab6c62893d6d1ac",
+      "sizeBytes": 21577,
+      "role": "exact source/build bytes independently hashed by all final runs"
+    },
+    {
+      "path": "sources/measured/src/indexer/helpers/elastic-routes.ts",
+      "sha256": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+      "sizeBytes": 22066,
+      "role": "exact source/build bytes independently hashed by all final runs"
+    },
+    {
+      "path": "sources/measured/src/indexer/helpers/indexer-settlement-recovery.ts",
+      "sha256": "baef8d09189e8dcb4f4688252f2eb842973aac2edfbc951cadb0981cd74da646",
+      "sizeBytes": 619,
+      "role": "exact source/build bytes independently hashed by all final runs"
+    },
+    {
+      "path": "sources/measured/src/indexer/workers/indexer.ts",
+      "sha256": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+      "sizeBytes": 7279,
+      "role": "exact source/build bytes independently hashed by all final runs"
+    },
+    {
+      "path": "sources/supporting/build/api/helpers/functions.js",
+      "sha256": "1ee7f0a5e2e5e21cb972e1c46472ceb80c0869ef4fe601a751ef9265bb95125c",
+      "sizeBytes": 42636,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/build/indexer/helpers/common_functions.js",
+      "sha256": "aaadbe1878ff10cf2b4a52f88e7293b818f28fd71842099eba352871434a65f1",
+      "sizeBytes": 13361,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/node_modules/@elastic/elasticsearch/lib/client.js",
+      "sha256": "28c47bc2fdc683a0386ac0592156a88f7935aff42fef89aa775d37bf5edd24c2",
+      "sizeBytes": 16713,
+      "role": "installed client connection-default implementation"
+    },
+    {
+      "path": "sources/supporting/node_modules/@elastic/transport/package.json",
+      "sha256": "9ed0ad8fe71e71a75090b979195fb30eddf1f1331aebce67a22add07ec411c35",
+      "sizeBytes": 4503,
+      "role": "installed transport package metadata"
+    },
+    {
+      "path": "sources/supporting/node_modules/amqplib/package.json",
+      "sha256": "f0d72709be18cea4528edb4223a93ae7ffec73197160aec321042bed96932928",
+      "sizeBytes": 1389,
+      "role": "installed AMQP client package metadata"
+    },
+    {
+      "path": "sources/supporting/package.json",
+      "sha256": "9f035801acd00ac688794486e3a557cf2837a80db6bdcd59463f9b89e9bb748f",
+      "sizeBytes": 2396,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/scripts/qualification/check-replica-cleanup.ps1",
+      "sha256": "9dd894c692e57b66ae1871ec0fc13a05236064f0a7e067c595b84c1929077bfd",
+      "sizeBytes": 7707,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/scripts/qualification/es955-replica-fixture.ps1",
+      "sha256": "af6d4aa6868c1505547dc60821e2cc5fdf6d303227d9f928b2e859095d9bb27b",
+      "sizeBytes": 9471,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/scripts/qualification/es955.ts",
+      "sha256": "78a1b7ed891eb1d6226d32400a3c360a0471c8f6caa47f94dcc6b6438cbe4be9",
+      "sizeBytes": 22531,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/scripts/qualification/tsconfig.json",
+      "sha256": "df28ecf99f30aa857cf5f34836ede06fe39b964da665a02d4763ad2be98eabbd",
+      "sizeBytes": 441,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/src/indexer/helpers/common_functions.ts",
+      "sha256": "9e00de2c89817f2c7f6a75862e6e582162e25b0cd8f41f2ac199f2f65b6608fc",
+      "sizeBytes": 14418,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/src/indexer/helpers/es-connection.ts",
+      "sha256": "607ed906a9cf8ed2e09f6977bf225642114bdf0fd14a8847bbf33beac0a6357c",
+      "sizeBytes": 1598,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/tests/unit/elastic-bulk-ack.test.ts",
+      "sha256": "3833ce67a8b1e7c914221a8448488b5cdfb2d869c29dcf1310a7dced16a11023",
+      "sizeBytes": 11493,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/tests/unit/elastic-settlement-recovery.test.ts",
+      "sha256": "5fd6fd030f5c0b2f1e581ee853477b44996f7714458942eaac72626d542ff9cb",
+      "sizeBytes": 6103,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/tests/unit/es955-pressure.test.ts",
+      "sha256": "9aebec9fe0fcb1dd1c4576e680b8f8e3da376436cdd60ae28cbc43c2c15a2789",
+      "sizeBytes": 12696,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/tests/unit/es955-replicas.test.ts",
+      "sha256": "da6969f493bac3e29f79882fff267bd696de2668e166361fde03363f591d123f",
+      "sizeBytes": 3184,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "sources/supporting/tsconfig.json",
+      "sha256": "06522b9434878b3b5235f84d6b276f57716ed66c35cdd8d31326cb65b4a52ba7",
+      "sizeBytes": 727,
+      "role": "supporting source/test/config snapshot at archive freeze"
+    },
+    {
+      "path": "validation/es198-pressure-failed-evidence-check.ts",
+      "sha256": "c1ed3223f4c18e8c2e4a8d5d677fb23a9041aa48667cde83fe7aca9b068d0585",
+      "sizeBytes": 2170,
+      "role": "additional owner-supplied review/validation evidence"
+    },
+    {
+      "path": "validation/es198-replica-cleanup-fault-injection-result.json",
+      "sha256": "35acbed122fa4ec56f299cca5b3f2f60e436061e8c122d0d655f6bd638bb520e",
+      "sizeBytes": 13981,
+      "role": "additional owner-supplied review/validation evidence"
+    },
+    {
+      "path": "validation/es198-replica-cleanup-fault-injection-root-result.json",
+      "sha256": "ab75c56cbaf1d727cc588dccaf224037cb4982bf736bac0e28722fb2dc5933eb",
+      "sizeBytes": 13981,
+      "role": "additional owner-supplied review/validation evidence"
+    },
+    {
+      "path": "validation/es198-replica-cleanup-fault-injection.ps1",
+      "sha256": "41ec9fad36a801815e1719813c8e1f0e3dca1d13e3d7387b96d1b616bd32ccff",
+      "sizeBytes": 7627,
+      "role": "additional owner-supplied review/validation evidence"
+    },
+    {
+      "path": "validation/es198-replica-cleanup-portable-review-result.json",
+      "sha256": "be207a2d9503c34b218dc851d2ebc3506efb92f87512bac0ba1570295f2cafb9",
+      "sizeBytes": 13981,
+      "role": "additional owner-supplied review/validation evidence"
+    },
+    {
+      "path": "validation/es198-replicas-postflight-state2-control.json",
+      "sha256": "ddce0a6e9fdf02da3f7ef833b64f403a18647a9b6d742f22c49bff370efa89f4",
+      "sizeBytes": 107286,
+      "role": "additional owner-supplied review/validation evidence"
+    },
+    {
+      "path": "validation/es198-replicas-postflight.ps1",
+      "sha256": "2790c4ad195c604e0572e005e05d94ffca143720af564fbdaf0a204361946918",
+      "sizeBytes": 3477,
+      "role": "additional owner-supplied review/validation evidence"
+    },
+    {
+      "path": "validation/es198-replicas-state.json.cleanup.json",
+      "sha256": "94cd678d3e8b3259f927b70e119797bccf8e8b791541cb4dcf19c4d388b5a48f",
+      "sizeBytes": 300,
+      "role": "additional owner-supplied review/validation evidence"
+    },
+    {
+      "path": "validation/es198-replicas-state2.json.cleanup.json",
+      "sha256": "908d623e2abc21feab471009de9b70277531deb7926cf20fb96ccd08ae0c5fc7",
+      "sizeBytes": 797,
+      "role": "additional owner-supplied review/validation evidence"
+    },
+    {
+      "path": "validation/es198-replicas-wrapper-lookup-control.json",
+      "sha256": "f124352bebf32b8e35727cd5bad0bb70ddece2820aa957cdec9091cc33415ba3",
+      "sizeBytes": 1153,
+      "role": "additional owner-supplied review/validation evidence"
+    },
+    {
+      "path": "validation/es198-settlement-recovery-root.log",
+      "sha256": "6ee860be6dd0fef6219b830dcb3110a4cef6be871517eb84abc3d296de7f8836",
+      "sizeBytes": 8595,
+      "role": "additional owner-supplied review/validation evidence"
+    },
+    {
+      "path": "validation/git-state.txt",
+      "sha256": "8899c66e279aab56f5c72a22e02a04fff5b964864efd53ac5497889e3e2efe8f",
+      "sizeBytes": 152,
+      "role": "archive-freeze provenance; not a byte-equivalence claim"
+    },
+    {
+      "path": "validation/package-evidence.py",
+      "sha256": "a785fb0ee9c32b98c1749cf58755536a1dc734c9e992eb1b9ea1c2c85c8f38cb",
+      "sizeBytes": 19697,
+      "role": "archive construction and full member read-back verifier"
+    },
+    {
+      "path": "validation/unit-final.log",
+      "sha256": "7550ba14da2514c9b39b49cd18020a76f7cfb7a8b37044fdaef21b788fbabedd",
+      "sizeBytes": 41853,
+      "role": "whole branch unit test output"
+    }
+  ],
+  "archiveReadbackVerifiedMembers": 69,
+  "archiveSha256": "61f072d62322a8a2db3a18189ee265e96e565f483a89eddc9cc7ea0551d81158",
+  "archiveSizeBytes": 4076188
+}
