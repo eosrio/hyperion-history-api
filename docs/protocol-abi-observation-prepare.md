@@ -6,6 +6,10 @@ This is the first bounded storage/capture slice of
 canonical coverage, a frontier, an ABI epoch proof or projection readiness. The
 existing Wire action, historical KV and API encoding guards remain in effect.
 
+Extension deliveries also require an exact reader/schema handoff. The
+[source-binding contract](protocol-source-bindings.md) defines that separate
+prerequisite; the master's cached handshake cannot establish source authority.
+
 ## Capturing source facts
 
 For selected extensions, MainDS captures full traces and account delta rows before

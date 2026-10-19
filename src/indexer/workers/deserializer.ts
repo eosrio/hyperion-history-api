@@ -1,8 +1,8 @@
-import { HyperionWorker } from "./hyperionWorker.js";
+import { HyperionWorker, ProtocolSourceCodecError, protocolSourceCapture } from "./hyperionWorker.js";
 import { cargo, queue } from 'async';
 import { debugLog, hLog } from "../helpers/common_functions.js";
 import { createHash } from "crypto";
-import { Message, Options } from "amqplib";
+import { Message, Options, type Channel } from "amqplib";
 
 
 import { index_queues, RabbitQueueDef } from "../definitions/index-queues.js";
@@ -18,12 +18,14 @@ import { GetBlocksResultV0 } from "./state-reader.js";
 import { de } from "zod/v4/locales";
 import { log } from "console";
 import {protocolBytes, protocolNumber} from "../protocol/contract-cache.js";
-import type {ProtocolAbiDeployment, ProtocolNormalizedDelta, ProtocolAbiAccountRowInput, ProtocolBlockAbiSource} from "@eosrio/hyperion-sdk/protocol";
+import type {ProtocolAbiDeployment, ProtocolNormalizedDelta, ProtocolAbiAccountRowInput} from "@eosrio/hyperion-sdk/protocol";
 import {protocolDeployment, type IndexedProtocolAbi} from "../protocol/deployments.js";
 import {protocolStateKey} from '../helpers/protocol-document-id.js';
 import {assertCompleteProtocolSearch} from '../protocol/search.js';
-import {ProtocolAbiObservationStore, protocolAbiCaptureDigest, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
+import {ProtocolAbiObservationStore, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
 import {assertProtocolAbiObservationFacts} from '../protocol/abi-observation-facts.js';
+import {ProtocolSourceBindingStore, ProtocolSourceBindingReadError, protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
+import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 
 interface QueuePayload {
     queue: string;
@@ -71,6 +73,10 @@ export default class MainDSWorker extends HyperionWorker {
     private consumerQueue;
     private preIndexingQueue;
     private protocolAbiObservationStore?: ProtocolAbiObservationStore;
+    private protocolSourceBindingStore?: ProtocolSourceBindingStore;
+    private activeSourceSelectionId?: string;
+    private activeSourceDelivery?: {message: Message; channel: Channel | undefined};
+    private readonly protocolDeliveryOwners = new WeakMap<Message, Channel>();
 
     shipABI?: string;
 
@@ -297,18 +303,111 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
+    /** Resolve only durable per-frame context; initialize_abi remains a legacy startup signal. */
+    async processProtocolSourceDelivery(message: Message, processBound: (result: GetBlocksResultV0) => Promise<void>): Promise<void> {
+        const ownerChannel = this.protocolDeliveryOwners.get(message);
+        await this.protocolReady;
+        this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
+        const store = this.protocolSourceBindingStore;
+        const claimed = message.properties?.headers?.[protocolSourceSelectionHeader];
+        const claimedSelectionId = typeof claimed === 'string' && claimed.length <= 4096 ? claimed : null;
+        const quarantine = async (code: string, error: unknown) => {
+            const stop = this.profiler.start('protocol_source_quarantine');
+            try {
+                const capsule = await store.quarantine({schemaVersion: 1, chainId: this.chainId,
+                protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
+                frameHex: message.content.toString('hex'), claimedSelectionId,
+                reason: {code, message: String((error as any)?.message ?? error).slice(0, 4096).toWellFormed() || code}});
+                process.send?.({event: 'ds_error', data: {type: 'protocol_source_incomplete', code, capsuleId: capsule.id, claimedSelectionId}});
+                if (ownerChannel && ownerChannel === this.ch && this.ch_ready) ownerChannel.ack(message);
+            } finally { stop(); }
+        };
+        if (!ownerChannel) {
+            await quarantine('protocol_source_receipt_unbound', new Error('Delivery lacks its original broker channel receipt'));
+            return;
+        }
+        if (typeof claimed !== 'string' || !/^h45srcsel1:[0-9a-f]{64}$/.test(claimed)) {
+            await quarantine('protocol_source_unbound', new Error('Missing or malformed reader source selection'));
+            return;
+        }
+        let binding: Awaited<ReturnType<ProtocolSourceBindingStore['readSelection']>> | undefined;
+        let readFailure: ProtocolSourceBindingReadError | undefined;
+        const stopResolve = this.profiler.start('protocol_source_resolve');
+        try { binding = await store.readSelection(claimed); }
+        catch (error) {
+            if (!(error instanceof ProtocolSourceBindingReadError)) throw error;
+            readFailure = error;
+        } finally { stopResolve(); }
+        if (readFailure) { await quarantine('protocol_source_' + readFailure.code, readFailure); return; }
+        let close: (() => void) | undefined;
+        let result: GetBlocksResultV0;
+        let invalid = false;
+        let validationError: unknown;
+        const stopVerify = this.profiler.start('protocol_source_verify');
+        try {
+            const {selection, context} = binding!;
+            const components = (value: readonly any[]) => [...value].sort((a, b) => {
+                const left = a.runtime + ':' + a.id, right = b.runtime + ':' + b.id;
+                return left < right ? -1 : left > right ? 1 : 0;
+            });
+            if (context.chainId !== this.chainId || selection.source.chainId !== this.chainId
+                || context.protocol.id !== this.protocolId || context.protocol.profileId !== this.protocol.profileId
+                || protocolImmutableJson(components(context.protocol.components)) !== protocolImmutableJson(components(this.protocolComponents ?? []))) {
+                throw new Error('Reader source chain, profile or exact component build does not match this worker');
+            }
+            if (selection.frameSha256 !== createHash('sha256').update(message.content).digest('hex')) throw new Error('Reader source frame digest mismatch');
+            close = this.beginProtocolShipDelivery(context.schemaJson);
+            const stopDecode = this.profiler.start('deserialize_result');
+            let decoded: any;
+            try { decoded = this.decodeShipResult(message.content); } finally { stopDecode(); }
+            if (!Array.isArray(decoded) || !['get_blocks_result_v0', 'get_blocks_result_v1'].includes(decoded[0])) throw new Error('Bound frame is not a block result');
+            result = decoded[1];
+            const capture = protocolSourceCapture(this.chainId, result, context.schemaJson);
+            const position = (value: any) => ({blockNum: protocolNumber(value?.block_num), blockId: value?.block_id?.toString().toLowerCase() ?? ''});
+            if (capture.captureSha256 !== selection.captureSha256 || protocolImmutableJson(capture.source) !== protocolImmutableJson(selection.source)
+                || protocolImmutableJson(position(result.head)) !== protocolImmutableJson(selection.head)
+                || protocolImmutableJson(position(result.last_irreversible)) !== protocolImmutableJson(selection.irreversible)) {
+                throw new Error('Decoded reader source position or stable capture does not match retained selection');
+            }
+        } catch (error) {
+            close?.();
+            invalid = true;
+            validationError = error;
+        } finally { stopVerify(); }
+        if (invalid) { await quarantine('protocol_source_invalid', validationError); return; }
+        this.activeSourceSelectionId = claimed;
+        this.activeSourceDelivery = {message, channel: ownerChannel};
+        try { await processBound(result!); }
+        catch (error) {
+            if (!(error instanceof ProtocolSourceCodecError)) throw error;
+            await quarantine('protocol_source_codec_incomplete', error);
+        }
+        finally { this.activeSourceSelectionId = undefined; this.activeSourceDelivery = undefined; close?.(); }
+    }
+
+    ackProtocolSourceDelivery(message: Message): void {
+        const delivery = this.activeSourceDelivery;
+        if (delivery?.message === message && delivery.channel && delivery.channel === this.ch && this.ch_ready) delivery.channel.ack(message);
+    }
+
+    /** Called at receipt, before cargo can wait behind asynchronous work. */
+    captureProtocolSourceDelivery(message: Message, channel: Channel): void {
+        const existing = this.protocolDeliveryOwners.get(message);
+        if (existing && existing !== channel) throw new Error('Cannot replace a protocol delivery channel receipt');
+        this.protocolDeliveryOwners.set(message, channel);
+    }
+
     /** Journal PREPARE precedes history filters and source ACK; it grants no decoding authority. */
     async prepareProtocolAbiObservations(res: GetBlocksResultV0): Promise<{traces?: any; deltas?: any[]}> {
         if (!this.usesExtensionProtocol) return {};
-        const position: ProtocolBlockAbiSource = {chainId: this.chainId, blockNum: protocolNumber(res.this_block?.block_num),
-            blockId: res.this_block?.block_id?.toString().toLowerCase() ?? '',
-            previousBlockId: res.prev_block?.block_id?.toString().toLowerCase() ?? null};
-        const section = (value: unknown) => value === null || value === undefined ? null : Buffer.from(protocolBytes(value)).toString('hex');
-        const capture: ProtocolAbiObservationRecord['capture'] = {kind: 'unattested-ship-result-sections-v1', schemaJson: this.protocolShipAbiJson ?? null,
-            blockHex: section(res.block), tracesHex: section(res.traces), deltasHex: section(res.deltas)};
-        const source = {...position, inputSha256: protocolAbiCaptureDigest(position, capture)};
+        if (!this.activeSourceSelectionId || !this.activeProtocolShipSchemaJson || !this.protocolSourceBindingStore) {
+            throw new Error('ABI observations require a verified reader source selection');
+        }
+        const {source: position, capture, captureSha256} = protocolSourceCapture(this.chainId, res, this.activeProtocolShipSchemaJson);
+        const source = {...position, inputSha256: captureSha256};
         const decoded: {traces?: any; deltas?: any[]} = {};
         let observation: ProtocolAbiObservationRecord['observation'];
+        let codecFailure: ProtocolSourceCodecError | undefined;
         try {
             if (res.traces && protocolBytes(res.traces).length) decoded.traces = this.decodeShipValue('transaction_trace[]', res.traces);
             if (res.deltas && protocolBytes(res.deltas).length) decoded.deltas = this.decodeShipValue('table_delta[]', res.deltas);
@@ -337,23 +436,34 @@ export default class MainDSWorker extends HyperionWorker {
             // Validate malformed provider output here so raw source survives as an incomplete record.
             observation = {status: 'observed', facts};
         } catch (error: any) {
+            if (error instanceof ProtocolSourceCodecError) codecFailure = error;
             observation = {status: 'incomplete', error: {code: 'protocol_abi_observation_incomplete',
-                message: String(error?.message ?? error).slice(0, 4096)}};
+                message: String(error?.message ?? error).slice(0, 4096).toWellFormed()}};
         }
         this.protocolAbiObservationStore ??= new ProtocolAbiObservationStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
-        await this.protocolAbiObservationStore.prepare({schemaVersion: 1,
+        const prepared = await this.protocolAbiObservationStore.prepare({schemaVersion: 1,
             protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
             source, capture, observation});
+        const stopLink = this.profiler.start('protocol_source_link_observation');
+        try {
+            await this.protocolSourceBindingStore.prepareObservationLink({schemaVersion: 1, selectionId: this.activeSourceSelectionId,
+                observationId: prepared.id, observationDigest: prepared.digest});
+        } finally { stopLink(); }
+        if (codecFailure) throw codecFailure;
         return decoded;
     }
 
     private initConsumer() {
         if (this.ch_ready && this.ch && process.env.worker_queue) {
-            this.ch.prefetch(this.conf.prefetch.block);
-            this.ch.consume(process.env.worker_queue, (data) => {
+            const consumer = this.ch;
+            consumer.prefetch(this.conf.prefetch.block);
+            consumer.consume(process.env.worker_queue, (data) => {
+                if (!data) return;
+                if (this.usesExtensionProtocol) this.captureProtocolSourceDelivery(data, consumer);
                 this.consumerQueue.push(data).catch(console.log);
             });
-            this.ch.on('drain', () => {
+            consumer.on('drain', () => {
+                if (consumer !== this.ch) return;
                 this.waitToSend = false;
                 while (this.backpressureQueue.length > 0) {
                     const msg = this.backpressureQueue.shift();
@@ -1976,7 +2086,7 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     deserializeNative(datatype: string, array: any): any {
-        if (this.shipSession) return this.decodeShipValue(datatype, array);
+        if (this.usesExtensionProtocol || this.shipSession) return this.decodeShipValue(datatype, array);
         // Compatibility for prototype-based native regression probes.
         if (this.shipABI) return typeof array === 'string'
             ? this.abieos.hexToJson('0', datatype, array)

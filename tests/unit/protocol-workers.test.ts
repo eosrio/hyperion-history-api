@@ -7,5 +7,5 @@ test('selected Wire package traverses production reader, parser, action pool and
     const [code,stdout,stderr]=await Promise.all([child.exited,new Response(child.stdout).text(),new Response(child.stderr).text()]);
     expect({code,stderr,stdout:stdout.slice(-1500)}).toMatchObject({code:0,stderr:''});
     expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual({passed:true,capturedFrame:true,syntheticConsensus:false,
-        readerRequests:4,actions:2,histories:6,stateOperations:6,legacyAddonImported:false});
+        readerRequests:6,actions:2,histories:6,stateOperations:6,legacyAddonImported:false});
 },35000);

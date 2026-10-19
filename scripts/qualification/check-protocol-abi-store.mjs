@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {Client} from '@elastic/elasticsearch';
 import {ProtocolAbiObservationStore,protocolAbiCaptureDigest} from '../../build/indexer/protocol/abi-observation-store.js';
+import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 
 // Own the exact server and namespace; this runner never accepts a borrowed cluster URL.
 const image='docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c';
@@ -92,6 +93,71 @@ try {
         }
     }
     report.checks.push('real default/final ingest pipeline retention refusal');
+    const sourceChain=`${chain}-sources`,sourceIndex=`${sourceChain}-protocol-source-bindings-v1`;
+    const sources=new ProtocolSourceBindingStore(client,sourceChain,0);
+    const context={schemaVersion:1,chainId:'1'.repeat(64),
+        protocol:{id:'synthetic-wire-source',profileId:'serialization-only',components:[
+            {id:'fixture-node',runtime:'node',version:'0.0.0-dev.1',sourceRevision:'a'.repeat(40),sha256:'b'.repeat(64)},
+            {id:'fixture-rust',runtime:'rust',version:'0.0.0-dev.1',sourceRevision:'c'.repeat(40),sha256:'d'.repeat(64)}]},
+        schemaJson:'{"version":"source-fixture-a"}'};
+    const contextId=(await sources.prepareContext(context)).id;
+    assert.equal((await sources.prepareContext(context)).id,contextId);
+    const changedContext={...context,schemaJson:'{"version":"source-fixture-b"}'};
+    const changedContextId=(await sources.prepareContext(changedContext)).id;
+    assert.notEqual(changedContextId,contextId);
+    const selection={schemaVersion:1,contextId,readerSessionId:'disposable-reader-session',readerRole:'bulk',assignmentId:'disposable-range',
+        source:{chainId:context.chainId,blockNum:100,blockId:'2'.repeat(64),previousBlockId:'3'.repeat(64)},
+        frameSha256:'4'.repeat(64),captureSha256:'5'.repeat(64),
+        head:{blockNum:200,blockId:'6'.repeat(64)},irreversible:{blockNum:99,blockId:'7'.repeat(64)}};
+    await client.indices.putSettings({index:sourceIndex,settings:{refresh_interval:'-1'}});
+    const selectionId=(await sources.prepareSelection(selection)).id;
+    const hiddenSelection=await client.search({index:sourceIndex,query:{ids:{values:[selectionId]}},size:1});
+    assert.equal(hiddenSelection.timed_out,false);assert.equal(hiddenSelection._shards.failed,0);assert.equal(hiddenSelection.hits.hits.length,0);
+    assert.deepEqual(await sources.readSelection(selectionId),{selection,context});
+    const reopenedSources=new ProtocolSourceBindingStore(client,sourceChain,0);
+    assert.deepEqual(await reopenedSources.readSelection(selectionId),{selection,context});
+    assert.equal((await reopenedSources.prepareSelection(selection)).id,selectionId);
+    report.checks.push('source contexts and selections survive fresh adapters and search refresh lag');
+    const nextSelection={...selection,contextId:changedContextId};
+    const nextSelectionId=(await sources.prepareSelection(nextSelection)).id;
+    assert.notEqual(nextSelectionId,selectionId);
+    assert.deepEqual(await sources.readSelection(selectionId),{selection,context});
+    assert.equal((await sources.readSelection(nextSelectionId)).context.schemaJson,changedContext.schemaJson);
+    assert.notEqual((await sources.prepareSelection({...selection,frameSha256:'8'.repeat(64)})).id,selectionId);
+    report.checks.push('queued source selections keep exact old schemas and distinguish changed frame bytes');
+
+    const link={schemaVersion:1,selectionId,observationId:prepared.id,observationDigest:prepared.digest};
+    await sources.prepareObservationLink(link);
+    assert.deepEqual(await reopenedSources.readObservationLink(selectionId),link);
+    await sources.prepareObservationLink(link);
+    await assert.rejects(sources.prepareObservationLink({...link,observationDigest:'9'.repeat(64)}),/conflict/i);
+    report.checks.push('immutable selection to PREPARE linkage and conflicting result refusal');
+    const capsule={schemaVersion:1,chainId:context.chainId,protocol:context.protocol,frameHex:'0001ff',
+        reason:{code:'source_binding_unavailable',message:'Synthetic unbound delivery'},claimedSelectionId:null};
+    const capsuleId=(await sources.quarantine(capsule)).id;
+    assert.deepEqual(await reopenedSources.readQuarantine(capsuleId),capsule);
+    assert.equal((await sources.quarantine(capsule)).id,capsuleId);
+    report.checks.push('incomplete raw capsules are byte-retained and idempotently readable');
+
+    await client.indices.putSettings({index:sourceIndex,settings:{'translog.durability':'async'}});
+    try {await assert.rejects(sources.prepareSelection({...selection,readerSessionId:'unsafe-settings'}),/durability/);} finally {
+        await client.indices.putSettings({index:sourceIndex,settings:{'translog.durability':'request'}});
+    }
+    for(const setting of ['default_pipeline','final_pipeline']) {
+        await client.indices.putSettings({index:sourceIndex,settings:{[setting]:pipeline}});
+        try {await assert.rejects(sources.quarantine({...capsule,frameHex:'00'}),/retention/);} finally {
+            await client.indices.putSettings({index:sourceIndex,settings:{[setting]:'_none'}});
+        }
+    }
+    report.checks.push('source-binding unsafe durability and ingest-pipeline refusal');
+    const filteredSources=new ProtocolSourceBindingStore(client,`${sourceChain}-filtered`,0);
+    const sourceMapping=(await client.indices.getMapping({index:sourceIndex}))[sourceIndex].mappings;
+    const filteredSourceIndex=`${sourceChain}-filtered-protocol-source-bindings-v1`;
+    await client.indices.create({index:filteredSourceIndex,settings:{number_of_shards:1,number_of_replicas:0,
+        'translog.durability':'request',auto_expand_replicas:'false'},mappings:{...sourceMapping,_source:{excludes:['payload']}}});
+    await assert.rejects(filteredSources.prepareContext(context),/incompatible/);
+    assert.equal((await client.count({index:filteredSourceIndex})).count,0);
+    report.checks.push('source-binding source-pruning mappings refused before writes');
     report.status='passed';
 } catch(error){report.status='failed';report.error=String(error.stack??error);}
 finally {

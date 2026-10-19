@@ -85,9 +85,10 @@ export default class HyperionParser extends BaseParser {
 
     public async parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void> {
         for (const message of messages) {
-
-            let allowProcessing = true;
-
+            if (worker.usesExtensionProtocol) {
+                await worker.processProtocolSourceDelivery(message, result => this.processResult(worker, message, result));
+                continue;
+            }
             const stopResult = worker.profiler.start('deserialize_result');
             const ds_msg = worker.decodeShipResult(message.content) as [string, GetBlocksResultV0];
             stopResult();
@@ -98,8 +99,12 @@ export default class HyperionParser extends BaseParser {
                     throw new Error('failed to deserialize datatype=result');
                 }
             }
+            await this.processResult(worker, message, ds_msg[1]);
+        }
+    }
 
-            const res = ds_msg[1];
+    private async processResult(worker: MainDSWorker, message: Message, res: GetBlocksResultV0): Promise<void> {
+            let allowProcessing = true;
             let block: any = null;
             let traces = [];
             let deltas: any[] = [];
@@ -111,8 +116,8 @@ export default class HyperionParser extends BaseParser {
 
             if (res.block && res.block.length) {
                 const stopBlock = worker.profiler.start('deserialize_block');
-                block = worker.deserializeNative('signed_block', protocolBytes(res.block));
-                stopBlock();
+                try { block = worker.deserializeNative('signed_block', protocolBytes(res.block)); }
+                finally { stopBlock(); }
                 if (block === null) {
                     hLog('incompatible block');
                     process.exit(1);
@@ -147,8 +152,8 @@ export default class HyperionParser extends BaseParser {
 
             if (allowProcessing && res.traces && res.traces.length) {
                 const stopTraces = worker.profiler.start('deserialize_traces');
-                traces = observation?.traces ?? worker.deserializeNative('transaction_trace[]', protocolBytes(res.traces));
-                stopTraces();
+                try { traces = observation?.traces ?? worker.deserializeNative('transaction_trace[]', protocolBytes(res.traces)); }
+                finally { stopTraces(); }
                 if (!traces) {
                     hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res['this_block']['block_num']}`);
                 }
@@ -156,8 +161,8 @@ export default class HyperionParser extends BaseParser {
 
             if (allowProcessing && res.deltas && res.deltas.length) {
                 const stopDeltas = worker.profiler.start('deserialize_deltas');
-                deltas = observation?.deltas ?? worker.decodeShipValue('table_delta[]', res.deltas);
-                stopDeltas();
+                try { deltas = observation?.deltas ?? worker.decodeShipValue('table_delta[]', res.deltas); }
+                finally { stopDeltas(); }
                 if (!deltas) {
                     hLog(`[WARNING] table_delta[] deserialization failed on block ${res['this_block']['block_num']}`);
                 }
@@ -166,8 +171,8 @@ export default class HyperionParser extends BaseParser {
             let result;
             try {
                 const stopProcess = worker.profiler.start('process_block');
-                result = await worker.processBlock(res, block, traces, deltas);
-                stopProcess();
+                try { result = await worker.processBlock(res, block, traces, deltas); }
+                finally { stopProcess(); }
                 if (result) {
                     const evPayload = {
                         event: 'consumed_block',
@@ -186,17 +191,19 @@ export default class HyperionParser extends BaseParser {
                 } else {
                     hLog(`ERROR: Block data not found for #${res['this_block']['block_num']}`);
                 }
-                if (worker.ch && worker.ch_ready) {
+                if (worker.usesExtensionProtocol) {
+                    worker.ackProtocolSourceDelivery(message);
+                } else if (worker.ch && worker.ch_ready) {
                     worker.ch.ack(message);
                 }
             } catch (e) {
+                if (worker.usesExtensionProtocol) throw e;
                 console.log(e);
                 if (worker.ch && worker.ch_ready) {
                     worker.ch.nack(message);
                 }
                 process.exit(1);
             }
-        }
     }
 
     async flattenInlineActions(action_traces: any[]): Promise<any[]> {

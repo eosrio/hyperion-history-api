@@ -2,7 +2,9 @@ import { Client } from "@elastic/elasticsearch";
 import { EventEmitter } from "events";
 import type {ProtocolProvider, ProtocolShipSession, ProtocolComponent} from "@eosrio/hyperion-sdk/protocol";
 import {loadChainProtocol} from "../protocol/selection.js";
-import {ContractDecoder, protocolBytes} from "../protocol/contract-cache.js";
+import {ContractDecoder, protocolBytes, protocolNumber} from "../protocol/contract-cache.js";
+import {protocolAbiCaptureDigest, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
+import type {ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import { Channel, ConfirmChannel } from "amqplib";
 
 import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
@@ -18,6 +20,25 @@ import { Action, APIClient, PackedTransaction } from "@wharfkit/antelope";
 import {inflateSync} from 'node:zlib';
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
 import { WorkerProfiler } from "../helpers/profiler.js";
+
+/** Exact stable sections; mutable head/LIB remain in the separately bound frame. */
+export function protocolSourceCapture(chainId: string, result: any, schemaJson: string) {
+    const source: ProtocolSourcePosition = {chainId, blockNum: protocolNumber(result.this_block?.block_num),
+        blockId: result.this_block?.block_id?.toString().toLowerCase() ?? '',
+        previousBlockId: result.prev_block?.block_id?.toString().toLowerCase() ?? null};
+    const section = (value: unknown) => value === null || value === undefined ? null : Buffer.from(protocolBytes(value)).toString('hex');
+    const capture: ProtocolAbiObservationRecord['capture'] = {kind: 'unattested-ship-result-sections-v1', schemaJson,
+        blockHex: section(result.block), tracesHex: section(result.traces), deltasHex: section(result.deltas)};
+    return {source, capture, captureSha256: protocolAbiCaptureDigest(source, capture)};
+}
+
+/** Only a pure decoder invocation under an immutable delivery context creates this marker. */
+export class ProtocolSourceCodecError extends Error {
+    constructor(readonly datatype: string, cause: unknown) {
+        super(`Protocol ${datatype} decode failed: ${String((cause as any)?.message ?? cause)}`, {cause});
+        this.name = 'ProtocolSourceCodecError';
+    }
+}
 
 export abstract class HyperionWorker {
 
@@ -53,6 +74,7 @@ export abstract class HyperionWorker {
     shipSession?: ProtocolShipSession;
     private protocolShipAbi?: unknown;
     protected protocolShipAbiJson?: string;
+    private deliveryShipContext?: {session: ProtocolShipSession; abi: unknown; schemaJson: string};
     configModule: ConfigurationModule;
 
     protected constructor() {
@@ -154,19 +176,46 @@ export abstract class HyperionWorker {
     }
 
     decodeShipResult(bytes: Uint8Array): any {
-        if (!this.shipSession) throw new Error("Protocol SHiP session is not initialized");
-        return this.shipSession.decodeResult(bytes);
+        const session = this.deliveryShipContext?.session ?? this.shipSession;
+        if (!session) throw new Error("Protocol SHiP session is not initialized");
+        return this.decodeProtocolSource('result', () => session.decodeResult(bytes));
+    }
+
+    /** A queued delivery owns its decoder until all asynchronous processing ends. */
+    protected beginProtocolShipDelivery(schemaJson: string): () => void {
+        if (this.deliveryShipContext) throw new Error('Concurrent protocol source delivery is unsupported');
+        const abi = JSON.parse(schemaJson);
+        const session = this.protocol.createShipSession(abi);
+        const context = {session, abi, schemaJson};
+        this.deliveryShipContext = context;
+        return () => {
+            if (this.deliveryShipContext === context) this.deliveryShipContext = undefined;
+            session.close?.();
+        };
+    }
+
+    protected get activeProtocolShipSchemaJson(): string | undefined {
+        return this.deliveryShipContext?.schemaJson ?? this.protocolShipAbiJson;
+    }
+
+    private decodeProtocolSource<T>(datatype: string, decode: () => T): T {
+        try { return decode(); }
+        catch (error) {
+            if (this.deliveryShipContext) throw new ProtocolSourceCodecError(datatype, error);
+            throw error;
+        }
     }
 
     decodeShipValue(type: string, input: unknown): any {
-        if (!this.shipSession) throw new Error("Protocol SHiP session is not initialized");
+        const session = this.deliveryShipContext?.session ?? this.shipSession;
+        if (!session) throw new Error("Protocol SHiP session is not initialized");
         const bytes = protocolBytes(input);
-        switch (type) {
-            case "signed_block": return this.shipSession.decodeBlock(bytes);
-            case "transaction_trace[]": return this.shipSession.decodeTraces(bytes);
-            case "table_delta[]": return this.shipSession.decodeDeltas(bytes);
-            default: return this.shipSession.decodeRow(type, bytes);
-        }
+        return this.decodeProtocolSource(type, () => { switch (type) {
+            case "signed_block": return session.decodeBlock(bytes);
+            case "transaction_trace[]": return session.decodeTraces(bytes);
+            case "table_delta[]": return session.decodeDeltas(bytes);
+            default: return session.decodeRow(type, bytes);
+        } });
     }
 
     decodePackedTransaction(input: any): any {
@@ -174,8 +223,9 @@ export abstract class HyperionWorker {
         const compression = Number(input?.compression ?? 0);
         if (compression !== 0 && compression !== 1) throw new Error('Unsupported packed transaction compression');
         const bytes = protocolBytes(input?.packed_trx ?? input);
-        if (!this.shipSession || !this.protocolShipAbi) throw new Error('Protocol SHiP session is not initialized');
-        return this.protocol.contractCodec.decodeValue(this.protocolShipAbi, 'transaction', compression === 1
+        const abi = this.deliveryShipContext?.abi ?? this.protocolShipAbi;
+        if (!(this.deliveryShipContext?.session ?? this.shipSession) || !abi) throw new Error('Protocol SHiP session is not initialized');
+        return this.protocol.contractCodec.decodeValue(abi, 'transaction', compression === 1
             ? inflateSync(bytes, {maxOutputLength: 64 * 1024 * 1024}) : bytes);
     }
 

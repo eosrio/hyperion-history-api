@@ -60,21 +60,32 @@ try {
     const {MongoRoutes} = await import('../../build/indexer/helpers/mongo-routes.js');
     const {ElasticRoutes} = await import('../../build/indexer/helpers/elastic-routes.js');
     const {ProtocolAbiObservationStore} = await import('../../build/indexer/protocol/abi-observation-store.js');
+    const {ProtocolSourceBindingStore} = await import('../../build/indexer/protocol/source-bindings.js');
+    const sourceStore = new ProtocolSourceBindingStore(observationMemoryClient().client,chain);
     const reader = new Reader(); workers.push(reader);
     await reader.protocolReady;
+    reader.protocolSourceBindingStore = sourceStore;
     const requests = []; const distributed = [];
     reader.ship = {connected:true,send:bytes=>requests.push(Buffer.from(bytes)),close(){}};
     reader.stageOneDistQueue = {push:async payload=>distributed.push(payload)};
     reader.local_block_num = vectorFile.producer.blockNum - 1; reader.receivedFirstBlock = true;
     await reader.onMessage(Buffer.from(JSON.stringify(fixture.handshake)));
+    const handshakeCodec = wire.createWireValueCodec(fixture.handshake,wire.resolveCodecProfile(profileId));
+    const capturedResult = handshakeCodec.decode('result',Buffer.from(captured.hex,'hex'))[1];
+    const statusFrame = Buffer.from(handshakeCodec.encode('result',['get_status_result_v0',{head:capturedResult.head,
+        last_irreversible:capturedResult.last_irreversible,trace_begin_block:2,trace_end_block:10000,
+        chain_state_begin_block:2,chain_state_end_block:10000,chain_id:chainId}]));
+    await reader.onMessage(statusFrame);
+    reader.local_block_num = vectorFile.producer.blockNum - 1;
     await reader.processIncomingBlocks([Buffer.from(captured.hex,'hex')]);
     assert.equal(distributed.length,1);
     assert.equal(distributed[0].content.toString('hex'),captured.hex);
-    const handshakeCodec = wire.createWireValueCodec(fixture.handshake,wire.resolveCodecProfile(profileId));
     assert.deepEqual(handshakeCodec.decode('request',requests[0]),['get_status_request_v0',{}]);
-    assert.deepEqual(handshakeCodec.decode('request',requests[1]),['get_blocks_ack_request_v0',{num_messages:1}]);
+    assert.equal(handshakeCodec.decode('request',requests[1])[0],'get_blocks_request_v0');
+    assert.deepEqual(handshakeCodec.decode('request',requests[2]),['get_blocks_ack_request_v0',{num_messages:1}]);
     reader.shipRev='v1';
     await reader.processFirstABI(Buffer.from(JSON.stringify(fixture.handshake)));
+    await reader.onMessage(statusFrame);
     reader.requestBlockRange(6350,6351);
     const requestV1=handshakeCodec.decode('request',requests.at(-1));
     assert.equal(requestV1[0],'get_blocks_request_v1');
@@ -83,6 +94,7 @@ try {
 
     const main = new Deserializer(); workers.push(main);
     await main.protocolReady;
+    main.protocolSourceBindingStore = sourceStore;
     main.protocolAbiObservationStore = new ProtocolAbiObservationStore(observationMemoryClient().client,chain);
     const originalConfig=main.conf;
     const originalProvider=main.protocol;
@@ -106,7 +118,9 @@ try {
     main.ch = {ack:()=>{},nack:()=>{},sendToQueue:(queue,content,options)=>{poolMessages.push({queue,content,properties:options});return true;}};
     const until = async predicate => { const limit = Date.now()+3000; while(!predicate()) {assert(Date.now()<limit);await new Promise(resolve=>setTimeout(resolve,5));} };
     await until(()=>main.mLoader.parser && main.mLoader.chainMappings.has('*::transfer'));
-    await main.mLoader.parser.parseMessage(main,[{content:Buffer.from(captured.hex,'hex')}]);
+    const delivery = payload => ({content:payload.content,properties:{headers:payload.headers}});
+    const consume=async message=>{main.captureProtocolSourceDelivery(message,main.ch);return main.mLoader.parser.parseMessage(main,[message]);};
+    await consume(delivery(distributed[0]));
     assert(output.some(value=>value.queue.includes('index_abis')),'captured binary account ABI did not reach the ABI output');
     const capturedBlock = output.find(value=>value.queue.includes('index_blocks'));
     assert.equal(JSON.parse(capturedBlock.content)['@timestamp'],fixture.expected.block.timestamp);
@@ -114,7 +128,10 @@ try {
     // Captured and transformed block6350 are independent engineering fixtures,
     // not two competing byte representations in one authoritative journal.
     main.protocolAbiObservationStore = new ProtocolAbiObservationStore(observationMemoryClient().client,chain);
-    await main.mLoader.parser.parseMessage(main,[{content:Buffer.from(fixture.frameHex,'hex')}]);
+    reader.local_block_num = 6349;
+    await reader.onMessage(Buffer.from(fixture.frameHex,'hex'));
+    const fixtureDelivery = delivery(distributed.at(-1));
+    await consume(fixtureDelivery);
     const blockDocument = JSON.parse(output.find(value=>value.queue.includes('index_blocks')).content);
     assert.equal(blockDocument.cpu_usage,479);
     assert.equal(blockDocument.trx_count,1);
@@ -152,12 +169,12 @@ try {
     main.conf.whitelists.root_only=true;main.conf.whitelists.actions=['sysio.token::transfer'];
     main.filters.action_whitelist=new Set(['sysio.token::transfer']);
     output.length=0;poolMessages.length=0;
-    await main.mLoader.parser.parseMessage(main,[{content:Buffer.from(fixture.frameHex,'hex')}]);
+    await consume(fixtureDelivery);
     assert.equal(poolMessages.length,1,'root-only filtering dropped a matching direct Wire transaction');
     assert(output.some(value=>value.queue.includes('index_abis')));
     main.filters.action_whitelist=new Set(['other::nomatch']);
     output.length=0;poolMessages.length=0;
-    await main.mLoader.parser.parseMessage(main,[{content:Buffer.from(fixture.frameHex,'hex')}]);
+    await consume(fixtureDelivery);
     assert.equal(poolMessages.length,0);
     assert(!output.some(value=>value.queue.includes('index_abis')),'root-only filtering processed a nonmatching transaction');
     main.conf.whitelists.root_only=false;main.conf.whitelists.actions=[];main.filters.action_whitelist=new Set();

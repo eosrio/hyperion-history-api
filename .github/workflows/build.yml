@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host" ]
+    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations" ]
 
 jobs:
   build:
@@ -70,7 +70,7 @@ jobs:
         working-directory: docs/performance/evidence/protocol-adapter-20261019
         run: sha256sum -c SHA256SUMS
       - run: bun test tests/unit
-      - name: Check ABI observation adapter against disposable Elasticsearch 9.5.5
+      - name: Check ABI observation and source-binding adapters against disposable Elasticsearch 9.5.5
         if: matrix.node-version == '24.x'
         run: node scripts/qualification/check-protocol-abi-store.mjs
 
