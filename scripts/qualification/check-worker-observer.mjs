@@ -56,6 +56,10 @@ if (mode === 'master') {
             if (message.signal) worker.kill('SIGKILL');
             else worker.send({event: 'fixture_exit', code: 7});
         }
+        if (message?.event === 'fixture_finish_child') {
+            worker.once('exit', (code, signal) => process.send({event: 'fixture_child_exited', code, signal}));
+            worker.send({event: 'finish', target: '1'});
+        }
     });
     if (process.env.ES198_LATE_TEST === '1') process.on('message', message => {
         if (message?.event === 'qualifier_shutdown') setTimeout(() => {
@@ -80,6 +84,39 @@ if (mode === 'master') {
     assert.equal(returned, undefined);
     assert.equal(reader.baseRequest.start_block_num, 17);
     assert.equal(reader.baseRequest.end_block_num, 25);
+    if (process.env.ES198_OBSERVER_CHECK_CASE === 'reader-finished-before-shutdown') {
+        let drained = false;
+        const finished = [];
+        Object.setPrototypeOf(reader, StateReader.prototype);
+        Object.assign(reader, {
+            isLiveReader: false,
+            publications: new Map([['pending-confirm', true]]),
+            confirmRange: {complete: true},
+            stageOneDistQueue: {idle: () => drained},
+            blockReadingQueue: {idle: () => drained},
+            ship: {close: permanent => {
+                assert.equal(permanent, true);
+                finished.push('ship-closed');
+                setTimeout(() => {
+                    drained = true;
+                    reader.publications.clear();
+                    finished.push('queues-drained');
+                }, 25);
+            }},
+            profiler: {stopReporting: () => finished.push('reporting-stopped')},
+            cch: {close: async () => {
+                await sleep(20);
+                finished.push('confirm-channel-closed');
+            }},
+            ch: {close: async () => {
+                await sleep(20);
+                finished.push('channel-closed');
+                writeFileSync(join(process.env.ES198_OBSERVER_DIR, `finished-${process.pid}.json`),
+                    JSON.stringify({pid: process.pid, at: Date.now(), finished,
+                        finishing: reader.finishing, allowRequests: reader.allowRequests}));
+            }}
+        });
+    }
     process.prependListener('message', message => {
         if (message.event === 'fixture_exit' || (message.event === 'qualifier_shutdown' &&
             process.env.ES198_OBSERVER_CHECK_CASE === 'nonzero-after-flush')) process.exit(7);
@@ -93,6 +130,7 @@ if (mode === 'master') {
             assert.equal(message.marker, 'unchanged');
             process.send({ event: 'read_block', block_num: 17, id: '1' });
         }
+        if (message.event === 'finish') StateReader.prototype.onIpcMessage.call(reader, message);
     });
     process.send({ event: 'ready' });
     process.send({ event: 'read_block', block_num: 17171, id: '1' });
@@ -107,7 +145,7 @@ if (mode === 'master') {
     assert.notEqual(negative.status, 0);
     assert.match(negative.stderr, /must name an existing absolute qualification directory/);
     const cases = [];
-    const caseNames = ['normal', 'late-child-shutdown', 'ready-before-queue-response',
+    const caseNames = ['normal', 'late-child-shutdown', 'ready-before-queue-response', 'reader-finished-before-shutdown',
         'nonzero-after-flush', 'signal-after-flush', 'nonzero-before-shutdown', 'signal-before-shutdown'];
     const selected = process.env.ES198_CHECK_CASE;
     if (selected) assert.ok(caseNames.includes(selected));
@@ -121,6 +159,7 @@ async function runCase(name) {
     const abnormal = /^(nonzero|signal)-/.test(name);
     const signalExit = name.startsWith('signal-');
     const beforeShutdown = name.endsWith('-before-shutdown');
+    const readerFinished = name === 'reader-finished-before-shutdown';
     const beforeAssertions = assertions;
     const temporaryRoot = realpathSync(tmpdir());
     const directory = mkdtempSync(join(temporaryRoot, 'hyperion-worker-observer-check-'));
@@ -187,11 +226,35 @@ async function runCase(name) {
         assert.ok(ready, serverError?.stack || stderr);
         assert.equal(ready.sendReturnBoolean, true);
         await new Promise(resolve => setTimeout(resolve, 2300));
+        if (readerFinished) {
+            // Production finish exits the reader before the master flushes or
+            // shuts down. Its profile must therefore be saved by finishReader.
+            child.send({event: 'fixture_finish_child'});
+            while (!messages.some(message => message.event === 'fixture_child_exited') && Date.now() < deadline) await sleep(10);
+            const outcome = messages.find(message => message.event === 'fixture_child_exited');
+            assert.ok(outcome, 'reader did not finish before master shutdown');
+            assert.equal(outcome.code, 0);
+            assert.equal(outcome.signal, null);
+            const readerRecords = readdirSync(directory).filter(file => file.endsWith('.jsonl'))
+                .flatMap(file => readFileSync(join(directory, file), 'utf8').trim().split('\n').map(JSON.parse))
+                .filter(row => row.role === 'reader');
+            const flushed = readerRecords.find(row => row.kind === 'flush');
+            assert.equal(flushed?.reason, 'worker_finished', 'production reader finish did not flush its profile');
+            assert.equal(flushed.success, true);
+            assert.equal(flushed.profileState, 'saved');
+            const finished = JSON.parse(readFileSync(join(directory, `finished-${flushed.pid}.json`), 'utf8'));
+            assert.deepEqual(finished.finished, ['ship-closed', 'queues-drained', 'reporting-stopped',
+                'confirm-channel-closed', 'channel-closed']);
+            assert.equal(finished.finishing, true);
+            assert.equal(finished.allowRequests, false);
+            assert.ok(flushed.at >= finished.at, 'profile flushed before production reader cleanup completed');
+            assert.ok(!readerRecords.some(row => row.kind === 'shutdown'));
+        }
         child.send({ event: 'qualifier_flush', requestId: 'smoke-flush' });
         while (readdirSync(directory).filter(name => name.endsWith('.cpuprofile')).length < 2 && Date.now() < deadline) {
             await new Promise(resolve => setTimeout(resolve, 25));
         }
-        if (beforeShutdown) {
+        if (beforeShutdown && !readerFinished) {
             child.send({event: 'fixture_exit_child', signal: signalExit});
             while (!messages.some(message => message.event === 'fixture_child_exited') && Date.now() < deadline) await sleep(10);
             const outcome = messages.find(message => message.event === 'fixture_child_exited');
@@ -228,7 +291,8 @@ async function runCase(name) {
                     assert.equal(shutdown.childExits[0].signal, signalExit ? 'SIGKILL' : null);
                 }
             } else if (!abnormal) {
-                assert.ok(own.some(row => row.kind === 'shutdown' && row.success));
+                if (readerFinished) assert.ok(own.some(row => row.kind === 'flush' && row.reason === 'worker_finished'));
+                else assert.ok(own.some(row => row.kind === 'shutdown' && row.success));
                 assert.ok(own.some(row => row.kind === 'exit' && row.code === 0));
             }
         }
