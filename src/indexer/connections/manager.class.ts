@@ -146,7 +146,7 @@ export class ConnectionManager {
             if (_es.ingest_nodes.length > 0) {
                 for (const node of _es.ingest_nodes) {
                     this.esIngestClients.push(new Client({
-                        node: `${_es.protocol}://${_es.host}`,
+                        node: `${_es.protocol}://${node}`,
                         auth: {
                             username: _es.user,
                             password: _es.pass
