@@ -40,6 +40,9 @@ jobs:
       - name: Verify Elasticsearch replica evidence checksums
         working-directory: docs/performance/evidence/es955-replicas-20261019
         run: sha256sum -c SHA256SUMS
+      - name: Verify Elasticsearch worker evidence checksums
+        working-directory: docs/performance/evidence/es955-workers-20261019
+        run: sha256sum -c SHA256SUMS
       - name: Check disposable replica fixture cleanup with mocked Docker
         shell: pwsh
         run: ./scripts/qualification/check-replica-cleanup.ps1
