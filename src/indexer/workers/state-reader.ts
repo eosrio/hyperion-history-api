@@ -6,6 +6,7 @@ import {ABI, API, Bytes, Checksum256, Serializer, UInt32} from '@wharfkit/antelo
 import {HyperionWorker} from './hyperionWorker.js';
 import {debugLog, hLog} from '../helpers/common_functions.js';
 import {RabbitQueueDef} from '../definitions/index-queues.js';
+import {LiveReaderCheckpoint, ReaderConfirmRange} from '../helpers/reader-progress.js';
 
 interface RequestRange {
     first_block: number;
@@ -37,6 +38,14 @@ export default class StateReader extends HyperionWorker {
     private allowRequests = true;
     private pendingRequest: [number, number] | null = null;
     private completionSignaled = false;
+    private assignmentId = process.env.reader_assignment;
+    private rangeRequested = false;
+    private confirmRange?: ReaderConfirmRange;
+    private publications = new Map<object, ConfirmChannel>();
+    private confirmationDeadline?: NodeJS.Timeout;
+    private publisherFailure?: string;
+    private finishing = false;
+    private liveCheckpoint?: LiveReaderCheckpoint;
     private stageOneDistQueue: QueueObject<any>;
     private pendingDistribution?: {publisher: ConfirmChannel; resume: () => void};
     private blockReadingQueue: QueueObject<WebSocket.MessageEvent>;
@@ -49,7 +58,6 @@ export default class StateReader extends HyperionWorker {
     // private queueSizeCheckInterval = 5000;
 
     private local_distributed_count = 0;
-    private lastPendingCount = 0;
     private local_last_block = 0;
     private reconnectCount = 0;
     private future_block = 0;
@@ -84,7 +92,11 @@ export default class StateReader extends HyperionWorker {
         super();
         if (this.isLiveReader && process.env.worker_last_processed_block) {
             this.local_block_num = parseInt(process.env.worker_last_processed_block, 10) - 1;
+            this.liveCheckpoint = new LiveReaderCheckpoint(this.local_block_num + 1, process.env.worker_last_processed_block_id,
+                this.conf.settings.reader_recovery_window_blocks);
         }
+        if (!this.isLiveReader) this.confirmRange = new ReaderConfirmRange(
+            parseInt(process.env.first_block ?? '0', 10), parseInt(process.env.last_block ?? '0', 10));
 
         this.stageOneDistQueue = cargo((tasks, callback) => {
             this.distribute(tasks, callback);
@@ -138,7 +150,18 @@ export default class StateReader extends HyperionWorker {
             const q = this.isLiveReader ? this.chain + ':live_blocks' : this.chain + ':blocks:' + this.currentIdx;
             if (this.cch_ready && channel === this.cch) {
                 const d = data.pop();
-                const result = channel.sendToQueue(
+                const range = this.confirmRange;
+                const token = range?.accepted() ?? {};
+                // Record ownership before calling sendToQueue: a callback may
+                // fail synchronously and channel replacement cannot erase it.
+                this.publications ??= new Map();
+                this.publications.set(token, channel);
+                if (!this.confirmationDeadline) this.confirmationDeadline = setTimeout(() => {
+                    this.failPublisherRecovery('Block publisher confirmation deadline exceeded (60000ms)');
+                }, 60000).unref();
+                let result: boolean;
+                try {
+                    result = channel.sendToQueue(
                     q,
                     d.content,
                     {
@@ -146,10 +169,26 @@ export default class StateReader extends HyperionWorker {
                         mandatory: true
                     },
                     (err: any) => {
-                        if (err !== null) {
-                            console.log('Message nacked!');
-                            console.log(err.message);
+                        if (!this.publications.delete(token) || this.publisherFailure) return;
+                        if (!this.publications.size && this.confirmationDeadline) {
+                            clearTimeout(this.confirmationDeadline);
+                            this.confirmationDeadline = undefined;
+                        }
+                        const successful = !err && channel === this.cch;
+                        range?.settle(token, d.num, successful);
+                        if (err) {
+                            this.failPublisherRecovery(`Block ${d.num} confirmation failed: ${err?.message ?? 'unknown confirmation'}`);
+                        } else if (!successful) {
+                            this.failPublisherRecovery(`Block ${d.num} confirmed by a replaced publisher`);
                         } else {
+                            if (range && range !== this.confirmRange) return;
+                            try {
+                                const checkpoint = d.confirmLive?.();
+                                if (checkpoint) process.send?.({event: 'live_checkpoint', data: checkpoint});
+                            } catch (error: any) {
+                                this.failSourceRecovery(error.message);
+                                return;
+                            }
                             if (process.send) {
                                 process.send({
                                     event: 'read_block',
@@ -157,16 +196,20 @@ export default class StateReader extends HyperionWorker {
                                     block_num: d.num
                                 });
                             }
+                            if (range === this.confirmRange && range?.complete) this.signalReaderCompletion();
                         }
                     }
                 );
+                } catch (error: any) {
+                    this.publications.delete(token);
+                    range?.settle(token, d.num, false);
+                    this.failPublisherRecovery(`Block ${d.num} publish failed: ${error.message}`);
+                    return;
+                }
 
                 if (!this.isLiveReader) {
                     this.local_distributed_count++;
                     debugLog(`Block Number: ${d.num} - Range progress: ${this.local_distributed_count}/${this.range_size}`);
-                    if (this.local_distributed_count === this.range_size) {
-                        this.signalReaderCompletion();
-                    }
                     this.currentIdx++;
                     if (this.currentIdx > this.conf.scaling.ds_queues) {
                         this.currentIdx = 1;
@@ -221,11 +264,32 @@ export default class StateReader extends HyperionWorker {
 
         if (this.cch) {
             const publisher = this.cch;
+            if (Array.from(this.publications?.values() ?? []).some(channel => channel !== publisher)) {
+                this.failPublisherRecovery('Publisher replaced with unknown block confirmations');
+                return;
+            }
             this.cch_ready = true;
             publisher.on('close', () => {
                 if (publisher !== this.cch) return;
                 this.cch_ready = false;
                 this.stageOneDistQueue.pause();
+                if (this.finishing) return;
+                // Channel-only loss also needs supervision when no pending
+                // callback is available to report the failure.
+                if (this.publications?.size) this.failPublisherRecovery('Block publisher channel closed with unknown confirmations');
+                else {
+                    // A full connection reconnect can replace a clean publisher.
+                    // A channel-only close has no such reconnect in amqplib.
+                    setTimeout(() => {
+                        if (publisher === this.cch && !this.cch_ready) this.failPublisherRecovery('Block publisher channel remained closed');
+                    }, 1000).unref();
+                }
+            });
+            publisher.on('error', (error: Error) => {
+                if (publisher === this.cch) this.failPublisherRecovery(`Block publisher error: ${error.message}`);
+            });
+            publisher.on('return', () => {
+                if (publisher === this.cch) this.failPublisherRecovery('Mandatory block publication was unroutable');
             });
             this.stageOneDistQueue.resume();
             // resume() only starts queued cargo; a batch already waiting on an
@@ -237,6 +301,13 @@ export default class StateReader extends HyperionWorker {
 
     newRange(data: any) {
 
+        if (data.assignment_id && data.assignment_id === this.assignmentId && this.rangeRequested) return;
+        if (this.publications?.size) {
+            this.failPublisherRecovery('Range replaced with unknown block confirmations');
+            return;
+        }
+        this.rangeRequested = true;
+
         debugLog(`new_range [${data.first_block},${data.last_block}]`);
 
         this.local_distributed_count = 0;
@@ -247,18 +318,21 @@ export default class StateReader extends HyperionWorker {
         this.completionMonitoring = null;
         this.completionSignaled = false;
         this.local_last_block = data.last_block;
+        if (data.assignment_id) this.assignmentId = data.assignment_id;
 
         // make sure no data is requested from before the first indexed block on ship
         if (parseInt(data.first_block) < this.shipInitStatus['trace_begin_block']) {
-            data.first_block = this.shipInitStatus['trace_begin_block'];
-            hLog('Impossible to repair requested range, first block is before the first indexed block on ship, trimming to ' + data.first_block);
+            this.failSourceRecovery(`Requested block ${data.first_block} precedes SHIP retention ${this.shipInitStatus['trace_begin_block']}`);
+            return;
         }
 
         this.range_size = parseInt(data.last_block) - parseInt(data.first_block);
+        this.confirmRange = new ReaderConfirmRange(parseInt(data.first_block), parseInt(data.last_block));
 
         // if range size is not positive, we need to immediately signal completion to master
         if (this.range_size <= 0) {
             this.emitCompletedSignal();
+            return;
         }
 
         // make sure the range doesn't exceed the batch size
@@ -275,7 +349,7 @@ export default class StateReader extends HyperionWorker {
                     first_block: s,
                     last_block: e > end ? end : e
                 });
-                start = e + 1;
+                start = e;
             }
 
             console.log(`Splitting range [${data.first_block},${data.last_block}] into ${ranges.length} ranges`);
@@ -332,6 +406,16 @@ export default class StateReader extends HyperionWorker {
                         process.exit(1);
                     }, 2000);
                 }
+                break;
+            }
+            case 'finish': {
+                if (!this.isLiveReader && msg.target === process.env.worker_id) {
+                    void this.finishReader().then(() => process.exit(0)).catch(error => {
+                        hLog(`Reader failed to finish cleanly: ${error.message}`);
+                        process.exit(1);
+                    });
+                }
+                break;
             }
         }
     }
@@ -343,28 +427,29 @@ export default class StateReader extends HyperionWorker {
         });
     }
 
+    async finishReader(): Promise<void> {
+        this.finishing = true;
+        this.allowRequests = false;
+        this.ship.close(true);
+        const deadline = Date.now() + 10000;
+        while (!this.stageOneDistQueue.idle() || this.publications.size || !this.blockReadingQueue.idle()) {
+            if (this.publisherFailure) throw new Error(this.publisherFailure);
+            if (Date.now() >= deadline) throw new Error('Reader finish deadline exceeded');
+            await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        if (this.publisherFailure || !this.confirmRange?.complete) throw new Error(this.publisherFailure ?? 'Reader range is incomplete');
+        if (this.completionMonitoring) clearInterval(this.completionMonitoring);
+        this.profiler.stopReporting();
+        await this.cch?.close();
+        await this.ch?.close();
+    }
+
     private signalReaderCompletion() {
         if (!this.completionSignaled) {
             this.completionSignaled = true;
             debugLog(`Reader completion signal - ${this.range_size} - ${this.local_distributed_count}`);
-            this.local_distributed_count = 0;
             this.completionMonitoring = setInterval(() => {
-                let pending = 0;
-
-                // @ts-ignore
-                const unconfirmed = this.cch['unconfirmed'];
-
-                if (unconfirmed.length > 0) {
-                    unconfirmed.forEach((elem: any) => {
-                        if (elem) {
-                            pending++;
-                        }
-                    });
-                    if (!(pending === this.lastPendingCount && pending > 0)) {
-                        this.lastPendingCount = pending;
-                    }
-                }
-                if (pending === 0) {
+                if (!this.publisherFailure && this.confirmRange?.complete && this.stageOneDistQueue.idle()) {
                     debugLog(`Reader completed - ${this.range_size} - ${this.local_distributed_count}`);
 
                     if (this.completionMonitoring) {
@@ -373,10 +458,7 @@ export default class StateReader extends HyperionWorker {
 
                     // check if there are any pending ranges, then signal completion to master
                     if (this.internalPendingRanges.length === 0) {
-                        process.send?.({
-                            event: 'completed',
-                            id: process.env['worker_id']
-                        });
+                        this.emitCompletedSignal();
                     } else {
                         // process next range in queue
                         const next = this.internalPendingRanges.shift();
@@ -390,12 +472,12 @@ export default class StateReader extends HyperionWorker {
     private async processIncomingBlocks(block_array: any[]) {
         if (this.shipABI) {
             for (const block of block_array) {
-                try {
-                    await this.onMessage(block);
-                } catch (e) {
-                    hLog(e);
-                }
+                await this.onMessage(block);
             }
+            // SHIP credit means accepted input has a successful broker confirm,
+            // not merely that its bytes entered a client-side publisher buffer.
+            while (this.publications.size && !this.publisherFailure) await new Promise(resolve => setTimeout(resolve, 5));
+            if (this.publisherFailure) throw new Error(this.publisherFailure);
             this.ackBlockRange(block_array.length);
         } else {
             await this.onMessage(block_array[0]);
@@ -423,27 +505,8 @@ export default class StateReader extends HyperionWorker {
                 // range reader setup
                 case 'reader': {
                     if (process.env.first_block && beingBlock > process.env.first_block) {
-                        // skip the snapshot block until a solution to parse it is found
-                        const nextBlock = beingBlock;
-                        let lastBlock = nextBlock + this.conf.scaling.batch_size;
-                        if (process.env.last_block) {
-                            const lastRequestedBlock = parseInt(process.env.last_block, 10);
-                            if (lastBlock > lastRequestedBlock) {
-                                lastBlock = lastRequestedBlock;
-                            }
-                        }
-
-                        if (beingBlock > lastBlock) {
-                            lastBlock = nextBlock + this.conf.scaling.batch_size;
-                        }
-
-                        hLog(`First saved block is ahead of requested range! - Req: ${process.env.first_block} | First: ${beingBlock}`);
-                        this.local_block_num = nextBlock - 1;
-                        process.send?.({
-                            event: 'update_last_assigned_block',
-                            block_num: lastBlock
-                        });
-                        this.newRange({first_block: nextBlock, last_block: lastBlock});
+                        this.failSourceRecovery(`Requested block ${process.env.first_block} precedes SHIP retention ${beingBlock}`);
+                        return;
                     } else {
                         this.requestBlocks(0);
                     }
@@ -621,9 +684,19 @@ export default class StateReader extends HyperionWorker {
             const blk_num = res.this_block.block_num.toNumber();
             const blk_id = res.this_block.block_id.toString();
             const lib = res.last_irreversible;
+            let confirmLive: (() => {nextBlock: number; blockId: string} | undefined) | undefined;
+            try {
+                confirmLive = this.isLiveReader ? this.liveCheckpoint?.observe({
+                    num: blk_num, id: blk_id, previous: res.prev_block?.block_id.toString() ?? ''
+                }, lib.block_num.toNumber()) : undefined;
+            } catch (error: any) {
+                this.failSourceRecovery(error.message);
+                return 0;
+            }
             const task_payload = {
                 num: blk_num,
-                content: data
+                content: data,
+                confirmLive
             };
 
             if (res.block && res.traces && res.deltas) {
@@ -820,9 +893,14 @@ export default class StateReader extends HyperionWorker {
     }
 
     private requestBlocks(start: number) {
+        this.rangeRequested = true;
         let first_block: string | number = start > 0 ? start : process.env.first_block ? process.env.first_block : 1;
         const last_block = start > 0 ? 0xffffffff : process.env.last_block ? process.env.last_block : 0xffffffff;
         const request = this.baseRequest;
+        if (this.isLiveReader && process.env.worker_last_processed_block_id) {
+            request.have_positions = [{block_num: Number(process.env.worker_last_processed_block) - 1,
+                block_id: process.env.worker_last_processed_block_id}];
+        }
         if (typeof first_block === 'string') {
             request.start_block_num = parseInt(first_block, 10);
         } else {
@@ -1055,8 +1133,28 @@ export default class StateReader extends HyperionWorker {
     private emitCompletedSignal() {
         process.send?.({
             event: 'completed',
-            id: process.env['worker_id']
+            id: process.env['worker_id'],
+            assignment_id: this.assignmentId
         });
+    }
+
+    private failPublisherRecovery(reason: string) {
+        if (this.publisherFailure) return;
+        this.publisherFailure = reason;
+        this.cch_ready = false;
+        this.stageOneDistQueue.pause();
+        this.blockReadingQueue?.pause();
+        if (this.completionMonitoring) clearInterval(this.completionMonitoring);
+        if (this.confirmationDeadline) clearTimeout(this.confirmationDeadline);
+        process.send?.({event: 'reader_recovery_required', error: reason, assignment_id: this.assignmentId});
+        hLog(`Reader publication outcome incomplete; supervised source replay required: ${reason}`);
+        this.ship?.close(true);
+        setImmediate(() => process.exit(1));
+    }
+
+    private failSourceRecovery(reason: string) {
+        process.send?.({event: 'reader_source_incomplete', error: reason, assignment_id: this.assignmentId});
+        this.failPublisherRecovery(reason);
     }
 
     private logForkedBlocks(removedList: any[]) {

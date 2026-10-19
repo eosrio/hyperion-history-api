@@ -8,6 +8,9 @@ export interface HyperionWorkerDef {
     queue?: string;
     local_id?: number;
     worker_last_processed_block?: number;
+    worker_last_processed_block_id?: string;
+    reader_assignment?: string;
+    reader_incomplete?: string;
     ws_router?: string;
     live_mode?: string;
     type?: string;
@@ -45,6 +48,7 @@ export interface WorkerMessage {
     block_ts?: string;
     mId?: string;
     error?: string;
+    assignment_id?: string;
     worker_role?: string;
     metrics?: any;
 }
