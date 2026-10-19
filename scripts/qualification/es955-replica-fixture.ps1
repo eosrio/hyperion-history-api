@@ -28,6 +28,8 @@ if ($Action -eq 'create') {
     $names=@("$network-a","$network-b","$network-witness")
     foreach ($position in 0..2) {
         $name=$names[$position]; $volume="$name-data"; $data=$position -lt 2
+        $entry=@{name=$name;role=if($data){'data'}else{'master'};containerId=$null;volume=$volume;url=$null}
+        $state.nodes+=@($entry); Save-State $state
         $null=Invoke-FixtureDocker @('volume','create','--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",$volume)
         $heap=if($data){'1g'}else{'512m'}
         $roles=if($data){'master,data,ingest'}else{'master'}
@@ -43,18 +45,20 @@ if ($Action -eq 'create') {
             '-e','cluster.routing.allocation.disk.watermark.low=20gb','-e','cluster.routing.allocation.disk.watermark.high=10gb',
             '-e','cluster.routing.allocation.disk.watermark.flood_stage=5gb','-e',"ES_JAVA_OPTS=-Xms$heap -Xmx$heap",$state.esImage)
         $cid=(Invoke-FixtureDocker $args).Trim()
+        $entry.containerId=$cid; Save-State $state
         $url='http://'+(Invoke-FixtureDocker @('port',$cid,'9200/tcp')).Trim()
-        $state.nodes+=@{name=$name;role=if($data){'data'}else{'master'};containerId=$cid;volume=$volume;url=$url;
-            heap=$heap;memory=$memory;cpus=$cpus;dockerArgs=$args}
+        $entry.url=$url; $entry.heap=$heap; $entry.memory=$memory; $entry.cpus=$cpus; $entry.dockerArgs=$args
         Save-State $state
     }
     $brokerName="$network-rabbit"; $brokerVolume="$brokerName-data"
+    $state.broker=@{name=$brokerName;containerId=$null;volume=$brokerVolume;url=$null}; Save-State $state
     $null=Invoke-FixtureDocker @('volume','create','--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",$brokerVolume)
     $brokerArgs=@('run','-d','--name',$brokerName,'--hostname',$brokerName,'--network',$network,
         '--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",'--cpus','1','--memory','1g',
         '-p','127.0.0.1::5672','--mount',"type=volume,src=$brokerVolume,dst=/var/lib/rabbitmq",
         '-e','RABBITMQ_DEFAULT_USER=qualifier','-e','RABBITMQ_DEFAULT_PASS=qualifier-test-only',$state.rabbitImage)
     $brokerId=(Invoke-FixtureDocker $brokerArgs).Trim()
+    $state.broker.containerId=$brokerId; Save-State $state
     $brokerHost=(Invoke-FixtureDocker @('port',$brokerId,'5672/tcp')).Trim()
     $state.broker=@{name=$brokerName;containerId=$brokerId;volume=$brokerVolume;
         url="amqp://qualifier:qualifier-test-only@$brokerHost";dockerArgs=$brokerArgs}
@@ -76,26 +80,43 @@ if ($Action -eq 'create') {
 }
 $state=Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json
 if ($state.run -notmatch '^[a-f0-9]{12}$' -or $state.network -ne "hyp-es955-replicas-$($state.run)") { throw 'Invalid fixture state' }
-$resources=@($state.nodes)+@($state.broker)
+$resources=@(@($state.nodes)+@($state.broker) | Where-Object { $_ })
+$containerInventory=@(Invoke-FixtureDocker @('ps','-a','--no-trunc','--filter',"label=io.eosrio.run=$($state.run)",'--format','{{.ID}}|{{.Names}}'))
+$volumeInventory=@(Invoke-FixtureDocker @('volume','ls','--filter',"label=io.eosrio.run=$($state.run)",'--format','{{.Name}}'))
+$containers=@(); $volumes=@()
 foreach ($item in $resources) {
-    if (-not $item) { continue }
-    $ins=@((Invoke-FixtureDocker @('inspect',$item.containerId)) | ConvertFrom-Json)[0]
-    Assert-Labels $ins.Config.Labels $state.run
-    $volume=@((Invoke-FixtureDocker @('volume','inspect',$item.volume)) | ConvertFrom-Json)[0]
-    Assert-Labels $volume.Labels $state.run
-    $users=@(Invoke-FixtureDocker @('ps','-a','--no-trunc','--filter',"volume=$($item.volume)",'--format','{{.ID}}'))
-    if ($users.Count -ne 1 -or $users[0] -ne $item.containerId) { throw 'Unexpected volume consumer' }
+    if ($item.name -notin @("$($state.network)-a","$($state.network)-b","$($state.network)-witness","$($state.network)-rabbit") -or $item.volume -ne "$($item.name)-data") { throw 'Unexpected resource intent' }
+    $matching=@($containerInventory | Where-Object { $_.Split('|',2)[1] -eq $item.name })
+    if ($matching.Count -gt 1) { throw 'Ambiguous container identity' }
+    $cid=if($matching.Count){$matching[0].Split('|',2)[0]}else{$null}
+    if ($cid) {
+        if ($item.containerId -and $cid -ne $item.containerId) { throw 'Container identity changed' }
+        $ins=@((Invoke-FixtureDocker @('inspect',$cid)) | ConvertFrom-Json)[0]
+        Assert-Labels $ins.Config.Labels $state.run
+        if ($ins.Name -ne '/'+$item.name) { throw 'Container name changed' }
+        $containers+=@($cid)
+    }
+    if ($item.volume -in $volumeInventory) {
+        $volume=@((Invoke-FixtureDocker @('volume','inspect',$item.volume)) | ConvertFrom-Json)[0]
+        Assert-Labels $volume.Labels $state.run
+        $users=@(Invoke-FixtureDocker @('ps','-a','--no-trunc','--filter',"volume=$($item.volume)",'--format','{{.ID}}'))
+        if ($users.Count -gt 1 -or ($users.Count -eq 1 -and $users[0] -ne $cid)) { throw 'Unexpected volume consumer' }
+        $volumes+=@($item.volume)
+    }
 }
-$network=@((Invoke-FixtureDocker @('network','inspect',$state.network)) | ConvertFrom-Json)[0]
-Assert-Labels $network.Labels $state.run
-if (@($network.Containers.psobject.Properties).Count -gt $resources.Count) { throw 'Unexpected network consumer' }
+if ($containers.Count -ne $containerInventory.Count -or $volumes.Count -ne $volumeInventory.Count) { throw 'Unplanned run-labelled resources; preserve for inspection' }
+$networkPresent=$state.network -in @(Invoke-FixtureDocker @('network','ls','--filter',"label=io.eosrio.run=$($state.run)",'--format','{{.Name}}'))
+if ($networkPresent) {
+    $network=@((Invoke-FixtureDocker @('network','inspect',$state.network)) | ConvertFrom-Json)[0]
+    Assert-Labels $network.Labels $state.run
+    foreach ($property in @($network.Containers.psobject.Properties)) {
+        if ($property.Name -notin $containers) { throw 'Unexpected network consumer' }
+    }
+}
 $receipt=[ordered]@{run=$state.run;inspectedAt=[DateTime]::UtcNow.ToString('o');containers=@();volumes=@();network=$state.network}
-foreach ($item in $resources) {
-    if (-not $item) { continue }
-    $null=Invoke-FixtureDocker @('rm','--force',$item.containerId); $receipt.containers+=@($item.containerId)
-    $null=Invoke-FixtureDocker @('volume','rm',$item.volume); $receipt.volumes+=@($item.volume)
-}
-$null=Invoke-FixtureDocker @('network','rm',$state.network)
+foreach ($cid in $containers) { $null=Invoke-FixtureDocker @('rm','--force',$cid); $receipt.containers+=@($cid) }
+foreach ($volume in $volumes) { $null=Invoke-FixtureDocker @('volume','rm',$volume); $receipt.volumes+=@($volume) }
+if ($networkPresent) { $null=Invoke-FixtureDocker @('network','rm',$state.network) }
 $receipt.remainingContainers=@(Invoke-FixtureDocker @('ps','-a','--filter',"label=io.eosrio.run=$($state.run)",'--format','{{.ID}}')).Count
 $receipt.remainingVolumes=@(Invoke-FixtureDocker @('volume','ls','--filter',"label=io.eosrio.run=$($state.run)",'--format','{{.Name}}')).Count
 $receipt.remainingNetworks=@(Invoke-FixtureDocker @('network','ls','--filter',"label=io.eosrio.run=$($state.run)",'--format','{{.ID}}')).Count

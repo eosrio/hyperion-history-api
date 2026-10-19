@@ -143,13 +143,27 @@ describe('Elasticsearch replica bulk-pressure evidence', () => {
             .rejects.toThrow('request durability');
         expect(bulkCalls).toBe(0);
     });
-    it('cannot count a pressure-looking exception as exercised without matching native counters', async () => {
+    it('preserves failed native receipts and known IDs when the counter guard rejects the trial', async () => {
         let bulkCalls = 0;
-        await expect(runPressureQualification({index, owner: 'unit-owner-token', assertOwned: async () => {}, snapshot: async () => stats(),
+        const body = {error: pressureError};
+        let failure: any;
+        try { await runPressureQualification({index, owner: 'unit-owner-token', assertOwned: async () => {}, snapshot: async () => stats(),
             client: {indices: {getSettings: async () => ({[index]: {settings: {
                 'index.number_of_replicas': '1', 'index.translog.durability': 'request'}}})},
-            bulk: async () => { bulkCalls++; throw {meta: {statusCode: 429, body: {error: pressureError}}}; }}}))
-            .rejects.toThrow('no matching native coordinating pressure-counter delta');
+            bulk: async () => { bulkCalls++; throw {meta: {statusCode: 429, body}}; }}}); }
+        catch (error) { failure = error; }
+        expect(failure?.message).toContain('no matching native coordinating pressure-counter delta');
         expect(bulkCalls).toBe(1);
+        const evidence = failure.qualificationEvidence;
+        expect(evidence.expectedDocs).toHaveLength(640);
+        expect(evidence.acknowledgedIds).toEqual([]);
+        expect(evidence.receipts).toHaveLength(1);
+        expect(evidence.receipts[0].statusCode).toBe(429);
+        expect(evidence.receipts[0].body).toBe(body);
+        expect(evidence.receipts[0].ids).toHaveLength(640);
+        expect(evidence.observedStages).toEqual(['coordinating']);
+        expect(evidence.before).toEqual(stats());
+        expect(evidence.afterPressure).toEqual(stats());
+        expect(evidence.totalRequestBytes).toBeGreaterThan(1048576);
     });
 });

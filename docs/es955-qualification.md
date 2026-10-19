@@ -87,3 +87,30 @@ fixture in `scripts/qualification/fixture`. Its finite server cases cover timeou
 failed-shard policy, HTTP/task cancellation and exposed resource-accounting recovery.
 An offline production-class check covers close/late-consume separately. Neither adds
 those cases to this initial runner's scope or qualifies distributed transport ordering.
+
+The [replica and durable-acknowledgment slice](performance/elasticsearch-9.5.5-replicas.md)
+adds a separate guarded three-node fixture and a dedicated RabbitMQ broker. It measures
+native bulk-pressure rejection and exact replay, real route/broker settlement, primary
+loss and replica promotion, and same-volume translog replay after process death.
+It does not qualify host power loss, sustained saturation or full worker scheduling.
+
+After installing/building the pinned dependencies, PowerShell can create the disposable
+fixture, run the finite probe, and remove its exact owned resources:
+
+```powershell
+$stateFile = Join-Path ([IO.Path]::GetTempPath()) ('hyperion-es955-' + [guid]::NewGuid().ToString('N') + '.json')
+try {
+    ./scripts/qualification/es955-replica-fixture.ps1 -Action create -StateFile $stateFile
+    node scripts/qualification/es955-replicas.ts $stateFile ($stateFile + '.result.json') http
+    if ($LASTEXITCODE -ne 0) { throw 'Qualification failed; retain the result for inspection' }
+} finally {
+    if (Test-Path -LiteralPath $stateFile) {
+        ./scripts/qualification/es955-replica-fixture.ps1 -Action cleanup -StateFile $stateFile
+    }
+}
+```
+
+Use Node 24 for direct TypeScript execution, or the pinned Bun 1.4.3 for its runtime
+control. The final positional argument is `http` or `default`. Every execution requires
+a new output file and generates fresh owned index/queue names. The fixture journals
+resource intent before creation so cleanup can also recover an interrupted setup.

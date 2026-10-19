@@ -137,6 +137,20 @@ export async function runReplicaQualification(stateFile: string, outputFile: str
         for (const doc of docs) assert.deepEqual(actual.get(doc.id), doc.source, `durable source mismatch: ${doc.id}`);
         return {index, count: docs.length, preference, exactSources: true, response};
     };
+    const verifyCopies = async (index: string, docs: any[]) => {
+        const info: any = await active.client.nodes.info();
+        assert.equal(info._nodes.total, 3); assert.equal(info._nodes.successful, 3); assert.equal(info._nodes.failed, 0);
+        const dataNodes = Object.entries(info.nodes).filter(([, node]: [string, any]) =>
+            state.nodes.some((entry: any) => entry.role === 'data' && entry.name === node.name));
+        assert.equal(dataNodes.length, 2, 'both owned data nodes must be available');
+        const copies: Awaited<ReturnType<typeof verify>>[] = [];
+        for (const [id] of dataNodes) {
+            const copy = await verify(index, docs, `_only_nodes:${id}`);
+            assert.equal(copy.response._shards.total, 1); assert.equal(copy.response._shards.successful, 1);
+            copies.push(copy);
+        }
+        return copies;
+    };
     const seed = Array.from({length: 120}, (_, i) => ({id: `seed-${i}`, source: {
         global_sequence: i + 1, block_num: i + 1, payload: `durable-${i}-${'d'.repeat(512)}`}}));
     try {
@@ -148,7 +162,9 @@ export async function runReplicaQualification(stateFile: string, outputFile: str
         report.nodes = await active.client.nodes.info({metric: ['settings', 'jvm', 'process', 'http']});
         for (const file of ['scripts/qualification/es955-replicas.ts', 'scripts/qualification/es955-pressure.ts',
             'scripts/qualification/es955-broker.ts', 'src/indexer/helpers/elastic-routes.ts',
-            'build/indexer/helpers/elastic-routes.js', 'build/indexer/helpers/es-connection.js', 'package-lock.json']) {
+            'src/indexer/helpers/indexer-settlement-recovery.ts', 'src/indexer/workers/indexer.ts',
+            'build/indexer/helpers/elastic-routes.js', 'build/indexer/helpers/indexer-settlement-recovery.js',
+            'build/indexer/workers/indexer.js', 'build/indexer/helpers/es-connection.js', 'package-lock.json']) {
             report.sourceHashes[file] = hash(await readFile(new URL(`../../${file}`, import.meta.url)));
         }
         for (const entry of clients) assertResource(entry.node);
@@ -157,12 +173,13 @@ export async function runReplicaQualification(stateFile: string, outputFile: str
         const create = async (index: string, replicas: number, settings: any = {}) => {
             assert.equal(await active.client.indices.exists({index}), false);
             await identify();
+            // A lost create response must still leave an exact cleanup intent.
+            created.push(index);
             await active.client.indices.create({index, settings: {number_of_shards: 1, number_of_replicas: replicas,
                 refresh_interval: '-1', 'translog.durability': 'request', ...settings},
                 mappings: {_meta: {hyperion_es955_owner: owner}, properties: {global_sequence: {type: 'long'},
                     block_num: {type: 'long'}, payload: {type: 'keyword', index: false, doc_values: false},
                     act: {enabled: false}, '@timestamp': {type: 'date'}}}});
-            created.push(index);
             const health = await active.client.cluster.health({index, wait_for_status: 'green', timeout: '20s'});
             assert.equal(health.timed_out, false);
         };
@@ -174,6 +191,8 @@ export async function runReplicaQualification(stateFile: string, outputFile: str
         report.broker = await runBrokerQualification({client: active.client, index: names.action, chain: prefix,
             brokerUrl: state.broker.url, assertOwned: () => owned(names.action)});
         report.brokerVerification = await verify(names.action, report.broker.expectedDocs);
+        report.pressureCopiesBeforeCrash = await verifyCopies(names.pressure, report.pressure.expectedDocs);
+        report.brokerCopiesBeforeCrash = await verifyCopies(names.action, report.broker.expectedDocs);
         await bulk(names.replicated, seed);
         const shards: any = await active.client.cat.shards({index: names.replicated, format: 'json'});
         const primary = shards.find((s: any) => s.prirep === 'p' && s.state === 'STARTED');
@@ -227,14 +246,9 @@ export async function runReplicaQualification(stateFile: string, outputFile: str
         const soloAfter: any = await active.client.indices.stats({index: names.solo, metric: ['translog'], level: 'shards'});
         assertTranslogReplay(report.translogBefore, {node: soloAfter.indices[names.solo].shards['0'][0].routing.node}, recovered);
         report.translogRecovery = {recovery: recoveries, verification: await verify(names.solo, seed)};
-        const recoveredNodeInfo: any = await active.client.nodes.info();
-        const copyVerifications: any[] = [];
-        for (const [id, node] of Object.entries(recoveredNodeInfo.nodes) as [string, any][]) {
-            if (state.nodes.some((entry: any) => entry.role === 'data' && entry.name === node.name)) {
-                copyVerifications.push(await verify(names.replicated, [...seed, degraded], `_only_nodes:${id}`));
-            }
-        }
-        assert.equal(copyVerifications.length, 2);
+        const copyVerifications = await verifyCopies(names.replicated, [...seed, degraded]);
+        report.pressureCopiesAfterRecovery = await verifyCopies(names.pressure, report.pressure.expectedDocs);
+        report.brokerCopiesAfterRecovery = await verifyCopies(names.action, report.broker.expectedDocs);
         report.afterRecovery = {copyVerifications, stats: await rawStats(),
             shardStats: await active.client.indices.stats({index: names.replicated, level: 'shards', metric: ['translog', 'flush', 'docs']})};
         report.status = 'passed';
@@ -247,11 +261,21 @@ export async function runReplicaQualification(stateFile: string, outputFile: str
             try { assertResource(killed); docker(['start', killed.containerId]); } catch (error: any) { report.restartCleanupError = error.message; report.status = 'failed'; }
         }
         for (const index of created.reverse()) {
-            try { await owned(index); await active.client.indices.delete({index});
+            try {
+                await identify();
+                if (await active.client.indices.exists({index})) {
+                    await owned(index); await active.client.indices.delete({index});
+                }
                 assert.equal(await active.client.indices.exists({index}), false); report.cleanup.push({index, ok: true}); }
             catch (error: any) { report.cleanup.push({index, ok: false, error: error.message}); report.status = 'failed'; }
         }
-        for (const entry of clients) await entry.client.close();
+        report.clientCleanup = [];
+        for (const entry of clients) {
+            try { await entry.client.close(); report.clientCleanup.push({node: entry.node.name, ok: true}); }
+            catch (error: any) {
+                report.status = 'failed'; report.clientCleanup.push({node: entry.node.name, ok: false, error: error.message});
+            }
+        }
         report.completedAt = new Date().toISOString();
         await output.writeFile(JSON.stringify(report, null, 2) + '\n'); await output.close();
     }

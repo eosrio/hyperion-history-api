@@ -149,6 +149,12 @@ export async function runPressureQualification(options: PressureOptions) {
     const receipts: Receipt[] = [];
     const acknowledged = new Set<string>();
     const observedStages: Stage[] = [];
+    const recoverySamples: {elapsedMs: number; snapshot: any; recovered: boolean}[] = [];
+    const bounds = {documentCount, maxSourceBytes: 4096, maxRequestBytes, maxTotalRequestBytes, maxRequests: 161,
+        retryChunkSize, retriesPerChunk: 2, concurrency: 1, pressureLimitBytes, requestTimeoutMs: 15_000,
+        phaseTimeoutMs: 120_000, recoveryTimeoutMs: 15_000};
+    let retryDocs: PressureDocument[] = [];
+    let afterPressure: any;
 
     async function submit(batch: PressureDocument[]): Promise<PressureDocument[]> {
         assert.ok(performance.now() < phaseDeadline, 'pressure phase exceeded its bounded duration');
@@ -198,40 +204,45 @@ export async function runPressureQualification(options: PressureOptions) {
         return rejected;
     }
 
-    const retryDocs = await submit(expectedDocs);
-    assert.ok(retryDocs.length > 0, 'bounded oversized request did not exercise native indexing pressure');
-    const afterPressure = await snapshot();
-    assertPressureCounterDelta(before, afterPressure, observedStages);
-    for (let offset = 0; offset < retryDocs.length; offset += retryChunkSize) {
-        let pending = retryDocs.slice(offset, offset + retryChunkSize);
-        for (let attempt = 0; pending.length && attempt < 2; attempt++) {
-            if (attempt) await new Promise(resolve => setTimeout(resolve, 250));
-            pending = await submit(pending);
+    try {
+        retryDocs = await submit(expectedDocs);
+        assert.ok(retryDocs.length > 0, 'bounded oversized request did not exercise native indexing pressure');
+        afterPressure = await snapshot();
+        assertPressureCounterDelta(before, afterPressure, observedStages);
+        for (let offset = 0; offset < retryDocs.length; offset += retryChunkSize) {
+            let pending = retryDocs.slice(offset, offset + retryChunkSize);
+            for (let attempt = 0; pending.length && attempt < 2; attempt++) {
+                if (attempt) await new Promise(resolve => setTimeout(resolve, 250));
+                pending = await submit(pending);
+            }
+            assert.equal(pending.length, 0, 'bounded retries exhausted with unacknowledged documents');
         }
-        assert.equal(pending.length, 0, 'bounded retries exhausted with unacknowledged documents');
+        assert.equal(acknowledged.size, expectedDocs.length, 'not every known ID has an exact successful receipt');
+        const deadline = performance.now() + 15_000;
+        const recoveryStarted = performance.now();
+        let consecutive = 0;
+        while (performance.now() < deadline && consecutive < 3) {
+            const measured = await snapshot();
+            assert.ok(performance.now() <= deadline, 'recovery sample completed after the deadline');
+            let recovered = true;
+            // Validate the measurement outside the recoverable assertion: missing nodes/counters are never a pending recovery.
+            pressureCounters(measured);
+            assertPressureCounterDelta(before, measured, observedStages);
+            try { assertPressureRecovered(before, measured); } catch { recovered = false; }
+            recoverySamples.push({elapsedMs: performance.now() - recoveryStarted, snapshot: measured, recovered});
+            consecutive = recovered ? consecutive + 1 : 0;
+            if (consecutive < 3) await new Promise(resolve => setTimeout(resolve, 250));
+        }
+        assert.equal(consecutive, 3, 'pressure accounting did not recover within the bounded deadline');
+        assertPressureCounterDelta(before, recoverySamples.at(-1)!.snapshot, observedStages);
+        return {expectedDocs, acknowledgedIds: [...acknowledged], rejectedIds: retryDocs.map(doc => doc.id),
+            before, afterPressure, recoverySamples, receipts, observedStages,
+            bounds, totalRequestBytes};
+    } catch (failure) {
+        const error = failure instanceof Error ? failure : new Error(String(failure));
+        Object.assign(error, {qualificationEvidence: {expectedDocs, acknowledgedIds: [...acknowledged],
+            rejectedIds: retryDocs.map(doc => doc.id), before, afterPressure, recoverySamples, receipts,
+            observedStages, bounds, totalRequestBytes}});
+        throw error;
     }
-    assert.equal(acknowledged.size, expectedDocs.length, 'not every known ID has an exact successful receipt');
-    const deadline = performance.now() + 15_000;
-    const recoverySamples: {elapsedMs: number; snapshot: any; recovered: boolean}[] = [];
-    const recoveryStarted = performance.now();
-    let consecutive = 0;
-    while (performance.now() < deadline && consecutive < 3) {
-        const measured = await snapshot();
-        assert.ok(performance.now() <= deadline, 'recovery sample completed after the deadline');
-        let recovered = true;
-        // Validate the measurement outside the recoverable assertion: missing nodes/counters are never a pending recovery.
-        pressureCounters(measured);
-        assertPressureCounterDelta(before, measured, observedStages);
-        try { assertPressureRecovered(before, measured); } catch { recovered = false; }
-        recoverySamples.push({elapsedMs: performance.now() - recoveryStarted, snapshot: measured, recovered});
-        consecutive = recovered ? consecutive + 1 : 0;
-        if (consecutive < 3) await new Promise(resolve => setTimeout(resolve, 250));
-    }
-    assert.equal(consecutive, 3, 'pressure accounting did not recover within the bounded deadline');
-    assertPressureCounterDelta(before, recoverySamples.at(-1)!.snapshot, observedStages);
-    return {expectedDocs, acknowledgedIds: [...acknowledged], rejectedIds: retryDocs.map(doc => doc.id),
-        before, afterPressure, recoverySamples, receipts, observedStages,
-        bounds: {documentCount, maxSourceBytes: 4096, maxRequestBytes, maxTotalRequestBytes, maxRequests: 161,
-            retryChunkSize, retriesPerChunk: 2, concurrency: 1, pressureLimitBytes, requestTimeoutMs: 15_000,
-            phaseTimeoutMs: 120_000, recoveryTimeoutMs: 15_000}, totalRequestBytes};
 }
