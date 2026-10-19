@@ -109,9 +109,25 @@ The measured fixed harness SHA-256 is
 `0ea960b73f91b3fb0c59905174a0f036b4c1cd9af9993b65e48b97cea22f9ad6`.
 The measured baseline harness SHA-256 is
 `190e3f2a8f484557296717370360644f80ddd39a0f5aff591c69db7a08f417c0`.
-Reports retain runtime, source, emitted-module, and lockfile hashes and individual
-process outcomes. Root evidence packaging retains the measured reports and
-earlier failed harness pilots separately.
+The [evidence summary](evidence/reader-recovery-20261019/summary.json) and
+[manifest](evidence/reader-recovery-20261019/manifest.json) identify all 53 regular
+members of the [raw archive](evidence/reader-recovery-20261019/raw-evidence.tar.gz).
+All 13 source snapshots match their measured report hashes, including emitted
+reader/master code and both harnesses. The original reports, runtime and lockfile
+hashes, worker outcomes, fixture identity, and cleanup receipts remain in the
+archive. Earlier failed harness pilots are retained as excluded provenance.
+
+The fixed run observed 13 worker processes and the baseline observed four. Three
+consecutive postflight samples found all 17 gone, no owned broker queues or
+connections, and no active search/write tasks before fixture cleanup. Receipts
+confirm removal of the seven owned containers, seven data volumes, and one
+network. [SHA-256 checksums](evidence/reader-recovery-20261019/SHA256SUMS) cover the
+archive, manifest, summary, and attributes; CI verifies those exact bytes.
+
+The Node workers ran natively on the shared bare metal Linux host against the
+owned containerized broker. These are correctness results. They establish no
+capacity or throughput comparison, and the qualification did not change the
+host's production services.
 
 At the frozen runtime commit
 `f42172860e833c348db9bce4fbc47311af6dcfde`, whole-project checking covers 192
