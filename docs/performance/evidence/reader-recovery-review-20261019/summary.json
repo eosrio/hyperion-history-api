@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "review": "https://github.com/eosrio/hyperion-history-api/pull/210#pullrequestreview-5574356339",
+  "sourceCommit": "94c89bcd499e7ef888f6acff8fae4a664ca83188",
+  "fixtureRun": "bb833a78dee2",
+  "host": "x570-hyperion-1",
+  "runtime": {
+    "node": "v24.19.0",
+    "nodeBinarySha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+    "bun": "1.4.3"
+  },
+  "cases": [
+    {
+      "mode": "normal",
+      "status": "passed",
+      "logicalInputs": 3,
+      "physicalMessages": 3,
+      "intentionalReplayDuplicates": 0
+    },
+    {
+      "mode": "nack",
+      "status": "passed",
+      "logicalInputs": 3,
+      "physicalMessages": 6,
+      "intentionalReplayDuplicates": 3
+    },
+    {
+      "mode": "lost",
+      "status": "passed",
+      "logicalInputs": 3,
+      "physicalMessages": 6,
+      "intentionalReplayDuplicates": 3
+    },
+    {
+      "mode": "channel",
+      "status": "passed",
+      "logicalInputs": 3,
+      "physicalMessages": 6,
+      "intentionalReplayDuplicates": 3
+    },
+    {
+      "mode": "replace",
+      "status": "passed",
+      "logicalInputs": 3,
+      "physicalMessages": 6,
+      "intentionalReplayDuplicates": 3
+    },
+    {
+      "mode": "historical-later-assignment-replay",
+      "status": "passed",
+      "logicalInputs": 6,
+      "physicalMessages": 6,
+      "intentionalReplayDuplicates": 0
+    },
+    {
+      "mode": "repair-assignment-replay",
+      "status": "passed",
+      "logicalInputs": 6,
+      "physicalMessages": 6,
+      "intentionalReplayDuplicates": 0
+    }
+  ],
+  "caseCount": 7,
+  "observedWorkerProcesses": 13,
+  "logicalCaseInputs": 27,
+  "physicalMessages": 39,
+  "intentionalReplayDuplicates": 12,
+  "measuredSourceSnapshots": 8,
+  "supportingSourceNativeSnapshots": 12,
+  "validation": {
+    "linuxUnitCases": 247,
+    "linuxAssertions": 1949,
+    "applicationTypecheck": "passed",
+    "build": "passed",
+    "qualifierTypecheck": "passed",
+    "windowsLogs": [
+      "h45-pr210-runtime-red.log",
+      "h45-pr210-review-full-unit.log",
+      "h45-210-cli-review-red.log",
+      "h45-210-cli-review-green.log"
+    ]
+  },
+  "postflight": {
+    "status": "passed",
+    "consecutiveIdleSamples": 3,
+    "observedPidsAlive": [],
+    "brokerQueues": 0,
+    "brokerConnections": 0,
+    "activeSearchWrites": 0
+  },
+  "fixtureCleanup": {
+    "containers": 7,
+    "volumes": 7,
+    "networks": 1,
+    "remaining": 0
+  },
+  "excludedPilot": {
+    "directory": "recovery208-review5574356339-pilot-auth",
+    "reportSha256": "fdcd7d62d892442b0b93b1dedbf2e0e2e637fbff06742451bb211be088d0052d",
+    "reason": "Orchestration duplicated existing test credentials in URL; rejected before cases/workers/queues. Frozen runtime unchanged."
+  },
+  "originalEvidenceArchiveSha256": "5a975e16f7aafbfe077e936e9236bc78974c16f872872c01dbb85f479dfc2f89",
+  "limits": [
+    "This is a review-fix correctness follow-up using numeric source inputs and real native Node worker/broker processes; baseline counterexamples were not rerun.",
+    "The new timeout/channel/finish bounds and CLI failure exits have focused regressions; the seven native broker cases are the existing integration smoke, not elapsed-time boundary fault injection.",
+    "The load-hook CLI regressions stub only the expensive workload in isolated child-process copies; their original cleanup/report/CLI status tails execute. They do not qualify a real broker.",
+    "Thirteen observed child workers include expected exit1 recoveries and two deliberate SIGKILL crashes; final replacements exit0 and no processes remain.",
+    "No full-chain SHIP decoding, live-fork recovery, Elasticsearch durability, master restart, host power loss, throughput or runtime capacity claim.",
+    "Dependencies were reused through a documented symlink to the existing pinned npm tree without reinstall or mutation. Source/build/native snapshots and the lock are retained.",
+    "The credential-duplication orchestration pilot is preserved and excluded; it failed before any cases, workers or queues. Existing qualification and baseline evidence remain unchanged.",
+    "Fixture credentials and producer key are public test-only data for the isolated disposable services."
+  ]
+}

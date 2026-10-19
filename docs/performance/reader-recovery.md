@@ -144,3 +144,46 @@ broker-delivered late old-generation callback evidence, and the full SHIP replay
 oracle from #195. The live checkpoint's missing-confirm and branch cases are
 currently unit qualification. Master and host failure durability remain outside
 this process-only qualification.
+
+## Review follow-up, 2026-10-19
+
+[Review 5574356339](https://github.com/eosrio/hyperion-history-api/pull/210#pullrequestreview-5574356339)
+identified confirmation and finish deadlines that did not follow each pending
+publication's age or bound both channel closes. The correction at
+`94c89bcd499e7ef888f6acff8fae4a664ca83188` uses monotonic publication deadlines
+and one finish budget through draining and both closes. Both qualification CLIs
+also return a nonzero exit when cleanup or recorded AMQP errors leave the final
+report unsuccessful. Controlled-clock regressions cover the deadline boundaries;
+isolated Node command regressions reproduce failed reports with exit zero before
+the correction and preserve successful exit zero afterward. The latter stub only
+the expensive workload while executing the original cleanup, report and CLI
+status paths; they do not exercise a broker.
+
+A fresh native Node.js 24.19.0 run on Hyperion-1 passed all seven existing broker
+cases at that frozen commit. It used a new checkout, the unchanged pinned npm
+dependency tree, and a new disposable fixture. The Linux application and qualifier
+typechecks, build, and full 247-case unit suite with 1,949 assertions passed using
+Bun 1.4.3. This is integration smoke for the correction; the new elapsed-time
+boundary faults remain focused regression coverage. The original baseline
+counterexamples were not rerun.
+
+Independent postflight checked eight measured source/build snapshots and 12
+supporting source/native snapshots, all 13 observed worker PIDs gone, and three
+consecutive samples with no broker queues, connections, deliveries or consumers
+and no active Elasticsearch search/write tasks. Guarded cleanup removed the exact
+seven owned containers, seven volumes and one network, with none remaining.
+Recovery cases include intentional exit-one workers and two deliberate crashes;
+their replacements exited normally. An orchestration attempt with duplicated test
+credentials failed before creating cases, workers or queues and is retained as an
+excluded pilot.
+
+The separate [follow-up summary](evidence/reader-recovery-review-20261019/summary.json)
+and [member manifest](evidence/reader-recovery-review-20261019/manifest.json)
+describe all 52 regular files in the
+[raw archive](evidence/reader-recovery-review-20261019/raw-evidence.tar.gz), SHA-256
+`915025c700401651210981240b36086cebb6a6f035a68bb1851a19d3d1e9be00`.
+It retains the source bundle, measured/native bytes, Linux setup and validation
+logs, Windows red/green/full-suite logs, original reports, postflight and exact
+cleanup receipts. CI verifies its checksums. The original qualification archive
+remains unchanged. This follow-up adds no full-chain, live-fork, master/host
+failure, Elasticsearch durability or performance qualification.
