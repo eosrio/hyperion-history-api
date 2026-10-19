@@ -1,6 +1,8 @@
 import { Client } from "@elastic/elasticsearch";
 import { EventEmitter } from "events";
-import { Abieos } from "@eosrio/node-abieos";
+import type {ProtocolProvider, ProtocolShipSession} from "@eosrio/hyperion-sdk/protocol";
+import {loadChainProtocol} from "../protocol/selection.js";
+import {ContractDecoder, protocolBytes} from "../protocol/contract-cache.js";
 import { Channel, ConfirmChannel } from "amqplib";
 
 import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
@@ -12,7 +14,8 @@ import { StateHistorySocket } from "../connections/state-history.js";
 import { BasicDelta } from "../../interfaces/hyperion-delta.js";
 import { getHeapStatistics, HeapInfo } from "node:v8";
 import { HyperionActionAct } from "../../interfaces/hyperion-action.js";
-import { Action, APIClient } from "@wharfkit/antelope";
+import { Action, APIClient, PackedTransaction } from "@wharfkit/antelope";
+import {inflateSync} from 'node:zlib';
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
 import { WorkerProfiler } from "../helpers/profiler.js";
 
@@ -42,7 +45,12 @@ export abstract class HyperionWorker {
     filters: Filters;
 
     failedAbiMap: Map<string, Set<number>> = new Map();
-    protected abieos = Abieos.getInstance();
+    protected abieos!: ContractDecoder;
+    protocol!: ProtocolProvider;
+    protocolId!: string;
+    protocolReady!: Promise<void>;
+    shipSession?: ProtocolShipSession;
+    private protocolShipAbi?: unknown;
     configModule: ConfigurationModule;
 
     protected constructor() {
@@ -69,8 +77,10 @@ export abstract class HyperionWorker {
         this.client = this.manager.elasticsearchClient;
         this.ship = this.manager.shipClient;
         this.events = new EventEmitter();
+        this.protocolReady = this.initializeProtocol();
 
-        this.mLoader.init().then(() => {
+        this.mLoader.init().then(async () => {
+            await this.protocolReady;
             // Connect to RabbitMQ (amqplib)
             this.events.emit('loader_ready');
             this.connectAMQP().then(() => {
@@ -121,6 +131,52 @@ export abstract class HyperionWorker {
                 }
             }
         });
+    }
+
+    private async initializeProtocol() {
+        const selected = await loadChainProtocol(this.conf.settings.protocol);
+        this.protocol = selected.provider;
+        this.protocolId = selected.id;
+        this.abieos = selected.decoder;
+    }
+
+    async initializeProtocolShip(abiString: string): Promise<void> {
+        await this.protocolReady;
+        const handshake = JSON.parse(abiString);
+        const replacement = this.protocol.createShipSession(handshake);
+        this.shipSession?.close?.();
+        this.shipSession = replacement;
+        this.protocolShipAbi = handshake;
+    }
+
+    decodeShipResult(bytes: Uint8Array): any {
+        if (!this.shipSession) throw new Error("Protocol SHiP session is not initialized");
+        return this.shipSession.decodeResult(bytes);
+    }
+
+    decodeShipValue(type: string, input: unknown): any {
+        if (!this.shipSession) throw new Error("Protocol SHiP session is not initialized");
+        const bytes = protocolBytes(input);
+        switch (type) {
+            case "signed_block": return this.shipSession.decodeBlock(bytes);
+            case "transaction_trace[]": return this.shipSession.decodeTraces(bytes);
+            case "table_delta[]": return this.shipSession.decodeDeltas(bytes);
+            default: return this.shipSession.decodeRow(type, bytes);
+        }
+    }
+
+    decodePackedTransaction(input: any): any {
+        if (!this.usesExtensionProtocol) return PackedTransaction.from(input).getTransaction();
+        const compression = Number(input?.compression ?? 0);
+        if (compression !== 0 && compression !== 1) throw new Error('Unsupported packed transaction compression');
+        const bytes = protocolBytes(input?.packed_trx ?? input);
+        if (!this.shipSession || !this.protocolShipAbi) throw new Error('Protocol SHiP session is not initialized');
+        return this.protocol.contractCodec.decodeValue(this.protocolShipAbi, 'transaction', compression === 1
+            ? inflateSync(bytes, {maxOutputLength: 64 * 1024 * 1024}) : bytes);
+    }
+
+    get usesExtensionProtocol(): boolean {
+        return !!this.protocol && this.protocol.profileId !== "antelope-default-v1";
     }
 
     async connectAMQP() {
@@ -260,6 +316,7 @@ export abstract class HyperionWorker {
     }
 
     async getAbiFromHeadBlock(code: string): Promise<HyperionAbi | null> {
+        if (this.usesExtensionProtocol) return null;
         try {
             const result = await this.rpc.v1.chain.get_abi(code);
             if (result && result.abi) {
@@ -325,6 +382,7 @@ export abstract class HyperionWorker {
     }
 
     async loadCurrentAbiHex(contract: string): Promise<boolean> {
+        if (this.usesExtensionProtocol) return false;
         let _status: boolean = false;
         if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract)?.has(-1)) {
             _status = false;

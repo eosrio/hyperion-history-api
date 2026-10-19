@@ -2,29 +2,32 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
 import {assertActionSearchActive, searchActions} from "../../../helpers/action-search.js";
 import {hLog} from "../../../../indexer/helpers/common_functions.js";
-import {Abieos} from "@eosrio/node-abieos";
 import {terms} from "../../v2-history/get_actions/definitions.js";
-import {Client, estypes} from "@elastic/elasticsearch";
+import {Client} from "@elastic/elasticsearch";
 import {ABI, Serializer} from "@wharfkit/antelope";
 import {SavedAbi} from "../../../../interfaces/hyperion-abi.js";
 import {ActionTrace} from "../../../../interfaces/action-trace.js";
+import {loadChainProtocol} from "../../../../indexer/protocol/selection.js";
 
-const abieos = Abieos.getInstance();
+// A server owns its selection; importing a route never constructs an Antelope decoder.
+const protocolSelections = new WeakMap<FastifyInstance, ReturnType<typeof loadChainProtocol>>();
+function selectedProtocol(fastify: FastifyInstance) {
+    let selected = protocolSelections.get(fastify);
+    if (!selected) {
+        selected = loadChainProtocol(fastify.manager.config.settings?.protocol);
+        protocolSelections.set(fastify, selected);
+    }
+    return selected;
+}
 
 async function fetchSavedAbiAtBlock(
     client: Client,
     chain: string,
     contract_name: string,
-    last_block: number,
-    get_json: boolean
+    last_block: number
 ): Promise<SavedAbi | undefined> {
     try {
-        const _includes = ["actions", "tables", "block"];
-        if (get_json) {
-            _includes.push("abi");
-        } else {
-            _includes.push("abi_hex");
-        }
+        const _includes = ["actions", "tables", "block", "abi", "abi_hex"];
         const query = {
             bool: {
                 must: [
@@ -40,31 +43,12 @@ async function fetchSavedAbiAtBlock(
             _source: {includes: _includes}
         });
         const results = queryResult.hits.hits;
-        if (results.length > 0) {
-            const nextRefResponse: estypes.SearchResponse<any, any> = await client.search({
-                index: `${chain}-abi-*`,
-                size: 1,
-                query: {
-                    bool: {
-                        must: [
-                            {term: {account: contract_name}},
-                            {range: {block: {gte: last_block}}}
-                        ]
-                    }
-                },
-                sort: [{block: {order: "asc"}}],
-                _source: {includes: ["block"]}
-            });
-            const nextRef = nextRefResponse.hits.hits;
-            if (nextRef.length > 0) {
-                return {
-                    valid_until: nextRef[0]._source.block,
-                    ...results[0]._source
-                };
-            }
+        if (results.length > 0 && results[0]._source) {
+            const source = results[0]._source;
             return {
-                ...results[0]._source,
-                abi: ABI.fromABI(results[0]._source.abi_hex),
+                ...source,
+                abi: source.abi ? ABI.from(typeof source.abi === 'string' ? JSON.parse(source.abi) : source.abi)
+                    : ABI.fromABI(source.abi_hex),
             } as SavedAbi;
         }
     } catch (e) {
@@ -74,13 +58,48 @@ async function fetchSavedAbiAtBlock(
 
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
+interface EncodingAbi {
+    types?: {new_type_name: string; type: string}[];
+    structs?: {name: string; base: string; fields: {name: string; type: string}[]}[];
+}
+
+/** Indexed projection metadata is not part of a contract action's binary value. */
+function actionInput(abi: EncodingAbi, type: string, data: unknown): unknown {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+    const seen = new Set<string>();
+    const fields = (name: string): string[] | undefined => {
+        if (seen.has(name) || seen.size >= 128) throw new Error('Invalid action ABI type ancestry');
+        seen.add(name);
+        const alias = abi.types?.find(entry => entry.new_type_name === name);
+        if (alias) return fields(alias.type);
+        const struct = abi.structs?.find(entry => entry.name === name);
+        if (!struct) return;
+        return [...(struct.base ? fields(struct.base) ?? [] : []), ...struct.fields.map(field => field.name)];
+    };
+    const allowed = fields(type);
+    // Protobuf and other non-struct roots retain their provider-specific JSON representation.
+    return allowed ? Object.fromEntries(allowed.filter(name => Object.hasOwn(data, name))
+        .map(name => [name, (data as Record<string, unknown>)[name]])) : data;
+}
+
 async function encodeActionData(fastify: FastifyInstance, action: ActionTrace) {
+    const {id} = await selectedProtocol(fastify);
+    if (id !== 'antelope') {
+        // A latest ES hit can omit a newer deployment awaiting bulk/refresh.
+        // Enable extension encoding only after source-bound coverage/trace-epoch
+        // proof exists; neither head ABI nor unversioned history is that proof.
+        throw Object.assign(new Error('Protocol action encoding unavailable: source-bound ABI coverage has not been established'), {statusCode: 503});
+    }
     try {
-        let savedAbiData = await fetchSavedAbiAtBlock(fastify.elastic, fastify.manager.chain, action.act.account, action.block_num, true);
+        const {Abieos} = await import('@eosrio/node-abieos');
+        const abieos = Abieos.getInstance();
+        let savedAbiData = await fetchSavedAbiAtBlock(fastify.elastic, fastify.manager.chain, action.act.account, action.block_num);
         if (!savedAbiData) {
             savedAbiData = await fastify.antelope.getAbi(action.act.account);
         }
         if (savedAbiData) {
+            // A different request may have loaded this account's newer or older ABI.
+            if (!abieos.loadAbi(action.act.account, savedAbiData.abi)) return;
             let actionType: string | undefined;
 
             try {
@@ -107,17 +126,12 @@ async function encodeActionData(fastify: FastifyInstance, action: ActionTrace) {
                 return;
             }
             // remove fields that are not in the abi
-            const abiType = savedAbiData.abi.structs.find(value => value.name === actionType);
-            const actionData = {};
-            if (abiType) {
-                for (const field of abiType.fields) {
-                    actionData[field.name] = action.act.data[field.name];
-                }
-            } else {
-                console.log('failed to find abi type');
-            }
+            const actionData = actionInput(savedAbiData.abi, actionType, action.act.data);
 
             try {
+                if (typeof actionData !== 'string' && (typeof actionData !== 'object' || actionData === null)) {
+                    throw new Error('Invalid action data for native encoding');
+                }
                 const data = abieos.jsonToHex(action.act.account, actionType, actionData).toLowerCase();
                 action.act.hex_encoder = 'abieos';
                 return data.toLowerCase();

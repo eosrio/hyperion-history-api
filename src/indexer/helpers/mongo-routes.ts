@@ -5,6 +5,7 @@ import { IAccount } from "../../interfaces/table-account.js";
 import { IProposal } from "../../interfaces/table-proposal.js";
 import { IVoter } from "../../interfaces/table-voter.js";
 import { IPermission } from "../../interfaces/table-permissions.js";
+import {protocolStateKey} from './protocol-document-id.js';
 
 export type MongoRouteFunction = (payload: Message[]) => Promise<number>;
 
@@ -215,12 +216,12 @@ export class MongoRoutes {
 
                 const op = {};
 
+                const protocol = delta.protocol;
+                const stateKey = protocol ? protocolStateKey(protocol.id, protocol.source.chainId, protocol.logicalIdentity) : delta.primary_key;
+                const identity = protocol ? {'@protocol_key': stateKey} : {'@scope': delta.scope, '@pk': delta.primary_key};
                 if (headers.present === 1) {
                     op['updateOne'] = {
-                        filter: {
-                            '@scope': delta.scope,
-                            '@pk': delta.primary_key
-                        },
+                        filter: identity,
                         update: {
                             $set: {
                                 '@scope': delta.scope,
@@ -229,17 +230,15 @@ export class MongoRoutes {
                                 '@block_num': delta.block_num,
                                 '@block_time': delta['@timestamp'],
                                 '@block_id': delta['block_id'],
-                                ...delta.data
+                                ...delta.data,
+                                ...(protocol ? {'@protocol_key': stateKey, '@pk': stateKey, '@protocol': protocol} : {})
                             }
                         },
                         upsert: true
                     };
                 } else {
                     op['deleteOne'] = {
-                        filter: {
-                            '@scope': delta.scope,
-                            '@pk': delta.primary_key
-                        }
+                        filter: identity
                     };
                 }
 

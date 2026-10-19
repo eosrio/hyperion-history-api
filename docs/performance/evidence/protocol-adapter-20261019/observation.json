@@ -1,0 +1,370 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-19T22:20:49.851Z",
+  "kind": "local-native-adapter-observation",
+  "qualification": false,
+  "runtime": {
+    "node": "24.19.0",
+    "v8": "13.6.233.17-node.51",
+    "platform": "win32",
+    "arch": "x64",
+    "osRelease": "10.0.29683",
+    "cpuModel": "AMD Ryzen 9 9950X3D 16-Core Processor          ",
+    "logicalCpuCount": 32,
+    "executableSha256": "3602f2bb1a10f2cbab4c36886218a33c1ab3db87290e73b033c46c77147d0237"
+  },
+  "source": {
+    "head": "f8c3b548207f051a4d14d9fe88657f82167b917e",
+    "trackedDiffSha256": "c5dfba496e12a37bd00d9000a6d1ac881185109684079dc2994c3eedd0a0a401",
+    "files": [
+      {
+        "path": "scripts/qualification/protocol-antelope-overhead.mjs",
+        "sha256": "69917e35da8aaa6bf184aa5283dc8ffd2a7c75c1983b800a35a3037139cbb7d1"
+      },
+      {
+        "path": "src/indexer/protocol/antelope.ts",
+        "sha256": "342f75a33af47bb073ac5fe29e51614ebe79b3dc4dff26a7f8c6f05d6e6898fc"
+      },
+      {
+        "path": "src/indexer/protocol/contract-cache.ts",
+        "sha256": "9711b7417b71f767923e333b98550a4553c5719e20accf143b63783531f3b2c8"
+      },
+      {
+        "path": "build/indexer/protocol/antelope.js",
+        "sha256": "e91087e7e4492f57e0b0b6eebfe7695dfea22a4b331a6ba23b135f92b005e668"
+      },
+      {
+        "path": "build/indexer/protocol/contract-cache.js",
+        "sha256": "d2a98f1c74cd68c7b6cae15809bd1ad7e50ced6c0d6dc1a5caa0e2ec174140f1"
+      },
+      {
+        "path": "package.json",
+        "sha256": "0cb9bd30b05fa055ca62a0c314674d01265d2b11c8c111abc6a0648d25fc8252"
+      },
+      {
+        "path": "package-lock.json",
+        "sha256": "9694154e5ff2ad90ab6adf623846a4552879cf837972c2834a89c916a48f5a50"
+      },
+      {
+        "path": "node_modules/@eosrio/node-abieos/dist/abieos.js",
+        "sha256": "f43943a5ba745a3a5a735644a335fc39805deb3ac54fa074227101de144daef9"
+      }
+    ]
+  },
+  "dependency": {
+    "name": "@eosrio/node-abieos",
+    "version": "4.2.0-f7d5b45",
+    "nativeBinaries": [
+      {
+        "name": "abieos-win32-x64.node",
+        "sha256": "af39970940927b7890760e22fcd5797defad96cb9c4ec2b1e07d4c66b4d54672"
+      }
+    ]
+  },
+  "fixture": {
+    "abi": {
+      "version": "eosio::abi/1.2",
+      "types": [],
+      "structs": [
+        {
+          "name": "record",
+          "base": "",
+          "fields": [
+            {
+              "name": "sequence",
+              "type": "uint64"
+            },
+            {
+              "name": "owner",
+              "type": "name"
+            },
+            {
+              "name": "quantity",
+              "type": "asset"
+            },
+            {
+              "name": "memo",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "name": "record",
+          "type": "record",
+          "ricardian_contract": ""
+        }
+      ],
+      "tables": [],
+      "variants": []
+    },
+    "expected": {
+      "sequence": "18446744073709551600",
+      "owner": "alice",
+      "quantity": "1.0000 SYS",
+      "memo": "bounded ABI-correct native-adapter fixture"
+    },
+    "hex": "f0ffffffffffffff0000000000855c34102700000000000004535953000000002a626f756e646564204142492d636f7272656374206e61746976652d616461707465722066697874757265",
+    "sha256": "bdd68f54f76fd4978a7315ac1a037aa7cb7f7792ca475dbe3f8a7fe6ca292d16"
+  },
+  "warmup": 5000,
+  "iterations": 20000,
+  "trials": [
+    {
+      "pair": 0,
+      "mode": "direct",
+      "iterations": 20000,
+      "elapsedNs": 30781100,
+      "nsPerDecode": 1539.055,
+      "cpuMicros": {
+        "user": 31000,
+        "system": 0
+      },
+      "memoryBefore": {
+        "rss": 58335232,
+        "heapTotal": 14213120,
+        "heapUsed": 9738600,
+        "external": 2803745,
+        "arrayBuffers": 357988
+      },
+      "memoryAfter": {
+        "rss": 58613760,
+        "heapTotal": 14213120,
+        "heapUsed": 10179800,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      }
+    },
+    {
+      "pair": 0,
+      "mode": "alias",
+      "iterations": 20000,
+      "elapsedNs": 30783500,
+      "nsPerDecode": 1539.175,
+      "cpuMicros": {
+        "user": 32000,
+        "system": 0
+      },
+      "memoryBefore": {
+        "rss": 58613760,
+        "heapTotal": 14213120,
+        "heapUsed": 10572560,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      },
+      "memoryAfter": {
+        "rss": 58662912,
+        "heapTotal": 14213120,
+        "heapUsed": 10642208,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "alias",
+      "iterations": 20000,
+      "elapsedNs": 30597100,
+      "nsPerDecode": 1529.855,
+      "cpuMicros": {
+        "user": 31000,
+        "system": 0
+      },
+      "memoryBefore": {
+        "rss": 58667008,
+        "heapTotal": 14213120,
+        "heapUsed": 11005216,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      },
+      "memoryAfter": {
+        "rss": 58667008,
+        "heapTotal": 14213120,
+        "heapUsed": 8991288,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "direct",
+      "iterations": 20000,
+      "elapsedNs": 30978200,
+      "nsPerDecode": 1548.91,
+      "cpuMicros": {
+        "user": 47000,
+        "system": 0
+      },
+      "memoryBefore": {
+        "rss": 58667008,
+        "heapTotal": 14213120,
+        "heapUsed": 8994952,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      },
+      "memoryAfter": {
+        "rss": 59277312,
+        "heapTotal": 14213120,
+        "heapUsed": 9439432,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "direct",
+      "iterations": 20000,
+      "elapsedNs": 31219000,
+      "nsPerDecode": 1560.95,
+      "cpuMicros": {
+        "user": 31000,
+        "system": 0
+      },
+      "memoryBefore": {
+        "rss": 59363328,
+        "heapTotal": 14213120,
+        "heapUsed": 9443440,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      },
+      "memoryAfter": {
+        "rss": 58687488,
+        "heapTotal": 14213120,
+        "heapUsed": 9924104,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "alias",
+      "iterations": 20000,
+      "elapsedNs": 31270100,
+      "nsPerDecode": 1563.505,
+      "cpuMicros": {
+        "user": 0,
+        "system": 32000
+      },
+      "memoryBefore": {
+        "rss": 58687488,
+        "heapTotal": 14213120,
+        "heapUsed": 9927656,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      },
+      "memoryAfter": {
+        "rss": 58687488,
+        "heapTotal": 14213120,
+        "heapUsed": 10360168,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "alias",
+      "iterations": 20000,
+      "elapsedNs": 30383200,
+      "nsPerDecode": 1519.16,
+      "cpuMicros": {
+        "user": 31000,
+        "system": 0
+      },
+      "memoryBefore": {
+        "rss": 58687488,
+        "heapTotal": 14213120,
+        "heapUsed": 10363848,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      },
+      "memoryAfter": {
+        "rss": 58687488,
+        "heapTotal": 14213120,
+        "heapUsed": 10796096,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "direct",
+      "iterations": 20000,
+      "elapsedNs": 30417100,
+      "nsPerDecode": 1520.855,
+      "cpuMicros": {
+        "user": 0,
+        "system": 15000
+      },
+      "memoryBefore": {
+        "rss": 58687488,
+        "heapTotal": 14213120,
+        "heapUsed": 10799704,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      },
+      "memoryAfter": {
+        "rss": 58687488,
+        "heapTotal": 14213120,
+        "heapUsed": 9134848,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "direct",
+      "iterations": 20000,
+      "elapsedNs": 33659700,
+      "nsPerDecode": 1682.985,
+      "cpuMicros": {
+        "user": 47000,
+        "system": 0
+      },
+      "memoryBefore": {
+        "rss": 58687488,
+        "heapTotal": 14213120,
+        "heapUsed": 9138488,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      },
+      "memoryAfter": {
+        "rss": 58687488,
+        "heapTotal": 14213120,
+        "heapUsed": 9570608,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      }
+    },
+    {
+      "pair": 4,
+      "mode": "alias",
+      "iterations": 20000,
+      "elapsedNs": 31009600,
+      "nsPerDecode": 1550.48,
+      "cpuMicros": {
+        "user": 16000,
+        "system": 16000
+      },
+      "memoryBefore": {
+        "rss": 58687488,
+        "heapTotal": 14213120,
+        "heapUsed": 9574456,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      },
+      "memoryAfter": {
+        "rss": 58687488,
+        "heapTotal": 14213120,
+        "heapUsed": 10006624,
+        "external": 2803801,
+        "arrayBuffers": 358004
+      }
+    }
+  ],
+  "limits": [
+    "One bounded fixture on a shared workstation; CPU usage deltas and memory snapshots are observations, not sampled CPU or allocation profiles.",
+    "Alternating warmed trials observe native decoding plus JSON parsing and the private alias lookup.",
+    "Host scheduling, process noise and JIT variation remain uncontrolled; no throughput or runtime qualification claim."
+  ]
+}

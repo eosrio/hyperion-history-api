@@ -1,7 +1,8 @@
 import WebSocket from 'ws';
 import {cargo, QueueObject} from 'async';
 import {ConfirmChannel} from 'amqplib';
-import {ABI, API, Bytes, Checksum256, Serializer, UInt32} from '@wharfkit/antelope';
+import {API, Bytes, Checksum256, Serializer, UInt32} from '@wharfkit/antelope';
+import {protocolNumber} from '../protocol/contract-cache.js';
 
 import {HyperionWorker} from './hyperionWorker.js';
 import {debugLog, hLog} from '../helpers/common_functions.js';
@@ -32,7 +33,7 @@ export default class StateReader extends HyperionWorker {
     private readonly isLiveReader = process.env['worker_role'] === 'continuous_reader';
     private readonly baseRequest: any;
 
-    private shipABI?: ABI;
+    private shipABI?: string;
 
     private recovery = false;
     private allowRequests = true;
@@ -135,9 +136,7 @@ export default class StateReader extends HyperionWorker {
             fetch_deltas: this.conf.indexer.fetch_deltas
         };
 
-        if (this.shipRev === 'v1') {
-            this.baseRequest.fetch_block_header = true;
-        }
+
     }
 
     distribute(data: any[], cb: () => void) {
@@ -643,15 +642,15 @@ export default class StateReader extends HyperionWorker {
                 try {
                     blockData = await this.rpc.v1.chain.get_block(block_id.toLowerCase());
                     if (blockData) {
-                        if (blockData.block_num.toNumber() === val.block_num) {
-                            // console.log(`Block ${blockData.block_num.toNumber()} ${block_id} is still present on the chain, not forked.`);
+                        if (protocolNumber(blockData.block_num) === val.block_num) {
+                            // console.log(`Block ${protocolNumber(blockData.block_num)} ${block_id} is still present on the chain, not forked.`);
                             // check if the block is older than the last irreversible block
                             if (val.block_num <= this.local_lib) {
                                 console.log(`Block ${block_id} is older than the lib, definitely not forked.`);
                                 this.forkedBlocks.delete(block_id);
                             } else {
                                 // check the current id for the same block number on the reversible block map
-                                const currentBlockId = this.reversibleBlockMap.get(blockData.block_num.toNumber());
+                                const currentBlockId = this.reversibleBlockMap.get(protocolNumber(blockData.block_num));
                                 if (currentBlockId && currentBlockId !== block_id) {
                                     // handle as a forked block, since a new different id was received after the fork
                                     blockData = null;
@@ -660,7 +659,7 @@ export default class StateReader extends HyperionWorker {
                                 }
                             }
                         } else {
-                            hLog(`[WARNING] Unexpected block number for ${block_id}: ${blockData.block_num.toNumber()} (expected: ${val.block_num})`);
+                            hLog(`[WARNING] Unexpected block number for ${block_id}: ${protocolNumber(blockData.block_num)} (expected: ${val.block_num})`);
                         }
                     }
                 } catch (e: any) {
@@ -703,7 +702,7 @@ export default class StateReader extends HyperionWorker {
         // console.log(`Cleaning reversible blocks up to ${lib.block_num}`, lib);
         // remove reversible blocks that are older than the lib
         this.reversibleBlockMap.forEach((block_id, block_num) => {
-            if (block_num <= lib.block_num.toNumber()) {
+            if (block_num <= protocolNumber(lib.block_num)) {
                 this.reversibleBlockMap.delete(block_num);
                 // console.log(`Deleting reversible block ${block_num} with id ${block_id}`);
             }
@@ -713,14 +712,14 @@ export default class StateReader extends HyperionWorker {
     private async handleBlockResult(res: GetBlocksResultV0, data: Buffer) {
         if (res.this_block) {
             this.idle = false;
-            const blk_num = res.this_block.block_num.toNumber();
+            const blk_num = protocolNumber(res.this_block.block_num);
             const blk_id = res.this_block.block_id.toString();
             const lib = res.last_irreversible;
             let confirmLive: (() => {nextBlock: number; blockId: string} | undefined) | undefined;
             try {
                 confirmLive = this.isLiveReader ? this.liveCheckpoint?.observe({
                     num: blk_num, id: blk_id, previous: res.prev_block?.block_id.toString() ?? ''
-                }, lib.block_num.toNumber()) : undefined;
+                }, protocolNumber(lib.block_num)) : undefined;
             } catch (error: any) {
                 this.failSourceRecovery(error.message);
                 return 0;
@@ -782,8 +781,8 @@ export default class StateReader extends HyperionWorker {
                 this.local_block_num = blk_num;
                 this.local_block_id = blk_id;
 
-                if (lib.block_num.toNumber() > this.local_lib) {
-                    this.local_lib = lib.block_num.toNumber();
+                if (protocolNumber(lib.block_num) > this.local_lib) {
+                    this.local_lib = protocolNumber(lib.block_num);
                     // emit lib update event
                     process.send?.({event: 'lib_update', data: lib});
                     this.cleanReversibleBlocks(lib);
@@ -847,7 +846,7 @@ export default class StateReader extends HyperionWorker {
 
     private async onMessage(data: Buffer) {
         if (!this.shipABI) {
-            this.processFirstABI(data);
+            await this.processFirstABI(data);
             return 1;
         }
 
@@ -859,21 +858,19 @@ export default class StateReader extends HyperionWorker {
 
         // NORMAL OPERATION MODE
         if (!this.recovery) {
-            const result = Serializer.decode({
-                data,
-                type: 'result',
-                abi: this.shipABI
-            });
+            const result = this.decodeShipResult(data);
             switch (result[0]) {
-                case 'get_status_result_v0': {
+                case 'get_status_result_v0':
+                case 'get_status_result_v1': {
                     this.handleStatusResult(result[1]);
                     break;
                 }
-                case 'get_blocks_result_v0': {
+                case 'get_blocks_result_v0':
+                case 'get_blocks_result_v1': {
                     return await this.handleBlockResult(result[1], data);
                 }
                 default: {
-                    hLog(`Unknown message type: ${result[0]}`);
+                    throw new Error(`Unsupported SHiP result: ${result[0]}`);
                 }
             }
         } else {
@@ -915,10 +912,16 @@ export default class StateReader extends HyperionWorker {
         }
     }
 
-    private processFirstABI(data: Buffer) {
+    private async processFirstABI(data: Buffer) {
         const abiString = data.toString();
-        this.abieos.loadAbi('0', abiString);
-        this.shipABI = ABI.from(abiString);
+        await this.initializeProtocolShip(abiString);
+        this.shipABI = abiString;
+        const requestAbi = JSON.parse(abiString).structs?.find(struct => struct.name === 'get_blocks_request_' + this.shipRev);
+        for (const field of requestAbi?.fields ?? []) {
+            if (field.type === 'bool' && /^fetch_/.test(field.name) && !Object.hasOwn(this.baseRequest, field.name)) {
+                this.baseRequest[field.name] = field.name === 'fetch_block_header';
+            }
+        }
         process.send?.({event: 'init_abi', data: abiString});
         // request status
         this.send(['get_status_request_v0', {}]);
@@ -954,11 +957,7 @@ export default class StateReader extends HyperionWorker {
 
     private send(req_data: (string | any)[]) {
         this.ship.send(
-            Serializer.encode({
-                object: req_data,
-                type: 'request',
-                abi: this.shipABI
-            }).array
+            this.shipSession!.encodeRequest(req_data)
         );
     }
 
@@ -1142,6 +1141,9 @@ export default class StateReader extends HyperionWorker {
             },
             () => {
                 this.reconnectCount = 0;
+                this.shipABI = undefined;
+                this.shipSession?.close?.();
+                this.shipSession = undefined;
             }
         );
     }

@@ -28,6 +28,8 @@
   "dependencies": {
     "@elastic/elasticsearch": "8.19.1",
     "@eosrio/hyperion-plugin-core": "^0.1.0",
+    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#823d419d1999adf66cfb9f99249e86fa30de6ad4",
+    "@eosrio/hyperion-wire-plugin": "git+https://github.com/eosrio/hyperion-wire-plugin.git#ead3c4c4b16e4d92384ebf1e4d12559768511351",
     "@eosrio/node-abieos": "4.2.0-f7d5b45",
     "@fastify/autoload": "6.3.1",
     "@fastify/cors": "11.2.0",

@@ -1,0 +1,2360 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "synthetic-serialization-only",
+  "consensusValidation": false,
+  "contractsDeployed": false,
+  "profileId": "wire-sysio-7dede884-engineering-v1",
+  "codecSourceRevision": "5e94b871691f4919f060dd0a6a603f2d40e2fa36",
+  "upstreamRevision": "7dede884e0150d36fa788e85a119e10653ade8ca",
+  "sourceEvidence": {
+    "nativeReceipt": "libraries/chain/include/sysio/chain/block.hpp:8-30",
+    "traceCompatibility": "libraries/state_history/include/sysio/state_history/serialization.hpp:574-591",
+    "receiptStatusAndNetAbsent": true,
+    "cpuVectorMeaning": "billed CPU for each input action, in action order",
+    "traceCpuMeaning": "total_cpu_usage_us",
+    "traceNetWordsMeaning": "(trace.net_usage + 7) / 8"
+  },
+  "caveat": "The captured block was transformed to exercise nonempty receipts and traces. Its block roots/signatures/IDs are not consensus-valid. This is not node-executed contract or testnet evidence.",
+  "handshake": {
+    "version": "sysio::abi/1.1",
+    "structs": [
+      {
+        "name": "get_status_request_v0",
+        "fields": []
+      },
+      {
+        "name": "get_status_request_v1",
+        "fields": []
+      },
+      {
+        "name": "block_position",
+        "fields": [
+          {
+            "name": "block_num",
+            "type": "uint32"
+          },
+          {
+            "name": "block_id",
+            "type": "checksum256"
+          }
+        ]
+      },
+      {
+        "name": "get_status_result_v0",
+        "fields": [
+          {
+            "name": "head",
+            "type": "block_position"
+          },
+          {
+            "name": "last_irreversible",
+            "type": "block_position"
+          },
+          {
+            "name": "trace_begin_block",
+            "type": "uint32"
+          },
+          {
+            "name": "trace_end_block",
+            "type": "uint32"
+          },
+          {
+            "name": "chain_state_begin_block",
+            "type": "uint32"
+          },
+          {
+            "name": "chain_state_end_block",
+            "type": "uint32"
+          },
+          {
+            "name": "chain_id",
+            "type": "checksum256$"
+          }
+        ]
+      },
+      {
+        "name": "get_status_result_v1",
+        "fields": [
+          {
+            "name": "head",
+            "type": "block_position"
+          },
+          {
+            "name": "last_irreversible",
+            "type": "block_position"
+          },
+          {
+            "name": "trace_begin_block",
+            "type": "uint32"
+          },
+          {
+            "name": "trace_end_block",
+            "type": "uint32"
+          },
+          {
+            "name": "chain_state_begin_block",
+            "type": "uint32"
+          },
+          {
+            "name": "chain_state_end_block",
+            "type": "uint32"
+          },
+          {
+            "name": "chain_id",
+            "type": "checksum256"
+          },
+          {
+            "name": "finality_data_begin_block",
+            "type": "uint32"
+          },
+          {
+            "name": "finality_data_end_block",
+            "type": "uint32"
+          }
+        ]
+      },
+      {
+        "name": "get_blocks_request_v0",
+        "fields": [
+          {
+            "name": "start_block_num",
+            "type": "uint32"
+          },
+          {
+            "name": "end_block_num",
+            "type": "uint32"
+          },
+          {
+            "name": "max_messages_in_flight",
+            "type": "uint32"
+          },
+          {
+            "name": "have_positions",
+            "type": "block_position[]"
+          },
+          {
+            "name": "irreversible_only",
+            "type": "bool"
+          },
+          {
+            "name": "fetch_block",
+            "type": "bool"
+          },
+          {
+            "name": "fetch_traces",
+            "type": "bool"
+          },
+          {
+            "name": "fetch_deltas",
+            "type": "bool"
+          }
+        ]
+      },
+      {
+        "name": "get_blocks_request_v1",
+        "fields": [
+          {
+            "name": "start_block_num",
+            "type": "uint32"
+          },
+          {
+            "name": "end_block_num",
+            "type": "uint32"
+          },
+          {
+            "name": "max_messages_in_flight",
+            "type": "uint32"
+          },
+          {
+            "name": "have_positions",
+            "type": "block_position[]"
+          },
+          {
+            "name": "irreversible_only",
+            "type": "bool"
+          },
+          {
+            "name": "fetch_block",
+            "type": "bool"
+          },
+          {
+            "name": "fetch_traces",
+            "type": "bool"
+          },
+          {
+            "name": "fetch_deltas",
+            "type": "bool"
+          },
+          {
+            "name": "fetch_finality_data",
+            "type": "bool"
+          }
+        ]
+      },
+      {
+        "name": "get_blocks_ack_request_v0",
+        "fields": [
+          {
+            "name": "num_messages",
+            "type": "uint32"
+          }
+        ]
+      },
+      {
+        "name": "get_blocks_result_v0",
+        "fields": [
+          {
+            "name": "head",
+            "type": "block_position"
+          },
+          {
+            "name": "last_irreversible",
+            "type": "block_position"
+          },
+          {
+            "name": "this_block",
+            "type": "block_position?"
+          },
+          {
+            "name": "prev_block",
+            "type": "block_position?"
+          },
+          {
+            "name": "block",
+            "type": "bytes?"
+          },
+          {
+            "name": "traces",
+            "type": "bytes?"
+          },
+          {
+            "name": "deltas",
+            "type": "bytes?"
+          }
+        ]
+      },
+      {
+        "name": "get_blocks_result_v1",
+        "fields": [
+          {
+            "name": "head",
+            "type": "block_position"
+          },
+          {
+            "name": "last_irreversible",
+            "type": "block_position"
+          },
+          {
+            "name": "this_block",
+            "type": "block_position?"
+          },
+          {
+            "name": "prev_block",
+            "type": "block_position?"
+          },
+          {
+            "name": "block",
+            "type": "bytes?"
+          },
+          {
+            "name": "traces",
+            "type": "bytes?"
+          },
+          {
+            "name": "deltas",
+            "type": "bytes?"
+          },
+          {
+            "name": "finality_data",
+            "type": "bytes?"
+          }
+        ]
+      },
+      {
+        "name": "row",
+        "fields": [
+          {
+            "name": "present",
+            "type": "bool"
+          },
+          {
+            "name": "data",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "name": "table_delta_v0",
+        "fields": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "rows",
+            "type": "row[]"
+          }
+        ]
+      },
+      {
+        "name": "action",
+        "fields": [
+          {
+            "name": "account",
+            "type": "name"
+          },
+          {
+            "name": "name",
+            "type": "name"
+          },
+          {
+            "name": "authorization",
+            "type": "permission_level[]"
+          },
+          {
+            "name": "data",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "name": "account_auth_sequence",
+        "fields": [
+          {
+            "name": "account",
+            "type": "name"
+          },
+          {
+            "name": "sequence",
+            "type": "uint64"
+          }
+        ]
+      },
+      {
+        "name": "action_receipt_v0",
+        "fields": [
+          {
+            "name": "receiver",
+            "type": "name"
+          },
+          {
+            "name": "act_digest",
+            "type": "checksum256"
+          },
+          {
+            "name": "global_sequence",
+            "type": "uint64"
+          },
+          {
+            "name": "recv_sequence",
+            "type": "uint64"
+          },
+          {
+            "name": "auth_sequence",
+            "type": "account_auth_sequence[]"
+          },
+          {
+            "name": "code_sequence",
+            "type": "varuint32"
+          },
+          {
+            "name": "abi_sequence",
+            "type": "varuint32"
+          }
+        ]
+      },
+      {
+        "name": "account_delta",
+        "fields": [
+          {
+            "name": "account",
+            "type": "name"
+          },
+          {
+            "name": "delta",
+            "type": "int64"
+          }
+        ]
+      },
+      {
+        "name": "action_trace_v0",
+        "fields": [
+          {
+            "name": "action_ordinal",
+            "type": "varuint32"
+          },
+          {
+            "name": "creator_action_ordinal",
+            "type": "varuint32"
+          },
+          {
+            "name": "receipt",
+            "type": "action_receipt?"
+          },
+          {
+            "name": "receiver",
+            "type": "name"
+          },
+          {
+            "name": "act",
+            "type": "action"
+          },
+          {
+            "name": "context_free",
+            "type": "bool"
+          },
+          {
+            "name": "elapsed",
+            "type": "int64"
+          },
+          {
+            "name": "console",
+            "type": "string"
+          },
+          {
+            "name": "account_ram_deltas",
+            "type": "account_delta[]"
+          },
+          {
+            "name": "except",
+            "type": "string?"
+          },
+          {
+            "name": "error_code",
+            "type": "uint64?"
+          }
+        ]
+      },
+      {
+        "name": "action_trace_v1",
+        "fields": [
+          {
+            "name": "action_ordinal",
+            "type": "varuint32"
+          },
+          {
+            "name": "creator_action_ordinal",
+            "type": "varuint32"
+          },
+          {
+            "name": "receipt",
+            "type": "action_receipt?"
+          },
+          {
+            "name": "receiver",
+            "type": "name"
+          },
+          {
+            "name": "act",
+            "type": "action"
+          },
+          {
+            "name": "context_free",
+            "type": "bool"
+          },
+          {
+            "name": "elapsed",
+            "type": "int64"
+          },
+          {
+            "name": "console",
+            "type": "string"
+          },
+          {
+            "name": "account_ram_deltas",
+            "type": "account_delta[]"
+          },
+          {
+            "name": "except",
+            "type": "string?"
+          },
+          {
+            "name": "error_code",
+            "type": "uint64?"
+          },
+          {
+            "name": "return_value",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "name": "partial_transaction_v0",
+        "fields": [
+          {
+            "name": "expiration",
+            "type": "time_point_sec"
+          },
+          {
+            "name": "ref_block_num",
+            "type": "uint16"
+          },
+          {
+            "name": "ref_block_prefix",
+            "type": "uint32"
+          },
+          {
+            "name": "max_net_usage_words",
+            "type": "varuint32"
+          },
+          {
+            "name": "max_cpu_usage_ms",
+            "type": "uint8"
+          },
+          {
+            "name": "delay_sec",
+            "type": "varuint32"
+          },
+          {
+            "name": "transaction_extensions",
+            "type": "extension[]"
+          },
+          {
+            "name": "signatures",
+            "type": "signature[]"
+          },
+          {
+            "name": "context_free_data",
+            "type": "bytes[]"
+          }
+        ]
+      },
+      {
+        "name": "transaction_trace_v0",
+        "fields": [
+          {
+            "name": "id",
+            "type": "checksum256"
+          },
+          {
+            "name": "status",
+            "type": "uint8"
+          },
+          {
+            "name": "cpu_usage_us",
+            "type": "uint32"
+          },
+          {
+            "name": "net_usage_words",
+            "type": "varuint32"
+          },
+          {
+            "name": "elapsed",
+            "type": "int64"
+          },
+          {
+            "name": "net_usage",
+            "type": "uint64"
+          },
+          {
+            "name": "scheduled",
+            "type": "bool"
+          },
+          {
+            "name": "action_traces",
+            "type": "action_trace[]"
+          },
+          {
+            "name": "account_ram_delta",
+            "type": "account_delta?"
+          },
+          {
+            "name": "except",
+            "type": "string?"
+          },
+          {
+            "name": "error_code",
+            "type": "uint64?"
+          },
+          {
+            "name": "failed_dtrx_trace",
+            "type": "transaction_trace?"
+          },
+          {
+            "name": "partial",
+            "type": "partial_transaction?"
+          }
+        ]
+      },
+      {
+        "name": "packed_transaction",
+        "fields": [
+          {
+            "name": "signatures",
+            "type": "signature[]"
+          },
+          {
+            "name": "compression",
+            "type": "uint8"
+          },
+          {
+            "name": "packed_context_free_data",
+            "type": "bytes"
+          },
+          {
+            "name": "packed_trx",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "name": "transaction_receipt_header",
+        "fields": [
+          {
+            "name": "cpu_usage_us",
+            "type": "varuint32[]"
+          }
+        ]
+      },
+      {
+        "name": "transaction_receipt",
+        "base": "transaction_receipt_header",
+        "fields": [
+          {
+            "name": "trx",
+            "type": "packed_transaction"
+          }
+        ]
+      },
+      {
+        "name": "extension",
+        "fields": [
+          {
+            "name": "type",
+            "type": "uint16"
+          },
+          {
+            "name": "data",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "name": "qc_claim_t",
+        "fields": [
+          {
+            "name": "block_num",
+            "type": "uint32"
+          },
+          {
+            "name": "is_strong_qc",
+            "type": "bool"
+          }
+        ]
+      },
+      {
+        "name": "qc_sig_t",
+        "fields": [
+          {
+            "name": "strong_votes",
+            "type": "bitset?"
+          },
+          {
+            "name": "weak_votes",
+            "type": "bitset?"
+          },
+          {
+            "name": "sig",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "name": "qc_t",
+        "fields": [
+          {
+            "name": "block_num",
+            "type": "uint32"
+          },
+          {
+            "name": "active_policy_sig",
+            "type": "qc_sig_t"
+          },
+          {
+            "name": "pending_policy_sig",
+            "type": "qc_sig_t?"
+          }
+        ]
+      },
+      {
+        "name": "block_header",
+        "fields": [
+          {
+            "name": "timestamp",
+            "type": "block_timestamp_type"
+          },
+          {
+            "name": "producer",
+            "type": "name"
+          },
+          {
+            "name": "previous",
+            "type": "checksum256"
+          },
+          {
+            "name": "transaction_mroot",
+            "type": "checksum256"
+          },
+          {
+            "name": "finality_mroot",
+            "type": "checksum256"
+          },
+          {
+            "name": "qc_claim",
+            "type": "qc_claim_t"
+          },
+          {
+            "name": "new_finalizer_policy_diff",
+            "type": "finalizer_policy_diff?"
+          },
+          {
+            "name": "new_proposer_policy_diff",
+            "type": "proposer_policy_diff?"
+          },
+          {
+            "name": "header_extensions",
+            "type": "extension[]"
+          }
+        ]
+      },
+      {
+        "name": "signed_block_header",
+        "base": "block_header",
+        "fields": [
+          {
+            "name": "producer_signatures",
+            "type": "signature[]"
+          }
+        ]
+      },
+      {
+        "name": "signed_block",
+        "base": "signed_block_header",
+        "fields": [
+          {
+            "name": "transactions",
+            "type": "transaction_receipt[]"
+          },
+          {
+            "name": "qc",
+            "type": "qc_t?"
+          },
+          {
+            "name": "block_extensions",
+            "type": "extension[]"
+          }
+        ]
+      },
+      {
+        "name": "transaction_header",
+        "fields": [
+          {
+            "name": "expiration",
+            "type": "time_point_sec"
+          },
+          {
+            "name": "ref_block_num",
+            "type": "uint16"
+          },
+          {
+            "name": "ref_block_prefix",
+            "type": "uint32"
+          },
+          {
+            "name": "max_net_usage_words",
+            "type": "varuint32"
+          },
+          {
+            "name": "max_cpu_usage_ms",
+            "type": "uint8"
+          },
+          {
+            "name": "delay_sec",
+            "type": "varuint32"
+          }
+        ]
+      },
+      {
+        "name": "transaction",
+        "base": "transaction_header",
+        "fields": [
+          {
+            "name": "context_free_actions",
+            "type": "action[]"
+          },
+          {
+            "name": "actions",
+            "type": "action[]"
+          },
+          {
+            "name": "transaction_extensions",
+            "type": "extension[]"
+          }
+        ]
+      },
+      {
+        "name": "code_id",
+        "fields": [
+          {
+            "type": "uint8",
+            "name": "vm_type"
+          },
+          {
+            "type": "uint8",
+            "name": "vm_version"
+          },
+          {
+            "type": "checksum256",
+            "name": "code_hash"
+          }
+        ]
+      },
+      {
+        "name": "account_v0",
+        "fields": [
+          {
+            "type": "name",
+            "name": "name"
+          },
+          {
+            "type": "block_timestamp_type",
+            "name": "creation_date"
+          },
+          {
+            "type": "bytes",
+            "name": "abi"
+          }
+        ]
+      },
+      {
+        "name": "account_metadata_v0",
+        "fields": [
+          {
+            "type": "name",
+            "name": "name"
+          },
+          {
+            "type": "bool",
+            "name": "privileged"
+          },
+          {
+            "type": "time_point",
+            "name": "last_code_update"
+          },
+          {
+            "type": "code_id?",
+            "name": "code"
+          }
+        ]
+      },
+      {
+        "name": "code_v0",
+        "fields": [
+          {
+            "type": "uint8",
+            "name": "vm_type"
+          },
+          {
+            "type": "uint8",
+            "name": "vm_version"
+          },
+          {
+            "type": "checksum256",
+            "name": "code_hash"
+          },
+          {
+            "type": "bytes",
+            "name": "code"
+          }
+        ]
+      },
+      {
+        "name": "contract_row_v0",
+        "fields": [
+          {
+            "type": "name",
+            "name": "code"
+          },
+          {
+            "type": "name",
+            "name": "scope"
+          },
+          {
+            "type": "name",
+            "name": "table"
+          },
+          {
+            "type": "uint64",
+            "name": "primary_key"
+          },
+          {
+            "type": "name",
+            "name": "payer"
+          },
+          {
+            "type": "bytes",
+            "name": "value"
+          }
+        ]
+      },
+      {
+        "name": "contract_row_kv_v0",
+        "fields": [
+          {
+            "type": "name",
+            "name": "code"
+          },
+          {
+            "type": "name",
+            "name": "payer"
+          },
+          {
+            "type": "uint16",
+            "name": "table_id"
+          },
+          {
+            "type": "bytes",
+            "name": "key"
+          },
+          {
+            "type": "bytes",
+            "name": "value"
+          }
+        ]
+      },
+      {
+        "name": "contract_index_kv_v0",
+        "fields": [
+          {
+            "type": "name",
+            "name": "code"
+          },
+          {
+            "type": "name",
+            "name": "payer"
+          },
+          {
+            "type": "uint16",
+            "name": "table_id"
+          },
+          {
+            "type": "bytes",
+            "name": "sec_key"
+          },
+          {
+            "type": "bytes",
+            "name": "pri_key"
+          }
+        ]
+      },
+      {
+        "name": "producer_key",
+        "fields": [
+          {
+            "type": "name",
+            "name": "producer_name"
+          },
+          {
+            "type": "public_key",
+            "name": "block_signing_key"
+          }
+        ]
+      },
+      {
+        "name": "producer_schedule",
+        "fields": [
+          {
+            "type": "uint32",
+            "name": "version"
+          },
+          {
+            "type": "producer_key[]",
+            "name": "producers"
+          }
+        ]
+      },
+      {
+        "name": "block_signing_authority_v0",
+        "fields": [
+          {
+            "type": "uint32",
+            "name": "threshold"
+          },
+          {
+            "type": "key_weight[]",
+            "name": "keys"
+          }
+        ]
+      },
+      {
+        "name": "producer_authority",
+        "fields": [
+          {
+            "type": "name",
+            "name": "producer_name"
+          },
+          {
+            "type": "block_signing_authority",
+            "name": "authority"
+          }
+        ]
+      },
+      {
+        "name": "producer_authority_schedule",
+        "fields": [
+          {
+            "type": "uint32",
+            "name": "version"
+          },
+          {
+            "type": "producer_authority[]",
+            "name": "producers"
+          }
+        ]
+      },
+      {
+        "name": "chain_config_v0",
+        "fields": [
+          {
+            "type": "uint64",
+            "name": "max_block_net_usage"
+          },
+          {
+            "type": "uint32",
+            "name": "target_block_net_usage_pct"
+          },
+          {
+            "type": "uint32",
+            "name": "max_transaction_net_usage"
+          },
+          {
+            "type": "uint32",
+            "name": "net_usage_leeway"
+          },
+          {
+            "type": "uint32",
+            "name": "context_free_discount_net_usage_num"
+          },
+          {
+            "type": "uint32",
+            "name": "context_free_discount_net_usage_den"
+          },
+          {
+            "type": "uint32",
+            "name": "max_block_cpu_usage"
+          },
+          {
+            "type": "uint32",
+            "name": "target_block_cpu_usage_pct"
+          },
+          {
+            "type": "uint32",
+            "name": "max_transaction_cpu_usage"
+          },
+          {
+            "type": "uint32",
+            "name": "min_transaction_cpu_usage"
+          },
+          {
+            "type": "uint32",
+            "name": "max_transaction_lifetime"
+          },
+          {
+            "type": "uint32",
+            "name": "max_transaction_delay"
+          },
+          {
+            "type": "uint32",
+            "name": "max_inline_action_size"
+          },
+          {
+            "type": "uint16",
+            "name": "max_inline_action_depth"
+          },
+          {
+            "type": "uint16",
+            "name": "max_authority_depth"
+          },
+          {
+            "type": "uint32",
+            "name": "max_action_return_value_size"
+          },
+          {
+            "type": "uint32",
+            "name": "max_kv_key_size"
+          },
+          {
+            "type": "uint32",
+            "name": "max_kv_value_size"
+          },
+          {
+            "type": "uint32",
+            "name": "max_kv_secondary_key_size"
+          }
+        ]
+      },
+      {
+        "name": "wasm_config_v0",
+        "fields": [
+          {
+            "type": "uint32",
+            "name": "max_mutable_global_bytes"
+          },
+          {
+            "type": "uint32",
+            "name": "max_table_elements"
+          },
+          {
+            "type": "uint32",
+            "name": "max_section_elements"
+          },
+          {
+            "type": "uint32",
+            "name": "max_linear_memory_init"
+          },
+          {
+            "type": "uint32",
+            "name": "max_func_local_bytes"
+          },
+          {
+            "type": "uint32",
+            "name": "max_nested_structures"
+          },
+          {
+            "type": "uint32",
+            "name": "max_symbol_bytes"
+          },
+          {
+            "type": "uint32",
+            "name": "max_module_bytes"
+          },
+          {
+            "type": "uint32",
+            "name": "max_code_bytes"
+          },
+          {
+            "type": "uint32",
+            "name": "max_pages"
+          },
+          {
+            "type": "uint32",
+            "name": "max_call_depth"
+          }
+        ]
+      },
+      {
+        "name": "global_property_v0",
+        "fields": [
+          {
+            "type": "uint32?",
+            "name": "proposed_schedule_block_num"
+          },
+          {
+            "type": "producer_schedule",
+            "name": "proposed_schedule"
+          },
+          {
+            "type": "chain_config",
+            "name": "configuration"
+          }
+        ]
+      },
+      {
+        "name": "global_property_v1",
+        "fields": [
+          {
+            "type": "uint32?",
+            "name": "proposed_schedule_block_num"
+          },
+          {
+            "type": "producer_authority_schedule",
+            "name": "proposed_schedule"
+          },
+          {
+            "type": "chain_config",
+            "name": "configuration"
+          },
+          {
+            "type": "checksum256",
+            "name": "chain_id"
+          },
+          {
+            "type": "wasm_config$",
+            "name": "wasm_configuration"
+          }
+        ]
+      },
+      {
+        "name": "generated_transaction_v0",
+        "fields": [
+          {
+            "type": "name",
+            "name": "sender"
+          },
+          {
+            "type": "uint128",
+            "name": "sender_id"
+          },
+          {
+            "type": "name",
+            "name": "payer"
+          },
+          {
+            "type": "checksum256",
+            "name": "trx_id"
+          },
+          {
+            "type": "bytes",
+            "name": "packed_trx"
+          }
+        ]
+      },
+      {
+        "name": "activated_protocol_feature_v0",
+        "fields": [
+          {
+            "type": "checksum256",
+            "name": "feature_digest"
+          },
+          {
+            "type": "uint32",
+            "name": "activation_block_num"
+          }
+        ]
+      },
+      {
+        "name": "protocol_state_v0",
+        "fields": [
+          {
+            "type": "activated_protocol_feature[]",
+            "name": "activated_protocol_features"
+          }
+        ]
+      },
+      {
+        "name": "key_weight",
+        "fields": [
+          {
+            "type": "public_key",
+            "name": "key"
+          },
+          {
+            "type": "uint16",
+            "name": "weight"
+          }
+        ]
+      },
+      {
+        "name": "permission_level",
+        "fields": [
+          {
+            "type": "name",
+            "name": "actor"
+          },
+          {
+            "type": "name",
+            "name": "permission"
+          }
+        ]
+      },
+      {
+        "name": "permission_level_weight",
+        "fields": [
+          {
+            "type": "permission_level",
+            "name": "permission"
+          },
+          {
+            "type": "uint16",
+            "name": "weight"
+          }
+        ]
+      },
+      {
+        "name": "wait_weight",
+        "fields": [
+          {
+            "type": "uint32",
+            "name": "wait_sec"
+          },
+          {
+            "type": "uint16",
+            "name": "weight"
+          }
+        ]
+      },
+      {
+        "name": "authority",
+        "fields": [
+          {
+            "type": "uint32",
+            "name": "threshold"
+          },
+          {
+            "type": "key_weight[]",
+            "name": "keys"
+          },
+          {
+            "type": "permission_level_weight[]",
+            "name": "accounts"
+          },
+          {
+            "type": "wait_weight[]",
+            "name": "waits"
+          }
+        ]
+      },
+      {
+        "name": "permission_v0",
+        "fields": [
+          {
+            "type": "name",
+            "name": "owner"
+          },
+          {
+            "type": "name",
+            "name": "name"
+          },
+          {
+            "type": "name",
+            "name": "parent"
+          },
+          {
+            "type": "time_point",
+            "name": "last_updated"
+          },
+          {
+            "type": "authority",
+            "name": "auth"
+          }
+        ]
+      },
+      {
+        "name": "permission_link_v0",
+        "fields": [
+          {
+            "type": "name",
+            "name": "account"
+          },
+          {
+            "type": "name",
+            "name": "code"
+          },
+          {
+            "type": "name",
+            "name": "message_type"
+          },
+          {
+            "type": "name",
+            "name": "required_permission"
+          }
+        ]
+      },
+      {
+        "name": "resource_limits_v0",
+        "fields": [
+          {
+            "type": "name",
+            "name": "owner"
+          },
+          {
+            "type": "int64",
+            "name": "net_weight"
+          },
+          {
+            "type": "int64",
+            "name": "cpu_weight"
+          },
+          {
+            "type": "int64",
+            "name": "ram_bytes"
+          }
+        ]
+      },
+      {
+        "name": "usage_accumulator_v0",
+        "fields": [
+          {
+            "type": "uint32",
+            "name": "last_ordinal"
+          },
+          {
+            "type": "uint64",
+            "name": "value_ex"
+          },
+          {
+            "type": "uint64",
+            "name": "consumed"
+          }
+        ]
+      },
+      {
+        "name": "resource_usage_v0",
+        "fields": [
+          {
+            "type": "name",
+            "name": "owner"
+          },
+          {
+            "type": "usage_accumulator",
+            "name": "net_usage"
+          },
+          {
+            "type": "usage_accumulator",
+            "name": "cpu_usage"
+          },
+          {
+            "type": "uint64",
+            "name": "ram_usage"
+          }
+        ]
+      },
+      {
+        "name": "resource_limits_state_v0",
+        "fields": [
+          {
+            "type": "usage_accumulator",
+            "name": "average_block_net_usage"
+          },
+          {
+            "type": "usage_accumulator",
+            "name": "average_block_cpu_usage"
+          },
+          {
+            "type": "uint64",
+            "name": "total_net_weight"
+          },
+          {
+            "type": "uint64",
+            "name": "total_cpu_weight"
+          },
+          {
+            "type": "uint64",
+            "name": "total_ram_bytes"
+          },
+          {
+            "type": "uint64",
+            "name": "virtual_net_limit"
+          },
+          {
+            "type": "uint64",
+            "name": "virtual_cpu_limit"
+          }
+        ]
+      },
+      {
+        "name": "resource_limits_ratio_v0",
+        "fields": [
+          {
+            "type": "uint64",
+            "name": "numerator"
+          },
+          {
+            "type": "uint64",
+            "name": "denominator"
+          }
+        ]
+      },
+      {
+        "name": "elastic_limit_parameters_v0",
+        "fields": [
+          {
+            "type": "uint64",
+            "name": "target"
+          },
+          {
+            "type": "uint64",
+            "name": "max"
+          },
+          {
+            "type": "uint32",
+            "name": "periods"
+          },
+          {
+            "type": "uint32",
+            "name": "max_multiplier"
+          },
+          {
+            "type": "resource_limits_ratio",
+            "name": "contract_rate"
+          },
+          {
+            "type": "resource_limits_ratio",
+            "name": "expand_rate"
+          }
+        ]
+      },
+      {
+        "name": "resource_limits_config_v0",
+        "fields": [
+          {
+            "type": "elastic_limit_parameters",
+            "name": "cpu_limit_parameters"
+          },
+          {
+            "type": "elastic_limit_parameters",
+            "name": "net_limit_parameters"
+          },
+          {
+            "type": "uint32",
+            "name": "account_cpu_usage_average_window"
+          },
+          {
+            "type": "uint32",
+            "name": "account_net_usage_average_window"
+          }
+        ]
+      },
+      {
+        "name": "finalizer_authority",
+        "fields": [
+          {
+            "name": "description",
+            "type": "string"
+          },
+          {
+            "name": "weight",
+            "type": "uint64"
+          },
+          {
+            "name": "public_key",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "name": "finalizer_authority_with_string_key",
+        "fields": [
+          {
+            "name": "description",
+            "type": "string"
+          },
+          {
+            "name": "weight",
+            "type": "uint64"
+          },
+          {
+            "name": "public_key",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "finalizer_policy_with_string_key",
+        "fields": [
+          {
+            "name": "generation",
+            "type": "uint32"
+          },
+          {
+            "name": "threshold",
+            "type": "uint64"
+          },
+          {
+            "name": "finalizers",
+            "type": "finalizer_authority_with_string_key[]"
+          }
+        ]
+      },
+      {
+        "name": "finality_data",
+        "fields": [
+          {
+            "name": "major_version",
+            "type": "uint32"
+          },
+          {
+            "name": "minor_version",
+            "type": "uint32"
+          },
+          {
+            "name": "active_finalizer_policy_generation",
+            "type": "uint32"
+          },
+          {
+            "name": "action_mroot",
+            "type": "checksum256"
+          },
+          {
+            "name": "reversible_blocks_mroot",
+            "type": "checksum256"
+          },
+          {
+            "name": "latest_qc_claim_block_num",
+            "type": "uint32"
+          },
+          {
+            "name": "latest_qc_claim_finality_digest",
+            "type": "checksum256"
+          },
+          {
+            "name": "latest_qc_claim_timestamp",
+            "type": "block_timestamp_type"
+          },
+          {
+            "name": "base_digest",
+            "type": "checksum256"
+          },
+          {
+            "name": "pending_finalizer_policy",
+            "type": "finalizer_policy_with_string_key?"
+          },
+          {
+            "name": "last_pending_finalizer_policy_generation",
+            "type": "uint32"
+          }
+        ]
+      },
+      {
+        "name": "protocol_feature_activation_extension",
+        "fields": [
+          {
+            "name": "protocol_features",
+            "type": "checksum256[]"
+          }
+        ]
+      },
+      {
+        "name": "s_header",
+        "fields": [
+          {
+            "name": "contract_name",
+            "type": "name"
+          },
+          {
+            "name": "previous_s_id",
+            "type": "checksum256"
+          },
+          {
+            "name": "current_s_id",
+            "type": "checksum256"
+          },
+          {
+            "name": "current_s_root",
+            "type": "checksum256"
+          },
+          {
+            "name": "previous_block_num",
+            "type": "uint32"
+          }
+        ]
+      },
+      {
+        "name": "s_root_extension",
+        "fields": [
+          {
+            "name": "s_header_data",
+            "type": "s_header"
+          }
+        ]
+      },
+      {
+        "name": "producer_schedule_change_extension",
+        "base": "producer_authority_schedule",
+        "fields": []
+      },
+      {
+        "name": "qc_claim",
+        "fields": [
+          {
+            "name": "block_num",
+            "type": "uint32"
+          },
+          {
+            "name": "is_strong_qc",
+            "type": "bool"
+          }
+        ]
+      },
+      {
+        "name": "insert_finalizer_policy_index_pair",
+        "fields": [
+          {
+            "name": "index",
+            "type": "uint16"
+          },
+          {
+            "name": "value",
+            "type": "finalizer_authority"
+          }
+        ]
+      },
+      {
+        "name": "finalizer_policy_diff",
+        "fields": [
+          {
+            "name": "generation",
+            "type": "uint32"
+          },
+          {
+            "name": "threshold",
+            "type": "uint64"
+          },
+          {
+            "name": "remove_indexes",
+            "type": "uint16[]"
+          },
+          {
+            "name": "insert_indexes",
+            "type": "insert_finalizer_policy_index_pair[]"
+          }
+        ]
+      },
+      {
+        "name": "insert_proposer_policy_index_pair",
+        "fields": [
+          {
+            "name": "index",
+            "type": "uint16"
+          },
+          {
+            "name": "value",
+            "type": "producer_authority"
+          }
+        ]
+      },
+      {
+        "name": "proposer_policy_diff",
+        "fields": [
+          {
+            "name": "version",
+            "type": "uint32"
+          },
+          {
+            "name": "proposal_time",
+            "type": "block_timestamp_type"
+          },
+          {
+            "name": "remove_indexes",
+            "type": "uint16[]"
+          },
+          {
+            "name": "insert_indexes",
+            "type": "insert_proposer_policy_index_pair[]"
+          }
+        ]
+      }
+    ],
+    "types": [
+      {
+        "new_type_name": "transaction_id",
+        "type": "checksum256"
+      }
+    ],
+    "variants": [
+      {
+        "name": "request",
+        "types": [
+          "get_status_request_v0",
+          "get_blocks_request_v0",
+          "get_blocks_ack_request_v0",
+          "get_blocks_request_v1",
+          "get_status_request_v1"
+        ]
+      },
+      {
+        "name": "result",
+        "types": [
+          "get_status_result_v0",
+          "get_blocks_result_v0",
+          "get_blocks_result_v1",
+          "get_status_result_v1"
+        ]
+      },
+      {
+        "name": "action_receipt",
+        "types": [
+          "action_receipt_v0"
+        ]
+      },
+      {
+        "name": "action_trace",
+        "types": [
+          "action_trace_v0",
+          "action_trace_v1"
+        ]
+      },
+      {
+        "name": "partial_transaction",
+        "types": [
+          "partial_transaction_v0"
+        ]
+      },
+      {
+        "name": "transaction_trace",
+        "types": [
+          "transaction_trace_v0"
+        ]
+      },
+      {
+        "name": "table_delta",
+        "types": [
+          "table_delta_v0"
+        ]
+      },
+      {
+        "name": "account",
+        "types": [
+          "account_v0"
+        ]
+      },
+      {
+        "name": "account_metadata",
+        "types": [
+          "account_metadata_v0"
+        ]
+      },
+      {
+        "name": "code",
+        "types": [
+          "code_v0"
+        ]
+      },
+      {
+        "name": "contract_row",
+        "types": [
+          "contract_row_v0"
+        ]
+      },
+      {
+        "name": "contract_row_kv",
+        "types": [
+          "contract_row_kv_v0"
+        ]
+      },
+      {
+        "name": "contract_index_kv",
+        "types": [
+          "contract_index_kv_v0"
+        ]
+      },
+      {
+        "name": "chain_config",
+        "types": [
+          "chain_config_v0"
+        ]
+      },
+      {
+        "name": "wasm_config",
+        "types": [
+          "wasm_config_v0"
+        ]
+      },
+      {
+        "name": "global_property",
+        "types": [
+          "global_property_v0",
+          "global_property_v1"
+        ]
+      },
+      {
+        "name": "generated_transaction",
+        "types": [
+          "generated_transaction_v0"
+        ]
+      },
+      {
+        "name": "activated_protocol_feature",
+        "types": [
+          "activated_protocol_feature_v0"
+        ]
+      },
+      {
+        "name": "protocol_state",
+        "types": [
+          "protocol_state_v0"
+        ]
+      },
+      {
+        "name": "permission",
+        "types": [
+          "permission_v0"
+        ]
+      },
+      {
+        "name": "permission_link",
+        "types": [
+          "permission_link_v0"
+        ]
+      },
+      {
+        "name": "resource_limits",
+        "types": [
+          "resource_limits_v0"
+        ]
+      },
+      {
+        "name": "usage_accumulator",
+        "types": [
+          "usage_accumulator_v0"
+        ]
+      },
+      {
+        "name": "resource_usage",
+        "types": [
+          "resource_usage_v0"
+        ]
+      },
+      {
+        "name": "resource_limits_state",
+        "types": [
+          "resource_limits_state_v0"
+        ]
+      },
+      {
+        "name": "resource_limits_ratio",
+        "types": [
+          "resource_limits_ratio_v0"
+        ]
+      },
+      {
+        "name": "elastic_limit_parameters",
+        "types": [
+          "elastic_limit_parameters_v0"
+        ]
+      },
+      {
+        "name": "resource_limits_config",
+        "types": [
+          "resource_limits_config_v0"
+        ]
+      },
+      {
+        "name": "block_signing_authority",
+        "types": [
+          "block_signing_authority_v0"
+        ]
+      },
+      {
+        "name": "block_header_extension",
+        "types": [
+          "protocol_feature_activation_extension",
+          "s_root_extension"
+        ]
+      }
+    ],
+    "tables": [
+      {
+        "name": "account",
+        "type": "account",
+        "key_names": [
+          "name"
+        ]
+      },
+      {
+        "name": "account_metadata",
+        "type": "account_metadata",
+        "key_names": [
+          "name"
+        ]
+      },
+      {
+        "name": "code",
+        "type": "code",
+        "key_names": [
+          "vm_type",
+          "vm_version",
+          "code_hash"
+        ]
+      },
+      {
+        "name": "contract_row",
+        "type": "contract_row",
+        "key_names": [
+          "code",
+          "scope",
+          "table",
+          "primary_key"
+        ]
+      },
+      {
+        "name": "contract_row_kv",
+        "type": "contract_row_kv",
+        "key_names": [
+          "code",
+          "table_id"
+        ]
+      },
+      {
+        "name": "contract_index_kv",
+        "type": "contract_index_kv",
+        "key_names": [
+          "code",
+          "table_id"
+        ]
+      },
+      {
+        "name": "global_property",
+        "type": "global_property",
+        "key_names": []
+      },
+      {
+        "name": "generated_transaction",
+        "type": "generated_transaction",
+        "key_names": [
+          "sender",
+          "sender_id"
+        ]
+      },
+      {
+        "name": "protocol_state",
+        "type": "protocol_state",
+        "key_names": []
+      },
+      {
+        "name": "permission",
+        "type": "permission",
+        "key_names": [
+          "owner",
+          "name"
+        ]
+      },
+      {
+        "name": "permission_link",
+        "type": "permission_link",
+        "key_names": [
+          "account",
+          "code",
+          "message_type"
+        ]
+      },
+      {
+        "name": "resource_limits",
+        "type": "resource_limits",
+        "key_names": [
+          "owner"
+        ]
+      },
+      {
+        "name": "resource_usage",
+        "type": "resource_usage",
+        "key_names": [
+          "owner"
+        ]
+      },
+      {
+        "name": "resource_limits_state",
+        "type": "resource_limits_state",
+        "key_names": []
+      },
+      {
+        "name": "resource_limits_config",
+        "type": "resource_limits_config",
+        "key_names": []
+      }
+    ]
+  },
+  "packedTransactionHex": "ec86d66acd187b000000000000000200a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500",
+  "blockHex": "8702c4060000000000eab0c7000018cd929cc68d7875e9a7905c782326aaaa20728d2359d6f911bdd07444b000000000000000000000000000000000000000000000000000000000000000008b0d4bcad265e2a98b48624cb84dd9d8414adc3ad83375771d93e9990efc463acd1800000100000001001f98d06df8392f401d61d957184ed1566ca8c94d5e2037912c2a77eb35a6a717132e9a3d50165daa16b51402e38582d4fc5cbc19e72f167b5a231cbfed6c4b8b39010217c803000000a401ec86d66acd187b000000000000000200a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e2010000000000045359530000000007666978747572650001cd18000001010100c0013f70e4e49c8be166fead45d427b46a3e3111c2e3d87d157c3db4cf8809ced79031a68323ac7e33d6932d137e55675c133c175774eebbe59493a9198a43770f8b9fd546f2bc22cc61f054208a0ff1861bfcb9279249483a125f66fac138956d0c9c9a322595fc682e382f9eca4b8db76417107c094e29c600b22ef1c3b1987f97f568b0b229daa912d715004292148919e55305117a88fa63c6ede3af298daa6d4ff383affac5bdf0748316299b3d0b46bb2f54887fed3fb2d03db57715ece2130000",
+  "tracesHex": "0100be115c273e681530b15c46e9d46ec15137f97396f2292ec6734a157d5a0d6f3e00df01000009000000000000000041000000000000000002010100010000a6823403eab0c733333333333333333333333333333333333333333333333333333333333333330100000000000000010000000000000000000000a6823403eab0c700a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e2010000000000045359530000000007666978747572650000000000000000000000000000010200010000a6823403eab0c733333333333333333333333333333333333333333333333333333333333333330200000000000000020000000000000000000000a6823403eab0c700a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500000000000000000000000000000000000000",
+  "frameHex": "01d0180000000018d0a4ce2d13a96177ad1cc76bb6575d77fc009efc73df377788f4df8fc0ce180000000018ce9d1807b4b4d7ef60f99447683e7e480ed17851b87f69ae3f8d3d8ac701ce180000000018ce9d1807b4b4d7ef60f99447683e7e480ed17851b87f69ae3f8d3d8ac701cd180000000018cd929cc68d7875e9a7905c782326aaaa20728d2359d6f911bdd07444b001b2048702c4060000000000eab0c7000018cd929cc68d7875e9a7905c782326aaaa20728d2359d6f911bdd07444b000000000000000000000000000000000000000000000000000000000000000008b0d4bcad265e2a98b48624cb84dd9d8414adc3ad83375771d93e9990efc463acd1800000100000001001f98d06df8392f401d61d957184ed1566ca8c94d5e2037912c2a77eb35a6a717132e9a3d50165daa16b51402e38582d4fc5cbc19e72f167b5a231cbfed6c4b8b39010217c803000000a401ec86d66acd187b000000000000000200a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e2010000000000045359530000000007666978747572650001cd18000001010100c0013f70e4e49c8be166fead45d427b46a3e3111c2e3d87d157c3db4cf8809ced79031a68323ac7e33d6932d137e55675c133c175774eebbe59493a9198a43770f8b9fd546f2bc22cc61f054208a0ff1861bfcb9279249483a125f66fac138956d0c9c9a322595fc682e382f9eca4b8db76417107c094e29c600b22ef1c3b1987f97f568b0b229daa912d715004292148919e55305117a88fa63c6ede3af298daa6d4ff383affac5bdf0748316299b3d0b46bb2f54887fed3fb2d03db57715ece213000001ff020100be115c273e681530b15c46e9d46ec15137f97396f2292ec6734a157d5a0d6f3e00df01000009000000000000000041000000000000000002010100010000a6823403eab0c733333333333333333333333333333333333333333333333333333333333333330100000000000000010000000000000000000000a6823403eab0c700a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e2010000000000045359530000000007666978747572650000000000000000000000000000010200010000a6823403eab0c733333333333333333333333333333333333333333333333333333333333333330200000000000000020000000000000000000000a6823403eab0c700a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500000000000000000000000000000000000000019c120300076163636f756e7401019e10000000000000eab0c7000000008f100e737973696f3a3a6162692f312e30070c6163636f756e745f6e616d65046e616d650f7065726d697373696f6e5f6e616d65046e616d650b616374696f6e5f6e616d65046e616d650a7461626c655f6e616d65046e616d65137472616e73616374696f6e5f69645f747970650b636865636b73756d3235360d626c6f636b5f69645f747970650b636865636b73756d3235360b7765696768745f747970650675696e74313615107065726d697373696f6e5f6c6576656c0002056163746f720c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506616374696f6e0004076163636f756e740c6163636f756e745f6e616d65046e616d650b616374696f6e5f6e616d650d617574686f72697a6174696f6e127065726d697373696f6e5f6c6576656c5b5d046461746105627974657309657874656e73696f6e000204747970650675696e7431360464617461056279746573127472616e73616374696f6e5f68656164657200060a65787069726174696f6e0e74696d655f706f696e745f7365630d7265665f626c6f636b5f6e756d0675696e743136107265665f626c6f636b5f7072656669780675696e743332136d61785f6e65745f75736167655f776f7264730976617275696e743332106d61785f6370755f75736167655f6d730575696e74380964656c61795f7365630976617275696e7433320b7472616e73616374696f6e127472616e73616374696f6e5f6865616465720314636f6e746578745f667265655f616374696f6e7308616374696f6e5b5d07616374696f6e7308616374696f6e5b5d167472616e73616374696f6e5f657874656e73696f6e730b657874656e73696f6e5b5d0c70726f64756365725f6b657900020d70726f64756365725f6e616d650c6163636f756e745f6e616d6511626c6f636b5f7369676e696e675f6b65790a7075626c69635f6b65791170726f64756365725f7363686564756c6500020776657273696f6e0675696e7433320970726f6475636572730e70726f64756365725f6b65795b5d0c626c6f636b5f68656164657200090974696d657374616d700675696e7433320870726f64756365720c6163636f756e745f6e616d6509636f6e6669726d65640675696e7431360870726576696f75730d626c6f636b5f69645f74797065117472616e73616374696f6e5f6d726f6f740b636865636b73756d3235360c616374696f6e5f6d726f6f740b636865636b73756d323536107363686564756c655f76657273696f6e0675696e7433320d6e65775f70726f6475636572731270726f64756365725f7363686564756c653f116865616465725f657874656e73696f6e730b657874656e73696f6e5b5d0a6b65795f7765696768740002036b65790a7075626c69635f6b6579067765696768740b7765696768745f74797065177065726d697373696f6e5f6c6576656c5f77656967687400020a7065726d697373696f6e107065726d697373696f6e5f6c6576656c067765696768740b7765696768745f7479706509617574686f726974790003097468726573686f6c640675696e743332046b6579730c6b65795f7765696768745b5d086163636f756e7473197065726d697373696f6e5f6c6576656c5f7765696768745b5d0a6e65776163636f756e7400040763726561746f720c6163636f756e745f6e616d65046e616d650c6163636f756e745f6e616d65056f776e657209617574686f726974790661637469766509617574686f7269747907736574636f64650004076163636f756e740c6163636f756e745f6e616d6506766d747970650575696e743809766d76657273696f6e0575696e743804636f6465056279746573067365746162690002076163636f756e740c6163636f756e745f6e616d65036162690562797465730a757064617465617574680004076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506706172656e740f7065726d697373696f6e5f6e616d65046175746809617574686f726974790a64656c657465617574680002076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d65086c696e6b617574680004076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b726571756972656d656e740f7065726d697373696f6e5f6e616d650a756e6c696e6b617574680003076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b63616e63656c64656c617900020e63616e63656c696e675f61757468107065726d697373696f6e5f6c6576656c067472785f6964137472616e73616374696f6e5f69645f74797065076f6e6572726f7200020973656e6465725f69640775696e743132380873656e745f747278056279746573076f6e626c6f636b0001066865616465720c626c6f636b5f6865616465720a00409e9a2264b89a0a6e65776163636f756e740000000040258ab2c207736574636f64650000000000b863b2c206736574616269000040cbdaa86c52d50a75706461746561757468000040cbdaa8aca24a0a64656c65746561757468000000002d6b03a78b086c696e6b61757468000040cbdac0e9e2d40a756e6c696e6b617574680000bc892a4585a6410b63616e63656c64656c617900000000e0d27bd5a4076f6e6572726f720000000000221acfa4076f6e626c6f636b000000000000000f7265736f757263655f6c696d697473010121000000000000eab0c7ffffffffffffffffffffffffffffffffffffffffffffffff000e7265736f757263655f757361676501013b000000000000eab0c7008702c40600000000000000000000000000000000008702c406d10637000000000068000000000000009b0c00000000000000157265736f757263655f6c696d6974735f73746174650101530000ce1800000000000000000000000000000000000000ce180000d9e0f50500000000c800000000000000000000000000000000000000000000000000000000000000db83d723000000006086d20600000000",
+  "expected": {
+    "profileId": "wire-sysio-7dede884-engineering-v1",
+    "rawFrameHex": "01d0180000000018d0a4ce2d13a96177ad1cc76bb6575d77fc009efc73df377788f4df8fc0ce180000000018ce9d1807b4b4d7ef60f99447683e7e480ed17851b87f69ae3f8d3d8ac701ce180000000018ce9d1807b4b4d7ef60f99447683e7e480ed17851b87f69ae3f8d3d8ac701cd180000000018cd929cc68d7875e9a7905c782326aaaa20728d2359d6f911bdd07444b001b2048702c4060000000000eab0c7000018cd929cc68d7875e9a7905c782326aaaa20728d2359d6f911bdd07444b000000000000000000000000000000000000000000000000000000000000000008b0d4bcad265e2a98b48624cb84dd9d8414adc3ad83375771d93e9990efc463acd1800000100000001001f98d06df8392f401d61d957184ed1566ca8c94d5e2037912c2a77eb35a6a717132e9a3d50165daa16b51402e38582d4fc5cbc19e72f167b5a231cbfed6c4b8b39010217c803000000a401ec86d66acd187b000000000000000200a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e2010000000000045359530000000007666978747572650001cd18000001010100c0013f70e4e49c8be166fead45d427b46a3e3111c2e3d87d157c3db4cf8809ced79031a68323ac7e33d6932d137e55675c133c175774eebbe59493a9198a43770f8b9fd546f2bc22cc61f054208a0ff1861bfcb9279249483a125f66fac138956d0c9c9a322595fc682e382f9eca4b8db76417107c094e29c600b22ef1c3b1987f97f568b0b229daa912d715004292148919e55305117a88fa63c6ede3af298daa6d4ff383affac5bdf0748316299b3d0b46bb2f54887fed3fb2d03db57715ece213000001ff020100be115c273e681530b15c46e9d46ec15137f97396f2292ec6734a157d5a0d6f3e00df01000009000000000000000041000000000000000002010100010000a6823403eab0c733333333333333333333333333333333333333333333333333333333333333330100000000000000010000000000000000000000a6823403eab0c700a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e2010000000000045359530000000007666978747572650000000000000000000000000000010200010000a6823403eab0c733333333333333333333333333333333333333333333333333333333333333330200000000000000020000000000000000000000a6823403eab0c700a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500000000000000000000000000000000000000019c120300076163636f756e7401019e10000000000000eab0c7000000008f100e737973696f3a3a6162692f312e30070c6163636f756e745f6e616d65046e616d650f7065726d697373696f6e5f6e616d65046e616d650b616374696f6e5f6e616d65046e616d650a7461626c655f6e616d65046e616d65137472616e73616374696f6e5f69645f747970650b636865636b73756d3235360d626c6f636b5f69645f747970650b636865636b73756d3235360b7765696768745f747970650675696e74313615107065726d697373696f6e5f6c6576656c0002056163746f720c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506616374696f6e0004076163636f756e740c6163636f756e745f6e616d65046e616d650b616374696f6e5f6e616d650d617574686f72697a6174696f6e127065726d697373696f6e5f6c6576656c5b5d046461746105627974657309657874656e73696f6e000204747970650675696e7431360464617461056279746573127472616e73616374696f6e5f68656164657200060a65787069726174696f6e0e74696d655f706f696e745f7365630d7265665f626c6f636b5f6e756d0675696e743136107265665f626c6f636b5f7072656669780675696e743332136d61785f6e65745f75736167655f776f7264730976617275696e743332106d61785f6370755f75736167655f6d730575696e74380964656c61795f7365630976617275696e7433320b7472616e73616374696f6e127472616e73616374696f6e5f6865616465720314636f6e746578745f667265655f616374696f6e7308616374696f6e5b5d07616374696f6e7308616374696f6e5b5d167472616e73616374696f6e5f657874656e73696f6e730b657874656e73696f6e5b5d0c70726f64756365725f6b657900020d70726f64756365725f6e616d650c6163636f756e745f6e616d6511626c6f636b5f7369676e696e675f6b65790a7075626c69635f6b65791170726f64756365725f7363686564756c6500020776657273696f6e0675696e7433320970726f6475636572730e70726f64756365725f6b65795b5d0c626c6f636b5f68656164657200090974696d657374616d700675696e7433320870726f64756365720c6163636f756e745f6e616d6509636f6e6669726d65640675696e7431360870726576696f75730d626c6f636b5f69645f74797065117472616e73616374696f6e5f6d726f6f740b636865636b73756d3235360c616374696f6e5f6d726f6f740b636865636b73756d323536107363686564756c655f76657273696f6e0675696e7433320d6e65775f70726f6475636572731270726f64756365725f7363686564756c653f116865616465725f657874656e73696f6e730b657874656e73696f6e5b5d0a6b65795f7765696768740002036b65790a7075626c69635f6b6579067765696768740b7765696768745f74797065177065726d697373696f6e5f6c6576656c5f77656967687400020a7065726d697373696f6e107065726d697373696f6e5f6c6576656c067765696768740b7765696768745f7479706509617574686f726974790003097468726573686f6c640675696e743332046b6579730c6b65795f7765696768745b5d086163636f756e7473197065726d697373696f6e5f6c6576656c5f7765696768745b5d0a6e65776163636f756e7400040763726561746f720c6163636f756e745f6e616d65046e616d650c6163636f756e745f6e616d65056f776e657209617574686f726974790661637469766509617574686f7269747907736574636f64650004076163636f756e740c6163636f756e745f6e616d6506766d747970650575696e743809766d76657273696f6e0575696e743804636f6465056279746573067365746162690002076163636f756e740c6163636f756e745f6e616d65036162690562797465730a757064617465617574680004076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506706172656e740f7065726d697373696f6e5f6e616d65046175746809617574686f726974790a64656c657465617574680002076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d65086c696e6b617574680004076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b726571756972656d656e740f7065726d697373696f6e5f6e616d650a756e6c696e6b617574680003076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b63616e63656c64656c617900020e63616e63656c696e675f61757468107065726d697373696f6e5f6c6576656c067472785f6964137472616e73616374696f6e5f69645f74797065076f6e6572726f7200020973656e6465725f69640775696e743132380873656e745f747278056279746573076f6e626c6f636b0001066865616465720c626c6f636b5f6865616465720a00409e9a2264b89a0a6e65776163636f756e740000000040258ab2c207736574636f64650000000000b863b2c206736574616269000040cbdaa86c52d50a75706461746561757468000040cbdaa8aca24a0a64656c65746561757468000000002d6b03a78b086c696e6b61757468000040cbdac0e9e2d40a756e6c696e6b617574680000bc892a4585a6410b63616e63656c64656c617900000000e0d27bd5a4076f6e6572726f720000000000221acfa4076f6e626c6f636b000000000000000f7265736f757263655f6c696d697473010121000000000000eab0c7ffffffffffffffffffffffffffffffffffffffffffffffff000e7265736f757263655f757361676501013b000000000000eab0c7008702c40600000000000000000000000000000000008702c406d10637000000000068000000000000009b0c00000000000000157265736f757263655f6c696d6974735f73746174650101530000ce1800000000000000000000000000000000000000ce180000d9e0f50500000000c800000000000000000000000000000000000000000000000000000000000000db83d723000000006086d20600000000",
+    "envelope": [
+      "get_blocks_result_v0",
+      {
+        "head": {
+          "block_num": 6352,
+          "block_id": "000018d0a4ce2d13a96177ad1cc76bb6575d77fc009efc73df377788f4df8fc0"
+        },
+        "last_irreversible": {
+          "block_num": 6350,
+          "block_id": "000018ce9d1807b4b4d7ef60f99447683e7e480ed17851b87f69ae3f8d3d8ac7"
+        },
+        "this_block": {
+          "block_num": 6350,
+          "block_id": "000018ce9d1807b4b4d7ef60f99447683e7e480ed17851b87f69ae3f8d3d8ac7"
+        },
+        "prev_block": {
+          "block_num": 6349,
+          "block_id": "000018cd929cc68d7875e9a7905c782326aaaa20728d2359d6f911bdd07444b0"
+        },
+        "block": "8702c4060000000000eab0c7000018cd929cc68d7875e9a7905c782326aaaa20728d2359d6f911bdd07444b000000000000000000000000000000000000000000000000000000000000000008b0d4bcad265e2a98b48624cb84dd9d8414adc3ad83375771d93e9990efc463acd1800000100000001001f98d06df8392f401d61d957184ed1566ca8c94d5e2037912c2a77eb35a6a717132e9a3d50165daa16b51402e38582d4fc5cbc19e72f167b5a231cbfed6c4b8b39010217c803000000a401ec86d66acd187b000000000000000200a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e2010000000000045359530000000007666978747572650001cd18000001010100c0013f70e4e49c8be166fead45d427b46a3e3111c2e3d87d157c3db4cf8809ced79031a68323ac7e33d6932d137e55675c133c175774eebbe59493a9198a43770f8b9fd546f2bc22cc61f054208a0ff1861bfcb9279249483a125f66fac138956d0c9c9a322595fc682e382f9eca4b8db76417107c094e29c600b22ef1c3b1987f97f568b0b229daa912d715004292148919e55305117a88fa63c6ede3af298daa6d4ff383affac5bdf0748316299b3d0b46bb2f54887fed3fb2d03db57715ece2130000",
+        "traces": "0100be115c273e681530b15c46e9d46ec15137f97396f2292ec6734a157d5a0d6f3e00df01000009000000000000000041000000000000000002010100010000a6823403eab0c733333333333333333333333333333333333333333333333333333333333333330100000000000000010000000000000000000000a6823403eab0c700a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e2010000000000045359530000000007666978747572650000000000000000000000000000010200010000a6823403eab0c733333333333333333333333333333333333333333333333333333333333333330200000000000000020000000000000000000000a6823403eab0c700a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500000000000000000000000000000000000000",
+        "deltas": "0300076163636f756e7401019e10000000000000eab0c7000000008f100e737973696f3a3a6162692f312e30070c6163636f756e745f6e616d65046e616d650f7065726d697373696f6e5f6e616d65046e616d650b616374696f6e5f6e616d65046e616d650a7461626c655f6e616d65046e616d65137472616e73616374696f6e5f69645f747970650b636865636b73756d3235360d626c6f636b5f69645f747970650b636865636b73756d3235360b7765696768745f747970650675696e74313615107065726d697373696f6e5f6c6576656c0002056163746f720c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506616374696f6e0004076163636f756e740c6163636f756e745f6e616d65046e616d650b616374696f6e5f6e616d650d617574686f72697a6174696f6e127065726d697373696f6e5f6c6576656c5b5d046461746105627974657309657874656e73696f6e000204747970650675696e7431360464617461056279746573127472616e73616374696f6e5f68656164657200060a65787069726174696f6e0e74696d655f706f696e745f7365630d7265665f626c6f636b5f6e756d0675696e743136107265665f626c6f636b5f7072656669780675696e743332136d61785f6e65745f75736167655f776f7264730976617275696e743332106d61785f6370755f75736167655f6d730575696e74380964656c61795f7365630976617275696e7433320b7472616e73616374696f6e127472616e73616374696f6e5f6865616465720314636f6e746578745f667265655f616374696f6e7308616374696f6e5b5d07616374696f6e7308616374696f6e5b5d167472616e73616374696f6e5f657874656e73696f6e730b657874656e73696f6e5b5d0c70726f64756365725f6b657900020d70726f64756365725f6e616d650c6163636f756e745f6e616d6511626c6f636b5f7369676e696e675f6b65790a7075626c69635f6b65791170726f64756365725f7363686564756c6500020776657273696f6e0675696e7433320970726f6475636572730e70726f64756365725f6b65795b5d0c626c6f636b5f68656164657200090974696d657374616d700675696e7433320870726f64756365720c6163636f756e745f6e616d6509636f6e6669726d65640675696e7431360870726576696f75730d626c6f636b5f69645f74797065117472616e73616374696f6e5f6d726f6f740b636865636b73756d3235360c616374696f6e5f6d726f6f740b636865636b73756d323536107363686564756c655f76657273696f6e0675696e7433320d6e65775f70726f6475636572731270726f64756365725f7363686564756c653f116865616465725f657874656e73696f6e730b657874656e73696f6e5b5d0a6b65795f7765696768740002036b65790a7075626c69635f6b6579067765696768740b7765696768745f74797065177065726d697373696f6e5f6c6576656c5f77656967687400020a7065726d697373696f6e107065726d697373696f6e5f6c6576656c067765696768740b7765696768745f7479706509617574686f726974790003097468726573686f6c640675696e743332046b6579730c6b65795f7765696768745b5d086163636f756e7473197065726d697373696f6e5f6c6576656c5f7765696768745b5d0a6e65776163636f756e7400040763726561746f720c6163636f756e745f6e616d65046e616d650c6163636f756e745f6e616d65056f776e657209617574686f726974790661637469766509617574686f7269747907736574636f64650004076163636f756e740c6163636f756e745f6e616d6506766d747970650575696e743809766d76657273696f6e0575696e743804636f6465056279746573067365746162690002076163636f756e740c6163636f756e745f6e616d65036162690562797465730a757064617465617574680004076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506706172656e740f7065726d697373696f6e5f6e616d65046175746809617574686f726974790a64656c657465617574680002076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d65086c696e6b617574680004076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b726571756972656d656e740f7065726d697373696f6e5f6e616d650a756e6c696e6b617574680003076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b63616e63656c64656c617900020e63616e63656c696e675f61757468107065726d697373696f6e5f6c6576656c067472785f6964137472616e73616374696f6e5f69645f74797065076f6e6572726f7200020973656e6465725f69640775696e743132380873656e745f747278056279746573076f6e626c6f636b0001066865616465720c626c6f636b5f6865616465720a00409e9a2264b89a0a6e65776163636f756e740000000040258ab2c207736574636f64650000000000b863b2c206736574616269000040cbdaa86c52d50a75706461746561757468000040cbdaa8aca24a0a64656c65746561757468000000002d6b03a78b086c696e6b61757468000040cbdac0e9e2d40a756e6c696e6b617574680000bc892a4585a6410b63616e63656c64656c617900000000e0d27bd5a4076f6e6572726f720000000000221acfa4076f6e626c6f636b000000000000000f7265736f757263655f6c696d697473010121000000000000eab0c7ffffffffffffffffffffffffffffffffffffffffffffffff000e7265736f757263655f757361676501013b000000000000eab0c7008702c40600000000000000000000000000000000008702c406d10637000000000068000000000000009b0c00000000000000157265736f757263655f6c696d6974735f73746174650101530000ce1800000000000000000000000000000000000000ce180000d9e0f50500000000c800000000000000000000000000000000000000000000000000000000000000db83d723000000006086d20600000000"
+      }
+    ],
+    "block": {
+      "timestamp": "2026-10-19T21:08:19.500",
+      "producer": "sysio",
+      "previous": "000018cd929cc68d7875e9a7905c782326aaaa20728d2359d6f911bdd07444b0",
+      "transaction_mroot": "0000000000000000000000000000000000000000000000000000000000000000",
+      "finality_mroot": "8b0d4bcad265e2a98b48624cb84dd9d8414adc3ad83375771d93e9990efc463a",
+      "qc_claim": {
+        "block_num": 6349,
+        "is_strong_qc": 1
+      },
+      "new_finalizer_policy_diff": null,
+      "new_proposer_policy_diff": null,
+      "header_extensions": [],
+      "producer_signatures": [
+        "SIG_K1_KFFLa3owpRFyHimMGz7v24J63ZDzo5YSM8NUPCcx2KbxaAXVvB4JHG675RQGLFMBis3biEGThoYkqL9aBRh3HwXNZZopFV"
+      ],
+      "transactions": [
+        {
+          "cpu_usage_us": [
+            23,
+            456
+          ],
+          "trx": {
+            "signatures": [],
+            "compression": 0,
+            "packed_context_free_data": "",
+            "packed_trx": "ec86d66acd187b000000000000000200a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500a6823403eab0c7000000572d3ccdcd010000000000855c3400000000a8ed3232280000000000855c340000000000000e3d08e20100000000000453595300000000076669787475726500"
+          }
+        }
+      ],
+      "qc": {
+        "block_num": 6349,
+        "active_policy_sig": {
+          "strong_votes": "1",
+          "weak_votes": null,
+          "sig": "3f70e4e49c8be166fead45d427b46a3e3111c2e3d87d157c3db4cf8809ced79031a68323ac7e33d6932d137e55675c133c175774eebbe59493a9198a43770f8b9fd546f2bc22cc61f054208a0ff1861bfcb9279249483a125f66fac138956d0c9c9a322595fc682e382f9eca4b8db76417107c094e29c600b22ef1c3b1987f97f568b0b229daa912d715004292148919e55305117a88fa63c6ede3af298daa6d4ff383affac5bdf0748316299b3d0b46bb2f54887fed3fb2d03db57715ece213"
+        },
+        "pending_policy_sig": null
+      },
+      "block_extensions": []
+    },
+    "traces": [
+      [
+        "transaction_trace_v0",
+        {
+          "id": "be115c273e681530b15c46e9d46ec15137f97396f2292ec6734a157d5a0d6f3e",
+          "status": 0,
+          "cpu_usage_us": 479,
+          "net_usage_words": 9,
+          "elapsed": "0",
+          "net_usage": "65",
+          "scheduled": 0,
+          "action_traces": [
+            [
+              "action_trace_v1",
+              {
+                "action_ordinal": 1,
+                "creator_action_ordinal": 0,
+                "receipt": [
+                  "action_receipt_v0",
+                  {
+                    "receiver": "sysio.token",
+                    "act_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+                    "global_sequence": "1",
+                    "recv_sequence": "1",
+                    "auth_sequence": [],
+                    "code_sequence": 0,
+                    "abi_sequence": 0
+                  }
+                ],
+                "receiver": "sysio.token",
+                "act": {
+                  "account": "sysio.token",
+                  "name": "transfer",
+                  "authorization": [
+                    {
+                      "actor": "alice",
+                      "permission": "active"
+                    }
+                  ],
+                  "data": "0000000000855c340000000000000e3d08e201000000000004535953000000000766697874757265"
+                },
+                "context_free": 0,
+                "elapsed": "0",
+                "console": "",
+                "account_ram_deltas": [],
+                "except": null,
+                "error_code": null,
+                "return_value": ""
+              }
+            ],
+            [
+              "action_trace_v1",
+              {
+                "action_ordinal": 2,
+                "creator_action_ordinal": 0,
+                "receipt": [
+                  "action_receipt_v0",
+                  {
+                    "receiver": "sysio.token",
+                    "act_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+                    "global_sequence": "2",
+                    "recv_sequence": "2",
+                    "auth_sequence": [],
+                    "code_sequence": 0,
+                    "abi_sequence": 0
+                  }
+                ],
+                "receiver": "sysio.token",
+                "act": {
+                  "account": "sysio.token",
+                  "name": "transfer",
+                  "authorization": [
+                    {
+                      "actor": "alice",
+                      "permission": "active"
+                    }
+                  ],
+                  "data": "0000000000855c340000000000000e3d08e201000000000004535953000000000766697874757265"
+                },
+                "context_free": 0,
+                "elapsed": "0",
+                "console": "",
+                "account_ram_deltas": [],
+                "except": null,
+                "error_code": null,
+                "return_value": ""
+              }
+            ]
+          ],
+          "account_ram_delta": null,
+          "except": null,
+          "error_code": null,
+          "failed_dtrx_trace": null,
+          "partial": null
+        }
+      ]
+    ],
+    "deltas": [
+      [
+        "table_delta_v0",
+        {
+          "name": "account",
+          "rows": [
+            {
+              "present": 1,
+              "data": "000000000000eab0c7000000008f100e737973696f3a3a6162692f312e30070c6163636f756e745f6e616d65046e616d650f7065726d697373696f6e5f6e616d65046e616d650b616374696f6e5f6e616d65046e616d650a7461626c655f6e616d65046e616d65137472616e73616374696f6e5f69645f747970650b636865636b73756d3235360d626c6f636b5f69645f747970650b636865636b73756d3235360b7765696768745f747970650675696e74313615107065726d697373696f6e5f6c6576656c0002056163746f720c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506616374696f6e0004076163636f756e740c6163636f756e745f6e616d65046e616d650b616374696f6e5f6e616d650d617574686f72697a6174696f6e127065726d697373696f6e5f6c6576656c5b5d046461746105627974657309657874656e73696f6e000204747970650675696e7431360464617461056279746573127472616e73616374696f6e5f68656164657200060a65787069726174696f6e0e74696d655f706f696e745f7365630d7265665f626c6f636b5f6e756d0675696e743136107265665f626c6f636b5f7072656669780675696e743332136d61785f6e65745f75736167655f776f7264730976617275696e743332106d61785f6370755f75736167655f6d730575696e74380964656c61795f7365630976617275696e7433320b7472616e73616374696f6e127472616e73616374696f6e5f6865616465720314636f6e746578745f667265655f616374696f6e7308616374696f6e5b5d07616374696f6e7308616374696f6e5b5d167472616e73616374696f6e5f657874656e73696f6e730b657874656e73696f6e5b5d0c70726f64756365725f6b657900020d70726f64756365725f6e616d650c6163636f756e745f6e616d6511626c6f636b5f7369676e696e675f6b65790a7075626c69635f6b65791170726f64756365725f7363686564756c6500020776657273696f6e0675696e7433320970726f6475636572730e70726f64756365725f6b65795b5d0c626c6f636b5f68656164657200090974696d657374616d700675696e7433320870726f64756365720c6163636f756e745f6e616d6509636f6e6669726d65640675696e7431360870726576696f75730d626c6f636b5f69645f74797065117472616e73616374696f6e5f6d726f6f740b636865636b73756d3235360c616374696f6e5f6d726f6f740b636865636b73756d323536107363686564756c655f76657273696f6e0675696e7433320d6e65775f70726f6475636572731270726f64756365725f7363686564756c653f116865616465725f657874656e73696f6e730b657874656e73696f6e5b5d0a6b65795f7765696768740002036b65790a7075626c69635f6b6579067765696768740b7765696768745f74797065177065726d697373696f6e5f6c6576656c5f77656967687400020a7065726d697373696f6e107065726d697373696f6e5f6c6576656c067765696768740b7765696768745f7479706509617574686f726974790003097468726573686f6c640675696e743332046b6579730c6b65795f7765696768745b5d086163636f756e7473197065726d697373696f6e5f6c6576656c5f7765696768745b5d0a6e65776163636f756e7400040763726561746f720c6163636f756e745f6e616d65046e616d650c6163636f756e745f6e616d65056f776e657209617574686f726974790661637469766509617574686f7269747907736574636f64650004076163636f756e740c6163636f756e745f6e616d6506766d747970650575696e743809766d76657273696f6e0575696e743804636f6465056279746573067365746162690002076163636f756e740c6163636f756e745f6e616d65036162690562797465730a757064617465617574680004076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506706172656e740f7065726d697373696f6e5f6e616d65046175746809617574686f726974790a64656c657465617574680002076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d65086c696e6b617574680004076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b726571756972656d656e740f7065726d697373696f6e5f6e616d650a756e6c696e6b617574680003076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b63616e63656c64656c617900020e63616e63656c696e675f61757468107065726d697373696f6e5f6c6576656c067472785f6964137472616e73616374696f6e5f69645f74797065076f6e6572726f7200020973656e6465725f69640775696e743132380873656e745f747278056279746573076f6e626c6f636b0001066865616465720c626c6f636b5f6865616465720a00409e9a2264b89a0a6e65776163636f756e740000000040258ab2c207736574636f64650000000000b863b2c206736574616269000040cbdaa86c52d50a75706461746561757468000040cbdaa8aca24a0a64656c65746561757468000000002d6b03a78b086c696e6b61757468000040cbdac0e9e2d40a756e6c696e6b617574680000bc892a4585a6410b63616e63656c64656c617900000000e0d27bd5a4076f6e6572726f720000000000221acfa4076f6e626c6f636b000000000000"
+            }
+          ]
+        }
+      ],
+      [
+        "table_delta_v0",
+        {
+          "name": "resource_limits",
+          "rows": [
+            {
+              "present": 1,
+              "data": "000000000000eab0c7ffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          ]
+        }
+      ],
+      [
+        "table_delta_v0",
+        {
+          "name": "resource_usage",
+          "rows": [
+            {
+              "present": 1,
+              "data": "000000000000eab0c7008702c40600000000000000000000000000000000008702c406d10637000000000068000000000000009b0c000000000000"
+            }
+          ]
+        }
+      ],
+      [
+        "table_delta_v0",
+        {
+          "name": "resource_limits_state",
+          "rows": [
+            {
+              "present": 1,
+              "data": "0000ce1800000000000000000000000000000000000000ce180000d9e0f50500000000c800000000000000000000000000000000000000000000000000000000000000db83d723000000006086d20600000000"
+            }
+          ]
+        }
+      ]
+    ],
+    "deltaFraming": {
+      "declaredCount": 3,
+      "actualCount": 4,
+      "compatibility": "wire-resource-index-count-v1"
+    },
+    "deltaRows": [
+      {
+        "stream": "account",
+        "present": 1,
+        "rawHex": "000000000000eab0c7000000008f100e737973696f3a3a6162692f312e30070c6163636f756e745f6e616d65046e616d650f7065726d697373696f6e5f6e616d65046e616d650b616374696f6e5f6e616d65046e616d650a7461626c655f6e616d65046e616d65137472616e73616374696f6e5f69645f747970650b636865636b73756d3235360d626c6f636b5f69645f747970650b636865636b73756d3235360b7765696768745f747970650675696e74313615107065726d697373696f6e5f6c6576656c0002056163746f720c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506616374696f6e0004076163636f756e740c6163636f756e745f6e616d65046e616d650b616374696f6e5f6e616d650d617574686f72697a6174696f6e127065726d697373696f6e5f6c6576656c5b5d046461746105627974657309657874656e73696f6e000204747970650675696e7431360464617461056279746573127472616e73616374696f6e5f68656164657200060a65787069726174696f6e0e74696d655f706f696e745f7365630d7265665f626c6f636b5f6e756d0675696e743136107265665f626c6f636b5f7072656669780675696e743332136d61785f6e65745f75736167655f776f7264730976617275696e743332106d61785f6370755f75736167655f6d730575696e74380964656c61795f7365630976617275696e7433320b7472616e73616374696f6e127472616e73616374696f6e5f6865616465720314636f6e746578745f667265655f616374696f6e7308616374696f6e5b5d07616374696f6e7308616374696f6e5b5d167472616e73616374696f6e5f657874656e73696f6e730b657874656e73696f6e5b5d0c70726f64756365725f6b657900020d70726f64756365725f6e616d650c6163636f756e745f6e616d6511626c6f636b5f7369676e696e675f6b65790a7075626c69635f6b65791170726f64756365725f7363686564756c6500020776657273696f6e0675696e7433320970726f6475636572730e70726f64756365725f6b65795b5d0c626c6f636b5f68656164657200090974696d657374616d700675696e7433320870726f64756365720c6163636f756e745f6e616d6509636f6e6669726d65640675696e7431360870726576696f75730d626c6f636b5f69645f74797065117472616e73616374696f6e5f6d726f6f740b636865636b73756d3235360c616374696f6e5f6d726f6f740b636865636b73756d323536107363686564756c655f76657273696f6e0675696e7433320d6e65775f70726f6475636572731270726f64756365725f7363686564756c653f116865616465725f657874656e73696f6e730b657874656e73696f6e5b5d0a6b65795f7765696768740002036b65790a7075626c69635f6b6579067765696768740b7765696768745f74797065177065726d697373696f6e5f6c6576656c5f77656967687400020a7065726d697373696f6e107065726d697373696f6e5f6c6576656c067765696768740b7765696768745f7479706509617574686f726974790003097468726573686f6c640675696e743332046b6579730c6b65795f7765696768745b5d086163636f756e7473197065726d697373696f6e5f6c6576656c5f7765696768745b5d0a6e65776163636f756e7400040763726561746f720c6163636f756e745f6e616d65046e616d650c6163636f756e745f6e616d65056f776e657209617574686f726974790661637469766509617574686f7269747907736574636f64650004076163636f756e740c6163636f756e745f6e616d6506766d747970650575696e743809766d76657273696f6e0575696e743804636f6465056279746573067365746162690002076163636f756e740c6163636f756e745f6e616d65036162690562797465730a757064617465617574680004076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506706172656e740f7065726d697373696f6e5f6e616d65046175746809617574686f726974790a64656c657465617574680002076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d65086c696e6b617574680004076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b726571756972656d656e740f7065726d697373696f6e5f6e616d650a756e6c696e6b617574680003076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b63616e63656c64656c617900020e63616e63656c696e675f61757468107065726d697373696f6e5f6c6576656c067472785f6964137472616e73616374696f6e5f69645f74797065076f6e6572726f7200020973656e6465725f69640775696e743132380873656e745f747278056279746573076f6e626c6f636b0001066865616465720c626c6f636b5f6865616465720a00409e9a2264b89a0a6e65776163636f756e740000000040258ab2c207736574636f64650000000000b863b2c206736574616269000040cbdaa86c52d50a75706461746561757468000040cbdaa8aca24a0a64656c65746561757468000000002d6b03a78b086c696e6b61757468000040cbdac0e9e2d40a756e6c696e6b617574680000bc892a4585a6410b63616e63656c64656c617900000000e0d27bd5a4076f6e6572726f720000000000221acfa4076f6e626c6f636b000000000000",
+        "value": [
+          "account_v0",
+          {
+            "name": "sysio",
+            "creation_date": "2025-01-01T00:00:00.000",
+            "abi": "0e737973696f3a3a6162692f312e30070c6163636f756e745f6e616d65046e616d650f7065726d697373696f6e5f6e616d65046e616d650b616374696f6e5f6e616d65046e616d650a7461626c655f6e616d65046e616d65137472616e73616374696f6e5f69645f747970650b636865636b73756d3235360d626c6f636b5f69645f747970650b636865636b73756d3235360b7765696768745f747970650675696e74313615107065726d697373696f6e5f6c6576656c0002056163746f720c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506616374696f6e0004076163636f756e740c6163636f756e745f6e616d65046e616d650b616374696f6e5f6e616d650d617574686f72697a6174696f6e127065726d697373696f6e5f6c6576656c5b5d046461746105627974657309657874656e73696f6e000204747970650675696e7431360464617461056279746573127472616e73616374696f6e5f68656164657200060a65787069726174696f6e0e74696d655f706f696e745f7365630d7265665f626c6f636b5f6e756d0675696e743136107265665f626c6f636b5f7072656669780675696e743332136d61785f6e65745f75736167655f776f7264730976617275696e743332106d61785f6370755f75736167655f6d730575696e74380964656c61795f7365630976617275696e7433320b7472616e73616374696f6e127472616e73616374696f6e5f6865616465720314636f6e746578745f667265655f616374696f6e7308616374696f6e5b5d07616374696f6e7308616374696f6e5b5d167472616e73616374696f6e5f657874656e73696f6e730b657874656e73696f6e5b5d0c70726f64756365725f6b657900020d70726f64756365725f6e616d650c6163636f756e745f6e616d6511626c6f636b5f7369676e696e675f6b65790a7075626c69635f6b65791170726f64756365725f7363686564756c6500020776657273696f6e0675696e7433320970726f6475636572730e70726f64756365725f6b65795b5d0c626c6f636b5f68656164657200090974696d657374616d700675696e7433320870726f64756365720c6163636f756e745f6e616d6509636f6e6669726d65640675696e7431360870726576696f75730d626c6f636b5f69645f74797065117472616e73616374696f6e5f6d726f6f740b636865636b73756d3235360c616374696f6e5f6d726f6f740b636865636b73756d323536107363686564756c655f76657273696f6e0675696e7433320d6e65775f70726f6475636572731270726f64756365725f7363686564756c653f116865616465725f657874656e73696f6e730b657874656e73696f6e5b5d0a6b65795f7765696768740002036b65790a7075626c69635f6b6579067765696768740b7765696768745f74797065177065726d697373696f6e5f6c6576656c5f77656967687400020a7065726d697373696f6e107065726d697373696f6e5f6c6576656c067765696768740b7765696768745f7479706509617574686f726974790003097468726573686f6c640675696e743332046b6579730c6b65795f7765696768745b5d086163636f756e7473197065726d697373696f6e5f6c6576656c5f7765696768745b5d0a6e65776163636f756e7400040763726561746f720c6163636f756e745f6e616d65046e616d650c6163636f756e745f6e616d65056f776e657209617574686f726974790661637469766509617574686f7269747907736574636f64650004076163636f756e740c6163636f756e745f6e616d6506766d747970650575696e743809766d76657273696f6e0575696e743804636f6465056279746573067365746162690002076163636f756e740c6163636f756e745f6e616d65036162690562797465730a757064617465617574680004076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d6506706172656e740f7065726d697373696f6e5f6e616d65046175746809617574686f726974790a64656c657465617574680002076163636f756e740c6163636f756e745f6e616d650a7065726d697373696f6e0f7065726d697373696f6e5f6e616d65086c696e6b617574680004076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b726571756972656d656e740f7065726d697373696f6e5f6e616d650a756e6c696e6b617574680003076163636f756e740c6163636f756e745f6e616d6504636f64650c6163636f756e745f6e616d6504747970650b616374696f6e5f6e616d650b63616e63656c64656c617900020e63616e63656c696e675f61757468107065726d697373696f6e5f6c6576656c067472785f6964137472616e73616374696f6e5f69645f74797065076f6e6572726f7200020973656e6465725f69640775696e743132380873656e745f747278056279746573076f6e626c6f636b0001066865616465720c626c6f636b5f6865616465720a00409e9a2264b89a0a6e65776163636f756e740000000040258ab2c207736574636f64650000000000b863b2c206736574616269000040cbdaa86c52d50a75706461746561757468000040cbdaa8aca24a0a64656c65746561757468000000002d6b03a78b086c696e6b61757468000040cbdac0e9e2d40a756e6c696e6b617574680000bc892a4585a6410b63616e63656c64656c617900000000e0d27bd5a4076f6e6572726f720000000000221acfa4076f6e626c6f636b000000000000"
+          }
+        ]
+      },
+      {
+        "stream": "resource_limits",
+        "present": 1,
+        "rawHex": "000000000000eab0c7ffffffffffffffffffffffffffffffffffffffffffffffff",
+        "value": [
+          "resource_limits_v0",
+          {
+            "owner": "sysio",
+            "net_weight": "-1",
+            "cpu_weight": "-1",
+            "ram_bytes": "-1"
+          }
+        ]
+      },
+      {
+        "stream": "resource_usage",
+        "present": 1,
+        "rawHex": "000000000000eab0c7008702c40600000000000000000000000000000000008702c406d10637000000000068000000000000009b0c000000000000",
+        "value": [
+          "resource_usage_v0",
+          {
+            "owner": "sysio",
+            "net_usage": [
+              "usage_accumulator_v0",
+              {
+                "last_ordinal": 113508999,
+                "value_ex": "0",
+                "consumed": "0"
+              }
+            ],
+            "cpu_usage": [
+              "usage_accumulator_v0",
+              {
+                "last_ordinal": 113508999,
+                "value_ex": "3606225",
+                "consumed": "104"
+              }
+            ],
+            "ram_usage": "3227"
+          }
+        ]
+      },
+      {
+        "stream": "resource_limits_state",
+        "present": 1,
+        "rawHex": "0000ce1800000000000000000000000000000000000000ce180000d9e0f50500000000c800000000000000000000000000000000000000000000000000000000000000db83d723000000006086d20600000000",
+        "value": [
+          "resource_limits_state_v0",
+          {
+            "average_block_net_usage": [
+              "usage_accumulator_v0",
+              {
+                "last_ordinal": 6350,
+                "value_ex": "0",
+                "consumed": "0"
+              }
+            ],
+            "average_block_cpu_usage": [
+              "usage_accumulator_v0",
+              {
+                "last_ordinal": 6350,
+                "value_ex": "99999961",
+                "consumed": "200"
+              }
+            ],
+            "total_net_weight": "0",
+            "total_cpu_weight": "0",
+            "total_ram_bytes": "0",
+            "virtual_net_limit": "601326555",
+            "virtual_cpu_limit": "114460256"
+          }
+        ]
+      }
+    ]
+  }
+}

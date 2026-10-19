@@ -181,7 +181,8 @@ export class ConnectionManager {
     get shipClient(): StateHistorySocket {
         return new StateHistorySocket(
             this.conn.chains[this.config.settings.chain].ship,
-            this.config.settings.max_ws_payload_mb
+            this.config.settings.max_ws_payload_mb,
+            this.config.settings.protocol
         );
     }
 

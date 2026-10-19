@@ -178,7 +178,7 @@ export abstract class BaseParser {
         }
 
         // retry failed deserialization for custom ABI maps
-        if (!ds_act) {
+        if (!ds_act && !worker.usesExtensionProtocol) {
             try {
                 ds_act = await this.reinterpretActionData(act);
             } catch (e) {
@@ -188,7 +188,7 @@ export abstract class BaseParser {
         }
 
         // retry with the last abi before the given block_num
-        if (!ds_act) {
+        if (!ds_act && !worker.usesExtensionProtocol) {
             debugLog('DS Failed ->>', original_act);
             ds_act = await worker.common.deserializeActionAtBlockNative(worker, act, trx_data.block_num - 1);
             debugLog('Retry with previous ABI ->>', ds_act);

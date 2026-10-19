@@ -12,6 +12,7 @@ import { HyperionActionAct } from "../../interfaces/hyperion-action.js";
 import { ABI, Action, Serializer } from "@wharfkit/antelope";
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
 import { groupActionTraces } from "../helpers/action-dedup.js";
+import {assertCompleteProtocolSearch} from '../protocol/search.js';
 
 type ActionAbiIdentity =
     | {kind: "historical"; block: number; hex: string}
@@ -67,7 +68,7 @@ function cleanActionTrace(t: any) {
 export default class DSPoolWorker extends HyperionWorker {
 
 
-    shipABI: ABI | undefined;
+    shipABI: string | undefined;
 
     types;
     tables: Map<string, string> = new Map();
@@ -229,6 +230,7 @@ export default class DSPoolWorker extends HyperionWorker {
         const stopAbiFetch = this.profiler.start('fetch_abi_es');
         try {
             const _includes = ["block", "actions", "tables"];
+            if (this.usesExtensionProtocol) _includes.push('account', 'block_id', 'protocol_profile', 'ordinal');
             if (get_json) {
                 _includes.push("abi");
             } else {
@@ -237,7 +239,7 @@ export default class DSPoolWorker extends HyperionWorker {
             // const t_start = process.hrtime.bigint();
             const queryResult = await this.client.search<any>({
                 index: `${this.chain}-abi-*`,
-                size: 1 + fetch_offset,
+                size: (this.usesExtensionProtocol ? 2 : 1) + fetch_offset,
                 query: {
                     bool: {
                         must: [
@@ -250,7 +252,15 @@ export default class DSPoolWorker extends HyperionWorker {
                 _source: { includes: _includes }
             });
             // const t_end = process.hrtime.bigint();
+            if (this.usesExtensionProtocol) {
+                assertCompleteProtocolSearch(queryResult);
+            }
             const results = queryResult.hits.hits;
+            if (this.usesExtensionProtocol) {
+                if (results[1]?._source?.block === results[0]?._source?.block && results.length > 1) {
+                    throw new Error('Protocol action ABI deployment is ambiguous');
+                }
+            }
             // const duration = (Number(t_end - t_start) / 1000 / 1000).toFixed(2);
             let result: any;
             if (results.length > 0) {
@@ -262,6 +272,7 @@ export default class DSPoolWorker extends HyperionWorker {
             this.poolAbiCache.set(cacheKey, result);
             return result;
         } catch (e) {
+            if (this.usesExtensionProtocol) throw e;
             hLog(e);
             return null;
         } finally {
@@ -299,6 +310,10 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     async verifyLocalType(contract: string, type: string, block_num: number, field: string): Promise<[boolean, string]> {
+        if (this.usesExtensionProtocol) {
+            this.clearActionAbiContext(contract);
+            return [false, ''];
+        }
         const vkey = field + '|' + contract + '|' + type + '|' + block_num;
         const resolveLoadedType = (): string => {
             const cached = this.poolTypeCache.get(vkey);
@@ -320,6 +335,7 @@ export default class DSPoolWorker extends HyperionWorker {
         }
 
         const historical = await this.fetchAbiHexAtBlockElastic(contract, block_num, false, 0);
+
         if (historical?.abi_hex && this.loadActionAbi(contract,
             {kind: "historical", block: historical.block, hex: historical.abi_hex},
             () => this.loadAbiHex(contract, historical.block, historical.abi_hex))) {
@@ -360,6 +376,7 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     async getContractAtBlock(accountName: string, block_num: number, check_action: string): Promise<ABI | null> {
+        if (this.usesExtensionProtocol) return null;
 
         // recover ABI from cache
         if (this.contracts.has(accountName)) {
@@ -421,6 +438,7 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     async deserializeActionAtBlock(action: HyperionActionAct, block_num: number): Promise<any | null> {
+        if (this.usesExtensionProtocol) return null;
         const stopAntelope = this.profiler.start('antelope_deserialization');
         try {
             const contract = await this.getContractAtBlock(action.account, block_num, action.name);
@@ -777,9 +795,9 @@ export default class DSPoolWorker extends HyperionWorker {
         // hLog(`Monitoring loop started on ds_worker ${process.env.local_id}`);
     }
 
-    initializeShipAbi(abiString: string) {
-        this.shipABI = ABI.from(abiString);
-        this.abieos.loadAbi("0", abiString);
+    async initializeShipAbi(abiString: string) {
+        await this.initializeProtocolShip(abiString);
+        this.shipABI = abiString;
         this.startMonitoring();
     }
 
@@ -796,7 +814,7 @@ export default class DSPoolWorker extends HyperionWorker {
     onIpcMessage(msg: any): void {
         switch (msg.event) {
             case 'initialize_abi': {
-                this.initializeShipAbi(msg.data);
+                void this.initializeShipAbi(msg.data).catch(error => { hLog("Protocol initialization failed", error); process.exit(1); });
                 break;
             }
             case 'remove_contract': {

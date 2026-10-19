@@ -478,7 +478,8 @@ async function testChain(shortName: string) {
     // SHIP WS TEST
     console.log(`Checking SHIP endpoints...`);
     const shipEndpoints = connections.chains[shortName].ship;
-    const shs = new StateHistorySocket(shipEndpoints);
+    const chainConfiguration = JSON.parse(await readFile(path.join(chainsDir, `${shortName}.config.json`), 'utf8'));
+    const shs = new StateHistorySocket(shipEndpoints, chainConfiguration.settings.max_ws_payload_mb, chainConfiguration.settings.protocol);
     const servers = await shs.validateShipServers(httpChainId);
 
     if (!servers || servers.length === 0) {

@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: [ "main", "dev", "release/4.5" ]
+    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs" ]
 
 jobs:
   build:
@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
-      - run: npm ci --ignore-scripts
+      - run: npm ci --allow-git=all
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -65,6 +65,9 @@ jobs:
         run: sha256sum -c SHA256SUMS
       - name: Verify guarded contract replay evidence checksums
         working-directory: docs/performance/evidence/guarded-replay-20261019
+        run: sha256sum -c SHA256SUMS
+      - name: Verify protocol adapter observation checksum
+        working-directory: docs/performance/evidence/protocol-adapter-20261019
         run: sha256sum -c SHA256SUMS
       - run: bun test tests/unit
 

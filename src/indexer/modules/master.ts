@@ -1683,7 +1683,7 @@ export class HyperionMaster {
 
         // State History Servers
         const shipNodes = this.manager.conn.chains[this.chain].ship;
-        const shs = new StateHistorySocket(shipNodes);
+        const shs = new StateHistorySocket(shipNodes, this.conf.settings.max_ws_payload_mb, this.conf.settings.protocol);
         this.validatedShipServers = await shs.validateShipServers(rpcChainId);
 
         if (this.validatedShipServers.length === 0) {

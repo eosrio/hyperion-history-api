@@ -7,6 +7,7 @@ import { ActionTrace } from "../../../interfaces/action-trace.js";
 import { hLog } from "../../helpers/common_functions.js";
 import { PackedTransaction, Serializer } from "@wharfkit/antelope";
 import { GetBlocksResultV0 } from "../../workers/state-reader.js";
+import {protocolBytes} from "../../protocol/contract-cache.js";
 
 export default class HyperionParser extends BaseParser {
 
@@ -88,11 +89,7 @@ export default class HyperionParser extends BaseParser {
             let allowProcessing = true;
 
             const stopResult = worker.profiler.start('deserialize_result');
-            const ds_msg = Serializer.decode({
-                data: message.content,
-                type: 'result',
-                abi: worker.shipABI
-            }) as [string, GetBlocksResultV0];
+            const ds_msg = worker.decodeShipResult(message.content) as [string, GetBlocksResultV0];
             stopResult();
 
             if (!ds_msg) {
@@ -109,7 +106,7 @@ export default class HyperionParser extends BaseParser {
 
             if (res.block && res.block.length) {
                 const stopBlock = worker.profiler.start('deserialize_block');
-                block = worker.deserializeNative('signed_block', res.block.array);
+                block = worker.deserializeNative('signed_block', protocolBytes(res.block));
                 stopBlock();
                 if (block === null) {
                     hLog('incompatible block');
@@ -121,8 +118,11 @@ export default class HyperionParser extends BaseParser {
                         if (worker.conf.whitelists && (worker.conf.whitelists.actions.length > 0 || worker.conf.whitelists.deltas.length > 0)) {
                             allowProcessing = false;
                             for (const transaction of block.transactions) {
-                                if (transaction.status === 0 && transaction.trx[1] && transaction.trx[1].packed_trx) {
-                                    const unpacked_trx = PackedTransaction.from(transaction.trx[1].packed_trx).getTransaction();
+                                const packed = Array.isArray(transaction.trx) ? transaction.trx[1] : transaction.trx;
+                                const included = transaction.status === 0
+                                    || (worker.usesExtensionProtocol && transaction.status === undefined && !Array.isArray(transaction.trx));
+                                if (included && packed?.packed_trx) {
+                                    const unpacked_trx = worker.decodePackedTransaction(packed);
                                     for (const act of unpacked_trx.actions) {
                                         if (this.checkWhitelist(act)) {
                                             allowProcessing = true;
@@ -142,7 +142,7 @@ export default class HyperionParser extends BaseParser {
 
             if (allowProcessing && res.traces && res.traces.length) {
                 const stopTraces = worker.profiler.start('deserialize_traces');
-                traces = worker.deserializeNative('transaction_trace[]', res.traces.array);
+                traces = worker.deserializeNative('transaction_trace[]', protocolBytes(res.traces));
                 stopTraces();
                 if (!traces) {
                     hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res['this_block']['block_num']}`);
@@ -151,12 +151,7 @@ export default class HyperionParser extends BaseParser {
 
             if (allowProcessing && res.deltas && res.deltas.length) {
                 const stopDeltas = worker.profiler.start('deserialize_deltas');
-                const decodedDeltas = Serializer.decode({
-                    data: res.deltas.array,
-                    type: 'table_delta[]',
-                    abi: worker.shipABI
-                });
-                deltas = Serializer.objectify(decodedDeltas);
+                deltas = worker.decodeShipValue('table_delta[]', res.deltas);
                 stopDeltas();
                 if (!deltas) {
                     hLog(`[WARNING] table_delta[] deserialization failed on block ${res['this_block']['block_num']}`);

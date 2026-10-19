@@ -17,6 +17,11 @@ import { TokenAccount } from "../../interfaces/custom-ds.js";
 import { GetBlocksResultV0 } from "./state-reader.js";
 import { de } from "zod/v4/locales";
 import { log } from "console";
+import {protocolBytes, protocolNumber} from "../protocol/contract-cache.js";
+import type {ProtocolAbiDeployment, ProtocolNormalizedDelta} from "@eosrio/hyperion-sdk/protocol";
+import {protocolDeployment, type IndexedProtocolAbi} from "../protocol/deployments.js";
+import {protocolStateKey} from '../helpers/protocol-document-id.js';
+import {assertCompleteProtocolSearch} from '../protocol/search.js';
 
 interface QueuePayload {
     queue: string;
@@ -41,10 +46,11 @@ interface HyperionLightBlock {
     prev_id: string;
     producer: string;
     new_producers?: ProducerSchedule;
-    schedule_version: number;
+    schedule_version?: number;
     cpu_usage: number;
-    net_usage: number;
+    net_usage?: number;
     trx_count: number;
+    protocol?: Record<string, unknown>;
 }
 
 function bufferFromJson(data: any, _useFlatstr?: boolean) {
@@ -63,7 +69,7 @@ export default class MainDSWorker extends HyperionWorker {
     private consumerQueue;
     private preIndexingQueue;
 
-    shipABI?: ABI;
+    shipABI?: string;
 
     private allowStreaming = false;
     private dsPoolMap = {};
@@ -132,9 +138,10 @@ export default class MainDSWorker extends HyperionWorker {
     onIpcMessage(msg: any): void {
         switch (msg.event) {
             case 'initialize_abi': {
-                this.shipABI = ABI.from(msg.data);
-                this.abieos.loadAbi("0", msg.data);
-                this.initConsumer();
+                void this.initializeProtocolShip(msg.data).then(() => {
+                    this.shipABI = msg.data;
+                    this.initConsumer();
+                }).catch(error => { hLog("Protocol initialization failed", error); process.exit(1); });
                 break;
             }
             case 'update_abi': {
@@ -158,16 +165,34 @@ export default class MainDSWorker extends HyperionWorker {
                 break;
             }
             case 'reload_config': {
+                const previous = this.conf;
+                const oldAlias = this.configModule.EOSIO_ALIAS;
+                const oldPrefix = this.configModule.proc_prefix;
+                const oldFilters = Object.fromEntries(Object.entries(this.filters).map(([key, entries]) => [key, new Set(entries)]));
                 try {
                     hLog(`Reloading configuration...`);
                     this.configModule.loadConfigJson();
-                    this.conf = this.configModule.config;
+                    const candidate = this.configModule.config;
+                    const before = previous.settings.protocol ?? {provider: 'antelope'};
+                    const after = candidate.settings.protocol ?? {provider: 'antelope'};
+                    if (before.provider !== after.provider || (before.provider === 'extension' && after.provider === 'extension'
+                        && (before.package !== after.package || before.profileId !== after.profileId))) {
+                        throw new Error('Changing a protocol provider or profile requires a controlled worker restart');
+                    }
+                    this.conf = candidate;
                     // Notify the master
                     process.send?.({
                         event: 'config_reloaded',
                         status: 'success'
                     });
                 } catch (error: any) {
+                    this.configModule.config = previous;
+                    this.configModule.EOSIO_ALIAS = oldAlias;
+                    this.configModule.proc_prefix = oldPrefix;
+                    for (const [key, entries] of Object.entries(oldFilters)) {
+                        this.filters[key].clear();
+                        for (const entry of entries) this.filters[key].add(entry);
+                    }
                     hLog(`Error reloading configuration: ${error.message}`);
                     // Notify the master about the error
                     process.send?.({
@@ -295,7 +320,7 @@ export default class MainDSWorker extends HyperionWorker {
             let ts = '';
             let block_ts = new Date().toISOString();
             let light_block: HyperionLightBlock | null = null;
-            const block_num = res.this_block.block_num.toNumber();
+            const block_num = protocolNumber(res.this_block.block_num);
             const block_id = res.this_block.block_id.toString().toLowerCase();
             if (this.conf.indexer.fetch_block) {
                 if (!block) {
@@ -304,7 +329,7 @@ export default class MainDSWorker extends HyperionWorker {
                 }
                 light_block = {
                     '@timestamp': block['timestamp'],
-                    block_num: res.this_block.block_num.toNumber(),
+                    block_num: protocolNumber(res.this_block.block_num),
                     block_id: res.this_block.block_id.toString().toLowerCase(),
                     prev_id: res.prev_block.block_id.toString().toLowerCase(),
                     producer: block.producer,
@@ -324,6 +349,7 @@ export default class MainDSWorker extends HyperionWorker {
                 let total_net = 0;
 
                 const failedTrx: any[] = [];
+                let receiptNetAvailable = !this.usesExtensionProtocol;
 
                 block.transactions.forEach((trx) => {
 
@@ -336,7 +362,7 @@ export default class MainDSWorker extends HyperionWorker {
                         valid = this.filters.action_whitelist.size === 0;
 
                         try {
-                            const unpacked_trx = PackedTransaction.from(trx.trx[1]).getTransaction();
+                            const unpacked_trx = this.decodePackedTransaction(Array.isArray(trx.trx) ? trx.trx[1] : trx.trx);
                             for (const act of unpacked_trx.actions) {
 
                                 if (this.filters.action_blacklist.size > 0 && this.checkBlacklist(act)) {
@@ -358,10 +384,14 @@ export default class MainDSWorker extends HyperionWorker {
                         
                     }
 
-                    total_cpu += trx['cpu_usage_us'];
-                    total_net += trx['net_usage_words'];
+                    const receipt: any = trx;
+                    if (Array.isArray(receipt.cpu_usage_us)) {
+                        for (const cpu of receipt.cpu_usage_us) total_cpu += protocolNumber(cpu);
+                    } else total_cpu += protocolNumber(receipt.cpu_usage_us);
+                    if (receipt.net_usage_words === undefined) receiptNetAvailable = false;
+                    else total_net += protocolNumber(receipt.net_usage_words);
 
-                    if (trx.status === 0) {
+                    if (trx.status === 0 || (this.usesExtensionProtocol && trx.status === undefined && !Array.isArray(trx.trx))) {
 
                         if (light_block && valid) {
                             light_block.trx_count++;
@@ -417,7 +447,14 @@ export default class MainDSWorker extends HyperionWorker {
 
                 if (light_block) {
                     light_block.cpu_usage = total_cpu;
-                    light_block.net_usage = total_net;
+                    if (receiptNetAvailable) light_block.net_usage = total_net;
+                    else delete light_block.net_usage;
+                    if (this.usesExtensionProtocol) {
+                        light_block.protocol = {id: this.protocolId, profileId: this.protocol.profileId,
+                            // Wire receipts contain per-input-action CPU and omit legacy status/net.
+                            receipts: block.transactions.map((receipt: any) => ({cpu_usage_us: receipt.cpu_usage_us}))};
+                        if (block.schedule_version === undefined) delete light_block.schedule_version;
+                    }
                 }
 
                 // hLog(`Transaction Count: ${light_block.trx_count}`);
@@ -726,6 +763,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
         try {
             const _includes = ["actions", "tables", "block"];
+            if (this.usesExtensionProtocol) _includes.push('account', 'block_id', 'protocol_profile', 'ordinal');
             if (get_json) {
                 _includes.push("abi");
             } else {
@@ -741,11 +779,17 @@ export default class MainDSWorker extends HyperionWorker {
             };
             const queryResult: estypes.SearchResponse<any, any> = await this.client.search({
                 index: `${this.chain}-abi-*`,
-                size: 1, query,
+                size: this.usesExtensionProtocol ? 2 : 1, query,
                 sort: [{ block: { order: "desc" } }],
                 _source: { includes: _includes }
             });
+            if (this.usesExtensionProtocol) {
+                assertCompleteProtocolSearch(queryResult);
+            }
             const results = queryResult.hits.hits;
+            if (this.usesExtensionProtocol) {
+                if (results.length > 1 && results[0]._source.block === results[1]._source.block) throw new Error('Protocol ABI deployment is ambiguous');
+            }
             let result: HyperionAbi | null;
             if (results.length > 0) {
                 const nextRefResponse: estypes.SearchResponse<any, any> = await this.client.search({
@@ -762,6 +806,7 @@ export default class MainDSWorker extends HyperionWorker {
                     sort: [{ block: { order: "asc" } }],
                     _source: { includes: ["block"] }
                 });
+                if (this.usesExtensionProtocol) assertCompleteProtocolSearch(nextRefResponse);
                 const nextRef = nextRefResponse.hits.hits;
                 if (nextRef.length > 0) {
                     result = {
@@ -777,6 +822,7 @@ export default class MainDSWorker extends HyperionWorker {
             this.deltaAbiCache.set(cacheKey, result);
             return result;
         } catch (e) {
+            if (this.usesExtensionProtocol) throw e;
             hLog(e);
             return null;
         }
@@ -810,6 +856,9 @@ export default class MainDSWorker extends HyperionWorker {
      * ABI changes, and it is cleared per block in processDeltas. Side effects
      * (loadAbiHex, registerAutoBlacklist) run on the first miss and are idempotent.
      */
+    private protocolAbiAtBlock = new Map<string, IndexedProtocolAbi>();
+    private protocolAbiSelections = new Map<string, ProtocolAbiDeployment>();
+
     private verifyTypeCache = new Map<string, [boolean, string | undefined, number, number | undefined] | [boolean, string]>();
 
     async verifyLocalType(
@@ -818,6 +867,11 @@ export default class MainDSWorker extends HyperionWorker {
         block_num: number,
         field: string
     ): Promise<[boolean, string | undefined, number, number | undefined] | [boolean, string]> {
+
+        if (this.usesExtensionProtocol) {
+            this.abieos.deleteContract(contract);
+            return [false, ''];
+        }
 
         const vkey = field + '|' + contract + '|' + type + '|' + block_num;
         const vCached = this.verifyTypeCache.get(vkey);
@@ -1098,6 +1152,22 @@ export default class MainDSWorker extends HyperionWorker {
 
     async deserializeContractRowAntelope(row: HyperionDelta, block: number, validFrom, validUntil, tableType: string | undefined) {
 
+        if (this.usesExtensionProtocol) {
+            try {
+                const deployment = await this.selectProtocolAbi(row.code, block, row.block_id);
+                const abi: any = deployment.abi;
+                const selected = abi.tables?.find(table => String(table.name) === row.table);
+                if (!selected) throw new Error('No compatible protocol table mapping');
+                row.data = this.protocol.contractCodec.decodeValue(abi, selected.type, protocolBytes(row.value));
+                delete row.value;
+            } catch (error: any) {
+                row['ds_error'] = true;
+                process.send?.({event: 'ds_error', data: {type: 'protocol_row_decode_incomplete',
+                    block, account: row.code, table: row.table, message: error.message}});
+            }
+            return row;
+        }
+
         try {
             let savedAbi = await this.fetchAbiHexAtBlockElastic(row.code, block, true);
 
@@ -1261,7 +1331,7 @@ export default class MainDSWorker extends HyperionWorker {
         }
 
         if (contractState.contracts && contractState?.contracts[jsonRow.code] || this.allowedDynamicContracts.has(jsonRow.code)) {
-            if (contractState?.contracts[jsonRow.code][jsonRow.table]) {
+            if (contractState.contracts?.[jsonRow.code]?.[jsonRow.table] || this.allowedDynamicContracts.has(jsonRow.code)) {
                 const doc = {
                     '@timestamp': jsonRow['@timestamp'],
                     scope: jsonRow.scope,
@@ -1269,7 +1339,8 @@ export default class MainDSWorker extends HyperionWorker {
                     payer: jsonRow.payer,
                     block_num: jsonRow.block_num,
                     block_id: jsonRow.block_id,
-                    data: jsonRow.data
+                    data: jsonRow.data,
+                    ...(jsonRow['protocol'] ? {protocol: jsonRow['protocol']} : {})
                 };
                 this.preIndexingQueue.push({
                     queue: this.chain + ":index_dynamic:" + (this.dyn_emit_idx),
@@ -1423,11 +1494,15 @@ export default class MainDSWorker extends HyperionWorker {
             }
         },
 
-        "account": async (account: any, block_num: number, block_ts: string) => {
+        "account": async (account: any, block_num: number, block_ts: string, row?: any, block_id?: string) => {
+            if (this.usesExtensionProtocol) {
+                await this.processProtocolAccount(account, block_num, block_ts, row, block_id);
+                return;
+            }
             if (account['abi'] !== '') {
                 try {
                     const abiHex = account['abi'];
-                    const abiObj = Serializer.decode({ data: abiHex, type: ABI });
+                    const abiObj: any = this.protocol.contractCodec.decodeAbi(protocolBytes(abiHex));
                     if (abiObj) {
                         const jsonABIString = JSON.stringify(abiObj);
                         const abi_actions = abiObj.actions.map(a => a.name.toString());
@@ -1445,9 +1520,11 @@ export default class MainDSWorker extends HyperionWorker {
                             abi: jsonABIString,
                             abi_hex: abiHex,
                             actions: abi_actions,
-                            tables: abi_tables
+                            tables: abi_tables,
+                            ...(this.usesExtensionProtocol ? {protocol_profile: this.protocol.profileId, block_id, ordinal: row?.ordinal ?? 0} : {})
                         };
 
+                        if (this.usesExtensionProtocol) this.protocolAbiAtBlock.set(account.name, new_abi_object as IndexedProtocolAbi);
                         debugLog(`[Worker ${process.env.worker_id}] read ${account['name']} ABI at block ${block_num}`);
                         const q = this.chain + ":index_abis:1";
                         await this.preIndexingQueue.push({ queue: q, content: bufferFromJson(new_abi_object) });
@@ -1544,7 +1621,7 @@ export default class MainDSWorker extends HyperionWorker {
                     }
                 }
 
-                const unpackedTrx = PackedTransaction.from(generated_transaction.packed_trx).getTransaction();
+                const unpackedTrx = this.decodePackedTransaction(generated_transaction.packed_trx);
                 for (const action of unpackedTrx.actions) {
                     const act_data = await this.deserializeActionAtBlockNative(action, block_num);
                     if (act_data) {
@@ -1685,87 +1762,165 @@ export default class MainDSWorker extends HyperionWorker {
         // },
     }
 
-    async processDeltas(deltas: [string, TableDelta][], block_num: number, block_ts: string, block_id: string) {
-        const stopDeltas = this.profiler.start('process_deltas');
-        this.deltaAbiCache.clear(); // per-block ABI-lookup memo (see fetchAbiHexAtBlockElastic)
-        this.verifyTypeCache.clear(); // per-block type-resolution memo (see verifyLocalType)
+    private async processProtocolAccount(account: any, blockNum: number, blockTs: string, row: any, blockId?: string) {
+        const reference = {
+            '@timestamp': blockTs, account: String(account.name), block: blockNum, block_id: blockId ?? '',
+            ordinal: row?.ordinal ?? 0, protocol_profile: this.protocol.profileId,
+            abi_hex: Buffer.from(protocolBytes(account.abi)).toString('hex'), abi: '', actions: [] as string[], tables: [] as string[],
+            abi_available: false, abi_error: '',
+        };
+        // A clear/rejected ABI is a deployment barrier too. Register it before
+        // decoding so no same-block record can reuse a previous schema.
+        this.protocolAbiAtBlock.set(reference.account, reference);
+        this.protocolAbiSelections.clear();
+        this.abieos.deleteContract(reference.account);
+        this.verifyTypeCache.clear();
         try {
-            const deltaStruct = extractDeltaStruct(deltas);
+            if (!reference.abi_hex || !row?.present) throw new Error('Contract ABI is unavailable');
+            const abi: any = this.protocol.contractCodec.decodeAbi(protocolBytes(reference.abi_hex));
+            reference.abi = JSON.stringify(abi);
+            reference.actions = abi.actions.map(action => String(action.name));
+            reference.tables = abi.tables.map(table => String(table.name));
+            reference.abi_available = true;
+            this.autoBlacklist.delete(reference.account);
+        } catch (error: any) {
+            reference.abi_error = String(error.message);
+            process.send?.({event: 'ds_error', data: {type: 'protocol_abi_unavailable', account: reference.account,
+                block: blockNum, block_id: blockId, profileId: this.protocol.profileId,
+                abiHex: reference.abi_hex, message: reference.abi_error}});
+        }
+        await this.preIndexingQueue.push({queue: this.chain + ':index_abis:1', content: bufferFromJson(reference)});
+        process.send?.({event: 'save_abi', data: reference, live_mode: process.env.live_mode, worker_id: process.env.worker_id});
+    }
 
-            for (const key in deltaStruct) {
-                if (this.deltaStructHandlers[key] && deltaStruct.hasOwnProperty(key)) {
-                    if (this.conf.indexer.abi_scan_mode && key !== 'account') {
-                        continue;
-                    }
-                    if (deltaStruct[key].length > 0) {
-                        for (const row of deltaStruct[key]) {
-                            let data = this.deserializeNative(key, row.data);
+    async selectProtocolAbi(account: string, blockNum: number, blockId: string): Promise<ProtocolAbiDeployment> {
+        const key = `${account}:${blockNum}:${blockId}`;
+        const cached = this.protocolAbiSelections.get(key);
+        if (cached) return cached;
+        const selected = await this.fetchProtocolAbi(account, blockNum, blockId);
+        this.protocolAbiSelections.set(key, selected);
+        return selected;
+    }
 
-                            // TODO: fallback deserialization
+    private async fetchProtocolAbi(account: string, blockNum: number, blockId: string): Promise<ProtocolAbiDeployment> {
+        if (!/^[a-z1-5.]{1,13}$/.test(account)) throw new Error('Invalid protocol ABI account');
+        const local = this.protocolAbiAtBlock.get(account);
+        if (local?.block === blockNum && local.block_id === blockId) {
+            return protocolDeployment(this.protocol, local, account, blockNum, blockId);
+        }
+        // An ES refresh can hide a newer ABI deployment. Until the runtime has
+        // canonical coverage and trace-epoch binding, an ES-latest hit is not proof.
+        throw new Error(`Canonical ABI coverage is unavailable for ${account} at ${blockNum}`);
+    }
 
-                            // if (!data) {
-                            //     try {
-                            //         const type = this.types.get(key);
-                            //         if (type) {
-                            //             data = type.deserialize(
-                            //                 new Serialize.SerialBuffer({
-                            //                     textEncoder: this.txEnc,
-                            //                     textDecoder: this.txDec,
-                            //                     array: Buffer.from(row.data, 'hex')
-                            //                 }),
-                            //                 new Serialize.SerializerState({
-                            //                     bytesAsUint8Array: true
-                            //                 }));
-                            //         }
-                            //     } catch (e: any) {
-                            //         hLog(`Delta struct [${key}] deserialization error: ${e.message}`);
-                            //         hLog(row.data);
-                            //     }
-                            // }
-
-                            if (data) {
-                                try {
-                                    // convert present boolean to byte (for pre-2.1 compatibility)
-                                    if (row.present === true) {
-                                        row.present = 1;
-                                    } else if (row.present === false) {
-                                        row.present = 0;
-                                    }
-                                    await this.deltaStructHandlers[key](
-                                        data[1],
-                                        block_num,
-                                        block_ts,
-                                        row,
-                                        block_id
-                                    );
-                                } catch (e: any) {
-                                    hLog(`Delta struct [${key}] processing error: ${e.message}`);
-                                    // hLog(e);
-                                    // hLog(data[1]);
-                                }
-                            }
-                        }
-                    }
-                }
+    private async processProtocolRecord(normalized: Extract<ProtocolNormalizedDelta, {kind: 'record'}>,
+                                        raw: Uint8Array, blockTs: string) {
+        const record: any = normalized.record;
+        const source = normalized.source;
+        const metadata = normalized.metadata;
+        if (!['row', 'index'].includes(String(metadata.recordKind)) || typeof metadata.present !== 'boolean'
+            || typeof metadata.code !== 'string' || typeof metadata.payer !== 'string') throw new Error('Incomplete normalized protocol record');
+        const payload: any = {
+            '@timestamp': blockTs, block_num: source.blockNum, block_id: source.blockId,
+            code: metadata.code, scope: '', table: normalized.tableName,
+            primary_key: protocolStateKey(this.protocolId, source.chainId, normalized.identity),
+            payer: metadata.payer, present: metadata.present ? 1 : 0,
+            data: normalized.value ?? {},
+            protocol: {id: this.protocolId, profileId: this.protocol.profileId,
+                logicalIdentity: normalized.identity, record, source, rawHex: Buffer.from(raw).toString('hex'),
+                // ABI bytes are indexed once by the account delta, then referenced by deployment.
+                metadata: Object.fromEntries(Object.entries(normalized.metadata).filter(([key]) => key !== 'abiHex'))},
+        };
+        if (this.checkDeltaBlacklist(payload) || (this.filters.delta_whitelist.size && !this.checkDeltaWhitelist(payload))) return;
+        const isPrimary = metadata.recordKind === 'row';
+        if (!this.conf.indexer.disable_indexing) {
+            // Both primary and source-secondary records have full identities and
+            // delete semantics. Secondary rows do not execute primary-table hooks.
+            if (isPrimary && metadata.present) await this.processTableDelta(payload);
+            else this.pushToDynamicTableQueue(payload);
+            if (this.conf.features.index_deltas && (metadata.present || this.conf.features.index_deltas_deletions)) {
+                if (isPrimary && metadata.present) await this.mLoader.processDeltaData(payload);
+                const bytes = bufferFromJson(payload);
+                if (process.env.live_mode === 'true') this.pushToDeltaStreamingQueue(bytes, payload);
+                await this.pushToDeltaQueue(bytes, source.blockNum);
+                this.temp_delta_counter++;
             }
-        } finally {
-            stopDeltas();
         }
     }
 
-    deserializeNative(datatype: string, array: any): any {
-        if (this.shipABI) {
-            try {
-                if (typeof array === 'string') {
-                    return this.abieos.hexToJson("0", datatype, array);
-                } else {
-                    return this.abieos.binToJson("0", datatype, array);
+    async processDeltas(deltas: [string, TableDelta][], block_num: number, block_ts: string, block_id: string) {
+        const stopDeltas = this.profiler.start('process_deltas');
+        this.deltaAbiCache.clear();
+        this.verifyTypeCache.clear();
+        // A block-local final-state ABI is usable before its async ES write becomes visible.
+        this.protocolAbiAtBlock?.clear();
+        this.protocolAbiSelections?.clear();
+        let ordinal = 0;
+        try {
+            for (const delta of deltas) {
+                if (!Array.isArray(delta) || !['table_delta_v0', 'table_delta_v1'].includes(delta[0])) throw new Error('Unsupported table_delta variant');
+                const {name: key, rows} = delta[1];
+                for (const row of rows) {
+                    const raw = protocolBytes(row.data);
+                    const data = this.deserializeNative(key, raw);
+                    const position = {chainId: this.chainId, blockId: block_id, blockNum: block_num, ordinal: ordinal++};
+                    if (![true, false, 0, 1].includes(row.present as any)) throw new Error('Invalid delta presence flag');
+                    const present = row.present === true || Number(row.present) === 1;
+                    // Every stream reaches the selected provider before downstream filtering.
+                    // Unsupported protocol layouts escape this boundary; contract ABI issues do not.
+                    let normalized = this.protocol?.normalizeDelta({stream: key, present, raw, value: data}, position)
+                        ?? {kind: 'passthrough' as const, value: data};
+                    if (normalized.kind === 'ignore') continue;
+                    if (this.conf.indexer.abi_scan_mode && key !== 'account') continue;
+                    let selectedDeployment: ProtocolAbiDeployment | undefined;
+                    if (normalized.kind === 'abi-required') {
+                        try {
+                            const abiDeployment = await this.selectProtocolAbi(normalized.account, block_num, block_id);
+                            selectedDeployment = abiDeployment;
+                            normalized = this.protocol.normalizeDelta({stream: key, present, raw, value: data}, {...position, abiDeployment});
+                            if (normalized.kind === 'abi-required') throw new Error('Provider repeated an ABI dependency request');
+                            if (normalized.kind === 'ignore') continue;
+                        } catch (error: any) {
+                            process.send?.({event: 'ds_error', data: {type: 'protocol_projection_incomplete',
+                                ...position, stream: key, message: error.message, rawHex: Buffer.from(raw).toString('hex')}});
+                            hLog(`Protocol contract record incomplete: ${key} at ${block_num}: ${error.message}`);
+                            continue;
+                        }
+                    }
+                    if (normalized.kind === 'passthrough' && !this.deltaStructHandlers[key] && this.usesExtensionProtocol) {
+                        throw new Error(`Provider passed an unsupported required stream: ${key}`);
+                    }
+                    try {
+                        if (normalized.kind === 'record') {
+                            if (normalized.source.chainId !== position.chainId || normalized.source.blockId !== position.blockId
+                                || normalized.source.blockNum !== position.blockNum || normalized.source.ordinal !== position.ordinal
+                                || (selectedDeployment && normalized.source.abiDeployment !== selectedDeployment.id)) {
+                                throw new Error('Provider changed the host-selected source or ABI deployment');
+                            }
+                            await this.processProtocolRecord(normalized, raw, block_ts);
+                        } else if (this.deltaStructHandlers[key]) {
+                            const value = normalized.value;
+                            if (!Array.isArray(value) || value.length !== 2) throw new Error(`Invalid normalized delta: ${key}`);
+                            await this.deltaStructHandlers[key](value[1], block_num, block_ts,
+                                {...row, present: present ? 1 : 0, ordinal: position.ordinal}, block_id);
+                        }
+                    } catch (error: any) {
+                        if (this.usesExtensionProtocol) process.send?.({event: 'ds_error', data: {type: 'protocol_record_incomplete',
+                            ...position, stream: key, message: error.message, rawHex: Buffer.from(raw).toString('hex')}});
+                        hLog(`Delta struct [${key}] processing error: ${error.message}`);
+                    }
                 }
-            } catch (e: any) {
-                hLog('deserializeNative >>', datatype, '>>', e.message);
             }
-            return null;
-        }
+        } finally { stopDeltas(); }
+    }
+
+    deserializeNative(datatype: string, array: any): any {
+        if (this.shipSession) return this.decodeShipValue(datatype, array);
+        // Compatibility for prototype-based native regression probes.
+        if (this.shipABI) return typeof array === 'string'
+            ? this.abieos.hexToJson('0', datatype, array)
+            : this.abieos.binToJson('0', datatype, array);
+        throw new Error('Protocol SHiP session is not initialized');
     }
 
     async deserializeActionAtBlockNative(action: Action, block_num: number): Promise<any> {
@@ -1781,7 +1936,7 @@ export default class MainDSWorker extends HyperionWorker {
                 return this.abieos.binToJson(
                     action.account.toString(),
                     actionType,
-                    Buffer.from(action.data.hexString, 'hex')
+                    protocolBytes(action.data)
                 );
             } catch (e: any) {
                 debugLog(`deserializeActionAtBlockNative: ${e.message}`);
@@ -1989,8 +2144,7 @@ export default class MainDSWorker extends HyperionWorker {
             delta['@proposal'] = {
                 proposal_name: delta['data']['proposal_name']
             };
-            const packedTrx = PackedTransaction.from(delta.data['packed_transaction']);
-            const trx = packedTrx.getTransaction()
+            const trx = this.decodePackedTransaction(delta.data['packed_transaction']);
             for (const action of trx.actions) {
                 const hex_data = action.data;
                 action.data = await this.deserializeActionAtBlockNative(action, delta.block_num);

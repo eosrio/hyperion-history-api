@@ -56,6 +56,8 @@ export interface TieredIndexAllocationSettings {
 }
 
 export interface MainSettings {
+    /** Executable protocol selection is fixed for the worker lifetime. */
+    protocol?: import("../indexer/protocol/selection.js").ChainProtocolConfiguration;
     reader_recovery_window_blocks?: number;
     use_global_agent?: boolean;
     process_prefix?: string;
@@ -424,6 +426,11 @@ const TieredIndexAllocationSettingsSchema = z.object({
 });
 
 export const HyperionSettingsConfigSchema = z.object({
+    protocol: z.discriminatedUnion('provider', [
+        z.object({provider: z.literal('antelope')}).strict(),
+        z.object({provider: z.literal('extension'), package: z.string().regex(/^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/),
+            profileId: z.string().regex(/^[a-z][a-z0-9._-]{0,127}$/)}).strict(),
+    ]).optional(),
     reader_recovery_window_blocks: z.number().int().positive().optional(),
     use_global_agent: z.boolean().optional(),
     process_prefix: z.string().optional(),
