@@ -138,7 +138,7 @@ The three control gates lasted **16.29/13.39/15.31 s**, with release-to-resume
 observations **13.74/16.71/14.18 s**. Profile gates lasted **14.75/12.30/14.91 s**, with
 release-to-resume **15.19/12.58/14.86 s**. All six observed positive live progress and
 zero next-range method requests before release; the exact pending range was invoked
-1 ms after each recorded resume. These values include polling, cached broker statistics,
+within 1 ms of each recorded resume. These values include polling, cached broker statistics,
 the existing monitor policy and observer scheduling; they are not ES service-time estimates.
 
 Receipt histograms are retained separately. Control had **290** successful action
