@@ -6,7 +6,7 @@ import {deflateSync, gzipSync} from 'node:zlib';
 import {ABI, P2P, PrivateKey, Serializer, Transaction} from '@wharfkit/antelope';
 import {actionAbi, auditFixture, contractAccount, contractWasm, decodeBlock, decodeExact, digest, encodeRecord, genesisChainId, parseShard,
     validateManifest, type ContractFixture} from '../../scripts/qualification/contract-fixture.ts';
-import {assertActionOutputs, assertBlockOutputs, assertContractAbsent, assertEmptyProjection, assertOwnedServices, assertResourceIsolation} from '../../scripts/qualification/contract-replay.ts';
+import {assertActionOutputs, assertBlockOutputs, assertContractAbsent, assertEmptyProjection, assertOwnedServices, assertResourceIsolation, readAllOutputs} from '../../scripts/qualification/contract-replay.ts';
 
 const zero = '0'.repeat(64);
 const abiHex = (revision: 1 | 2) => Buffer.from(Serializer.encode({object: ABI.from(actionAbi(revision))}).array).toString('hex');
@@ -237,6 +237,35 @@ describe('guarded contract replay input', () => {
     }));
 });
 describe('independent output oracle', () => {
+    const page = (start: number, length: number, total: number) => ({timed_out: false, _shards: {total: 2, successful: 2, failed: 0},
+        hits: {total: {value: total, relation: 'eq'}, hits: Array.from({length}, (_value, index) => ({_id: String(start + index),
+            sort: [start + index], _source: {block_num: start + index}}))}});
+    test('bounded output pagination crosses the default result window and preserves physical-copy selection', async () => {
+        const requests: any[] = []; const total = 10005;
+        const hits = await readAllOutputs({search: async request => {
+            requests.push(request); const start = (request.search_after?.[0] ?? 0) + 1;
+            if (request.size > 1000 || request.from !== undefined) throw new Error('unbounded result window');
+            return page(start, Math.min(request.size, total - start + 1), total);
+        }}, 'owned-block-*', 'block_num', {term: {chain: 'owned'}}, '_only_nodes:physical-copy');
+        expect(hits.length).toBe(total); expect(requests.length).toBe(11); expect(hits.at(-1)._id).toBe('10005');
+        expect(requests[0].search_after).toBeUndefined(); expect(requests[1].search_after).toEqual([1000]);
+        expect(requests.every(request => request.preference === '_only_nodes:physical-copy' && request.allow_partial_search_results === false &&
+            request.track_total_hits === true && request.query.term.chain === 'owned')).toBe(true);
+    });
+    test('output pagination refuses timeouts, failed shards, changed totals, gaps and repeated cursors', async () => {
+        const changes: ((value: any) => void)[] = [value => { value.timed_out = true; }, value => { value._shards.failed = 1; },
+            value => { value._shards.successful = 1; }, value => { value.hits.total.relation = 'gte'; },
+            value => { value.hits.total.value = 20001; }, value => { value.hits.total.value = 1002; },
+            value => { value.hits.hits = []; }, value => { value.hits.hits[0].sort = [1000]; },
+            value => { value.hits.hits[0]._source.block_num = 9999; }, value => { value.hits.hits[0].sort = []; }];
+        for (const mutate of changes) {
+            let calls = 0; await expect(readAllOutputs({search: async () => {
+                if (++calls === 1) return page(1, 1000, 1001); const result = page(1001, 1, 1001); mutate(result); return result;
+            }}, 'owned-block-*', 'block_num')).rejects.toThrow();
+            expect(calls).toBe(2);
+        }
+        expect(await readAllOutputs({search: async () => page(1, 0, 0)}, 'owned-block-*', 'block_num')).toEqual([]);
+    });
     test('exact action oracle rejects data, identity, count, order and decode failures', () => {
         const expected = manifest().expected.map((entry, index) => ({...entry, blockId: zero, globalSequence: index + 101}));
         const hits = expected.map(entry => ({_id: String(entry.globalSequence), _source: {global_sequence: entry.globalSequence, trx_id: entry.trxId,

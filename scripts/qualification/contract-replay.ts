@@ -61,6 +61,33 @@ export function assertBlockOutputs(hits: any[], expected: {blockNum: number; id:
         assert.equal(hits[index]._source.block_id, block.id); assert.equal(hits[index]._source.prev_id, block.previous);
     }
 }
+// This fixture has a unique numeric key in each queried domain. Bound each response
+// below Elasticsearch's default result window and reject changing/incomplete pages.
+export async function readAllOutputs(client: {search: (request: any) => Promise<any>}, index: string, field: string,
+    query: any = {match_all: {}}, preference?: string) {
+    const size = 1000; const limit = 20000; const hits: any[] = []; let total: number | undefined; let cursor: number | undefined;
+    for (;;) {
+        const result = await client.search({index, size, query, sort: [{[field]: 'asc'}], track_total_hits: true,
+            allow_partial_search_results: false, ...(preference ? {preference} : {}), ...(cursor === undefined ? {} : {search_after: [cursor]})});
+        assert.equal(result.timed_out, false, 'output page timed out');
+        assert.ok(Number.isSafeInteger(result._shards?.total) && result._shards.total > 0, 'output page has no shards');
+        assert.equal(result._shards.failed, 0, 'output page has failed shards');
+        assert.equal(result._shards.successful, result._shards.total, 'output page has incomplete shard coverage');
+        assert.equal(result.hits?.total?.relation, 'eq', 'output page total is inexact');
+        const count = result.hits.total.value; assert.ok(Number.isSafeInteger(count) && count >= 0 && count <= limit, 'output page total exceeds fixture bound');
+        if (total === undefined) total = count; else assert.equal(count, total, 'output total changed during pagination');
+        assert.ok(total !== undefined);
+        const page = result.hits.hits; assert.ok(Array.isArray(page) && page.length <= size, 'invalid output page');
+        assert.ok(hits.length + page.length <= total, 'output page exceeds exact total');
+        for (const hit of page) {
+            assert.ok(Array.isArray(hit.sort) && hit.sort.length === 1 && Number.isSafeInteger(hit.sort[0]), 'output page has invalid sort key');
+            const next = hit.sort[0]; assert.ok(cursor === undefined || next > cursor, 'output cursor did not advance');
+            assert.equal(hit._source?.[field], next, 'output cursor differs from document key'); cursor = next; hits.push(hit);
+        }
+        if (hits.length === total) return hits;
+        assert.equal(page.length, size, 'output pagination ended before exact total');
+    }
+}
 export function assertEmptyProjection(indices: Record<string, unknown>, queues: any[]) {
     assert.deepEqual(Object.keys(indices), [], 'refusing existing projection'); assert.deepEqual(queues, [], 'refusing existing projection queues');
 }
@@ -130,7 +157,7 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
     const wait = async (label: string, check: () => Promise<any>, milliseconds = 60000) => {
         const deadline = performance.now() + milliseconds; let last: unknown;
         while (performance.now() < deadline) {
-            if (master && master.exitCode !== null) throw new Error(`master exited ${master.exitCode}`);
+            if (master && master.exitCode !== null) throw new Error(`${label}: master exited ${master.exitCode}; last check: ${String(last ?? 'not attempted')}`);
             if (report.replayErrors.length) throw new Error(report.replayErrors.join('\n'));
             try { const value = await check(); if (value) return value; } catch (error) { last = error; } await sleep(250);
         } throw new Error(`${label}: ${String(last ?? 'deadline exceeded')}`);
@@ -237,7 +264,7 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         const config = {api: {enabled: false, disable_tx_cache: true}, indexer: {enabled: true, start_on: fixture.replayStart, stop_on: end + 1, rewrite: false,
             purge_queues: false, live_reader: false, live_only_mode: false, abi_scan_mode: false, fetch_block: true, fetch_traces: true,
             fetch_deltas: true, process_deltas: true, disable_reading: false, disable_indexing: false},
-            settings: {chain, parser: '3.2', index_version: 'v1', index_partition_size: 10000000, es_replicas: 1, auto_stop: 0,
+            settings: {chain, parser: '3.2', index_version: 'v1', index_partition_size: 10000000, es_replicas: 1, auto_stop: 300,
                 auto_mode_switch: false, ds_profiling: true, rate_monitoring: true, bp_monitoring: false, max_ws_payload_mb: 16, use_global_agent: false, debug: false},
             scaling: {readers: 1, ds_queues: 1, ds_threads: 1, ds_pool_size: 1, indexing_queues: 1, ad_idx_queues: 1, dyn_idx_queues: 1,
                 max_autoscale: 0, batch_size: end + 1, resume_trigger: 16, auto_scale_trigger: 1000000, max_queue_limit: 64, block_queue_limit: 64, polling_interval: 500, routing_mode: 'round_robin'},
@@ -252,10 +279,7 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         master = spawn(process.execPath, ['--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href, join(repo, 'build/indexer/launcher.js')],
             {cwd: output, env: {...process.env, CONFIG_JSON: configFile, CHAIN_NAME: chain, ES198_OBSERVER_DIR: join(output, 'observer'), ES198_CPU_PROFILE: '0'}, stdio: ['ignore', stdout.fd, stderr.fd, 'ipc']});
         master.on('error', error => report.replayErrors.push(String(error))); await stdout.close(); await stderr.close(); report.masterPid = master.pid;
-        const all = async (index: string, field: string, query: any = {match_all: {}}) => {
-            const result: any = await client.search({index, size: 20000, query, sort: [{[field]: 'asc'}], track_total_hits: true, allow_partial_search_results: false});
-            assert.equal(result.timed_out, false); assert.equal(result._shards.failed, 0); assert.equal(result.hits.total.relation, 'eq'); assert.equal(result.hits.total.value, result.hits.hits.length); return result.hits.hits;
-        };
+        const all = (index: string, field: string, query: any = {match_all: {}}) => readAllOutputs(client, index, field, query);
         await wait('finite verified output and queue drain', async () => {
             await client.indices.refresh({index: chain + '-*'}); const blocks = await all(chain + '-block-*', 'block_num');
             assertBlockOutputs(blocks, replayRecords); const actions = await all(chain + '-action-*', 'global_sequence');
@@ -281,10 +305,8 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
                 const identity: any = await copy.nodes.info({node_id: '_local'}); const nodeId = Object.keys(identity.nodes)[0];
                 for (const [index, field, expected, check] of [[chain + '-block-*', 'block_num', replayRecords, assertBlockOutputs],
                     [chain + '-action-*', 'global_sequence', fixture.actions, assertActionOutputs]] as const) {
-                    const result: any = await copy.search({index, size: 20000, sort: [{[field]: 'asc'}], track_total_hits: true,
-                        preference: `_only_nodes:${nodeId}`, allow_partial_search_results: false});
-                    assert.equal(result.timed_out, false); assert.equal(result._shards.failed, 0); check(result.hits.hits, expected as any);
-                    report.durableCopies.push({node: nodeId, index, count: result.hits.hits.length, sha256: digest(canonical(result.hits.hits))});
+                    const hits = await readAllOutputs(copy, index, field, {match_all: {}}, `_only_nodes:${nodeId}`); check(hits, expected as any);
+                    report.durableCopies.push({node: nodeId, index, count: hits.length, sha256: digest(canonical(hits))});
                 }
             } finally { await copy.close(); }
         }
