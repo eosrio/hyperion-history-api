@@ -2,7 +2,7 @@ import {describe, expect, test} from 'bun:test';
 import {mkdtemp, mkdir, readFile, writeFile, rm, symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {gzipSync} from 'node:zlib';
+import {deflateSync, gzipSync} from 'node:zlib';
 import {ABI, P2P, PrivateKey, Serializer, Transaction} from '@wharfkit/antelope';
 import {actionAbi, auditFixture, contractAccount, contractWasm, decodeBlock, decodeExact, digest, encodeRecord, genesisChainId, parseShard,
     validateManifest, type ContractFixture} from '../../scripts/qualification/contract-fixture.ts';
@@ -198,6 +198,41 @@ describe('guarded contract replay input', () => {
             const bytes = gzipSync(Buffer.concat(records)); const input = m.inputs.find(input => input.file.startsWith('shards/'))!;
             input.bytes = bytes.length; input.sha256 = digest(bytes); await writeFile(join(directory, input.file), bytes); await writeFile(join(directory, 'manifest.json'), JSON.stringify(m));
             await expect(auditFixture(directory)).rejects.toThrow(entry.error);
+        }
+    }));
+    test('expected and trace agreement cannot hide different packed actions or compressed inputs', async () => temporary(async root => {
+        for (const mode of ['oracle-and-trace-data', 'packed-account', 'packed-authorization', 'checksum-only', 'compressed', 'compressed-overflow', 'trailing-packed']) {
+            const directory = join(root, mode); await mkdir(directory); const {m, records} = await writeFixture(directory);
+            const record = parseShard(records[2])[0]; const envelope: any = Serializer.objectify(decodeExact(record.frame, 'result', protocol));
+            const traces: any = Serializer.objectify(decodeExact(envelope[1].traces, 'transaction_trace[]', protocol));
+            const signed: any = Serializer.objectify(Serializer.decode({data: envelope[1].block, type: P2P.SignedBlock}));
+            const packed = signed.transactions[0].trx[1];
+            if (mode === 'oracle-and-trace-data') {
+                m.expected[0].data.memo = 'mismatching-trace-and-oracle';
+                traces[0][1].action_traces[0][1].act.data = Buffer.from(Serializer.encode({object: m.expected[0].data, type: 'record', abi: actionAbi(1)}).array).toString('hex');
+            } else if (mode === 'checksum-only') signed.transactions[0].trx = ['checksum256', m.expected[0].trxId];
+            else if (mode === 'trailing-packed') packed.packed_trx += '00';
+            else if (mode.startsWith('compressed')) {
+                packed.compression = 1; packed.packed_trx = deflateSync(mode === 'compressed' ? Buffer.from(packed.packed_trx, 'hex') : Buffer.alloc(1024 * 1024 + 1)).toString('hex');
+            }
+            else {
+                const transaction: any = Serializer.objectify(Serializer.decode({data: packed.packed_trx, type: Transaction}));
+                if (mode === 'packed-account') transaction.actions[0].account = 'other';
+                else transaction.actions[0].authorization = [{actor: contractAccount, permission: 'owner'}];
+                packed.packed_trx = Buffer.from(Serializer.encode({object: transaction, type: Transaction}).array).toString('hex');
+                const id = Transaction.from(transaction).id.toString(); m.expected[0].trxId = id; traces[0][1].id = id;
+            }
+            envelope[1].traces = Buffer.from(Serializer.encode({object: traces, type: 'transaction_trace[]', abi: protocol}).array).toString('hex');
+            envelope[1].block = Buffer.from(Serializer.encode({object: signed, type: P2P.SignedBlock}).array).toString('hex');
+            records[2] = encodeRecord(3, Buffer.from(Serializer.encode({object: envelope, type: 'result', abi: protocol}).array));
+            const replacements = {'expected.json': Buffer.from(JSON.stringify(m.expected)), 'shards/frames-00000.bin.gz': gzipSync(Buffer.concat(records))};
+            for (const [file, bytes] of Object.entries(replacements)) {
+                await writeFile(join(directory, file), bytes); const input = m.inputs.find(input => input.file === file)!; input.bytes = bytes.length; input.sha256 = digest(bytes);
+            }
+            await writeFile(join(directory, 'manifest.json'), JSON.stringify(m));
+            if (mode === 'compressed') expect((await auditFixture(directory)).actions.length).toBe(4);
+            else await expect(auditFixture(directory)).rejects.toThrow(mode === 'compressed-overflow' ? 'packed transaction decompression failed' :
+                mode === 'trailing-packed' ? 'trailing packed transaction bytes' : 'packed direct action differs');
         }
     }));
 });

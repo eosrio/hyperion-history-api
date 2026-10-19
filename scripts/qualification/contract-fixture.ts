@@ -4,8 +4,8 @@ import {createHash} from 'node:crypto';
 import {readFile, writeFile, mkdir, lstat} from 'node:fs/promises';
 import {writeFileSync} from 'node:fs';
 import {join, resolve, sep} from 'node:path';
-import {gzipSync, gunzipSync} from 'node:zlib';
-import {ABI, ABIDecoder, P2P, PackedTransaction, Serializer} from '@wharfkit/antelope';
+import {gzipSync, gunzipSync, inflateSync} from 'node:zlib';
+import {ABI, ABIDecoder, P2P, Serializer, Transaction} from '@wharfkit/antelope';
 import {WebSocket, WebSocketServer} from 'ws';
 
 export const digest = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');
@@ -135,10 +135,21 @@ export function decodeBlock(frame: Buffer, abi: ABI) {
         assert.equal(header.previous.toString(), '0'.repeat(64), 'genesis previous hash must be zero');
     }
     const receipts = header.transactions.map(receipt => {
-        const transaction: any = Serializer.objectify(receipt.trx); let id: string;
-        if (transaction[0] === 'packed_transaction') id = PackedTransaction.from(transaction[1]).getTransaction().id.toString();
+        const transaction: any = Serializer.objectify(receipt.trx); let id: string; let actions: any[] | undefined;
+        if (transaction[0] === 'packed_transaction') {
+            const compression = Number(transaction[1].compression); assert.ok([0, 1].includes(compression), 'unsupported packed transaction compression');
+            const packed = Buffer.from(transaction[1].packed_trx, 'hex'); let raw = packed;
+            if (compression === 1) {
+                try { raw = inflateSync(packed, {maxOutputLength: 1024 * 1024}); }
+                catch (error) { throw new Error('packed transaction decompression failed within its byte budget', {cause: error}); }
+            }
+            assert.ok(raw.length > 0 && raw.length <= 1024 * 1024, 'packed transaction raw byte budget exceeded');
+            const decoder = new ABIDecoder(raw); const unpacked = Serializer.decode({data: decoder, type: Transaction});
+            assert.equal(decoder.getPosition(), raw.length, 'trailing packed transaction bytes'); id = unpacked.id.toString();
+            actions = Serializer.objectify(unpacked.actions);
+        }
         else { assert.equal(transaction[0], 'checksum256', 'unsupported signed transaction receipt'); id = String(transaction[1]); }
-        assert.match(id, /^[a-f0-9]{64}$/); return {id, status: Number(receipt.status)};
+        assert.match(id, /^[a-f0-9]{64}$/); return {id, status: Number(receipt.status), actions};
     });
     assert.equal(new Set(receipts.map(receipt => receipt.id)).size, receipts.length, 'duplicate signed transaction receipt');
     return {block, number, id, previous: header.previous.toString(), receipts};
@@ -177,6 +188,12 @@ export async function auditFixture(root: string) {
                 assert.equal(receipt.status, 0, 'expected transaction receipt was not executed');
                 assert.equal(record.blockNum, expectedReceipts.get(receipt.id).block, 'transaction receipt block mismatch');
                 assert.ok(!receiptCoverage.has(receipt.id), 'expected transaction receipt duplicated'); receiptCoverage.add(receipt.id);
+                const expectedAction = expected.get(receipt.id);
+                if (expectedAction) {
+                    const data = Buffer.from(Serializer.encode({object: expectedAction.data, type: 'record', abi: actionAbi(expectedAction.revision)}).array).toString('hex');
+                    assert.deepEqual(receipt.actions, [{account: contractAccount, name: 'record',
+                        authorization: [{actor: contractAccount, permission: 'active'}], data}], 'packed direct action differs from expected action');
+                }
             }
             const deltas: any = decoded.block.deltas?.length ? Serializer.objectify(decodeExact(decoded.block.deltas.array, 'table_delta[]', abi)) : [];
             for (const delta of deltas) if (delta[1].name === 'account') for (const row of delta[1].rows) if (Number(row.present)) {
@@ -192,6 +209,8 @@ export async function auditFixture(root: string) {
                     assert.ok(expectedAction, 'unexpected contract transaction in fixture'); assert.equal(Number(trace.status), 0);
                     assert.ok(decoded.receipts.some(receipt => receipt.id === trace.id && receipt.status === 0), 'target trace has no executed signed transaction receipt');
                     assert.equal(action.receiver, contractAccount); assert.equal(action.except, null);
+                    assert.deepEqual(action.act.authorization, [{actor: contractAccount, permission: 'active'}], 'target trace authorization differs');
+                    assert.equal(action.act.data, decoded.receipts.find(receipt => receipt.id === trace.id)!.actions![0].data, 'packed and trace action bytes differ');
                     assert.equal(record.blockNum, expectedAction.block);
                     const data = Serializer.objectify(decodeExact(action.act.data, 'record', actionAbi(expectedAction.revision)));
                     assert.ok(['string', 'number'].includes(typeof data.sequence));
