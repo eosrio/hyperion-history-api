@@ -321,7 +321,8 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         report.indexSettings = await client.indices.getSettings({index: chain + '-*', include_defaults: true});
         for (const entry of Object.values(report.indexSettings) as any[]) {
             assert.equal(entry.settings.index.number_of_replicas, '1');
-            assert.equal(entry.settings.index.translog?.durability ?? entry.defaults.index.translog.durability, 'request');
+            const durability = entry.settings.index.translog?.durability ?? entry.defaults.index.translog.durability;
+            assert.equal(typeof durability, 'string'); assert.equal(durability.toLowerCase(), 'request');
         }
         report.outputSha256 = {actions: digest(canonical(report.finalActions)), blocks: digest(canonical(report.finalBlocks))};
         bulkLedger.assertIdle(); report.bulkAccounting = summarizeBulkLedger(bulkLedger.receipts);
