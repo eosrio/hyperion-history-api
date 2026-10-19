@@ -335,7 +335,6 @@ export default class DSPoolWorker extends HyperionWorker {
         }
 
         const historical = await this.fetchAbiHexAtBlockElastic(contract, block_num, false, 0);
-
         if (historical?.abi_hex && this.loadActionAbi(contract,
             {kind: "historical", block: historical.block, hex: historical.abi_hex},
             () => this.loadAbiHex(contract, historical.block, historical.abi_hex))) {
