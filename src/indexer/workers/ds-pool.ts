@@ -201,6 +201,9 @@ export default class DSPoolWorker extends HyperionWorker {
     /** Per-cargo type-resolution memo, keyed (field|contract|type|block). Skips
      *  repeated getAbiDataType native calls; block in the key keeps it correct. */
     private poolTypeCache = new Map<string, [boolean, string]>();
+    // Native contexts are mutable per contract. A cached type name alone does
+    // not prove that the ABI currently loaded belongs to this action's block.
+    private loadedActionAbis = new Map<string, {block: number; hex: string}>();
 
     async fetchAbiHexAtBlockElastic(
         contract_name: string,
@@ -259,6 +262,29 @@ export default class DSPoolWorker extends HyperionWorker {
     async verifyLocalType(contract: string, type: string, block_num: number, field: string): Promise<[boolean, string]> {
 
         const vkey = field + '|' + contract + '|' + type + '|' + block_num;
+        const selectedAbi = await this.fetchAbiHexAtBlockElastic(contract, block_num, false, 0);
+        if (selectedAbi?.abi_hex) {
+            const loaded = this.loadedActionAbis.get(contract);
+            if (loaded?.block !== selectedAbi.block || loaded?.hex !== selectedAbi.abi_hex) {
+                let status = false;
+                try {
+                    status = this.loadAbiHex(contract, selectedAbi.block, selectedAbi.abi_hex);
+                } catch (error: any) {
+                    debugLog(`Failed to load ${contract} ABI at ${selectedAbi.block}: ${error.message}`);
+                }
+                if (!status) {
+                    this.loadedActionAbis.delete(contract);
+                    return [false, ''];
+                }
+                this.loadedActionAbis.set(contract, {block: selectedAbi.block, hex: selectedAbi.abi_hex});
+            }
+        } else if (this.loadedActionAbis.has(contract)) {
+            // A previously decoded, later block cannot supply an ABI for a
+            // block with no historical reference. Preserve the normal fallback.
+            this.loadedActionAbis.delete(contract);
+            this.abieos.deleteContract(contract);
+            this.poolTypeCache.delete(vkey);
+        }
         const vCached = this.poolTypeCache.get(vkey);
         if (vCached !== undefined) {
             return vCached;
@@ -285,6 +311,7 @@ export default class DSPoolWorker extends HyperionWorker {
                             return entry.startingBlock < block_num && entry.endingBlock > block_num;
                         });
                         if (matchingAbi && matchingAbi.abi) {
+                            this.loadedActionAbis.delete(contract);
                             _status = this.abieos.loadAbi(contract, matchingAbi.abi);
                         }
                     }
@@ -333,6 +360,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
             if (!_status) {
                 try {
+                    this.loadedActionAbis.delete(contract);
                     _status = await this.loadCurrentAbiHex(contract);
                 } catch (error: any) {
                     debugLog(`(abieos/current) >> ${error.message}`);
@@ -413,6 +441,7 @@ export default class DSPoolWorker extends HyperionWorker {
             if (abi.getActionType(check_action)) {
                 if (!this.failedAbiMap.has(accountName) || !this.failedAbiMap.get(accountName)?.has(-1)) {
                     try {
+                        this.loadedActionAbis.delete(accountName);
                         this.abieos.loadAbi(accountName, JSON.stringify(abi));
                     } catch (e:any) {
                         hLog(`failed to load abi for ${accountName} @ ${block_num} >>> ${e.message}`);
@@ -742,6 +771,8 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     deleteCache(contract: string) {
+        this.loadedActionAbis.delete(contract);
+        this.poolTypeCache.clear();
         // delete cache contract on abieos context
         const status = this.abieos.deleteContract(contract);
         if (!status) {
