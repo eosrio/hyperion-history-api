@@ -5,7 +5,7 @@ import {readFile, writeFile, mkdir, lstat} from 'node:fs/promises';
 import {writeFileSync} from 'node:fs';
 import {join, resolve, sep} from 'node:path';
 import {gzipSync, gunzipSync} from 'node:zlib';
-import {ABI, ABIDecoder, P2P, Serializer} from '@wharfkit/antelope';
+import {ABI, ABIDecoder, P2P, PackedTransaction, Serializer} from '@wharfkit/antelope';
 import {WebSocket, WebSocketServer} from 'ws';
 
 export const digest = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');
@@ -96,7 +96,8 @@ export function validateManifest(manifest: ContractFixture) {
         assert.equal(entry.sha256, digest(Buffer.from(entry.abiHex, 'hex'))); previous = entry.block;
     }
     assert.ok(manifest.expected.length >= 4 && manifest.expected.length <= 1000);
-    const sequences = new Set(); const transactions = new Set();
+    const sequences = new Set(); const transactions = new Set(manifest.abiHistory.map(entry => entry.trxId));
+    assert.equal(transactions.size, manifest.abiHistory.length, 'duplicate ABI deployment transaction');
     for (const entry of manifest.expected) {
         assert.match(entry.trxId, /^[a-f0-9]{64}$/); assert.ok(!transactions.has(entry.trxId)); transactions.add(entry.trxId);
         assert.ok(Number.isSafeInteger(entry.block) && entry.block > 1 && entry.block <= manifest.range.end);
@@ -133,7 +134,14 @@ export function decodeBlock(frame: Buffer, abi: ABI) {
         assert.equal(number, 1, 'missing previous position outside genesis');
         assert.equal(header.previous.toString(), '0'.repeat(64), 'genesis previous hash must be zero');
     }
-    return {block, number, id, previous: header.previous.toString()};
+    const receipts = header.transactions.map(receipt => {
+        const transaction: any = Serializer.objectify(receipt.trx); let id: string;
+        if (transaction[0] === 'packed_transaction') id = PackedTransaction.from(transaction[1]).getTransaction().id.toString();
+        else { assert.equal(transaction[0], 'checksum256', 'unsupported signed transaction receipt'); id = String(transaction[1]); }
+        assert.match(id, /^[a-f0-9]{64}$/); return {id, status: Number(receipt.status)};
+    });
+    assert.equal(new Set(receipts.map(receipt => receipt.id)).size, receipts.length, 'duplicate signed transaction receipt');
+    return {block, number, id, previous: header.previous.toString(), receipts};
 }
 export async function auditFixture(root: string) {
     const manifest: ContractFixture = JSON.parse(await readRegular(root, 'manifest.json').then(bytes => bytes.toString()));
@@ -156,6 +164,8 @@ export async function auditFixture(root: string) {
     assert.ok(Number(state.chain_state_end_block) > manifest.range.end);
     let next = 1; let previous: string | undefined; const records: {blockNum: number; frame: Buffer; id: string; previous: string}[] = [];
     const deployments: any[] = []; const expected = new Map(manifest.expected.map(entry => [entry.trxId, entry])); const found: any[] = []; let uncompressedBytes = 0;
+    const expectedReceipts = new Map([...manifest.expected, ...manifest.abiHistory].map(entry => [entry.trxId, entry]));
+    const receiptCoverage = new Set<string>();
     for (const shard of manifest.shards) {
         const raw = gunzipSync(files.get(shard)!, {maxOutputLength: 256 * 1024 * 1024});
         uncompressedBytes += raw.length; assert.ok(uncompressedBytes <= maximumFixtureBytes, 'decompressed fixture byte budget exceeded');
@@ -163,6 +173,11 @@ export async function auditFixture(root: string) {
             assert.equal(record.blockNum, next++, 'missing, duplicated or unordered record');
             const decoded = decodeBlock(record.frame, abi); assert.equal(decoded.number, record.blockNum);
             if (previous) assert.equal(decoded.previous, previous, 'block hash discontinuity'); previous = decoded.id;
+            for (const receipt of decoded.receipts) if (expectedReceipts.has(receipt.id)) {
+                assert.equal(receipt.status, 0, 'expected transaction receipt was not executed');
+                assert.equal(record.blockNum, expectedReceipts.get(receipt.id).block, 'transaction receipt block mismatch');
+                assert.ok(!receiptCoverage.has(receipt.id), 'expected transaction receipt duplicated'); receiptCoverage.add(receipt.id);
+            }
             const deltas: any = decoded.block.deltas?.length ? Serializer.objectify(decodeExact(decoded.block.deltas.array, 'table_delta[]', abi)) : [];
             for (const delta of deltas) if (delta[1].name === 'account') for (const row of delta[1].rows) if (Number(row.present)) {
                 const account: any = Serializer.objectify(decodeExact(row.data, 'account', abi));
@@ -175,6 +190,7 @@ export async function auditFixture(root: string) {
                     const action = actionVariant[1];
                     if (action.act.account !== contractAccount || action.act.name !== 'record') continue;
                     assert.ok(expectedAction, 'unexpected contract transaction in fixture'); assert.equal(Number(trace.status), 0);
+                    assert.ok(decoded.receipts.some(receipt => receipt.id === trace.id && receipt.status === 0), 'target trace has no executed signed transaction receipt');
                     assert.equal(action.receiver, contractAccount); assert.equal(action.except, null);
                     assert.equal(record.blockNum, expectedAction.block);
                     const data = Serializer.objectify(decodeExact(action.act.data, 'record', actionAbi(expectedAction.revision)));
@@ -194,6 +210,7 @@ export async function auditFixture(root: string) {
         assert.equal(decodeBlock(records[0].frame, abi).block.traces, null, 'unexpected genesis traces before trace log begins');
     }
     assert.deepEqual(deployments, manifest.abiHistory.map(entry => ({block: entry.block, abiHex: entry.abiHex})), 'captured ABI deployment coverage differs');
+    assert.equal(receiptCoverage.size, expectedReceipts.size, 'expected signed transaction receipt coverage differs');
     assert.equal(found.length, expected.size); assert.equal(new Set(found.map(entry => entry.trxId)).size, expected.size);
     let sequence = 0; for (const action of found) { assert.ok(action.globalSequence > sequence); sequence = action.globalSequence; }
     return {manifest, abi, files, records, actions: found, replayStart: traceBegin};

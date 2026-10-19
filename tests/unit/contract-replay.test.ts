@@ -3,7 +3,7 @@ import {mkdtemp, mkdir, readFile, writeFile, rm, symlink} from 'node:fs/promises
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {gzipSync} from 'node:zlib';
-import {ABI, P2P, PrivateKey, Serializer} from '@wharfkit/antelope';
+import {ABI, P2P, PrivateKey, Serializer, Transaction} from '@wharfkit/antelope';
 import {actionAbi, auditFixture, contractAccount, contractWasm, decodeBlock, decodeExact, digest, encodeRecord, genesisChainId, parseShard,
     validateManifest, type ContractFixture} from '../../scripts/qualification/contract-fixture.ts';
 import {assertActionOutputs, assertBlockOutputs, assertContractAbsent, assertEmptyProjection, assertOwnedServices, assertResourceIsolation} from '../../scripts/qualification/contract-replay.ts';
@@ -47,12 +47,21 @@ async function writeFixture(root: string, nullGenesisPrevious = false) {
             action_mroot: zero, schedule_version: 0, new_producers: undefined, header_extensions: []});
         const id = header.id.toString(); const entry = m.abiHistory.find(entry => entry.block === block);
         const deltas = entry ? [['table_delta_v0', {name: 'account', rows: [{present: true, data: encode('account', ['account_v0', {name: contractAccount, abi: entry.abiHex}])}]}]] : [];
+        const transactions: any[] = m.expected.filter(entry => entry.block === block).map(entry => {
+            const data = Serializer.encode({object: entry.data, type: 'record', abi: actionAbi(entry.revision)}).array;
+            const transaction = Transaction.from({expiration: '2026-10-19T00:00:00', ref_block_num: 0, ref_block_prefix: 0,
+                max_net_usage_words: 0, max_cpu_usage_ms: 0, delay_sec: 0, context_free_actions: [], transaction_extensions: [],
+                actions: [{account: contractAccount, name: 'record', authorization: [{actor: contractAccount, permission: 'active'}], data}]});
+            entry.trxId = transaction.id.toString(); return {status: 0, cpu_usage_us: 0, net_usage_words: 0,
+                trx: ['packed_transaction', {signatures: [], compression: 0, packed_context_free_data: '', packed_trx: Serializer.encode({object: transaction}).array}]};
+        });
+        if (entry) transactions.push({status: 0, cpu_usage_us: 0, net_usage_words: 0, trx: ['checksum256', entry.trxId]});
         const traces = m.expected.filter(entry => entry.block === block).map(entry => ['transaction_trace_v0', {id: entry.trxId, status: 0,
             action_traces: [['action_trace_v0', {receiver: contractAccount, act: {account: contractAccount, name: 'record', authorization: [{actor: contractAccount, permission: 'active'}],
                 data: Serializer.encode({object: entry.data, type: 'record', abi: actionAbi(entry.revision)}).array}, except: null,
                 receipt: ['receipt_v0', {global_sequence: entry.data.sequence + 100}]}]]}]);
         const signed = P2P.SignedBlock.from({...Serializer.objectify(header),
-            producer_signature: PrivateKey.from('5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3').signDigest(header.id), transactions: [], block_extensions: []});
+            producer_signature: PrivateKey.from('5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3').signDigest(header.id), transactions, block_extensions: []});
         const frame = encode('result', ['get_blocks_result_v0', {head: {block_num: 6, block_id: zero}, last_irreversible: {block_num: 6, block_id: zero},
             this_block: {block_num: block, block_id: id}, prev_block: block === 1 && nullGenesisPrevious ? null : {block_num: block - 1, block_id: previous},
             block: Serializer.encode({object: signed}).array, traces: block === 1 && nullGenesisPrevious ? null : encode('transaction_trace[]', traces), deltas: encode('table_delta[]', deltas)}]);
@@ -169,6 +178,26 @@ describe('guarded contract replay input', () => {
             const input = m.inputs.find(input => input.file.startsWith('shards/'))!; input.bytes = bytes.length; input.sha256 = digest(bytes);
             await writeFile(join(directory, input.file), bytes); await writeFile(join(directory, 'manifest.json'), JSON.stringify(m));
             await expect(auditFixture(directory)).rejects.toThrow(change.error);
+        }
+    }));
+    test('digest-correct traces require an executed matching signed transaction receipt', async () => temporary(async root => {
+        const cases = [
+            {block: 3, mutate: (value: any) => { value.transactions = []; }, error: 'no executed signed transaction receipt'},
+            {block: 3, mutate: (value: any) => { value.transactions[0].status = 1; }, error: 'receipt was not executed'},
+            {block: 3, mutate: (value: any) => {
+                const packed = value.transactions[0].trx[1]; const transaction: any = Serializer.objectify(Serializer.decode({data: packed.packed_trx, type: Transaction}));
+                transaction.expiration = '2026-10-19T00:00:01'; packed.packed_trx = Buffer.from(Serializer.encode({object: transaction, type: Transaction}).array).toString('hex');
+            }, error: 'no executed signed transaction receipt'},
+            {block: 2, mutate: (value: any) => { value.transactions = []; }, error: 'signed transaction receipt coverage'}];
+        for (const [index, entry] of cases.entries()) {
+            const directory = join(root, String(index)); await mkdir(directory); const {m, records} = await writeFixture(directory);
+            const record = parseShard(records[entry.block - 1])[0]; const value: any = Serializer.objectify(Serializer.decode({data: record.frame, type: 'result', abi: protocol}));
+            const signed: any = Serializer.objectify(Serializer.decode({data: value[1].block, type: P2P.SignedBlock})); entry.mutate(signed);
+            value[1].block = Buffer.from(Serializer.encode({object: signed, type: P2P.SignedBlock}).array).toString('hex');
+            records[entry.block - 1] = encodeRecord(entry.block, Buffer.from(Serializer.encode({object: value, type: 'result', abi: protocol}).array));
+            const bytes = gzipSync(Buffer.concat(records)); const input = m.inputs.find(input => input.file.startsWith('shards/'))!;
+            input.bytes = bytes.length; input.sha256 = digest(bytes); await writeFile(join(directory, input.file), bytes); await writeFile(join(directory, 'manifest.json'), JSON.stringify(m));
+            await expect(auditFixture(directory)).rejects.toThrow(entry.error);
         }
     }));
 });
