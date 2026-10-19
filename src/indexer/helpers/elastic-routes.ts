@@ -288,7 +288,7 @@ export class ElasticRoutes {
     ingestNodeCounters = {};
     retryOnConflict: number = 3;
 
-    constructor(connectionManager: ConnectionManager) {
+    constructor(connectionManager: ConnectionManager, private readonly onSettlementFailure?: (channel: Channel) => void) {
         this.routes = {
             generic: this.handleGenericRoute.bind(this)
         };
@@ -376,6 +376,10 @@ export class ElasticRoutes {
             await channel.close();
         } catch (reason) {
             hLog('Failed to close Elasticsearch delivery channel:', reason);
+        } finally {
+            // Closing an individual AMQP channel does not reconnect its still
+            // open connection. Let the host recover its consumer as well.
+            this.onSettlementFailure?.(channel);
         }
     }
 

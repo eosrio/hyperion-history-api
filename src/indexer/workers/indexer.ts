@@ -7,6 +7,7 @@ import { ElasticRoutes, RouteFunction } from '../helpers/elastic-routes.js';
 import { MongoRoutes } from "../helpers/mongo-routes.js";
 import { indexMongoBatch } from "../helpers/mongo-batch.js";
 import { pauseIndexerQueue } from "../helpers/indexer-pause.js";
+import { createIndexerSettlementRecovery } from "../helpers/indexer-settlement-recovery.js";
 import { HyperionWorker } from "./hyperionWorker.js";
 
 interface IndexDelivery {
@@ -34,7 +35,7 @@ export default class IndexerWorker extends HyperionWorker {
             process.exit(1);
         }
 
-        this.esRoutes = new ElasticRoutes(this.manager);
+        this.esRoutes = new ElasticRoutes(this.manager, createIndexerSettlementRecovery(() => this.ch));
 
         this.mongoRoutes = new MongoRoutes(this.manager);
 
