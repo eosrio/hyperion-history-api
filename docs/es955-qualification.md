@@ -114,3 +114,10 @@ Use Node 24 for direct TypeScript execution, or the pinned Bun 1.4.3 for its run
 control. The final positional argument is `http` or `default`. Every execution requires
 a new output file and generates fresh owned index/queue names. The fixture journals
 resource intent before creation so cleanup can also recover an interrupted setup.
+
+The [sustained full-worker slice](performance/elasticsearch-9.5.5-workers.md) adds
+fresh control/profile fixtures with the real launcher, master and cluster workers.
+It separates actual SHIP block traffic from synthetic action-queue load and checks
+three sink stalls, pending backfill ranges, live priority, exact copies and shutdown.
+Its runner is `scripts/qualification/es955-workers.ts`; its disposable lifecycle is
+`scripts/qualification/es955-worker-fixture.ps1`.

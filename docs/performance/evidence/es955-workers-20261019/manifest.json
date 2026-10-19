@@ -1,0 +1,3138 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-19T10:58:44.658315+00:00",
+  "archive": "raw-evidence.tar.gz",
+  "archiveSha256": "c848bcb53563b6cd3292e293f212e8d4a4ca357bb57f4bd6ba914cca63c659fe",
+  "archiveSizeBytes": 18609051,
+  "archiveFreezeHead": "caa8fdb08367cffbdfc02de6c04dbc26e745c395",
+  "sourceProvenance": "Exact per-run snapshots checked against every report.sourceHashes value. Git HEAD is context, not a replacement for measured byte hashes.",
+  "finalSourceHashes": {
+    "scripts/qualification/es955-workers.ts": "9f9c8b344994971249c0a3ff95ad52daf7a9f6616cf959d6ab1062cd6c65eeac",
+    "scripts/qualification/es955-worker-observer.mjs": "4bc49da681244a7d383203152c95bb5632c7ae36b4eb6c235780c3ea086967d0",
+    "scripts/qualification/es955-worker-fixture.ps1": "f27ac582b264332f6319fe57199b89d8fb4e631d37604933fd72b8a6729817ce",
+    "src/indexer/modules/queueMonitor.ts": "5de2a7c4efe5e040bb5a9c13240e49d6bb86aa55a95d89d436f398a54e354acb",
+    "src/indexer/modules/master.ts": "7a90727a00aa963097206df36cd04ca45604a334ed4ca58cb2e09602650b7272",
+    "src/indexer/modules/loader.ts": "fcb636ff00198b213ebbd5e789063c7144b99696f21d620b57d995340efbffb7",
+    "src/indexer/workers/hyperionWorker.ts": "b2b56a6287d9c23ba2f34dafad3952d35b51f4b4a5e53e0884f8009516dcdbe0",
+    "src/indexer/workers/state-reader.ts": "7a70b3dc295bef25af248a48794137b8daf21b89b3e57c0929e7c6228e8ff93f",
+    "src/indexer/workers/indexer.ts": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+    "src/indexer/helpers/elastic-routes.ts": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+    "build/indexer/launcher.js": "72f3fbfdd0c83ea7f1542b90a9e010f2fc9e4a08cea67eaa8578f0cd312decd7",
+    "build/indexer/modules/master.js": "4ddfcb8a02c793947e807c94aff62c8abb93210929e0b4aff00be2f8997fd836",
+    "build/indexer/modules/queueMonitor.js": "860863abdef6cb73e2af87d55cfc9120565c63deea7dbd7dfd18a6b6a4a23ccd",
+    "build/indexer/modules/loader.js": "6f56a030d78ffa6b1916248313d62a27aeae301082efd25ee7eaad62d8b22963",
+    "build/indexer/workers/hyperionWorker.js": "938e8d711ecc9135e36cd04345219bc0659d772cc798e6f6342baf3b074ed101",
+    "build/indexer/workers/state-reader.js": "8d7eef750fa6bd6f713c388ba043022e4a5915bea09c96c55a7ad2083608ad56",
+    "build/indexer/workers/indexer.js": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+    "build/indexer/helpers/elastic-routes.js": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+    "package-lock.json": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+  },
+  "memberCount": 410,
+  "uncompressedBytes": 345480907,
+  "members": [
+    {
+      "path": "README.json",
+      "sizeBytes": 1732,
+      "sha256": "30cad70c7359878001bffb40387362c3449fb66c3d8243802d96775446fb3ad6",
+      "role": "archive interpretation"
+    },
+    {
+      "path": "fixture/es198-workers-state1-spring-failure.log",
+      "sizeBytes": 1033,
+      "sha256": "df4538490b6b9bd00957d40dedf835d6e40b837b502c58fa800cd30b9f0c5c74",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state1.json",
+      "sizeBytes": 13378,
+      "sha256": "1db0c0f4e303ec7154fa722253ad2412c84578d15dee42a8e0d921769e26ba38",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state1.json.cleanup.json",
+      "sizeBytes": 1531,
+      "sha256": "f005e253d7f0ffcb9a017e91592fac2d9234efcbcdb7118e2191e47bfaf017b9",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state1.json.core.json",
+      "sizeBytes": 8371,
+      "sha256": "66d05b2dbd3d42ac080d59edd8edfb5623499a691bb86f694f18d6d3a7c950c0",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state1.json.core.json.cleanup.json",
+      "sizeBytes": 797,
+      "sha256": "75594f3010cd0dbdd3984d1455bd51b03a10165f87e2066efd776d33fa595862",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state2-spring-failure.log",
+      "sizeBytes": 33723,
+      "sha256": "c838e69f31876219550e4f65db12cdb889a4b4895cecaf38cd08471232296e7f",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state2.json",
+      "sizeBytes": 13378,
+      "sha256": "61b30109373788567333812f21aba24816ac74ea4ab0b39f9af3699f638b74ac",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state2.json.cleanup.json",
+      "sizeBytes": 1531,
+      "sha256": "31e050c324e5d96b9a9a8b1b0a825922d7cb5623180c407cd2e062a45e781d5d",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state2.json.core.json",
+      "sizeBytes": 8371,
+      "sha256": "823f0563836676a9dbf58fd31a6d0fe1194f2b59acf52b8b00e33b027cf72766",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state2.json.core.json.cleanup.json",
+      "sizeBytes": 797,
+      "sha256": "0c1870fb102be5f7068ff2fb96d5a8e8b05f74f2b88b08bb5dd1ac99efb04691",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state3-postflight.json",
+      "sizeBytes": 5756998,
+      "sha256": "a7de82918196062207b753697ba4d219225bc37a0c0062bb01c03cdbf61008b4",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state3.json",
+      "sizeBytes": 15929,
+      "sha256": "ab73f1e6e1dbed50c5de30b9b490f1576074f6b386325882e438e3ba9a68d3ef",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state3.json.cleanup.json",
+      "sizeBytes": 1531,
+      "sha256": "32ff141cf6f89b1f7e5f8f3b6bb32af79df985309265d0443e6a141e2d9840fb",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state3.json.core.json",
+      "sizeBytes": 8371,
+      "sha256": "d34dc4b5b027fbdd16b01b0c4eebc41a2aba4a246c12cb13e5faea64a800fa1a",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state3.json.core.json.cleanup.json",
+      "sizeBytes": 797,
+      "sha256": "5bbc907cba461282fe423e773104d2cf819ee8d8942703457be5da55b2d1efc5",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state4-postflight-corrected.json",
+      "sizeBytes": 373995,
+      "sha256": "c0184935b2812b5180ad18969826d5c318a7bbef7e5b9d911cb03a03e2d960d3",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state4-postflight.json",
+      "sizeBytes": 3577014,
+      "sha256": "c81f5b6aadd2779cb80bb2a2282a02764b875fbcf014b4ee133dbe18219444e3",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state4.json",
+      "sizeBytes": 15931,
+      "sha256": "2aa92ad319853db97c92725c4f04eaf088a0ca6224ee080a134e77459a8c67b6",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state4.json.cleanup.json",
+      "sizeBytes": 1529,
+      "sha256": "58958e418566454446c8e9f43e15dbe4808b4f24ed03474487462088795dcae1",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state4.json.core.json",
+      "sizeBytes": 8371,
+      "sha256": "4172680060ff45f22b807436d0fb7f52edd8bd59e8610c0b08722872fef5904c",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state4.json.core.json.cleanup.json",
+      "sizeBytes": 797,
+      "sha256": "e8295cb745b21581a7deaa339d5c770fca8632914227d17126cebf319e237364",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state5-postflight.json",
+      "sizeBytes": 374018,
+      "sha256": "91faa208e337ae3552bb389bc2f212bb86a2db3da373618579f7076153731b04",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state5.json",
+      "sizeBytes": 15931,
+      "sha256": "be428879002f7ead962404731c2a9a3f43149d4df20cddabd70b313b5ca40e1f",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state5.json.cleanup.json",
+      "sizeBytes": 1531,
+      "sha256": "f66785bb8efbf786b34d4ecab0216addf13302c9f008a1ff273a678fd428ea67",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state5.json.core.json",
+      "sizeBytes": 8371,
+      "sha256": "9950520e42ed2c6bbacdf386757b341d4dca5eeed12c8cba4097374e30539c1c",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "fixture/es198-workers-state5.json.core.json.cleanup.json",
+      "sizeBytes": 797,
+      "sha256": "04a166308385ff47fd61bb1a375de25154c2196a5fe8e768e0cf6715f232193b",
+      "role": "original fixture, postflight, setup-failure or cleanup evidence",
+      "status": "raw"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/config/chain.json",
+      "sizeBytes": 2074,
+      "sha256": "771b4b0708dd5812b0b3edfd4a95a85974f97e8be7c8d13ead4fb71384dd0a6e",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/config/connections.json",
+      "sizeBytes": 965,
+      "sha256": "485f21f49d848860d5118954d17423357bdbad847b9b5c61f4a640ed1b31c8f0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/master.stderr.log",
+      "sizeBytes": 861,
+      "sha256": "347d8e466701f0d57ca078e7095f3630caf2f6dc315c6038a993e6f825d817fc",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/master.stdout.log",
+      "sizeBytes": 3955,
+      "sha256": "b03e2af420271a9e483f7fbaf30436d24bb89a81047c1538fd2538048052d9c6",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/observer/worker-117540.jsonl",
+      "sizeBytes": 3115,
+      "sha256": "5220392931059e266df448b6ba3fe92e49dd3f3e3916f99fd101bb039cb67527",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/report.json",
+      "sizeBytes": 89176,
+      "sha256": "33eaaa8d6a9524689c13709363e93cd219ba6a0d80ac3ee4a66e94eb2ce097ad",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/build/indexer/helpers/elastic-routes.js",
+      "sizeBytes": 17677,
+      "sha256": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/build/indexer/launcher.js",
+      "sizeBytes": 1946,
+      "sha256": "72f3fbfdd0c83ea7f1542b90a9e010f2fc9e4a08cea67eaa8578f0cd312decd7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/build/indexer/modules/master.js",
+      "sizeBytes": 84017,
+      "sha256": "489722b53102cec7db5b788a86c9a93098058eb66c9bbf0a771e2b1106eb47c0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/build/indexer/modules/queueMonitor.js",
+      "sizeBytes": 5758,
+      "sha256": "860863abdef6cb73e2af87d55cfc9120565c63deea7dbd7dfd18a6b6a4a23ccd",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/build/indexer/workers/indexer.js",
+      "sizeBytes": 6784,
+      "sha256": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/build/indexer/workers/state-reader.js",
+      "sizeBytes": 40918,
+      "sha256": "5834a7697f384beaa2c8b413ddccab7fa085cb34d3d9a92ffd62e09590045332",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/package-lock.json",
+      "sizeBytes": 126283,
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/scripts/qualification/es955-worker-fixture.ps1",
+      "sizeBytes": 14084,
+      "sha256": "f27ac582b264332f6319fe57199b89d8fb4e631d37604933fd72b8a6729817ce",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/scripts/qualification/es955-worker-observer.mjs",
+      "sizeBytes": 17953,
+      "sha256": "4bc49da681244a7d383203152c95bb5632c7ae36b4eb6c235780c3ea086967d0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/scripts/qualification/es955-workers.ts",
+      "sizeBytes": 27897,
+      "sha256": "5e5d31e073d987f3f993e60bb3bd63ff75b49c4d64a097ba4cb59317904f5fef",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/src/indexer/helpers/elastic-routes.ts",
+      "sizeBytes": 22066,
+      "sha256": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/src/indexer/modules/master.ts",
+      "sizeBytes": 90228,
+      "sha256": "e76502da5eaee26830a48f579cd1b296fd12bacdeae35b6c7122886d95795ad7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/src/indexer/modules/queueMonitor.ts",
+      "sizeBytes": 6296,
+      "sha256": "5de2a7c4efe5e040bb5a9c13240e49d6bb86aa55a95d89d436f398a54e354acb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/src/indexer/workers/indexer.ts",
+      "sizeBytes": 7279,
+      "sha256": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot1/sources/src/indexer/workers/state-reader.ts",
+      "sizeBytes": 43372,
+      "sha256": "6d91cd0b4c0b1b607dc7d41d1b85dec0156592164eb9c82ad180efbbb2d6cc93",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/config/chain.json",
+      "sizeBytes": 2074,
+      "sha256": "0731a37a15207a66c64088835decfdf9a43aae4ac7eb3693896ea6fcbe8d8047",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/config/connections.json",
+      "sizeBytes": 965,
+      "sha256": "7bef1b371d690f18ccf739e9d0c4e99226099b911175fcbf348d74196c2e8a95",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/master.stderr.log",
+      "sizeBytes": 724,
+      "sha256": "73d86dc65ab6c6b2e32bbf2befd4d3c6f14c1ddd20eed89362a6ce6905cf5705",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/master.stdout.log",
+      "sizeBytes": 1706,
+      "sha256": "99d5330b3918999897a06956ac6de068660158eb0c6054a15c1fc571a78f9c67",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/observer/worker-107476.jsonl",
+      "sizeBytes": 1859,
+      "sha256": "6e574203fff1f9727f4a479b9bd98815bd6ef35dd7e531bf35fd5c682a1fef4f",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/observer/worker-112412.jsonl",
+      "sizeBytes": 1888,
+      "sha256": "d0ac547d231dd6432b3f20a54aae32edb0a996b45a2c540e3b16a3d3862903f0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/observer/worker-114080.jsonl",
+      "sizeBytes": 1848,
+      "sha256": "eef7cd34f6a83e18d08581d7255dbc3a221baaacde21e8dfdccaed884f569f4a",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/observer/worker-123548.jsonl",
+      "sizeBytes": 1854,
+      "sha256": "16a0e95b2fa4d1cc501ff3dd2a32e4aadcfed6a52b332ce4ee64056dfb5ed6eb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/observer/worker-38480.jsonl",
+      "sizeBytes": 1889,
+      "sha256": "31257e33b449d6732a5fedcc1e389b66b3255c0a19fcd8122645b6ca613dd804",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/observer/worker-61828.jsonl",
+      "sizeBytes": 1883,
+      "sha256": "b5214833858b4e62bb4fd68bfc8d48cb92b766d6a2dc96f1a57f3d4a48033a02",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/observer/worker-66512.jsonl",
+      "sizeBytes": 6964,
+      "sha256": "f06ccaa95adaefbd379fb3eac51aa35936df74a46d9ff13f62e0380046ea47e7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/observer/worker-73548.jsonl",
+      "sizeBytes": 1853,
+      "sha256": "83f0e594662e08f3e4f25769308668c9ee154beb8d2aa37ab9cbef24aa8c928f",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/observer/worker-83148.jsonl",
+      "sizeBytes": 1887,
+      "sha256": "ce9df8d18dea21ab621f710ae957c0e3a9e1a5ecdfb7a6b48236a4ca25486923",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/package.json",
+      "sizeBytes": 2396,
+      "sha256": "9f035801acd00ac688794486e3a557cf2837a80db6bdcd59463f9b89e9bb748f",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/report.json",
+      "sizeBytes": 89585,
+      "sha256": "3d797226903fa6a54682a8c224468d715068e9f859ce8388ba4db45722710c00",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/build/indexer/helpers/elastic-routes.js",
+      "sizeBytes": 17677,
+      "sha256": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/build/indexer/launcher.js",
+      "sizeBytes": 1946,
+      "sha256": "72f3fbfdd0c83ea7f1542b90a9e010f2fc9e4a08cea67eaa8578f0cd312decd7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/build/indexer/modules/loader.js",
+      "sizeBytes": 7708,
+      "sha256": "6f56a030d78ffa6b1916248313d62a27aeae301082efd25ee7eaad62d8b22963",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/build/indexer/modules/master.js",
+      "sizeBytes": 84017,
+      "sha256": "489722b53102cec7db5b788a86c9a93098058eb66c9bbf0a771e2b1106eb47c0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/build/indexer/modules/queueMonitor.js",
+      "sizeBytes": 5758,
+      "sha256": "860863abdef6cb73e2af87d55cfc9120565c63deea7dbd7dfd18a6b6a4a23ccd",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/build/indexer/workers/hyperionWorker.js",
+      "sizeBytes": 11045,
+      "sha256": "bf5b5dc6eb8285d854d8526e8d4a863f98d4bf4deac7b0059ea14446a701b222",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/build/indexer/workers/indexer.js",
+      "sizeBytes": 6784,
+      "sha256": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/build/indexer/workers/state-reader.js",
+      "sizeBytes": 40918,
+      "sha256": "5834a7697f384beaa2c8b413ddccab7fa085cb34d3d9a92ffd62e09590045332",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/package-lock.json",
+      "sizeBytes": 126283,
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/scripts/qualification/es955-worker-fixture.ps1",
+      "sizeBytes": 14084,
+      "sha256": "f27ac582b264332f6319fe57199b89d8fb4e631d37604933fd72b8a6729817ce",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/scripts/qualification/es955-worker-observer.mjs",
+      "sizeBytes": 17953,
+      "sha256": "4bc49da681244a7d383203152c95bb5632c7ae36b4eb6c235780c3ea086967d0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/scripts/qualification/es955-workers.ts",
+      "sizeBytes": 28626,
+      "sha256": "f91c4d0b813fcffde996c2cd240f2e7c62cc4c3a9619d4a55180fa2603cf1215",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/src/indexer/helpers/elastic-routes.ts",
+      "sizeBytes": 22066,
+      "sha256": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/src/indexer/modules/loader.ts",
+      "sizeBytes": 8584,
+      "sha256": "fcb636ff00198b213ebbd5e789063c7144b99696f21d620b57d995340efbffb7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/src/indexer/modules/master.ts",
+      "sizeBytes": 90228,
+      "sha256": "e76502da5eaee26830a48f579cd1b296fd12bacdeae35b6c7122886d95795ad7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/src/indexer/modules/queueMonitor.ts",
+      "sizeBytes": 6296,
+      "sha256": "5de2a7c4efe5e040bb5a9c13240e49d6bb86aa55a95d89d436f398a54e354acb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/src/indexer/workers/hyperionWorker.ts",
+      "sizeBytes": 12680,
+      "sha256": "968dae33cca09a6f6383d1a6191855b899c74855d78aa3d626b810985627601a",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/src/indexer/workers/indexer.ts",
+      "sizeBytes": 7279,
+      "sha256": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/sources/src/indexer/workers/state-reader.ts",
+      "sizeBytes": 43372,
+      "sha256": "6d91cd0b4c0b1b607dc7d41d1b85dec0156592164eb9c82ad180efbbb2d6cc93",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot2/symlinks.json",
+      "sizeBytes": 647,
+      "sha256": "72f40ef95c546aebe2c4b835ac78804e813e7e2014fcc0fa593a66369d54ee36",
+      "role": "owned relative log-link metadata; no extractable symlinks",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/config/chain.json",
+      "sizeBytes": 2074,
+      "sha256": "7557cbea8372abe5cd4d9ea842d093f62245108e9ff8595866d3b6e541d85168",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/config/connections.json",
+      "sizeBytes": 965,
+      "sha256": "db091c0897335d3dde3bc640fee03db486d4b478f31dd595fd3263affe953bfe",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/logs/hyp-es955-6115e9619013/2026-10-19T10-06-41.730Z_ds_err_1_10000.log",
+      "sizeBytes": 40,
+      "sha256": "be2198db8b3746ce09ee1d98e286d51a86f7aded64114c9cf0dcb85c027374c2",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/master.stderr.log",
+      "sizeBytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/master.stdout.log",
+      "sizeBytes": 5783,
+      "sha256": "8285ac7a15a3278169733fafd06d910dfe0381bdb5ff22e1ee31bb24af5dcf3e",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-109044.jsonl",
+      "sizeBytes": 23536,
+      "sha256": "4155ee5e0640fa80c183a76bcbb680690c4a8d795f98b20ea41dec86da756f78",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-111360.jsonl",
+      "sizeBytes": 18937,
+      "sha256": "df3eba946574fa4a0720817cca47729edb70c67745638f003c712cc7038ee7cc",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-119692.jsonl",
+      "sizeBytes": 16764,
+      "sha256": "6981e315f75c1761ad3e3877542f84391d3d1c330aff0e224ac420406c3fa22f",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-120164.jsonl",
+      "sizeBytes": 16759,
+      "sha256": "105dc7669d26256c36915a991cdf67ae9a955b583ecff1c4e81b502139d36277",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-123660.jsonl",
+      "sizeBytes": 16759,
+      "sha256": "d14fd78253392436c8d1afe1eaeffd847f91e1d0e95ff8306132a42845f14fda",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-12708.jsonl",
+      "sizeBytes": 334359,
+      "sha256": "9aff32b69fa9ea5929d42aa7dcdd3575ece41a9d6f29a4306e3ae4f3a3cfb968",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-37268.jsonl",
+      "sizeBytes": 20708,
+      "sha256": "830820004c8be5bedc47707bd4c3b4fdb9689b2265a34d6afe848e24ab237386",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-37440.jsonl",
+      "sizeBytes": 17066,
+      "sha256": "7526850383df9c14629182794692fac2bcd160b27e4bb5194c2c526c44cce0df",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-62460.jsonl",
+      "sizeBytes": 16712,
+      "sha256": "87aa8a17173d99e088b900741212bb676915f2947b0d404f9a06389b2312b7fb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-67388.jsonl",
+      "sizeBytes": 86863,
+      "sha256": "0d2fc8316f0b1050aafb251ea1ce29faa774e788b8c3da77f73da6008c891ca7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-67652.jsonl",
+      "sizeBytes": 78422,
+      "sha256": "2acd8fecbd2067af678de8ca9158e7ba34a236b79a887f6b9424ac26a6849890",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-81584.jsonl",
+      "sizeBytes": 16769,
+      "sha256": "7d8f2e25a9df4e88242d2cc129542b0dfe0477edd7b592320b565d132f6fc2c2",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/observer/worker-85076.jsonl",
+      "sizeBytes": 16758,
+      "sha256": "86d87450121d488582f4dbe4582009cc13a3421630562cc8c8093b87bb69d51d",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/package.json",
+      "sizeBytes": 2396,
+      "sha256": "9f035801acd00ac688794486e3a557cf2837a80db6bdcd59463f9b89e9bb748f",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/report.json",
+      "sizeBytes": 238168,
+      "sha256": "a708cef2fb5fd1b5b802f00f3f1d3ab347810ec73ecbc1a2c09f2003f9abe8fb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/build/indexer/helpers/elastic-routes.js",
+      "sizeBytes": 17677,
+      "sha256": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/build/indexer/launcher.js",
+      "sizeBytes": 1946,
+      "sha256": "72f3fbfdd0c83ea7f1542b90a9e010f2fc9e4a08cea67eaa8578f0cd312decd7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/build/indexer/modules/loader.js",
+      "sizeBytes": 7708,
+      "sha256": "6f56a030d78ffa6b1916248313d62a27aeae301082efd25ee7eaad62d8b22963",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/build/indexer/modules/master.js",
+      "sizeBytes": 84036,
+      "sha256": "4ddfcb8a02c793947e807c94aff62c8abb93210929e0b4aff00be2f8997fd836",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/build/indexer/modules/queueMonitor.js",
+      "sizeBytes": 5758,
+      "sha256": "860863abdef6cb73e2af87d55cfc9120565c63deea7dbd7dfd18a6b6a4a23ccd",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/build/indexer/workers/hyperionWorker.js",
+      "sizeBytes": 11235,
+      "sha256": "938e8d711ecc9135e36cd04345219bc0659d772cc798e6f6342baf3b074ed101",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/build/indexer/workers/indexer.js",
+      "sizeBytes": 6784,
+      "sha256": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/build/indexer/workers/state-reader.js",
+      "sizeBytes": 40918,
+      "sha256": "5834a7697f384beaa2c8b413ddccab7fa085cb34d3d9a92ffd62e09590045332",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/package-lock.json",
+      "sizeBytes": 126283,
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/scripts/qualification/es955-worker-fixture.ps1",
+      "sizeBytes": 14084,
+      "sha256": "f27ac582b264332f6319fe57199b89d8fb4e631d37604933fd72b8a6729817ce",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/scripts/qualification/es955-worker-observer.mjs",
+      "sizeBytes": 17953,
+      "sha256": "4bc49da681244a7d383203152c95bb5632c7ae36b4eb6c235780c3ea086967d0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/scripts/qualification/es955-workers.ts",
+      "sizeBytes": 28626,
+      "sha256": "f91c4d0b813fcffde996c2cd240f2e7c62cc4c3a9619d4a55180fa2603cf1215",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/src/indexer/helpers/elastic-routes.ts",
+      "sizeBytes": 22066,
+      "sha256": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/src/indexer/modules/loader.ts",
+      "sizeBytes": 8584,
+      "sha256": "fcb636ff00198b213ebbd5e789063c7144b99696f21d620b57d995340efbffb7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/src/indexer/modules/master.ts",
+      "sizeBytes": 90247,
+      "sha256": "7a90727a00aa963097206df36cd04ca45604a334ed4ca58cb2e09602650b7272",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/src/indexer/modules/queueMonitor.ts",
+      "sizeBytes": 6296,
+      "sha256": "5de2a7c4efe5e040bb5a9c13240e49d6bb86aa55a95d89d436f398a54e354acb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/src/indexer/workers/hyperionWorker.ts",
+      "sizeBytes": 12824,
+      "sha256": "b2b56a6287d9c23ba2f34dafad3952d35b51f4b4a5e53e0884f8009516dcdbe0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/src/indexer/workers/indexer.ts",
+      "sizeBytes": 7279,
+      "sha256": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/sources/src/indexer/workers/state-reader.ts",
+      "sizeBytes": 43372,
+      "sha256": "6d91cd0b4c0b1b607dc7d41d1b85dec0156592164eb9c82ad180efbbb2d6cc93",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot3/symlinks.json",
+      "sizeBytes": 708,
+      "sha256": "0a03ef27c70833a2cf3db3fc2291bd50380c2b81efe382c4e5edcb9720d15b24",
+      "role": "owned relative log-link metadata; no extractable symlinks",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/config/chain.json",
+      "sizeBytes": 2074,
+      "sha256": "8c3d31879b11dd66d5bc9a00c4661922e405d5b263772756e0aaeb4cf768e1ba",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/config/connections.json",
+      "sizeBytes": 965,
+      "sha256": "52d00a3cc30238e0d1f0c2b8c61f5dbab79c7c7b32adfc5298efe2fc4909e61a",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/logs/hyp-es955-884f3dcfead1/2026-10-19T10-08-02.810Z_ds_err_1_10000.log",
+      "sizeBytes": 40,
+      "sha256": "04042f526e0415ede64df2965b40820ac37189baa6be09b03eedaf5e737151b7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/master.stderr.log",
+      "sizeBytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/master.stdout.log",
+      "sizeBytes": 8342,
+      "sha256": "16bffbfff04e117dad891ef7a7f04f7f2ba8a618e51fcd694356f1d66eb09f29",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-106208.jsonl",
+      "sizeBytes": 630798,
+      "sha256": "1b478c247e93b6d7bff1ca98e44cddd20f3149708dc292074ae49972bcbe3a25",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-114980.jsonl",
+      "sizeBytes": 2808407,
+      "sha256": "b4d482115f07abbfc1e144bfeb6b0ee65e03145186fbb58bd48a987268ff8f2e",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-115228.jsonl",
+      "sizeBytes": 568859,
+      "sha256": "b8ee4ac596c5a9884de5714bc7c0f337802930320cd16eb544ff8bb995253112",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-115460.jsonl",
+      "sizeBytes": 143199,
+      "sha256": "61091c0e5dea38217c8ef41c84f209974aae73a325314c7f8e422a6beccaf405",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-115852.jsonl",
+      "sizeBytes": 185619,
+      "sha256": "a42f509957f49db5042e67c8f7c36440f2af2d3288223faa107f853453e434d5",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-117320.jsonl",
+      "sizeBytes": 143306,
+      "sha256": "cd7c63df48a2c61213017756056fd20217406d5d9bbf80c6a9a55362e6e140d7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-117396.jsonl",
+      "sizeBytes": 143473,
+      "sha256": "2930ae18aa1eb19547ee8518469c577beafc633a5bb5d839f0f87e5c2ba6e675",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-119796.jsonl",
+      "sizeBytes": 145763,
+      "sha256": "b4ec2e5a9a9bd88e3201633ed97c368a6d796282532f1438a8c84a6894fea1a8",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-28012.jsonl",
+      "sizeBytes": 267817,
+      "sha256": "f340d20b8cb60ac204ca274b5f9b65c4090f58115f52e97836e10dc9bfd11a6e",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-49792.jsonl",
+      "sizeBytes": 195020,
+      "sha256": "36eb46bf3054101976eb3396dd19b040247ab2ffc679580dbe53ec05e0b89442",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-7144.jsonl",
+      "sizeBytes": 142991,
+      "sha256": "7a005b6e0a7576427c1eea541af44ce42725d3712e5cab4f43055b7a1b1ff335",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-80760.jsonl",
+      "sizeBytes": 213836,
+      "sha256": "d4facfe7c167209f0539087f78f2e4052300b278ba73657d22a8ffb581ab7cec",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/observer/worker-92996.jsonl",
+      "sizeBytes": 142984,
+      "sha256": "013337bd5c35595029788b5c49faa701c9edd48b3d222c5e51366aa68c4344a2",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/package.json",
+      "sizeBytes": 2396,
+      "sha256": "9f035801acd00ac688794486e3a557cf2837a80db6bdcd59463f9b89e9bb748f",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/report.json",
+      "sizeBytes": 17081580,
+      "sha256": "a23dbd8e6668b0d45e4cc76c4e718f1e4e674c15c7135bf73ff31ed6cc89fd06",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/build/indexer/helpers/elastic-routes.js",
+      "sizeBytes": 17677,
+      "sha256": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/build/indexer/launcher.js",
+      "sizeBytes": 1946,
+      "sha256": "72f3fbfdd0c83ea7f1542b90a9e010f2fc9e4a08cea67eaa8578f0cd312decd7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/build/indexer/modules/loader.js",
+      "sizeBytes": 7708,
+      "sha256": "6f56a030d78ffa6b1916248313d62a27aeae301082efd25ee7eaad62d8b22963",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/build/indexer/modules/master.js",
+      "sizeBytes": 84036,
+      "sha256": "4ddfcb8a02c793947e807c94aff62c8abb93210929e0b4aff00be2f8997fd836",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/build/indexer/modules/queueMonitor.js",
+      "sizeBytes": 5758,
+      "sha256": "860863abdef6cb73e2af87d55cfc9120565c63deea7dbd7dfd18a6b6a4a23ccd",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/build/indexer/workers/hyperionWorker.js",
+      "sizeBytes": 11235,
+      "sha256": "938e8d711ecc9135e36cd04345219bc0659d772cc798e6f6342baf3b074ed101",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/build/indexer/workers/indexer.js",
+      "sizeBytes": 6784,
+      "sha256": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/build/indexer/workers/state-reader.js",
+      "sizeBytes": 40918,
+      "sha256": "5834a7697f384beaa2c8b413ddccab7fa085cb34d3d9a92ffd62e09590045332",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/package-lock.json",
+      "sizeBytes": 126283,
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/scripts/qualification/es955-worker-fixture.ps1",
+      "sizeBytes": 14084,
+      "sha256": "f27ac582b264332f6319fe57199b89d8fb4e631d37604933fd72b8a6729817ce",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/scripts/qualification/es955-worker-observer.mjs",
+      "sizeBytes": 17953,
+      "sha256": "4bc49da681244a7d383203152c95bb5632c7ae36b4eb6c235780c3ea086967d0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/scripts/qualification/es955-workers.ts",
+      "sizeBytes": 28816,
+      "sha256": "aeb5520c44bac55f1b6a90e0d25324b376856c4b74fc16b0c3447e0bef398ecb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/src/indexer/helpers/elastic-routes.ts",
+      "sizeBytes": 22066,
+      "sha256": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/src/indexer/modules/loader.ts",
+      "sizeBytes": 8584,
+      "sha256": "fcb636ff00198b213ebbd5e789063c7144b99696f21d620b57d995340efbffb7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/src/indexer/modules/master.ts",
+      "sizeBytes": 90247,
+      "sha256": "7a90727a00aa963097206df36cd04ca45604a334ed4ca58cb2e09602650b7272",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/src/indexer/modules/queueMonitor.ts",
+      "sizeBytes": 6296,
+      "sha256": "5de2a7c4efe5e040bb5a9c13240e49d6bb86aa55a95d89d436f398a54e354acb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/src/indexer/workers/hyperionWorker.ts",
+      "sizeBytes": 12824,
+      "sha256": "b2b56a6287d9c23ba2f34dafad3952d35b51f4b4a5e53e0884f8009516dcdbe0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/src/indexer/workers/indexer.ts",
+      "sizeBytes": 7279,
+      "sha256": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/sources/src/indexer/workers/state-reader.ts",
+      "sizeBytes": 43372,
+      "sha256": "6d91cd0b4c0b1b607dc7d41d1b85dec0156592164eb9c82ad180efbbb2d6cc93",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot4/symlinks.json",
+      "sizeBytes": 708,
+      "sha256": "e1720e827556f83ac815e11d591cb75efa701ba44f11b9f4549ce28b4b9515be",
+      "role": "owned relative log-link metadata; no extractable symlinks",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/config/chain.json",
+      "sizeBytes": 2074,
+      "sha256": "212dbf053fde7f4afe1112b4e2ec545ab054dbb4045e3d39c3c003ffa206eed3",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/config/connections.json",
+      "sizeBytes": 965,
+      "sha256": "891b624e0603b5b8884b9bf57b81086d455d606ff50b592c0dcc6323188ba67b",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/logs/hyp-es955-222736b049c7/2026-10-19T10-10-54.619Z_ds_err_1_10000.log",
+      "sizeBytes": 40,
+      "sha256": "056a3bcd484469b19ff37f6bd14ecdb868eaddd88d2447aa2598dc704125e49a",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/master.stderr.log",
+      "sizeBytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/master.stdout.log",
+      "sizeBytes": 10407,
+      "sha256": "0f3fb7b86b0e3c79fc0fa1606a081d23c04a2f32dbc50d1a41e215ec6c618bf5",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-100476.jsonl",
+      "sizeBytes": 241161,
+      "sha256": "bb150d346aa2ad8423edc816b89c0c9334353fff18adb7155ec181ea7d77541a",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-114952.jsonl",
+      "sizeBytes": 4749739,
+      "sha256": "8051d081622532a3b9f6d30aaa4ae77b47e7c8448f9604bfab19551fb3fe61ce",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-120780.jsonl",
+      "sizeBytes": 973085,
+      "sha256": "73fbc919d1bfd19ae7c6ce49ed96fea890fb5b8fd9bcd31a8be3844873bf5296",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-48396.jsonl",
+      "sizeBytes": 457160,
+      "sha256": "fab1ff88be9d06271f1ec3898a9b8797986029fa0cabb3bd3bca76e93ccf956f",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-60232.jsonl",
+      "sizeBytes": 1058439,
+      "sha256": "e2008b45ea939c6d19ea9881bca283df55864f66584457f1fe067d8c483a67c1",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-75324.jsonl",
+      "sizeBytes": 245303,
+      "sha256": "e78076947f12c9d4cbd2806092b56589b821692f8d1872152542777f632bbafa",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-78652.jsonl",
+      "sizeBytes": 240705,
+      "sha256": "720a150de18b4b76ad136a9d4a7a30e33bceac0440da8f5dc7e9e53ad2ab615e",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-88364.jsonl",
+      "sizeBytes": 299229,
+      "sha256": "d2b9c64d96dce98431073468b36a33b421d638ee2f219dbab55bf4bdf787b2c0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-91548.jsonl",
+      "sizeBytes": 363767,
+      "sha256": "27ff9559f16d2192182431dc0fac589ae5cd34e7e4f9429d87e965beb4eedcfc",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-95936.jsonl",
+      "sizeBytes": 241253,
+      "sha256": "fc13dc2a2b11b2f6e8a7c809ece5f647c6251ebb8ba61e3e15cdc88ba8d86290",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-96508.jsonl",
+      "sizeBytes": 241089,
+      "sha256": "475f6b64c28c4a0d843dbf31b96e7568657610fa79bfe8aac8ad6a433ac28cfa",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-98312.jsonl",
+      "sizeBytes": 240611,
+      "sha256": "c7cb8c9bbafb67f514cc93a7d05f1094c198b52cd949e9afbfa1d349b03eda4b",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/observer/worker-98512.jsonl",
+      "sizeBytes": 332416,
+      "sha256": "ae1912c455663a877ee599d390c94498973981d4b011f973349a9350019b3eeb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/package.json",
+      "sizeBytes": 2396,
+      "sha256": "9f035801acd00ac688794486e3a557cf2837a80db6bdcd59463f9b89e9bb748f",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/report.json",
+      "sizeBytes": 45161912,
+      "sha256": "9b7e99b1ca3d8b7f430ed11efd2cda45370ce2dfebf21c3c93884c568dbb1294",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/build/indexer/helpers/elastic-routes.js",
+      "sizeBytes": 17677,
+      "sha256": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/build/indexer/launcher.js",
+      "sizeBytes": 1946,
+      "sha256": "72f3fbfdd0c83ea7f1542b90a9e010f2fc9e4a08cea67eaa8578f0cd312decd7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/build/indexer/modules/loader.js",
+      "sizeBytes": 7708,
+      "sha256": "6f56a030d78ffa6b1916248313d62a27aeae301082efd25ee7eaad62d8b22963",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/build/indexer/modules/master.js",
+      "sizeBytes": 84036,
+      "sha256": "4ddfcb8a02c793947e807c94aff62c8abb93210929e0b4aff00be2f8997fd836",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/build/indexer/modules/queueMonitor.js",
+      "sizeBytes": 5758,
+      "sha256": "860863abdef6cb73e2af87d55cfc9120565c63deea7dbd7dfd18a6b6a4a23ccd",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/build/indexer/workers/hyperionWorker.js",
+      "sizeBytes": 11235,
+      "sha256": "938e8d711ecc9135e36cd04345219bc0659d772cc798e6f6342baf3b074ed101",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/build/indexer/workers/indexer.js",
+      "sizeBytes": 6784,
+      "sha256": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/build/indexer/workers/state-reader.js",
+      "sizeBytes": 40918,
+      "sha256": "5834a7697f384beaa2c8b413ddccab7fa085cb34d3d9a92ffd62e09590045332",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/package-lock.json",
+      "sizeBytes": 126283,
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/scripts/qualification/es955-worker-fixture.ps1",
+      "sizeBytes": 14084,
+      "sha256": "f27ac582b264332f6319fe57199b89d8fb4e631d37604933fd72b8a6729817ce",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/scripts/qualification/es955-worker-observer.mjs",
+      "sizeBytes": 17953,
+      "sha256": "4bc49da681244a7d383203152c95bb5632c7ae36b4eb6c235780c3ea086967d0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/scripts/qualification/es955-workers.ts",
+      "sizeBytes": 30200,
+      "sha256": "4b2c0514ea7414b6b252463913fe6eb6b204de37b4cc590f9574770cd0bd348e",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/src/indexer/helpers/elastic-routes.ts",
+      "sizeBytes": 22066,
+      "sha256": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/src/indexer/modules/loader.ts",
+      "sizeBytes": 8584,
+      "sha256": "fcb636ff00198b213ebbd5e789063c7144b99696f21d620b57d995340efbffb7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/src/indexer/modules/master.ts",
+      "sizeBytes": 90247,
+      "sha256": "7a90727a00aa963097206df36cd04ca45604a334ed4ca58cb2e09602650b7272",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/src/indexer/modules/queueMonitor.ts",
+      "sizeBytes": 6296,
+      "sha256": "5de2a7c4efe5e040bb5a9c13240e49d6bb86aa55a95d89d436f398a54e354acb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/src/indexer/workers/hyperionWorker.ts",
+      "sizeBytes": 12824,
+      "sha256": "b2b56a6287d9c23ba2f34dafad3952d35b51f4b4a5e53e0884f8009516dcdbe0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/src/indexer/workers/indexer.ts",
+      "sizeBytes": 7279,
+      "sha256": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/sources/src/indexer/workers/state-reader.ts",
+      "sizeBytes": 43372,
+      "sha256": "6d91cd0b4c0b1b607dc7d41d1b85dec0156592164eb9c82ad180efbbb2d6cc93",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot5/symlinks.json",
+      "sizeBytes": 708,
+      "sha256": "064fd75e054d75780d8f3be4b4898a064391ed35bb5ccce6b57a7b42a116aa1d",
+      "role": "owned relative log-link metadata; no extractable symlinks",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/config/chain.json",
+      "sizeBytes": 2074,
+      "sha256": "ebd37b76e8d241338b6d87d6fa36f939170636f30692818264776004e4753c1f",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/config/connections.json",
+      "sizeBytes": 965,
+      "sha256": "4244fc73c25684b45054b99d97863320dbd39ef5fdaa2c11bf8d2aa537fda6d0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/logs/hyp-es955-11108992ff71/2026-10-19T10-16-49.573Z_ds_err_1_12433.log",
+      "sizeBytes": 40,
+      "sha256": "4142d30f12577094e68bdfbc17dae9be593ced0ffcd184ced029834da6a537ac",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/master.stderr.log",
+      "sizeBytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/master.stdout.log",
+      "sizeBytes": 10302,
+      "sha256": "641522d82ed3cfa85b71e5856162f5c68c3ebec1e28d6d7023e221127ad8e34c",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-114076.jsonl",
+      "sizeBytes": 268955,
+      "sha256": "3b5241ac56d0b3a4d067aa30869d173ffd65815ca747ccca9ada7adbead0c7f2",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-115776.jsonl",
+      "sizeBytes": 1368309,
+      "sha256": "319bb15df9cb92017b2dbb8fe078ecc2904294dd88442263d7d89e4e44631bac",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-118304.jsonl",
+      "sizeBytes": 269494,
+      "sha256": "678303a2419b54643a5aeed5d0ef19a7198722fb849b2da8f6ab02632d13fe2f",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-41412.jsonl",
+      "sizeBytes": 268490,
+      "sha256": "60a80e9e71c21879f7352f5875fd120aa9159f307cb3abc9d484541508e91228",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-43900.jsonl",
+      "sizeBytes": 1232720,
+      "sha256": "7bfaea05bf468044590babbf10037e3ee204e345205acca648c7403a5d6fd022",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-4428.jsonl",
+      "sizeBytes": 389385,
+      "sha256": "9870539d50e955ec87429383e13f16c55b1f409b451e5afd04b9fdc4f2e13c89",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-49304.jsonl",
+      "sizeBytes": 361285,
+      "sha256": "14922efcce8ebe3ff47575479ef67bff98b327a2ee8800a0fa2aaf4565397fc4",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-58688.jsonl",
+      "sizeBytes": 274138,
+      "sha256": "2abfb52b12ed214df527c68c5d2fdfca38a5d85f306ee175c275776422efec7a",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-65040.jsonl",
+      "sizeBytes": 480368,
+      "sha256": "30c2255e6b22f5f3d34848dad4067b6481b0dba66ed45a72387d11e3875bf509",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-72688.jsonl",
+      "sizeBytes": 5770003,
+      "sha256": "575b5899c3658aa733374c5c6065a05ce4aed4a3214d9c21e5cbac3a3c59e3bb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-75096.jsonl",
+      "sizeBytes": 269014,
+      "sha256": "fe390f5346524a51abc9b5649196bbaa8c1de1222e9ccb91df481b560dec9548",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-97500.jsonl",
+      "sizeBytes": 268362,
+      "sha256": "d7d037c8d6683f1ba0d2e15f0b39ba2c73d0d4b0204e18ae1005d549fbe215fd",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/observer/worker-97808.jsonl",
+      "sizeBytes": 326189,
+      "sha256": "b087b259ed0a04e540f95b4ce329d69f7e82838b00073e0f64467ff72346e886",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/package.json",
+      "sizeBytes": 2396,
+      "sha256": "9f035801acd00ac688794486e3a557cf2837a80db6bdcd59463f9b89e9bb748f",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/report.json",
+      "sizeBytes": 47234657,
+      "sha256": "33608da4dd82572e204543fe0f5f0492a337faee9e2306ce4ca88d945ff14619",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/build/indexer/helpers/elastic-routes.js",
+      "sizeBytes": 17677,
+      "sha256": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/build/indexer/launcher.js",
+      "sizeBytes": 1946,
+      "sha256": "72f3fbfdd0c83ea7f1542b90a9e010f2fc9e4a08cea67eaa8578f0cd312decd7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/build/indexer/modules/loader.js",
+      "sizeBytes": 7708,
+      "sha256": "6f56a030d78ffa6b1916248313d62a27aeae301082efd25ee7eaad62d8b22963",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/build/indexer/modules/master.js",
+      "sizeBytes": 84036,
+      "sha256": "4ddfcb8a02c793947e807c94aff62c8abb93210929e0b4aff00be2f8997fd836",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/build/indexer/modules/queueMonitor.js",
+      "sizeBytes": 5758,
+      "sha256": "860863abdef6cb73e2af87d55cfc9120565c63deea7dbd7dfd18a6b6a4a23ccd",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/build/indexer/workers/hyperionWorker.js",
+      "sizeBytes": 11235,
+      "sha256": "938e8d711ecc9135e36cd04345219bc0659d772cc798e6f6342baf3b074ed101",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/build/indexer/workers/indexer.js",
+      "sizeBytes": 6784,
+      "sha256": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/build/indexer/workers/state-reader.js",
+      "sizeBytes": 40918,
+      "sha256": "5834a7697f384beaa2c8b413ddccab7fa085cb34d3d9a92ffd62e09590045332",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/package-lock.json",
+      "sizeBytes": 126283,
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/scripts/qualification/es955-worker-fixture.ps1",
+      "sizeBytes": 14084,
+      "sha256": "f27ac582b264332f6319fe57199b89d8fb4e631d37604933fd72b8a6729817ce",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/scripts/qualification/es955-worker-observer.mjs",
+      "sizeBytes": 17953,
+      "sha256": "4bc49da681244a7d383203152c95bb5632c7ae36b4eb6c235780c3ea086967d0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/scripts/qualification/es955-workers.ts",
+      "sizeBytes": 35212,
+      "sha256": "a9cd063ac24198caa714e6838cf5053eef337a0135461360acd66ac2fa4a27b2",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/src/indexer/helpers/elastic-routes.ts",
+      "sizeBytes": 22066,
+      "sha256": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/src/indexer/modules/loader.ts",
+      "sizeBytes": 8584,
+      "sha256": "fcb636ff00198b213ebbd5e789063c7144b99696f21d620b57d995340efbffb7",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/src/indexer/modules/master.ts",
+      "sizeBytes": 90247,
+      "sha256": "7a90727a00aa963097206df36cd04ca45604a334ed4ca58cb2e09602650b7272",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/src/indexer/modules/queueMonitor.ts",
+      "sizeBytes": 6296,
+      "sha256": "5de2a7c4efe5e040bb5a9c13240e49d6bb86aa55a95d89d436f398a54e354acb",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/src/indexer/workers/hyperionWorker.ts",
+      "sizeBytes": 12824,
+      "sha256": "b2b56a6287d9c23ba2f34dafad3952d35b51f4b4a5e53e0884f8009516dcdbe0",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/src/indexer/workers/indexer.ts",
+      "sizeBytes": 7279,
+      "sha256": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/sources/src/indexer/workers/state-reader.ts",
+      "sizeBytes": 43372,
+      "sha256": "6d91cd0b4c0b1b607dc7d41d1b85dec0156592164eb9c82ad180efbbb2d6cc93",
+      "role": "development/control evidence; excluded from final totals",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/development/es198-workers-pilot6/symlinks.json",
+      "sizeBytes": 708,
+      "sha256": "f3fdb43ad1ce869a3c88753b69e5ec3d0f5353393044289c24e63dfb617495ff",
+      "role": "owned relative log-link metadata; no extractable symlinks",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5"
+    },
+    {
+      "path": "runs/final/control/config/chain.json",
+      "sizeBytes": 2074,
+      "sha256": "73d0970e7d5bee9d0257529627db0f43dc9c3a8e05bf27f2834d97c8bd1ded5a",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/config/connections.json",
+      "sizeBytes": 965,
+      "sha256": "42d6e657594d8b406bd36d7d391a0b7431d6c7fda713abb69b3ded6f5d3745c5",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/logs/hyp-es955-3f738f459ef8/2026-10-19T10-36-32.907Z_ds_err_1_10129.log",
+      "sizeBytes": 40,
+      "sha256": "4a5af7a6a5e37e0c2608f506a0599c482805c30cff43196cdeaaef092e9ff9ad",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/master.stderr.log",
+      "sizeBytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/master.stdout.log",
+      "sizeBytes": 15744,
+      "sha256": "a32d87718b4168822bf11a0f96e0b0f0ea804fb6dc6c476b74f16b8f726c95f4",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-116872.jsonl",
+      "sizeBytes": 399329,
+      "sha256": "0ac26ecf9944c5b2a982b97068e926d4f6bbfd6437229cc6e403e300a8c354f9",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-117288.jsonl",
+      "sizeBytes": 939311,
+      "sha256": "8196c7177681d82594957ccffe5c22b28cc1cb63ee49304bd038a39768ef5fcf",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-120708.jsonl",
+      "sizeBytes": 691360,
+      "sha256": "9d72e78fca9f53a9db0932d419143f93a1b4441d2b1df35cf76a2afb1f62b00a",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-123192.jsonl",
+      "sizeBytes": 784899,
+      "sha256": "0c1fb8487c174887b9e5705f5af9ee8221dbcd66973a14ae724a70837cf2b59c",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-27252.jsonl",
+      "sizeBytes": 398441,
+      "sha256": "196cdc36b12a56cfb8bfd3e17db1c03ec42d01012feac75f6ed47b720d0f31a8",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-37416.jsonl",
+      "sizeBytes": 921888,
+      "sha256": "c763298c17b1fa57be5b53ea084f8e6c8eb09663e89caac304c739654cb43436",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-37872.jsonl",
+      "sizeBytes": 398353,
+      "sha256": "8395c7075b0defce7168529446c6742749c80e2b648bd8893eae3e6684999421",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-54792.jsonl",
+      "sizeBytes": 666005,
+      "sha256": "8639d5a1584ec14e7a4da9e98b3fdc5afa2151f53ce68b722d38bb38c477b161",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-63704.jsonl",
+      "sizeBytes": 402671,
+      "sha256": "72af397c6388d25b326b1910c6528a9ca38b186ca781324667cd680416278217",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-66604.jsonl",
+      "sizeBytes": 576470,
+      "sha256": "127fb131be6411bd5ee1a72ccb85f6f6369432eed3d1a06d647cad6454dc970e",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-78916.jsonl",
+      "sizeBytes": 5559514,
+      "sha256": "d0919bf295daeef5c469b70cbe755d646bab96b657aafd38efff27f6ee3ce5b0",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-84460.jsonl",
+      "sizeBytes": 398922,
+      "sha256": "a6f7f86b73d65a1c21d1f85d0b7d70f730893aaa25695e1891a0b3884489f540",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/observer/worker-92212.jsonl",
+      "sizeBytes": 398177,
+      "sha256": "e0cd04ca783c00438625de049c4b2537861e31a085c1f67bd0a77ce80ac6720a",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/package.json",
+      "sizeBytes": 2396,
+      "sha256": "9f035801acd00ac688794486e3a557cf2837a80db6bdcd59463f9b89e9bb748f",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/report.json",
+      "sizeBytes": 78919118,
+      "sha256": "839c5c232c805a12dc21be5948dfab1f5594d95a8f85de73b5a0b586fcc2498a",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/build/indexer/helpers/elastic-routes.js",
+      "sizeBytes": 17677,
+      "sha256": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/build/indexer/launcher.js",
+      "sizeBytes": 1946,
+      "sha256": "72f3fbfdd0c83ea7f1542b90a9e010f2fc9e4a08cea67eaa8578f0cd312decd7",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/build/indexer/modules/loader.js",
+      "sizeBytes": 7708,
+      "sha256": "6f56a030d78ffa6b1916248313d62a27aeae301082efd25ee7eaad62d8b22963",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/build/indexer/modules/master.js",
+      "sizeBytes": 84036,
+      "sha256": "4ddfcb8a02c793947e807c94aff62c8abb93210929e0b4aff00be2f8997fd836",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/build/indexer/modules/queueMonitor.js",
+      "sizeBytes": 5758,
+      "sha256": "860863abdef6cb73e2af87d55cfc9120565c63deea7dbd7dfd18a6b6a4a23ccd",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/build/indexer/workers/hyperionWorker.js",
+      "sizeBytes": 11235,
+      "sha256": "938e8d711ecc9135e36cd04345219bc0659d772cc798e6f6342baf3b074ed101",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/build/indexer/workers/indexer.js",
+      "sizeBytes": 6784,
+      "sha256": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/build/indexer/workers/state-reader.js",
+      "sizeBytes": 41894,
+      "sha256": "8d7eef750fa6bd6f713c388ba043022e4a5915bea09c96c55a7ad2083608ad56",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/package-lock.json",
+      "sizeBytes": 126283,
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/scripts/qualification/es955-worker-fixture.ps1",
+      "sizeBytes": 14084,
+      "sha256": "f27ac582b264332f6319fe57199b89d8fb4e631d37604933fd72b8a6729817ce",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/scripts/qualification/es955-worker-observer.mjs",
+      "sizeBytes": 17953,
+      "sha256": "4bc49da681244a7d383203152c95bb5632c7ae36b4eb6c235780c3ea086967d0",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/scripts/qualification/es955-workers.ts",
+      "sizeBytes": 35459,
+      "sha256": "9f9c8b344994971249c0a3ff95ad52daf7a9f6616cf959d6ab1062cd6c65eeac",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/src/indexer/helpers/elastic-routes.ts",
+      "sizeBytes": 22066,
+      "sha256": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/src/indexer/modules/loader.ts",
+      "sizeBytes": 8584,
+      "sha256": "fcb636ff00198b213ebbd5e789063c7144b99696f21d620b57d995340efbffb7",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/src/indexer/modules/master.ts",
+      "sizeBytes": 90247,
+      "sha256": "7a90727a00aa963097206df36cd04ca45604a334ed4ca58cb2e09602650b7272",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/src/indexer/modules/queueMonitor.ts",
+      "sizeBytes": 6296,
+      "sha256": "5de2a7c4efe5e040bb5a9c13240e49d6bb86aa55a95d89d436f398a54e354acb",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/src/indexer/workers/hyperionWorker.ts",
+      "sizeBytes": 12824,
+      "sha256": "b2b56a6287d9c23ba2f34dafad3952d35b51f4b4a5e53e0884f8009516dcdbe0",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/src/indexer/workers/indexer.ts",
+      "sizeBytes": 7279,
+      "sha256": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/sources/src/indexer/workers/state-reader.ts",
+      "sizeBytes": 44374,
+      "sha256": "7a70b3dc295bef25af248a48794137b8daf21b89b3e57c0929e7c6228e8ff93f",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/control/symlinks.json",
+      "sizeBytes": 708,
+      "sha256": "bb6f3b03a2450a4a2422fe91287162d3b2390e1ddd80f560cb2abdc9d674ef5e",
+      "role": "owned relative log-link metadata; no extractable symlinks",
+      "status": "passed",
+      "fixtureRun": "0f3b9900c42a"
+    },
+    {
+      "path": "runs/final/profile/config/chain.json",
+      "sizeBytes": 2074,
+      "sha256": "39b959a4372ceda2a625fd03514a284c8aa3b67847b3f02d2d08ef92722186cf",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/config/connections.json",
+      "sizeBytes": 965,
+      "sha256": "1ac8bfcec3ab84e55cd92f3af6cfaff28c525a9e85d47c4dc9ccf1798747cc3f",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/logs/hyp-es955-b4d89a99897e/2026-10-19T10-48-17.196Z_ds_err_1_10301.log",
+      "sizeBytes": 40,
+      "sha256": "755e5eccd2cbe84ee12ccc7332a45dd17f453c951531caa1ff070f03d5fa2860",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/master.stderr.log",
+      "sizeBytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/master.stdout.log",
+      "sizeBytes": 15829,
+      "sha256": "13faeda3899e0768a8601814901cc6ee7060ca88180bb15c0ff9735dc2b4cc86",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-10692.cpuprofile",
+      "sizeBytes": 806616,
+      "sha256": "a10b8207dd51f3e38e993f34853eeba6caa347e4a7d0e294afe75745f5536e5d",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-10692.jsonl",
+      "sizeBytes": 673268,
+      "sha256": "9e2c56720aa4db9b2aa5719a6c7459aa3912810d9a9081308edbcb95ecfdc1ec",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-113036.cpuprofile",
+      "sizeBytes": 714522,
+      "sha256": "7d9656fefc4d100e36832e4b95052437b700393003b7d48aefcc57d2e0195cba",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-113036.jsonl",
+      "sizeBytes": 408701,
+      "sha256": "f8c0527a0328cc576d36fbcd65cb728e2ee3e0d6b6053c5f2ccb94e14216962d",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-114604.cpuprofile",
+      "sizeBytes": 418269,
+      "sha256": "d62e17211fb087affd602d2376cd91363275365d2e8e103207e768eb02c53324",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-114604.jsonl",
+      "sizeBytes": 857760,
+      "sha256": "550cb1cf51fdde609c0e03e85cbf47d0798ef0d5817860d244b5b49b4b1a6730",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-116324.cpuprofile",
+      "sizeBytes": 738458,
+      "sha256": "4a166d956416befb2c8ce82f4dfca10cf00c6807c6668b338b80685d1b3e7508",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-116324.jsonl",
+      "sizeBytes": 408179,
+      "sha256": "9674e09b5e1fc035b77045e82f93693b20e3fd848202ac781b979783d8eef2d5",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-117532.cpuprofile",
+      "sizeBytes": 861948,
+      "sha256": "9a138f67e0f5d0377279b660b75eeb5621f9ef791e4c3bdf3100a0aba4560808",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-117532.jsonl",
+      "sizeBytes": 582084,
+      "sha256": "477704049324bd5cbf2555cb7cac154158acf7be91174a0a0bcc8687f79440a6",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-123192.cpuprofile",
+      "sizeBytes": 745572,
+      "sha256": "3b52972205df9e3c1550ba759281b361d9b2e8428b4adbfd4700fe2d9e42096a",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-123192.jsonl",
+      "sizeBytes": 927325,
+      "sha256": "22ecfab7f216b61fe442901383f2681f4e6a3d656ae3dc4bef7caebc96af94cb",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-46020.cpuprofile",
+      "sizeBytes": 676345,
+      "sha256": "2f9565141146c81fe496a516bef9ae37159a7d2bd688c6fdcae3363238a842a4",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-46020.jsonl",
+      "sizeBytes": 408550,
+      "sha256": "31e569efa60dc37e3b6afbcb82aaf776f79eceed2d2d1f07dcefd66241783792",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-48172.cpuprofile",
+      "sizeBytes": 758738,
+      "sha256": "03dde3fd8b16bd5ff1fa455b466e6e49a7592737933d8543a194ad4dcfe36d80",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-48172.jsonl",
+      "sizeBytes": 954760,
+      "sha256": "85ca8ec746510c7ed1d3dee83bc84baa68696937671838530c8bd3d3250c58da",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-60204.cpuprofile",
+      "sizeBytes": 709182,
+      "sha256": "875026a0d4b4ec1741afd5f80988f445bf8518a7354d52a819d42eb2180dcb33",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-60204.jsonl",
+      "sizeBytes": 407906,
+      "sha256": "0b2fdaf2672abcb03d9d197e1f7665671e2d8fb96058d62c5d7581dfb5cd9431",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-69076.cpuprofile",
+      "sizeBytes": 611628,
+      "sha256": "65300a28290db1a3b4a5bbb1c6c9d20ead4154819bec03c8e3b39af911ada3dd",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-69076.jsonl",
+      "sizeBytes": 5727440,
+      "sha256": "fc6563bf36950d1e313563c7e98476831fbefe910a41f78c970693a436dc89cc",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-84664.cpuprofile",
+      "sizeBytes": 428262,
+      "sha256": "3e653c07477fc1d43b3851e3ec80327c174807fc94e2dd59a1e926aa85174a4a",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-84664.jsonl",
+      "sizeBytes": 694918,
+      "sha256": "5c7ccdc38833e8c1666b6af1fbed5d22de0e22c16c7edcf2d5ed982d947801f7",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-86612.cpuprofile",
+      "sizeBytes": 707670,
+      "sha256": "ed0af7668fdc5a1f13b23356f400098ffc3b24283b5c6413aefce4b725790af2",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-86612.jsonl",
+      "sizeBytes": 407581,
+      "sha256": "0432a813ab6a59a483347c1838f26d3763f0a0c1f0772d399776e3222818cc21",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-86776.cpuprofile",
+      "sizeBytes": 714045,
+      "sha256": "f921d192e6a5144e69fac7c96897ff97979873b0006eda7d3938eafbf9c1cdad",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/observer/worker-86776.jsonl",
+      "sizeBytes": 412376,
+      "sha256": "2be94416f564e0703426918d9fe1466e47f7e60ef9676d337d1b9b56f41c4d1f",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/package.json",
+      "sizeBytes": 2396,
+      "sha256": "9f035801acd00ac688794486e3a557cf2837a80db6bdcd59463f9b89e9bb748f",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/report.json",
+      "sizeBytes": 78766033,
+      "sha256": "1ef1068659f12dc9d5bddc2db6a017487cdff766e8faca30e311eb0ed2c83696",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/build/indexer/helpers/elastic-routes.js",
+      "sizeBytes": 17677,
+      "sha256": "04cecbaf39510aadfa2bc6aa8dff84b70d18638deca2133d56ba24b378609fe1",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/build/indexer/launcher.js",
+      "sizeBytes": 1946,
+      "sha256": "72f3fbfdd0c83ea7f1542b90a9e010f2fc9e4a08cea67eaa8578f0cd312decd7",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/build/indexer/modules/loader.js",
+      "sizeBytes": 7708,
+      "sha256": "6f56a030d78ffa6b1916248313d62a27aeae301082efd25ee7eaad62d8b22963",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/build/indexer/modules/master.js",
+      "sizeBytes": 84036,
+      "sha256": "4ddfcb8a02c793947e807c94aff62c8abb93210929e0b4aff00be2f8997fd836",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/build/indexer/modules/queueMonitor.js",
+      "sizeBytes": 5758,
+      "sha256": "860863abdef6cb73e2af87d55cfc9120565c63deea7dbd7dfd18a6b6a4a23ccd",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/build/indexer/workers/hyperionWorker.js",
+      "sizeBytes": 11235,
+      "sha256": "938e8d711ecc9135e36cd04345219bc0659d772cc798e6f6342baf3b074ed101",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/build/indexer/workers/indexer.js",
+      "sizeBytes": 6784,
+      "sha256": "a9943f07bfbb2ac8c708c95b59fddc4f8530e29e8bce67593c6f398aa418cbea",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/build/indexer/workers/state-reader.js",
+      "sizeBytes": 41894,
+      "sha256": "8d7eef750fa6bd6f713c388ba043022e4a5915bea09c96c55a7ad2083608ad56",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/package-lock.json",
+      "sizeBytes": 126283,
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/scripts/qualification/es955-worker-fixture.ps1",
+      "sizeBytes": 14084,
+      "sha256": "f27ac582b264332f6319fe57199b89d8fb4e631d37604933fd72b8a6729817ce",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/scripts/qualification/es955-worker-observer.mjs",
+      "sizeBytes": 17953,
+      "sha256": "4bc49da681244a7d383203152c95bb5632c7ae36b4eb6c235780c3ea086967d0",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/scripts/qualification/es955-workers.ts",
+      "sizeBytes": 35459,
+      "sha256": "9f9c8b344994971249c0a3ff95ad52daf7a9f6616cf959d6ab1062cd6c65eeac",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/src/indexer/helpers/elastic-routes.ts",
+      "sizeBytes": 22066,
+      "sha256": "89a429f09dd6828cb42926a36b3b054c4f1e8336c418b29a7699a64f605e4855",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/src/indexer/modules/loader.ts",
+      "sizeBytes": 8584,
+      "sha256": "fcb636ff00198b213ebbd5e789063c7144b99696f21d620b57d995340efbffb7",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/src/indexer/modules/master.ts",
+      "sizeBytes": 90247,
+      "sha256": "7a90727a00aa963097206df36cd04ca45604a334ed4ca58cb2e09602650b7272",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/src/indexer/modules/queueMonitor.ts",
+      "sizeBytes": 6296,
+      "sha256": "5de2a7c4efe5e040bb5a9c13240e49d6bb86aa55a95d89d436f398a54e354acb",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/src/indexer/workers/hyperionWorker.ts",
+      "sizeBytes": 12824,
+      "sha256": "b2b56a6287d9c23ba2f34dafad3952d35b51f4b4a5e53e0884f8009516dcdbe0",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/src/indexer/workers/indexer.ts",
+      "sizeBytes": 7279,
+      "sha256": "e33a64836d5902d7861c99ae7a245fa0d77fe748b5ddf77d96febf91247404c9",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/sources/src/indexer/workers/state-reader.ts",
+      "sizeBytes": 44374,
+      "sha256": "7a70b3dc295bef25af248a48794137b8daf21b89b3e57c0929e7c6228e8ff93f",
+      "role": "passed final full-worker run; exact bytes",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "runs/final/profile/symlinks.json",
+      "sizeBytes": 708,
+      "sha256": "cd780985c146a639b88733089e3e6d1c38a7a7769d7ab0ec170b7f56652c36c8",
+      "role": "owned relative log-link metadata; no extractable symlinks",
+      "status": "passed",
+      "fixtureRun": "b589bebb697a"
+    },
+    {
+      "path": "sources/supporting/.bun-version",
+      "sizeBytes": 7,
+      "sha256": "731a55a8711fdbb2f162c23615f240fcd3fa355719180f62bb45dc9861b82ad4",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/.github/workflows/build.yml",
+      "sizeBytes": 3323,
+      "sha256": "ca3d85e2998d5f23c0672964a0506b9f4e6c30706e4df8fc08f358ed995fb5f3",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/package.json",
+      "sizeBytes": 2396,
+      "sha256": "9f035801acd00ac688794486e3a557cf2837a80db6bdcd59463f9b89e9bb748f",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/scripts/qualification/check-worker-cleanup.ps1",
+      "sizeBytes": 12951,
+      "sha256": "352df77e61323146c754af89c76decf48f1449b68077c1863b22e5e3be9828f3",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/scripts/qualification/check-worker-observer.mjs",
+      "sizeBytes": 12242,
+      "sha256": "b5f119af0b498fec30ed0e4cb066e294635f16e6152d27ce508703fed5a8b745",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/scripts/qualification/es955-replica-fixture.ps1",
+      "sizeBytes": 9760,
+      "sha256": "b588f7854c5a3893bcca89dff322c88f2404f766358f0b11f5cf2d96740c10f8",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/scripts/qualification/fixture/worker-nodeos-config.ini",
+      "sizeBytes": 766,
+      "sha256": "acec604fc880eb0945aa620f75bb5ac46a6dd71c9e29a8248f174285ec12f7da",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/scripts/qualification/tsconfig.json",
+      "sizeBytes": 461,
+      "sha256": "0adc0c42b595b98694adea27925562b34889e90e3702dc9b9b1d794e0929a40b",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/tests/e2e/nodeos/genesis.json",
+      "sizeBytes": 842,
+      "sha256": "da6ce4ecfd4b9c8b593a8e7ccd74c12423f429056468149b5c3f2d44017e0b7f",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/tests/unit/elastic-settlement-recovery.test.ts",
+      "sizeBytes": 6103,
+      "sha256": "5fd6fd030f5c0b2f1e581ee853477b44996f7714458942eaac72626d542ff9cb",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/tests/unit/es955-workers.test.ts",
+      "sizeBytes": 2816,
+      "sha256": "021dc84caba27eab9bae53d8be15977fd5b2357e7491a4d70231d15be0166b6c",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/tests/unit/module-loader-import.test.ts",
+      "sizeBytes": 5920,
+      "sha256": "d96bcaa244fb5a74c329855f78c4ed5f57ac253a1db0e8b3cb63f4488d7751c1",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "sources/supporting/tests/unit/state-reader-backpressure.test.ts",
+      "sizeBytes": 11781,
+      "sha256": "4b8ad9bd7dd69377de8635f285a9abc8e795482f7e54ee8a88666cfe2ba49e5b",
+      "role": "supporting source at archive freeze; not represented as measured unless separately hashed by a run"
+    },
+    {
+      "path": "validation/es198-host.json",
+      "sizeBytes": 248,
+      "sha256": "b43c4be3cbca41d747582928b95bd531212394fbe86b31a561f576da57b4c738",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-observer-profile-cap-review.log",
+      "sizeBytes": 331,
+      "sha256": "f85217d5a84da32561ec7911a3d1136459f9b91b9cab693cb0b805f9995fdcd2",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-observer-profile-cap-review.ts",
+      "sizeBytes": 1694,
+      "sha256": "9c7454d917fe2f79c2da7a6422208dd4279268d7dea2804844be8bd9c92b67eb",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-active-close-green.log",
+      "sizeBytes": 1015,
+      "sha256": "199b967d8bd7125457c937e6b8b4864615f87051968db781a5fe2af2879d8220",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-active-close-red-final.log",
+      "sizeBytes": 4877,
+      "sha256": "4fd29bd33850dc277424316519d9ac076ef63652be9dda8953cf9ce6db869ed0",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-active-close-red.log",
+      "sizeBytes": 4819,
+      "sha256": "0fb1707f996f3b261b6ae38a233e67f6e63da72e7405e223bbd570b49674dd5c",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-active-close-spec-review.log",
+      "sizeBytes": 184,
+      "sha256": "506810de84a841bd834960ed304715ea96d1d9b0e7c6ce4bb127ebd21fb00caf",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-active-close-spec-review.ts",
+      "sizeBytes": 2993,
+      "sha256": "a5cdb84a74d5df678824a39a979445756831fff4a867db8300983264aa4feda0",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-confirm-replay-audit-20261019.md",
+      "sizeBytes": 14578,
+      "sha256": "3c2dacf00e6d6009da6127d9e0f1a64231d8b3d969a4c44e3b225e4d05bfb7f4",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-drain-green-final.log",
+      "sizeBytes": 676,
+      "sha256": "25b1b2f2494681eaf77846d5d6d6d52a6920651288214a6c73d8fad081523d7b",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-drain-green.log",
+      "sizeBytes": 535,
+      "sha256": "1b2b5a784c552be28ad50e3d118ddd6b21819e62643396d26d0dad5e8f501f2e",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-drain-pr.md",
+      "sizeBytes": 1025,
+      "sha256": "ccac3920bcb3bba8d262c85ee5231863888f782c7e88cd66543e85b6bcbb539a",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-drain-red-final.log",
+      "sizeBytes": 5812,
+      "sha256": "4f6feb37f1c90344f1f3d7ae76674fd3d9f17e20c695c6a8e8d95af1698da6a6",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-drain-red.log",
+      "sizeBytes": 5185,
+      "sha256": "7220b3c3f85620176a0a5d502b4701bef7b0a6c9878760434993586d8e0f61f7",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-drain-unit-full.log",
+      "sizeBytes": 42534,
+      "sha256": "640526d7b76d698a2ee27711f45fdde90c040ab12af6f54be28d5800d7c79fc4",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-lifecycle-green.log",
+      "sizeBytes": 711,
+      "sha256": "8e24a0bc6b89cf6e912fc393445263baae29772fcb99214e31426b4c051090fb",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-lifecycle-red.log",
+      "sizeBytes": 2646,
+      "sha256": "e27ab1f6144f7c5f231b17f53e0af9f835eea94e3dcefbf5cd46c8b252009be6",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-onconnect-spec-green-a454e07.log",
+      "sizeBytes": 66,
+      "sha256": "c629180f56e0f5ca31f76f18350eae9589bf5f5bc65258a1911397a234450463",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-onconnect-spec-red.log",
+      "sizeBytes": 916,
+      "sha256": "bf8ad9c4d5ec08f5656bfb4c7af10cd5a479ae5f9f2ab7d934d4474d81808f6b",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-reader-onconnect-spec-red.ts",
+      "sizeBytes": 1608,
+      "sha256": "46b0d8146582304a7ddaa1329f2cc1f11a80ebcaa1b9fc0599de49bf5eb5bc38",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-worker-cleanup-audit.json",
+      "sizeBytes": 214519,
+      "sha256": "5192f78df6884e3847dcb27583859c4041a679d7dcfaedf29e0cc66c3275ee08",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-worker-cleanup-root-audit.json",
+      "sizeBytes": 214521,
+      "sha256": "3ea673a059ad929cfedd74cd0982e5f6c0e3ccc273089cee0954c14c04b714ba",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-worker-cleanup-standards.json",
+      "sizeBytes": 214519,
+      "sha256": "330c04be7f48adbf2eb804efacf6c8f952fb61b4075e93a5c3167fe31c64db0b",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-worker-observer-smoke.mjs",
+      "sizeBytes": 8041,
+      "sha256": "1dd4f04bdd6e3e3145630976a408eb0f610567ad001fa3eaf3c5a655a32daa63",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-worker-query-oracle-review.log",
+      "sizeBytes": 68,
+      "sha256": "bf266c847d013ac541afe654575f05e88d0ff86c3a1adce564b6941f750febc0",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-worker-query-oracle-review.ts",
+      "sizeBytes": 459,
+      "sha256": "6c80cda5740a623be9c1e1b25c8f96ec804072a6b8f9f094b8d1e518f70399ff",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-actual-profile-validation-review.log",
+      "sizeBytes": 125,
+      "sha256": "9e274022b3faa59272ea4156542a38123799eed702f633d0278a0398f3c4398e",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-actual-profile-validation-review.ts",
+      "sizeBytes": 1176,
+      "sha256": "d71fd569c8ff91bde8ff525180234594f66d03596a9e20ffda9b629edc92a371",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-final-metrics.json",
+      "sizeBytes": 141326,
+      "sha256": "cd34cc36b9bc19c363f730571105f1c4df36b6d48ff098bf0765b70d13bfecfe",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-host.json",
+      "sizeBytes": 3222,
+      "sha256": "527341b240ac79a336e48e2b1e983561dbe61e3c135a76cbd7ce38d078f03705",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-independent-control-audit.json",
+      "sizeBytes": 4149,
+      "sha256": "39dee15e0709dd503946f50b32a6eaa400a7ca6bd0bb1761a9da84cc893eaf3d",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-native-bun143.json",
+      "sizeBytes": 2519,
+      "sha256": "eb11ca09b172c720b36898e8b32cd0f8c5c83e4a08bf14241076a7b27ecb58eb",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-native-node24.json",
+      "sizeBytes": 968,
+      "sha256": "e10bd96294f3501ebeae79e50a9fc0cfce13f02e5c7cce00f6e815958972bcf3",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-native-probe.mjs",
+      "sizeBytes": 449,
+      "sha256": "e7d134084622fa76a408c0af7cdd747682ebce2392a2bc0e0e583340f68ddf24",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-node-control-final.log",
+      "sizeBytes": 39,
+      "sha256": "18619c5e211a649b4bd1581ffbd8bb18d654f537b9fdceef0d6cbd03bef5c10e",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-node-profile-final.log",
+      "sizeBytes": 39,
+      "sha256": "55e01a400cd31512ccb001b60f203236234d6769818f458872252731b99d9427",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-observer-ci-final.json",
+      "sizeBytes": 333,
+      "sha256": "a6d31b89288b1649b00fd20291fa9cfda36018b58ccc11198bb02d945adf578f",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-package-final.log",
+      "sizeBytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-package-helper-check.json",
+      "sizeBytes": 536,
+      "sha256": "bf85b98a6aab257ecb79771516bd925868621363ce396ff1b8367f4ca1f92105",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-package-symlink-smoke.json",
+      "sizeBytes": 566,
+      "sha256": "d6d8cee79d600d806e2576614c6e252157daca638a1dbabf10c72defc64dd1bc",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-package.py",
+      "sizeBytes": 43497,
+      "sha256": "68418d193dd68a365f6c7ba505762474fdf429a72c235fdd83c934227bd38d78",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-pilot1.log",
+      "sizeBytes": 532,
+      "sha256": "7da11952ec6b3d073df4be201e6d4255e2b5d17107b9c039c5761409601d0296",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-pilot2.log",
+      "sizeBytes": 532,
+      "sha256": "44f9df062b3974224c64cca4464884694838dcf94a9f8753c5a814d5a6a6eec5",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-pilot3.log",
+      "sizeBytes": 9286,
+      "sha256": "290b89ceb8fa21aafaf81e4f1f5974efaed9ff521aec8a6b45a57c2f367e8144",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-pilot4.log",
+      "sizeBytes": 586,
+      "sha256": "c412b9dd0777a70283ce2ef2c7a4b059553c816c9285ba9766b48575374c47aa",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-pilot5.log",
+      "sizeBytes": 39,
+      "sha256": "7aa3c36e3a9dfb5129065fe0ec55d679ecbbaa1d1efa855b3cc3c1d1e6fec538",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-pilot6.log",
+      "sizeBytes": 39,
+      "sha256": "f39381e13d3f2b4dc9114501a68c1c630507286066d8dc3da19202b3673f7efe",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-postflight-array-smoke.json",
+      "sizeBytes": 738,
+      "sha256": "62d08a3d370859b4ef47c8b651ddc6bf6ea36d2d52443b5060049a79e188075a",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-postflight-array-smoke.ps1",
+      "sizeBytes": 1519,
+      "sha256": "d2cced854684ea3dca8ae3ec96b290a7fd267b93480befca3a6d45a1cc3940a0",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-postflight-original.ps1",
+      "sizeBytes": 14107,
+      "sha256": "19e46a13a767d3a20cf7722b5dff0b5749942fb294d898eb4f3a18162ede8847",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-postflight.ps1",
+      "sizeBytes": 14496,
+      "sha256": "c110b820ac3154cd082f3e540d0a0fdb17575ce24b99c94cc6efa42ac286269e",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-pr.md",
+      "sizeBytes": 1260,
+      "sha256": "9b3c044a824548bfbcc1ac981b5fc63055dede80fb7dd927069dc285736b499b",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-preflight-not-ready.log",
+      "sizeBytes": 660,
+      "sha256": "80eca1ae571daf8e22d8606511e2128c769d461d201ff6531a725ae29ddbfba6",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-read-metrics.py",
+      "sizeBytes": 495,
+      "sha256": "3d5eff12a5cf8897b12dfd15bed2870b1df67e4889d623c0b33b766fbe08c748",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-spec-followup-counterexamples.log",
+      "sizeBytes": 124,
+      "sha256": "e499c3e791c87a5d7a716423ea858132b55b7c28527bf9025b1136f322b5773c",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-spec-followup-counterexamples.ts",
+      "sizeBytes": 1357,
+      "sha256": "1be38cb870f7097ff1c027e3ce62003bba917ef640d39cc0d692a4df0953cce3",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-tools-finalize.py",
+      "sizeBytes": 8328,
+      "sha256": "fcbf9faf06eb9d377ccade58d6e88a793db3f8ab1038db4fbecd27e7b188fdc5",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-transport-probe.mjs",
+      "sizeBytes": 967,
+      "sha256": "02e2946640d40e5f01acadedce9e46bda0b6e93d43ea0756769e1e828d838214",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-transport.json",
+      "sizeBytes": 222,
+      "sha256": "27c5cc62951d37c8b4fc9171605aba45a97e600c747662f093ad6822a6fe4786",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-unit-final.log",
+      "sizeBytes": 43144,
+      "sha256": "047e079bcbb42c79c517cae124e492899d82718b82bbded61efa3b1350b8570e",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    },
+    {
+      "path": "validation/es198-workers-unit-final2.log",
+      "sizeBytes": 43404,
+      "sha256": "4d342fa37fd8b4588106f18a6874bdfd99dfb0da4ff1ac6cf0d5f41d4bffd37c",
+      "role": "root, reviewer, native-probe, test or packaging evidence"
+    }
+  ]
+}

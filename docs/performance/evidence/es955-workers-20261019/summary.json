@@ -1,0 +1,4700 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/eosrio/hyperion-history-api/issues/198",
+  "measuredDate": "2026-10-19",
+  "runs": [
+    {
+      "mode": "control",
+      "status": "passed",
+      "startedAt": "2026-10-19T10:36:29.935Z",
+      "completedAt": "2026-10-19T10:43:32.938Z",
+      "runtime": {
+        "node": "v24.19.0",
+        "bun": null
+      },
+      "fixtureRun": "0f3b9900c42a",
+      "chain": "hyp-es955-3f738f459ef8",
+      "actionIndex": "hyp-es955-3f738f459ef8-action-v1-000001",
+      "nominalPhaseSecondsTotal": 300,
+      "targetPublisherActionsPerSecond": 200,
+      "publisherConfirmedActions": 48260,
+      "exactPhysicalCopies": [
+        {
+          "node": "bpykazrwQ2a9fUAaTq42Cg",
+          "count": 48260,
+          "exactSources": true,
+          "sha256": "02c8c886dee51533c0fcb16941c6504c87c4cf30b99916307d1dbce724e15dc9"
+        },
+        {
+          "node": "eBHUteSPTHO6AgjMguDLHw",
+          "count": 48260,
+          "exactSources": true,
+          "sha256": "02c8c886dee51533c0fcb16941c6504c87c4cf30b99916307d1dbce724e15dc9"
+        }
+      ],
+      "actionReceiptCopyHistogram": [
+        {
+          "status": 201,
+          "total": 2,
+          "successful": 1,
+          "failed": 0,
+          "itemReceipts": 290
+        },
+        {
+          "status": 201,
+          "total": 2,
+          "successful": 2,
+          "failed": 0,
+          "itemReceipts": 47970
+        }
+      ],
+      "phases": [
+        {
+          "name": "warmup",
+          "startedAt": 1792406199305,
+          "elapsedMs": 10331.4514,
+          "confirmedFrom": 0,
+          "confirmedTo": 1940,
+          "snapshots": 10,
+          "queries": 0,
+          "bulks": 194,
+          "publisherConfirmedActions": 1940,
+          "achievedPublisherActionsPerSecond": 187.77613375793453,
+          "queriesCompletedInWindow": 0,
+          "queryWallMs": {
+            "count": 0
+          },
+          "queryServerTookMs": {
+            "count": 0
+          },
+          "bulkResponsesCompletedInWindow": 194,
+          "bulkProxyWallMs": {
+            "count": 194,
+            "min": 19.162799999998242,
+            "mean": 58.324117525773154,
+            "p50": 51.442299999999705,
+            "p95": 86.83340000000098,
+            "p99": 109.76759999999992,
+            "max": 1143.6494999999995
+          },
+          "bulkServerTookMs": {
+            "count": 194,
+            "min": 0.0,
+            "mean": 52.577319587628864,
+            "p50": 0.0,
+            "p95": 200.0,
+            "p99": 200.0,
+            "max": 1200.0
+          }
+        },
+        {
+          "name": "write",
+          "startedAt": 1792406209642,
+          "elapsedMs": 100831.063,
+          "confirmedFrom": 1940,
+          "confirmedTo": 20820,
+          "snapshots": 98,
+          "queries": 0,
+          "bulks": 2072,
+          "publisherConfirmedActions": 18880,
+          "achievedPublisherActionsPerSecond": 187.24388534910122,
+          "queriesCompletedInWindow": 0,
+          "queryWallMs": {
+            "count": 0
+          },
+          "queryServerTookMs": {
+            "count": 0
+          },
+          "bulkResponsesCompletedInWindow": 2072,
+          "bulkProxyWallMs": {
+            "count": 2072,
+            "min": 14.085899999990943,
+            "mean": 52.179392422780104,
+            "p50": 52.89260000000104,
+            "p95": 86.02874000000153,
+            "p99": 105.94045099999403,
+            "max": 186.28779999999824
+          },
+          "bulkServerTookMs": {
+            "count": 2072,
+            "min": 0.0,
+            "mean": 50.38610038610039,
+            "p50": 0.0,
+            "p95": 200.0,
+            "p99": 200.0,
+            "max": 200.0
+          }
+        },
+        {
+          "name": "read",
+          "startedAt": 1792406314403,
+          "elapsedMs": 100823.38540000001,
+          "confirmedFrom": 20820,
+          "confirmedTo": 20820,
+          "snapshots": 98,
+          "queries": 896,
+          "bulks": 393,
+          "publisherConfirmedActions": 0,
+          "achievedPublisherActionsPerSecond": 0.0,
+          "queriesCompletedInWindow": 896,
+          "queryWallMs": {
+            "count": 896,
+            "min": 5.13369999997667,
+            "mean": 7.4727848214284744,
+            "p50": 6.74615000000631,
+            "p95": 9.90802499998972,
+            "p99": 12.619715000012302,
+            "max": 88.97960000000603
+          },
+          "queryServerTookMs": {
+            "count": 896,
+            "min": 3.0,
+            "mean": 4.248883928571429,
+            "p50": 4.0,
+            "p95": 6.0,
+            "p99": 8.049999999999955,
+            "max": 83.0
+          },
+          "bulkResponsesCompletedInWindow": 393,
+          "bulkProxyWallMs": {
+            "count": 393,
+            "min": 13.659100000018952,
+            "mean": 22.537712977099105,
+            "p50": 22.205099999991944,
+            "p95": 29.19847999999183,
+            "p99": 50.54206799999786,
+            "max": 84.22729999999865
+          },
+          "bulkServerTookMs": {
+            "count": 393,
+            "min": 0.0,
+            "mean": 19.84732824427481,
+            "p50": 0.0,
+            "p95": 200.0,
+            "p99": 200.0,
+            "max": 200.0
+          }
+        },
+        {
+          "name": "mixed",
+          "startedAt": 1792406415227,
+          "elapsedMs": 100614.80820000003,
+          "confirmedFrom": 20820,
+          "confirmedTo": 39740,
+          "snapshots": 98,
+          "queries": 928,
+          "bulks": 2042,
+          "publisherConfirmedActions": 18920,
+          "achievedPublisherActionsPerSecond": 188.0438907401306,
+          "queriesCompletedInWindow": 928,
+          "queryWallMs": {
+            "count": 928,
+            "min": 4.182399999990594,
+            "mean": 5.9080688577595195,
+            "p50": 5.661250000004657,
+            "p95": 7.122539999961736,
+            "p99": 10.172492999996187,
+            "max": 41.27820000000065
+          },
+          "queryServerTookMs": {
+            "count": 928,
+            "min": 2.0,
+            "mean": 3.1842672413793105,
+            "p50": 3.0,
+            "p95": 4.0,
+            "p99": 7.460000000000036,
+            "max": 38.0
+          },
+          "bulkResponsesCompletedInWindow": 2042,
+          "bulkProxyWallMs": {
+            "count": 2042,
+            "min": 12.75089999998454,
+            "mean": 53.12391630754182,
+            "p50": 53.81105000001844,
+            "p95": 89.54997500000026,
+            "p99": 107.92300199998856,
+            "max": 153.77629999999772
+          },
+          "bulkServerTookMs": {
+            "count": 2042,
+            "min": 0.0,
+            "mean": 50.15034280117532,
+            "p50": 0.0,
+            "p95": 200.0,
+            "p99": 200.0,
+            "max": 207.0
+          }
+        }
+      ],
+      "queryWallMsAll": {
+        "count": 2687,
+        "min": 4.172299999976531,
+        "mean": 6.560088872348601,
+        "p50": 6.0644000000320375,
+        "p95": 9.402829999993262,
+        "p99": 15.583287999985584,
+        "max": 88.97960000000603
+      },
+      "bulkProxyWallMsAll": {
+        "count": 5441,
+        "min": 12.75089999998454,
+        "mean": 66.67385693806324,
+        "p50": 50.40169999998761,
+        "p95": 86.38169999999809,
+        "p99": 107.68009999998324,
+        "max": 16339.588600000017
+      },
+      "bulkResponses": 5441,
+      "queueThresholds": {
+        "readers": 1,
+        "ds_queues": 1,
+        "ds_threads": 1,
+        "ds_pool_size": 1,
+        "indexing_queues": 1,
+        "ad_idx_queues": 1,
+        "dyn_idx_queues": 1,
+        "max_autoscale": 0,
+        "batch_size": 8,
+        "resume_trigger": 16,
+        "auto_scale_trigger": 1000000,
+        "max_queue_limit": 64,
+        "block_queue_limit": 64,
+        "polling_interval": 500,
+        "routing_mode": "round_robin"
+      },
+      "queuePeaks": {
+        "hyp-es955-3f738f459ef8:blocks:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-3f738f459ef8:ds_pool:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-3f738f459ef8:index_abis:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-3f738f459ef8:index_actions:1": {
+          "messages": 2880,
+          "ready": 2848,
+          "unacked": 32
+        },
+        "hyp-es955-3f738f459ef8:index_blocks:1": {
+          "messages": 78,
+          "ready": 46,
+          "unacked": 32
+        },
+        "hyp-es955-3f738f459ef8:index_deltas:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-3f738f459ef8:index_dynamic:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-3f738f459ef8:index_generic:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-3f738f459ef8:index_state:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-3f738f459ef8:live_blocks": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        }
+      },
+      "backpressureWaves": [
+        {
+          "wave": 0,
+          "gateDurationMs": 16287,
+          "pauseToPendingRangeMs": 3887,
+          "pendingRangeHeldMs": 2117,
+          "releaseToResumeMs": 13737,
+          "resumeToRangeRequestMs": 1,
+          "pausedReaderRangeRequestsBeforeRelease": 0,
+          "liveProgressEventsWhilePaused": 11,
+          "heldProxyRequests": 2,
+          "publisherConfirmedActionDelta": 3080,
+          "pendingRange": {
+            "first_block": 817,
+            "last_block": 825
+          },
+          "queuesAtRelease": [
+            {
+              "name": "hyp-es955-3f738f459ef8:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_actions:1",
+              "messages": 1920,
+              "ready": 1888,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_blocks:1",
+              "messages": 54,
+              "ready": 22,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ],
+          "queuesAfterDrain": [
+            {
+              "name": "hyp-es955-3f738f459ef8:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_actions:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ]
+        },
+        {
+          "wave": 1,
+          "gateDurationMs": 13391,
+          "pauseToPendingRangeMs": 1739,
+          "pendingRangeHeldMs": 1803,
+          "releaseToResumeMs": 16710,
+          "resumeToRangeRequestMs": 1,
+          "pausedReaderRangeRequestsBeforeRelease": 0,
+          "liveProgressEventsWhilePaused": 7,
+          "heldProxyRequests": 2,
+          "publisherConfirmedActionDelta": 2540,
+          "pendingRange": {
+            "first_block": 873,
+            "last_block": 881
+          },
+          "queuesAtRelease": [
+            {
+              "name": "hyp-es955-3f738f459ef8:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_actions:1",
+              "messages": 960,
+              "ready": 928,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_blocks:1",
+              "messages": 54,
+              "ready": 22,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ],
+          "queuesAfterDrain": [
+            {
+              "name": "hyp-es955-3f738f459ef8:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_actions:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ]
+        },
+        {
+          "wave": 2,
+          "gateDurationMs": 15313,
+          "pauseToPendingRangeMs": 4141,
+          "pendingRangeHeldMs": 1945,
+          "releaseToResumeMs": 14177,
+          "resumeToRangeRequestMs": 0,
+          "pausedReaderRangeRequestsBeforeRelease": 0,
+          "liveProgressEventsWhilePaused": 12,
+          "heldProxyRequests": 2,
+          "publisherConfirmedActionDelta": 2900,
+          "pendingRange": {
+            "first_block": 937,
+            "last_block": 945
+          },
+          "queuesAtRelease": [
+            {
+              "name": "hyp-es955-3f738f459ef8:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_actions:1",
+              "messages": 1920,
+              "ready": 1888,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_blocks:1",
+              "messages": 61,
+              "ready": 29,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ],
+          "queuesAfterDrain": [
+            {
+              "name": "hyp-es955-3f738f459ef8:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_actions:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-3f738f459ef8:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ]
+        }
+      ],
+      "workers": {
+        "processCount": 13,
+        "cpuProfileCount": 0,
+        "byRole": {
+          "continuous_reader": {
+            "processes": [
+              {
+                "pid": 120708,
+                "workerId": "2",
+                "sampleCount": 417,
+                "observedFrom": "2026-10-19T10:36:32.963Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419846.2444,
+                "cpuUserMicros": 1062000,
+                "cpuSystemMicros": 734000,
+                "peakRssBytes": 112828416,
+                "firstRssBytes": 111804416,
+                "lastRssBytes": 99119104,
+                "peakHeapUsedBytes": 37905744,
+                "lastHeapUsedBytes": 31492288,
+                "perIntervalLoopMeanMs": {
+                  "count": 416,
+                  "min": 29.79328,
+                  "mean": 30.569722872396422,
+                  "p50": 30.656512,
+                  "p95": 30.859136,
+                  "p99": 30.920012800000002,
+                  "max": 31.12686933333333
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 416,
+                  "min": 31.227903,
+                  "mean": 31.984402692307693,
+                  "p50": 31.899647,
+                  "p95": 32.702463,
+                  "p99": 34.0721654,
+                  "max": 37.617663
+                }
+              }
+            ],
+            "cpuProfileCount": 0,
+            "processCount": 1,
+            "sampleCount": 417,
+            "cpuUserMicros": 1062000,
+            "cpuSystemMicros": 734000,
+            "largestObservedProcessRssBytes": 112828416
+          },
+          "deserializer": {
+            "processes": [
+              {
+                "pid": 37416,
+                "workerId": "3",
+                "sampleCount": 417,
+                "observedFrom": "2026-10-19T10:36:32.972Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419838.292,
+                "cpuUserMicros": 859000,
+                "cpuSystemMicros": 1235000,
+                "peakRssBytes": 111214592,
+                "firstRssBytes": 110481408,
+                "lastRssBytes": 97681408,
+                "peakHeapUsedBytes": 37103904,
+                "lastHeapUsedBytes": 31155472,
+                "perIntervalLoopMeanMs": {
+                  "count": 416,
+                  "min": 28.106752,
+                  "mean": 30.59754886606345,
+                  "p50": 30.665472,
+                  "p95": 30.849664,
+                  "p99": 30.93400361290323,
+                  "max": 30.972416
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 416,
+                  "min": 31.113215,
+                  "mean": 32.028789153846155,
+                  "p50": 31.924222999999998,
+                  "p95": 32.899071,
+                  "p99": 34.717695000000006,
+                  "max": 37.715967
+                }
+              },
+              {
+                "pid": 117288,
+                "workerId": "4",
+                "sampleCount": 417,
+                "observedFrom": "2026-10-19T10:36:32.977Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419833.6447,
+                "cpuUserMicros": 1016000,
+                "cpuSystemMicros": 1235000,
+                "peakRssBytes": 115449856,
+                "firstRssBytes": 110256128,
+                "lastRssBytes": 98942976,
+                "peakHeapUsedBytes": 40748136,
+                "lastHeapUsedBytes": 31141568,
+                "perIntervalLoopMeanMs": {
+                  "count": 416,
+                  "min": 28.6081024,
+                  "mean": 30.602504891014362,
+                  "p50": 30.66752,
+                  "p95": 30.852446967741933,
+                  "p99": 30.918032516129035,
+                  "max": 30.966272
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 416,
+                  "min": 31.096831,
+                  "mean": 32.020597153846154,
+                  "p50": 31.916031,
+                  "p95": 33.034239,
+                  "p99": 34.3261174,
+                  "max": 37.912575
+                }
+              }
+            ],
+            "cpuProfileCount": 0,
+            "processCount": 2,
+            "sampleCount": 834,
+            "cpuUserMicros": 1875000,
+            "cpuSystemMicros": 2470000,
+            "largestObservedProcessRssBytes": 115449856
+          },
+          "ds_pool_worker": {
+            "processes": [
+              {
+                "pid": 63704,
+                "workerId": "12",
+                "sampleCount": 417,
+                "observedFrom": "2026-10-19T10:36:33.028Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419782.3071,
+                "cpuUserMicros": 828000,
+                "cpuSystemMicros": 797000,
+                "peakRssBytes": 119877632,
+                "firstRssBytes": 119808000,
+                "lastRssBytes": 97046528,
+                "peakHeapUsedBytes": 36691824,
+                "lastHeapUsedBytes": 30205336,
+                "perIntervalLoopMeanMs": {
+                  "count": 416,
+                  "min": 27.9330816,
+                  "mean": 30.679770734449207,
+                  "p50": 30.691072,
+                  "p95": 30.86016,
+                  "p99": 30.93738363870968,
+                  "max": 31.016448
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 416,
+                  "min": 30.785535,
+                  "mean": 31.956872846153846,
+                  "p50": 31.883263,
+                  "p95": 32.571391,
+                  "p99": 32.919551,
+                  "max": 38.633471
+                }
+              }
+            ],
+            "cpuProfileCount": 0,
+            "processCount": 1,
+            "sampleCount": 417,
+            "cpuUserMicros": 828000,
+            "cpuSystemMicros": 797000,
+            "largestObservedProcessRssBytes": 119877632
+          },
+          "ingestor": {
+            "processes": [
+              {
+                "pid": 27252,
+                "workerId": "9",
+                "sampleCount": 417,
+                "observedFrom": "2026-10-19T10:36:33.003Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419807.9555,
+                "cpuUserMicros": 1016000,
+                "cpuSystemMicros": 813000,
+                "peakRssBytes": 110362624,
+                "firstRssBytes": 110292992,
+                "lastRssBytes": 94789632,
+                "peakHeapUsedBytes": 35946576,
+                "lastHeapUsedBytes": 29458096,
+                "perIntervalLoopMeanMs": {
+                  "count": 416,
+                  "min": 29.9974656,
+                  "mean": 30.68534425287027,
+                  "p50": 30.691584,
+                  "p95": 30.852224,
+                  "p99": 30.9379584,
+                  "max": 31.04512
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 416,
+                  "min": 31.162367,
+                  "mean": 31.974359615384614,
+                  "p50": 31.883263,
+                  "p95": 32.538623,
+                  "p99": 33.046527,
+                  "max": 39.157759
+                }
+              },
+              {
+                "pid": 37872,
+                "workerId": "8",
+                "sampleCount": 417,
+                "observedFrom": "2026-10-19T10:36:33.007Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419803.5445,
+                "cpuUserMicros": 984000,
+                "cpuSystemMicros": 766000,
+                "peakRssBytes": 110809088,
+                "firstRssBytes": 110804992,
+                "lastRssBytes": 95109120,
+                "peakHeapUsedBytes": 35740464,
+                "lastHeapUsedBytes": 29468168,
+                "perIntervalLoopMeanMs": {
+                  "count": 416,
+                  "min": 30.056448,
+                  "mean": 30.68518661098729,
+                  "p50": 30.687611870967743,
+                  "p95": 30.852855741935482,
+                  "p99": 30.933128258064514,
+                  "max": 30.998016
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 416,
+                  "min": 31.178751,
+                  "mean": 31.988262384615386,
+                  "p50": 31.866879,
+                  "p95": 32.538623,
+                  "p99": 32.9875446,
+                  "max": 40.140799
+                }
+              },
+              {
+                "pid": 54792,
+                "workerId": "6",
+                "sampleCount": 418,
+                "observedFrom": "2026-10-19T10:36:32.991Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419819.4996,
+                "cpuUserMicros": 1719000,
+                "cpuSystemMicros": 1312000,
+                "peakRssBytes": 116281344,
+                "firstRssBytes": 110891008,
+                "lastRssBytes": 100888576,
+                "peakHeapUsedBytes": 40889064,
+                "lastHeapUsedBytes": 33850592,
+                "perIntervalLoopMeanMs": {
+                  "count": 417,
+                  "min": 27.1532032,
+                  "mean": 30.178637830798774,
+                  "p50": 30.239154424242425,
+                  "p95": 30.8028416,
+                  "p99": 30.88236544,
+                  "max": 30.976
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 417,
+                  "min": 31.162367,
+                  "mean": 32.57630227098321,
+                  "p50": 32.161791,
+                  "p95": 34.832383,
+                  "p99": 35.586047,
+                  "max": 40.140799
+                }
+              },
+              {
+                "pid": 66604,
+                "workerId": "5",
+                "sampleCount": 418,
+                "observedFrom": "2026-10-19T10:36:32.978Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419832.7901,
+                "cpuUserMicros": 3078000,
+                "cpuSystemMicros": 2344000,
+                "peakRssBytes": 117964800,
+                "firstRssBytes": 110829568,
+                "lastRssBytes": 117903360,
+                "peakHeapUsedBytes": 40854024,
+                "lastHeapUsedBytes": 34747112,
+                "perIntervalLoopMeanMs": {
+                  "count": 417,
+                  "min": 26.854040216216216,
+                  "mean": 29.562586841637234,
+                  "p50": 29.64784096969697,
+                  "p95": 30.8467712,
+                  "p99": 30.944768,
+                  "max": 31.000064
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 417,
+                  "min": 31.162367,
+                  "mean": 33.08310614628297,
+                  "p50": 32.538623,
+                  "p95": 35.192831,
+                  "p99": 35.94911643999999,
+                  "max": 40.108031
+                }
+              },
+              {
+                "pid": 84460,
+                "workerId": "11",
+                "sampleCount": 417,
+                "observedFrom": "2026-10-19T10:36:33.021Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419789.4537,
+                "cpuUserMicros": 1016000,
+                "cpuSystemMicros": 578000,
+                "peakRssBytes": 110751744,
+                "firstRssBytes": 110747648,
+                "lastRssBytes": 95313920,
+                "peakHeapUsedBytes": 35626248,
+                "lastHeapUsedBytes": 29518720,
+                "perIntervalLoopMeanMs": {
+                  "count": 416,
+                  "min": 28.7752192,
+                  "mean": 30.684423781998646,
+                  "p50": 30.694912000000002,
+                  "p95": 30.84804129032258,
+                  "p99": 30.93061615483871,
+                  "max": 31.00672
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 416,
+                  "min": 31.096831,
+                  "mean": 31.99869930769231,
+                  "p50": 31.883263,
+                  "p95": 32.571391,
+                  "p99": 34.35724700000001,
+                  "max": 40.173567
+                }
+              },
+              {
+                "pid": 92212,
+                "workerId": "7",
+                "sampleCount": 417,
+                "observedFrom": "2026-10-19T10:36:32.995Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419815.6647,
+                "cpuUserMicros": 797000,
+                "cpuSystemMicros": 891000,
+                "peakRssBytes": 110522368,
+                "firstRssBytes": 110510080,
+                "lastRssBytes": 95379456,
+                "peakHeapUsedBytes": 35782872,
+                "lastHeapUsedBytes": 30147760,
+                "perIntervalLoopMeanMs": {
+                  "count": 416,
+                  "min": 28.5523968,
+                  "mean": 30.6843705545895,
+                  "p50": 30.694912,
+                  "p95": 30.850944000000002,
+                  "p99": 30.91982369032258,
+                  "max": 31.008256
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 416,
+                  "min": 31.113215,
+                  "mean": 31.975029153846155,
+                  "p50": 31.866879,
+                  "p95": 32.542719000000005,
+                  "p99": 33.290648600000004,
+                  "max": 40.140799
+                }
+              },
+              {
+                "pid": 116872,
+                "workerId": "10",
+                "sampleCount": 417,
+                "observedFrom": "2026-10-19T10:36:33.015Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419797.4767,
+                "cpuUserMicros": 563000,
+                "cpuSystemMicros": 984000,
+                "peakRssBytes": 110993408,
+                "firstRssBytes": 110923776,
+                "lastRssBytes": 95051776,
+                "peakHeapUsedBytes": 35945392,
+                "lastHeapUsedBytes": 29525536,
+                "perIntervalLoopMeanMs": {
+                  "count": 416,
+                  "min": 28.6769152,
+                  "mean": 30.684323322715993,
+                  "p50": 30.694912,
+                  "p95": 30.851001806451613,
+                  "p99": 30.93702606451613,
+                  "max": 31.00672
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 416,
+                  "min": 31.080447,
+                  "mean": 32.00236207692308,
+                  "p50": 31.899647,
+                  "p95": 32.587775,
+                  "p99": 34.22207900000003,
+                  "max": 40.140799
+                }
+              }
+            ],
+            "cpuProfileCount": 0,
+            "processCount": 7,
+            "sampleCount": 2921,
+            "cpuUserMicros": 9173000,
+            "cpuSystemMicros": 7688000,
+            "largestObservedProcessRssBytes": 117964800
+          },
+          "master": {
+            "processes": [
+              {
+                "pid": 78916,
+                "workerId": null,
+                "sampleCount": 420,
+                "observedFrom": "2026-10-19T10:36:30.098Z",
+                "flushedAt": "2026-10-19T10:43:32.691Z",
+                "sampledElapsedMs": 422772.4579,
+                "cpuUserMicros": 5031000,
+                "cpuSystemMicros": 3484000,
+                "peakRssBytes": 167112704,
+                "firstRssBytes": 125263872,
+                "lastRssBytes": 162779136,
+                "peakHeapUsedBytes": 58722680,
+                "lastHeapUsedBytes": 39117656,
+                "perIntervalLoopMeanMs": {
+                  "count": 419,
+                  "min": 28.389024914285717,
+                  "mean": 29.714762278311465,
+                  "p50": 29.753856,
+                  "p95": 30.216502303030303,
+                  "p99": 30.38192422787879,
+                  "max": 31.715195870967744
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 419,
+                  "min": 30.998527,
+                  "mean": 32.44450298090692,
+                  "p50": 31.997951,
+                  "p95": 34.445720599999994,
+                  "p99": 35.61619356,
+                  "max": 86.573055
+                }
+              }
+            ],
+            "cpuProfileCount": 0,
+            "processCount": 1,
+            "sampleCount": 420,
+            "cpuUserMicros": 5031000,
+            "cpuSystemMicros": 3484000,
+            "largestObservedProcessRssBytes": 167112704
+          },
+          "reader": {
+            "processes": [
+              {
+                "pid": 123192,
+                "workerId": "1",
+                "sampleCount": 417,
+                "observedFrom": "2026-10-19T10:36:32.967Z",
+                "flushedAt": "2026-10-19T10:43:32.692Z",
+                "sampledElapsedMs": 419842.2163,
+                "cpuUserMicros": 1094000,
+                "cpuSystemMicros": 1250000,
+                "peakRssBytes": 117383168,
+                "firstRssBytes": 114982912,
+                "lastRssBytes": 98529280,
+                "peakHeapUsedBytes": 41171136,
+                "lastHeapUsedBytes": 30869544,
+                "perIntervalLoopMeanMs": {
+                  "count": 416,
+                  "min": 29.253632,
+                  "mean": 30.584072834348447,
+                  "p50": 30.664241548387096,
+                  "p95": 30.854272,
+                  "p99": 30.9246464,
+                  "max": 30.971392
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 416,
+                  "min": 30.998527,
+                  "mean": 31.980149153846153,
+                  "p50": 31.883263,
+                  "p95": 32.710655,
+                  "p99": 34.33922460000001,
+                  "max": 37.552127
+                }
+              }
+            ],
+            "cpuProfileCount": 0,
+            "processCount": 1,
+            "sampleCount": 417,
+            "cpuUserMicros": 1094000,
+            "cpuSystemMicros": 1250000,
+            "largestObservedProcessRssBytes": 117383168
+          }
+        },
+        "interpretation": "Process CPU deltas and individual RSS peaks are observed values. Interval loop p99 distributions are not a combined global p99. CPU profiles show sampled self time, including idle/runtime frames; they do not establish causality or wall-time capacity."
+      },
+      "serverNodes": [
+        {
+          "id": "bpykazrwQ2a9fUAaTq42Cg",
+          "name": "hyp-es955-replicas-0f3b9900c42a-a",
+          "roles": [
+            "data",
+            "ingest",
+            "master"
+          ],
+          "samples": 542,
+          "heapUsedBytes": {
+            "initial": 150994944,
+            "final": 546109016,
+            "peak": 730832096
+          },
+          "heapMaxBytes": 1073741824,
+          "peakIndexingPressureCurrentBytes": 78625,
+          "processCpuMillisDelta": 84410,
+          "pressureRejectionDeltas": {
+            "coordinating": 0,
+            "primary": 0,
+            "replica": 0
+          },
+          "gc": {
+            "young": {
+              "countDelta": 24,
+              "timeMillisDelta": 492
+            },
+            "G1 Concurrent GC": {
+              "countDelta": 2,
+              "timeMillisDelta": 21
+            },
+            "old": {
+              "countDelta": 0,
+              "timeMillisDelta": 0
+            }
+          },
+          "breakers": {
+            "eql_sequence": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 536870912
+            },
+            "fielddata": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 429496729
+            },
+            "request": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 55568,
+              "limitBytes": 644245094
+            },
+            "inflight_requests": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 24032,
+              "limitBytes": 1073741824
+            },
+            "model_inference": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 536870912
+            },
+            "parent": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 735474384,
+              "limitBytes": 1020054732
+            }
+          },
+          "threadPools": {
+            "write": {
+              "peakActive": 2,
+              "peakQueue": 6,
+              "rejectedDelta": 0,
+              "completedDelta": 28001
+            },
+            "write_coordination": {
+              "peakActive": 1,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 5441
+            },
+            "search": {
+              "peakActive": 2,
+              "peakQueue": 1,
+              "rejectedDelta": 0,
+              "completedDelta": 19378
+            },
+            "search_coordination": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 5521
+            }
+          },
+          "mergesDeltas": {
+            "total": 48,
+            "total_time_in_millis": 689,
+            "total_throttled_time_in_millis": 0
+          },
+          "refreshDeltas": {
+            "total": 1592,
+            "total_time_in_millis": 7014
+          },
+          "flushDeltas": {
+            "total": 37,
+            "total_time_in_millis": 41818
+          }
+        },
+        {
+          "id": "ljxiaXYQQBW7Slvta9MLGg",
+          "name": "hyp-es955-replicas-0f3b9900c42a-witness",
+          "roles": [
+            "master"
+          ],
+          "samples": 542,
+          "heapUsedBytes": {
+            "initial": 135580248,
+            "final": 125829120,
+            "peak": 370461272
+          },
+          "heapMaxBytes": 536870912,
+          "peakIndexingPressureCurrentBytes": 0,
+          "processCpuMillisDelta": 5910,
+          "pressureRejectionDeltas": {
+            "coordinating": 0,
+            "primary": 0,
+            "replica": 0
+          },
+          "gc": {
+            "young": {
+              "countDelta": 1,
+              "timeMillisDelta": 81
+            },
+            "G1 Concurrent GC": {
+              "countDelta": 0,
+              "timeMillisDelta": 0
+            },
+            "old": {
+              "countDelta": 0,
+              "timeMillisDelta": 0
+            }
+          },
+          "breakers": {
+            "inflight_requests": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 544,
+              "limitBytes": 536870912
+            },
+            "request": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 322122547
+            },
+            "fielddata": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 214748364
+            },
+            "eql_sequence": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 268435456
+            },
+            "model_inference": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 268435456
+            },
+            "parent": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 370461272,
+              "limitBytes": 510027366
+            }
+          },
+          "threadPools": {
+            "write": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 0
+            },
+            "write_coordination": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 0
+            },
+            "search": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 10
+            },
+            "search_coordination": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 0
+            }
+          },
+          "mergesDeltas": {
+            "total": 0,
+            "total_time_in_millis": 0,
+            "total_throttled_time_in_millis": 0
+          },
+          "refreshDeltas": {
+            "total": 0,
+            "total_time_in_millis": 0
+          },
+          "flushDeltas": {
+            "total": 0,
+            "total_time_in_millis": 0
+          }
+        },
+        {
+          "id": "eBHUteSPTHO6AgjMguDLHw",
+          "name": "hyp-es955-replicas-0f3b9900c42a-b",
+          "roles": [
+            "data",
+            "ingest",
+            "master"
+          ],
+          "samples": 542,
+          "heapUsedBytes": {
+            "initial": 205290912,
+            "final": 395205320,
+            "peak": 735366240
+          },
+          "heapMaxBytes": 1073741824,
+          "peakIndexingPressureCurrentBytes": 38384,
+          "processCpuMillisDelta": 67370,
+          "pressureRejectionDeltas": {
+            "coordinating": 0,
+            "primary": 0,
+            "replica": 0
+          },
+          "gc": {
+            "young": {
+              "countDelta": 21,
+              "timeMillisDelta": 501
+            },
+            "G1 Concurrent GC": {
+              "countDelta": 2,
+              "timeMillisDelta": 59
+            },
+            "old": {
+              "countDelta": 0,
+              "timeMillisDelta": 0
+            }
+          },
+          "breakers": {
+            "eql_sequence": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 536870912
+            },
+            "fielddata": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 429496729
+            },
+            "request": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 33816,
+              "limitBytes": 644245094
+            },
+            "inflight_requests": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 34225,
+              "limitBytes": 1073741824
+            },
+            "model_inference": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 536870912
+            },
+            "parent": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 735366240,
+              "limitBytes": 1020054732
+            }
+          },
+          "threadPools": {
+            "write": {
+              "peakActive": 2,
+              "peakQueue": 6,
+              "rejectedDelta": 0,
+              "completedDelta": 27992
+            },
+            "write_coordination": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 0
+            },
+            "search": {
+              "peakActive": 2,
+              "peakQueue": 1,
+              "rejectedDelta": 0,
+              "completedDelta": 15898
+            },
+            "search_coordination": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 2736
+            }
+          },
+          "mergesDeltas": {
+            "total": 48,
+            "total_time_in_millis": 737,
+            "total_throttled_time_in_millis": 0
+          },
+          "refreshDeltas": {
+            "total": 1594,
+            "total_time_in_millis": 7102
+          },
+          "flushDeltas": {
+            "total": 37,
+            "total_time_in_millis": 43420
+          }
+        }
+      ],
+      "server": {
+        "name": "hyp-es955-replicas-0f3b9900c42a-a",
+        "cluster_name": "hyperion-es198-0f3b9900c42a",
+        "cluster_uuid": "kKJxyoAxQmKBEJptA4HDNQ",
+        "version": {
+          "number": "9.5.5",
+          "build_flavor": "default",
+          "build_type": "docker",
+          "build_hash": "48acba663b09e70b115dd879329141506c377890",
+          "build_date": "2026-09-30T22:12:03.984586187Z",
+          "build_snapshot": false,
+          "lucene_version": "10.5.1",
+          "minimum_wire_compatibility_version": "8.19.0",
+          "minimum_index_compatibility_version": "8.0.0"
+        },
+        "tagline": "You Know, for Search"
+      },
+      "cleanup": [
+        {
+          "name": "workers",
+          "ok": true,
+          "shutdown": {
+            "kind": "shutdown",
+            "sequence": 15969,
+            "at": 1792406612866,
+            "isoAt": "2026-10-19T10:43:32.866Z",
+            "monotonicMs": 422770.9502,
+            "pid": 78916,
+            "role": "master",
+            "workerId": null,
+            "success": true,
+            "requestId": null,
+            "children": 12,
+            "exited": 12,
+            "forced": [],
+            "unresolved": []
+          }
+        },
+        {
+          "name": "publisher",
+          "ok": true
+        },
+        {
+          "name": "broker",
+          "ok": true
+        },
+        {
+          "name": "client",
+          "ok": true
+        }
+      ],
+      "recoverySampleCount": 3,
+      "postflight": {
+        "file": "fixture/es198-workers-state4-postflight-corrected.json",
+        "status": "passed",
+        "observedProcessCount": 13,
+        "consecutiveIdleSamples": 3,
+        "emptyDurableQueuesRetained": 10
+      },
+      "fixtureCleanup": {
+        "completedAt": "2026-10-19T10:48:11.9468894Z",
+        "containersRemoved": 7,
+        "volumesRemoved": 7,
+        "remainingContainers": 0,
+        "remainingVolumes": 0,
+        "remainingNetworks": 0
+      },
+      "archivePrefix": "runs/final/control"
+    },
+    {
+      "mode": "profile",
+      "status": "passed",
+      "startedAt": "2026-10-19T10:48:14.150Z",
+      "completedAt": "2026-10-19T10:55:12.021Z",
+      "runtime": {
+        "node": "v24.19.0",
+        "bun": null
+      },
+      "fixtureRun": "b589bebb697a",
+      "chain": "hyp-es955-b4d89a99897e",
+      "actionIndex": "hyp-es955-b4d89a99897e-action-v1-000001",
+      "nominalPhaseSecondsTotal": 300,
+      "targetPublisherActionsPerSecond": 200,
+      "publisherConfirmedActions": 47700,
+      "exactPhysicalCopies": [
+        {
+          "node": "bu_JG-llQyiS5mllBIaBvg",
+          "count": 47700,
+          "exactSources": true,
+          "sha256": "66876abe919f6680a3fdf30eb1e7f71f57e2b7b23c2482ebab668d41225e025f"
+        },
+        {
+          "node": "bhbD5u_oSM6sa24ALwKK2Q",
+          "count": 47700,
+          "exactSources": true,
+          "sha256": "66876abe919f6680a3fdf30eb1e7f71f57e2b7b23c2482ebab668d41225e025f"
+        }
+      ],
+      "actionReceiptCopyHistogram": [
+        {
+          "status": 201,
+          "total": 2,
+          "successful": 1,
+          "failed": 0,
+          "itemReceipts": 281
+        },
+        {
+          "status": 201,
+          "total": 2,
+          "successful": 2,
+          "failed": 0,
+          "itemReceipts": 47419
+        }
+      ],
+      "phases": [
+        {
+          "name": "warmup",
+          "startedAt": 1792406902835,
+          "elapsedMs": 10286.159800000001,
+          "confirmedFrom": 0,
+          "confirmedTo": 1920,
+          "snapshots": 10,
+          "queries": 0,
+          "bulks": 216,
+          "publisherConfirmedActions": 1920,
+          "achievedPublisherActionsPerSecond": 186.65858175759624,
+          "queriesCompletedInWindow": 0,
+          "queryWallMs": {
+            "count": 0
+          },
+          "queryServerTookMs": {
+            "count": 0
+          },
+          "bulkResponsesCompletedInWindow": 216,
+          "bulkProxyWallMs": {
+            "count": 216,
+            "min": 21.53450000000157,
+            "mean": 60.06041805555548,
+            "p50": 54.24094999999943,
+            "p95": 92.99274999999807,
+            "p99": 115.14034000000015,
+            "max": 1328.0375999999997
+          },
+          "bulkServerTookMs": {
+            "count": 216,
+            "min": 0.0,
+            "mean": 54.629629629629626,
+            "p50": 0.0,
+            "p95": 200.0,
+            "p99": 200.0,
+            "max": 1400.0
+          }
+        },
+        {
+          "name": "write",
+          "startedAt": 1792406913127,
+          "elapsedMs": 100861.7287,
+          "confirmedFrom": 1940,
+          "confirmedTo": 20840,
+          "snapshots": 97,
+          "queries": 0,
+          "bulks": 1653,
+          "publisherConfirmedActions": 18900,
+          "achievedPublisherActionsPerSecond": 187.3852475423614,
+          "queriesCompletedInWindow": 0,
+          "queryWallMs": {
+            "count": 0
+          },
+          "queryServerTookMs": {
+            "count": 0
+          },
+          "bulkResponsesCompletedInWindow": 1653,
+          "bulkProxyWallMs": {
+            "count": 1653,
+            "min": 17.166599999996834,
+            "mean": 68.44115063520873,
+            "p50": 60.860800000009476,
+            "p95": 147.53181999999785,
+            "p99": 278.68023199999885,
+            "max": 436.43710000000283
+          },
+          "bulkServerTookMs": {
+            "count": 1653,
+            "min": 0.0,
+            "mean": 64.66122202056866,
+            "p50": 0.0,
+            "p95": 200.0,
+            "p99": 211.0,
+            "max": 415.0
+          }
+        },
+        {
+          "name": "read",
+          "startedAt": 1792407017917,
+          "elapsedMs": 100921.46440000001,
+          "confirmedFrom": 20840,
+          "confirmedTo": 20840,
+          "snapshots": 98,
+          "queries": 882,
+          "bulks": 396,
+          "publisherConfirmedActions": 0,
+          "achievedPublisherActionsPerSecond": 0.0,
+          "queriesCompletedInWindow": 882,
+          "queryWallMs": {
+            "count": 882,
+            "min": 5.089500000001863,
+            "mean": 7.880837414965855,
+            "p50": 7.313049999982468,
+            "p95": 10.535444999993341,
+            "p99": 13.140024999999582,
+            "max": 79.04769999999553
+          },
+          "queryServerTookMs": {
+            "count": 882,
+            "min": 3.0,
+            "mean": 4.605442176870748,
+            "p50": 4.0,
+            "p95": 7.0,
+            "p99": 9.0,
+            "max": 74.0
+          },
+          "bulkResponsesCompletedInWindow": 396,
+          "bulkProxyWallMs": {
+            "count": 396,
+            "min": 12.189500000007683,
+            "mean": 23.735378282828165,
+            "p50": 23.298149999995076,
+            "p95": 33.59404999999242,
+            "p99": 53.04884000001054,
+            "max": 73.96399999999267
+          },
+          "bulkServerTookMs": {
+            "count": 396,
+            "min": 0.0,
+            "mean": 21.717171717171716,
+            "p50": 0.0,
+            "p95": 200.0,
+            "p99": 200.0,
+            "max": 200.0
+          }
+        },
+        {
+          "name": "mixed",
+          "startedAt": 1792407118838,
+          "elapsedMs": 100631.79070000001,
+          "confirmedFrom": 20840,
+          "confirmedTo": 39760,
+          "snapshots": 98,
+          "queries": 923,
+          "bulks": 1998,
+          "publisherConfirmedActions": 18920,
+          "achievedPublisherActionsPerSecond": 188.01215667923117,
+          "queriesCompletedInWindow": 923,
+          "queryWallMs": {
+            "count": 923,
+            "min": 4.330300000030547,
+            "mean": 6.166654171180622,
+            "p50": 5.806099999987055,
+            "p95": 7.933019999985118,
+            "p99": 13.19305999998818,
+            "max": 33.39550000001327
+          },
+          "queryServerTookMs": {
+            "count": 923,
+            "min": 2.0,
+            "mean": 3.3217768147345614,
+            "p50": 3.0,
+            "p95": 4.0,
+            "p99": 8.779999999999973,
+            "max": 31.0
+          },
+          "bulkResponsesCompletedInWindow": 1998,
+          "bulkProxyWallMs": {
+            "count": 1998,
+            "min": 13.649899999960326,
+            "mean": 55.559491491490796,
+            "p50": 57.48464999999851,
+            "p95": 88.41493499997159,
+            "p99": 101.07975799999255,
+            "max": 163.54780000000028
+          },
+          "bulkServerTookMs": {
+            "count": 1998,
+            "min": 0.0,
+            "mean": 53.87637637637638,
+            "p50": 0.0,
+            "p95": 200.0,
+            "p99": 200.0,
+            "max": 222.0
+          }
+        }
+      ],
+      "queryWallMsAll": {
+        "count": 2622,
+        "min": 4.160699999949429,
+        "mean": 6.662088596490878,
+        "p50": 6.1230000000068685,
+        "p95": 9.62774000001518,
+        "p99": 15.33716199997463,
+        "max": 79.04769999999553
+      },
+      "bulkProxyWallMsAll": {
+        "count": 4983,
+        "min": 12.189500000007683,
+        "mean": 72.92174934778215,
+        "p50": 54.852899999998044,
+        "p95": 95.1270000000295,
+        "p99": 201.53026199999752,
+        "max": 14938.96100000001
+      },
+      "bulkResponses": 4983,
+      "queueThresholds": {
+        "readers": 1,
+        "ds_queues": 1,
+        "ds_threads": 1,
+        "ds_pool_size": 1,
+        "indexing_queues": 1,
+        "ad_idx_queues": 1,
+        "dyn_idx_queues": 1,
+        "max_autoscale": 0,
+        "batch_size": 8,
+        "resume_trigger": 16,
+        "auto_scale_trigger": 1000000,
+        "max_queue_limit": 64,
+        "block_queue_limit": 64,
+        "polling_interval": 500,
+        "routing_mode": "round_robin"
+      },
+      "queuePeaks": {
+        "hyp-es955-b4d89a99897e:blocks:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-b4d89a99897e:ds_pool:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-b4d89a99897e:index_abis:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-b4d89a99897e:index_actions:1": {
+          "messages": 2756,
+          "ready": 2724,
+          "unacked": 32
+        },
+        "hyp-es955-b4d89a99897e:index_blocks:1": {
+          "messages": 61,
+          "ready": 29,
+          "unacked": 32
+        },
+        "hyp-es955-b4d89a99897e:index_deltas:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-b4d89a99897e:index_dynamic:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-b4d89a99897e:index_generic:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-b4d89a99897e:index_state:1": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        },
+        "hyp-es955-b4d89a99897e:live_blocks": {
+          "messages": 0,
+          "ready": 0,
+          "unacked": 0
+        }
+      },
+      "backpressureWaves": [
+        {
+          "wave": 0,
+          "gateDurationMs": 14754,
+          "pauseToPendingRangeMs": 2505,
+          "pendingRangeHeldMs": 1969,
+          "releaseToResumeMs": 15192,
+          "resumeToRangeRequestMs": 0,
+          "pausedReaderRangeRequestsBeforeRelease": 0,
+          "liveProgressEventsWhilePaused": 9,
+          "heldProxyRequests": 2,
+          "publisherConfirmedActionDelta": 2780,
+          "pendingRange": {
+            "first_block": 985,
+            "last_block": 993
+          },
+          "queuesAtRelease": [
+            {
+              "name": "hyp-es955-b4d89a99897e:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_actions:1",
+              "messages": 960,
+              "ready": 928,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_blocks:1",
+              "messages": 34,
+              "ready": 2,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ],
+          "queuesAfterDrain": [
+            {
+              "name": "hyp-es955-b4d89a99897e:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_actions:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ]
+        },
+        {
+          "wave": 1,
+          "gateDurationMs": 12298,
+          "pauseToPendingRangeMs": 467,
+          "pendingRangeHeldMs": 2045,
+          "releaseToResumeMs": 12582,
+          "resumeToRangeRequestMs": 1,
+          "pausedReaderRangeRequestsBeforeRelease": 0,
+          "liveProgressEventsWhilePaused": 4,
+          "heldProxyRequests": 2,
+          "publisherConfirmedActionDelta": 2340,
+          "pendingRange": {
+            "first_block": 1041,
+            "last_block": 1049
+          },
+          "queuesAtRelease": [
+            {
+              "name": "hyp-es955-b4d89a99897e:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_actions:1",
+              "messages": 960,
+              "ready": 928,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_blocks:1",
+              "messages": 55,
+              "ready": 23,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ],
+          "queuesAfterDrain": [
+            {
+              "name": "hyp-es955-b4d89a99897e:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_actions:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ]
+        },
+        {
+          "wave": 2,
+          "gateDurationMs": 14911,
+          "pauseToPendingRangeMs": 3421,
+          "pendingRangeHeldMs": 1873,
+          "releaseToResumeMs": 14859,
+          "resumeToRangeRequestMs": 1,
+          "pausedReaderRangeRequestsBeforeRelease": 0,
+          "liveProgressEventsWhilePaused": 11,
+          "heldProxyRequests": 2,
+          "publisherConfirmedActionDelta": 2820,
+          "pendingRange": {
+            "first_block": 1097,
+            "last_block": 1105
+          },
+          "queuesAtRelease": [
+            {
+              "name": "hyp-es955-b4d89a99897e:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_actions:1",
+              "messages": 1920,
+              "ready": 1888,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_blocks:1",
+              "messages": 42,
+              "ready": 10,
+              "unacked": 32,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ],
+          "queuesAfterDrain": [
+            {
+              "name": "hyp-es955-b4d89a99897e:blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 2
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:ds_pool:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_abis:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_actions:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_blocks:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_deltas:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_dynamic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_generic:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:index_state:1",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            },
+            {
+              "name": "hyp-es955-b4d89a99897e:live_blocks",
+              "messages": 0,
+              "ready": 0,
+              "unacked": 0,
+              "consumers": 1
+            }
+          ]
+        }
+      ],
+      "workers": {
+        "processCount": 13,
+        "cpuProfileCount": 13,
+        "byRole": {
+          "continuous_reader": {
+            "processes": [
+              {
+                "pid": 84664,
+                "workerId": "2",
+                "sampleCount": 413,
+                "observedFrom": "2026-10-19T10:48:17.254Z",
+                "flushedAt": "2026-10-19T10:55:11.446Z",
+                "sampledElapsedMs": 414626.4455,
+                "cpuUserMicros": 1657000,
+                "cpuSystemMicros": 2781000,
+                "peakRssBytes": 117538816,
+                "firstRssBytes": 116236288,
+                "lastRssBytes": 103686144,
+                "peakHeapUsedBytes": 40793568,
+                "lastHeapUsedBytes": 34916808,
+                "perIntervalLoopMeanMs": {
+                  "count": 412,
+                  "min": 20.45508266666667,
+                  "mean": 20.644319302667288,
+                  "p50": 20.619946666666664,
+                  "p95": 20.867516459574468,
+                  "p99": 21.03132020561702,
+                  "max": 21.368475826086957
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 412,
+                  "min": 20.889599,
+                  "mean": 22.576435194174756,
+                  "p50": 21.266431,
+                  "p95": 30.6454518,
+                  "p99": 31.0386678,
+                  "max": 53.542911
+                },
+                "profile": {
+                  "file": "observer/worker-84664.cpuprofile",
+                  "sha256": "3e653c07477fc1d43b3851e3ec80327c174807fc94e2dd59a1e926aa85174a4a",
+                  "durationMs": 413341.516,
+                  "samples": 40093,
+                  "sampledSelfMs": 413341.346
+                }
+              }
+            ],
+            "cpuProfileCount": 1,
+            "processCount": 1,
+            "sampleCount": 413,
+            "cpuUserMicros": 1657000,
+            "cpuSystemMicros": 2781000,
+            "largestObservedProcessRssBytes": 117538816,
+            "hotFunctionsBySampledSelfTime": [
+              {
+                "function": "(idle)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 410853.063,
+                "shareOfRoleProfileSamples": 0.9939800771829876
+              },
+              {
+                "function": "(program)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 1493.581,
+                "shareOfRoleProfileSamples": 0.0036134323712198875
+              },
+              {
+                "function": "mean",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 72.904,
+                "shareOfRoleProfileSamples": 0.00017637722600342043
+              },
+              {
+                "function": "writeBuffer",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 62.608,
+                "shareOfRoleProfileSamples": 0.00015146803146085463
+              },
+              {
+                "function": "post",
+                "url": "node:inspector",
+                "line": 115,
+                "column": 7,
+                "sampledSelfMs": 47.864,
+                "shareOfRoleProfileSamples": 0.00011579775520448418
+              },
+              {
+                "function": "writeUtf8String",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 41.912,
+                "shareOfRoleProfileSamples": 0.00010139803435004056
+              },
+              {
+                "function": "writeString",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 41.257,
+                "shareOfRoleProfileSamples": 9.981338764982877e-05
+              },
+              {
+                "function": "processTimers",
+                "url": "node:internal/timers",
+                "line": 556,
+                "column": 25,
+                "sampledSelfMs": 31.534,
+                "shareOfRoleProfileSamples": 7.629045655645588e-05
+              },
+              {
+                "function": "onStreamRead",
+                "url": "node:internal/stream_base_commons",
+                "line": 166,
+                "column": 22,
+                "sampledSelfMs": 31.47,
+                "shareOfRoleProfileSamples": 7.613562084834359e-05
+              },
+              {
+                "function": "target._send",
+                "url": "node:internal/child_process",
+                "line": 803,
+                "column": 26,
+                "sampledSelfMs": 31.168,
+                "shareOfRoleProfileSamples": 7.540498985068869e-05
+              },
+              {
+                "function": "resolve",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@wharfkit/antelope/lib/antelope.js",
+                "line": 2072,
+                "column": 12,
+                "sampledSelfMs": 31.064,
+                "shareOfRoleProfileSamples": 7.51533818250062e-05
+              },
+              {
+                "function": "(garbage collector)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 30.936,
+                "shareOfRoleProfileSamples": 7.484371040878161e-05
+              },
+              {
+                "function": "",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+                "line": 255,
+                "column": 30,
+                "sampledSelfMs": 21.837,
+                "shareOfRoleProfileSamples": 5.283042746950362e-05
+              },
+              {
+                "function": "processTicksAndRejections",
+                "url": "node:internal/process/task_queues",
+                "line": 72,
+                "column": 35,
+                "sampledSelfMs": 20.965,
+                "shareOfRoleProfileSamples": 5.072079094647357e-05
+              },
+              {
+                "function": "nextTick",
+                "url": "node:internal/process/task_queues",
+                "line": 113,
+                "column": 18,
+                "sampledSelfMs": 20.734,
+                "shareOfRoleProfileSamples": 5.016193081250575e-05
+              },
+              {
+                "function": "decodeInner",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@wharfkit/antelope/lib/antelope.js",
+                "line": 1313,
+                "column": 25,
+                "sampledSelfMs": 20.657,
+                "shareOfRoleProfileSamples": 4.9975644101183144e-05
+              },
+              {
+                "function": "cpuUsage",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 20.613,
+                "shareOfRoleProfileSamples": 4.9869194551855935e-05
+              },
+              {
+                "function": "record",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+                "line": 49,
+                "column": 16,
+                "sampledSelfMs": 20.536,
+                "shareOfRoleProfileSamples": 4.968290784053333e-05
+              },
+              {
+                "function": "percentile",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 10.838,
+                "shareOfRoleProfileSamples": 2.622045944564181e-05
+              },
+              {
+                "function": "cpuUsage",
+                "url": "node:internal/process/per_thread",
+                "line": 127,
+                "column": 20,
+                "sampledSelfMs": 10.782,
+                "shareOfRoleProfileSamples": 2.608497820104355e-05
+              }
+            ]
+          },
+          "deserializer": {
+            "processes": [
+              {
+                "pid": 48172,
+                "workerId": "4",
+                "sampleCount": 414,
+                "observedFrom": "2026-10-19T10:48:17.266Z",
+                "flushedAt": "2026-10-19T10:55:11.464Z",
+                "sampledElapsedMs": 414614.8673,
+                "cpuUserMicros": 1985000,
+                "cpuSystemMicros": 2953000,
+                "peakRssBytes": 120930304,
+                "firstRssBytes": 116670464,
+                "lastRssBytes": 106229760,
+                "peakHeapUsedBytes": 44556976,
+                "lastHeapUsedBytes": 35459856,
+                "perIntervalLoopMeanMs": {
+                  "count": 413,
+                  "min": 20.485751829787237,
+                  "mean": 20.65182448074518,
+                  "p50": 20.62165333333333,
+                  "p95": 20.86160776170213,
+                  "p99": 21.04761845106383,
+                  "max": 23.223938976744186
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 413,
+                  "min": 20.873215,
+                  "mean": 22.375584162227604,
+                  "p50": 21.233663,
+                  "p95": 29.8123254,
+                  "p99": 31.12894364,
+                  "max": 48.758783
+                },
+                "profile": {
+                  "file": "observer/worker-48172.cpuprofile",
+                  "sha256": "03dde3fd8b16bd5ff1fa455b466e6e49a7592737933d8543a194ad4dcfe36d80",
+                  "durationMs": 414162.418,
+                  "samples": 40160,
+                  "sampledSelfMs": 414162.23
+                }
+              },
+              {
+                "pid": 123192,
+                "workerId": "3",
+                "sampleCount": 414,
+                "observedFrom": "2026-10-19T10:48:17.259Z",
+                "flushedAt": "2026-10-19T10:55:11.453Z",
+                "sampledElapsedMs": 414622.8951,
+                "cpuUserMicros": 2172000,
+                "cpuSystemMicros": 2625000,
+                "peakRssBytes": 117952512,
+                "firstRssBytes": 116703232,
+                "lastRssBytes": 104882176,
+                "peakHeapUsedBytes": 40672208,
+                "lastHeapUsedBytes": 35597104,
+                "perIntervalLoopMeanMs": {
+                  "count": 413,
+                  "min": 20.460652936170213,
+                  "mean": 20.654942243721063,
+                  "p50": 20.624841531914893,
+                  "p95": 20.869486025531913,
+                  "p99": 21.03356394212766,
+                  "max": 23.98890666666667
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 413,
+                  "min": 20.905983,
+                  "mean": 22.72234576997579,
+                  "p50": 21.250047,
+                  "p95": 30.6937846,
+                  "p99": 31.10928284,
+                  "max": 49.348607
+                },
+                "profile": {
+                  "file": "observer/worker-123192.cpuprofile",
+                  "sha256": "3b52972205df9e3c1550ba759281b361d9b2e8428b4adbfd4700fe2d9e42096a",
+                  "durationMs": 414170.673,
+                  "samples": 40186,
+                  "sampledSelfMs": 414170.462
+                }
+              }
+            ],
+            "cpuProfileCount": 2,
+            "processCount": 2,
+            "sampleCount": 828,
+            "cpuUserMicros": 4157000,
+            "cpuSystemMicros": 5578000,
+            "largestObservedProcessRssBytes": 120930304,
+            "hotFunctionsBySampledSelfTime": [
+              {
+                "function": "(idle)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 821273.478,
+                "shareOfRoleProfileSamples": 0.9914778034620901
+              },
+              {
+                "function": "(program)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 3388.205,
+                "shareOfRoleProfileSamples": 0.004090391496946978
+              },
+              {
+                "function": "internalModuleStat",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 420.682,
+                "shareOfRoleProfileSamples": 0.0005078659867743093
+              },
+              {
+                "function": "lstat",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 317.688,
+                "shareOfRoleProfileSamples": 0.0003835270575074683
+              },
+              {
+                "function": "readFileUtf8",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 219.166,
+                "shareOfRoleProfileSamples": 0.00026458692517716055
+              },
+              {
+                "function": "binToJson",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@eosrio/node-abieos/dist/abieos.js",
+                "line": 133,
+                "column": 12,
+                "sampledSelfMs": 113.069,
+                "shareOfRoleProfileSamples": 0.00013650191655118206
+              },
+              {
+                "function": "compileFunctionForCJSLoader",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 106.028,
+                "shareOfRoleProfileSamples": 0.0001280017087626912
+              },
+              {
+                "function": "record",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+                "line": 49,
+                "column": 16,
+                "sampledSelfMs": 105.439,
+                "shareOfRoleProfileSamples": 0.0001272906418137605
+              },
+              {
+                "function": "observeIpc",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+                "line": 131,
+                "column": 20,
+                "sampledSelfMs": 100.084,
+                "shareOfRoleProfileSamples": 0.00012082584807602885
+              },
+              {
+                "function": "wrapSafe",
+                "url": "node:internal/modules/cjs/loader",
+                "line": 1762,
+                "column": 18,
+                "sampledSelfMs": 92.711,
+                "shareOfRoleProfileSamples": 0.00011192483514824259
+              },
+              {
+                "function": "mean",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 88.209,
+                "shareOfRoleProfileSamples": 0.00010648982087984522
+              },
+              {
+                "function": "cpuUsage",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 73.86,
+                "shareOfRoleProfileSamples": 8.916707104927352e-05
+              },
+              {
+                "function": "(garbage collector)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 73.015,
+                "shareOfRoleProfileSamples": 8.814694953510298e-05
+              },
+              {
+                "function": "listOnTimeout",
+                "url": "node:internal/timers",
+                "line": 576,
+                "column": 25,
+                "sampledSelfMs": 63.095,
+                "shareOfRoleProfileSamples": 7.617108513205947e-05
+              },
+              {
+                "function": "writeBuffer",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 62.116,
+                "shareOfRoleProfileSamples": 7.498919286889621e-05
+              },
+              {
+                "function": "writeUtf8String",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 62.04,
+                "shareOfRoleProfileSamples": 7.489744229484063e-05
+              },
+              {
+                "function": "writeString",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 51.968,
+                "shareOfRoleProfileSamples": 6.273807674368597e-05
+              },
+              {
+                "function": "ipcSummary",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+                "line": 113,
+                "column": 20,
+                "sampledSelfMs": 51.928,
+                "shareOfRoleProfileSamples": 6.268978696786725e-05
+              },
+              {
+                "function": "processTimers",
+                "url": "node:internal/timers",
+                "line": 556,
+                "column": 25,
+                "sampledSelfMs": 51.896,
+                "shareOfRoleProfileSamples": 6.265115514721228e-05
+              },
+              {
+                "function": "realpathSync",
+                "url": "node:fs",
+                "line": 2772,
+                "column": 22,
+                "sampledSelfMs": 46.864,
+                "shareOfRoleProfileSamples": 5.657630134921682e-05
+              }
+            ]
+          },
+          "ds_pool_worker": {
+            "processes": [
+              {
+                "pid": 86776,
+                "workerId": "12",
+                "sampleCount": 414,
+                "observedFrom": "2026-10-19T10:48:17.338Z",
+                "flushedAt": "2026-10-19T10:55:11.464Z",
+                "sampledElapsedMs": 414542.9122,
+                "cpuUserMicros": 1219000,
+                "cpuSystemMicros": 2547000,
+                "peakRssBytes": 125317120,
+                "firstRssBytes": 125280256,
+                "lastRssBytes": 104755200,
+                "peakHeapUsedBytes": 38944280,
+                "lastHeapUsedBytes": 35070120,
+                "perIntervalLoopMeanMs": {
+                  "count": 413,
+                  "min": 20.484096,
+                  "mean": 20.635780914550025,
+                  "p50": 20.61824,
+                  "p95": 20.805414127659574,
+                  "p99": 21.21888293417206,
+                  "max": 22.361553454545454
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 413,
+                  "min": 20.889599,
+                  "mean": 21.88656341646489,
+                  "p50": 21.184511,
+                  "p95": 27.26625179999998,
+                  "p99": 31.17678492,
+                  "max": 49.020927
+                },
+                "profile": {
+                  "file": "observer/worker-86776.cpuprofile",
+                  "sha256": "f921d192e6a5144e69fac7c96897ff97979873b0006eda7d3938eafbf9c1cdad",
+                  "durationMs": 414089.399,
+                  "samples": 40157,
+                  "sampledSelfMs": 414089.143
+                }
+              }
+            ],
+            "cpuProfileCount": 1,
+            "processCount": 1,
+            "sampleCount": 414,
+            "cpuUserMicros": 1219000,
+            "cpuSystemMicros": 2547000,
+            "largestObservedProcessRssBytes": 125317120,
+            "hotFunctionsBySampledSelfTime": [
+              {
+                "function": "(idle)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 410909.013,
+                "shareOfRoleProfileSamples": 0.9923201801984941
+              },
+              {
+                "function": "(program)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 1989.717,
+                "shareOfRoleProfileSamples": 0.004805045081802592
+              },
+              {
+                "function": "internalModuleStat",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 243.053,
+                "shareOfRoleProfileSamples": 0.0005869581564953032
+              },
+              {
+                "function": "lstat",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 187.285,
+                "shareOfRoleProfileSamples": 0.00045228184115901827
+              },
+              {
+                "function": "readFileUtf8",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 62.376,
+                "shareOfRoleProfileSamples": 0.0001506342319146484
+              },
+              {
+                "function": "processTimers",
+                "url": "node:internal/timers",
+                "line": 556,
+                "column": 25,
+                "sampledSelfMs": 43.881,
+                "shareOfRoleProfileSamples": 0.0001059699360434572
+              },
+              {
+                "function": "wrapSafe",
+                "url": "node:internal/modules/cjs/loader",
+                "line": 1762,
+                "column": 18,
+                "sampledSelfMs": 41.597,
+                "shareOfRoleProfileSamples": 0.0001004542154827759
+              },
+              {
+                "function": "mean",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 41.589,
+                "shareOfRoleProfileSamples": 0.00010043489597117981
+              },
+              {
+                "function": "(garbage collector)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 41.362,
+                "shareOfRoleProfileSamples": 9.9886704829641e-05
+              },
+              {
+                "function": "compileFunctionForCJSLoader",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 30.745,
+                "shareOfRoleProfileSamples": 7.424729800269118e-05
+              },
+              {
+                "function": "realpathSync",
+                "url": "node:fs",
+                "line": 2772,
+                "column": 22,
+                "sampledSelfMs": 30.659,
+                "shareOfRoleProfileSamples": 7.40396132530333e-05
+              },
+              {
+                "function": "normalizeString",
+                "url": "node:path",
+                "line": 92,
+                "column": 25,
+                "sampledSelfMs": 25.271,
+                "shareOfRoleProfileSamples": 6.102792219307232e-05
+              },
+              {
+                "function": "ChannelWrap",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 20.977,
+                "shareOfRoleProfileSamples": 5.065817434387552e-05
+              },
+              {
+                "function": "cpuUsage",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 20.628,
+                "shareOfRoleProfileSamples": 4.9815360650496456e-05
+              },
+              {
+                "function": "pushAsyncContext",
+                "url": "node:internal/async_hooks",
+                "line": 547,
+                "column": 26,
+                "sampledSelfMs": 20.616,
+                "shareOfRoleProfileSamples": 4.978638138310233e-05
+              },
+              {
+                "function": "memoryUsage",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 20.615,
+                "shareOfRoleProfileSamples": 4.978396644415282e-05
+              },
+              {
+                "function": "getNearestParentPackageJSON",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 20.392,
+                "shareOfRoleProfileSamples": 4.9245435058412046e-05
+              },
+              {
+                "function": "",
+                "url": "node:internal/modules/cjs/loader",
+                "line": 726,
+                "column": 28,
+                "sampledSelfMs": 19.415,
+                "shareOfRoleProfileSamples": 4.688603970474058e-05
+              },
+              {
+                "function": "post",
+                "url": "node:inspector",
+                "line": 115,
+                "column": 7,
+                "sampledSelfMs": 17.396,
+                "shareOfRoleProfileSamples": 4.2010277965679485e-05
+              },
+              {
+                "function": "resolve",
+                "url": "node:path",
+                "line": 190,
+                "column": 10,
+                "sampledSelfMs": 12.637,
+                "shareOfRoleProfileSamples": 3.051758350496043e-05
+              }
+            ]
+          },
+          "ingestor": {
+            "processes": [
+              {
+                "pid": 10692,
+                "workerId": "6",
+                "sampleCount": 414,
+                "observedFrom": "2026-10-19T10:48:17.281Z",
+                "flushedAt": "2026-10-19T10:55:11.457Z",
+                "sampledElapsedMs": 414600.953,
+                "cpuUserMicros": 2140000,
+                "cpuSystemMicros": 2735000,
+                "peakRssBytes": 121606144,
+                "firstRssBytes": 117596160,
+                "lastRssBytes": 109891584,
+                "peakHeapUsedBytes": 42981880,
+                "lastHeapUsedBytes": 38068520,
+                "perIntervalLoopMeanMs": {
+                  "count": 413,
+                  "min": 20.445184,
+                  "mean": 20.693356546749303,
+                  "p50": 20.642133333333334,
+                  "p95": 21.009272919148938,
+                  "p99": 21.231454206105457,
+                  "max": 22.016
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 413,
+                  "min": 20.889599,
+                  "mean": 23.68590745520581,
+                  "p50": 21.381119,
+                  "p95": 30.834687,
+                  "p99": 31.28623004,
+                  "max": 42.795007
+                },
+                "profile": {
+                  "file": "observer/worker-10692.cpuprofile",
+                  "sha256": "a10b8207dd51f3e38e993f34853eeba6caa347e4a7d0e294afe75745f5536e5d",
+                  "durationMs": 414147.533,
+                  "samples": 40166,
+                  "sampledSelfMs": 414147.337
+                }
+              },
+              {
+                "pid": 46020,
+                "workerId": "10",
+                "sampleCount": 414,
+                "observedFrom": "2026-10-19T10:48:17.320Z",
+                "flushedAt": "2026-10-19T10:55:11.451Z",
+                "sampledElapsedMs": 414561.4945,
+                "cpuUserMicros": 1672000,
+                "cpuSystemMicros": 2235000,
+                "peakRssBytes": 116043776,
+                "firstRssBytes": 115941376,
+                "lastRssBytes": 102469632,
+                "peakHeapUsedBytes": 39598464,
+                "lastHeapUsedBytes": 34072304,
+                "perIntervalLoopMeanMs": {
+                  "count": 413,
+                  "min": 20.44416,
+                  "mean": 20.637513799231623,
+                  "p50": 20.620629333333333,
+                  "p95": 20.830245764539008,
+                  "p99": 21.06916166808511,
+                  "max": 21.849156266666665
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 413,
+                  "min": 20.905983,
+                  "mean": 22.036121963680387,
+                  "p50": 21.217279,
+                  "p95": 28.406578199999995,
+                  "p99": 32.24960924,
+                  "max": 48.824319
+                },
+                "profile": {
+                  "file": "observer/worker-46020.cpuprofile",
+                  "sha256": "2f9565141146c81fe496a516bef9ae37159a7d2bd688c6fdcae3363238a842a4",
+                  "durationMs": 414107.287,
+                  "samples": 40159,
+                  "sampledSelfMs": 414107.075
+                }
+              },
+              {
+                "pid": 60204,
+                "workerId": "8",
+                "sampleCount": 414,
+                "observedFrom": "2026-10-19T10:48:17.300Z",
+                "flushedAt": "2026-10-19T10:55:11.463Z",
+                "sampledElapsedMs": 414579.6276,
+                "cpuUserMicros": 1453000,
+                "cpuSystemMicros": 2515000,
+                "peakRssBytes": 116363264,
+                "firstRssBytes": 116346880,
+                "lastRssBytes": 102318080,
+                "peakHeapUsedBytes": 39462872,
+                "lastHeapUsedBytes": 34189952,
+                "perIntervalLoopMeanMs": {
+                  "count": 413,
+                  "min": 20.473514666666667,
+                  "mean": 20.91185792637344,
+                  "p50": 20.61312,
+                  "p95": 20.81893964255319,
+                  "p99": 21.274094134468083,
+                  "max": 131.730432
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 413,
+                  "min": 20.889599,
+                  "mean": 23.912308152542373,
+                  "p50": 21.184511,
+                  "p95": 26.122648599999994,
+                  "p99": 37.62421659999999,
+                  "max": 728.760319
+                },
+                "profile": {
+                  "file": "observer/worker-60204.cpuprofile",
+                  "sha256": "875026a0d4b4ec1741afd5f80988f445bf8518a7354d52a819d42eb2180dcb33",
+                  "durationMs": 414127.536,
+                  "samples": 40078,
+                  "sampledSelfMs": 414127.329
+                }
+              },
+              {
+                "pid": 86612,
+                "workerId": "7",
+                "sampleCount": 414,
+                "observedFrom": "2026-10-19T10:48:17.291Z",
+                "flushedAt": "2026-10-19T10:55:11.449Z",
+                "sampledElapsedMs": 414589.92,
+                "cpuUserMicros": 1281000,
+                "cpuSystemMicros": 2234000,
+                "peakRssBytes": 116711424,
+                "firstRssBytes": 116633600,
+                "lastRssBytes": 102936576,
+                "peakHeapUsedBytes": 39601184,
+                "lastHeapUsedBytes": 34190568,
+                "perIntervalLoopMeanMs": {
+                  "count": 413,
+                  "min": 20.459861333333333,
+                  "mean": 20.62274353909295,
+                  "p50": 20.609706666666668,
+                  "p95": 20.73501085957447,
+                  "p99": 20.962965460425533,
+                  "max": 22.26176
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 413,
+                  "min": 20.873215,
+                  "mean": 21.668850602905568,
+                  "p50": 21.168127,
+                  "p95": 24.530123799999984,
+                  "p99": 31.099452439999997,
+                  "max": 39.157759
+                },
+                "profile": {
+                  "file": "observer/worker-86612.cpuprofile",
+                  "sha256": "ed0af7668fdc5a1f13b23356f400098ffc3b24283b5c6413aefce4b725790af2",
+                  "durationMs": 414138.211,
+                  "samples": 40189,
+                  "sampledSelfMs": 414138.015
+                }
+              },
+              {
+                "pid": 113036,
+                "workerId": "11",
+                "sampleCount": 414,
+                "observedFrom": "2026-10-19T10:48:17.325Z",
+                "flushedAt": "2026-10-19T10:55:11.458Z",
+                "sampledElapsedMs": 414556.5925,
+                "cpuUserMicros": 1062000,
+                "cpuSystemMicros": 2625000,
+                "peakRssBytes": 116809728,
+                "firstRssBytes": 116797440,
+                "lastRssBytes": 103493632,
+                "peakHeapUsedBytes": 39458720,
+                "lastHeapUsedBytes": 34208552,
+                "perIntervalLoopMeanMs": {
+                  "count": 413,
+                  "min": 20.483072,
+                  "mean": 20.632471721956787,
+                  "p50": 20.619605333333332,
+                  "p95": 20.820839489361703,
+                  "p99": 21.040566510712303,
+                  "max": 21.266253913043478
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 413,
+                  "min": 20.905983,
+                  "mean": 21.966420539951574,
+                  "p50": 21.200895,
+                  "p95": 28.2591222,
+                  "p99": 31.0542326,
+                  "max": 49.446911
+                },
+                "profile": {
+                  "file": "observer/worker-113036.cpuprofile",
+                  "sha256": "7d9656fefc4d100e36832e4b95052437b700393003b7d48aefcc57d2e0195cba",
+                  "durationMs": 414103.762,
+                  "samples": 40174,
+                  "sampledSelfMs": 414103.543
+                }
+              },
+              {
+                "pid": 116324,
+                "workerId": "9",
+                "sampleCount": 414,
+                "observedFrom": "2026-10-19T10:48:17.308Z",
+                "flushedAt": "2026-10-19T10:55:11.463Z",
+                "sampledElapsedMs": 414573.0663,
+                "cpuUserMicros": 1266000,
+                "cpuSystemMicros": 2500000,
+                "peakRssBytes": 116600832,
+                "firstRssBytes": 116531200,
+                "lastRssBytes": 102408192,
+                "peakHeapUsedBytes": 39599376,
+                "lastHeapUsedBytes": 34306272,
+                "perIntervalLoopMeanMs": {
+                  "count": 413,
+                  "min": 20.46839466666667,
+                  "mean": 20.634984057473122,
+                  "p50": 20.62065838297872,
+                  "p95": 20.81344054468085,
+                  "p99": 21.0041070333395,
+                  "max": 22.48704
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 413,
+                  "min": 20.873215,
+                  "mean": 22.087495523002424,
+                  "p50": 21.200895,
+                  "p95": 29.8254326,
+                  "p99": 31.46448796,
+                  "max": 40.599551
+                },
+                "profile": {
+                  "file": "observer/worker-116324.cpuprofile",
+                  "sha256": "4a166d956416befb2c8ce82f4dfca10cf00c6807c6668b338b80685d1b3e7508",
+                  "durationMs": 414120.194,
+                  "samples": 40182,
+                  "sampledSelfMs": 414120.035
+                }
+              },
+              {
+                "pid": 117532,
+                "workerId": "5",
+                "sampleCount": 414,
+                "observedFrom": "2026-10-19T10:48:17.273Z",
+                "flushedAt": "2026-10-19T10:55:11.458Z",
+                "sampledElapsedMs": 414609.0185,
+                "cpuUserMicros": 4391000,
+                "cpuSystemMicros": 4235000,
+                "peakRssBytes": 132841472,
+                "firstRssBytes": 116772864,
+                "lastRssBytes": 125665280,
+                "peakHeapUsedBytes": 44031176,
+                "lastHeapUsedBytes": 35446168,
+                "perIntervalLoopMeanMs": {
+                  "count": 413,
+                  "min": 20.480522893617024,
+                  "mean": 20.721551588769653,
+                  "p50": 20.647500255319148,
+                  "p95": 21.089627269565216,
+                  "p99": 21.2876011586309,
+                  "max": 21.635072
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 413,
+                  "min": 20.922367,
+                  "mean": 24.28350691283293,
+                  "p50": 21.757951,
+                  "p95": 30.7429366,
+                  "p99": 31.47825052,
+                  "max": 49.020927
+                },
+                "profile": {
+                  "file": "observer/worker-117532.cpuprofile",
+                  "sha256": "9a138f67e0f5d0377279b660b75eeb5621f9ef791e4c3bdf3100a0aba4560808",
+                  "durationMs": 414155.817,
+                  "samples": 40212,
+                  "sampledSelfMs": 414155.569
+                }
+              }
+            ],
+            "cpuProfileCount": 7,
+            "processCount": 7,
+            "sampleCount": 2898,
+            "cpuUserMicros": 13265000,
+            "cpuSystemMicros": 19079000,
+            "largestObservedProcessRssBytes": 132841472,
+            "hotFunctionsBySampledSelfTime": [
+              {
+                "function": "(idle)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 2873896.788,
+                "shareOfRoleProfileSamples": 0.9913753063364418
+              },
+              {
+                "function": "(program)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 11927.912,
+                "shareOfRoleProfileSamples": 0.004114635383681747
+              },
+              {
+                "function": "internalModuleStat",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 1434.98,
+                "shareOfRoleProfileSamples": 0.0004950086388024688
+              },
+              {
+                "function": "lstat",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 1135.191,
+                "shareOfRoleProfileSamples": 0.0003915938561449033
+              },
+              {
+                "function": "readFileUtf8",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 761.448,
+                "shareOfRoleProfileSamples": 0.0002626680079156938
+              },
+              {
+                "function": "writeBuffer",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 467.065,
+                "shareOfRoleProfileSamples": 0.0001611180712499652
+              },
+              {
+                "function": "processTimers",
+                "url": "node:internal/timers",
+                "line": 556,
+                "column": 25,
+                "sampledSelfMs": 387.061,
+                "shareOfRoleProfileSamples": 0.0001335200063718814
+              },
+              {
+                "function": "(garbage collector)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 340.586,
+                "shareOfRoleProfileSamples": 0.00011748805715423047
+              },
+              {
+                "function": "compileFunctionForCJSLoader",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 305.335,
+                "shareOfRoleProfileSamples": 0.00010532792284822911
+              },
+              {
+                "function": "mean",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 292.916,
+                "shareOfRoleProfileSamples": 0.0001010438824537373
+              },
+              {
+                "function": "wrapSafe",
+                "url": "node:internal/modules/cjs/loader",
+                "line": 1762,
+                "column": 18,
+                "sampledSelfMs": 289.342,
+                "shareOfRoleProfileSamples": 9.981100054940412e-05
+              },
+              {
+                "function": "cpuUsage",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 228.797,
+                "shareOfRoleProfileSamples": 7.89254843496693e-05
+              },
+              {
+                "function": "listOnTimeout",
+                "url": "node:internal/timers",
+                "line": 576,
+                "column": 25,
+                "sampledSelfMs": 210.955,
+                "shareOfRoleProfileSamples": 7.277073366776875e-05
+              },
+              {
+                "function": "writev",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 195.786,
+                "shareOfRoleProfileSamples": 6.753805722489522e-05
+              },
+              {
+                "function": "nextTick",
+                "url": "node:internal/process/task_queues",
+                "line": 113,
+                "column": 18,
+                "sampledSelfMs": 175.915,
+                "shareOfRoleProfileSamples": 6.06833856185705e-05
+              },
+              {
+                "function": "writeString",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 153.741,
+                "shareOfRoleProfileSamples": 5.303427444154647e-05
+              },
+              {
+                "function": "realpathSync",
+                "url": "node:fs",
+                "line": 2772,
+                "column": 22,
+                "sampledSelfMs": 145.012,
+                "shareOfRoleProfileSamples": 5.002313114470139e-05
+              },
+              {
+                "function": "ChannelWrap",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 135.023,
+                "shareOfRoleProfileSamples": 4.657734005841597e-05
+              },
+              {
+                "function": "normalizeString",
+                "url": "node:path",
+                "line": 92,
+                "column": 25,
+                "sampledSelfMs": 128.906,
+                "shareOfRoleProfileSamples": 4.446722852825199e-05
+              },
+              {
+                "function": "post",
+                "url": "node:inspector",
+                "line": 115,
+                "column": 7,
+                "sampledSelfMs": 116.738,
+                "shareOfRoleProfileSamples": 4.02697727330852e-05
+              }
+            ]
+          },
+          "master": {
+            "processes": [
+              {
+                "pid": 69076,
+                "workerId": null,
+                "sampleCount": 417,
+                "observedFrom": "2026-10-19T10:48:14.310Z",
+                "flushedAt": "2026-10-19T10:55:11.455Z",
+                "sampledElapsedMs": 417627.9805,
+                "cpuUserMicros": 7360000,
+                "cpuSystemMicros": 4625000,
+                "peakRssBytes": 176525312,
+                "firstRssBytes": 130461696,
+                "lastRssBytes": 171200512,
+                "peakHeapUsedBytes": 60947776,
+                "lastHeapUsedBytes": 49814824,
+                "perIntervalLoopMeanMs": {
+                  "count": 416,
+                  "min": 20.477269333333332,
+                  "mean": 20.698683908365947,
+                  "p50": 20.645651971631207,
+                  "p95": 21.006118127659576,
+                  "p99": 21.24144867345051,
+                  "max": 22.41014690909091
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 416,
+                  "min": 20.938751,
+                  "mean": 24.24174176923077,
+                  "p50": 21.921791,
+                  "p95": 30.736383,
+                  "p99": 32.69263260000004,
+                  "max": 94.830591
+                },
+                "profile": {
+                  "file": "observer/worker-69076.cpuprofile",
+                  "sha256": "65300a28290db1a3b4a5bbb1c6c9d20ead4154819bec03c8e3b39af911ada3dd",
+                  "durationMs": 416684.062,
+                  "samples": 40400,
+                  "sampledSelfMs": 416683.864
+                }
+              }
+            ],
+            "cpuProfileCount": 1,
+            "processCount": 1,
+            "sampleCount": 417,
+            "cpuUserMicros": 7360000,
+            "cpuSystemMicros": 4625000,
+            "largestObservedProcessRssBytes": 176525312,
+            "hotFunctionsBySampledSelfTime": [
+              {
+                "function": "(idle)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 408353.909,
+                "shareOfRoleProfileSamples": 0.9800089331032986
+              },
+              {
+                "function": "(program)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 2150.738,
+                "shareOfRoleProfileSamples": 0.005161558163912966
+              },
+              {
+                "function": "writeString",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 368.232,
+                "shareOfRoleProfileSamples": 0.0008837203256807659
+              },
+              {
+                "function": "(garbage collector)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 289.733,
+                "shareOfRoleProfileSamples": 0.0006953305012070254
+              },
+              {
+                "function": "writeLatin1String",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 268.889,
+                "shareOfRoleProfileSamples": 0.000645306965858414
+              },
+              {
+                "function": "DOMException",
+                "url": "node:internal/per_context/domexception",
+                "line": 72,
+                "column": 14,
+                "sampledSelfMs": 257.006,
+                "shareOfRoleProfileSamples": 0.0006167889428998864
+              },
+              {
+                "function": "record",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+                "line": 49,
+                "column": 16,
+                "sampledSelfMs": 227.429,
+                "shareOfRoleProfileSamples": 0.0005458070725772093
+              },
+              {
+                "function": "runMicrotasks",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 113.001,
+                "shareOfRoleProfileSamples": 0.0002711912069626003
+              },
+              {
+                "function": "parse",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 108.847,
+                "shareOfRoleProfileSamples": 0.0002612220184269003
+              },
+              {
+                "function": "unenroll",
+                "url": "node:timers",
+                "line": 71,
+                "column": 18,
+                "sampledSelfMs": 104.014,
+                "shareOfRoleProfileSamples": 0.00024962329714788283
+              },
+              {
+                "function": "nextTick",
+                "url": "node:internal/process/task_queues",
+                "line": 113,
+                "column": 18,
+                "sampledSelfMs": 103.097,
+                "shareOfRoleProfileSamples": 0.0002474225879790728
+              },
+              {
+                "function": "parseChannelMessages",
+                "url": "node:internal/child_process/serialization",
+                "line": 100,
+                "column": 24,
+                "sampledSelfMs": 102.677,
+                "shareOfRoleProfileSamples": 0.0002464146295811445
+              },
+              {
+                "function": "processTimers",
+                "url": "node:internal/timers",
+                "line": 556,
+                "column": 25,
+                "sampledSelfMs": 93.442,
+                "shareOfRoleProfileSamples": 0.0002242515443314599
+              },
+              {
+                "function": "insert",
+                "url": "node:internal/timers",
+                "line": 387,
+                "column": 16,
+                "sampledSelfMs": 92.798,
+                "shareOfRoleProfileSamples": 0.0002227060081213032
+              },
+              {
+                "function": "",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 82.728,
+                "shareOfRoleProfileSamples": 0.00019853900558049927
+              },
+              {
+                "function": "listOnTimeout",
+                "url": "node:internal/timers",
+                "line": 576,
+                "column": 25,
+                "sampledSelfMs": 82.152,
+                "shareOfRoleProfileSamples": 0.00019715666263476908
+              },
+              {
+                "function": "write",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 81.88,
+                "shareOfRoleProfileSamples": 0.00019650388957706316
+              },
+              {
+                "function": "ensureMinPoolSize",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/mongodb/lib/cmap/connection_pool.js",
+                "line": 460,
+                "column": 22,
+                "sampledSelfMs": 72.477,
+                "shareOfRoleProfileSamples": 0.0001739376209682072
+              },
+              {
+                "function": "set TextDecoder",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 72.438,
+                "shareOfRoleProfileSamples": 0.00017384402483125672
+              },
+              {
+                "function": "writeUtf8String",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 72.057,
+                "shareOfRoleProfileSamples": 0.00017292966257027894
+              }
+            ]
+          },
+          "reader": {
+            "processes": [
+              {
+                "pid": 114604,
+                "workerId": "1",
+                "sampleCount": 413,
+                "observedFrom": "2026-10-19T10:48:17.249Z",
+                "flushedAt": "2026-10-19T10:55:11.447Z",
+                "sampledElapsedMs": 414632.308,
+                "cpuUserMicros": 2031000,
+                "cpuSystemMicros": 2531000,
+                "peakRssBytes": 122359808,
+                "firstRssBytes": 119398400,
+                "lastRssBytes": 103813120,
+                "peakHeapUsedBytes": 45633256,
+                "lastHeapUsedBytes": 34609960,
+                "perIntervalLoopMeanMs": {
+                  "count": 412,
+                  "min": 20.453717333333334,
+                  "mean": 20.64536973223718,
+                  "p50": 20.622194382978726,
+                  "p95": 20.839698519148936,
+                  "p99": 21.06020450042553,
+                  "max": 22.40214109090909
+                },
+                "perIntervalLoopP99Ms": {
+                  "count": 412,
+                  "min": 20.922367,
+                  "mean": 22.34244622330097,
+                  "p50": 21.266431,
+                  "p95": 29.501029399999997,
+                  "p99": 30.922177559999998,
+                  "max": 52.133887
+                },
+                "profile": {
+                  "file": "observer/worker-114604.cpuprofile",
+                  "sha256": "d62e17211fb087affd602d2376cd91363275365d2e8e103207e768eb02c53324",
+                  "durationMs": 413341.784,
+                  "samples": 40069,
+                  "sampledSelfMs": 413341.359
+                }
+              }
+            ],
+            "cpuProfileCount": 1,
+            "processCount": 1,
+            "sampleCount": 413,
+            "cpuUserMicros": 2031000,
+            "cpuSystemMicros": 2531000,
+            "largestObservedProcessRssBytes": 122359808,
+            "hotFunctionsBySampledSelfTime": [
+              {
+                "function": "(idle)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 410793.672,
+                "shareOfRoleProfileSamples": 0.9938363608080168
+              },
+              {
+                "function": "(program)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 1827.662,
+                "shareOfRoleProfileSamples": 0.004421677047807839
+              },
+              {
+                "function": "writeString",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 72.016,
+                "shareOfRoleProfileSamples": 0.00017422887507368939
+              },
+              {
+                "function": "post",
+                "url": "node:inspector",
+                "line": 115,
+                "column": 7,
+                "sampledSelfMs": 50.502,
+                "shareOfRoleProfileSamples": 0.00012217988570555795
+              },
+              {
+                "function": "resolve",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@wharfkit/antelope/lib/antelope.js",
+                "line": 2072,
+                "column": 12,
+                "sampledSelfMs": 40.928,
+                "shareOfRoleProfileSamples": 9.901743222361641e-05
+              },
+              {
+                "function": "listOnTimeout",
+                "url": "node:internal/timers",
+                "line": 576,
+                "column": 25,
+                "sampledSelfMs": 31.552,
+                "shareOfRoleProfileSamples": 7.633400169858153e-05
+              },
+              {
+                "function": "(garbage collector)",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 31.069,
+                "shareOfRoleProfileSamples": 7.516547600067285e-05
+              },
+              {
+                "function": "setInitial",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/async/dist/async.js",
+                "line": 1454,
+                "column": 24,
+                "sampledSelfMs": 21.191,
+                "shareOfRoleProfileSamples": 5.126755292832915e-05
+              },
+              {
+                "function": "",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/build/indexer/workers/state-reader.js",
+                "line": 51,
+                "column": 40,
+                "sampledSelfMs": 21.074,
+                "shareOfRoleProfileSamples": 5.098449390833885e-05
+              },
+              {
+                "function": "abiEncode",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@wharfkit/antelope/lib/antelope.js",
+                "line": 1629,
+                "column": 19,
+                "sampledSelfMs": 20.841,
+                "shareOfRoleProfileSamples": 5.0420795176221406e-05
+              },
+              {
+                "function": "decodeInner",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@wharfkit/antelope/lib/antelope.js",
+                "line": 1313,
+                "column": 25,
+                "sampledSelfMs": 20.759,
+                "shareOfRoleProfileSamples": 5.022241193144187e-05
+              },
+              {
+                "function": "sample",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-worker-observer.mjs",
+                "line": 70,
+                "column": 16,
+                "sampledSelfMs": 20.402,
+                "shareOfRoleProfileSamples": 4.935871902429198e-05
+              },
+              {
+                "function": "writeSync",
+                "url": "node:fs",
+                "line": 944,
+                "column": 19,
+                "sampledSelfMs": 17.392,
+                "shareOfRoleProfileSamples": 4.207660235616538e-05
+              },
+              {
+                "function": "unenroll",
+                "url": "node:timers",
+                "line": 71,
+                "column": 18,
+                "sampledSelfMs": 10.81,
+                "shareOfRoleProfileSamples": 2.6152718000813464e-05
+              },
+              {
+                "function": "isubn",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/bn.js/lib/bn.js",
+                "line": 2187,
+                "column": 39,
+                "sampledSelfMs": 10.763,
+                "shareOfRoleProfileSamples": 2.603901053124471e-05
+              },
+              {
+                "function": "mean",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 10.719,
+                "shareOfRoleProfileSamples": 2.5932560985265448e-05
+              },
+              {
+                "function": "get max",
+                "url": "file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/node_modules/@wharfkit/antelope/lib/antelope.js",
+                "line": 502,
+                "column": 19,
+                "sampledSelfMs": 10.672,
+                "shareOfRoleProfileSamples": 2.5818853515696697e-05
+              },
+              {
+                "function": "clearTimeout",
+                "url": "node:timers",
+                "line": 136,
+                "column": 22,
+                "sampledSelfMs": 10.621,
+                "shareOfRoleProfileSamples": 2.5695468814675283e-05
+              },
+              {
+                "function": "onStreamRead",
+                "url": "node:internal/stream_base_commons",
+                "line": 166,
+                "column": 22,
+                "sampledSelfMs": 10.572,
+                "shareOfRoleProfileSamples": 2.55769227293802e-05
+              },
+              {
+                "function": "dispatch",
+                "url": "",
+                "line": null,
+                "column": null,
+                "sampledSelfMs": 10.549,
+                "shareOfRoleProfileSamples": 2.5521278648527404e-05
+              }
+            ]
+          }
+        },
+        "interpretation": "Process CPU deltas and individual RSS peaks are observed values. Interval loop p99 distributions are not a combined global p99. CPU profiles show sampled self time, including idle/runtime frames; they do not establish causality or wall-time capacity."
+      },
+      "serverNodes": [
+        {
+          "id": "bu_JG-llQyiS5mllBIaBvg",
+          "name": "hyp-es955-replicas-b589bebb697a-a",
+          "roles": [
+            "data",
+            "ingest",
+            "master"
+          ],
+          "samples": 537,
+          "heapUsedBytes": {
+            "initial": 175664024,
+            "final": 387295872,
+            "peak": 732234960
+          },
+          "heapMaxBytes": 1073741824,
+          "peakIndexingPressureCurrentBytes": 74750,
+          "processCpuMillisDelta": 93330,
+          "pressureRejectionDeltas": {
+            "coordinating": 0,
+            "primary": 0,
+            "replica": 0
+          },
+          "gc": {
+            "young": {
+              "countDelta": 23,
+              "timeMillisDelta": 475
+            },
+            "G1 Concurrent GC": {
+              "countDelta": 2,
+              "timeMillisDelta": 24
+            },
+            "old": {
+              "countDelta": 0,
+              "timeMillisDelta": 0
+            }
+          },
+          "breakers": {
+            "inflight_requests": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 24311,
+              "limitBytes": 1073741824
+            },
+            "request": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 48443,
+              "limitBytes": 644245094
+            },
+            "fielddata": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 429496729
+            },
+            "eql_sequence": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 536870912
+            },
+            "model_inference": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 536870912
+            },
+            "parent": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 737365912,
+              "limitBytes": 1020054732
+            }
+          },
+          "threadPools": {
+            "write": {
+              "peakActive": 2,
+              "peakQueue": 6,
+              "rejectedDelta": 0,
+              "completedDelta": 26868
+            },
+            "write_coordination": {
+              "peakActive": 1,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 4985
+            },
+            "search": {
+              "peakActive": 3,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 17928
+            },
+            "search_coordination": {
+              "peakActive": 1,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 5388
+            }
+          },
+          "mergesDeltas": {
+            "total": 44,
+            "total_time_in_millis": 1208,
+            "total_throttled_time_in_millis": 0
+          },
+          "refreshDeltas": {
+            "total": 1568,
+            "total_time_in_millis": 7852
+          },
+          "flushDeltas": {
+            "total": 36,
+            "total_time_in_millis": 46841
+          }
+        },
+        {
+          "id": "bhbD5u_oSM6sa24ALwKK2Q",
+          "name": "hyp-es955-replicas-b589bebb697a-b",
+          "roles": [
+            "data",
+            "ingest",
+            "master"
+          ],
+          "samples": 537,
+          "heapUsedBytes": {
+            "initial": 222298112,
+            "final": 510796400,
+            "peak": 733460800
+          },
+          "heapMaxBytes": 1073741824,
+          "peakIndexingPressureCurrentBytes": 47640,
+          "processCpuMillisDelta": 78720,
+          "pressureRejectionDeltas": {
+            "coordinating": 0,
+            "primary": 0,
+            "replica": 0
+          },
+          "gc": {
+            "young": {
+              "countDelta": 20,
+              "timeMillisDelta": 540
+            },
+            "G1 Concurrent GC": {
+              "countDelta": 2,
+              "timeMillisDelta": 21
+            },
+            "old": {
+              "countDelta": 0,
+              "timeMillisDelta": 0
+            }
+          },
+          "breakers": {
+            "inflight_requests": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 41416,
+              "limitBytes": 1073741824
+            },
+            "request": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 2096,
+              "limitBytes": 644245094
+            },
+            "fielddata": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 429496729
+            },
+            "eql_sequence": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 536870912
+            },
+            "model_inference": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 536870912
+            },
+            "parent": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 741849408,
+              "limitBytes": 1020054732
+            }
+          },
+          "threadPools": {
+            "write": {
+              "peakActive": 2,
+              "peakQueue": 6,
+              "rejectedDelta": 0,
+              "completedDelta": 26868
+            },
+            "write_coordination": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 0
+            },
+            "search": {
+              "peakActive": 2,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 14577
+            },
+            "search_coordination": {
+              "peakActive": 1,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 2670
+            }
+          },
+          "mergesDeltas": {
+            "total": 45,
+            "total_time_in_millis": 1394,
+            "total_throttled_time_in_millis": 0
+          },
+          "refreshDeltas": {
+            "total": 1561,
+            "total_time_in_millis": 8693
+          },
+          "flushDeltas": {
+            "total": 35,
+            "total_time_in_millis": 40867
+          }
+        },
+        {
+          "id": "0FG_0oqGR_i7BYya_Mv0yQ",
+          "name": "hyp-es955-replicas-b589bebb697a-witness",
+          "roles": [
+            "master"
+          ],
+          "samples": 537,
+          "heapUsedBytes": {
+            "initial": 113246208,
+            "final": 145301016,
+            "peak": 192363992
+          },
+          "heapMaxBytes": 536870912,
+          "peakIndexingPressureCurrentBytes": 0,
+          "processCpuMillisDelta": 6070,
+          "pressureRejectionDeltas": {
+            "coordinating": 0,
+            "primary": 0,
+            "replica": 0
+          },
+          "gc": {
+            "young": {
+              "countDelta": 3,
+              "timeMillisDelta": 24
+            },
+            "G1 Concurrent GC": {
+              "countDelta": 0,
+              "timeMillisDelta": 0
+            },
+            "old": {
+              "countDelta": 0,
+              "timeMillisDelta": 0
+            }
+          },
+          "breakers": {
+            "model_inference": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 268435456
+            },
+            "eql_sequence": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 268435456
+            },
+            "fielddata": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 214748364
+            },
+            "request": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 0,
+              "limitBytes": 322122547
+            },
+            "inflight_requests": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 540,
+              "limitBytes": 536870912
+            },
+            "parent": {
+              "trippedDelta": 0,
+              "peakEstimatedBytes": 192363992,
+              "limitBytes": 510027366
+            }
+          },
+          "threadPools": {
+            "write": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 0
+            },
+            "write_coordination": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 0
+            },
+            "search": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 9
+            },
+            "search_coordination": {
+              "peakActive": 0,
+              "peakQueue": 0,
+              "rejectedDelta": 0,
+              "completedDelta": 0
+            }
+          },
+          "mergesDeltas": {
+            "total": 0,
+            "total_time_in_millis": 0,
+            "total_throttled_time_in_millis": 0
+          },
+          "refreshDeltas": {
+            "total": 0,
+            "total_time_in_millis": 0
+          },
+          "flushDeltas": {
+            "total": 0,
+            "total_time_in_millis": 0
+          }
+        }
+      ],
+      "server": {
+        "name": "hyp-es955-replicas-b589bebb697a-a",
+        "cluster_name": "hyperion-es198-b589bebb697a",
+        "cluster_uuid": "yymgpnCfRPWeQoCVl4JJZQ",
+        "version": {
+          "number": "9.5.5",
+          "build_flavor": "default",
+          "build_type": "docker",
+          "build_hash": "48acba663b09e70b115dd879329141506c377890",
+          "build_date": "2026-09-30T22:12:03.984586187Z",
+          "build_snapshot": false,
+          "lucene_version": "10.5.1",
+          "minimum_wire_compatibility_version": "8.19.0",
+          "minimum_index_compatibility_version": "8.0.0"
+        },
+        "tagline": "You Know, for Search"
+      },
+      "cleanup": [
+        {
+          "name": "workers",
+          "ok": true,
+          "shutdown": {
+            "kind": "shutdown",
+            "sequence": 16390,
+            "at": 1792407311935,
+            "isoAt": "2026-10-19T10:55:11.935Z",
+            "monotonicMs": 417626.6494,
+            "pid": 69076,
+            "role": "master",
+            "workerId": null,
+            "success": true,
+            "requestId": null,
+            "children": 12,
+            "exited": 12,
+            "forced": [],
+            "unresolved": []
+          }
+        },
+        {
+          "name": "publisher",
+          "ok": true
+        },
+        {
+          "name": "broker",
+          "ok": true
+        },
+        {
+          "name": "client",
+          "ok": true
+        }
+      ],
+      "recoverySampleCount": 5,
+      "postflight": {
+        "file": "fixture/es198-workers-state5-postflight.json",
+        "status": "passed",
+        "observedProcessCount": 13,
+        "consecutiveIdleSamples": 3,
+        "emptyDurableQueuesRetained": 10
+      },
+      "fixtureCleanup": {
+        "completedAt": "2026-10-19T10:56:04.4568688Z",
+        "containersRemoved": 7,
+        "volumesRemoved": 7,
+        "remainingContainers": 0,
+        "remainingVolumes": 0,
+        "remainingNetworks": 0
+      },
+      "archivePrefix": "runs/final/profile"
+    }
+  ],
+  "totals": {
+    "passedFinalRuns": 2,
+    "publisherConfirmedActions": 95960,
+    "bothPhysicalCopyActionVerifications": 4,
+    "verifiedBackpressureWaves": 6
+  },
+  "nativeProbes": {
+    "node24": {
+      "runtime": {
+        "node": "24.19.0",
+        "acorn": "8.17.0",
+        "ada": "3.4.4",
+        "amaro": "1.1.10",
+        "ares": "1.34.6",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.3",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "137",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.69.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "3.5.7",
+        "simdjson": "4.6.4",
+        "simdutf": "6.4.0",
+        "sqlite": "3.53.3",
+        "tz": "2026b",
+        "undici": "7.29.0",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "13.6.233.17-node.51",
+        "zlib": "1.3.2.1-motley-3246f1b",
+        "zstd": "1.5.7"
+      },
+      "execPath": "C:\\Users\\igorl\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+      "modules": [
+        {
+          "name": "@eosrio/node-abieos",
+          "status": "loaded"
+        },
+        {
+          "name": "uWebSockets.js",
+          "status": "loaded"
+        }
+      ]
+    },
+    "bun143": {
+      "runtime": {
+        "node": "26.3.0",
+        "bun": "1.4.3",
+        "boringssl": "41bf9b59c2ebf277a7aa427e1ecad5cc80dd4d4f",
+        "openssl": "1.1.0",
+        "llhttp": "9.4.2",
+        "libarchive": "27cbc7827172698143e440801fc0ba39ccb4f1f5",
+        "mimalloc": "92ef6587c57b262f6e6abf513f7776a2f8d12aeb",
+        "picohttpparser": "f4d94b48b31e0abae029ebeafcfd9ca0680ede58",
+        "uwebsockets": "c6da4a4d3010e5553438c60f6bd76d981976867c",
+        "webkit": "0c06faadf65bf8e8c8ad3a5a8aca83e1e9ed653f",
+        "zig": "04e7f6ac1e009525bc00934f20199c68f04e0a24",
+        "zlib": "12731092979c6d07f42da27da673a9f6c7b13586",
+        "tinycc": "05f0fafaa3be31e31d7b4b5c17dc60f62c991171",
+        "lolhtml": "725ce499aa9b71e38b7a2d0a9fbb6d7294a4079e",
+        "ares": "c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab",
+        "libdeflate": "92e6a0db9fa848d742f9eb286c92afc60f2c3dda",
+        "usockets": "c6da4a4d3010e5553438c60f6bd76d981976867c",
+        "lshpack": "cf0f70dd10b352194c97448eb5d00b4aa484f531",
+        "zstd": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+        "v8": "14.6.202.34-node.20",
+        "uv": "1.51.1-dev",
+        "napi": "10",
+        "icu": "78.3",
+        "unicode": "17.0",
+        "sqlite": "3.53.4",
+        "typescript": "7.0.2",
+        "modules": "147"
+      },
+      "execPath": "C:\\Users\\igorl\\.bun\\bin\\bun.exe",
+      "modules": [
+        {
+          "name": "@eosrio/node-abieos",
+          "status": "loaded"
+        },
+        {
+          "name": "uWebSockets.js",
+          "status": "failed",
+          "message": "This version of uWS.js (v20.67.0) supports only Node.js versions 22, 24 and 26 on (glibc) Linux, macOS and Windows, on Tier 1 platforms (https://github.com/nodejs/node/blob/master/BUILDING.md#platform-list).\n\nTypeError: symbol 'napi_register_module_v1' not found in native module. Is this a Node API (napi) module?",
+          "stack": "Error: This version of uWS.js (v20.67.0) supports only Node.js versions 22, 24 and 26 on (glibc) Linux, macOS and Windows, on Tier 1 platforms (https://github.com/nodejs/node/blob/master/BUILDING.md#platform-list).\n\nTypeError: symbol 'napi_register_module_v1' not found in native module. Is this a Node API (napi) module?\n    at <anonymous> (C:\\Users\\igorl\\.codex\\worktrees\\hyperion45-es955\\hyperion-history-api\\node_modules\\uWebSockets.js\\uws.js:22:13)\n    at <anonymous> (C:\\Users\\igorl\\.codex\\worktrees\\hyperion45-es955\\hyperion-history-api\\node_modules\\uWebSockets.js\\uws.js:22:247)\n    at anonymous (unknown)\n    at C:\\Users\\igorl\\.codex\\worktrees\\hyperion45-es955\\hyperion-history-api\\es198-native-probe.tmp.mjs:4:65"
+        }
+      ]
+    }
+  },
+  "unitLogSummaries": [
+    {
+      "file": "validation/es198-reader-active-close-green.log",
+      "purpose": "validation output",
+      "passed": 6,
+      "failed": 0,
+      "assertions": 6
+    },
+    {
+      "file": "validation/es198-reader-active-close-red-final.log",
+      "purpose": "negative red control",
+      "passed": 4,
+      "failed": 2,
+      "assertions": 6
+    },
+    {
+      "file": "validation/es198-reader-active-close-red.log",
+      "purpose": "negative red control",
+      "passed": 4,
+      "failed": 2,
+      "assertions": 6
+    },
+    {
+      "file": "validation/es198-reader-drain-green-final.log",
+      "purpose": "validation output",
+      "passed": 4,
+      "failed": 0,
+      "assertions": 4
+    },
+    {
+      "file": "validation/es198-reader-drain-green.log",
+      "purpose": "validation output",
+      "passed": 3,
+      "failed": 0,
+      "assertions": 3
+    },
+    {
+      "file": "validation/es198-reader-drain-red-final.log",
+      "purpose": "negative red control",
+      "passed": 0,
+      "failed": 3,
+      "assertions": 3
+    },
+    {
+      "file": "validation/es198-reader-drain-red.log",
+      "purpose": "negative red control",
+      "passed": 0,
+      "failed": 3,
+      "assertions": 3
+    },
+    {
+      "file": "validation/es198-reader-drain-unit-full.log",
+      "purpose": "validation output",
+      "passed": 215,
+      "failed": 0,
+      "assertions": 1828
+    },
+    {
+      "file": "validation/es198-reader-lifecycle-green.log",
+      "purpose": "validation output",
+      "passed": 4,
+      "failed": 0,
+      "assertions": 4
+    },
+    {
+      "file": "validation/es198-reader-lifecycle-red.log",
+      "purpose": "negative red control",
+      "passed": 3,
+      "failed": 1,
+      "assertions": 4
+    },
+    {
+      "file": "validation/es198-workers-unit-final.log",
+      "purpose": "validation output",
+      "passed": 220,
+      "failed": 0,
+      "assertions": 1847
+    },
+    {
+      "file": "validation/es198-workers-unit-final2.log",
+      "purpose": "validation output",
+      "passed": 222,
+      "failed": 0,
+      "assertions": 1849
+    }
+  ],
+  "developmentControls": [
+    {
+      "name": "es198-workers-pilot1",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5",
+      "archivePrefix": "runs/development/es198-workers-pilot1",
+      "confirmedActions": null,
+      "error": {
+        "message": "master exited 1",
+        "stack": "Error: master exited 1\n    at wait (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:117:59)\n    at async runWorkerQualification (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:209:26)\n    at async file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:358:20"
+      },
+      "includedInFinalTotals": false
+    },
+    {
+      "name": "es198-workers-pilot2",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5",
+      "archivePrefix": "runs/development/es198-workers-pilot2",
+      "confirmedActions": null,
+      "error": {
+        "message": "master exited 1",
+        "stack": "Error: master exited 1\n    at wait (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:117:59)\n    at async runWorkerQualification (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:214:26)\n    at async file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:367:20"
+      },
+      "includedInFinalTotals": false
+    },
+    {
+      "name": "es198-workers-pilot3",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5",
+      "archivePrefix": "runs/development/es198-workers-pilot3",
+      "confirmedActions": null,
+      "error": {
+        "message": "Expected values to be strictly equal:\n+ actual - expected\n\n+ ResponseError: search_phase_execution_exception\n+ \tCaused by:\n+ \t\tsearch_phase_execution_exception: Search rejected due to missing shards [[hyp-es955-6115e9619013-action-v1-000001][3], [hyp-es955-6115e9619013-action-v1-000001][2], [hyp-es955-6115e9619013-action-v1-000001][0], [hyp-es955-6115e9619013-action-v1-000001][1]]. Consider using `allow_partial_search_results` setting to bypass this error.\n+     at SniffingTransport._request (C:\\Users\\igorl\\.codex\\worktrees\\hyperion45-es955\\hyperion-history-api\\node_modules\\@elastic\\transport\\lib\\Transport.js:544:27)\n+     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n+     at async C:\\Users\\igorl\\.codex\\worktrees\\hyperion45-es955\\hyperion-history-api\\node_modules\\@elastic\\transport\\lib\\Transport.js:670:32\n+     at async SniffingTransport.request (C:\\Users\\igorl\\.codex\\worktrees\\hyperion45-es955\\hyperion-history-api\\node_modules\\@elastic\\transport\\lib\\Transport.js:666:20)\n+     at async Client.SearchApi [as search] (C:\\Users\\igorl\\.codex\\worktrees\\hyperion45-es955\\hyperion-history-api\\node_modules\\@elastic\\elasticsearch\\lib\\api\\api\\search.js:73:12)\n+     at async file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:239:38 {\n+   meta: {\n+     body: {\n+       error: {\n+         caused_by: {\n+           failed_shards: [],\n+           grouped: true,\n+           phase: 'can_match',\n+           reason: 'Search rejected due to missing shards [[hyp-es955-6115e9619013-action-v1-000001][3], [hyp-es955-6115e9619013-action-v1-000001][2], [hyp-es955-6115e9619013-action-v1-000001][0], [hyp-es955-6115e9619013-action-v1-000001][1]]. Consider using `allow_partial_search_results` setting to bypass this error.',\n+           type: 'search_phase_execution_exception'\n+         },\n+         failed_shards: [],\n+         grouped: true,\n+         phase: 'can_match',\n+         reason: 'start',\n+         root_cause: [],\n+         type: 'search_phase_execution_exception'\n+       },\n+       status: 503\n+     },\n+     headers: {\n+       'content-length': '574',\n+       'content-type': 'application/vnd.elasticsearch+json;compatible-with=8',\n+       'x-elastic-app-exception': 'SearchPhaseExecutionException',\n+       'x-elastic-product': 'Elasticsearch'\n+     },\n+     meta: {\n+       aborted: false,\n+       attempts: 0,\n+       connection: {\n+         _openRequests: 0,\n+         deadCount: 0,\n+         headers: {\n+           'user-agent': 'elasticsearch-js/8.19.1 (win32 10.0.29683-x64; Node.js 24.19.0; Transport 8.10.1)',\n+           'x-elastic-client-meta': 'es=8.19.1,js=24.19.0,t=8.10.1,un=24.19.0'\n+         },\n+         id: 'http://127.0.0.1:60095/',\n+         maxEventListeners: 100,\n+         pool: {\n+           _events: {\n+             connectionError: [Function (anonymous)]\n+           },\n+           _eventsCount: 1,\n+           _maxListeners: undefined\n+         },\n+         resurrectTimeout: 0,\n+         roles: undefined,\n+         timeout: 15000,\n+         tls: null,\n+         url: 'http://127.0.0.1:60095/',\n+         weight: 1000\n+       },\n+       context: null,\n+       name: 'elasticsearch-js',\n+       request: {\n+         id: 8,\n+         options: {},\n+         params: {\n+           body: '{\"query\":{\"range\":{\"global_sequence\":{\"lte\":100}}},\"size\":50,\"sort\":[{\"global_sequence\":\"desc\"}]}',\n+           headers: {\n+             'content-length': '97',\n+             'content-type': 'application/vnd.elasticsearch+json; compatible-with=8',\n+             'user-agent': 'elasticsearch-js/8.19.1 (win32 10.0.29683-x64; Node.js 24.19.0; Transport 8.10.1)',\n+             'x-elastic-client-meta': 'es=8.19.1,js=24.19.0,t=8.10.1,un=24.19.0',\n+             accept: 'application/vnd.elasticsearch+json; compatible-with=8'\n+           },\n+           method: 'POST',\n+           path: '/hyp-es955-6115e9619013-action-v1-000001/_search',\n+           querystring: 'allow_partial_search_results=false'\n+         }\n+       }\n+     },\n+     statusCode: 503,\n+     warnings: null\n+   },\n+   options: {\n+     redaction: {\n+       additionalKeys: [],\n+       type: 'replace'\n+     }\n+   }\n+ }\n- undefined\n",
+        "stack": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ ResponseError: search_phase_execution_exception\n+ \tCaused by:\n+ \t\tsearch_phase_execution_exception: Search rejected due to missing shards [[hyp-es955-6115e9619013-action-v1-000001][3], [hyp-es955-6115e9619013-action-v1-000001][2], [hyp-es955-6115e9619013-action-v1-000001][0], [hyp-es955-6115e9619013-action-v1-000001][1]]. Consider using `allow_partial_search_results` setting to bypass this error.\n+     at SniffingTransport._request (C:\\Users\\igorl\\.codex\\worktrees\\hyperion45-es955\\hyperion-history-api\\node_modules\\@elastic\\transport\\lib\\Transport.js:544:27)\n+     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n+     at async C:\\Users\\igorl\\.codex\\worktrees\\hyperion45-es955\\hyperion-history-api\\node_modules\\@elastic\\transport\\lib\\Transport.js:670:32\n+     at async SniffingTransport.request (C:\\Users\\igorl\\.codex\\worktrees\\hyperion45-es955\\hyperion-history-api\\node_modules\\@elastic\\transport\\lib\\Transport.js:666:20)\n+     at async Client.SearchApi [as search] (C:\\Users\\igorl\\.codex\\worktrees\\hyperion45-es955\\hyperion-history-api\\node_modules\\@elastic\\elasticsearch\\lib\\api\\api\\search.js:73:12)\n+     at async file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:239:38 {\n+   meta: {\n+     body: {\n+       error: {\n+         caused_by: {\n+           failed_shards: [],\n+           grouped: true,\n+           phase: 'can_match',\n+           reason: 'Search rejected due to missing shards [[hyp-es955-6115e9619013-action-v1-000001][3], [hyp-es955-6115e9619013-action-v1-000001][2], [hyp-es955-6115e9619013-action-v1-000001][0], [hyp-es955-6115e9619013-action-v1-000001][1]]. Consider using `allow_partial_search_results` setting to bypass this error.',\n+           type: 'search_phase_execution_exception'\n+         },\n+         failed_shards: [],\n+         grouped: true,\n+         phase: 'can_match',\n+         reason: 'start',\n+         root_cause: [],\n+         type: 'search_phase_execution_exception'\n+       },\n+       status: 503\n+     },\n+     headers: {\n+       'content-length': '574',\n+       'content-type': 'application/vnd.elasticsearch+json;compatible-with=8',\n+       'x-elastic-app-exception': 'SearchPhaseExecutionException',\n+       'x-elastic-product': 'Elasticsearch'\n+     },\n+     meta: {\n+       aborted: false,\n+       attempts: 0,\n+       connection: {\n+         _openRequests: 0,\n+         deadCount: 0,\n+         headers: {\n+           'user-agent': 'elasticsearch-js/8.19.1 (win32 10.0.29683-x64; Node.js 24.19.0; Transport 8.10.1)',\n+           'x-elastic-client-meta': 'es=8.19.1,js=24.19.0,t=8.10.1,un=24.19.0'\n+         },\n+         id: 'http://127.0.0.1:60095/',\n+         maxEventListeners: 100,\n+         pool: {\n+           _events: {\n+             connectionError: [Function (anonymous)]\n+           },\n+           _eventsCount: 1,\n+           _maxListeners: undefined\n+         },\n+         resurrectTimeout: 0,\n+         roles: undefined,\n+         timeout: 15000,\n+         tls: null,\n+         url: 'http://127.0.0.1:60095/',\n+         weight: 1000\n+       },\n+       context: null,\n+       name: 'elasticsearch-js',\n+       request: {\n+         id: 8,\n+         options: {},\n+         params: {\n+           body: '{\"query\":{\"range\":{\"global_sequence\":{\"lte\":100}}},\"size\":50,\"sort\":[{\"global_sequence\":\"desc\"}]}',\n+           headers: {\n+             'content-length': '97',\n+             'content-type': 'application/vnd.elasticsearch+json; compatible-with=8',\n+             'user-agent': 'elasticsearch-js/8.19.1 (win32 10.0.29683-x64; Node.js 24.19.0; Transport 8.10.1)',\n+             'x-elastic-client-meta': 'es=8.19.1,js=24.19.0,t=8.10.1,un=24.19.0',\n+             accept: 'application/vnd.elasticsearch+json; compatible-with=8'\n+           },\n+           method: 'POST',\n+           path: '/hyp-es955-6115e9619013-action-v1-000001/_search',\n+           querystring: 'allow_partial_search_results=false'\n+         }\n+       }\n+     },\n+     statusCode: 503,\n+     warnings: null\n+   },\n+   options: {\n+     redaction: {\n+       additionalKeys: [],\n+       type: 'replace'\n+     }\n+   }\n+ }\n- undefined\n\n    at window (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:258:64)\n    at async runWorkerQualification (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:264:9)\n    at async file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:367:20"
+      },
+      "includedInFinalTotals": false
+    },
+    {
+      "name": "es198-workers-pilot4",
+      "status": "failed",
+      "fixtureRun": "ece38e1dfbc5",
+      "archivePrefix": "runs/development/es198-workers-pilot4",
+      "confirmedActions": null,
+      "error": {
+        "message": "actual reader pause IPC: deadline exceeded",
+        "stack": "Error: actual reader pause IPC: deadline exceeded\n    at wait (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:121:15)\n    at async runWorkerQualification (file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:276:32)\n    at async file:///C:/Users/igorl/.codex/worktrees/hyperion45-es955/hyperion-history-api/scripts/qualification/es955-workers.ts:370:20"
+      },
+      "includedInFinalTotals": false
+    },
+    {
+      "name": "es198-workers-pilot5",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5",
+      "archivePrefix": "runs/development/es198-workers-pilot5",
+      "confirmedActions": 17840,
+      "error": null,
+      "includedInFinalTotals": false
+    },
+    {
+      "name": "es198-workers-pilot6",
+      "status": "passed",
+      "fixtureRun": "ece38e1dfbc5",
+      "archivePrefix": "runs/development/es198-workers-pilot6",
+      "confirmedActions": 16940,
+      "error": null,
+      "includedInFinalTotals": false
+    }
+  ],
+  "developmentFixturePostflight": {
+    "fixture": "state3",
+    "status": "failed",
+    "error": "System.Management.Automation.RuntimeException: Postflight work/pressure/broker accounting did not become idle",
+    "interpretation": "Failed pilot left a nonempty queue without consumers. Preserved as failed postflight, then removed by exact owned fixture cleanup; excluded from final acceptance."
+  },
+  "limits": [
+    "Dense actions enter the actual durable Rabbit indexing queue; this does not measure SHIP action decoding throughput.",
+    "Actual genesis blocks traverse production master, reader, deserializer and indexer processes.",
+    "The bulk proxy gates forwarding of bulk requests before dispatch to Elasticsearch. Actual upstream responses remain unchanged after release; the controlled stall does not establish native Elasticsearch saturation or delayed post-ES acknowledgments.",
+    "Publisher confirms, proxy request-to-response timings (including any pre-dispatch gate), database receipt copies, and final physical-copy reads are distinct observations.",
+    "No true broker-delivery-to-Elasticsearch per-item acknowledgment latency was instrumented.",
+    "Profiling and observer overhead, distinct fresh fixtures, and other host workloads preclude runtime/capacity rankings.",
+    "Bounded recovery observations do not establish heap-leak freedom, production capacity, long-duration stability or full-chain replay acceptance.",
+    "The archived fixture password and producer key are known test-only credentials. Raw artifacts are not rewritten or sanitized."
+  ]
+}

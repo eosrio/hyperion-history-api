@@ -1,5 +1,6 @@
 import { ConfigurationModule } from "./config.js";
 import path, { join } from "path";
+import { pathToFileURL } from "node:url";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { HyperionConnections } from "../../interfaces/hyperionConnections.js";
 import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
@@ -37,7 +38,7 @@ export class HyperionModuleLoader {
 
     async loadParser() {
         const path = join(import.meta.dirname, 'parsers', this.config.settings.parser + "-parser.js");
-        const mod = (await import(path)).default;
+        const mod = (await import(pathToFileURL(path).href)).default;
         this.parser = new mod(this.cm) as BaseParser;
     }
 
@@ -99,7 +100,7 @@ export class HyperionModuleLoader {
         const actionDataPath = path.join(import.meta.dirname, 'action_data');
         const files = readdirSync(actionDataPath);
         for (const plugin of files.filter(f => f.endsWith('.js'))) {
-            import(join(actionDataPath, plugin)).then(value => {
+            import(pathToFileURL(join(actionDataPath, plugin)).href).then(value => {
                 const _module = value.hyperionModule;
                 if (_module.parser_version.includes(this.config.settings.parser)) {
                     if (_module.chain === this.chainID || _module.chain === '*') {
@@ -160,7 +161,7 @@ export class HyperionModuleLoader {
             if (this.config.plugins.hasOwnProperty(key)) {
                 if (pState[key] && pState[key].enabled && this.config.plugins[key] && this.config.plugins[key].enabled) {
                     try {
-                        const pMod = (await import(join(base, key, 'build', 'index.js'))).default;
+                        const pMod = (await import(pathToFileURL(join(base, key, 'build', 'index.js')).href)).default;
                         const pl = new pMod(this.config.plugins[key]) as HyperionPlugin;
                         if (pl.actionHandlers) {
                             this.loadPluginActionHandlers(pl.actionHandlers);
