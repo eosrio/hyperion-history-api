@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-19T02:56:27.120Z",
+  "apiParentCommit": "298db4241d3ff3b43582d60fd0f797fe52921675",
+  "serverCommit": "48acba663b09e70b115dd879329141506c377890",
+  "image": "docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c",
+  "node": {
+    "version": "v24.19.0",
+    "platform": "win32",
+    "arch": "x64",
+    "executableSha256": "3602f2bb1a10f2cbab4c36886218a33c1ab3db87290e73b033c46c77147d0237"
+  },
+  "java": {
+    "version": "27",
+    "os": "Linux",
+    "executableHashFile": "es198-clock-java-sha256.txt"
+  },
+  "artifacts": [
+    {
+      "path": "EsBulkClockProbe.java",
+      "bytes": 4241,
+      "sha256": "3f29fa8d6d8eea8337f38dfa575ed4887e8abe5c64a39b5d35b1724f58981c95"
+    },
+    {
+      "path": "cleanup.json",
+      "bytes": 430,
+      "sha256": "d5386dfc627870dd5ae3f38dc7ae1132e64410d98b6681cbebfd0543a7da6d0f"
+    },
+    {
+      "path": "es198-clock-baseline.json",
+      "bytes": 2399,
+      "sha256": "77b4490df2359fd01031639b6ac3b49d40862d55d491f1ab7fd9249d3453f5c8"
+    },
+    {
+      "path": "es198-clock-baseline2.json",
+      "bytes": 40531,
+      "sha256": "fba0b930f921868ea6f484a09732496d62d0dd66385d433d3064ee577c0d1329"
+    },
+    {
+      "path": "es198-clock-before-direct-settings.json",
+      "bytes": 2854,
+      "sha256": "94a26e64952af95c963ccb7ee23cae594327750ed8323b1185b54c34deae1d04"
+    },
+    {
+      "path": "es198-clock-default-state.json",
+      "bytes": 680,
+      "sha256": "691847ad2994b3fa1bf4b172370d1be978b2ff6bd07f8163cf0acd3be15e4a77"
+    },
+    {
+      "path": "es198-clock-direct-docker-args.json",
+      "bytes": 1127,
+      "sha256": "84738c57a41e6b694b2b9e344b4c2bed475540db4a04397022711284e85a265e"
+    },
+    {
+      "path": "es198-clock-direct-settings.json",
+      "bytes": 2936,
+      "sha256": "214c2bd134345e82d5bca4c4925cc20dacfb189e571a5081a02e9dd230e6dec8"
+    },
+    {
+      "path": "es198-clock-direct-state.json",
+      "bytes": 707,
+      "sha256": "f08f21c70fe006726bbea916a2ec30312f3ea4a36972733f5eccd5e98805f9ea"
+    },
+    {
+      "path": "es198-clock-direct.json",
+      "bytes": 40715,
+      "sha256": "ee60a39dd2d6d2d9aa3ce63d8ef9ae03950eba731d8da50176779cd368e69475"
+    },
+    {
+      "path": "es198-clock-docker-version.json",
+      "bytes": 1146,
+      "sha256": "353700863285e40c6ef550dd7b7f7b90cf589c9c81ba02d4390dddb431186ac3"
+    },
+    {
+      "path": "es198-clock-java-baseline.jsonl",
+      "bytes": 34920,
+      "sha256": "da204472a13c0a2b83c55f40b6da1bcf8707d0f352eea2d862b12ac4ce67548b"
+    },
+    {
+      "path": "es198-clock-java-direct.jsonl",
+      "bytes": 35123,
+      "sha256": "e554e2f7502a984e8cb19bc5d784766b67cce171303a52bde675333d7453eb7b"
+    },
+    {
+      "path": "es198-clock-java-restored.jsonl",
+      "bytes": 34936,
+      "sha256": "1688a343bb5339047903a4d4dfa7bc11246ca03944a4ce487b47402c5d451ad2"
+    },
+    {
+      "path": "es198-clock-java-sha256.txt",
+      "bytes": 105,
+      "sha256": "767ede13dfaa899f3f3bf93b23b921cb12412ce86f53882c8a575c446df38a21"
+    },
+    {
+      "path": "es198-clock-repro.mjs",
+      "bytes": 3631,
+      "sha256": "1eab540846658d7224e35b379a69afb4b4564c7e72bb6b6b8adc9c1a51973d2e"
+    },
+    {
+      "path": "es198-clock-restored-docker-args.json",
+      "bytes": 1129,
+      "sha256": "448afab19daa4935dfc652db69d87c630fa750a08256917371428de3be57d8e8"
+    },
+    {
+      "path": "es198-clock-restored-inspect.json",
+      "bytes": 12196,
+      "sha256": "957256f9dc2b5dca6d739253c5306790f0f10fd349baa32f74d40b6758892cfc"
+    },
+    {
+      "path": "es198-clock-restored-settings.json",
+      "bytes": 2938,
+      "sha256": "8836eab5a2495ad45adb4f3a29fa28d81fe245ffbb7069995ddace25c86c02ac"
+    },
+    {
+      "path": "es198-clock-restored-state.json",
+      "bytes": 709,
+      "sha256": "5b4f77e1a5989093ec346a66985e1a49cd8d43c183b27a8844d39dc45718d453"
+    },
+    {
+      "path": "es198-clock-restored.json",
+      "bytes": 40555,
+      "sha256": "d24c00250869e1764134d736b2f854bdf75203e0967f994cae728bb8e0c537e0"
+    },
+    {
+      "path": "es198-clock-source-review.md",
+      "bytes": 5847,
+      "sha256": "13c11282b478b2572db27a2f87548cd662dba68966fafb026ec3972f19bb85df"
+    },
+    {
+      "path": "es198-clock-volume-inspect.json",
+      "bytes": 419,
+      "sha256": "be2e6e19d7f5876c3c87ed3ab56148b19e809f1f18f301d791c02fae65fc0cb1"
+    },
+    {
+      "path": "es198-restart-clock.ps1",
+      "bytes": 4163,
+      "sha256": "7e74e98752546dc71ad5ec55f0e1265e0c593a0d084b3e9ec2c393edb37a6a47"
+    }
+  ]
+}

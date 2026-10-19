@@ -43,7 +43,7 @@ export class ChainManager {
         this.config = {
             springVersion: config.springVersion ?? envDefaults.SPRING_VERSION ?? '1.2.2',
             cdtVersion: config.cdtVersion ?? envDefaults.CDT_VERSION ?? '4.1.1',
-            esVersion: config.esVersion ?? envDefaults.ES_VERSION ?? '9.3.1',
+            esVersion: config.esVersion ?? envDefaults.ES_VERSION ?? '9.5.5',
             keepContainers: config.keepContainers ?? false,
             verbose: config.verbose ?? false,
         };

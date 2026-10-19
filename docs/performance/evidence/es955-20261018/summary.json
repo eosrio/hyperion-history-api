@@ -1,0 +1,717 @@
+{
+  "schema_version": 1,
+  "source_commit": "90bc36e05b6f83d504c5c98f3bcb8c2e7a434925",
+  "cases": [
+    {
+      "name": "node-default",
+      "profiled": false,
+      "status": "passed",
+      "versions": {
+        "runtime": "v24.19.0",
+        "bun": null,
+        "client": "8.19.1",
+        "transport": "8.10.1",
+        "selected_connection": "UndiciConnection",
+        "ES_HTTP_CONNECTION": null
+      },
+      "acknowledged_documents": 2500,
+      "measured_search_requests": 674,
+      "measured_bulk_requests": 9,
+      "failed_measured_requests": 0,
+      "failed_bulk_items": 0,
+      "cleanup": [
+        {
+          "index": "hyp-es955-5037782c5249-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-5037782c5249-b",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-5037782c5249-a",
+          "ok": true
+        }
+      ],
+      "wall_ms": 6904.4947,
+      "distributions": {
+        "read-only:bulk": {
+          "wall_ms": {
+            "count": 0,
+            "min": null,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "server_took_ms": {
+            "count": 0,
+            "min": null,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "input_json_bytes": 0,
+          "output_json_bytes": 0
+        },
+        "read-only:search": {
+          "wall_ms": {
+            "count": 265,
+            "min": 2.239599999999882,
+            "p50": 4.925099999999929,
+            "p95": 8.585200000000441,
+            "p99": 9.965699999999742,
+            "max": 50.393299999999726
+          },
+          "server_took_ms": {
+            "count": 265,
+            "min": 0,
+            "p50": 2,
+            "p95": 3,
+            "p99": 4,
+            "max": 5
+          },
+          "input_json_bytes": 92370,
+          "output_json_bytes": 12757440
+        },
+        "mixed:bulk": {
+          "wall_ms": {
+            "count": 5,
+            "min": 55.3099000000002,
+            "p50": 55.90989999999965,
+            "p95": 65.51669999999922,
+            "p99": 65.51669999999922,
+            "max": 65.51669999999922
+          },
+          "server_took_ms": {
+            "count": 5,
+            "min": 0,
+            "p50": 0,
+            "p95": 200,
+            "p99": 200,
+            "max": 200
+          },
+          "input_json_bytes": 187082,
+          "output_json_bytes": 93179
+        },
+        "mixed:search": {
+          "wall_ms": {
+            "count": 291,
+            "min": 2.149999999999636,
+            "p50": 4.9594999999999345,
+            "p95": 7.445600000000013,
+            "p99": 27.413399999999456,
+            "max": 57.34339999999975
+          },
+          "server_took_ms": {
+            "count": 291,
+            "min": 0,
+            "p50": 1,
+            "p95": 2,
+            "p99": 24,
+            "max": 53
+          },
+          "input_json_bytes": 101501,
+          "output_json_bytes": 14002985
+        }
+      },
+      "timing_warnings": [
+        {
+          "kind": "bulk",
+          "phase": "seed",
+          "wall_ms": 82.78499999999985,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        },
+        {
+          "kind": "bulk",
+          "phase": "mixed:1",
+          "wall_ms": 55.65679999999975,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        },
+        {
+          "kind": "bulk",
+          "phase": "mixed:4",
+          "wall_ms": 65.51669999999922,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        }
+      ],
+      "server_deltas": {
+        "index_total": 2500,
+        "refresh_total": 88,
+        "merges_total": 0,
+        "breaker_tripped": 0,
+        "thread_pool_rejections": 0
+      }
+    },
+    {
+      "name": "node-http",
+      "profiled": false,
+      "status": "passed",
+      "versions": {
+        "runtime": "v24.19.0",
+        "bun": null,
+        "client": "8.19.1",
+        "transport": "8.10.1",
+        "selected_connection": "HttpConnection",
+        "ES_HTTP_CONNECTION": null
+      },
+      "acknowledged_documents": 2500,
+      "measured_search_requests": 674,
+      "measured_bulk_requests": 9,
+      "failed_measured_requests": 0,
+      "failed_bulk_items": 0,
+      "cleanup": [
+        {
+          "index": "hyp-es955-986ed9f9e948-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-986ed9f9e948-b",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-986ed9f9e948-a",
+          "ok": true
+        }
+      ],
+      "wall_ms": 6931.4264,
+      "distributions": {
+        "read-only:bulk": {
+          "wall_ms": {
+            "count": 0,
+            "min": null,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "server_took_ms": {
+            "count": 0,
+            "min": null,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "input_json_bytes": 0,
+          "output_json_bytes": 0
+        },
+        "read-only:search": {
+          "wall_ms": {
+            "count": 265,
+            "min": 2.6116000000001804,
+            "p50": 4.907399999999143,
+            "p95": 6.396799999999985,
+            "p99": 28.73739999999998,
+            "max": 55.2488000000003
+          },
+          "server_took_ms": {
+            "count": 265,
+            "min": 0,
+            "p50": 1,
+            "p95": 2,
+            "p99": 4,
+            "max": 51
+          },
+          "input_json_bytes": 92370,
+          "output_json_bytes": 12757442
+        },
+        "mixed:bulk": {
+          "wall_ms": {
+            "count": 5,
+            "min": 51.19250000000011,
+            "p50": 57.91849999999977,
+            "p95": 94.05809999999929,
+            "p99": 94.05809999999929,
+            "max": 94.05809999999929
+          },
+          "server_took_ms": {
+            "count": 5,
+            "min": 0,
+            "p50": 0,
+            "p95": 200,
+            "p99": 200,
+            "max": 200
+          },
+          "input_json_bytes": 187082,
+          "output_json_bytes": 93179
+        },
+        "mixed:search": {
+          "wall_ms": {
+            "count": 291,
+            "min": 1.9841000000005806,
+            "p50": 4.361499999999978,
+            "p95": 5.681100000000697,
+            "p99": 7.511099999999715,
+            "max": 26.501500000000306
+          },
+          "server_took_ms": {
+            "count": 291,
+            "min": 0,
+            "p50": 1,
+            "p95": 2,
+            "p99": 3,
+            "max": 22
+          },
+          "input_json_bytes": 101501,
+          "output_json_bytes": 14002982
+        }
+      },
+      "timing_warnings": [
+        {
+          "kind": "bulk",
+          "phase": "seed",
+          "wall_ms": 62.52039999999988,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        },
+        {
+          "kind": "bulk",
+          "phase": "mixed:3",
+          "wall_ms": 68.84259999999995,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        },
+        {
+          "kind": "bulk",
+          "phase": "mixed:5",
+          "wall_ms": 51.19250000000011,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        }
+      ],
+      "server_deltas": {
+        "index_total": 2500,
+        "refresh_total": 80,
+        "merges_total": 0,
+        "breaker_tripped": 0,
+        "thread_pool_rejections": 0
+      }
+    },
+    {
+      "name": "bun-default",
+      "profiled": false,
+      "status": "passed",
+      "versions": {
+        "runtime": "v26.3.0",
+        "bun": "1.4.3",
+        "client": "8.19.1",
+        "transport": "8.10.1",
+        "selected_connection": "HttpConnection",
+        "ES_HTTP_CONNECTION": null
+      },
+      "acknowledged_documents": 2500,
+      "measured_search_requests": 674,
+      "measured_bulk_requests": 9,
+      "failed_measured_requests": 0,
+      "failed_bulk_items": 0,
+      "cleanup": [
+        {
+          "index": "hyp-es955-45a719b06205-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-45a719b06205-b",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-45a719b06205-a",
+          "ok": true
+        }
+      ],
+      "wall_ms": 6121.5145,
+      "distributions": {
+        "read-only:bulk": {
+          "wall_ms": {
+            "count": 0,
+            "min": null,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "server_took_ms": {
+            "count": 0,
+            "min": null,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "input_json_bytes": 0,
+          "output_json_bytes": 0
+        },
+        "read-only:search": {
+          "wall_ms": {
+            "count": 265,
+            "min": 2.475499999999556,
+            "p50": 4.710099999999784,
+            "p95": 7.26700000000028,
+            "p99": 11.934099999999944,
+            "max": 30.06100000000015
+          },
+          "server_took_ms": {
+            "count": 265,
+            "min": 0,
+            "p50": 1,
+            "p95": 3,
+            "p99": 3,
+            "max": 27
+          },
+          "input_json_bytes": 92370,
+          "output_json_bytes": 12757441
+        },
+        "mixed:bulk": {
+          "wall_ms": {
+            "count": 5,
+            "min": 54.447799999999916,
+            "p50": 62.17329999999947,
+            "p95": 72.94430000000011,
+            "p99": 72.94430000000011,
+            "max": 72.94430000000011
+          },
+          "server_took_ms": {
+            "count": 5,
+            "min": 0,
+            "p50": 0,
+            "p95": 200,
+            "p99": 200,
+            "max": 200
+          },
+          "input_json_bytes": 187082,
+          "output_json_bytes": 93179
+        },
+        "mixed:search": {
+          "wall_ms": {
+            "count": 291,
+            "min": 2.1619999999993524,
+            "p50": 4.3630999999995765,
+            "p95": 5.874500000000808,
+            "p99": 19.25500000000011,
+            "max": 32.37049999999999
+          },
+          "server_took_ms": {
+            "count": 291,
+            "min": 0,
+            "p50": 1,
+            "p95": 2,
+            "p99": 3,
+            "max": 29
+          },
+          "input_json_bytes": 101501,
+          "output_json_bytes": 14002982
+        }
+      },
+      "timing_warnings": [
+        {
+          "kind": "bulk",
+          "phase": "seed",
+          "wall_ms": 58.67970000000014,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        },
+        {
+          "kind": "bulk",
+          "phase": "mixed:2",
+          "wall_ms": 62.17329999999947,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        },
+        {
+          "kind": "bulk",
+          "phase": "mixed:4",
+          "wall_ms": 68.51590000000033,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        }
+      ],
+      "server_deltas": {
+        "index_total": 2500,
+        "refresh_total": 84,
+        "merges_total": 0,
+        "breaker_tripped": 0,
+        "thread_pool_rejections": 0
+      }
+    },
+    {
+      "name": "node-http-profile",
+      "profiled": true,
+      "status": "passed",
+      "versions": {
+        "runtime": "v24.19.0",
+        "bun": null,
+        "client": "8.19.1",
+        "transport": "8.10.1",
+        "selected_connection": "HttpConnection",
+        "ES_HTTP_CONNECTION": null
+      },
+      "acknowledged_documents": 2500,
+      "measured_search_requests": 674,
+      "measured_bulk_requests": 9,
+      "failed_measured_requests": 0,
+      "failed_bulk_items": 0,
+      "cleanup": [
+        {
+          "index": "hyp-es955-d8c56d81b61d-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-d8c56d81b61d-b",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-d8c56d81b61d-a",
+          "ok": true
+        }
+      ],
+      "wall_ms": 4955.5915,
+      "distributions": {
+        "read-only:bulk": {
+          "wall_ms": {
+            "count": 0,
+            "min": null,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "server_took_ms": {
+            "count": 0,
+            "min": null,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "input_json_bytes": 0,
+          "output_json_bytes": 0
+        },
+        "read-only:search": {
+          "wall_ms": {
+            "count": 265,
+            "min": 1.5873999999998887,
+            "p50": 3.3231000000000677,
+            "p95": 4.40729999999985,
+            "p99": 5.498999999999796,
+            "max": 12.708100000000286
+          },
+          "server_took_ms": {
+            "count": 265,
+            "min": 0,
+            "p50": 1,
+            "p95": 1,
+            "p99": 2,
+            "max": 2
+          },
+          "input_json_bytes": 92370,
+          "output_json_bytes": 12757440
+        },
+        "mixed:bulk": {
+          "wall_ms": {
+            "count": 5,
+            "min": 48.46399999999994,
+            "p50": 54.11909999999989,
+            "p95": 58.03219999999965,
+            "p99": 58.03219999999965,
+            "max": 58.03219999999965
+          },
+          "server_took_ms": {
+            "count": 5,
+            "min": 0,
+            "p50": 0,
+            "p95": 200,
+            "p99": 200,
+            "max": 200
+          },
+          "input_json_bytes": 187082,
+          "output_json_bytes": 93177
+        },
+        "mixed:search": {
+          "wall_ms": {
+            "count": 291,
+            "min": 1.698899999999412,
+            "p50": 3.4299999999998363,
+            "p95": 4.5757000000003245,
+            "p99": 5.70470000000023,
+            "max": 11.121599999999944
+          },
+          "server_took_ms": {
+            "count": 291,
+            "min": 0,
+            "p50": 1,
+            "p95": 1,
+            "p99": 2,
+            "max": 8
+          },
+          "input_json_bytes": 101501,
+          "output_json_bytes": 14002981
+        }
+      },
+      "timing_warnings": [
+        {
+          "kind": "bulk",
+          "phase": "seed",
+          "wall_ms": 57.69439999999986,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        },
+        {
+          "kind": "bulk",
+          "phase": "mixed:1",
+          "wall_ms": 48.46399999999994,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        }
+      ],
+      "server_deltas": {
+        "index_total": 2500,
+        "refresh_total": 80,
+        "merges_total": 0,
+        "breaker_tripped": 0,
+        "thread_pool_rejections": 0
+      }
+    },
+    {
+      "name": "bun-http-profile",
+      "profiled": true,
+      "status": "passed",
+      "versions": {
+        "runtime": "v26.3.0",
+        "bun": "1.4.3",
+        "client": "8.19.1",
+        "transport": "8.10.1",
+        "selected_connection": "HttpConnection",
+        "ES_HTTP_CONNECTION": null
+      },
+      "acknowledged_documents": 2500,
+      "measured_search_requests": 674,
+      "measured_bulk_requests": 9,
+      "failed_measured_requests": 0,
+      "failed_bulk_items": 0,
+      "cleanup": [
+        {
+          "index": "hyp-es955-96b658689fb8-empty",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-96b658689fb8-b",
+          "ok": true
+        },
+        {
+          "index": "hyp-es955-96b658689fb8-a",
+          "ok": true
+        }
+      ],
+      "wall_ms": 4706.1385,
+      "distributions": {
+        "read-only:bulk": {
+          "wall_ms": {
+            "count": 0,
+            "min": null,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "server_took_ms": {
+            "count": 0,
+            "min": null,
+            "p50": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "input_json_bytes": 0,
+          "output_json_bytes": 0
+        },
+        "read-only:search": {
+          "wall_ms": {
+            "count": 265,
+            "min": 1.5482999999999265,
+            "p50": 2.9539999999997235,
+            "p95": 3.7715000000002874,
+            "p99": 4.5318999999999505,
+            "max": 8.690800000000309
+          },
+          "server_took_ms": {
+            "count": 265,
+            "min": 0,
+            "p50": 1,
+            "p95": 1,
+            "p99": 2,
+            "max": 6
+          },
+          "input_json_bytes": 92370,
+          "output_json_bytes": 12757440
+        },
+        "mixed:bulk": {
+          "wall_ms": {
+            "count": 5,
+            "min": 48.39949999999999,
+            "p50": 53.449899999999616,
+            "p95": 56.37030000000004,
+            "p99": 56.37030000000004,
+            "max": 56.37030000000004
+          },
+          "server_took_ms": {
+            "count": 5,
+            "min": 0,
+            "p50": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "input_json_bytes": 187082,
+          "output_json_bytes": 93175
+        },
+        "mixed:search": {
+          "wall_ms": {
+            "count": 291,
+            "min": 1.6474000000002889,
+            "p50": 3.2545000000000073,
+            "p95": 4.28919999999971,
+            "p99": 5.277799999999843,
+            "max": 7.591699999999946
+          },
+          "server_took_ms": {
+            "count": 291,
+            "min": 0,
+            "p50": 1,
+            "p95": 1,
+            "p99": 2,
+            "max": 5
+          },
+          "input_json_bytes": 101501,
+          "output_json_bytes": 14002981
+        }
+      },
+      "timing_warnings": [
+        {
+          "kind": "bulk",
+          "phase": "seed",
+          "wall_ms": 59.02629999999999,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        },
+        {
+          "kind": "bulk",
+          "phase": "seed",
+          "wall_ms": 54.35600000000022,
+          "server_took_ms": 200,
+          "message": "Server-reported took exceeds client wall by more than rounding tolerance; investigate timing before interpreting performance"
+        }
+      ],
+      "server_deltas": {
+        "index_total": 2500,
+        "refresh_total": 80,
+        "merges_total": 0,
+        "breaker_tripped": 0,
+        "thread_pool_rejections": 0
+      }
+    }
+  ]
+}
