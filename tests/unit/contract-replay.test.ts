@@ -6,7 +6,7 @@ import {deflateSync, gzipSync} from 'node:zlib';
 import {ABI, P2P, PrivateKey, Serializer, Transaction} from '@wharfkit/antelope';
 import {actionAbi, auditFixture, contractAccount, contractWasm, decodeBlock, decodeExact, digest, encodeRecord, genesisChainId, parseShard,
     validateManifest, type ContractFixture} from '../../scripts/qualification/contract-fixture.ts';
-import {assertActionOutputs, assertBlockOutputs, assertContractAbsent, assertEmptyProjection, assertOwnedServices, assertResourceIsolation, readAllOutputs} from '../../scripts/qualification/contract-replay.ts';
+import {assertAbiOutputs, assertActionOutputs, assertBlockOutputs, assertContractAbsent, assertEmptyProjection, assertOwnedServices, assertResourceIsolation, readAllOutputs} from '../../scripts/qualification/contract-replay.ts';
 
 const zero = '0'.repeat(64);
 const abiHex = (revision: 1 | 2) => Buffer.from(Serializer.encode({object: ABI.from(actionAbi(revision))}).array).toString('hex');
@@ -237,6 +237,17 @@ describe('guarded contract replay input', () => {
     }));
 });
 describe('independent output oracle', () => {
+    test('ABI output compares validated bytes across hex case while refusing changed bytes and malformed hex', () => {
+        const expected = [{account: contractAccount, block: 2, abiHex: 'aabb00ff'}];
+        const hits = [{_source: {account: contractAccount, block: 2, abi_hex: 'AABB00FF'}}];
+        assertAbiOutputs(hits, expected); hits[0]._source.abi_hex = expected[0].abiHex; assertAbiOutputs(hits, expected);
+        for (const hex of ['aabb00fe', 'aabb00ffz', 'aabb00f', '', 'aabb00ff00']) {
+            hits[0]._source.abi_hex = hex; expect(() => assertAbiOutputs(hits, expected)).toThrow();
+        }
+        hits[0]._source.abi_hex = expected[0].abiHex; hits[0]._source.block = 3; expect(() => assertAbiOutputs(hits, expected)).toThrow();
+        hits[0]._source.block = 2; hits[0]._source.account = 'other'; expect(() => assertAbiOutputs(hits, expected)).toThrow();
+        expect(() => assertAbiOutputs([], expected)).toThrow();
+    });
     const page = (start: number, length: number, total: number) => ({timed_out: false, _shards: {total: 2, successful: 2, failed: 0},
         hits: {total: {value: total, relation: 'eq'}, hits: Array.from({length}, (_value, index) => ({_id: String(start + index),
             sort: [start + index], _source: {block_num: start + index}}))}});

@@ -61,6 +61,15 @@ export function assertBlockOutputs(hits: any[], expected: {blockNum: number; id:
         assert.equal(hits[index]._source.block_id, block.id); assert.equal(hits[index]._source.prev_id, block.previous);
     }
 }
+export function assertAbiOutputs(hits: any[], expected: {account: string; block: number; abiHex: string}[]) {
+    assert.equal(hits.length, expected.length, 'ABI deployment output coverage differs');
+    for (const [index, entry] of expected.entries()) {
+        const actual = hits[index]._source; assert.equal(actual.account, entry.account); assert.equal(actual.block, entry.block);
+        for (const hex of [actual.abi_hex, entry.abiHex])
+            assert.ok(typeof hex === 'string' && hex.length % 2 === 0 && /^[a-fA-F0-9]+$/.test(hex), 'invalid ABI hex bytes');
+        assert.deepEqual(Buffer.from(actual.abi_hex, 'hex'), Buffer.from(entry.abiHex, 'hex'), 'ABI deployment bytes differ');
+    }
+}
 // This fixture has a unique numeric key in each queried domain. Bound each response
 // below Elasticsearch's default result window and reject changing/incomplete pages.
 export async function readAllOutputs(client: {search: (request: any) => Promise<any>}, index: string, field: string,
@@ -288,9 +297,7 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
             report.finalQueues = queueState; report.finalBlocks = blocks; report.finalActions = actions; return true;
         }, 180000);
         const outputAbis = await all(chain + '-abi-*', 'block', {term: {account: contractAccount}});
-        assert.equal(outputAbis.length, 2); for (const [index, hit] of outputAbis.entries()) {
-            assert.equal(hit._source.block, abiHistory[index].block); assert.equal(hit._source.abi_hex, abiHistory[index].abiHex);
-        } report.finalAbiHistory = outputAbis;
+        assertAbiOutputs(outputAbis, abiHistory); report.finalAbiHistory = outputAbis;
         report.requests = replay.requests; assert.ok(replay.requests.some(request => request.type === 'get_blocks_request_v0'));
         const rows = await events(); const readerCompletion = rows.filter(row => row.kind === 'ipc_receive' && row.event === 'completed' && row.role === 'reader');
         assert.equal(readerCompletion.length, 1, 'finite reader completion evidence missing'); report.readerCompletion = readerCompletion;
