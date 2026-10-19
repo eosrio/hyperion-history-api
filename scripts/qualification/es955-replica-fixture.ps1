@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory)][ValidateSet('create','cleanup')][string]$Action,
-    [Parameter(Mandatory)][string]$StateFile
+    [Parameter(Mandatory)][string]$StateFile,
+    [switch]$ExposeRabbitManagement
 )
 $ErrorActionPreference='Stop'
 $label='es198-replicas'
@@ -56,12 +57,17 @@ if ($Action -eq 'create') {
     $brokerArgs=@('run','-d','--name',$brokerName,'--hostname',$brokerName,'--network',$network,
         '--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",'--cpus','1','--memory','1g',
         '-p','127.0.0.1::5672','--mount',"type=volume,src=$brokerVolume,dst=/var/lib/rabbitmq",
-        '-e','RABBITMQ_DEFAULT_USER=qualifier','-e','RABBITMQ_DEFAULT_PASS=qualifier-test-only',$state.rabbitImage)
+        '-e','RABBITMQ_DEFAULT_USER=qualifier','-e','RABBITMQ_DEFAULT_PASS=qualifier-test-only')
+    if ($ExposeRabbitManagement) { $brokerArgs+=@('-p','127.0.0.1::15672') }
+    $brokerArgs+=@($state.rabbitImage)
     $brokerId=(Invoke-FixtureDocker $brokerArgs).Trim()
     $state.broker.containerId=$brokerId; Save-State $state
     $brokerHost=(Invoke-FixtureDocker @('port',$brokerId,'5672/tcp')).Trim()
     $state.broker=@{name=$brokerName;containerId=$brokerId;volume=$brokerVolume;
         url="amqp://qualifier:qualifier-test-only@$brokerHost";dockerArgs=$brokerArgs}
+    if ($ExposeRabbitManagement) {
+        $state.broker.managementUrl='http://'+(Invoke-FixtureDocker @('port',$brokerId,'15672/tcp')).Trim()
+    }
     Save-State $state
     $deadline=[DateTime]::UtcNow.AddSeconds(90)
     do {

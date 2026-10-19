@@ -43,6 +43,11 @@ jobs:
       - name: Check disposable replica fixture cleanup with mocked Docker
         shell: pwsh
         run: ./scripts/qualification/check-replica-cleanup.ps1
+      - name: Check full-worker fixture cleanup with mocked Docker
+        shell: pwsh
+        run: ./scripts/qualification/check-worker-cleanup.ps1
+      - name: Check worker observation and shutdown
+        run: node scripts/qualification/check-worker-observer.mjs
       - name: Verify Elasticsearch review follow-up evidence checksums
         working-directory: docs/performance/evidence/es955-failure-review-20261019
         run: sha256sum -c SHA256SUMS
