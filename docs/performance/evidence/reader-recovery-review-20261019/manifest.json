@@ -1,0 +1,405 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-19T19:45:03.038806+00:00",
+  "sourceCommit": "94c89bcd499e7ef888f6acff8fae4a664ca83188",
+  "archive": "raw-evidence.tar.gz",
+  "archiveSha256": "915025c700401651210981240b36086cebb6a6f035a68bb1851a19d3d1e9be00",
+  "memberCount": 52,
+  "members": [
+    {
+      "path": "README.json",
+      "sizeBytes": 1478,
+      "sha256": "61cdb3fe32c72b452ea9ad9be4277731c8a2a55d0028e6ff3bfdf488caeeaeba",
+      "role": "Evidence interpretation"
+    },
+    {
+      "path": "fixture/fixture208-review5574356339.json",
+      "sizeBytes": 15638,
+      "sha256": "1bcc97625cfdb19a52add7737fa6ea829e11a43272ee21fd93ab70f41910ebb8",
+      "role": "Exact owned fixture identities and cleanup receipts",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "fixture/fixture208-review5574356339.json.cleanup.json",
+      "sizeBytes": 1533,
+      "sha256": "aab8270dcd0fa75cf7f4aaf2a1f4e2dee54724f8a221b58cedd9e54ffa8fa43e",
+      "role": "Exact owned fixture identities and cleanup receipts",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "fixture/fixture208-review5574356339.json.core.json",
+      "sizeBytes": 8140,
+      "sha256": "d39695a4192806ef0ffab190f5e139f2d2d114dc84589da5a15f9c2318791ac4",
+      "role": "Exact owned fixture identities and cleanup receipts",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "fixture/fixture208-review5574356339.json.core.json.cleanup.json",
+      "sizeBytes": 777,
+      "sha256": "bd25fb501ce70ff04f77a75c9bcfb4914ae60621d780f2f34b96a0b6bb235b08",
+      "role": "Exact owned fixture identities and cleanup receipts",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/build.log",
+      "sizeBytes": 39,
+      "sha256": "c7e2fb55e15980c8fe8c09248a5912f968e6cc871faf9aa525c2b0845c83ff99",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/checkout.log",
+      "sizeBytes": 77,
+      "sha256": "36d89a71b6e78d9e74474257e85367beddc90f390497c6613ea4381bd84f8b55",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/clone.log",
+      "sizeBytes": 112,
+      "sha256": "109534234b7054174df0033947a6fa23d61d7527b75e220ce63e6eec1d60b48e",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/fetch.log",
+      "sizeBytes": 160,
+      "sha256": "92b94816b15d2628fa206b883b404bb7ab6621221f36d61331daa2652525b33b",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/final-run.json",
+      "sizeBytes": 2217,
+      "sha256": "109e391fb26cde936a01c0812a7834b648b1dce8a84e90ce43189756f5fccfad",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/final.py",
+      "sizeBytes": 3685,
+      "sha256": "4ad84836a236c90c5968dc5286651805ff8a0b5081f8860801379baf774bda7b",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/fixture-cleanup.log",
+      "sizeBytes": 59,
+      "sha256": "1c494a295f9b7777e9a8b2aa87e8e2319ce2d5aca97927c0f9170880acea8959",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/fixture-create.log",
+      "sizeBytes": 326,
+      "sha256": "82bb0aebcb26dff391b5a398f12bc57dda4d3bd8d25ff32152b740c1ab1ba346",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/postflight.json",
+      "sizeBytes": 3556,
+      "sha256": "f96c140d571cb27c853606add6965142b0d73caad943ecff21265e9d7661faf3",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/postflight.log",
+      "sizeBytes": 3028,
+      "sha256": "2f47b3fdbfa3d6b2551c4c029e28e07cea2eb08080ba705f59bc93762933cc5b",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/postflight.py",
+      "sizeBytes": 4965,
+      "sha256": "348a7a43699f0a13c43eea020c15ba5e86aaf59252b3a22851a5a7e38a99ee9a",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/preparation-driver.py",
+      "sizeBytes": 4311,
+      "sha256": "eee1687bcf7803b1a75dc41a627c5e2eeda9bf7d966b70ad9d52feabc22d551f",
+      "role": "Initial preparation driver; its URL construction failed before the excluded pilot did work"
+    },
+    {
+      "path": "operations/preparation.json",
+      "sizeBytes": 4914,
+      "sha256": "f6f2405b5d383f0e33296323fe4949fc696b87eab5f5e9919d9937a14230b03d",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/qualification-final.log",
+      "sizeBytes": 1152,
+      "sha256": "eec4a5e7d8b449f7923f19ab55298d479a715a0dfbf209c9906c3fd9633b6eb4",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/qualification-typecheck.log",
+      "sizeBytes": 41,
+      "sha256": "2c4e8d861ff33ed76508b640ce5a1c38b63b6f908f0b21219b162da87a289ede",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/qualification.log",
+      "sizeBytes": 917,
+      "sha256": "c6f8afcfc12d4c79761a9495942f223111ca9f1ce7cee6136dc41cc7abca42a9",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/sources/build/indexer/helpers/reader-progress.js",
+      "sizeBytes": 3430,
+      "sha256": "f75dc7d3d2dc2a59294f7c8e27cf6a65d6b35ddad4a7b7ad54356590898064ed",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/sources/build/indexer/modules/master.js",
+      "sizeBytes": 87265,
+      "sha256": "0653701fb62a84a03b530ca80a5fc32770ea92c2a5ea576feb7214141be132c2",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/sources/build/indexer/workers/state-reader.js",
+      "sizeBytes": 50288,
+      "sha256": "d04149412754682d885349fd140a36ec6c687f0d7fab5977d8b92da807ff1e74",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/sources/package-lock.json",
+      "sizeBytes": 122842,
+      "sha256": "0a7e7032c1160ff4fb7267af3c31a9691b7df787972b371e00507eff9ed15f68",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/sources/scripts/qualification/reader-recovery.mjs",
+      "sizeBytes": 20795,
+      "sha256": "268e1e75a45c8275feb85013ae1fd5acc6ae01db7a451c43a8e4b880dda596bd",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/sources/src/indexer/helpers/reader-progress.ts",
+      "sizeBytes": 3494,
+      "sha256": "73fb04e433b069aa6b9fab12f68b2ff4c7f620f8da440863db61f38977503dbe",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/sources/src/indexer/modules/master.ts",
+      "sizeBytes": 91332,
+      "sha256": "42503cfb95e1fcbda1d205753508169d3f017a4bb1c87b438b5473b580efbb94",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/sources/src/indexer/workers/state-reader.ts",
+      "sizeBytes": 51420,
+      "sha256": "797afb8d721a7f775b6bce0dd9492c3403b9a0e2b871891ac01660c7dfbb0049",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/.bun-version",
+      "sizeBytes": 6,
+      "sha256": "bd31e8d9cf8d14a1e9e3fdf3b9f6a524819aed0d1b14627523c6765767c7d8f1",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/node_modules/@eosrio/node-abieos/dist/abieos-linux-x64.node",
+      "sizeBytes": 574408,
+      "sha256": "e17c1db2b7116e714443360316d621899b1b803b4b0dba616266c4d62d8e397c",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/node_modules/@eosrio/node-abieos/package.json",
+      "sizeBytes": 1752,
+      "sha256": "9d671f276ef6fc820a3143f84421d0b4d91ea923d6a3dd8df8fb0941bd7fd1bb",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/node_modules/uWebSockets.js/package.json",
+      "sizeBytes": 239,
+      "sha256": "7effe27bd68a98721772a0f1f5d3ad50816727ed6776be430a0c8ca9bcb7b0b3",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/node_modules/uWebSockets.js/uws_linux_x64_137.node",
+      "sizeBytes": 7307400,
+      "sha256": "74577d1d0bef1e6a7fffb99054375098217575769fd3451a67e8fffa5259d74c",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/package.json",
+      "sizeBytes": 2313,
+      "sha256": "25f84c75164aecef7dc258858ea1af10d5ca830819323f2447a8555d4cb8eed8",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/scripts/qualification/reader-recovery-baseline.mjs",
+      "sizeBytes": 13593,
+      "sha256": "741df7d664af40f0ba9b7bf034089b78a8786fa6058e285a11319489f9c6670b",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/src/indexer/helpers/reader-progress.ts",
+      "sizeBytes": 3494,
+      "sha256": "73fb04e433b069aa6b9fab12f68b2ff4c7f620f8da440863db61f38977503dbe",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/src/indexer/modules/master.ts",
+      "sizeBytes": 91332,
+      "sha256": "42503cfb95e1fcbda1d205753508169d3f017a4bb1c87b438b5473b580efbb94",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/src/indexer/workers/state-reader.ts",
+      "sizeBytes": 51420,
+      "sha256": "797afb8d721a7f775b6bce0dd9492c3403b9a0e2b871891ac01660c7dfbb0049",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/tests/unit/reader-recovery-cli.test.ts",
+      "sizeBytes": 7325,
+      "sha256": "4deeadfa23e887cb6ade7882b975d2d6262e6457d7736c424338e7885e08ad8b",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/supporting-sources/tests/unit/state-reader-backpressure.test.ts",
+      "sizeBytes": 20421,
+      "sha256": "8494383dabad7c02df8b3cdc2d93eef5a8eb59e77110ea84adbee499a156d649",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/typecheck.log",
+      "sizeBytes": 109,
+      "sha256": "2bfebce10cdf38ac2b3b761907ccb9be88be262e48b9f383f63208c3b381445a",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "operations/unit.log",
+      "sizeBytes": 47475,
+      "sha256": "bd99ddfb13a2cbaeb5ca57993a405c9eefe5d860670aae1cc9bfb84298f1c92a",
+      "role": "Exact setup/check/source/native bytes, independent postflight and guarded cleanup logs",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "packaging/package.py",
+      "sizeBytes": 12297,
+      "sha256": "a7530f52a2ec7e3fb4cb19aeb834dd54fa25554c8ddc63a6ea5b98f2efbdac6d",
+      "role": "Evidence packager; not measured runtime"
+    },
+    {
+      "path": "packaging/regular-archive-writer.py",
+      "sizeBytes": 43497,
+      "sha256": "68418d193dd68a365f6c7ba505762474fdf429a72c235fdd83c934227bd38d78",
+      "role": "Bounded regular-file archive writer with complete member readback"
+    },
+    {
+      "path": "pilots/excluded-auth/report.json",
+      "sizeBytes": 2718,
+      "sha256": "fdcd7d62d892442b0b93b1dedbf2e0e2e637fbff06742451bb211be088d0052d",
+      "role": "Excluded orchestration credential-duplication attempt; no cases, workers or queues",
+      "status": "excluded-failed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "run/final/report.json",
+      "sizeBytes": 20575,
+      "sha256": "6facd1cbdb62686c257ff9cd46ff53ffc15833bbef638d01438c16b5e7b0f0ed",
+      "role": "Native Linux broker/worker review-fix smoke; seven cases, no baseline rerun",
+      "status": "passed",
+      "fixtureRun": "bb833a78dee2"
+    },
+    {
+      "path": "source/review.bundle",
+      "sizeBytes": 323230,
+      "sha256": "c2f5ccf6de02fb239530ba1828c83c27e08b4f3ca8aa1cd743c1833fdf5c228a",
+      "role": "Exact frozen review-fix commit bundle; requires base37e3ee6"
+    },
+    {
+      "path": "validation/windows/h45-210-cli-review-green.log",
+      "sizeBytes": 638,
+      "sha256": "5a2cfaa04138a36689bd5e3eda404b8db6e0e2e04d04c915b3d68f498dd421b2",
+      "role": "Root-supplied Windows review red/green/full-suite evidence using explicit Node24 native probes"
+    },
+    {
+      "path": "validation/windows/h45-210-cli-review-red.log",
+      "sizeBytes": 2757,
+      "sha256": "d2d8df9774f1ccc3e460492d5e2b2ec1a4156111bf531ad69643a49ea3d47bb3",
+      "role": "Root-supplied Windows review red/green/full-suite evidence using explicit Node24 native probes"
+    },
+    {
+      "path": "validation/windows/h45-pr210-review-full-unit.log",
+      "sizeBytes": 46968,
+      "sha256": "4e3c71c83693c1ab571f1115296f0bd2167b4012463621db0146ce75eb012b88",
+      "role": "Root-supplied Windows review red/green/full-suite evidence using explicit Node24 native probes"
+    },
+    {
+      "path": "validation/windows/h45-pr210-runtime-red.log",
+      "sizeBytes": 8781,
+      "sha256": "da3f8b29358b88d63cc2f6f74477e3a4ba3aa06fb091c5e5be0d6d81a4b296fe",
+      "role": "Root-supplied Windows review red/green/full-suite evidence using explicit Node24 native probes"
+    }
+  ],
+  "sourceProvenance": "Measured source/build snapshots are exact report-hashed bytes; supporting native/source bytes are independently hashed in postflight. Local review tests, excluded pilot and packaging support have distinct roles."
+}

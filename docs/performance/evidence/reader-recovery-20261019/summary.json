@@ -1,0 +1,126 @@
+{
+  "baseline": {
+    "cases": [
+      {
+        "missingInputs": [],
+        "mode": "nack",
+        "status": "defect-reproduced",
+        "unsupportedCompletion": true
+      },
+      {
+        "missingInputs": [],
+        "mode": "lost",
+        "status": "defect-reproduced",
+        "unsupportedCompletion": true
+      },
+      {
+        "missingInputs": [
+          13,
+          14,
+          15
+        ],
+        "mode": "historical-later-assignment",
+        "status": "defect-reproduced",
+        "unsupportedCompletion": null
+      }
+    ],
+    "compiler": {
+      "boundary": "Emit unmodified historical classes beside current classes without nominal private-member type conflicts. This counterexample does not establish baseline typecheck acceptance; current production is separately fully checked.",
+      "command": "npm run build -- --noCheck"
+    },
+    "observedProcessCount": 4,
+    "status": "defects-reproduced"
+  },
+  "cleanup": {
+    "completedAt": "2026-10-19T15:41:16.9134912Z",
+    "ownedContainersRemoved": 7,
+    "ownedNetworksRemoved": 1,
+    "ownedVolumesRemoved": 7,
+    "remainingOwnedResources": 0
+  },
+  "date": "2026-10-19",
+  "excludedPilots": [
+    "case1/case2: proxy-upstream self-loop prevented AMQP startup; no broker acceptance claim.",
+    "case3: successful pilot without a held later source; excluded from replay-gap acceptance.",
+    "baseline: duplicate-class nominal type conflicts stopped baseline preparation before broker execution."
+  ],
+  "fixed": {
+    "cases": [
+      {
+        "intentionalReplayDuplicates": 0,
+        "logicalInputs": 3,
+        "mode": "normal",
+        "physicalMessages": 3
+      },
+      {
+        "intentionalReplayDuplicates": 3,
+        "logicalInputs": 3,
+        "mode": "nack",
+        "physicalMessages": 6
+      },
+      {
+        "intentionalReplayDuplicates": 3,
+        "logicalInputs": 3,
+        "mode": "lost",
+        "physicalMessages": 6
+      },
+      {
+        "intentionalReplayDuplicates": 3,
+        "logicalInputs": 3,
+        "mode": "channel",
+        "physicalMessages": 6
+      },
+      {
+        "intentionalReplayDuplicates": 3,
+        "logicalInputs": 3,
+        "mode": "replace",
+        "physicalMessages": 6
+      },
+      {
+        "intentionalReplayDuplicates": 0,
+        "logicalInputs": 6,
+        "mode": "historical-later-assignment-replay",
+        "physicalMessages": 6
+      },
+      {
+        "intentionalReplayDuplicates": 0,
+        "logicalInputs": 6,
+        "mode": "repair-assignment-replay",
+        "physicalMessages": 6
+      }
+    ],
+    "observedProcessCount": 13,
+    "status": "passed"
+  },
+  "host": "Hyperion-1",
+  "implementation": {
+    "baselineCommit": "37e3ee6bb897a3647b88d272e55d43240ecf7dc6",
+    "harnessCommit": "f81cabf3fc2304e2106c10f5e3b746a89e10107a",
+    "runtimeCommit": "f42172860e833c348db9bce4fbc47311af6dcfde",
+    "sourceBytesVerifiedAgainstMeasuredReports": true,
+    "sourceMatches": 13
+  },
+  "limits": [
+    "Shared host; correctness qualification only, no capacity or throughput conclusion.",
+    "Synthetic numeric source payloads; SHIP decoding, ABI transition, Elasticsearch durability and full master construction are not covered.",
+    "Live fork/restart and broker-delivered late old-generation callbacks remain open acceptance in #208.",
+    "Master/host/power-loss durability is not established.",
+    "Baseline --noCheck emission preserves original sources for semantic counterexamples; it is not a baseline typecheck claim."
+  ],
+  "postflight": {
+    "activeSearchWrites": 0,
+    "brokerConnections": 0,
+    "brokerQueues": 0,
+    "consecutiveIdleSamples": 3,
+    "observedProcessCount": 17,
+    "observedProcessesGone": true,
+    "status": "passed"
+  },
+  "run": "468124d02cf3",
+  "runtime": {
+    "binarySha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+    "node": "v24.19.0"
+  },
+  "schema": 1,
+  "status": "passed"
+}
