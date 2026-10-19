@@ -40,6 +40,7 @@ import org.elasticsearch.script.ScriptContext;
 import org.elasticsearch.script.ScriptEngine;
 import org.elasticsearch.search.internal.ContextIndexSearcher;
 import org.elasticsearch.search.internal.MaxClauseCountQueryVisitor;
+import org.elasticsearch.tasks.TaskCancelledException;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
 
@@ -90,8 +91,8 @@ public final class HyperionQualifierPlugin extends Plugin implements ScriptPlugi
         private final ArrayDeque<Map<String, Object>> events = new ArrayDeque<>();
         private long sequence;
         private int active;
-        private long entered, completed, cancelled, failed, dropped;
-        private long slowEntered, slowCompleted, slowCancelled, slowFailed, delayStarted, delayFinished;
+        private long entered, completed, taskCancelled, queryTimedOut, failed, dropped;
+        private long slowEntered, slowCompleted, slowTaskCancelled, slowQueryTimedOut, slowFailed, delayStarted, delayFinished;
         private int activeSlow, delayActive;
 
         ProbeState(String key) { this.key = key; }
@@ -100,7 +101,8 @@ public final class HyperionQualifierPlugin extends Plugin implements ScriptPlugi
             switch (event) {
                 case "entered" -> { entered++; active++; }
                 case "completed" -> { completed++; active--; }
-                case "cancelled" -> { cancelled++; active--; }
+                case "task_cancelled" -> { taskCancelled++; active--; }
+                case "query_timed_out" -> { queryTimedOut++; active--; }
                 case "failed" -> { failed++; active--; }
                 default -> throw new IllegalArgumentException("unknown event");
             }
@@ -108,7 +110,8 @@ public final class HyperionQualifierPlugin extends Plugin implements ScriptPlugi
                 switch (event) {
                     case "entered" -> { slowEntered++; activeSlow++; }
                     case "completed" -> { slowCompleted++; activeSlow--; }
-                    case "cancelled" -> { slowCancelled++; activeSlow--; }
+                    case "task_cancelled" -> { slowTaskCancelled++; activeSlow--; }
+                    case "query_timed_out" -> { slowQueryTimedOut++; activeSlow--; }
                     case "failed" -> { slowFailed++; activeSlow--; }
                     default -> { }
                 }
@@ -131,12 +134,14 @@ public final class HyperionQualifierPlugin extends Plugin implements ScriptPlugi
             result.put("active", active);
             result.put("entered", entered);
             result.put("completed", completed);
-            result.put("cancelled", cancelled);
+            result.put("task_cancelled", taskCancelled);
+            result.put("query_timed_out", queryTimedOut);
             result.put("failed", failed);
             result.put("active_slow", activeSlow);
             result.put("slow_entered", slowEntered);
             result.put("slow_completed", slowCompleted);
-            result.put("slow_cancelled", slowCancelled);
+            result.put("slow_task_cancelled", slowTaskCancelled);
+            result.put("slow_query_timed_out", slowQueryTimedOut);
             result.put("slow_failed", slowFailed);
             result.put("delay_active", delayActive);
             result.put("delay_started", delayStarted);
@@ -213,11 +218,11 @@ public final class HyperionQualifierPlugin extends Plugin implements ScriptPlugi
                                 }
                                 probe.event("completed", role, mode, started, null);
                                 return true;
-                            } catch (RuntimeException error) {
+                            } catch (RuntimeException | Error error) {
                                 String type = error.getClass().getName();
-                                // The raw type is evidence; task cancellation and query timeout have different types.
-                                String event = type.toLowerCase().contains("cancel") || type.toLowerCase().contains("timeexceeded")
-                                    ? "cancelled" : "failed";
+                                // A query deadline is not evidence that an Elasticsearch task was cancelled.
+                                String event = error instanceof TaskCancelledException ? "task_cancelled"
+                                    : error instanceof ContextIndexSearcher.TimeExceededException ? "query_timed_out" : "failed";
                                 probe.event(event, role, mode, started, type);
                                 throw error;
                             }

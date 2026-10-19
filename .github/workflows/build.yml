@@ -37,6 +37,9 @@ jobs:
       - name: Verify Elasticsearch failure-recovery evidence checksums
         working-directory: docs/performance/evidence/es955-failures-20261019
         run: sha256sum -c SHA256SUMS
+      - name: Verify Elasticsearch review follow-up evidence checksums
+        working-directory: docs/performance/evidence/es955-failure-review-20261019
+        run: sha256sum -c SHA256SUMS
       - run: bun test tests/unit
 
   es955-fixture:
@@ -56,4 +59,4 @@ jobs:
               --mount "type=bind,src=$output,dst=/output" \
               "$ES_IMAGE" "/fixture/$script"
           done
-          printf 'b4b5dc18a313d2d1ed409843ec88b2e0f130fd6d99dda3ce8afaacbaac7622d1  %s\n' "$output/hyperion-qualifier.jar" | sha256sum -c -
+          printf '42d8f960965927ca1a716c900dfe651c2c93412724e320a71e8c72686eac2456  %s\n' "$output/hyperion-qualifier.jar" | sha256sum -c -

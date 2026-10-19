@@ -29,6 +29,22 @@ export function assertTimedOut(response: any): void {
     assert.ok(response._shards.total >= 3, 'timeout reduction must span multiple shards');
 }
 
+/** Timeout metadata alone may describe a deadline that elapsed before script collection. */
+export function assertCollectionDeadline(response: any, state: any): void {
+    assertTimedOut(response);
+    assert.ok(Number.isSafeInteger(state.delay_started) && state.delay_started > 0, 'collection delay never started');
+    assert.ok(Number.isSafeInteger(state.slow_query_timed_out) && state.slow_query_timed_out > 0,
+        'slow script did not observe the query deadline');
+}
+
+/** Client aborts and query deadlines do not establish cancellation of server work. */
+export function assertServerTaskCancelled(state: any): void {
+    assert.ok(Number.isSafeInteger(state.task_cancelled) && state.task_cancelled > 0,
+        'server task cancellation was not observed');
+    assert.ok(Number.isSafeInteger(state.slow_task_cancelled) && state.slow_task_cancelled > 0,
+        'slow script did not observe task cancellation');
+}
+
 export function assertFailedShard(response: any): void {
     assert.equal(response.timed_out, false, 'failed-shard case unexpectedly timed out');
     assert.equal(response._shards.failed, 1, 'exactly the injected shard must fail');
@@ -270,9 +286,10 @@ export async function runFailureQualification(options: Options) {
                 }
                 const timeoutKey = `${options.prefix}-deadline-${round}-${direction}`;
                 const timeout = await capture(gateQuery(direction, timeoutKey, 'timeout', {timeout: '50ms'}), timeoutKey);
-                assert.equal(timeout.ok, true); assertTimedOut((timeout as any).body);
+                const timeoutState = await plugin(timeoutKey);
+                assert.equal(timeout.ok, true); assertCollectionDeadline((timeout as any).body, timeoutState);
                 assertHits((timeout as any).body, allDocs.filter(doc => doc.qualifier_role !== 'slow'), direction);
-                report.trials.push({kind: 'collection-deadline', round, direction, ...timeout, plugin: await plugin(timeoutKey)});
+                report.trials.push({kind: 'collection-deadline', round, direction, ...timeout, plugin: timeoutState});
                 await plugin(timeoutKey, true);
                 const key = `${options.prefix}-fail-${round}-${direction}`;
                 const request = gateQuery(direction, key, 'fail');
@@ -305,7 +322,7 @@ export async function runFailureQualification(options: Options) {
                 const result = await work;
                 assertCancelled(result);
                 const recovered = await drain(`${cancellation}:recovery:${round}`, baseline, key);
-                assert.ok(recovered.plugin.cancelled > 0, 'server cancellation was not observed');
+                assertServerTaskCancelled(recovered.plugin);
                 report.trials.push({kind: cancellation, round, entered, active, ...result, recovered});
                 await plugin(key, true);
             }

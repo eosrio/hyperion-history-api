@@ -71,19 +71,27 @@ expired collection-time timeout.
 ## Observation
 
 `GET /_hyperion_qualifier/state?key=KEY` returns `active`, `entered`, `completed`,
-`cancelled`, `failed`, `dropped_events`
+`task_cancelled`, `query_timed_out`, `failed`, `dropped_events`
 and the event ring. The unfiltered endpoint lists all keys. Every event includes
 its monotonic sequence, wall-clock time and elapsed monotonic milliseconds.
-Exception class names remain in raw events; the `cancelled` total includes
-cancellation and time-exceeded exception classes. This counter does not replace
-inspection of the actual Elasticsearch response.
+Exception class names remain in raw events. Only Elasticsearch's
+`TaskCancelledException` increments `task_cancelled`; only
+`ContextIndexSearcher.TimeExceededException` increments `query_timed_out`.
+Other runtime exceptions and errors increment `failed`. A timeout is not proof
+that a task was cancelled. These totals do not replace inspection of the actual
+Elasticsearch response.
 
 The separate totals `active_slow`, `slow_entered`, `slow_completed`,
-`slow_cancelled`, `slow_failed`, `delay_active`, `delay_started` and
+`slow_task_cancelled`, `slow_query_timed_out`, `slow_failed`, `delay_active`, `delay_started` and
 `delay_finished` remain available after event eviction. Use `delay_active > 0`
 to synchronize cancellation with an actual running delay, then require it and
 `active_slow` to return to zero. An event ring is diagnostic history and must
 not be used as the sole synchronization mechanism.
+
+Every entered execution has one terminal outcome, so `entered` equals `active`
+plus `completed`, `task_cancelled`, `query_timed_out` and `failed`; the same
+identity applies to the slow-role totals. The delay counter is released in a
+`finally` block for every outcome.
 
 `POST /_hyperion_qualifier/reset?key=KEY` removes an inactive key. Reset only after
 the harness has confirmed that all corresponding tasks have ended; an inactive

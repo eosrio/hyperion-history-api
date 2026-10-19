@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-19T05:13:41.929Z",
+  "baseCommit": "2f76badff3fed51d09c303c6c46a1eb44051bd6d",
+  "sourceState": "Uncommitted review correction source snapshots; measured runner reports independently record their hashes.",
+  "review": "https://github.com/eosrio/hyperion-history-api/pull/203#pullrequestreview-5566805267",
+  "fixture": {
+    "run": "3eaca7c1373c",
+    "container": "hyp-es955-review-3eaca7c1373c",
+    "containerId": "a314c248880e75f4b0a30283db103d9be9f40ca521d0af2c76d03b85a6a0d8eb",
+    "volume": "hyp-es955-review-3eaca7c1373c-data",
+    "clusterName": "hyperion-es198-3eaca7c1373c",
+    "url": "http://127.0.0.1:63032",
+    "image": "docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c",
+    "pluginDirectory": "C:\\Users\\igorl\\.codex\\scratch\\es198-pr203-native-build-20261019",
+    "pluginJarSha256": "42d8f960965927ca1a716c900dfe651c2c93412724e320a71e8c72686eac2456",
+    "dockerArgs": [
+      "run",
+      "-d",
+      "--name",
+      "hyp-es955-review-3eaca7c1373c",
+      "--label",
+      "io.eosrio.qualifier=es198-pr203-review",
+      "--label",
+      "io.eosrio.run=3eaca7c1373c",
+      "--cpus",
+      "4",
+      "--memory",
+      "3g",
+      "-p",
+      "127.0.0.1::9200",
+      "--mount",
+      "type=volume,src=hyp-es955-review-3eaca7c1373c-data,dst=/usr/share/elasticsearch/data",
+      "--mount",
+      "type=bind,src=C:\\Users\\igorl\\.codex\\scratch\\es198-pr203-native-build-20261019,dst=/usr/share/elasticsearch/plugins/hyperion-qualifier,readonly",
+      "-e",
+      "cluster.name=hyperion-es198-3eaca7c1373c",
+      "-e",
+      "node.name=hyp-es955-review-3eaca7c1373c",
+      "-e",
+      "discovery.type=single-node",
+      "-e",
+      "xpack.security.enabled=false",
+      "-e",
+      "xpack.security.autoconfiguration.enabled=false",
+      "-e",
+      "xpack.ml.enabled=false",
+      "-e",
+      "ingest.geoip.downloader.enabled=false",
+      "-e",
+      "cluster.routing.allocation.disk.watermark.low=20gb",
+      "-e",
+      "cluster.routing.allocation.disk.watermark.high=10gb",
+      "-e",
+      "cluster.routing.allocation.disk.watermark.flood_stage=5gb",
+      "-e",
+      "ES_JAVA_OPTS=-Xms1g -Xmx1g",
+      "docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c"
+    ],
+    "createdAt": "2026-10-19T05:09:55.7106994Z",
+    "clusterUuid": "kFtzw_zRScOG4RlB0B-XUw"
+  },
+  "node": {
+    "path": "C:\\Users\\igorl\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+    "sha256": "3602f2bb1a10f2cbab4c36886218a33c1ab3db87290e73b033c46c77147d0237"
+  },
+  "bun": {
+    "path": "C:/Users/igorl/.bun/bin/bun.exe",
+    "sha256": "095db4abae203d42f29fdec26da4a882fcde6333cdd84e40c0c7828c0cf543f6"
+  },
+  "artifacts": [
+    {
+      "path": "es198-pr203-bun-default.json",
+      "bytes": 18869389,
+      "sha256": "e8b8732a148ea092b8036370cca1f0971ac9e87b856d153af8c976c295dc0406"
+    },
+    {
+      "path": "es198-pr203-node-default.json",
+      "bytes": 18763927,
+      "sha256": "3fbd43d97818683d33d04a31993d9aedb5a19411a650897306741a9f8281daa7"
+    },
+    {
+      "path": "es198-pr203-node-http.json",
+      "bytes": 18762320,
+      "sha256": "32e3ecac2b152d4cde25c8be7816a1a3be899d9ffaf5c65dc3c381c389783eab"
+    },
+    {
+      "path": "es198-pr203-review-cleanup.json",
+      "bytes": 380,
+      "sha256": "d43c6cb2a19853118a2010465d855cd198cc564574d9d0df1736d5c861b18897"
+    },
+    {
+      "path": "es198-pr203-review-cleanup.ps1",
+      "bytes": 2969,
+      "sha256": "604de47a611426d903a03c0465267ae0be7c171a876f34acca75ec30352f0b2c"
+    },
+    {
+      "path": "es198-pr203-review-postflight-stats.json",
+      "bytes": 6535,
+      "sha256": "e04692d79deb09262ccf0730e21e5cd83c210cd4aa60f7c300d4c31136c4ced8"
+    },
+    {
+      "path": "es198-pr203-review-postflight.json",
+      "bytes": 11293,
+      "sha256": "989a450bf9e060ebae5d93afb39cf55ab0175e2011e1b72fb8b3a4ec610dfae2"
+    },
+    {
+      "path": "es198-pr203-review-start.ps1",
+      "bytes": 2905,
+      "sha256": "25de9c1d197f9a5ddf068ab3150eef378fbc6c77e91b50be6e4b0374e6101540"
+    },
+    {
+      "path": "es198-pr203-review-state.json",
+      "bytes": 2062,
+      "sha256": "0f79d607d1b9d43c5cca862b7c7911310e81e767e37729e4b8ef3d30d8c0e6df"
+    },
+    {
+      "path": "hyperion-qualifier.jar",
+      "bytes": 14683,
+      "sha256": "42d8f960965927ca1a716c900dfe651c2c93412724e320a71e8c72686eac2456"
+    },
+    {
+      "path": "package.mjs",
+      "bytes": 9647,
+      "sha256": "9d336265409b18a1b49297f9dc6c5d9301796fbf674449a76d7609ca491bda98"
+    },
+    {
+      "path": "README.md",
+      "bytes": 549,
+      "sha256": "f3c436f34e384401714eb602d515bd426f791add82f687619808da5871cd6c89"
+    },
+    {
+      "path": "source/build/api/routes/v2-history/get_actions/functions.js",
+      "bytes": 10670,
+      "sha256": "91a0358de5a910663b9dafd1d132b815a94186739e6dfcef81150a2ce6ddda52"
+    },
+    {
+      "path": "source/build/indexer/helpers/es-connection.js",
+      "bytes": 1566,
+      "sha256": "f83d17954e0bb29bfd70ae226adf80040fcbb78b414276e8e6de2917702d1152"
+    },
+    {
+      "path": "source/package-lock.json",
+      "bytes": 126283,
+      "sha256": "c9ef0b9c935e6b40dcb1f650542d993160f3914cae23655377f9350bb80372bb"
+    },
+    {
+      "path": "source/scripts/qualification/es955-failures.ts",
+      "bytes": 25623,
+      "sha256": "321e9423e7cfccc795ec0a5ced0a8f13dd1bcd5c77c7d9c4e1eb3f7f1c21fb02"
+    },
+    {
+      "path": "source/scripts/qualification/es955.ts",
+      "bytes": 22531,
+      "sha256": "78a1b7ed891eb1d6226d32400a3c360a0471c8f6caa47f94dcc6b6438cbe4be9"
+    },
+    {
+      "path": "source/scripts/qualification/fixture/build.sh",
+      "bytes": 935,
+      "sha256": "0c87898a9aa108544ea81f628a58f70512c8e25f5831af667b1e9596bd8b9b77"
+    },
+    {
+      "path": "source/scripts/qualification/fixture/HyperionQualifierPlugin.java",
+      "bytes": 17380,
+      "sha256": "c3783847c586d930126ee32cc45e8724ca2409b64d1b38f0eecb44467a48bc31"
+    },
+    {
+      "path": "source/scripts/qualification/fixture/plugin-descriptor.properties",
+      "bytes": 284,
+      "sha256": "c084914cb43303299a570f7c5ec3b1fd6317c3bddbab2df6971fafde06a75079"
+    },
+    {
+      "path": "source/scripts/qualification/fixture/README.md",
+      "bytes": 7180,
+      "sha256": "8a110db436c134f636adca04acbbd85f687541ef87ed264a234c011bc9eb4540"
+    },
+    {
+      "path": "source/tests/unit/es955-failures.test.ts",
+      "bytes": 6364,
+      "sha256": "4cd009b22dc6184c7ea7033e52215eba6924f536f4f2dbf7d0cbd12799389fda"
+    }
+  ]
+}

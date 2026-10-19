@@ -1,7 +1,29 @@
 import {describe, expect, it} from 'bun:test';
-import {assertCancelled, assertCompleteTasks, assertFailedShard, assertRecovered, assertTimedOut, parseFailureOptions, recoveryCounters} from '../../scripts/qualification/es955-failures.ts';
+import {assertCancelled, assertCollectionDeadline, assertCompleteTasks, assertFailedShard, assertRecovered, assertServerTaskCancelled, assertTimedOut, parseFailureOptions, recoveryCounters} from '../../scripts/qualification/es955-failures.ts';
 
 describe('Elasticsearch fault qualification evidence', () => {
+    it('requires a started delay and a timeout observed by the slow script for collection deadlines', () => {
+        const response = {timed_out: true, _shards: {total: 4, failed: 0}};
+        const observed = {delay_started: 1, slow_query_timed_out: 1};
+        expect(() => assertCollectionDeadline(response, observed)).not.toThrow();
+        for (const state of [{}, {delay_started: 0, slow_query_timed_out: 0},
+            {delay_started: 1, slow_query_timed_out: 0}, {delay_started: 0, slow_query_timed_out: 1},
+            {delay_started: 1, slow_cancelled: 1}, {delay_started: 1, slow_task_cancelled: 1},
+            {delay_started: NaN, slow_query_timed_out: 1}, {delay_started: 1, slow_query_timed_out: Infinity},
+            {delay_started: '1', slow_query_timed_out: 1}]) {
+            expect(() => assertCollectionDeadline(response, state)).toThrow();
+        }
+        expect(() => assertCollectionDeadline({...response, timed_out: false}, observed)).toThrow();
+    });
+    it('requires true slow-task cancellation, rejecting client abort and timeout-only fixture evidence', () => {
+        expect(() => assertServerTaskCancelled({task_cancelled: 1, slow_task_cancelled: 1})).not.toThrow();
+        for (const state of [{}, {cancelled: 1, query_timed_out: 1, slow_query_timed_out: 1},
+            {task_cancelled: 1, slow_task_cancelled: 0}, {task_cancelled: 0, slow_task_cancelled: 1},
+            {cancelled: 1, task_cancelled: 1}, {task_cancelled: NaN, slow_task_cancelled: 1},
+            {task_cancelled: 1, slow_task_cancelled: Infinity}, {task_cancelled: '1', slow_task_cancelled: 1}]) {
+            expect(() => assertServerTaskCancelled(state)).toThrow();
+        }
+    });
     it('requires timeout metadata instead of counting an ordinary empty result as a timeout', () => {
         const result = {timed_out: true, _shards: {total: 4, failed: 0}};
         expect(() => assertTimedOut(result)).not.toThrow();

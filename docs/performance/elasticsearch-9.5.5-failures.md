@@ -10,6 +10,9 @@ development reports are retained separately from these totals. The owning runtim
 verified that no probe index, key or search task remained, then removed the labelled
 disposable container and its sole-use volume.
 
+The [review follow-up](#review-follow-up-stricter-evidence-gates) below adds three fresh
+87-trial runs with stricter native-path assertions; the original evidence stays intact.
+
 ## Reproducible scope
 
 - Server **9.5.5**, build `48acba663b09e70b115dd879329141506c377890`, Lucene **10.5.1**.
@@ -109,6 +112,43 @@ oracle. An exact return to the initial JVM heap value is neither required nor im
 caches, JIT compilation, pools and GC affect it. Request-breaker/context/task recovery
 provides measured exposed-accounting recovery for these finite cases; it does not prove
 absence of every retained reference, pooled-buffer leak or long-duration memory problem.
+
+## Review follow-up: stricter evidence gates
+
+[PR review 5566805267](https://github.com/eosrio/hyperion-history-api/pull/203#pullrequestreview-5566805267)
+identified two permissive acceptance checks. Timeout metadata could pass the collection
+case before its delay started, and the old fixture's `cancelled` counter combined task
+cancellation with query timeout. Independent retrospective inspection of the original
+raw events confirmed that all **30** collection deadlines, **15** HTTP aborts and **15**
+explicit cancellations did reach their intended native paths. The original archive and
+checksums remain unchanged.
+
+The current fixture uses exact Elasticsearch exception types and distinct retained
+`task_cancelled` / `query_timed_out` counters, including separate slow-role totals.
+Collection deadlines require both `delay_started > 0` and `slow_query_timed_out > 0`.
+Both cancellation modes require `task_cancelled > 0` and `slow_task_cancelled > 0`
+after bounded recovery. Counter assertions reject missing, noninteger and nonfinite
+values; new regressions reject precollection-only and timeout-only evidence. The eight
+focused evidence tests pass **57 assertions**; the complete branch suite passes **150
+tests / 463 assertions**, with whole-project and runner typechecks and the TS7 build.
+
+Fresh Node 24.19 explicit HTTP, Node default Undici and Bun 1.4.3 automatic HTTP runs
+each passed **87 cases**, including ten verified collection deadlines, five HTTP aborts
+with true server task cancellation and five explicit task cancellations. All four owned
+indices were removed per run; tasks, contexts, current work and request-breaker charges
+returned to baseline. The sampled request charge still peaked at only **2,104 bytes**;
+these reruns do not extend the pressure, heap or runtime-performance claims above.
+The separate disposable node and its volume were removed with no owned residue.
+
+The corrected runner SHA256 is
+`321e9423e7cfccc795ec0a5ced0a8f13dd1bcd5c77c7d9c4e1eb3f7f1c21fb02`;
+the rebuilt fixture jar SHA256 is
+`42d8f960965927ca1a716c900dfe651c2c93412724e320a71e8c72686eac2456`.
+[Follow-up summary](evidence/es955-failure-review-20261019/summary.json),
+[manifest](evidence/es955-failure-review-20261019/manifest.json),
+[raw reports and measured sources](evidence/es955-failure-review-20261019/raw-evidence.tar.gz)
+and [checksums](evidence/es955-failure-review-20261019/SHA256SUMS) preserve these additional
+261 trials separately. All 22 archived members were extracted and hash-verified.
 
 ## Successful results delivered after consumer close
 
