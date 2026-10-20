@@ -61,6 +61,11 @@ positions do not establish canonical ABI authority. If a replacement parent lies
 coverage, the coordinator records that gap and starts later knowledge UNKNOWN. Historical recovery remains
 required; it cannot fabricate earlier input bindings from a later account snapshot.
 
+Before the first commit, the earliest admitted block is itself a durable replay boundary. Reconnect and
+owner replacement preserve it even when Rabbit has confirmed later publications. It clears only after a
+canonical commit establishes the projection cursor. A resolved fork replay marker likewise clears after
+successful ancestor reconciliation, so later restarts can resume forward.
+
 Per-chain settings are optional:
 
 ```json

@@ -12,7 +12,7 @@ type Gap = {code:string;message:string;fromBlock:number|null};
 export interface ProtocolAbiCoordinatorControl {
     schemaVersion:1; chainId:string; profile:ProtocolSourceProfile; ownerId:string; generation:string; revision:number;
     source:{contextId:string;readerSessionId:string}|null; head:Head|null; pending:string[];
-    phase:'awaiting-source'|'recovering'|'following'|'incomplete'; gap:Gap|null;
+    phase:'awaiting-source'|'recovering'|'following'|'incomplete'; gap:Gap|null; replayFromBlock:number|null;
 }
 interface Commit {
     schemaVersion:1; kind:'canonical-abi-block'; chainId:string; profile:ProtocolSourceProfile; generation:string;
@@ -75,10 +75,13 @@ export class ProtocolAbiCoordinator {
     private assertEpoch(epoch:number):void {if(epoch!==this.sourceEpoch)throw new ProtocolAbiCoordinatorStaleError();}
     private validateControl(input:unknown):ProtocolAbiCoordinatorControl {
         const value=copy(input) as ProtocolAbiCoordinatorControl;
+        // Draft frontier records before this field existed had no durable initial replay boundary.
+        if(value&&value.replayFromBlock===undefined)value.replayFromBlock=null;
         if(!value||value.schemaVersion!==1||value.chainId!==this.options.chainId||!text(value.ownerId)||!text(value.generation)
             ||!Number.isSafeInteger(value.revision)||value.revision<0||!Array.isArray(value.pending)||value.pending.length>4096
             ||new Set(value.pending).size!==value.pending.length||value.pending.some(selected=>!id('h45srcsel1',selected))
             ||!['awaiting-source','recovering','following','incomplete'].includes(value.phase)
+            ||(value.replayFromBlock!==null&&(!uint32(value.replayFromBlock)||value.replayFromBlock<1))
             ||(value.source!==null&&(!id('h45srcctx1',value.source?.contextId)||!text(value.source?.readerSessionId))))
             throw new Error('Invalid canonical ABI control');
         protocolSourceContextId({schemaVersion:1,chainId:value.chainId,protocol:value.profile,schemaJson:'{}'});
@@ -122,14 +125,16 @@ export class ProtocolAbiCoordinator {
         const stored=await this.options.store.readControl();
         const previous=stored?this.validateControl(stored.value):null;
         let head=previous&&this.sameProfile(previous.profile)?previous.head:null;
+        let replayFromBlock=previous&&this.sameProfile(previous.profile)?previous.replayFromBlock:null;
         let reason=previous?.gap??null;
         if(previous&&!this.sameProfile(previous.profile))reason=gap('protocol_profile_changed','ABI knowledge requires initialization under the installed profile',null);
         if(head){
             try {const commit=await this.readCommit(head.commitId);if(json(this.head(commit,head.commitId))!==json(head))throw new InvalidPreparedObservation('Stored head does not match its immutable commit');}
-            catch(error){if(!dataUnavailable(error))throw error;head=null;reason=gap('retained_frontier_unavailable',String((error as Error).message),previous!.head!.blockNum);}
+            catch(error){if(!dataUnavailable(error))throw error;head=null;replayFromBlock=previous!.head!.blockNum;
+                reason=gap('retained_frontier_unavailable',String((error as Error).message),previous!.head!.blockNum);}
         }
         const value:ProtocolAbiCoordinatorControl={schemaVersion:1,chainId:this.options.chainId,profile:this.profile,ownerId:this.options.ownerId,
-            generation:randomUUID(),revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason};
+            generation:randomUUID(),revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason,replayFromBlock};
         const receipt=await this.options.store.compareAndSet(stored,value);
         this.known={...receipt,value:this.validateControl(receipt.value)};this.started=true;
     });}
@@ -142,11 +147,11 @@ export class ProtocolAbiCoordinator {
             let version=await this.owned();const context=await this.options.bindings.readContext(contextId);this.assertEpoch(epoch);
             if(context.chainId!==this.options.chainId||!this.sameProfile(context.protocol))throw new Error('Source context does not match installed protocol');
             version=await this.save(version,{...version.value,generation:randomUUID(),source:{contextId,readerSessionId},pending:[],phase:'recovering',
-                head:settled?.head??(settled?null:version.value.head),gap:settled?.gap??(settled?null:version.value.gap)});
+                head:settled?.head??(settled?null:version.value.head),gap:settled?.gap??(settled?null:version.value.gap),
+                replayFromBlock:settled?settled.replayFromBlock:version.value.replayFromBlock});
             this.assertEpoch(epoch);this.activeSession=readerSessionId;
-            const resume=version.value.head?version.value.head.blockNum+1:null;
-            return {generation:version.value.generation,resumeFromBlock:version.value.gap?.code==='fork_recovery_pending'
-                ?Math.min(resume??version.value.gap.fromBlock!,version.value.gap.fromBlock!):resume};
+            const resume=version.value.head?version.value.head.blockNum+1:null,boundary=version.value.replayFromBlock;
+            return {generation:version.value.generation,resumeFromBlock:boundary===null?resume:Math.min(resume??boundary,boundary)};
         }).finally(()=>{if(this.openingSession===readerSessionId)this.openingSession=undefined;});
     }
     async revokeSource(readerSessionId:string,generation?:string):Promise<boolean> {
@@ -157,7 +162,8 @@ export class ProtocolAbiCoordinator {
             const version=await this.owned();
             if(version.value.source?.readerSessionId!==readerSessionId||(generation&&generation!==version.value.generation))return false;
             await this.save(version,{...version.value,generation:randomUUID(),source:null,pending:[],phase:'awaiting-source',
-                head:settled?.head??(settled?null:version.value.head),gap:settled?.gap??(settled?null:version.value.gap)});
+                head:settled?.head??(settled?null:version.value.head),gap:settled?.gap??(settled?null:version.value.gap),
+                replayFromBlock:settled?settled.replayFromBlock:version.value.replayFromBlock});
             if(this.activeSession===readerSessionId)this.activeSession=undefined;return true;
         });
     }
@@ -182,27 +188,31 @@ export class ProtocolAbiCoordinator {
             const tip=last?.source??version.value.head;
             if(!tip||(source.blockNum===tip.blockNum+1&&source.previousBlockId===tip.blockId)){
                 if(version.value.pending.length>=this.maximumPending)return {status:'backpressure',generation};
-                version=await this.save(version,{...version.value,pending:[...version.value.pending,selectedId],phase:'following'});
+                version=await this.save(version,{...version.value,pending:[...version.value.pending,selectedId],phase:'following',
+                    replayFromBlock:version.value.head?version.value.replayFromBlock:(version.value.replayFromBlock??source.blockNum)});
             } else {
                 const before=version.value;
                 // This durable fence linearizes fork recovery before any rewind/replay or subsequent activation.
                 version=await this.save(version,{...before,generation:randomUUID(),pending:[],phase:'recovering',
-                    gap:gap('fork_recovery_pending','Replacement branch requires ancestor reconciliation before activation',source.blockNum)});this.assertEpoch(epoch);
+                    gap:gap('fork_recovery_pending','Replacement branch requires ancestor reconciliation before activation',source.blockNum),
+                    replayFromBlock:Math.min(before.replayFromBlock??source.blockNum,source.blockNum)});this.assertEpoch(epoch);
                 const recovered=await this.recoverParent(before,source);this.assertEpoch(epoch);
-                version=await this.save(version,{...version.value,head:recovered.head,pending:[...recovered.pending,selectedId],phase:'following',gap:recovered.gap});
+                version=await this.save(version,{...version.value,head:recovered.head,pending:[...recovered.pending,selectedId],phase:'following',gap:recovered.gap,
+                    replayFromBlock:recovered.head?null:version.value.replayFromBlock});
             }
             this.assertEpoch(epoch);return {status:'accepted',generation:version.value.generation};
         });} catch(error){if(error instanceof ProtocolAbiCoordinatorStaleError)return {status:'stale',generation:this.known?.value.generation??generation};throw error;}
     }
     private async recoverParent(before:ProtocolAbiCoordinatorControl,source:ProtocolSourcePosition):Promise<{head:Head|null;pending:string[];gap:Gap|null}> {
+        const restoredGap=before.gap?.code==='fork_recovery_pending'?null:before.gap;
         for(let index=0;index<before.pending.length;index++){
             const prior=await this.selection(before.pending[index],before);
             if(prior.source.blockNum===source.blockNum-1&&prior.source.blockId===source.previousBlockId)
-                return {head:before.head,pending:before.pending.slice(0,index+1),gap:before.gap};
+                return {head:before.head,pending:before.pending.slice(0,index+1),gap:restoredGap};
         }
         let head=before.head;
         for(let distance=0;head&&distance<=this.recoveryWindow;distance++){
-            if(head.blockNum===source.blockNum-1&&head.blockId===source.previousBlockId)return {head,pending:[],gap:before.gap};
+            if(head.blockNum===source.blockNum-1&&head.blockId===source.previousBlockId)return {head,pending:[],gap:restoredGap};
             if(distance===this.recoveryWindow)break;
             try {const commit=await this.readCommit(head.commitId);head=commit.previousCommitId?this.head(await this.readCommit(commit.previousCommitId),commit.previousCommitId):null;}
             catch(error){if(!dataUnavailable(error))throw error;break;}
@@ -296,7 +306,7 @@ export class ProtocolAbiCoordinator {
                 const {commit,id:preparedId}=await this.prepareBlock(version.value,selectedId,selected,link,reduction);
                 this.assertEpoch(epoch);
                 version=await this.save(version,{...version.value,head:this.head(commit,preparedId),pending:version.value.pending.slice(1),
-                    phase:commit.status==='complete'?'following':'incomplete',gap:commit.reason??version.value.gap});
+                    phase:commit.status==='complete'?'following':'incomplete',gap:commit.reason??version.value.gap,replayFromBlock:null});
                 this.assertEpoch(epoch);committed++;
             }
             return {committed,pending:version.value.pending.length};

@@ -142,7 +142,7 @@ describe('canonical ABI runtime coordinator',()=>{
         const draining=f.coordinator.drain();await waiting;const revoked=f.coordinator.revokeSource('session-a');release();
         expect((await draining).committed).toBe(0);expect(await revoked).toBe(true);delete f.memory.faults.beforeRead;
         expect((await f.coordinator.inspect()).head).toBeNull();expect((await f.coordinator.inspect()).pending).toEqual([]);
-        expect(await f.coordinator.openSource(f.contextId,'session-b')).toMatchObject({resumeFromBlock:null});
+        expect(await f.coordinator.openSource(f.contextId,'session-b')).toMatchObject({resumeFromBlock:1});
     });
 
     it('records explicit incompleteness at a projection batch bound and keeps later history progressing',async()=>{
@@ -163,7 +163,7 @@ describe('canonical ABI runtime coordinator',()=>{
         const draining=f.coordinator.drain();await waiting;const revoked=f.coordinator.revokeSource('session-a');release();
         expect((await draining).committed).toBe(0);expect(await revoked).toBe(true);delete f.memory.faults.beforeWrite;
         expect((await f.coordinator.inspect()).head).toBeNull();
-        expect(await f.coordinator.openSource(f.contextId,'session-b')).toMatchObject({resumeFromBlock:null});
+        expect(await f.coordinator.openSource(f.contextId,'session-b')).toMatchObject({resumeFromBlock:1});
     });
 
     it('retains the fork replay boundary if the runtime restarts after the durable fence and before ancestor recovery',async()=>{
@@ -178,6 +178,23 @@ describe('canonical ABI runtime coordinator',()=>{
         };
         await expect(f.admit(replacement)).rejects.toBe(fault);delete f.memory.faults.beforeWrite;delete f.memory.faults.beforeRead;
         const restarted=f.make('master-after-fork');await restarted.start();
-        expect(await restarted.openSource(f.contextId,'session-b')).toMatchObject({resumeFromBlock:2});
+        const opened=await restarted.openSource(f.contextId,'session-b');expect(opened.resumeFromBlock).toBe(2);
+        f.session='session-b';const replay=await f.selected(2,20,1);await f.prepare(replay);
+        expect((await restarted.admit(replay.selectionId,opened.generation)).status).toBe('accepted');
+        expect((await restarted.drain()).committed).toBe(1);expect((await restarted.inspect()).gap?.code).not.toBe('fork_recovery_pending');
+        const again=f.make('master-after-repaired-fork');await again.start();
+        expect(await again.openSource(f.contextId,'session-c')).toMatchObject({resumeFromBlock:3});
+    });
+
+    it('retains the earliest admitted initial block across a reconnect and runtime restart before the first commit',async()=>{
+        const f=await fixture(),first=await f.selected(100),second=await f.selected(101);
+        await f.admit(first);await f.admit(second);await f.prepare(second);
+        expect((await f.coordinator.inspect()).replayFromBlock).toBe(100);
+        await f.coordinator.revokeSource('session-a');const restarted=f.make('initial-replay-owner');await restarted.start();
+        const opened=await restarted.openSource(f.contextId,'session-b');expect(opened.resumeFromBlock).toBe(100);
+        expect((await restarted.inspect()).head).toBeNull();expect((await restarted.inspect()).pending).toEqual([]);
+        f.session='session-b';const replay=await f.selected(100);await f.prepare(replay);await restarted.admit(replay.selectionId,opened.generation);await restarted.drain();
+        expect((await restarted.inspect()).head!.blockNum).toBe(100);expect((await restarted.inspect()).replayFromBlock).toBeNull();
+        expect(await restarted.openSource(f.contextId,'session-c')).toMatchObject({resumeFromBlock:101});
     });
 });
