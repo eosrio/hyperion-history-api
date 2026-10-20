@@ -101,7 +101,14 @@ jobs:
           bun check -p packages/backend-mongodb/tsconfig.json
           npm test --prefix packages/backend-mongodb
       - name: Exercise the portable runtime and adapter against owned MongoDB 8.0.34
-        run: node scripts/qualification/check-projection-mongodb.mjs
+        run: node scripts/qualification/check-projection-mongodb.mjs projection-report.json
+      - name: Retain portable MongoDB conformance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: projection-mongodb-${{ matrix.node-version }}
+          path: projection-report.json
+          if-no-files-found: warn
 
   es955-fixture:
     runs-on: ubuntu-latest

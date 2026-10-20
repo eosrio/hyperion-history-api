@@ -177,6 +177,23 @@ export class OwnedMongoFixture {
         this.cleanupResult.containers[role] = true;
     }
 
+    diagnostics() {
+        return Object.fromEntries([...this.containers.keys()].map(role => {
+            try {
+                const value = this.ownedContainer(role, {optional: true});
+                if (value === undefined) return [role, {absent: true}];
+                let logs;
+                try { logs = this.command(['container', 'logs', '--tail', '40', value.Id]).slice(-65536); }
+                catch (error) { logs = String(error.message).slice(-2048); }
+                return [role, {id: value.Id, state: value.State,
+                    requestedPorts: value.HostConfig?.PortBindings, publishedPorts: value.NetworkSettings?.Ports, logs}];
+            } catch (error) {
+                // Do not read logs from a container whose ownership cannot be established.
+                return [role, {error: String(error.message).slice(-2048)}];
+            }
+        }));
+    }
+
     cleanup() {
         if (this.cleanupPromise) return this.cleanupPromise;
         // Promise allows signal/finally users to share one cleanup without duplicate destructive calls.

@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {readFileSync, writeFileSync} from 'node:fs';
+import {release} from 'node:os';
 import {MongoClient} from 'mongodb';
 import {OwnedMongoFixture, MONGODB_IMAGE, MONGODB_VERSION, waitForMongo} from './projection-fixture.mjs';
 
@@ -11,7 +12,7 @@ const output = process.argv[2];
 if (process.argv.length > 3 || output?.startsWith('mongodb:')) throw new Error('Usage: node check-projection-mongodb.mjs [output.json]');
 const fixture = new OwnedMongoFixture();
 const report = {schemaVersion: 1, status: 'running', createdAt: new Date().toISOString(), run: fixture.run,
-    image: MONGODB_IMAGE, platform: 'linux/amd64', client: require('mongodb/package.json').version,
+    image: MONGODB_IMAGE, platform: 'linux/amd64', kernel: release(), client: require('mongodb/package.json').version,
     qualification: false, scope: 'SDK v1 genesis fixed-ABI declarative table projection; no fork rollback, live activation, Wire or launch qualification',
     checks: [], cleanup: fixture.cleanupResult};
 const clients = new Set();
@@ -288,6 +289,7 @@ try {
 } catch (error) {
     report.status = 'failed';
     report.error = {name: error.name, message: error.message, stack: error.stack};
+    report.fixtureFailure = fixture.diagnostics();
     process.exitCode = 1;
 } finally {
     for (const value of clients) {
