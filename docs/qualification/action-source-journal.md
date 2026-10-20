@@ -96,7 +96,9 @@ alive. It does not qualify master failover, availability during a node outage, o
 Recovery preserves the default delayed allocation and waits at most 90 seconds, using health polls
 with a 1-second server wait and a 5-second request budget. The pinned transport's constructor-level
 Undici timeout can expire before a longer per-request override, so the fixture does not depend on
-extending that timeout. Evidence records poll count, elapsed wait and observed delayed shards.
+extending that timeout. A health wait's expected HTTP 408 is accepted only with a validated owned-cluster
+response and `timed_out: true`; other request failures still fail qualification. Evidence records poll
+count, expected timeout replies, elapsed wait and observed delayed shards.
 
 Fault wrappers first perform the real two-copy ES side effect, inspect its complete receipt, then
 simulate a lost or partial returned receipt. Evidence labels these injected response faults. They are

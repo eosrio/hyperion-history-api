@@ -295,15 +295,20 @@ async function emptyIndexCount(index) {
 // request short while preserving Elasticsearch's normal delayed allocation.
 async function waitForHealthyCopies(index, maximumWaitMs) {
     const started = performance.now(), deadline = started + maximumWaitMs;
-    let polls = 0, maximumDelayedShards = 0, health;
+    let polls = 0, expectedHealthTimeoutResponses = 0, maximumDelayedShards = 0, health;
     for (;;) {
         const remaining = Math.floor(deadline - performance.now());
         if (remaining <= 0) throw new Error(`Owned two-node cluster did not recover green within ${maximumWaitMs}ms: ${JSON.stringify(health)}`);
-        health = await client.cluster.health({...(index ? {index} : {}), wait_for_nodes: '2', wait_for_status: 'green',
-            timeout: `${Math.min(1000, remaining)}ms`}, {requestTimeout: Math.min(5000, remaining)});
+        const response = await client.cluster.health({...(index ? {index} : {}), wait_for_nodes: '2', wait_for_status: 'green',
+            timeout: `${Math.min(1000, remaining)}ms`}, {requestTimeout: Math.min(5000, remaining), meta: true, ignore: [408]});
+        health = response.body;
+        assert.equal(health.cluster_name, clusterName); assert.equal(typeof health.timed_out, 'boolean');
+        assert(['green', 'yellow', 'red'].includes(health.status));
+        assert.equal(response.statusCode, health.timed_out ? 408 : 200);
+        if (response.statusCode === 408) expectedHealthTimeoutResponses++;
         polls++; maximumDelayedShards = Math.max(maximumDelayedShards, health.delayed_unassigned_shards ?? 0);
         if (!health.timed_out && health.status === 'green' && health.number_of_nodes === 2) {
-            return {health, polls, elapsedMs: performance.now() - started, maximumDelayedShards,
+            return {health, polls, expectedHealthTimeoutResponses, elapsedMs: performance.now() - started, maximumDelayedShards,
                 serverTimeoutPerPollMs: 1000, requestTimeoutPerPollMs: 5000, maximumWaitMs};
         }
         await sleep(Math.min(100, Math.max(0, deadline - performance.now())));
