@@ -1,0 +1,355 @@
+{
+  "schemaVersion": 1,
+  "issue": 230,
+  "codeCommit": "8b483fd0aec2819e1c15171e3950d39e715c6bd6",
+  "reviewedCandidateSha256": "7c30b1c5cf7311750c3c7726fc8091cdee1f440f19ee4d51c620b67813e30ddb",
+  "createdAt": "2026-10-20T08:46:55.847Z",
+  "scope": "Windows x64 Node native process/source/publication correctness qualification",
+  "runtimeVersions": [
+    "v24.19.0",
+    "v22.23.3"
+  ],
+  "finalReports": [
+    {
+      "directory": "action-admission-wire-native-node24-review1-20261020-run",
+      "runtime": "v24.19.0",
+      "cases": [
+        {
+          "kind": "constructed-source",
+          "profileId": "wire-sysio-6508c9e8-engineering-v1",
+          "blocks": 4,
+          "sealed": 3,
+          "incomplete": 1,
+          "targetEmpty": true
+        },
+        {
+          "kind": "constructed-source",
+          "profileId": "wire-sysio-7dede884-engineering-v1",
+          "blocks": 4,
+          "sealed": 3,
+          "incomplete": 1,
+          "targetEmpty": true
+        },
+        {
+          "kind": "unmodified-retained-native-capture",
+          "profileId": "wire-sysio-7dede884-engineering-v1",
+          "blocks": 1,
+          "sealed": 0,
+          "incomplete": 1,
+          "targetEmpty": true
+        }
+      ],
+      "verifiedAllCopyWrites": 402,
+      "amqpErrors": 0,
+      "nativeAddonResolutions": 0
+    },
+    {
+      "directory": "action-admission-crash-node24-before-fragment-review1-20261020-run",
+      "runtime": "v24.19.0",
+      "stage": "before-fragment",
+      "retainedSources": 87,
+      "transactions": 103,
+      "selectedGroups": 12,
+      "physicalCopyChecks": 4,
+      "deniedRpc": 0,
+      "bulkAcknowledgedCopies": {
+        "1": 3,
+        "2": 98
+      },
+      "rawMasterExit": {
+        "code": 1,
+        "signal": null
+      },
+      "rawWorkerExit": 86,
+      "replacementRedelivered": true
+    },
+    {
+      "directory": "action-admission-crash-node24-after-fragment-review1-20261020-run",
+      "runtime": "v24.19.0",
+      "stage": "after-fragment",
+      "retainedSources": 87,
+      "transactions": 103,
+      "selectedGroups": 12,
+      "physicalCopyChecks": 4,
+      "deniedRpc": 0,
+      "bulkAcknowledgedCopies": {
+        "1": 3,
+        "2": 98
+      },
+      "rawMasterExit": {
+        "code": 1,
+        "signal": null
+      },
+      "rawWorkerExit": 86,
+      "replacementRedelivered": true
+    },
+    {
+      "directory": "action-admission-crash-node24-before-ack-review1-20261020-run",
+      "runtime": "v24.19.0",
+      "stage": "before-ack",
+      "retainedSources": 87,
+      "transactions": 103,
+      "selectedGroups": 12,
+      "physicalCopyChecks": 4,
+      "deniedRpc": 0,
+      "bulkAcknowledgedCopies": {
+        "1": 3,
+        "2": 99
+      },
+      "rawMasterExit": {
+        "code": 1,
+        "signal": null
+      },
+      "rawWorkerExit": 86,
+      "replacementRedelivered": true
+    },
+    {
+      "directory": "action-admission-wire-native-node22-review1-20261020-run",
+      "runtime": "v22.23.3",
+      "cases": [
+        {
+          "kind": "constructed-source",
+          "profileId": "wire-sysio-6508c9e8-engineering-v1",
+          "blocks": 4,
+          "sealed": 3,
+          "incomplete": 1,
+          "targetEmpty": true
+        },
+        {
+          "kind": "constructed-source",
+          "profileId": "wire-sysio-7dede884-engineering-v1",
+          "blocks": 4,
+          "sealed": 3,
+          "incomplete": 1,
+          "targetEmpty": true
+        },
+        {
+          "kind": "unmodified-retained-native-capture",
+          "profileId": "wire-sysio-7dede884-engineering-v1",
+          "blocks": 1,
+          "sealed": 0,
+          "incomplete": 1,
+          "targetEmpty": true
+        }
+      ],
+      "verifiedAllCopyWrites": 402,
+      "amqpErrors": 0,
+      "nativeAddonResolutions": 0
+    },
+    {
+      "directory": "action-admission-crash-node22-before-fragment-review1-20261020-run",
+      "runtime": "v22.23.3",
+      "stage": "before-fragment",
+      "retainedSources": 87,
+      "transactions": 103,
+      "selectedGroups": 12,
+      "physicalCopyChecks": 4,
+      "deniedRpc": 0,
+      "bulkAcknowledgedCopies": {
+        "1": 3,
+        "2": 98
+      },
+      "rawMasterExit": {
+        "code": 1,
+        "signal": null
+      },
+      "rawWorkerExit": 86,
+      "replacementRedelivered": true
+    },
+    {
+      "directory": "action-admission-crash-node22-after-fragment-review1-20261020-run",
+      "runtime": "v22.23.3",
+      "stage": "after-fragment",
+      "retainedSources": 87,
+      "transactions": 103,
+      "selectedGroups": 12,
+      "physicalCopyChecks": 4,
+      "deniedRpc": 0,
+      "bulkAcknowledgedCopies": {
+        "1": 3,
+        "2": 98
+      },
+      "rawMasterExit": {
+        "code": 1,
+        "signal": null
+      },
+      "rawWorkerExit": 86,
+      "replacementRedelivered": true
+    },
+    {
+      "directory": "action-admission-crash-node22-before-ack-review1-20261020-run",
+      "runtime": "v22.23.3",
+      "stage": "before-ack",
+      "retainedSources": 87,
+      "transactions": 103,
+      "selectedGroups": 12,
+      "physicalCopyChecks": 4,
+      "deniedRpc": 0,
+      "bulkAcknowledgedCopies": {
+        "1": 3,
+        "2": 99
+      },
+      "rawMasterExit": {
+        "code": 1,
+        "signal": null
+      },
+      "rawWorkerExit": 86,
+      "replacementRedelivered": true
+    }
+  ],
+  "cleanup": [
+    {
+      "run": "51788f033178",
+      "containers": 7,
+      "volumes": 7,
+      "network": "hyp-es955-replicas-51788f033178",
+      "remainingContainers": 0,
+      "remainingVolumes": 0,
+      "remainingNetworks": 0
+    },
+    {
+      "run": "8befdcdb09f3",
+      "containers": 7,
+      "volumes": 7,
+      "network": "hyp-es955-replicas-8befdcdb09f3",
+      "remainingContainers": 0,
+      "remainingVolumes": 0,
+      "remainingNetworks": 0
+    },
+    {
+      "run": "bc29cade21af",
+      "containers": 7,
+      "volumes": 7,
+      "network": "hyp-es955-replicas-bc29cade21af",
+      "remainingContainers": 0,
+      "remainingVolumes": 0,
+      "remainingNetworks": 0
+    },
+    {
+      "run": "6ea47ca5c17b",
+      "containers": 7,
+      "volumes": 7,
+      "network": "hyp-es955-replicas-6ea47ca5c17b",
+      "remainingContainers": 0,
+      "remainingVolumes": 0,
+      "remainingNetworks": 0
+    },
+    {
+      "run": "e15152eb8f3d",
+      "containers": 7,
+      "volumes": 7,
+      "network": "hyp-es955-replicas-e15152eb8f3d",
+      "remainingContainers": 0,
+      "remainingVolumes": 0,
+      "remainingNetworks": 0
+    },
+    {
+      "run": "6a361ccc39da",
+      "containers": 7,
+      "volumes": 7,
+      "network": "hyp-es955-replicas-6a361ccc39da",
+      "remainingContainers": 0,
+      "remainingVolumes": 0,
+      "remainingNetworks": 0
+    },
+    {
+      "run": "df03b7c954f0",
+      "containers": 7,
+      "volumes": 7,
+      "network": "hyp-es955-replicas-df03b7c954f0",
+      "remainingContainers": 0,
+      "remainingVolumes": 0,
+      "remainingNetworks": 0
+    }
+  ],
+  "omittedAliases": [
+    {
+      "path": "runs/action-admission-crash-node24-before-fragment-review1-20261020-run/logs/hyp-replay-8befdcdb09f3/deserialization_errors.log",
+      "target": "runs/action-admission-crash-node24-before-fragment-review1-20261020-run/logs/hyp-replay-8befdcdb09f3/2026-10-20T08-20-32.723Z_ds_err_2_89.log",
+      "targetBytes": 41,
+      "targetSha256": "d94b58e36d007ede7623d0d520585218d0c3d8d022ec670250b0f84d1f15c201",
+      "reason": "Hyperion deserialization log convenience alias; original regular log is included separately."
+    },
+    {
+      "path": "runs/action-admission-crash-node24-after-fragment-review1-20261020-run/logs/hyp-replay-bc29cade21af/deserialization_errors.log",
+      "target": "runs/action-admission-crash-node24-after-fragment-review1-20261020-run/logs/hyp-replay-bc29cade21af/2026-10-20T08-23-32.011Z_ds_err_2_89.log",
+      "targetBytes": 41,
+      "targetSha256": "dd7104ba9cf0e8b379fa9a3b625e5c8c40e11f993d7ad3fb9abe306157dd4def",
+      "reason": "Hyperion deserialization log convenience alias; original regular log is included separately."
+    },
+    {
+      "path": "runs/action-admission-crash-node24-before-ack-review1-20261020-run/logs/hyp-replay-6ea47ca5c17b/deserialization_errors.log",
+      "target": "runs/action-admission-crash-node24-before-ack-review1-20261020-run/logs/hyp-replay-6ea47ca5c17b/2026-10-20T08-26-28.430Z_ds_err_2_89.log",
+      "targetBytes": 41,
+      "targetSha256": "85084813db0a1f6b1048889778dde4ad840f849c6394199771ec131dfee1a2b1",
+      "reason": "Hyperion deserialization log convenience alias; original regular log is included separately."
+    },
+    {
+      "path": "runs/action-admission-crash-node22-before-fragment-review1-20261020-run/logs/hyp-replay-e15152eb8f3d/deserialization_errors.log",
+      "target": "runs/action-admission-crash-node22-before-fragment-review1-20261020-run/logs/hyp-replay-e15152eb8f3d/2026-10-20T08-29-24.757Z_ds_err_2_89.log",
+      "targetBytes": 41,
+      "targetSha256": "92c636d989343ad0e3af2c87c3f54a058224487b2bdb1adeeff332b5a4d8b260",
+      "reason": "Hyperion deserialization log convenience alias; original regular log is included separately."
+    },
+    {
+      "path": "runs/action-admission-crash-node22-after-fragment-review1-20261020-run/logs/hyp-replay-6a361ccc39da/deserialization_errors.log",
+      "target": "runs/action-admission-crash-node22-after-fragment-review1-20261020-run/logs/hyp-replay-6a361ccc39da/2026-10-20T08-32-21.939Z_ds_err_2_89.log",
+      "targetBytes": 41,
+      "targetSha256": "fd6bf426083f16ea93088a888882e5ea1053f68a69847cefa477b89e8985ec03",
+      "reason": "Hyperion deserialization log convenience alias; original regular log is included separately."
+    },
+    {
+      "path": "runs/action-admission-crash-node22-before-ack-review1-20261020-run/logs/hyp-replay-df03b7c954f0/deserialization_errors.log",
+      "target": "runs/action-admission-crash-node22-before-ack-review1-20261020-run/logs/hyp-replay-df03b7c954f0/2026-10-20T08-35-22.134Z_ds_err_2_89.log",
+      "targetBytes": 41,
+      "targetSha256": "1768bdcf5ae28c4b16f38742c0827dc972ae01d4122455368a858e456e9e4177",
+      "reason": "Hyperion deserialization log convenience alias; original regular log is included separately."
+    }
+  ],
+  "finalUnitSuite": {
+    "passed": 870,
+    "failed": 0,
+    "assertions": 6287
+  },
+  "codeCi": {
+    "headCommit": "8b483fd0aec2819e1c15171e3950d39e715c6bd6",
+    "completedSuccessfulChecks": 9,
+    "pullRequest": "https://github.com/eosrio/hyperion-history-api/pull/232",
+    "evidence": "review/issue230-code-commit-ci.json"
+  },
+  "sourceHashAgreement": {
+    "reports": 8,
+    "distinctPaths": 82,
+    "allReportedCurrentFilesMatch": true,
+    "commonPaths": [
+      "package-lock.json",
+      "src/indexer/workers/state-reader.ts",
+      "src/indexer/workers/deserializer.ts",
+      "src/indexer/workers/ds-pool.ts",
+      "build/indexer/workers/state-reader.js",
+      "build/indexer/workers/deserializer.js",
+      "build/indexer/workers/ds-pool.js",
+      "scripts/qualification/contract-replay.ts",
+      "src/indexer/history/action-source-admission.ts",
+      "build/indexer/history/action-source-admission.js"
+    ]
+  },
+  "archive": {
+    "path": "raw-evidence.tar.gz",
+    "sha256": "395efe05d968d639a88c1168b487e3f9a269b1769556e075863cde55692dfb0a",
+    "bytes": 4395203,
+    "files": 1814,
+    "uncompressedBytes": 26870210,
+    "tarVersion": "bsdtar 3.8.9 - libarchive 3.8.9 zlib/1.3.1 liblzma/5.8.1 bz2lib/1.0.8 libzstd/1.5.7 cng/2.0 libb2/bundled"
+  },
+  "limits": [
+    "Exactly eight final review1 runs; no pilot or pre-fix run is included.",
+    "Six native process-exit runs replay the same finite audited fixture in distinct owned resource sets; counts are per run.",
+    "Intentional worker exit86 and raw master exit1 remain visible; recovery requires distinct replacement, exact original receipt and real broker redelivery.",
+    "Constructed Wire cases support engineering profile correctness only; the one actual captured7d onblock remains incomplete without fabricated ABI/frontier.",
+    "No host power-loss, master failover, broad sink/canonical/PIT/query readiness, Wire testnet, Linux runtime or performance qualification claim.",
+    "The included saved GitHub record reports nine successful checks for the pinned code commit only; no later CI outcome is inferred.",
+    "All-copy write receipts are explicit for Wire stores. Native legacy bulk copy counts remain separate from four final physical-copy inspections.",
+    "Dependency/runtime binary snapshots are omitted from the archive; their original hashes remain in unmodified reports."
+  ]
+}

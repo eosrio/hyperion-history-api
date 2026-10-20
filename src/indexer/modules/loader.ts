@@ -21,6 +21,7 @@ export class HyperionModuleLoader {
     chainID;
     private conn: HyperionConnections;
     private config: HyperionConfig;
+    private readonly actionHandlersReady: Promise<void>;
     public parser?: BaseParser;
     public plugins: HyperionPlugin[];
 
@@ -33,7 +34,7 @@ export class HyperionModuleLoader {
             process.exit(0);
         }
         this.chainID = this.conn.chains[this.config.settings.chain].chain_id;
-        this.loadActionHandlers();
+        this.actionHandlersReady = this.loadActionHandlers();
     }
 
     async loadParser() {
@@ -42,17 +43,28 @@ export class HyperionModuleLoader {
         this.parser = new mod(this.cm) as BaseParser;
     }
 
-    processActionData(action: ActionTrace) {
+    async processActionData(action: ActionTrace): Promise<void> {
         const wildcard = this.handledActions.get('*');
         if (wildcard && wildcard.has(action.act.name)) {
-            wildcard.get(action.act.name)(action);
+            await wildcard.get(action.act.name)(action);
         }
         if (this.handledActions && this.handledActions.has(action.act.account)) {
             const _c = this.handledActions.get(action.act.account);
             if (_c.has(action.act.name)) {
-                _c.get(action.act.name)(action);
+                await _c.get(action.act.name)(action);
             }
         }
+    }
+
+    snapshotActionHandlers(): {contract: string; action: string; handlerSource: string}[] {
+        const handlers: {contract: string; action: string; handlerSource: string}[] = [];
+        for (const [contract, actions] of this.handledActions) {
+            for (const [action, handler] of actions) {
+                handlers.push({contract, action, handlerSource: Function.prototype.toString.call(handler)});
+            }
+        }
+        return handlers.sort((left, right) => left.contract < right.contract ? -1 : left.contract > right.contract ? 1 :
+            left.action < right.action ? -1 : left.action > right.action ? 1 : 0);
     }
 
     async processDeltaData(delta): Promise<void> {
@@ -96,11 +108,13 @@ export class HyperionModuleLoader {
         }
     }
 
-    loadActionHandlers() {
+    async loadActionHandlers(): Promise<void> {
         const actionDataPath = path.join(import.meta.dirname, 'action_data');
         const files = readdirSync(actionDataPath);
-        for (const plugin of files.filter(f => f.endsWith('.js'))) {
-            import(pathToFileURL(join(actionDataPath, plugin)).href).then(value => {
+        // Stable activation order prevents import completion timing from choosing a handler.
+        for (const plugin of files.filter(f => f.endsWith('.js')).sort()) {
+            try {
+                const value = await import(pathToFileURL(join(actionDataPath, plugin)).href);
                 const _module = value.hyperionModule;
                 if (_module.parser_version.includes(this.config.settings.parser)) {
                     if (_module.chain === this.chainID || _module.chain === '*') {
@@ -116,14 +130,15 @@ export class HyperionModuleLoader {
                         }
                     }
                 }
-            }).catch(reason => {
+            } catch (reason) {
                 console.log(`Error loading action module: ${reason}`);
-            });
+            }
         }
     }
 
     async init() {
         try {
+            await this.actionHandlersReady;
             await this.loadParser();
             await this.loadPlugins();
         } catch (e) {

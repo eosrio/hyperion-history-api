@@ -3,6 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
 import {readFileSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {EventEmitter} from 'node:events';
 import {Client} from '@elastic/elasticsearch';
 import {Serializer} from '@elastic/transport';
 
@@ -23,8 +24,9 @@ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const docker = args => execFileSync('docker', args, {encoding: 'utf8', timeout: 180000, maxBuffer: 8 * 1024 * 1024}).trim();
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const report = {schemaVersion: 1, status: 'running', createdAt: new Date().toISOString(), run, image,
-    purpose: 'Native storage/query design prototype; not production adapter or release qualification',
-    qualification: {productionAdapter: false, retainedHistoryUpgrade: false, abiProof: false, wireTestnet: false, release: false},
+    purpose: 'Native design experiments and gated production module qualification; not live activation or release qualification',
+    qualification: {productionModules: false, productionAdapter: false, liveActivation: false, durableCoverageAuthority: false,
+        retainedHistoryUpgrade: false, abiProof: false, wireTestnet: false, release: false},
     runtime: {node: process.versions.node, bun: process.versions.bun ?? null},
     checks: [], observations: {}, cleanup: {containers: [], network: false, verified: false}};
 const containers = new Map(), clients = new Set(), pits = new Set();
@@ -282,6 +284,239 @@ async function rejection(action, pattern) {
     return {statusCode: failure.meta?.statusCode, message: text.slice(0, 2048)};
 }
 
+async function qualifyProductionModules(client, parentChain) {
+    // Exercise emitted native-Node production modules, not another implementation
+    // of their codec/compiler. The authority below owns a finite input manifest;
+    // it is explicitly not the still-unimplemented durable host coverage journal.
+    const {ActionHistoryAdapter} = await import('../../build/indexer/history/action-history-adapter.js');
+    const {ensureActionSequenceMappings, restoreActionSequenceStorage, encodeActionSequenceStorage} =
+        await import('../../build/indexer/history/action-sequence-storage.js');
+    const {ElasticRoutes} = await import('../../build/indexer/helpers/elastic-routes.js');
+    const chain = `${parentChain}-adapter`, index = `${chain}-action-v1-000001`, empty = `${chain}-action-v1-000002`;
+    const source = [logical('1', 'adapter'), ...['2', '8', '9', '10', '11', '9007199254740991', '9007199254740992',
+        '9007199254740993', '9223372036854775807', '9223372036854775808', '9223372036854775809',
+        '18446744073709551614', '18446744073709551615'].map((sequence, position) => {
+        const action = logical(sequence, 'adapter', position + 2, [2147483647, 2147483648, 4294967295][position % 3]);
+        action.act.data = {global_sequence: 1.25, exact_contract_string: '0001', retained: false, values: [0, null]};
+        if (sequence === '18446744073709551615') {
+            action.code_sequence = 4294967295; action.abi_sequence = 4294967295;
+            action.receipts[0].global_sequence = '18446744073709551614';
+            action.receipts.push({receiver: 'beta', global_sequence: sequence, recv_sequence: '9223372036854775809',
+                auth_sequence: [{account: 'bob', sequence: '18446744073709551615'}, {account: 'alice', sequence: '9007199254740993'}]});
+        }
+        return action;
+    })];
+    const expected = source.map(action => action.global_sequence).sort((left, right) => BigInt(left) < BigInt(right) ? -1 : 1);
+    const manifest = {kind: 'owned-fixture', target: [index, empty], expected: source, emptyBlocks: [100, 101]};
+    const sourceDigest = sha256(JSON.stringify(manifest));
+    const identity = new Map(), incomplete = new Set(); let generation = 1, leases = 0, releases = 0;
+    const authority = {
+        async acquire(snapshot) {
+            assert(snapshot.indices.every(entry => identity.get(entry.name) === entry.uuid), 'Concrete fixture UUID mismatch');
+            const pinned = generation; leases++;
+            return {generation: `${run}:${pinned}`, source: `owned-fixture:${sourceDigest}`, indices: snapshot.indices,
+                async assertComplete() {
+                    if (snapshot.indices.some(entry => incomplete.has(entry.name))) {
+                        throw Object.assign(new Error('Source manifest membership is incomplete'), {statusCode: 503});
+                    }
+                },
+                async assertCurrent() {
+                    if (generation !== pinned) throw Object.assign(new Error('Source coverage generation changed'), {statusCode: 503});
+                },
+                async release() {releases++;}};
+        }
+    };
+    const adapter = new ActionHistoryAdapter(client, chain, authority);
+    report.productionModuleFixture = {sourceDigest, sourceRows: source.length, emptyBlocks: manifest.emptyBlocks,
+        purpose: 'Finite manifest and fixture-only coverage authority; durable host journal and live activation remain absent'};
+    report.productionModuleFixture.artifacts = Object.fromEntries(['action-history-adapter', 'action-history-coverage',
+        'action-sequence-storage', 'action-sequence-query-plan', 'action-source-projection'].map(module => [module, {
+        sourceSha256: sha256(readFileSync(new URL(`../../src/indexer/history/${module}.ts`, import.meta.url))),
+        emittedSha256: sha256(readFileSync(new URL(`../../build/indexer/history/${module}.js`, import.meta.url)))
+    }]));
+    await check('production mapping guard adds namespace with acknowledged readback and preserves retained history', async () => {
+        for (const name of [index, empty]) await client.indices.create({index: name, settings: legacySettings,
+            mappings: {dynamic: 'strict', properties: legacyProperties}});
+        const legacy = structuredClone(source[0]); legacy.global_sequence = 1;
+        await client.index({index, id: '1', document: legacy, refresh: true, wait_for_active_shards: 'all'});
+        const before = (await client.indices.getSettings({index, flat_settings: true}))[index].settings;
+        report.productionModuleFixture.retentionProbe = {
+            mapping: (await client.indices.getMapping({index}))[index].mappings._source,
+            settings: (await client.indices.getSettings({index, flat_settings: true, include_defaults: true}))[index]
+        };
+        assert.deepEqual(await ensureActionSequenceMappings(client, chain), {inspected: 2, updated: 2});
+        assert.deepEqual(await ensureActionSequenceMappings(client, chain), {inspected: 2, updated: 0});
+        assert.deepEqual((await client.get({index, id: '1'}))._source, legacy);
+        assert.deepEqual((await client.indices.getSettings({index, flat_settings: true}))[index].settings, before);
+        for (const name of [index, empty]) {
+            const settings = (await client.indices.getSettings({index: name, flat_settings: true}))[name].settings;
+            identity.set(name, settings['index.uuid']); assert.equal(settings['index.sort.field'], 'global_sequence');
+        }
+        return {concreteUuids: Object.fromEntries(identity), retainedLegacyRow: true, fullReindex: false};
+    });
+    await check('opt-in production bulk route acknowledges exact full-range writes and idempotent redelivery', async () => {
+        const requests = [], receipts = [];
+        const routes = new ElasticRoutes({chain, config: {scaling: {}, settings: {index_version: 'v1', index_partition_size: 1000}},
+            ingestClients: [{async bulk(request) {
+                requests.push(request); const receipt = await client.bulk({...request, refresh: true, wait_for_active_shards: 'all'});
+                receipts.push(receipt); return receipt;
+            }}]}, undefined, {exactActionSequenceStorage: true});
+        const deliveries = source.slice(1).map((action, position) => ({content: Buffer.from(JSON.stringify(action)),
+            fields: {deliveryTag: position + 1}, properties: {}}));
+        async function route() {
+            const acknowledged = [], requeued = [], channel = Object.assign(new EventEmitter(), {
+                ack(message) {acknowledged.push(message.fields.deliveryTag);},
+                nack(message, allUpTo, requeue) {assert.equal(allUpTo, false); assert.equal(requeue, true); requeued.push(message.fields.deliveryTag);}
+            });
+            const size = await new Promise(resolve => routes.routes.action(deliveries, channel, resolve));
+            assert.equal(size, deliveries.length); assert.equal(acknowledged.length, deliveries.length); assert.deepEqual(requeued, []);
+        }
+        await route(); await route(); assert.deepEqual(requests[0], requests[1]); assert.equal(requests[0].pipeline, '_none');
+        for (const receipt of receipts) {assert.equal(receipt.errors, false); for (const item of receipt.items) assert.equal(item.index._shards.failed, 0);}
+        assert.equal((await client.count({index})).count, source.length);
+        for (const action of source.slice(1)) {
+            const hit = await client.get({index, id: action.global_sequence});
+            assert.equal(hit._id, action.global_sequence); assert.deepEqual(restoreActionSequenceStorage(hit._source), action);
+        }
+        return {itemsPerDelivery: deliveries.length, deliveries: 2, remainingLogicalRows: source.length};
+    });
+    await check('production query adapter preserves exact membership counts and metadata predicates', async () => {
+        const cases = [
+            [{term: {global_sequence: '9007199254740993'}}, ['9007199254740993']],
+            [{range: {global_sequence: {gte: '9007199254740992', lt: '9223372036854775809'}}},
+                ['9007199254740992', '9007199254740993', '9223372036854775807', '9223372036854775808']],
+            [{bool: {must: [{range: {global_sequence: {gte: '8', lte: '11'}}}], must_not: [{term: {global_sequence: '10'}}]}}, ['8', '9', '11']],
+            [{terms: {global_sequence: ['1', '9007199254740993', '18446744073709551615']}}, ['1', '9007199254740993', '18446744073709551615']],
+            [{term: {'receipts.recv_sequence': '9223372036854775809'}}, ['9223372036854775809', '18446744073709551615']],
+            [{term: {'receipts.auth_sequence.sequence': '18446744073709551615'}}, ['18446744073709551615']],
+            [{term: {code_sequence: 4294967295}}, source.filter(action => action.code_sequence === 4294967295).map(action => action.global_sequence)
+                .sort((left, right) => BigInt(left) < BigInt(right) ? -1 : 1)]
+        ];
+        const context = await adapter.open([index, empty]);
+        try {
+            for (const [query, selected] of cases) {
+                const result = await context.search({query, sort: {global_sequence: 'asc'}, size: 100, track_total_hits: true});
+                assert.deepEqual(result.hits.hits.map(hit => hit._source.global_sequence), selected); assert.equal(total(result), selected.length);
+                assert.equal(await context.count(query), selected.length);
+                for (const hit of result.hits.hits) {assert.equal(hit._source[prefix], undefined); assert.equal(hit.fields, undefined);}
+            }
+        } finally {await context.close();}
+        return {predicateCases: cases.length, countSharesPit: true};
+    });
+    await check('production alias resolution and metric allowlist preserve the coverage-qualified query scope', async () => {
+        const alias = `${chain}-action-read`;
+        await client.indices.updateAliases({actions: [index, empty].map(name => ({add: {index: name, alias}}))});
+        assert.equal(total(await adapter.search(alias, {size: 0, track_total_hits: true})), source.length);
+        const query = {range: {global_sequence: {gte: '1', lte: '9'}}};
+        const result = await adapter.search(alias, {query, size: 0, aggs: {blocks: {stats: {field: 'block_num'}}}});
+        assert.equal(result.aggregations.blocks.count, 4);
+        for (const aggs of [
+            {missing_max: {filters: {filters: {maximum: {term: {global_sequence: '18446744073709551615'}}}}}},
+            {outside_scope: {global: {}, aggs: {all_blocks: {stats: {field: 'block_num'}}}}},
+            {physical: {cardinality: {field: 'h45*global.value'}}}
+        ]) await assert.rejects(adapter.search(alias, {query, size: 0, aggs}), error => error.statusCode === 503);
+        for (const query of [
+            {query_string: {fields: ['h45*global.value'], query: '1'}},
+            {query_string: {fields: ['act.account'], query: 'h45*global.value:1'}}
+        ]) await assert.rejects(adapter.search(alias, {query}), error => error.statusCode === 503);
+        return {unfilteredAlias: true, metricMembership: 4, unqualifiedAggregationAndPhysicalWildcardStatus: 503};
+    });
+    await check('production multivalue min/max sorts and negated pure-should predicates follow native semantics', async () => {
+        const context = await adapter.open(index);
+        try {
+            for (const mode of ['min', 'max']) for (const order of ['asc', 'desc']) {
+                const selected = [...source].sort((left, right) => {
+                    const member = action => action.receipts.map(receipt => BigInt(receipt.recv_sequence))
+                        .reduce((a, b) => mode === 'min' ? (a < b ? a : b) : (a > b ? a : b));
+                    const a = member(left), b = member(right);
+                    return a === b ? (BigInt(left.global_sequence) < BigInt(right.global_sequence) ? -1 : 1) :
+                        (a < b ? -1 : 1) * (order === 'asc' ? 1 : -1);
+                }).map(action => action.global_sequence);
+                const result = await context.search({sort: [{'receipts.recv_sequence': {order, mode}}, {global_sequence: 'asc'}], size: 100});
+                assert.deepEqual(result.hits.hits.map(hit => hit._source.global_sequence), selected);
+                assert(result.hits.hits.every(hit => typeof hit.sort[0] === 'string' && typeof hit.sort[1] === 'string'));
+            }
+            const counters = await context.search({sort: [{code_sequence: 'desc'}, {global_sequence: 'asc'}], size: 100});
+            assert(counters.hits.hits.every(hit => typeof hit.sort[0] === 'number' && Number.isSafeInteger(hit.sort[0])));
+            assert.deepEqual(counters.hits.hits.map(hit => hit._source.code_sequence), [...source].map(action => action.code_sequence).sort((a, b) => b - a));
+            const query = {bool: {must_not: [{bool: {should: [{term: {global_sequence: '1'}}], minimum_should_match: 0}}]}};
+            assert.equal(await context.count(query), source.length - 1);
+        } finally {await context.close();}
+    });
+    await check('production PIT offset and search_after pages preserve exact strings across old and new rows', async () => {
+        for (const order of ['asc', 'desc']) {
+            const selected = order === 'asc' ? expected : [...expected].reverse(), context = await adapter.open([index, empty]);
+            try {
+                const offset = [], cursor = []; let after;
+                for (let from = 0; from < selected.length; from += 3) {
+                    const result = await context.search({sort: {global_sequence: order}, from, size: 3});
+                    offset.push(...result.hits.hits.map(hit => hit._source.global_sequence));
+                }
+                assert.deepEqual(offset, selected);
+                do {
+                    const result = await context.search({sort: {global_sequence: order}, size: 3, ...(after ? {search_after: after} : {})});
+                    if (!result.hits.hits.length) break;
+                    cursor.push(...result.hits.hits.map(hit => hit._source.global_sequence)); after = result.hits.hits.at(-1).sort;
+                    assert.equal(typeof after[0], 'string'); assert.equal(after[0].length, 20);
+                    assert(cursor.length <= selected.length, 'Non-progressing production PIT cursor');
+                } while (true);
+                assert.deepEqual(cursor, selected);
+            } finally {await context.close();}
+        }
+    });
+    await check('production source projection restores metadata privately and keeps arbitrary contract values unchanged', async () => {
+        const result = await adapter.search(index, {query: {term: {global_sequence: '18446744073709551615'}},
+            _source: {includes: ['global_sequence', 'code_sequence', 'receipts.recv_sequence', 'act.data']}});
+        assert.deepEqual(result.hits.hits[0]._source, {global_sequence: '18446744073709551615', code_sequence: 4294967295,
+            receipts: [{recv_sequence: '18446744073709551615'}, {recv_sequence: '9223372036854775809'}], act: {data: source.at(-1).act.data}});
+        const nativeLegacy = await client.search({index, query: {term: {global_sequence: '1'}}, _source: {includes: ['global_sequence', 'receipts.recv_sequence']}});
+        const projected = await adapter.search(index, {query: {term: {global_sequence: '1'}}, _source: {includes: ['global_sequence', 'receipts.recv_sequence']}});
+        assert.deepEqual(projected.hits.hits[0]._source, {...nativeLegacy.hits.hits[0]._source, global_sequence: '1'});
+        const sourceFilter = {includes: ['act.*'], excludes: ['*.exact_contract_string']};
+        const nativeProjection = await client.search({index, query: {ids: {values: ['18446744073709551615']}}, _source: sourceFilter});
+        const logicalProjection = await adapter.search(index, {query: {term: {global_sequence: '18446744073709551615'}}, _source: sourceFilter});
+        assert.deepEqual(logicalProjection.hits.hits[0]._source, nativeProjection.hits.hits[0]._source);
+    });
+    await check('production coverage refuses a lost contract row and preserves taint after its last unsafe survivor is overwritten', async () => {
+        const bad = `${chain}-action-v1-000003`;
+        await client.indices.create({index: bad, settings: legacySettings, mappings: {dynamic: 'strict', properties: legacyProperties}});
+        await ensureActionSequenceMappings(client, chain);
+        identity.set(bad, (await client.indices.getSettings({index: bad, flat_settings: true}))[bad].settings['index.uuid']);
+        const originals = ['9007199254740992', '9007199254740993'].map((sequence, position) => logical(sequence, position ? 'survivor' : 'lost'));
+        for (const action of originals) await client.index({index: bad, id: String(Number(action.global_sequence)),
+            document: {...action, global_sequence: Number(action.global_sequence)}, refresh: true});
+        assert.equal((await client.count({index: bad, query: {term: {category: 'lost'}}})).count, 0);
+        incomplete.add(bad);
+        await assert.rejects(adapter.search(bad, {query: {term: {category: 'lost'}}}), error => error.statusCode === 503);
+        await client.index({index: bad, id: originals[0].global_sequence, document: encodeActionSequenceStorage(originals[0]), refresh: true});
+        assert.equal((await client.count({index: bad, query: unknownCoverage({match_all: {}})})).count, 0);
+        await assert.rejects(adapter.search(bad, {query: {term: {category: 'survivor'}}}), error => error.statusCode === 503);
+        // Independently certified concrete partitions remain available.
+        assert.equal(total(await adapter.search(index, {size: 0, track_total_hits: true})), source.length);
+        return {lostContractRawCount: 0, adapterStatus: 503, zeroUnsafeSurvivorsStillIncomplete: true,
+            unrelatedConcretePartitionAvailable: true, noSourceReplayClaim: true};
+    });
+    await check('production generation and cancellation fences release native PIT memory', async () => {
+        const context = await adapter.open(index); generation++;
+        try {await assert.rejects(context.count(), error => error.statusCode === 503);} finally {await context.close();}
+        const controller = new AbortController(), cancelled = await adapter.open(index, {signal: controller.signal});
+        const request = cancelled.search({}); controller.abort();
+        try {await assert.rejects(request, error => error.statusCode === 503);} finally {await cancelled.close();}
+        assert.equal(leases, releases);
+        const stats = await client.nodes.stats({index_metric: ['search'], metric: ['indices']});
+        assert(Object.values(stats.nodes).every(node => node.indices.search.open_contexts === 0));
+        return {leases, releases, openContexts: 0, scope: 'Cancellation and stale generation mechanics, not recovery latency profiling'};
+    });
+    await check('production writable-source guard rejects destructive source pruning before any namespace write', async () => {
+        const unsafeChain = `${parentChain}-pruned`, unsafeIndex = `${unsafeChain}-action-v1-000001`;
+        await client.indices.create({index: unsafeIndex, settings: legacySettings,
+            mappings: {_source: {excludes: ['receipts']}, properties: legacyProperties}});
+        await assert.rejects(ensureActionSequenceMappings(client, unsafeChain), /stored _source retention/);
+        assert.equal((await client.indices.getMapping({index: unsafeIndex}))[unsafeIndex].mappings.properties[prefix], undefined);
+    });
+    report.qualification.productionModules = true;
+}
+
 try {
     const lock = JSON.parse(readFileSync(new URL('../../package-lock.json', import.meta.url), 'utf8'));
     report.versions = Object.fromEntries(['@elastic/elasticsearch', '@elastic/transport'].map(packageName =>
@@ -413,7 +648,7 @@ try {
             } finally {await closePit(state);}
         }
     });
-    await check('PIT coverage refuses only affected unsafe legacy scopes and freezes the check with the search', async () => {
+    await check('prototype category-filtered probe freezes its snapshot; it is not a missing-row coverage proof', async () => {
         const unsafe = logical('9007199254740993', 'incomplete'); unsafe.global_sequence = Number(unsafe.global_sequence);
         await client.index({index: indices[2], id: 'unknown-unsafe', document: unsafe, refresh: true});
         const snapshot = await openPit(client, alias);
@@ -459,6 +694,7 @@ try {
         assert.equal(result, '1'); assert.equal(String(0n), '0');
         return {action_count: result, scope: 'Arithmetic contract only; HTTP serializer/cache integration remains unqualified'};
     });
+    await qualifyProductionModules(client, chain);
     await check('the main server releases all PIT contexts before shutdown', async () => {
         assert.equal(pits.size, 0);
         const stats = await client.nodes.stats({metric: ['indices', 'jvm', 'process'], index_metric: ['search', 'store', 'segments', 'merge', 'refresh']});
@@ -473,10 +709,19 @@ try {
     docker(['stop', '-t', '10', server.id]);
     await check('disabled string-sort context gives an explicit native capability failure', async () => {
         const denied = await launch('scripts-denied', true); report.scriptContextServer = denied.server;
-        const index = `hyp-script-capability-${run}`;
+        const chain = `hyp-script-capability-${run}`, index = `${chain}-action-v1-000001`;
         await denied.client.indices.create({index, mappings: {properties: {global_sequence: {type: 'long'}}}});
         await denied.client.index({index, id: '1', document: {global_sequence: 1}, refresh: true});
-        return await rejection(() => denied.client.search({index, sort: [mixedSort('asc')]}), /cannot execute scripts using \[string_sort\] context/);
+        const native = await rejection(() => denied.client.search({index, sort: [mixedSort('asc')]}), /cannot execute scripts using \[string_sort\] context/);
+        const {ActionHistoryAdapter} = await import('../../build/indexer/history/action-history-adapter.js');
+        const adapter = new ActionHistoryAdapter(denied.client, chain, {async acquire(snapshot) {
+            return {generation: 'owned-script-capability-fixture', source: 'owned-fixture:one-safe-original', indices: snapshot.indices,
+                async assertComplete() {}, async assertCurrent() {}, async release() {}};
+        }});
+        await assert.rejects(adapter.search(index, {sort: {global_sequence: 'asc'}}), error => error.statusCode === 503);
+        const stats = await denied.client.nodes.stats({metric: ['indices'], index_metric: ['search']});
+        assert(Object.values(stats.nodes).every(node => node.indices.search.open_contexts === 0));
+        return {...native, adapterStatus: 503, openContexts: 0};
     });
     report.status = 'passed';
 } catch (error) {

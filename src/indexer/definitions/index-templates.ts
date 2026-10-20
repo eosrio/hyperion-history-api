@@ -1,4 +1,5 @@
 import {ConfigurationModule} from "../modules/config.js";
+import {ACTION_SEQUENCE_NAMESPACE, actionSequenceMapping} from '../history/action-sequence-storage.js';
 
 const shards = 2;
 const refresh = "1s";
@@ -59,6 +60,7 @@ export const action = {
             "@timestamp": {"type": "date"},
             "ds_error": {"type": "boolean"},
             "protocol": {"enabled": false},
+            [ACTION_SEQUENCE_NAMESPACE]: actionSequenceMapping(),
             "global_sequence": {"type": "long"},
             "account_ram_deltas.delta": {"type": "integer"},
             "account_ram_deltas.account": {"type": "keyword"},

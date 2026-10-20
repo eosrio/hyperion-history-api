@@ -11,6 +11,7 @@ import {ProtocolAbiCoordinatorRpc} from '../protocol/abi-coordinator-rpc.js';
 import {debugLog, hLog} from '../helpers/common_functions.js';
 import {RabbitQueueDef} from '../definitions/index-queues.js';
 import {LiveReaderCheckpoint, ReaderConfirmRange} from '../helpers/reader-progress.js';
+import {actionSourceIngressHeader} from '../history/action-source-admission.js';
 
 interface RequestRange {
     first_block: number;
@@ -37,6 +38,8 @@ export interface GetBlocksResultV0 {
 }
 
 export default class StateReader extends HyperionWorker {
+    private get usesOrderedSourceIngress(): boolean {return this.usesExtensionProtocol || this.actionSourceAdmissionEnabled;}
+    private actionSourceSession?: {readerSessionId: string; schemaJson: string; generation?: number; verified: boolean};
     private readonly isLiveReader = process.env['worker_role'] === 'continuous_reader';
     private readonly baseRequest: any;
 
@@ -408,7 +411,7 @@ export default class StateReader extends HyperionWorker {
             }
             case 'next_server': {
                 hLog('received next server action from master');
-                if (this.usesExtensionProtocol) {
+                if (this.usesOrderedSourceIngress) {
                     this.physicalIngressGeneration = undefined;
                     this.revokeCoordinatorSource();
                     this.handleLostConnection();
@@ -418,7 +421,7 @@ export default class StateReader extends HyperionWorker {
             case 'stop': {
                 if (this.isLiveReader) {
                     hLog('[LIVE READER] Closing Websocket');
-                    if (this.usesExtensionProtocol) { this.finishing = true; this.physicalIngressGeneration = undefined; }
+                    if (this.usesOrderedSourceIngress) { this.finishing = true; this.physicalIngressGeneration = undefined; }
                     this.clearProtocolReconnect();
                     this.revokeCoordinatorSource();
                     this.ship.close(true);
@@ -529,7 +532,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private async processIncomingBlocks(block_array: any[]) {
-        if (this.usesExtensionProtocol && block_array.some(item => item?.kind === 'frame' || item?.kind === 'connected')) {
+        if (this.usesOrderedSourceIngress && block_array.some(item => item?.kind === 'frame' || item?.kind === 'connected')) {
             let credits = 0;
             let creditGeneration: number | undefined;
             for (const item of block_array as ProtocolIngress[]) {
@@ -537,6 +540,7 @@ export default class StateReader extends HyperionWorker {
                     if (item.generation !== this.physicalIngressGeneration) continue;
                     this.shipABI = undefined;
                     this.sourceContext = undefined;
+                    this.actionSourceSession = undefined;
                     this.verifiedReaderSessionId = undefined;
                     this.shipSession?.close?.();
                     this.shipSession = undefined;
@@ -804,7 +808,8 @@ export default class StateReader extends HyperionWorker {
                 num: blk_num,
                 content: data,
                 confirmLive,
-                ...(this.usesExtensionProtocol ? {headers: await this.bindProtocolSource(res, data)} : {})
+                headers: {...(this.usesExtensionProtocol ? await this.bindProtocolSource(res, data) : {}),
+                    ...(this.actionSourceAdmissionEnabled ? await this.bindActionSource(res, data) : {})}
             };
 
             if (res.block && res.traces && res.deltas) {
@@ -934,11 +939,17 @@ export default class StateReader extends HyperionWorker {
         }
 
         // NORMAL OPERATION MODE
-        if (!this.recovery || this.usesExtensionProtocol) {
+        if (!this.recovery || this.usesOrderedSourceIngress) {
             const result = this.decodeShipResult(data);
             switch (result[0]) {
                 case 'get_status_result_v0':
                 case 'get_status_result_v1': {
+                    if (this.actionSourceAdmissionEnabled) {
+                        const session = this.actionSourceSession;
+                        if (!session || result[1]?.chain_id?.toString().toLowerCase() !== this.chainId)
+                            throw new Error('Action source SHiP session did not identify the configured chain');
+                        this.assertCurrentIngress(session.generation); session.verified = true;
+                    }
                     if (this.usesExtensionProtocol) {
                         const chainId = result[1]?.chain_id?.toString().toLowerCase();
                         if (!this.sourceContext || !/^[0-9a-f]{64}$/.test(chainId ?? '') || chainId !== this.chainId) {
@@ -956,6 +967,8 @@ export default class StateReader extends HyperionWorker {
                 }
                 case 'get_blocks_result_v0':
                 case 'get_blocks_result_v1': {
+                    if (this.actionSourceAdmissionEnabled && !this.actionSourceSession?.verified)
+                        throw new Error('Action source block arrived before chain verification');
                     if (this.usesExtensionProtocol && (!this.sourceContext || this.verifiedReaderSessionId !== this.sourceContext.readerSessionId)) {
                         await this.quarantineIngress(data, 'Block arrived before this connection identified the configured chain', 'protocol_reader_chain_unverified');
                         return 'other';
@@ -1009,6 +1022,7 @@ export default class StateReader extends HyperionWorker {
         this.revokeCoordinatorSource();
         await this.initializeProtocolShip(abiString);
         this.assertCurrentIngress(generation);
+        if (this.actionSourceAdmissionEnabled) this.actionSourceSession = {readerSessionId: randomUUID(), schemaJson: abiString, generation, verified: false};
         if (this.usesExtensionProtocol) {
             const stop = this.profiler.start('protocol_source_prepare_context');
             try {
@@ -1029,6 +1043,19 @@ export default class StateReader extends HyperionWorker {
         process.send?.({event: 'init_abi', data: abiString});
         // request status
         this.send(['get_status_request_v0', {}]);
+    }
+
+    private async bindActionSource(result: GetBlocksResultV0, frame: Buffer): Promise<Record<string, string>> {
+        const session = this.actionSourceSession;
+        if (!session?.verified) throw new Error('Action source ingress lacks a verified original session');
+        this.assertCurrentIngress(session.generation);
+        const capture = protocolSourceCapture(this.chainId, result, session.schemaJson);
+        const id = await this.getActionAdmissionStore().retainIngress({schemaVersion: 1, chainId: this.chainId,
+            protocolId: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? [],
+            readerSessionId: session.readerSessionId, schemaJson: session.schemaJson, frameHex: frame.toString('hex'), captureSha256: capture.captureSha256});
+        this.assertCurrentIngress(session.generation);
+        if (this.actionSourceSession !== session) throw new Error('Action source session changed during retention');
+        return {[actionSourceIngressHeader]: id};
     }
 
     private async bindProtocolSource(result: GetBlocksResultV0, frame: Buffer): Promise<Record<string, string>> {
@@ -1109,12 +1136,18 @@ export default class StateReader extends HyperionWorker {
     }
 
     private assertCurrentIngress(generation = this.activeIngressGeneration): void {
-        if (this.usesExtensionProtocol && this.socketGeneration && generation !== this.physicalIngressGeneration) {
+        if (this.usesOrderedSourceIngress && this.socketGeneration && generation !== this.physicalIngressGeneration) {
             throw new StaleProtocolIngress('Reader socket changed while source capture was pending');
         }
     }
 
     private async quarantineIngress(frame: Buffer, message: string, code = 'protocol_reader_stale_ingress'): Promise<void> {
+        if (this.actionSourceAdmissionEnabled && !this.usesExtensionProtocol) {
+            const id = await this.getActionAdmissionStore().retainRejectedIngress({chainId: this.chainId, protocolId: this.protocolId,
+                profileId: this.protocol.profileId, frameHex: frame.toString('hex'), reason: {code, message}});
+            process.send?.({event: 'ds_error', data: {type: 'action_source_incomplete', code, capsuleId: id}});
+            return;
+        }
         this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
         const stop = this.profiler.start('protocol_source_quarantine');
         try {
@@ -1160,11 +1193,12 @@ export default class StateReader extends HyperionWorker {
         }
     }
 
-    private send(req_data: (string | any)[], generation = this.activeIngressGeneration ?? this.sourceContext?.generation) {
+    private send(req_data: (string | any)[], generation = this.activeIngressGeneration ?? this.sourceContext?.generation ?? this.actionSourceSession?.generation) {
         if (this.usesExtensionProtocol && /^get_blocks_request_/.test(req_data[0])
             && (!this.sourceContext || this.verifiedReaderSessionId !== this.sourceContext.readerSessionId)) return;
+        if (this.actionSourceAdmissionEnabled && /^get_blocks_request_/.test(req_data[0]) && !this.actionSourceSession?.verified) return;
         // Commands and credits from an old await must never reach a new physical socket.
-        if (this.usesExtensionProtocol && this.socketGeneration
+        if (this.usesOrderedSourceIngress && this.socketGeneration
             && (generation === undefined || generation !== this.physicalIngressGeneration)) return;
         this.ship.send(
             this.shipSession!.encodeRequest(req_data)
@@ -1343,7 +1377,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private startWS() {
-        if (this.usesExtensionProtocol) {
+        if (this.usesOrderedSourceIngress) {
             if (this.finishing || this.publisherFailure) return;
             this.clearProtocolReconnect();
             const generation = ++this.socketGeneration;
@@ -1383,13 +1417,13 @@ export default class StateReader extends HyperionWorker {
     }
 
     private clearProtocolReconnect(): void {
-        if (!this.usesExtensionProtocol) return;
+        if (!this.usesOrderedSourceIngress) return;
         if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
         this.reconnectTimer = undefined;
     }
 
     private handleLostConnection() {
-        if (this.usesExtensionProtocol && (this.reconnectTimer || this.finishing || this.publisherFailure)) return;
+        if (this.usesOrderedSourceIngress && (this.reconnectTimer || this.finishing || this.publisherFailure)) return;
         this.recovery = true;
         this.ship.close(false);
         hLog(`Retrying connection in 5 seconds... [attempt: ${this.reconnectCount + 1}]`);
@@ -1400,14 +1434,14 @@ export default class StateReader extends HyperionWorker {
         this.ship.nextUrl();
 
         const reconnect = () => {
-            if (this.usesExtensionProtocol) {
+            if (this.usesOrderedSourceIngress) {
                 this.reconnectTimer = undefined;
                 if (this.finishing || this.publisherFailure) return;
             }
             this.reconnectCount++;
             this.startWS();
         };
-        if (this.usesExtensionProtocol) this.reconnectTimer = setTimeout(reconnect, 5000);
+        if (this.usesOrderedSourceIngress) this.reconnectTimer = setTimeout(reconnect, 5000);
         else setTimeout(reconnect, 5000);
     }
 

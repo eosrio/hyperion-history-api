@@ -211,9 +211,10 @@ export abstract class BaseParser {
             // console.dir(action, {depth: Infinity, colors: true});
 
             try {
-                worker.common.attachActionExtras(worker, action);
+                await worker.common.attachActionExtras(worker, action);
             } catch (e: any) {
-                hLog('Failed to call attachActionExtras:', e.message);
+                worker.noteActionHookFailure?.(e);
+                hLog('Failed to call attachActionExtras:', e instanceof Error ? e.message : String(e));
                 hLog(action?.act?.account, action?.act?.name, action?.act?.data);
             }
         } else {

@@ -29,6 +29,12 @@ import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {AsyncLocalStorage} from 'node:async_hooks';
+import {actionSourceAdmissionHeader, actionSourceIngressHeader, type ActionSourceAdmission} from '../history/action-source-admission.js';
+import {actionProducerEpoch, currentActionConfiguration} from '../history/action-producer-epoch.js';
+import {actionHistoryImmutableJson} from '../history/action-history-manifest.js';
+import type {ActionPublicationOwner} from '../history/action-confirmed-publication.js';
+import type {ActionSourceInventoryInput} from '../history/action-source-inventory.js';
+import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
 
 class ProtocolProofStorageError extends Error {
     constructor(cause: unknown) {super('Canonical ABI proof storage failed', {cause});}
@@ -96,6 +102,8 @@ export default class MainDSWorker extends HyperionWorker {
     private readonly protocolDerivedPublications = new AsyncLocalStorage<ProtocolDerivedPublications>();
     private activeSourceDelivery?: {message: Message; channel: Channel | undefined};
     private readonly protocolDeliveryOwners = new WeakMap<Message, Channel>();
+    private activeActionSource?: {message: Message; frameHex: string; ingressId: string; schemaJson: string; owner: ActionPublicationOwner;
+        admission?: ActionSourceAdmission; configuration?: string};
 
     shipABI?: string;
 
@@ -135,7 +143,7 @@ export default class MainDSWorker extends HyperionWorker {
             this.processMessages(payload).then(() => {
                 cb();
             }).catch((err) => {
-                if (this.usesExtensionProtocol) {
+                if (this.usesExtensionProtocol || this.actionSourceAdmissionEnabled) {
                     // Preserve unacknowledged broker deliveries for supervised
                     // replacement. nackAll + resuming cargo would reuse stale tags.
                     hLog('Protocol source processing failed; supervised replacement required:', err.message);
@@ -322,20 +330,102 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
+    /** Admission binds native and extension messages to their retained reader session, never the latest IPC ABI. */
+    async processAdmittedSourceDelivery(message: Message, processBound: (result: GetBlocksResultV0) => Promise<void>): Promise<void> {
+        const owner = this.actionPublicationOwner(message);
+        // Keep the receipt for its original ACK; caller-owned buffers must never supply later decode/retention bytes.
+        const frame = Buffer.from(message.content), frameHex = frame.toString('hex');
+        const ingressId = message.properties?.headers?.[actionSourceIngressHeader];
+        const selectionId = message.properties?.headers?.[protocolSourceSelectionHeader];
+        const ingress = await this.getActionAdmissionStore().resolveIngress(ingressId);
+        if (!owner.current() || ingress.chainId !== this.chainId || ingress.protocolId !== this.protocolId
+            || ingress.profileId !== this.protocol.profileId || ingress.frameHex !== frameHex
+            || actionHistoryImmutableJson(ingress.components) !== actionHistoryImmutableJson(this.protocolComponents ?? []))
+            throw new Error('Action source delivery does not match its retained reader context');
+        const run = async (result: GetBlocksResultV0) => {
+            const capture = protocolSourceCapture(this.chainId, result, ingress.schemaJson);
+            if (capture.captureSha256 !== ingress.captureSha256 || !owner.current()) throw new Error('Action source stable sections mismatch');
+            this.activeActionSource = {message, frameHex, ingressId, schemaJson: ingress.schemaJson, owner};
+            try {await processBound(result);} finally {this.activeActionSource = undefined;}
+        };
+        if (this.usesExtensionProtocol) {
+            await this.processProtocolSourceDelivery(message, async result => {
+                if (this.activeProtocolShipSchemaJson !== ingress.schemaJson) throw new Error('Action source and protocol handshakes disagree');
+                await run(result);
+            }, {frame, selectionId});
+        } else {
+            const close = this.beginProtocolShipDelivery(ingress.schemaJson);
+            try {
+                const result = this.decodeShipResult(frame);
+                if (!Array.isArray(result) || !['get_blocks_result_v0', 'get_blocks_result_v1'].includes(result[0]))
+                    throw new Error('Action source delivery is not a block result');
+                await run(result[1]);
+            } finally {close();}
+        }
+    }
+
+    async prepareActionSourceAdmission(res: GetBlocksResultV0, block: any, traces: unknown,
+                                       wireActionInputs?: readonly ProtocolAbiActionInput[]): Promise<void> {
+        if (!this.actionSourceAdmissionEnabled) return;
+        const scope = this.activeActionSource;
+        if (!scope || !scope.owner.current()) throw new Error('Action admission lacks its original source delivery');
+        const epoch = await actionProducerEpoch(this);
+        let rootActions: Array<{account: string; name: string}> | undefined;
+        if (epoch.policy.rootOnly) {
+            try {
+                rootActions = [];
+                for (const transaction of block.transactions) {
+                    const packed = Array.isArray(transaction.trx) ? transaction.trx[1] : transaction.trx;
+                    const included = transaction.status === 0 || (this.usesExtensionProtocol && transaction.status === undefined && !Array.isArray(transaction.trx));
+                    if (included && packed?.packed_trx) for (const action of this.decodePackedTransaction(packed).actions)
+                        rootActions.push({account: String(action.account), name: String(action.name)});
+                }
+            } catch {rootActions = undefined;}
+        }
+        const capture = protocolSourceCapture(this.chainId, res, scope.schemaJson);
+        const inventoryInput: ActionSourceInventoryInput = {
+            profileId: this.protocol.profileId as ActionSourceInventoryInput['profileId'],
+            source: {chainId: this.chainId, blockNum: capture.source.blockNum, blockId: capture.source.blockId,
+                producer: String(block?.producer ?? ''), timestamp: String(block?.timestamp ?? '')},
+            policy: epoch.policy, traces: traces ?? null, ...(rootActions ? {rootActions} : {}),
+            ...(wireActionInputs ? {wireActionInputs} : {}),
+            ...(this.usesExtensionProtocol ? {sourceSelectionId: this.activeSourceSelectionId} : {})};
+        const store = this.getActionAdmissionStore();
+        const sourceId = await store.retainSource({schemaVersion: 1, frameHex: scope.frameHex,
+            schemaJson: scope.schemaJson, captureSha256: capture.captureSha256, ingressId: scope.ingressId,
+            previousBlockId: capture.source.previousBlockId, producer: epoch.producer,
+            executableSha256: epoch.executableSha256, inventoryInput});
+        const target = await this.actionTarget(capture.source.blockNum, true);
+        const admission = await store.admit(sourceId, target);
+        if (!scope.owner.current() || currentActionConfiguration(this) !== epoch.configuration)
+            throw new Error('Action producer epoch changed during source admission');
+        scope.admission = admission; scope.configuration = epoch.configuration;
+        if (admission.incomplete) hLog('Action membership remains incomplete for block', capture.source.blockNum, admission.incomplete);
+    }
+
+    ackAdmittedSourceDelivery(message: Message): void {
+        const scope = this.activeActionSource;
+        if (!scope || scope.message !== message || !scope.owner.current() || !scope.admission
+            || currentActionConfiguration(this) !== scope.configuration) throw new Error('Action source cannot acknowledge unfinished/stale admission');
+        scope.owner.consumer.ack(message);
+    }
+
     /** Resolve only durable per-frame context; initialize_abi remains a legacy startup signal. */
-    async processProtocolSourceDelivery(message: Message, processBound: (result: GetBlocksResultV0) => Promise<void>): Promise<void> {
+    async processProtocolSourceDelivery(message: Message, processBound: (result: GetBlocksResultV0) => Promise<void>,
+                                        snapshot?: {frame: Buffer; selectionId: unknown}): Promise<void> {
         const ownerChannel = this.protocolDeliveryOwners.get(message);
+        const frame = Buffer.from(snapshot?.frame ?? message.content);
+        const claimed = snapshot ? snapshot.selectionId : message.properties?.headers?.[protocolSourceSelectionHeader];
         await this.protocolReady;
         this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
         const store = this.protocolSourceBindingStore;
-        const claimed = message.properties?.headers?.[protocolSourceSelectionHeader];
         const claimedSelectionId = typeof claimed === 'string' && claimed.length <= 4096 ? claimed : null;
         const quarantine = async (code: string, error: unknown) => {
             const stop = this.profiler.start('protocol_source_quarantine');
             try {
                 const capsule = await store.quarantine({schemaVersion: 1, chainId: this.chainId,
                 protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
-                frameHex: message.content.toString('hex'), claimedSelectionId,
+                frameHex: frame.toString('hex'), claimedSelectionId,
                 reason: {code, message: String((error as any)?.message ?? error).slice(0, 4096).toWellFormed() || code}});
                 process.send?.({event: 'ds_error', data: {type: 'protocol_source_incomplete', code, capsuleId: capsule.id, claimedSelectionId}});
                 if (ownerChannel && ownerChannel === this.ch && this.ch_ready) ownerChannel.ack(message);
@@ -374,11 +464,11 @@ export default class MainDSWorker extends HyperionWorker {
                 || protocolImmutableJson(components(context.protocol.components)) !== protocolImmutableJson(components(this.protocolComponents ?? []))) {
                 throw new Error('Reader source chain, profile or exact component build does not match this worker');
             }
-            if (selection.frameSha256 !== createHash('sha256').update(message.content).digest('hex')) throw new Error('Reader source frame digest mismatch');
+            if (selection.frameSha256 !== createHash('sha256').update(frame).digest('hex')) throw new Error('Reader source frame digest mismatch');
             close = this.beginProtocolShipDelivery(context.schemaJson);
             const stopDecode = this.profiler.start('deserialize_result');
             let decoded: any;
-            try { decoded = this.decodeShipResult(message.content); } finally { stopDecode(); }
+            try { decoded = this.decodeShipResult(frame); } finally { stopDecode(); }
             if (!Array.isArray(decoded) || !['get_blocks_result_v0', 'get_blocks_result_v1'].includes(decoded[0])) throw new Error('Bound frame is not a block result');
             result = decoded[1];
             const capture = protocolSourceCapture(this.chainId, result, context.schemaJson);
@@ -419,14 +509,14 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     /** Journal PREPARE precedes history filters and source ACK; it grants no decoding authority. */
-    async prepareProtocolAbiObservations(res: GetBlocksResultV0): Promise<{traces?: any; deltas?: any[]}> {
+    async prepareProtocolAbiObservations(res: GetBlocksResultV0): Promise<{traces?: any; deltas?: any[]; wireActionInputs?: readonly ProtocolAbiActionInput[]}> {
         if (!this.usesExtensionProtocol) return {};
         if (!this.activeSourceSelectionId || !this.activeProtocolShipSchemaJson || !this.protocolSourceBindingStore) {
             throw new Error('ABI observations require a verified reader source selection');
         }
         const {source: position, capture, captureSha256} = protocolSourceCapture(this.chainId, res, this.activeProtocolShipSchemaJson);
         const source = {...position, inputSha256: captureSha256};
-        const decoded: {traces?: any; deltas?: any[]} = {};
+        const decoded: {traces?: any; deltas?: any[]; wireActionInputs?: readonly ProtocolAbiActionInput[]} = {};
         let observation: ProtocolAbiObservationRecord['observation'];
         let codecFailure: ProtocolSourceCodecError | undefined;
         try {
@@ -454,6 +544,7 @@ export default class MainDSWorker extends HyperionWorker {
             if (typeof provider.observeBlockAbi !== 'function') throw new Error('Selected provider has no ABI observation hook');
             const facts = provider.observeBlockAbi({traces: decoded.traces, accountRows}, position);
             assertProtocolAbiObservationFacts(facts);
+            decoded.wireActionInputs = facts.actionInputs;
             // Validate malformed provider output here so raw source survives as an incomplete record.
             observation = {status: 'observed', facts};
         } catch (error: any) {
@@ -503,6 +594,7 @@ export default class MainDSWorker extends HyperionWorker {
             consumer.prefetch(this.conf.prefetch.block);
             consumer.consume(process.env.worker_queue, (data) => {
                 if (!data) return;
+                if (this.actionSourceAdmissionEnabled) this.captureActionAdmissionDelivery(data, consumer);
                 if (this.usesExtensionProtocol) this.captureProtocolSourceDelivery(data, consumer);
                 this.consumerQueue.push(data).catch(console.log);
             });
@@ -728,7 +820,22 @@ export default class MainDSWorker extends HyperionWorker {
                     _traces = traces;
                 }
 
-                if (_traces.length > 0 && this.conf.indexer.fetch_traces) {
+                if (this.activeActionSource?.admission?.inventory) {
+                    const scope = this.activeActionSource, admission = scope.admission!;
+                    for (const transaction of admission.inventory!.transactions) {
+                        if (!transaction.dispatch) continue;
+                        if (!scope.owner.current() || currentActionConfiguration(this) !== scope.configuration)
+                            throw new Error('Action source epoch changed before dispatch');
+                        const headers = {block_num, block_id, producer, ts,
+                            inline_count: transaction.dispatch.inlineCount, filtered: transaction.dispatch.filtered,
+                            live: process.env['live_mode'], [actionSourceAdmissionHeader]: admission.id,
+                            action_trace_ordinal: transaction.traceOrdinal,
+                            ...(this.usesExtensionProtocol ? {[protocolSourceSelectionHeader]: this.activeSourceSelectionId} : {})};
+                        await this.routeToPool(transaction.dispatch.body, headers, scope.owner, transaction.dispatch.canonicalJson);
+                        if (process.env['live_mode'] === 'true') onBlockTransactions.push(transaction.transactionId);
+                    }
+                    await this.getActionAdmissionStore().trySeal(admission);
+                } else if (_traces.length > 0 && this.conf.indexer.fetch_traces) {
                     for (const trace of _traces) {
                         if (trace[1] && trace[1].action_traces.length > 0) {
                             const inline_count = trace[1].action_traces.length;
@@ -769,7 +876,7 @@ export default class MainDSWorker extends HyperionWorker {
                             }
                             try {
                                 trace[1].signatures = signatures;
-                                this.routeToPool(trace[1], {
+                                await this.routeToPool(trace[1], {
                                     block_num,
                                     block_id,
                                     producer,
@@ -777,9 +884,11 @@ export default class MainDSWorker extends HyperionWorker {
                                     inline_count,
                                     filtered,
                                     live: process.env['live_mode'],
+                                    ...(this.activeActionSource?.admission ? {[actionSourceAdmissionHeader]: this.activeActionSource.admission.id} : {}),
                                     ...(this.usesExtensionProtocol ? {[protocolSourceSelectionHeader]: this.activeSourceSelectionId} : {})
-                                });
+                                }, this.activeActionSource?.owner);
                             } catch (e) {
+                                if (this.actionSourceAdmissionEnabled) throw e;
                                 hLog(e);
                                 hLog(block_num);
                                 hLog(trace[1]);
@@ -818,7 +927,7 @@ export default class MainDSWorker extends HyperionWorker {
         this.local_block_count++;
     }
 
-    routeToPool(trace, headers) {
+    routeToPool(trace, headers, owner?: ActionPublicationOwner, canonicalPayload?: string) {
 
         let first_action;
         if (trace['action_traces'][0] && trace['action_traces'][0].length === 2) {
@@ -917,7 +1026,8 @@ export default class MainDSWorker extends HyperionWorker {
         }
 
         const pool_queue = `${this.chain}:ds_pool:${selected_q}`;
-        const payload = bufferFromJson(trace, true);
+        const payload = canonicalPayload === undefined ? bufferFromJson(trace, true) : Buffer.from(canonicalPayload);
+        if (owner) return this.publishAdmitted(owner, pool_queue, payload, headers);
 
         if (!this.waitToSend) {
             if (this.ch_ready) {

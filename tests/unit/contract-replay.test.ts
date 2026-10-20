@@ -3,10 +3,12 @@ import {mkdtemp, mkdir, readFile, writeFile, rm, symlink} from 'node:fs/promises
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {deflateSync, gzipSync} from 'node:zlib';
-import {ABI, P2P, PrivateKey, Serializer, Transaction} from '@wharfkit/antelope';
+import {ABI, APIClient, P2P, PrivateKey, Serializer, Transaction} from '@wharfkit/antelope';
 import {actionAbi, auditFixture, contractAccount, contractWasm, decodeBlock, decodeExact, digest, encodeRecord, genesisChainId, parseShard,
     validateManifest, type ContractFixture} from '../../scripts/qualification/contract-fixture.ts';
-import {assertAbiOutputs, assertActionOutputs, assertBlockOutputs, assertContractAbsent, assertEmptyProjection, assertOwnedServices, assertResourceIsolation, readAllOutputs} from '../../scripts/qualification/contract-replay.ts';
+import {assertAbiOutputs, assertActionOutputs, assertBlockOutputs, assertContractAbsent, assertEmptyProjection, assertOwnedServices, assertResourceIsolation,
+    parseContractReplayArguments, readAllOutputs, runContractReplay} from '../../scripts/qualification/contract-replay.ts';
+import {createRetainedReplayRpc, retainedRpcLimits} from '../../scripts/qualification/retained-replay-rpc.ts';
 
 const zero = '0'.repeat(64);
 const abiHex = (revision: 1 | 2) => Buffer.from(Serializer.encode({object: ABI.from(actionAbi(revision))}).array).toString('hex');
@@ -70,8 +72,8 @@ async function writeFixture(root: string, nullGenesisPrevious = false) {
     const files: Record<string, Buffer> = {'genesis.json': genesis, 'protocol.abi.json': Buffer.from(JSON.stringify(protocol)),
         'expected.json': Buffer.from(JSON.stringify(m.expected)), 'abi-history.json': Buffer.from(JSON.stringify(m.abiHistory)),
         'shards/frames-00000.bin.gz': gzipSync(Buffer.concat(records)),
-        'status.bin': encode('result', ['get_status_result_v0', {chain_id: m.chainId, head: {block_num: 6, block_id: zero},
-            last_irreversible: {block_num: 6, block_id: zero}, trace_begin_block: 1, trace_end_block: 7, chain_state_begin_block: 1, chain_state_end_block: 7}])};
+        'status.bin': encode('result', ['get_status_result_v0', {chain_id: m.chainId, head: {block_num: 6, block_id: previous},
+            last_irreversible: {block_num: 6, block_id: previous}, trace_begin_block: 1, trace_end_block: 7, chain_state_begin_block: 1, chain_state_end_block: 7}])};
     m.inputs = []; for (const [file, bytes] of Object.entries(files)) { await writeFile(join(root, file), bytes); m.inputs.push({file, bytes: bytes.length, sha256: digest(bytes)}); }
     await writeFile(join(root, 'manifest.json'), JSON.stringify(m)); return {m, records};
 }
@@ -236,6 +238,63 @@ describe('guarded contract replay input', () => {
         }
     }));
 });
+describe('retained fixture replay', () => {
+    test('CLI preserves two-argument fresh capture and requires an explicit retained directory', () => {
+        expect(parseContractReplayArguments(['state.json', 'new-output'])).toEqual({stateFile: 'state.json', outputDirectory: 'new-output', options: {}});
+        expect(parseContractReplayArguments(['state.json', 'new-output', '--retained-fixture', 'source-fixture']).options)
+            .toEqual({retainedFixture: 'source-fixture'});
+        for (const args of [[], ['state'], ['state', 'output', 'fixture'], ['state', 'output', '--unknown', 'fixture'],
+            ['state', 'output', '--retained-fixture', ''], ['--retained-fixture', 'output'], ['state', '--retained-fixture'],
+            ['state', 'output', '--retained-fixture', '--retained-fixture'], ['state', 'output', '--retained-fixture', 'fixture', 'extra']])
+            expect(() => parseContractReplayArguments(args)).toThrow();
+    });
+    test('RPC view derives only from audited source and is accepted by the actual API decoder', async () => temporary(async root => {
+        await writeFixture(root); const fixture = await auditFixture(root); const rpc = createRetainedReplayRpc(fixture);
+        const reply = rpc.reply('GET', '/v1/chain/get_info', {}), tip = fixture.records.at(-1)!;
+        expect(reply.chain_id).toBe(fixture.manifest.chainId); expect(reply.head_block_num).toBe(6);
+        expect(reply.head_block_id).toBe(tip.id); expect(reply.last_irreversible_block_id).toBe(tip.id);
+        expect(reply.head_block_time).toBe('2000-01-01T00:00:03.000'); expect(reply.head_block_producer).toBe('eosio');
+        expect(rpc.lineage.manifestSha256).toBe(digest(fixture.manifestBytes));
+        expect(rpc.lineage.tipFrameSha256).toBe(digest(tip.frame)); expect(rpc.lineage.responseBytes).toBeLessThan(retainedRpcLimits.responseBytes);
+        expect(rpc.lineage.syntheticFields).toContain('server_version_string');
+        const requests: any[] = [];
+        const client = new APIClient({url: 'http://retained-fixture.invalid', fetch: async (url, request) => {
+            requests.push({url, method: request.method});
+            return new Response(JSON.stringify(rpc.reply(request.method, new URL(String(url)).pathname, request.body ? JSON.parse(request.body) : {})),
+                {status: 200, headers: {'content-type': 'application/json'}});
+        }});
+        const info = await client.v1.chain.get_info(); expect(info.chain_id.toString()).toBe(fixture.manifest.chainId);
+        expect(info.head_block_num.toNumber()).toBe(6); expect(requests[0].method).toBe('GET');
+        reply.head_block_id = zero; expect(rpc.reply('POST', '/v1/chain/get_info', {}).head_block_id).toBe(tip.id);
+        expect(digest(JSON.stringify(rpc.reply('GET', '/v1/chain/get_info', {})))).toBe(rpc.lineage.responseSha256);
+    }));
+    test('unsupported methods, paths and payloads cannot fall back to a live source', async () => temporary(async root => {
+        await writeFixture(root); const rpc = createRetainedReplayRpc(await auditFixture(root));
+        for (const path of ['/v1/chain/get_block', '/v1/chain/get_abi', '/v1/chain/get_raw_abi', '/v1/chain/get_info?ignored=1', '/', undefined])
+            expect(() => rpc.reply('POST', path, {})).toThrow('unsupported retained RPC path');
+        for (const method of ['PUT', 'DELETE', 'HEAD', undefined]) expect(() => rpc.reply(method, '/v1/chain/get_info', {})).toThrow('method');
+        for (const body of [null, [], 0, '', {account_name: contractAccount}, {unknown: true}])
+            expect(() => rpc.reply('POST', '/v1/chain/get_info', body)).toThrow('empty body');
+    }));
+    test('missing retained inputs fail before state inspection, output creation or worker launch', async () => temporary(async root => {
+        const output = join(root, 'must-not-exist');
+        await expect(runContractReplay(join(root, 'missing-state.json'), output, {retainedFixture: join(root, 'missing-source')}))
+            .rejects.toThrow('missing-source');
+        await mkdir(join(root, 'missing-source'));
+        await expect(runContractReplay(join(root, 'missing-state.json'), output, {retainedFixture: join(root, 'missing-source')}))
+            .rejects.toThrow('manifest.json');
+        await expect(readFile(join(output, 'report.json'))).rejects.toThrow();
+        for (const options of [{retainedFixture: ''}, {retainedFixture: undefined}, {unknown: true}, null])
+            await expect(runContractReplay(join(root, 'missing-state.json'), output, options as any)).rejects.toThrow();
+    }));
+    test('oversized manifests and changing retained chain identity are refused', async () => temporary(async root => {
+        await writeFixture(root); const fixture = await auditFixture(root);
+        fixture.manifest.chainId = zero; expect(() => createRetainedReplayRpc(fixture)).toThrow();
+        await writeFile(join(root, 'manifest.json'), Buffer.alloc(1024 * 1024 + 1));
+        await expect(auditFixture(root)).rejects.toThrow('byte budget');
+    }));
+});
+
 describe('independent output oracle', () => {
     test('ABI output compares validated bytes across hex case while refusing changed bytes and malformed hex', () => {
         const expected = [{account: contractAccount, block: 2, abiHex: 'aabb00ff'}];
@@ -263,6 +322,15 @@ describe('independent output oracle', () => {
         expect(requests.every(request => request.preference === '_only_nodes:physical-copy' && request.allow_partial_search_results === false &&
             request.track_total_hits === true && request.query.term.chain === 'owned')).toBe(true);
     });
+    test('finite action pagination compares safe native sort values with exact decimal-string source', async () => {
+        const result = {timed_out: false, _shards: {total: 1, successful: 1, failed: 0},
+            hits: {total: {value: 1, relation: 'eq'}, hits: [{_id: '101', sort: [101], _source: {global_sequence: '101'}}]}};
+        expect((await readAllOutputs({search: async () => result}, 'owned-action-*', 'global_sequence'))[0]._id).toBe('101');
+        for (const invalid of [101, '0101', '102']) {
+            result.hits.hits[0]._source.global_sequence = invalid as any;
+            await expect(readAllOutputs({search: async () => result}, 'owned-action-*', 'global_sequence')).rejects.toThrow('document key');
+        }
+    });
     test('output pagination refuses timeouts, failed shards, changed totals, gaps and repeated cursors', async () => {
         const changes: ((value: any) => void)[] = [value => { value.timed_out = true; }, value => { value._shards.failed = 1; },
             value => { value._shards.successful = 1; }, value => { value.hits.total.relation = 'gte'; },
@@ -279,12 +347,13 @@ describe('independent output oracle', () => {
     });
     test('exact action oracle rejects data, identity, count, order and decode failures', () => {
         const expected = manifest().expected.map((entry, index) => ({...entry, blockId: zero, globalSequence: index + 101}));
-        const hits = expected.map(entry => ({_id: String(entry.globalSequence), _source: {global_sequence: entry.globalSequence, trx_id: entry.trxId,
+        const hits = expected.map(entry => ({_id: String(entry.globalSequence), _source: {global_sequence: String(entry.globalSequence), trx_id: entry.trxId,
             block_num: entry.block, block_id: entry.blockId, act: {account: contractAccount, name: 'record', authorization: [{actor: contractAccount, permission: 'active'}], data: {...entry.data}}}}));
         assertActionOutputs(hits, expected);
         const mutations = [(value: any) => value.pop(), (value: any) => value.reverse(), (value: any) => { value[0]._source.ds_error = true; },
             (value: any) => { value[0]._id = '999'; }, (value: any) => { value[0]._source.act.data.memo = 'wrong'; },
-            (value: any) => { value[0]._source.trx_id = zero; }, (value: any) => { value[0]._source.act.data.extra = true; }];
+            (value: any) => { value[0]._source.trx_id = zero; }, (value: any) => { value[0]._source.act.data.extra = true; },
+            (value: any) => { value[0]._source.global_sequence = 101; }, (value: any) => { value[0]._source.global_sequence = '0101'; }];
         for (const mutate of mutations) { const value = structuredClone(hits); mutate(value); expect(() => assertActionOutputs(value, expected)).toThrow(); }
     });
     test('block oracle rejects gaps and hash mismatches', () => {

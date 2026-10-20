@@ -20,6 +20,8 @@ import { Action, APIClient, PackedTransaction } from "@wharfkit/antelope";
 import {inflateSync} from 'node:zlib';
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
 import { WorkerProfiler } from "../helpers/profiler.js";
+import {ActionSourceAdmissionStore} from '../history/action-source-admission.js';
+import {publishAdmittedAction, type ActionPublicationOwner} from '../history/action-confirmed-publication.js';
 
 /** Exact stable sections; mutable head/LIB remain in the separately bound frame. */
 export function protocolSourceCapture(chainId: string, result: any, schemaJson: string) {
@@ -76,6 +78,50 @@ export abstract class HyperionWorker {
     protected protocolShipAbiJson?: string;
     private deliveryShipContext?: {session: ProtocolShipSession; abi: unknown; schemaJson: string};
     configModule: ConfigurationModule;
+    private actionAdmissionStore?: ActionSourceAdmissionStore;
+    private readonly actionAdmissionOwners = new WeakMap<object, Channel>();
+
+    /** Internal engineering seam. Public activation requires the remaining #225 qualification gates. */
+    get actionSourceAdmissionEnabled(): boolean {return false;}
+
+    getActionAdmissionStore(): ActionSourceAdmissionStore {
+        return this.actionAdmissionStore ??= new ActionSourceAdmissionStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
+    }
+    captureActionAdmissionDelivery(message: object, channel: Channel): void {
+        const previous = this.actionAdmissionOwners.get(message);
+        if (previous && previous !== channel) throw new Error('Cannot replace an admitted action consumer receipt');
+        this.actionAdmissionOwners.set(message, channel);
+    }
+    actionPublicationOwner(message: object): ActionPublicationOwner {
+        const consumer = this.actionAdmissionOwners.get(message), publisher = this.cch;
+        if (!consumer || !publisher) throw new Error('Admitted action lacks its original consumer/publisher channels');
+        const owner = {consumer, publisher, current: () => consumer === this.ch && publisher === this.cch && this.ch_ready && this.cch_ready};
+        if (!owner.current()) throw new Error('Admitted action channels are unavailable');
+        return owner;
+    }
+    async publishAdmitted(owner: ActionPublicationOwner, queue: string, content: Buffer, headers: any): Promise<void> {
+        await publishAdmittedAction(owner, queue, content, {headers});
+    }
+    async actionTarget(blockNum: number, provision = false): Promise<{name: string; uuid: string}> {
+        const settings = this.conf.settings;
+        if (!Number.isSafeInteger(blockNum) || blockNum < 1 || !Number.isSafeInteger(settings.index_partition_size)
+            || settings.index_partition_size < 1) throw new Error('Invalid admitted action partition');
+        const name = `${this.chain}-action-${settings.index_version}-${Math.ceil(blockNum / settings.index_partition_size).toString().padStart(6, '0')}`;
+        if (provision && !await this.client.indices.exists({index: name})) {
+            try {
+                const result = await this.client.indices.create({index: name});
+                if (result.acknowledged !== true || result.shards_acknowledged !== true || result.index !== name)
+                    throw new Error('Action admission target creation was not acknowledged');
+            } catch (error: any) {
+                if (error?.meta?.statusCode !== 400 || error?.meta?.body?.error?.type !== 'resource_already_exists_exception') throw error;
+            }
+        }
+        const result = await this.client.indices.getSettings({index: name, flat_settings: true});
+        const uuid = result[name]?.settings?.['index.uuid'];
+        if (Object.keys(result).length !== 1 || typeof uuid !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(uuid))
+            throw new Error('Action admission requires a concrete target UUID');
+        return {name, uuid};
+    }
 
     protected constructor() {
         this.checkDebugger();

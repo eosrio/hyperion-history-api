@@ -10,6 +10,7 @@ import { GetBlocksResultV0 } from "../../workers/state-reader.js";
 import {protocolBytes} from "../../protocol/contract-cache.js";
 import {normalizeActionSequences} from '../../helpers/action-sequences.js';
 import {canonicalUint64, Uint64ValueError} from '../../helpers/uint64.js';
+import {ActionSourceInventoryError} from '../../history/action-source-inventory.js';
 
 export default class HyperionParser extends BaseParser {
 
@@ -47,6 +48,7 @@ export default class HyperionParser extends BaseParser {
 
         await this.deserializeActionData(worker, action, trx_data);
 
+        try {
         action["@timestamp"] = ts;
         action.block_num = trx_data.block_num;
         action.block_id = trx_data.block_id;
@@ -87,6 +89,12 @@ export default class HyperionParser extends BaseParser {
         }
 
         return true;
+        } catch (error) {
+            // This region contains only metadata finalization after the awaited decoder/hooks, never storage I/O.
+            if (worker.actionSourceAdmissionEnabled) throw new ActionSourceInventoryError('Action metadata finalization failed: '
+                + (error instanceof Error ? error.message : String(error)));
+            throw error;
+        }
         } finally {
             stopParseAction();
         }
@@ -94,6 +102,10 @@ export default class HyperionParser extends BaseParser {
 
     public async parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void> {
         for (const message of messages) {
+            if (worker.actionSourceAdmissionEnabled) {
+                await worker.processAdmittedSourceDelivery(message, result => this.processResult(worker, message, result));
+                continue;
+            }
             if (worker.usesExtensionProtocol) {
                 await worker.processProtocolSourceDelivery(message, result => this.processResult(worker, message, result));
                 continue;
@@ -122,6 +134,11 @@ export default class HyperionParser extends BaseParser {
             // Storage failure escapes without reaching the source acknowledgment below.
             const observation = worker.usesExtensionProtocol
                 ? await worker.prepareProtocolAbiObservations(res) : undefined;
+            // Decode the complete vector before root-only can omit it. Missing and encoded-empty remain distinct.
+            let sourceTraces: unknown;
+            if (worker.actionSourceAdmissionEnabled && res.traces && protocolBytes(res.traces).length) {
+                sourceTraces = observation?.traces ?? worker.deserializeNative('transaction_trace[]', protocolBytes(res.traces));
+            }
 
             if (res.block && res.block.length) {
                 const stopBlock = worker.profiler.start('deserialize_block');
@@ -159,9 +176,11 @@ export default class HyperionParser extends BaseParser {
                 }
             }
 
+            await worker.prepareActionSourceAdmission(res, block, sourceTraces, observation?.wireActionInputs);
+
             if (allowProcessing && res.traces && res.traces.length) {
                 const stopTraces = worker.profiler.start('deserialize_traces');
-                try { traces = observation?.traces ?? worker.deserializeNative('transaction_trace[]', protocolBytes(res.traces)); }
+                try { traces = sourceTraces as any ?? observation?.traces ?? worker.deserializeNative('transaction_trace[]', protocolBytes(res.traces)); }
                 finally { stopTraces(); }
                 if (!traces) {
                     hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res['this_block']['block_num']}`);
@@ -200,13 +219,15 @@ export default class HyperionParser extends BaseParser {
                 } else {
                     hLog(`ERROR: Block data not found for #${res['this_block']['block_num']}`);
                 }
-                if (worker.usesExtensionProtocol) {
+                if (worker.actionSourceAdmissionEnabled) {
+                    worker.ackAdmittedSourceDelivery(message);
+                } else if (worker.usesExtensionProtocol) {
                     worker.ackProtocolSourceDelivery(message);
                 } else if (worker.ch && worker.ch_ready) {
                     worker.ch.ack(message);
                 }
             } catch (e) {
-                if (worker.usesExtensionProtocol) throw e;
+                if (worker.usesExtensionProtocol || worker.actionSourceAdmissionEnabled) throw e;
                 console.log(e);
                 if (worker.ch && worker.ch_ready) {
                     worker.ch.nack(message);
