@@ -58,6 +58,7 @@ export const action = {
         properties: {
             "@timestamp": {"type": "date"},
             "ds_error": {"type": "boolean"},
+            "protocol": {"enabled": false},
             "global_sequence": {"type": "long"},
             "account_ram_deltas.delta": {"type": "integer"},
             "account_ram_deltas.account": {"type": "keyword"},
@@ -207,6 +208,7 @@ export const delta = {
             "table": {"type": "keyword"},
             "payer": {"type": "keyword"},
             "primary_key": {"type": "keyword"},
+            "protocol": {"enabled": false},
             "data": {"enabled": false},
             "value": {"enabled": false},
 
@@ -267,6 +269,11 @@ export const abi = {
             "account": {"type": "keyword"},
             "abi": {"enabled": false},
             "abi_hex": {"enabled": false},
+            "protocol_profile": {"type": "keyword"},
+            "block_id": {"type": "keyword"},
+            "ordinal": {"type": "long"},
+            "abi_available": {"type": "boolean"},
+            "abi_error": {"type": "text", "index": false},
             "actions": {"type": "keyword"},
             "tables": {"type": "keyword"}
         }
@@ -413,6 +420,7 @@ export const block = {
             "block_num": {"type": "long"},
             "block_id": {"type": "keyword"},
             "prev_id": {"type": "keyword"},
+            "protocol": {"enabled": false},
             "producer": {"type": "keyword"},
             "new_producers.producers.block_signing_key": {"enabled": false},
             "new_producers.producers.producer_name": {"type": "keyword"},

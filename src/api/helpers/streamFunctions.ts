@@ -4,7 +4,7 @@ import {RequestFilter, StreamActionsRequest, StreamDeltasRequest} from "../../in
 export function processActionRequests(
     actionClientMap: Map<string, Map<string, Map<string, StreamActionsRequest>>>,
     actionName: string,
-    account: string,
+    account: string | readonly string[],
     message: string,
     targetClients: Map<string, string[]>
 ): void {
@@ -55,10 +55,10 @@ export function processTableRequests(
     });
 }
 
-export function checkActionFilters(request: StreamActionsRequest, account: string, msg: string): boolean {
+export function checkActionFilters(request: StreamActionsRequest, account: string | readonly string[], msg: string): boolean {
     let allow: boolean;
     if (request.account) {
-        allow = request.account === account;
+        allow = typeof account === 'string' ? request.account === account : account.includes(request.account);
     } else {
         allow = true;
     }

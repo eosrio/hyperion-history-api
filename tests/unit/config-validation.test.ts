@@ -89,6 +89,14 @@ const validFullConfig = {
 };
 
 describe('HyperionSettingsConfigSchema', () => {
+    it('bounds optional ABI coordination independently from the executable protocol selection', () => {
+        expect(HyperionSettingsConfigSchema.safeParse({...validSettings, protocol_abi_coordination:{max_pending_blocks:1,recovery_window_blocks:4096}}).success).toBe(true);
+        for(const value of [0,4097,1.5]) {
+            expect(HyperionSettingsConfigSchema.safeParse({...validSettings,protocol_abi_coordination:{max_pending_blocks:value}}).success).toBe(false);
+            expect(HyperionSettingsConfigSchema.safeParse({...validSettings,protocol_abi_coordination:{recovery_window_blocks:value}}).success).toBe(false);
+        }
+        expect(HyperionSettingsConfigSchema.safeParse({...validSettings,protocol_abi_coordination:{automatic_activation:true}}).success).toBe(false);
+    });
     it('should validate a valid settings object', () => {
         const result = HyperionSettingsConfigSchema.safeParse(validSettings);
         expect(result.success).toBe(true);

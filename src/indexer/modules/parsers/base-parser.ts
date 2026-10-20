@@ -8,6 +8,7 @@ import { ActionTrace } from "../../../interfaces/action-trace.js";
 import { debugLog, hLog } from "../../helpers/common_functions.js";
 import { HyperionActionAct } from "../../../interfaces/hyperion-action.js";
 import { Action } from "@wharfkit/antelope";
+import {compatibleUint64} from '../../helpers/uint64.js';
 
 export abstract class BaseParser {
 
@@ -158,6 +159,10 @@ export abstract class BaseParser {
     async deserializeActionData(worker: DSPoolWorker, action: ActionTrace, trx_data) {
         const stopDsActionData = worker.profiler.start('deserialize_action_data');
         try {
+        if (worker.usesExtensionProtocol) {
+            await worker.deserializeProtocolAction(action, trx_data);
+            return;
+        }
         let act = action.act;
         const original_act = Object.assign({}, act);
         let ds_act: any | null = null;
@@ -178,7 +183,7 @@ export abstract class BaseParser {
         }
 
         // retry failed deserialization for custom ABI maps
-        if (!ds_act) {
+        if (!ds_act && !worker.usesExtensionProtocol) {
             try {
                 ds_act = await this.reinterpretActionData(act);
             } catch (e) {
@@ -188,7 +193,7 @@ export abstract class BaseParser {
         }
 
         // retry with the last abi before the given block_num
-        if (!ds_act) {
+        if (!ds_act && !worker.usesExtensionProtocol) {
             debugLog('DS Failed ->>', original_act);
             ds_act = await worker.common.deserializeActionAtBlockNative(worker, act, trx_data.block_num - 1);
             debugLog('Retry with previous ABI ->>', ds_act);
@@ -224,7 +229,7 @@ export abstract class BaseParser {
                     block: trx_data.block_num,
                     account: act.account,
                     action: act.name,
-                    gs: parseInt(action.receipt[1].global_sequence, 10),
+                    gs: compatibleUint64((Array.isArray(action.receipt) ? action.receipt[1] : action.receipt).global_sequence),
                     message: error_message
                 }
             });

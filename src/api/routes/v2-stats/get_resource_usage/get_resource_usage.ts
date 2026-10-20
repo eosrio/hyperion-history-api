@@ -1,5 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
+import {searchActions} from '../../../helpers/action-search.js';
+import {assertProtocolProjectionReady} from '../../../helpers/protocol-state-readiness.js';
 
 const percentiles = [1, 5, 25, 50, 75, 95, 99];
 
@@ -44,10 +46,11 @@ async function getResourceUsage(fastify: FastifyInstance, request: FastifyReques
     };
 
     if (query['@transfer.to']) {
+        assertProtocolProjectionReady(fastify, 'action-filter');
         searchBody.query.bool.must.push({term: {"@transfer.to": query['@transfer.to']}});
     }
 
-    const results = await fastify.elastic.search<any, any>({
+    const results: any = await searchActions<any>(fastify, request, {
         index: fastify.manager.readIndexset('action'),
         ...searchBody
     });

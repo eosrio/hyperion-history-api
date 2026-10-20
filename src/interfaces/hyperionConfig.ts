@@ -56,7 +56,10 @@ export interface TieredIndexAllocationSettings {
 }
 
 export interface MainSettings {
+    /** Executable protocol selection is fixed for the worker lifetime. */
+    protocol?: import("../indexer/protocol/selection.js").ChainProtocolConfiguration;
     reader_recovery_window_blocks?: number;
+    protocol_abi_coordination?: {max_pending_blocks?: number; recovery_window_blocks?: number};
     use_global_agent?: boolean;
     process_prefix?: string;
     ignore_snapshot?: boolean;
@@ -424,7 +427,16 @@ const TieredIndexAllocationSettingsSchema = z.object({
 });
 
 export const HyperionSettingsConfigSchema = z.object({
+    protocol: z.discriminatedUnion('provider', [
+        z.object({provider: z.literal('antelope')}).strict(),
+        z.object({provider: z.literal('extension'), package: z.string().regex(/^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/),
+            profileId: z.string().regex(/^[a-z][a-z0-9._-]{0,127}$/)}).strict(),
+    ]).optional(),
     reader_recovery_window_blocks: z.number().int().positive().optional(),
+    protocol_abi_coordination: z.object({
+        max_pending_blocks: z.number().int().min(1).max(4096).optional(),
+        recovery_window_blocks: z.number().int().min(1).max(4096).optional(),
+    }).strict().optional(),
     use_global_agent: z.boolean().optional(),
     process_prefix: z.string().optional(),
     ignore_snapshot: z.boolean().optional(),

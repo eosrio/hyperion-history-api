@@ -1,6 +1,9 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 import _ from "lodash";
+import {searchActions} from '../../../helpers/action-search.js';
+import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
+import {ProtocolAbiProofUnavailableError} from '../../../../indexer/protocol/abi-proof.js';
 
 interface getBlockTraceResponse {
     id: string;
@@ -76,7 +79,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
             response.producer = block.producer;
 
             // lookup all actions on block
-            const getActionsResponse = await fastify.elastic.search<any>({
+            const getActionsResponse = await searchActions<any>(fastify, request, {
                 index: fastify.manager.readIndexset('action'),
                 size: fastify.manager.config.api.limits.get_actions || 1000,
                 query: {
@@ -91,10 +94,14 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
 
             const hits = getActionsResponse.hits.hits;
             if (hits.length > 0) {
-                _.forEach(_.groupBy(hits, (v) => v._source['trx_id']), (value, key) => {
+                for (const [key, value] of Object.entries(_.groupBy(hits, (v) => v._source['trx_id']))) {
                     const actArray: any[] = [];
                     for (const act of value) {
                         const action = act['_source']
+                        if (fastify.manager.config.settings?.protocol?.provider === 'extension' && action.block_id !== block.block_id) {
+                            throw new ProtocolAbiProofUnavailableError('trace_block_mismatch', 'Trace action does not belong to the requested block');
+                        }
+                        await protectProtocolAction(fastify, request, action);
                         for (const receipt of action.receipts) {
                             actArray.push({
                                 receiver: receipt.receiver,
@@ -108,7 +115,7 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
                         }
                     }
                     response.transactions.push({id: key, actions: actArray});
-                });
+                }
             }
             return response;
         } else {

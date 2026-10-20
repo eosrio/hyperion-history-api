@@ -1,6 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 import {API} from "@wharfkit/antelope";
+import {searchActions} from '../../../helpers/action-search.js';
 
 async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 
@@ -14,7 +15,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
         trx_id: '',
     };
 
-    if (query.account === fastify.manager.config.settings.eosio_alias) {
+    if (query.account === (fastify.manager.config.settings.eosio_alias ?? 'eosio')) {
         try {
             const genesisBlock = await fastify.antelope.chain.get_block(1);
             if (genesisBlock) {
@@ -29,7 +30,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
         return response;
     }
 
-    const results = await fastify.elastic.search<any>({
+    const results = await searchActions<any>(fastify, request, {
         index: fastify.manager.readIndexset('action'),
         size: 1,
         query: {

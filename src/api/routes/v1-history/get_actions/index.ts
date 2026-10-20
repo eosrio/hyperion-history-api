@@ -64,8 +64,8 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                         items: {
                             type: 'object',
                             properties: {
-                                account_action_seq: {type: 'number'},
-                                global_action_seq: {type: 'number'},
+                                account_action_seq: {type: 'string'},
+                                global_action_seq: {type: 'string'},
                                 block_num: {type: 'number'},
                                 block_time: {type: 'string'},
                                 action_trace: {
@@ -77,15 +77,15 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                                             type: 'object',
                                             properties: {
                                                 receiver: {type: 'string'},
-                                                global_sequence: {type: 'number'},
-                                                recv_sequence: {type: 'number'},
+                                                global_sequence: {type: 'string'},
+                                                recv_sequence: {type: 'string'},
                                                 auth_sequence: {
                                                     type: 'array',
                                                     items: {
                                                         type: 'object',
                                                         properties: {
                                                             account: {type: 'string'},
-                                                            sequence: {type: 'number'}
+                                                            sequence: {type: 'string'}
                                                         }
                                                     }
                                                 }
@@ -104,7 +104,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                                                         additionalProperties: true,
                                                     }
                                                 },
-                                                data: {type: 'object', additionalProperties: true},
+                                                data: {},
                                                 hex_data: {type: 'string'},
                                                 hex_encoder: {type: 'string'}
                                             }

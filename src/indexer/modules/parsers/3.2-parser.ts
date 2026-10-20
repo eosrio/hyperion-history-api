@@ -7,6 +7,9 @@ import { ActionTrace } from "../../../interfaces/action-trace.js";
 import { hLog } from "../../helpers/common_functions.js";
 import { PackedTransaction, Serializer } from "@wharfkit/antelope";
 import { GetBlocksResultV0 } from "../../workers/state-reader.js";
+import {protocolBytes} from "../../protocol/contract-cache.js";
+import {normalizeActionSequences} from '../../helpers/action-sequences.js';
+import {canonicalUint64, Uint64ValueError} from '../../helpers/uint64.js';
 
 export default class HyperionParser extends BaseParser {
 
@@ -36,6 +39,12 @@ export default class HyperionParser extends BaseParser {
             }
         }
 
+        // Preserve receipt identities before contract hooks, grouping or cache publication.
+        normalizeActionSequences(action);
+        const receipt = Array.isArray(action.receipt) ? action.receipt[1] : action.receipt;
+        const globalSequence = action.except === null ? canonicalUint64(receipt?.global_sequence) : undefined;
+        if (globalSequence === '0') throw new Uint64ValueError('Committed action global sequence must be positive');
+
         await this.deserializeActionData(worker, action, trx_data);
 
         action["@timestamp"] = ts;
@@ -57,8 +66,9 @@ export default class HyperionParser extends BaseParser {
                 console.log(full_trace.status);
                 console.log(action);
             }
-            action.receipt = action.receipt[1];
-            action.global_sequence = parseInt(action.receipt.global_sequence, 10);
+            action.receipt = receipt;
+            action.global_sequence = globalSequence!;
+            normalizeActionSequences(action);
             delete action.except;
             if (action.error_code === null) {
                 delete action.error_code;
@@ -84,15 +94,12 @@ export default class HyperionParser extends BaseParser {
 
     public async parseMessage(worker: MainDSWorker, messages: Message[]): Promise<void> {
         for (const message of messages) {
-
-            let allowProcessing = true;
-
+            if (worker.usesExtensionProtocol) {
+                await worker.processProtocolSourceDelivery(message, result => this.processResult(worker, message, result));
+                continue;
+            }
             const stopResult = worker.profiler.start('deserialize_result');
-            const ds_msg = Serializer.decode({
-                data: message.content,
-                type: 'result',
-                abi: worker.shipABI
-            }) as [string, GetBlocksResultV0];
+            const ds_msg = worker.decodeShipResult(message.content) as [string, GetBlocksResultV0];
             stopResult();
 
             if (!ds_msg) {
@@ -101,16 +108,25 @@ export default class HyperionParser extends BaseParser {
                     throw new Error('failed to deserialize datatype=result');
                 }
             }
+            await this.processResult(worker, message, ds_msg[1]);
+        }
+    }
 
-            const res = ds_msg[1];
+    private async processResult(worker: MainDSWorker, message: Message, res: GetBlocksResultV0): Promise<void> {
+            let allowProcessing = true;
             let block: any = null;
             let traces = [];
             let deltas: any[] = [];
 
+            // Observe full source inputs before root-only, whitelist or max-inline filtering.
+            // Storage failure escapes without reaching the source acknowledgment below.
+            const observation = worker.usesExtensionProtocol
+                ? await worker.prepareProtocolAbiObservations(res) : undefined;
+
             if (res.block && res.block.length) {
                 const stopBlock = worker.profiler.start('deserialize_block');
-                block = worker.deserializeNative('signed_block', res.block.array);
-                stopBlock();
+                try { block = worker.deserializeNative('signed_block', protocolBytes(res.block)); }
+                finally { stopBlock(); }
                 if (block === null) {
                     hLog('incompatible block');
                     process.exit(1);
@@ -121,8 +137,11 @@ export default class HyperionParser extends BaseParser {
                         if (worker.conf.whitelists && (worker.conf.whitelists.actions.length > 0 || worker.conf.whitelists.deltas.length > 0)) {
                             allowProcessing = false;
                             for (const transaction of block.transactions) {
-                                if (transaction.status === 0 && transaction.trx[1] && transaction.trx[1].packed_trx) {
-                                    const unpacked_trx = PackedTransaction.from(transaction.trx[1].packed_trx).getTransaction();
+                                const packed = Array.isArray(transaction.trx) ? transaction.trx[1] : transaction.trx;
+                                const included = transaction.status === 0
+                                    || (worker.usesExtensionProtocol && transaction.status === undefined && !Array.isArray(transaction.trx));
+                                if (included && packed?.packed_trx) {
+                                    const unpacked_trx = worker.decodePackedTransaction(packed);
                                     for (const act of unpacked_trx.actions) {
                                         if (this.checkWhitelist(act)) {
                                             allowProcessing = true;
@@ -142,8 +161,8 @@ export default class HyperionParser extends BaseParser {
 
             if (allowProcessing && res.traces && res.traces.length) {
                 const stopTraces = worker.profiler.start('deserialize_traces');
-                traces = worker.deserializeNative('transaction_trace[]', res.traces.array);
-                stopTraces();
+                try { traces = observation?.traces ?? worker.deserializeNative('transaction_trace[]', protocolBytes(res.traces)); }
+                finally { stopTraces(); }
                 if (!traces) {
                     hLog(`[WARNING] transaction_trace[] deserialization failed on block ${res['this_block']['block_num']}`);
                 }
@@ -151,13 +170,8 @@ export default class HyperionParser extends BaseParser {
 
             if (allowProcessing && res.deltas && res.deltas.length) {
                 const stopDeltas = worker.profiler.start('deserialize_deltas');
-                const decodedDeltas = Serializer.decode({
-                    data: res.deltas.array,
-                    type: 'table_delta[]',
-                    abi: worker.shipABI
-                });
-                deltas = Serializer.objectify(decodedDeltas);
-                stopDeltas();
+                try { deltas = observation?.deltas ?? worker.decodeShipValue('table_delta[]', res.deltas); }
+                finally { stopDeltas(); }
                 if (!deltas) {
                     hLog(`[WARNING] table_delta[] deserialization failed on block ${res['this_block']['block_num']}`);
                 }
@@ -166,8 +180,8 @@ export default class HyperionParser extends BaseParser {
             let result;
             try {
                 const stopProcess = worker.profiler.start('process_block');
-                result = await worker.processBlock(res, block, traces, deltas);
-                stopProcess();
+                try { result = await worker.processBlock(res, block, traces, deltas); }
+                finally { stopProcess(); }
                 if (result) {
                     const evPayload = {
                         event: 'consumed_block',
@@ -186,17 +200,19 @@ export default class HyperionParser extends BaseParser {
                 } else {
                     hLog(`ERROR: Block data not found for #${res['this_block']['block_num']}`);
                 }
-                if (worker.ch && worker.ch_ready) {
+                if (worker.usesExtensionProtocol) {
+                    worker.ackProtocolSourceDelivery(message);
+                } else if (worker.ch && worker.ch_ready) {
                     worker.ch.ack(message);
                 }
             } catch (e) {
+                if (worker.usesExtensionProtocol) throw e;
                 console.log(e);
                 if (worker.ch && worker.ch_ready) {
                     worker.ch.nack(message);
                 }
                 process.exit(1);
             }
-        }
     }
 
     async flattenInlineActions(action_traces: any[]): Promise<any[]> {

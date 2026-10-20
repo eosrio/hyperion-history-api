@@ -37,7 +37,13 @@ export function regroupActions(actions: any[]): any[] {
         const isNotification = creator > 0
             && digestByOrdinal.get(creator) === digest;
         const canonical = isNotification ? creator : ordinal;
-        const key = `${digest}:${canonical}`;
+        const protocol = action.protocol;
+        const occurrence = protocol?.schemaVersion === 1 && protocol.input;
+        // Certified origins distinguish notification copies from independent identical inputs.
+        // An incomplete occurrence cannot invent its notification origin.
+        const key = occurrence ? JSON.stringify([protocol.selectionId, occurrence.transactionId,
+            protocol.status === 'incomplete' ? occurrence.actionOrdinal : occurrence.inputActionOrdinal,
+            ...(protocol.status === 'incomplete' ? [occurrence.receiver, occurrence.globalSequence] : [])]) : `${digest}:${canonical}`;
 
         if (groups.has(key)) {
             // merge receipts into existing group

@@ -1,12 +1,15 @@
 import {HyperionActionAct} from "./hyperion-action.js";
+import type {ProtocolActionMetadata} from '../indexer/protocol/abi-proof.js';
 
 export interface ActionTrace {
     signatures: string[];
     '@timestamp': string;
     act: HyperionActionAct
+    /** Exact original occurrence, kept outside contract data and projection enrichment. */
+    protocol?: ProtocolActionMetadata;
     block_num: number;
     block_id: string;
-    global_sequence: number;
+    global_sequence: string;
     producer: string;
     trx_id: string;
     account_ram_deltas?: any[];

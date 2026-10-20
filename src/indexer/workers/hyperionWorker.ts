@@ -1,6 +1,10 @@
 import { Client } from "@elastic/elasticsearch";
 import { EventEmitter } from "events";
-import { Abieos } from "@eosrio/node-abieos";
+import type {ProtocolProvider, ProtocolShipSession, ProtocolComponent} from "@eosrio/hyperion-sdk/protocol";
+import {loadChainProtocol} from "../protocol/selection.js";
+import {ContractDecoder, protocolBytes, protocolNumber} from "../protocol/contract-cache.js";
+import {protocolAbiCaptureDigest, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
+import type {ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import { Channel, ConfirmChannel } from "amqplib";
 
 import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
@@ -12,9 +16,29 @@ import { StateHistorySocket } from "../connections/state-history.js";
 import { BasicDelta } from "../../interfaces/hyperion-delta.js";
 import { getHeapStatistics, HeapInfo } from "node:v8";
 import { HyperionActionAct } from "../../interfaces/hyperion-action.js";
-import { Action, APIClient } from "@wharfkit/antelope";
+import { Action, APIClient, PackedTransaction } from "@wharfkit/antelope";
+import {inflateSync} from 'node:zlib';
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
 import { WorkerProfiler } from "../helpers/profiler.js";
+
+/** Exact stable sections; mutable head/LIB remain in the separately bound frame. */
+export function protocolSourceCapture(chainId: string, result: any, schemaJson: string) {
+    const source: ProtocolSourcePosition = {chainId, blockNum: protocolNumber(result.this_block?.block_num),
+        blockId: result.this_block?.block_id?.toString().toLowerCase() ?? '',
+        previousBlockId: result.prev_block?.block_id?.toString().toLowerCase() ?? null};
+    const section = (value: unknown) => value === null || value === undefined ? null : Buffer.from(protocolBytes(value)).toString('hex');
+    const capture: ProtocolAbiObservationRecord['capture'] = {kind: 'unattested-ship-result-sections-v1', schemaJson,
+        blockHex: section(result.block), tracesHex: section(result.traces), deltasHex: section(result.deltas)};
+    return {source, capture, captureSha256: protocolAbiCaptureDigest(source, capture)};
+}
+
+/** Only a pure decoder invocation under an immutable delivery context creates this marker. */
+export class ProtocolSourceCodecError extends Error {
+    constructor(readonly datatype: string, cause: unknown) {
+        super(`Protocol ${datatype} decode failed: ${String((cause as any)?.message ?? cause)}`, {cause});
+        this.name = 'ProtocolSourceCodecError';
+    }
+}
 
 export abstract class HyperionWorker {
 
@@ -42,7 +66,15 @@ export abstract class HyperionWorker {
     filters: Filters;
 
     failedAbiMap: Map<string, Set<number>> = new Map();
-    protected abieos = Abieos.getInstance();
+    protected abieos!: ContractDecoder;
+    protocol!: ProtocolProvider;
+    protocolId!: string;
+    protocolComponents?: readonly ProtocolComponent[];
+    protocolReady!: Promise<void>;
+    shipSession?: ProtocolShipSession;
+    private protocolShipAbi?: unknown;
+    protected protocolShipAbiJson?: string;
+    private deliveryShipContext?: {session: ProtocolShipSession; abi: unknown; schemaJson: string};
     configModule: ConfigurationModule;
 
     protected constructor() {
@@ -69,8 +101,10 @@ export abstract class HyperionWorker {
         this.client = this.manager.elasticsearchClient;
         this.ship = this.manager.shipClient;
         this.events = new EventEmitter();
+        this.protocolReady = this.initializeProtocol();
 
-        this.mLoader.init().then(() => {
+        this.mLoader.init().then(async () => {
+            await this.protocolReady;
             // Connect to RabbitMQ (amqplib)
             this.events.emit('loader_ready');
             this.connectAMQP().then(() => {
@@ -121,6 +155,82 @@ export abstract class HyperionWorker {
                 }
             }
         });
+    }
+
+    private async initializeProtocol() {
+        const selected = await loadChainProtocol(this.conf.settings.protocol);
+        this.protocol = selected.provider;
+        this.protocolId = selected.id;
+        this.protocolComponents = selected.components;
+        this.abieos = selected.decoder;
+    }
+
+    async initializeProtocolShip(abiString: string): Promise<void> {
+        await this.protocolReady;
+        const handshake = JSON.parse(abiString);
+        const replacement = this.protocol.createShipSession(handshake);
+        this.shipSession?.close?.();
+        this.shipSession = replacement;
+        this.protocolShipAbi = handshake;
+        this.protocolShipAbiJson = abiString;
+    }
+
+    decodeShipResult(bytes: Uint8Array): any {
+        const session = this.deliveryShipContext?.session ?? this.shipSession;
+        if (!session) throw new Error("Protocol SHiP session is not initialized");
+        return this.decodeProtocolSource('result', () => session.decodeResult(bytes));
+    }
+
+    /** A queued delivery owns its decoder until all asynchronous processing ends. */
+    protected beginProtocolShipDelivery(schemaJson: string): () => void {
+        if (this.deliveryShipContext) throw new Error('Concurrent protocol source delivery is unsupported');
+        const abi = JSON.parse(schemaJson);
+        const session = this.protocol.createShipSession(abi);
+        const context = {session, abi, schemaJson};
+        this.deliveryShipContext = context;
+        return () => {
+            if (this.deliveryShipContext === context) this.deliveryShipContext = undefined;
+            session.close?.();
+        };
+    }
+
+    protected get activeProtocolShipSchemaJson(): string | undefined {
+        return this.deliveryShipContext?.schemaJson ?? this.protocolShipAbiJson;
+    }
+
+    private decodeProtocolSource<T>(datatype: string, decode: () => T): T {
+        try { return decode(); }
+        catch (error) {
+            if (this.deliveryShipContext) throw new ProtocolSourceCodecError(datatype, error);
+            throw error;
+        }
+    }
+
+    decodeShipValue(type: string, input: unknown): any {
+        const session = this.deliveryShipContext?.session ?? this.shipSession;
+        if (!session) throw new Error("Protocol SHiP session is not initialized");
+        const bytes = protocolBytes(input);
+        return this.decodeProtocolSource(type, () => { switch (type) {
+            case "signed_block": return session.decodeBlock(bytes);
+            case "transaction_trace[]": return session.decodeTraces(bytes);
+            case "table_delta[]": return session.decodeDeltas(bytes);
+            default: return session.decodeRow(type, bytes);
+        } });
+    }
+
+    decodePackedTransaction(input: any): any {
+        if (!this.usesExtensionProtocol) return PackedTransaction.from(input).getTransaction();
+        const compression = Number(input?.compression ?? 0);
+        if (compression !== 0 && compression !== 1) throw new Error('Unsupported packed transaction compression');
+        const bytes = protocolBytes(input?.packed_trx ?? input);
+        const abi = this.deliveryShipContext?.abi ?? this.protocolShipAbi;
+        if (!(this.deliveryShipContext?.session ?? this.shipSession) || !abi) throw new Error('Protocol SHiP session is not initialized');
+        return this.protocol.contractCodec.decodeValue(abi, 'transaction', compression === 1
+            ? inflateSync(bytes, {maxOutputLength: 64 * 1024 * 1024}) : bytes);
+    }
+
+    get usesExtensionProtocol(): boolean {
+        return !!this.protocol && this.protocol.profileId !== "antelope-default-v1";
     }
 
     async connectAMQP() {
@@ -260,6 +370,7 @@ export abstract class HyperionWorker {
     }
 
     async getAbiFromHeadBlock(code: string): Promise<HyperionAbi | null> {
+        if (this.usesExtensionProtocol) return null;
         try {
             const result = await this.rpc.v1.chain.get_abi(code);
             if (result && result.abi) {
@@ -325,6 +436,7 @@ export abstract class HyperionWorker {
     }
 
     async loadCurrentAbiHex(contract: string): Promise<boolean> {
+        if (this.usesExtensionProtocol) return false;
         let _status: boolean = false;
         if (this.failedAbiMap.has(contract) && this.failedAbiMap.get(contract)?.has(-1)) {
             _status = false;

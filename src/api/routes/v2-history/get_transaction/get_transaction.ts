@@ -4,13 +4,18 @@ import {regroupActions} from "../../../helpers/regroup-actions.js";
 import {hydrateActions} from "../../../helpers/archive-hydration.js";
 import {isHydrationDisabled} from "../../../helpers/archive-query.js";
 import {API} from "@wharfkit/antelope";
+import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
+import {searchActions} from '../../../helpers/action-search.js';
+import {normalizeActionSequences} from '../../../../indexer/helpers/action-sequences.js';
+import {parseTransactionSequenceCache, transactionSequenceCacheKey} from '../../../../indexer/helpers/transaction-cache.js';
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
     const redis = fastify.redis;
     const query: any = request.query;
     const trxId = query.id.toLowerCase();
     const conf = fastify.manager.config;
-    const cachedData = await redis.hgetall('trx_' + trxId);
+    const cacheKey = transactionSequenceCacheKey(fastify.manager.chain, trxId);
+    const cachedData = await redis.hgetall(cacheKey);
     const response: any = {
         query_time_ms: undefined,
         executed: false,
@@ -24,7 +29,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         error: undefined
     };
 
-    let hits;
+    let hits = parseTransactionSequenceCache(cachedData, trxId);
 
     // build get_info request with caching
     const $getInfo = new Promise<API.v1.GetInfoResponse | null>(resolve => {
@@ -48,21 +53,9 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
     });
 
     // reconstruct hits from cached data
-    if (cachedData && Object.keys(cachedData).length > 0) {
-        const gsArr: any[] = [];
-        for (let cachedDataKey in cachedData) {
-            gsArr.push(cachedData[cachedDataKey]);
-        }
-        gsArr.sort((a, b) => {
-            return a.global_sequence - b.global_sequence;
-        });
-        hits = gsArr.map(value => {
-            return {
-                _source: JSON.parse(value)
-            };
-        });
+    if (hits) {
         const promiseResults = await Promise.all([
-            redis.ttl('trx_' + trxId),
+            redis.ttl(cacheKey),
             $getInfo
         ]);
         response.cache_expires_in = promiseResults[0];
@@ -84,7 +77,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         try {
 
             // build search request
-            const $search = fastify.elastic.search<any>({
+            const $search = searchActions<any>(fastify, request, {
                 index: indexPattern,
                 size: _size,
                 query: {bool: {must: [{term: {trx_id: trxId}}]}},
@@ -95,16 +88,18 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             pResults = await Promise.all([$getInfo, $search]);
         } catch (e: any) {
             console.log(e.message);
-            if (e.meta.statusCode === 404) {
+            if (e.meta?.statusCode === 404) {
                 response.error = 'no data near block_hint'
                 return response;
             }
+            throw e;
         }
-        hits = pResults[1].hits.hits;
+        hits = pResults[1].hits.hits as Array<{_source: Record<string, any>}>;
         response.lib = pResults[0].last_irreversible_block_num;
     }
 
     if (hits.length > 0) {
+        for (const hit of hits) normalizeActionSequences(hit._source);
         // Cold-tier archive hydration before shaping the response: re-fetch any
         // dropped act.data from the owning archive. Best-effort; skipped via
         // ?hydrate=false or when no archives are configured. The cached (Redis)
@@ -122,7 +117,8 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         const rawActions: any[] = [];
         for (let action of hits) {
             if (action._source.block_num === highestBlockNum) {
-                mergeActionMeta(action._source);
+                mergeActionMeta(action._source, false, fastify.manager.config.settings?.protocol?.provider === 'extension');
+                await protectProtocolAction(fastify, request, action._source);
                 rawActions.push(action._source);
             }
         }
@@ -132,6 +128,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 
         // add notified field derived from receipts
         response.actions = grouped.map(action => {
+            if (fastify.manager.config.settings?.protocol?.provider === 'extension') delete action.protocol;
             if (action.receipts && action.receipts.length > 0) {
                 const receivers = new Set<string>(
                     action.receipts.map((r: any) => r.receiver)

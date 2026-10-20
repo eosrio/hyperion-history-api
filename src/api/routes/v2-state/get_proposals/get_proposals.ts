@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { timedQuery } from '../../../helpers/functions.js';
+import {assertProtocolProjectionReady} from '../../../helpers/protocol-state-readiness.js';
 
 async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
@@ -97,6 +98,7 @@ async function getProposals(fastify: FastifyInstance, request: FastifyRequest) {
 
 export function getProposalsHandler(fastify: FastifyInstance, route: string) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
+        assertProtocolProjectionReady(fastify, 'contract-state');
         // Check conditions that require direct response without timedQuery
         if (
             !fastify.manager.conn.mongodb ||

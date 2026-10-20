@@ -42,6 +42,13 @@ import { HyperionIndexerMonitor } from './indexerMonitor.js';
 import { HyperionLifecycleManager } from './lifecycleManager.js';
 import { HyperionModuleLoader } from './loader.js';
 import { HyperionQueueMonitor } from './queueMonitor.js';
+import {loadChainProtocol} from '../protocol/selection.js';
+import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
+import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
+import {ProtocolSourceBindingStore} from '../protocol/source-bindings.js';
+import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
+import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
+import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
 
 import Timeout = NodeJS.Timeout;
 import { IPermission } from '../../interfaces/table-permissions.js';
@@ -101,6 +108,11 @@ export class HyperionMaster {
     private msgHandlerMap: Record<string, WorkerMessageHandler> = {};
 
     private cachedInitABI: string | null = null;
+    private protocolAbiCoordinator?: ProtocolAbiCoordinator;
+    private protocolAbiSource?: {worker: Worker; readerSessionId: string; generation?: string};
+    private protocolAbiDrainTimer?: Timeout;
+    private protocolAbiDrainInFlight = false;
+    private protocolAbiFailed = false;
     private activeReadersCount = 0;
     private lastAssignedBlock = 0;
     private lastIndexedABI = 0;
@@ -263,6 +275,18 @@ export class HyperionMaster {
 
     initHandlerMap() {
         this.msgHandlerMap = {
+            protocol_abi_coordinator_request: async (worker: Worker, msg: WorkerMessage) => {
+                await this.handleProtocolAbiCoordinatorRequest(worker, msg);
+            },
+            protocol_abi_source_revoked: (worker: Worker, msg: WorkerMessage) => {
+                if (!this.isCurrentProtocolLiveReader(worker) || typeof msg.data?.readerSessionId !== 'string') return;
+                this.revokeProtocolAbiReader(worker, msg.data.readerSessionId);
+            },
+            protocol_abi_prepared: (worker: Worker, msg: WorkerMessage) => {
+                if (!this.workerMap.some(definition => definition.wref === worker && definition.worker_role === 'deserializer')
+                    || typeof msg.data?.selectionId !== 'string' || !/^h45srcsel1:[0-9a-f]{64}$/.test(msg.data.selectionId)) return;
+                this.requestProtocolAbiDrain();
+            },
             skipped_block: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.block_num) {
                     this.indexerMonitor.consumedBlocks++;
@@ -579,6 +603,104 @@ export class HyperionMaster {
                 }
             }
         };
+    }
+
+    private async initializeProtocolAbiCoordinator(): Promise<void> {
+        // A bulk-only process must never acquire or replace live-source ownership.
+        if (this.conf.settings.protocol?.provider !== 'extension' || !this.conf.indexer.live_reader || this.protocolAbiCoordinator) return;
+        try {
+            const selected = await loadChainProtocol(this.conf.settings.protocol);
+            const replicas = this.conf.settings.es_replicas ?? 0;
+            const options = this.conf.settings.protocol_abi_coordination;
+            const coordinator = new ProtocolAbiCoordinator({chainId: this.manager.conn.chains[this.chain].chain_id,
+                profile: {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []},
+                ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, this.chain, replicas),
+                observations: new ProtocolAbiObservationStore(this.esClient, this.chain, replicas),
+                store: new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas),
+                maxPendingBlocks: options?.max_pending_blocks, recoveryWindowBlocks: options?.recovery_window_blocks});
+            await coordinator.start();
+            this.protocolAbiCoordinator = coordinator;
+            this.protocolAbiDrainTimer = setInterval(() => this.requestProtocolAbiDrain(), 1000).unref();
+        } catch (error) { this.failProtocolAbiCoordinator(error); throw error; }
+    }
+
+    private isCurrentProtocolLiveReader(worker: Worker): boolean {
+        return !!this.protocolAbiCoordinator && !this.protocolAbiFailed && !this.shutdownStarted
+            && this.liveReader?.wref === worker
+            && this.workerMap.some(definition => definition.wref === worker && definition.worker_role === 'continuous_reader');
+    }
+
+    private replyProtocolAbiCoordinator(worker: Worker, requestId: string, data: ProtocolAbiCoordinatorReply['data']): void {
+        if (!worker.isConnected()) return;
+        try { worker.send({event: 'protocol_abi_coordinator_reply', mId: requestId, data}, error => {
+            if (error) hLog('Canonical ABI IPC reply unavailable:', error.message);
+        }); } catch (error) { hLog('Canonical ABI IPC reply unavailable:', error); }
+    }
+
+    private async handleProtocolAbiCoordinatorRequest(worker: Worker, message: WorkerMessage): Promise<void> {
+        if (typeof message.mId !== 'string' || !/^[0-9a-f-]{36}$/.test(message.mId)) return;
+        if (!this.isCurrentProtocolLiveReader(worker)) {
+            this.replyProtocolAbiCoordinator(worker, message.mId, {ok: false, error: {code: 'unauthorized', message: 'Only the current live reader may select canonical ABI input'}});
+            return;
+        }
+        if (!isProtocolAbiCoordinatorRequest(message)) {
+            this.replyProtocolAbiCoordinator(worker, message.mId, {ok: false, error: {code: 'invalid_request', message: 'Malformed canonical ABI coordinator request'}});
+            return;
+        }
+        const input = message.data;
+        let source = this.protocolAbiSource;
+        try {
+            let result;
+            if (input.operation === 'open') {
+                source = {worker, readerSessionId: input.readerSessionId};
+                this.protocolAbiSource = source; // Invalidates an older awaited continuation before any I/O.
+                result = await this.protocolAbiCoordinator!.openSource(input.contextId, input.readerSessionId);
+            } else {
+                if (!source || source.worker !== worker || source.readerSessionId !== input.readerSessionId || source.generation !== input.generation) {
+                    this.replyProtocolAbiCoordinator(worker, message.mId, {ok: true, result: {status: 'stale', generation: input.generation}});
+                    return;
+                }
+                result = await this.protocolAbiCoordinator!.admit(input.selectionId, input.generation);
+            }
+            if (!this.isCurrentProtocolLiveReader(worker) || this.protocolAbiSource !== source) {
+                await this.protocolAbiCoordinator!.revokeSource(input.readerSessionId);
+                this.replyProtocolAbiCoordinator(worker, message.mId, {ok: false, error: {code: 'stale', message: 'Reader source changed while request was pending'}});
+                return;
+            }
+            source.generation = result.generation;
+            this.replyProtocolAbiCoordinator(worker, message.mId, {ok: true, result});
+            this.requestProtocolAbiDrain();
+        } catch (error: any) {
+            const stale = !this.isCurrentProtocolLiveReader(worker) || this.protocolAbiSource !== source;
+            this.replyProtocolAbiCoordinator(worker, message.mId, {ok: false, error: {code: stale ? 'stale' : 'coordinator_unavailable',
+                message: String(error?.message ?? error).slice(0, 4096).toWellFormed()}});
+            if (!stale) this.failProtocolAbiCoordinator(error);
+        }
+    }
+
+    private revokeProtocolAbiReader(worker: Worker, readerSessionId?: string): void {
+        const source = this.protocolAbiSource;
+        if (!source || source.worker !== worker || (readerSessionId !== undefined && readerSessionId !== source.readerSessionId)) return;
+        this.protocolAbiSource = undefined;
+        // The reader may not yet have received a fork's new generation. Its authenticated session is sufficient.
+        void this.protocolAbiCoordinator?.revokeSource(source.readerSessionId).catch(error => this.failProtocolAbiCoordinator(error));
+    }
+
+    private requestProtocolAbiDrain(): void {
+        if (!this.protocolAbiCoordinator || this.protocolAbiDrainInFlight || this.protocolAbiFailed || this.shutdownStarted) return;
+        this.protocolAbiDrainInFlight = true;
+        void this.protocolAbiCoordinator.drain().catch(error => this.failProtocolAbiCoordinator(error))
+            .finally(() => { this.protocolAbiDrainInFlight = false; });
+    }
+
+    private failProtocolAbiCoordinator(error: unknown): void {
+        if (this.protocolAbiFailed) return;
+        this.protocolAbiFailed = true;
+        this.shutdownStarted = true;
+        if (this.protocolAbiDrainTimer) clearInterval(this.protocolAbiDrainTimer);
+        hLog('Canonical ABI coordinator failed; supervised master restart required:', error);
+        messageAllWorkers(cluster, {event: 'stop'});
+        setImmediate(() => process.exit(1));
     }
 
     async reloadContractConfig(contract: string): Promise<{
@@ -1683,7 +1805,7 @@ export class HyperionMaster {
 
         // State History Servers
         const shipNodes = this.manager.conn.chains[this.chain].ship;
-        const shs = new StateHistorySocket(shipNodes);
+        const shs = new StateHistorySocket(shipNodes, this.conf.settings.max_ws_payload_mb, this.conf.settings.protocol);
         this.validatedShipServers = await shs.validateShipServers(rpcChainId);
 
         if (this.validatedShipServers.length === 0) {
@@ -1718,6 +1840,8 @@ export class HyperionMaster {
         );
 
         await this.verifyIngestClients();
+
+        await this.initializeProtocolAbiCoordinator();
 
         await this.verifyMongoDbClient();
 
@@ -1755,6 +1879,10 @@ export class HyperionMaster {
 
         await this.appendExtraMappings(indexConfig);
         await this.updateIndexTemplates(indicesList, indexConfig);
+        if(this.conf.settings.protocol?.provider==='extension'){
+            const mapping=await ensureProtocolActionMapping(this.esClient,this.chain);
+            hLog(`Protocol source evidence: ${mapping.updated}/${mapping.inspected} retained action mappings initialized`);
+        }
 
         // await this.createIndices(indicesList);
 
@@ -1917,6 +2045,8 @@ export class HyperionMaster {
 
     public gracefulStop(done: (result: any) => void) {
         try {
+            if (this.protocolAbiDrainTimer) clearInterval(this.protocolAbiDrainTimer);
+            if (this.liveReader?.wref) this.revokeProtocolAbiReader(this.liveReader.wref);
             this.shutdownStarted = true;
             this.allowMoreReaders = false;
             const stopMsg = 'Stop signal received. Shutting down readers immediately!';
@@ -1997,6 +2127,7 @@ export class HyperionMaster {
     }
 
     private handleWorkerDisconnect(worker: any) {
+        this.revokeProtocolAbiReader(worker);
         if (!this.mode_transition && !this.shutdownStarted) {
             const workerReference = this.workerMap.find((value) => value.wref === worker);
             if (workerReference) {

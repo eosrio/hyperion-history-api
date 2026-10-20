@@ -1,7 +1,7 @@
 import {debugLog, hLog} from "../helpers/common_functions.js";
 import WebSocket from 'ws';
-import {Abieos} from "@eosrio/node-abieos";
-import {ABI, Bytes, Serializer} from "@wharfkit/antelope";
+import type {ProtocolShipSession} from '@eosrio/hyperion-sdk/protocol';
+import {loadChainProtocol, type ChainProtocolConfiguration} from '../protocol/selection.js';
 
 export interface ShipServer {
     node: LabelledShipNode;
@@ -28,7 +28,8 @@ export class StateHistorySocket {
     private shipNode: LabelledShipNode;
     private shipNodes: ShipServer[] = [];
 
-    constructor(ship_url: string | (string | LabelledShipNode)[], max_payload_mb?: number) {
+    constructor(ship_url: string | (string | LabelledShipNode)[], max_payload_mb?: number,
+                private readonly protocolConfiguration?: ChainProtocolConfiguration) {
         const shipNodeData = process.env.validated_ship_servers;
         if (shipNodeData) {
             try {
@@ -184,38 +185,28 @@ export class StateHistorySocket {
     }
 
     private async testShipServer(server: ShipServer) {
+        const {provider} = await loadChainProtocol(this.protocolConfiguration);
         await new Promise<void>((resolve) => {
-            let protocolAbi: ABI | undefined = undefined;
-            const abieos = Abieos.getInstance();
+            let session: ProtocolShipSession | undefined;
             const timeout = setTimeout(() => {
                 server.active = false;
                 hLog(`Testing SHIP Server ${server.node.url} :: Timeout after 5s`);
+                tempWS.close();
                 resolve();
             }, 5000);
 
             hLog(`Testing SHIP Server ${server.node.url}`);
             const tempWS = new WebSocket(server.node.url);
             tempWS.on('message', (data: Buffer) => {
-                if (!protocolAbi) {
+                try {
+                if (!session) {
                     const abiString = data.toString();
-                    abieos.loadAbi('0', abiString);
-                    protocolAbi = ABI.from(abiString);
-                    tempWS.send(
-                        Serializer.encode({
-                            object: ['get_status_request_v0', {}],
-                            type: 'request',
-                            abi: protocolAbi
-                        }).array
-                    );
+                    session = provider.createShipSession(JSON.parse(abiString));
+                    tempWS.send(session.encodeRequest(['get_status_request_v0', {}]));
                 } else {
-                    const decoded = Serializer.decode({
-                        data,
-                        type: 'result',
-                        abi: protocolAbi
-                    });
-                    const result = Serializer.objectify(decoded);
+                    const result = session.decodeResult(data) as any;
 
-                    if (result[0] === 'get_status_result_v0') {
+                    if (result[0] === 'get_status_result_v0' || result[0] === 'get_status_result_v1') {
                         if (result[1].chain_id) {
                             server.chainId = result[1].chain_id.toLowerCase();
                             server.traceBeginBlock = result[1].trace_begin_block;
@@ -233,6 +224,13 @@ export class StateHistorySocket {
                         tempWS.close();
                     }
                 }
+                } catch (error: any) {
+                    server.active = false;
+                    hLog(`SHIP protocol validation failed: ${error.message}`);
+                    clearTimeout(timeout);
+                    tempWS.close();
+                    resolve();
+                }
             });
             tempWS.on('error', (err) => {
                 hLog(`${server.node.label} SHIP Test Failed ${server.node.url} :: ${err.message}`);
@@ -240,6 +238,8 @@ export class StateHistorySocket {
                 tempWS.close();
             });
             tempWS.on('close', () => {
+                clearTimeout(timeout);
+                session?.close?.();
                 resolve();
             });
         });

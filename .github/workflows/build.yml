@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: [ "main", "dev", "release/4.5" ]
+    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers" ]
 
 jobs:
   build:
@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
-      - run: npm ci --ignore-scripts
+      - run: npm ci --allow-git=all
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -66,7 +66,73 @@ jobs:
       - name: Verify guarded contract replay evidence checksums
         working-directory: docs/performance/evidence/guarded-replay-20261019
         run: sha256sum -c SHA256SUMS
+      - name: Verify protocol adapter observation checksum
+        working-directory: docs/performance/evidence/protocol-adapter-20261019
+        run: sha256sum -c SHA256SUMS
       - run: bun test tests/unit
+      - name: Check ABI journal, source bindings and canonical frontier against disposable Elasticsearch 9.5.5
+        if: matrix.node-version == '24.x'
+        run: node scripts/qualification/check-protocol-abi-store.mjs
+
+  projection-mongodb:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22.x, 24.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            packages/backend-mongodb/package-lock.json
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: npm ci --allow-git=all
+      - name: Install independently packaged MongoDB adapter
+        run: npm ci --prefix packages/backend-mongodb --allow-git=all
+      - name: Check and build MongoDB adapter
+        run: |
+          bun check -p packages/backend-mongodb/tsconfig.json
+          npm test --prefix packages/backend-mongodb
+      - name: Exercise the portable runtime and adapter against owned MongoDB 8.0.34
+        run: node scripts/qualification/check-projection-mongodb.mjs projection-report.json
+      - name: Retain portable MongoDB conformance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: projection-mongodb-${{ matrix.node-version }}
+          path: projection-report.json
+          if-no-files-found: warn
+
+  action-sequences-design:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22.x, 24.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --allow-git=all
+      - name: Probe exact sequence storage and mixed-history query design with owned Elasticsearch 9.5.5
+        run: node scripts/qualification/check-action-sequences.mjs action-sequences-${{ matrix.node }}.json
+      - name: Retain design evidence and cleanup result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: action-sequences-design-${{ matrix.node }}
+          path: action-sequences-${{ matrix.node }}.json
+          if-no-files-found: error
 
   es955-fixture:
     runs-on: ubuntu-latest

@@ -128,7 +128,7 @@ class HyperionApiServer {
     this.fastify.decorate('manager', this.manager);
 
     const chainConnections = this.manager.conn.chains[this.chain];
-    const shs = new StateHistorySocket(chainConnections.ship);
+    const shs = new StateHistorySocket(chainConnections.ship, this.conf.settings.max_ws_payload_mb, this.conf.settings.protocol);
     this.fastify.decorate('shs', shs);
 
     // import get_actions query params from custom modules

@@ -5,6 +5,13 @@ import _ from "lodash";
 import {Socket} from "socket.io";
 import {checkMetaFilter, hLog} from "../../indexer/helpers/common_functions.js";
 import {StreamActionsRequest, StreamDeltasRequest, StreamTypeMap} from "../../interfaces/stream-requests.js";
+import {protectProtocolAction, protocolResponseForCache, revalidateProtocolActionScope, validateProtocolCachedResponse} from './protocol-abi.js';
+import {assertCompleteActionSearch, normalizeActionSearchSources} from './action-search.js';
+import {assertProtocolProjectionReady, assertProtocolRouteReady} from './protocol-state-readiness.js';
+import {assertProtocolActionRequestReady, assertProtocolActionStreamReady} from './protocol-action-query.js';
+import {canonicalUint64} from '../../indexer/helpers/uint64.js';
+import {isActionSequenceField} from '../../indexer/helpers/action-sequences.js';
+import {validateActionSequenceQuery} from './action-sequence-query.js';
 
 export type BoolQuerySearchBody = estypes.SearchRequest & {
     query: estypes.QueryDslQueryContainer & {
@@ -83,6 +90,8 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
     data: StreamTypeMap[T]["request"],
     dataKind: T
 ) {
+    if (dataKind === 'delta') assertProtocolProjectionReady(fastify, 'row-history');
+    if (dataKind === 'action') assertProtocolActionStreamReady(fastify, data as StreamActionsRequest);
 
     // Elasticsearch query
     const search_body: BoolQuerySearchBody = {query: {bool: {must: []}}, sort: {block_num: 'asc'}};
@@ -134,7 +143,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
     if (data.filters && data.filters.length > 0) {
         data.filters.forEach(f => {
-            if (f.field && f.value) {
+            if (f.field && (f.value || (dataKind === 'action' && isActionSequenceField(f.field)))) {
                 if (f.operator && f.operator !== "eq") {
                     onDemandFilters.push(f);
                 } else {
@@ -166,6 +175,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
         index: fastify.manager.chain + `-${dataKind}-*`,
         scroll: `${MAX_SCROLL_TIME_SEC}s`,
         size: fastify.manager.config.api.stream_scroll_batch || 500,
+        ...(dataKind === 'action' ? {track_total_hits: true} : {}),
         ...search_body
     };
 
@@ -173,148 +183,161 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
     // console.dir(onDemandFilters);
 
     const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
+    let pendingScrollId: estypes.ScrollId | undefined = init_response._scroll_id;
+    try {
+        if (dataKind === 'action') {
+            assertCompleteActionSearch(init_response);
+            normalizeActionSearchSources(init_response);
+        }
 
-    const totalHits = getTotalValue(init_response);
+        const totalHits = getTotalValue(init_response);
 
-    const scrollLimit = fastify.manager.config.api.stream_scroll_limit;
-    if (scrollLimit && scrollLimit !== -1 && totalHits > scrollLimit) {
-        const errorMsg = `Requested ${totalHits} ${dataKind}s, limit is ${scrollLimit}.`;
-        socket.emit('message', {
-            reqUUID: requestUUID,
-            type: `${dataKind}_trace`,
-            mode: 'history',
-            messages: [],
-            error: errorMsg
-        });
-        return {status: false, error: errorMsg};
-    }
-
-    if (totalHits > 10000) {
-        total = totalHits;
-        longScroll = true;
-        hLog(`Attention! Long scroll (${dataKind}s) is running!`);
-    }
-
-    // emit the first block
-    if (init_response.hits.hits.length > 0) {
-        emitTraceInit(socket, requestUUID, init_response.hits.hits[0]._source.block_num, totalHits);
-    }
-
-    responseQueue.push(init_response);
-
-    let lastTransmittedBlock = 0;
-    let pendingScrollId: estypes.ScrollId | undefined = '';
-
-    while (responseQueue.length) {
-        let filterCount = 0;
-        const rp = responseQueue.shift();
-
-        if (rp) {
-
-            pendingScrollId = rp._scroll_id;
-            const enqueuedMessages: any[] = [];
-            counter += rp.hits.hits.length;
-
-            for (const doc of rp.hits.hits) {
-                let allow = false;
-
-                if (dataKind === 'action') {
-                    mergeActionMeta(doc._source);
-                } else if (dataKind === 'delta') {
-                    mergeDeltaMeta(doc._source);
-                }
-
-                // const tRef = process.hrtime.bigint();
-                if (onDemandFilters.length > 0) {
-                    if (data.filter_op === 'or') {
-                        allow = onDemandFilters.some(filter => {
-                            return checkMetaFilter(filter, doc._source, dataKind);
-                        });
-                    } else {
-                        allow = onDemandFilters.every(filter => {
-                            // console.log(doc._source);
-                            return checkMetaFilter(filter, doc._source, dataKind);
-                        });
-                    }
-                } else {
-                    allow = true;
-                }
-                // console.log('Filter time: ', Number(process.hrtime.bigint() - tRef) / 10e6, 'ms');
-
-                if (allow) {
-                    enqueuedMessages.push(doc._source);
-                } else {
-                    filterCount++;
-                }
-
-                // set the last block
-                if (doc._source.block_num > lastTransmittedBlock) {
-                    lastTransmittedBlock = doc._source.block_num;
-                }
-            }
-
-            totalFiltered += filterCount;
-
-            if (socket.connected) {
-                if (enqueuedMessages.length > 0) {
-                    try {
-
-                        // Wait for 120 s
-                        const ackResponse = await socket
-                            .timeout(MAX_SCROLL_TIME_SEC * 1000)
-                            .emitWithAck('message', {
-                                reqUUID: requestUUID,
-                                type: `${dataKind}_trace`,
-                                mode: 'history',
-                                messages: enqueuedMessages,
-                                filtered: filterCount
-                            });
-
-                        if (ackResponse.status !== true) {
-                            hLog(`${dataKind}_trace scroll TIMEOUT`);
-                            return {status: ackResponse.status, error: ackResponse.error};
-                        }
-                    } catch (e: any) {
-                        hLog(`${dataKind}_trace scroll NACK`, e);
-                        return {status: false, error: e};
-                    }
-                }
-            } else {
-                hLog(`LOST CLIENT During ${dataKind.toUpperCase()} history replay!`);
-                break;
-            }
-
-            if (longScroll) {
-                hLog(`[${requestUUID}] Progress: ${counter + totalFiltered}/${total}`);
-            }
-
-            if (getTotalValue(rp) === counter) {
-                hLog(`${counter} past ${dataKind}s streamed to ${socket.id} (${totalFiltered} filtered)`);
-                break;
-            }
-
-            const next_response = await fastify.elastic.scroll({
-                scroll_id: rp._scroll_id ?? "",
-                scroll: `${MAX_SCROLL_TIME_SEC}s`
+        const scrollLimit = fastify.manager.config.api.stream_scroll_limit;
+        if (scrollLimit && scrollLimit !== -1 && totalHits > scrollLimit) {
+            const errorMsg = `Requested ${totalHits} ${dataKind}s, limit is ${scrollLimit}.`;
+            socket.emit('message', {
+                reqUUID: requestUUID,
+                type: `${dataKind}_trace`,
+                mode: 'history',
+                messages: [],
+                error: errorMsg
             });
-            responseQueue.push(next_response);
+            return {status: false, error: errorMsg};
         }
 
-        // TODO: Apply dynamic delay for request throttling
-        await new Promise(resolve => setTimeout(resolve, 200));
-    }
-
-    if (counter === 0) {
-        // No data found yet, make sure the last transmitted block is reset
-        lastTransmittedBlock = Number(data.start_from) - 1;
-        if (head && lastTransmittedBlock < 0) {
-            lastTransmittedBlock = head + lastTransmittedBlock;
+        if (totalHits > 10000) {
+            total = totalHits;
+            longScroll = true;
+            hLog(`Attention! Long scroll (${dataKind}s) is running!`);
         }
-    }
 
-    // destroy scroll context
-    await fastify.elastic.clearScroll({scroll_id: pendingScrollId});
-    return {status: true, lastTransmittedBlock, counter};
+        // emit the first block
+        if (init_response.hits.hits.length > 0) {
+            emitTraceInit(socket, requestUUID, init_response.hits.hits[0]._source.block_num, totalHits);
+        }
+
+        responseQueue.push(init_response);
+
+        let lastTransmittedBlock = 0;
+        while (responseQueue.length) {
+            let filterCount = 0;
+            const rp = responseQueue.shift();
+
+            if (rp) {
+
+                if (rp._scroll_id) pendingScrollId = rp._scroll_id;
+                const enqueuedMessages: any[] = [];
+                const proofScope = {};
+                if (dataKind === 'action') {
+                    assertCompleteActionSearch(rp);
+                    normalizeActionSearchSources(rp);
+                }
+                counter += rp.hits.hits.length;
+
+                for (const doc of rp.hits.hits) {
+                    let allow = false;
+
+                    if (dataKind === 'action') {
+                        mergeActionMeta(doc._source, false, fastify.manager.config.settings?.protocol?.provider === 'extension');
+                        await protectProtocolAction(fastify, proofScope, doc._source);
+                        if (fastify.manager.config.settings?.protocol?.provider === 'extension') delete doc._source.protocol;
+                    } else if (dataKind === 'delta') {
+                        mergeDeltaMeta(doc._source);
+                    }
+
+                    // const tRef = process.hrtime.bigint();
+                    if (onDemandFilters.length > 0) {
+                        if (data.filter_op === 'or') {
+                            allow = onDemandFilters.some(filter => {
+                                return checkMetaFilter(filter, doc._source, dataKind);
+                            });
+                        } else {
+                            allow = onDemandFilters.every(filter => {
+                                // console.log(doc._source);
+                                return checkMetaFilter(filter, doc._source, dataKind);
+                            });
+                        }
+                    } else {
+                        allow = true;
+                    }
+                    // console.log('Filter time: ', Number(process.hrtime.bigint() - tRef) / 10e6, 'ms');
+
+                    if (allow) {
+                        enqueuedMessages.push(doc._source);
+                    } else {
+                        filterCount++;
+                    }
+
+                    // set the last block
+                    if (doc._source.block_num > lastTransmittedBlock) {
+                        lastTransmittedBlock = doc._source.block_num;
+                    }
+                }
+
+                totalFiltered += filterCount;
+
+                if (socket.connected) {
+                    if (enqueuedMessages.length > 0) {
+                        if (dataKind === 'action') await revalidateProtocolActionScope(fastify, proofScope);
+                        try {
+
+                            // Wait for 120 s
+                            const ackResponse = await socket
+                                .timeout(MAX_SCROLL_TIME_SEC * 1000)
+                                .emitWithAck('message', {
+                                    reqUUID: requestUUID,
+                                    type: `${dataKind}_trace`,
+                                    mode: 'history',
+                                    messages: enqueuedMessages,
+                                    filtered: filterCount
+                                });
+
+                            if (ackResponse.status !== true) {
+                                hLog(`${dataKind}_trace scroll TIMEOUT`);
+                                return {status: ackResponse.status, error: ackResponse.error};
+                            }
+                        } catch (e: any) {
+                            hLog(`${dataKind}_trace scroll NACK`, e);
+                            return {status: false, error: e};
+                        }
+                    }
+                } else {
+                    hLog(`LOST CLIENT During ${dataKind.toUpperCase()} history replay!`);
+                    break;
+                }
+
+                if (longScroll) {
+                    hLog(`[${requestUUID}] Progress: ${counter + totalFiltered}/${total}`);
+                }
+
+                if (getTotalValue(rp) === counter) {
+                    hLog(`${counter} past ${dataKind}s streamed to ${socket.id} (${totalFiltered} filtered)`);
+                    break;
+                }
+
+                const next_response = await fastify.elastic.scroll({
+                    scroll_id: rp._scroll_id ?? "",
+                    scroll: `${MAX_SCROLL_TIME_SEC}s`
+                });
+                responseQueue.push(next_response);
+            }
+
+            // TODO: Apply dynamic delay for request throttling
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
+
+        if (counter === 0) {
+            // No data found yet, make sure the last transmitted block is reset
+            lastTransmittedBlock = Number(data.start_from) - 1;
+            if (head && lastTransmittedBlock < 0) {
+                lastTransmittedBlock = head + lastTransmittedBlock;
+            }
+        }
+
+        return {status: true, lastTransmittedBlock, counter};
+    } finally {
+        if (pendingScrollId) await fastify.elastic.clearScroll({scroll_id: pendingScrollId});
+    }
 }
 
 
@@ -839,9 +862,11 @@ export async function getCacheByHash(redis, key, chain) {
     return [await redis.get(query_hash), query_hash];
 }
 
-export function mergeActionMeta(action: any, keep?: boolean) {
+export function mergeActionMeta(action: any, keep?: boolean, protocolExtension = false) {
     const name = action.act.name;
-    if (action['@' + name]) {
+    // Extension annotations may be renamed or lossy. The proof consumer combines them only
+    // after restoring the original typed contract root; they cannot become retained ABI input.
+    if (!protocolExtension && action['@' + name]) {
         action['act']['data'] = _.merge(action['@' + name], action['act']['data']);
         if (!keep) {
             delete action['@' + name];
@@ -903,7 +928,7 @@ export async function getCachedResponse(server: FastifyInstance, route: string, 
     const chain = server.manager.chain;
     let resp, hash;
     if (server.manager.config.api.enable_caching) {
-        [resp, hash] = await getCacheByHash(server.redis, route + JSON.stringify(key), chain);
+        [resp, hash] = await getCacheByHash(server.redis, 'sequences-v1:' + route + JSON.stringify(key), chain);
         if (resp) {
             resp = JSON.parse(resp);
             resp['cached'] = true;
@@ -945,9 +970,27 @@ const defaultRouteCacheMap = {
     health: 10
 };
 
+function cachedCountMatchesContract(route: string, response: any): boolean {
+    if (route !== 'get_action_usage') return true;
+    try {
+        canonicalUint64(response?.action_count);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export async function timedQuery(
     queryFunction: (fastify: FastifyInstance, request: FastifyRequest) => Promise<any>,
     fastify: FastifyInstance, request: FastifyRequest, route: string): Promise<any> {
+    assertProtocolRouteReady(fastify, route);
+    assertProtocolActionRequestReady(fastify, request, route);
+
+    if (route === 'get_actions') {
+        const input = request.method === 'POST' ? request.body : request.query;
+        validateActionSequenceQuery(typeof input === 'string' ? JSON.parse(input) : input as Record<string, unknown>,
+            request.method === 'POST');
+    }
 
     const query = request.query as any;
 
@@ -957,7 +1000,8 @@ export async function timedQuery(
     // check for cached data, return the response hash if caching is enabled
     const [cachedResponse, hash] = await getCachedResponse(
         fastify,
-        route,
+        fastify.manager.config.settings?.protocol?.provider === 'extension'
+            ? `${request.method}:${request.routeOptions.url ?? request.url.split('?')[0]}` : route,
         request.method === 'POST' ? request.body : query
     );
 
@@ -972,7 +1016,8 @@ export async function timedQuery(
         }
     }
 
-    if (cachedResponse && !query["ignoreCache"]) {
+    if (cachedResponse && !query["ignoreCache"] && cachedCountMatchesContract(route, cachedResponse)
+        && await validateProtocolCachedResponse(fastify, request, route, cachedResponse)) {
         // add cached query time
         cachedResponse['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
         if (lastIndexedBlock) {
@@ -984,6 +1029,7 @@ export async function timedQuery(
 
     // call query function
     const response = await queryFunction(fastify, request);
+    const cacheResponse = await protocolResponseForCache(fastify, request, route, response);
 
     // save response to cache
     if (hash) {
@@ -991,7 +1037,7 @@ export async function timedQuery(
         if (defaultRouteCacheMap[route]) {
             EX = defaultRouteCacheMap[route];
         }
-        setCacheByHash(fastify, hash, response, EX);
+        setCacheByHash(fastify, hash, cacheResponse, EX);
     }
 
     // add normal query time

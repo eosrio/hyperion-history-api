@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { getTotalValue } from "../../api/helpers/functions.js";
 import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
 import { RequestFilter } from "../../interfaces/stream-requests.js";
+import {checkActionSequenceFilter, isActionSequenceField} from './action-sequences.js';
 
 let config: HyperionConfig | undefined;
 
@@ -258,6 +259,9 @@ function getNested(path_array: string[], jsonObj: Record<string, any>, operator?
 }
 
 export function checkMetaFilter(filter: RequestFilter, _source: any, metaField: string) {
+    if (metaField === 'action' && filter.field && isActionSequenceField(filter.field)) {
+        return checkActionSequenceFilter(filter, _source);
+    }
     if (filter.field && filter.value) {
         const fieldParts = filter.field.split(".");
         let fieldValue = getNested(fieldParts, _source, filter.operator);

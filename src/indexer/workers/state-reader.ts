@@ -1,9 +1,13 @@
 import WebSocket from 'ws';
 import {cargo, QueueObject} from 'async';
 import {ConfirmChannel} from 'amqplib';
-import {ABI, API, Bytes, Checksum256, Serializer, UInt32} from '@wharfkit/antelope';
+import {API, Bytes, Checksum256, Serializer, UInt32} from '@wharfkit/antelope';
+import {protocolNumber} from '../protocol/contract-cache.js';
 
-import {HyperionWorker} from './hyperionWorker.js';
+import {HyperionWorker, protocolSourceCapture} from './hyperionWorker.js';
+import {createHash, randomUUID} from 'node:crypto';
+import {ProtocolSourceBindingStore, protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
+import {ProtocolAbiCoordinatorRpc} from '../protocol/abi-coordinator-rpc.js';
 import {debugLog, hLog} from '../helpers/common_functions.js';
 import {RabbitQueueDef} from '../definitions/index-queues.js';
 import {LiveReaderCheckpoint, ReaderConfirmRange} from '../helpers/reader-progress.js';
@@ -17,6 +21,10 @@ interface BlockInfo {
     block_num: UInt32;
     block_id: Checksum256;
 }
+
+class StaleProtocolIngress extends Error {}
+class RevokedProtocolSource extends Error {}
+type ProtocolIngress = {generation: number; kind: 'connected'} | {generation: number; kind: 'frame'; data: Buffer};
 
 export interface GetBlocksResultV0 {
     head: BlockInfo;
@@ -32,7 +40,16 @@ export default class StateReader extends HyperionWorker {
     private readonly isLiveReader = process.env['worker_role'] === 'continuous_reader';
     private readonly baseRequest: any;
 
-    private shipABI?: ABI;
+    private shipABI?: string;
+    private protocolSourceBindingStore?: ProtocolSourceBindingStore;
+    private sourceContext?: {id: string; schemaJson: string; readerSessionId: string; generation?: number};
+    private socketGeneration = 0;
+    private physicalIngressGeneration?: number;
+    private activeIngressGeneration?: number;
+    private verifiedReaderSessionId?: string;
+    private coordinatorRpc?: ProtocolAbiCoordinatorRpc;
+    private coordinatorSource?: {readerSessionId: string; generation?: string};
+    private coordinatorResumeFromBlock?: number | null;
 
     private recovery = false;
     private allowRequests = true;
@@ -49,7 +66,7 @@ export default class StateReader extends HyperionWorker {
     private liveCheckpoint?: LiveReaderCheckpoint;
     private stageOneDistQueue: QueueObject<any>;
     private pendingDistribution?: {publisher: ConfirmChannel; resume: () => void};
-    private blockReadingQueue: QueueObject<WebSocket.MessageEvent>;
+    private blockReadingQueue: QueueObject<any>;
     private range_size = parseInt(process.env.last_block ?? '0') - parseInt(process.env.first_block ?? '0');
     private completionMonitoring: NodeJS.Timeout | null | undefined;
 
@@ -61,6 +78,7 @@ export default class StateReader extends HyperionWorker {
     private local_distributed_count = 0;
     private local_last_block = 0;
     private reconnectCount = 0;
+    private reconnectTimer?: NodeJS.Timeout;
     private future_block = 0;
     private drainCount = 0;
     private currentIdx = 1;
@@ -135,9 +153,7 @@ export default class StateReader extends HyperionWorker {
             fetch_deltas: this.conf.indexer.fetch_deltas
         };
 
-        if (this.shipRev === 'v1') {
-            this.baseRequest.fetch_block_header = true;
-        }
+
     }
 
     distribute(data: any[], cb: () => void) {
@@ -165,7 +181,8 @@ export default class StateReader extends HyperionWorker {
                     d.content,
                     {
                         persistent: true,
-                        mandatory: true
+                        mandatory: true,
+                        ...(d.headers ? {headers: d.headers} : {})
                     },
                     (err: any) => {
                         if (!this.publications.delete(token) || this.publisherFailure) return;
@@ -364,6 +381,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     onIpcMessage(msg: any): void {
+        if (this.coordinatorRpc?.onMessage(msg)) return;
         switch (msg.event) {
             case 'new_range': {
                 if (msg.target === process.env.worker_id) {
@@ -390,12 +408,19 @@ export default class StateReader extends HyperionWorker {
             }
             case 'next_server': {
                 hLog('received next server action from master');
-                this.ship.close(false);
+                if (this.usesExtensionProtocol) {
+                    this.physicalIngressGeneration = undefined;
+                    this.revokeCoordinatorSource();
+                    this.handleLostConnection();
+                } else this.ship.close(false);
                 break;
             }
             case 'stop': {
                 if (this.isLiveReader) {
                     hLog('[LIVE READER] Closing Websocket');
+                    if (this.usesExtensionProtocol) { this.finishing = true; this.physicalIngressGeneration = undefined; }
+                    this.clearProtocolReconnect();
+                    this.revokeCoordinatorSource();
                     this.ship.close(true);
                     setTimeout(() => {
                         hLog('[LIVE READER] Process killed');
@@ -449,6 +474,8 @@ export default class StateReader extends HyperionWorker {
         const deadline = performance.now() + 10000;
         this.finishing = true;
         this.allowRequests = false;
+        this.clearProtocolReconnect();
+        this.revokeCoordinatorSource();
         this.ship.close(true);
         while (!this.stageOneDistQueue.idle() || this.publications.size || !this.blockReadingQueue.idle()) {
             if (this.publisherFailure) throw new Error(this.publisherFailure);
@@ -502,6 +529,50 @@ export default class StateReader extends HyperionWorker {
     }
 
     private async processIncomingBlocks(block_array: any[]) {
+        if (this.usesExtensionProtocol && block_array.some(item => item?.kind === 'frame' || item?.kind === 'connected')) {
+            let credits = 0;
+            let creditGeneration: number | undefined;
+            for (const item of block_array as ProtocolIngress[]) {
+                if (item.kind === 'connected') {
+                    if (item.generation !== this.physicalIngressGeneration) continue;
+                    this.shipABI = undefined;
+                    this.sourceContext = undefined;
+                    this.verifiedReaderSessionId = undefined;
+                    this.shipSession?.close?.();
+                    this.shipSession = undefined;
+                    credits = 0;
+                    creditGeneration = item.generation;
+                    continue;
+                }
+                if (item.kind !== 'frame' || !Buffer.isBuffer(item.data)) throw new Error('Invalid protocol ingress envelope');
+                if (item.generation !== this.physicalIngressGeneration) {
+                    await this.quarantineIngress(item.data, 'Reader frame belongs to a disconnected socket');
+                    continue;
+                }
+                this.activeIngressGeneration = item.generation;
+                try {
+                    const kind = await this.onMessage(item.data);
+                    this.assertCurrentIngress();
+                    if (kind === 'block') {
+                        if (creditGeneration !== item.generation) credits = 0;
+                        creditGeneration = item.generation;
+                        credits++;
+                    }
+                } catch (error) {
+                    if (error instanceof RevokedProtocolSource) {
+                        await this.quarantineIngress(item.data, error.message, 'protocol_reader_coordinator_stale');
+                        throw error;
+                    }
+                    if (!(error instanceof StaleProtocolIngress)) throw error;
+                    await this.quarantineIngress(item.data, error.message);
+                } finally { this.activeIngressGeneration = undefined; }
+            }
+            while (this.publications.size && !this.publisherFailure) await new Promise(resolve => setTimeout(resolve, 5));
+            if (this.publisherFailure) throw new Error(this.publisherFailure);
+            if (credits) this.send(['get_blocks_ack_request_v0', {num_messages: credits}], creditGeneration);
+            if (this.delay_active) await new Promise(resolve => setTimeout(resolve, this.block_processing_delay));
+            return true;
+        }
         if (this.shipABI) {
             for (const block of block_array) {
                 await this.onMessage(block);
@@ -533,6 +604,10 @@ export default class StateReader extends HyperionWorker {
         hLog(`SHIP Range from ${beingBlock} to ${endBlock}`);
 
         if (!this.conf.indexer.disable_reading || process.env['worker_role'] === 'repair_reader') {
+            if (this.usesExtensionProtocol && this.recovery) {
+                this.resumeReaderRecovery();
+                return;
+            }
             switch (process.env['worker_role']) {
                 // range reader setup
                 case 'reader': {
@@ -643,15 +718,15 @@ export default class StateReader extends HyperionWorker {
                 try {
                     blockData = await this.rpc.v1.chain.get_block(block_id.toLowerCase());
                     if (blockData) {
-                        if (blockData.block_num.toNumber() === val.block_num) {
-                            // console.log(`Block ${blockData.block_num.toNumber()} ${block_id} is still present on the chain, not forked.`);
+                        if (protocolNumber(blockData.block_num) === val.block_num) {
+                            // console.log(`Block ${protocolNumber(blockData.block_num)} ${block_id} is still present on the chain, not forked.`);
                             // check if the block is older than the last irreversible block
                             if (val.block_num <= this.local_lib) {
                                 console.log(`Block ${block_id} is older than the lib, definitely not forked.`);
                                 this.forkedBlocks.delete(block_id);
                             } else {
                                 // check the current id for the same block number on the reversible block map
-                                const currentBlockId = this.reversibleBlockMap.get(blockData.block_num.toNumber());
+                                const currentBlockId = this.reversibleBlockMap.get(protocolNumber(blockData.block_num));
                                 if (currentBlockId && currentBlockId !== block_id) {
                                     // handle as a forked block, since a new different id was received after the fork
                                     blockData = null;
@@ -660,7 +735,7 @@ export default class StateReader extends HyperionWorker {
                                 }
                             }
                         } else {
-                            hLog(`[WARNING] Unexpected block number for ${block_id}: ${blockData.block_num.toNumber()} (expected: ${val.block_num})`);
+                            hLog(`[WARNING] Unexpected block number for ${block_id}: ${protocolNumber(blockData.block_num)} (expected: ${val.block_num})`);
                         }
                     }
                 } catch (e: any) {
@@ -703,7 +778,7 @@ export default class StateReader extends HyperionWorker {
         // console.log(`Cleaning reversible blocks up to ${lib.block_num}`, lib);
         // remove reversible blocks that are older than the lib
         this.reversibleBlockMap.forEach((block_id, block_num) => {
-            if (block_num <= lib.block_num.toNumber()) {
+            if (block_num <= protocolNumber(lib.block_num)) {
                 this.reversibleBlockMap.delete(block_num);
                 // console.log(`Deleting reversible block ${block_num} with id ${block_id}`);
             }
@@ -713,14 +788,14 @@ export default class StateReader extends HyperionWorker {
     private async handleBlockResult(res: GetBlocksResultV0, data: Buffer) {
         if (res.this_block) {
             this.idle = false;
-            const blk_num = res.this_block.block_num.toNumber();
+            const blk_num = protocolNumber(res.this_block.block_num);
             const blk_id = res.this_block.block_id.toString();
             const lib = res.last_irreversible;
             let confirmLive: (() => {nextBlock: number; blockId: string} | undefined) | undefined;
             try {
                 confirmLive = this.isLiveReader ? this.liveCheckpoint?.observe({
                     num: blk_num, id: blk_id, previous: res.prev_block?.block_id.toString() ?? ''
-                }, lib.block_num.toNumber()) : undefined;
+                }, protocolNumber(lib.block_num)) : undefined;
             } catch (error: any) {
                 this.failSourceRecovery(error.message);
                 return 0;
@@ -728,7 +803,8 @@ export default class StateReader extends HyperionWorker {
             const task_payload = {
                 num: blk_num,
                 content: data,
-                confirmLive
+                confirmLive,
+                ...(this.usesExtensionProtocol ? {headers: await this.bindProtocolSource(res, data)} : {})
             };
 
             if (res.block && res.traces && res.deltas) {
@@ -782,8 +858,8 @@ export default class StateReader extends HyperionWorker {
                 this.local_block_num = blk_num;
                 this.local_block_id = blk_id;
 
-                if (lib.block_num.toNumber() > this.local_lib) {
-                    this.local_lib = lib.block_num.toNumber();
+                if (protocolNumber(lib.block_num) > this.local_lib) {
+                    this.local_lib = protocolNumber(lib.block_num);
                     // emit lib update event
                     process.send?.({event: 'lib_update', data: lib});
                     this.cleanReversibleBlocks(lib);
@@ -845,10 +921,10 @@ export default class StateReader extends HyperionWorker {
         }
     }
 
-    private async onMessage(data: Buffer) {
+    private async onMessage(data: Buffer): Promise<'block' | 'other'> {
         if (!this.shipABI) {
-            this.processFirstABI(data);
-            return 1;
+            await this.processFirstABI(data);
+            return 'other';
         }
 
         if (!process.env.worker_role) {
@@ -858,78 +934,210 @@ export default class StateReader extends HyperionWorker {
         }
 
         // NORMAL OPERATION MODE
-        if (!this.recovery) {
-            const result = Serializer.decode({
-                data,
-                type: 'result',
-                abi: this.shipABI
-            });
+        if (!this.recovery || this.usesExtensionProtocol) {
+            const result = this.decodeShipResult(data);
             switch (result[0]) {
-                case 'get_status_result_v0': {
+                case 'get_status_result_v0':
+                case 'get_status_result_v1': {
+                    if (this.usesExtensionProtocol) {
+                        const chainId = result[1]?.chain_id?.toString().toLowerCase();
+                        if (!this.sourceContext || !/^[0-9a-f]{64}$/.test(chainId ?? '') || chainId !== this.chainId) {
+                            this.verifiedReaderSessionId = undefined;
+                            this.revokeCoordinatorSource();
+                            await this.quarantineIngress(data, 'SHiP status does not identify the configured chain', 'protocol_reader_chain_unverified');
+                            return 'other';
+                        }
+                        this.assertCurrentIngress(this.sourceContext.generation);
+                        this.verifiedReaderSessionId = this.sourceContext.readerSessionId;
+                        if (this.isLiveReader) await this.openCoordinatorSource();
+                    }
                     this.handleStatusResult(result[1]);
                     break;
                 }
-                case 'get_blocks_result_v0': {
-                    return await this.handleBlockResult(result[1], data);
+                case 'get_blocks_result_v0':
+                case 'get_blocks_result_v1': {
+                    if (this.usesExtensionProtocol && (!this.sourceContext || this.verifiedReaderSessionId !== this.sourceContext.readerSessionId)) {
+                        await this.quarantineIngress(data, 'Block arrived before this connection identified the configured chain', 'protocol_reader_chain_unverified');
+                        return 'other';
+                    }
+                    const published = await this.handleBlockResult(result[1], data);
+                    if (this.usesExtensionProtocol && published !== 1) {
+                        await this.quarantineIngress(data, 'Block response was not routed to a history worker', 'protocol_reader_unrouted_block');
+                    }
+                    // Every block-flow response consumes one source credit,
+                    // including an unavailable block with no this_block position.
+                    return 'block';
                 }
                 default: {
-                    hLog(`Unknown message type: ${result[0]}`);
+                    throw new Error(`Unsupported SHiP result: ${result[0]}`);
                 }
             }
         } else {
-            // RECOVERY MODE
-            if (this.isLiveReader) {
-                hLog(`Resuming live stream from block ${this.local_block_num}...`);
-                this.requestBlocks(this.local_block_num + 1);
+            this.resumeReaderRecovery();
+        }
+        return 'other';
+    }
+
+    private resumeReaderRecovery(): void {
+        if (this.isLiveReader) {
+            hLog(`Resuming live stream from block ${this.local_block_num}...`);
+            this.requestBlocks(this.local_block_num + 1);
+            this.recovery = false;
+        } else if (!this.completionSignaled) {
+            let first = this.local_block_num;
+            let last = this.local_last_block;
+            if (last === 0 && process.env.last_block) last = parseInt(process.env.last_block, 10);
+            last = last - 1;
+            if (first === 0 && process.env.first_block) first = parseInt(process.env.first_block, 10);
+            if (first > last) last = first + 1;
+            hLog(`Resuming stream from block ${first} to ${last}...`);
+            if (last - first > 0) {
+                this.requestBlockRange(first, last);
                 this.recovery = false;
-            } else {
-                if (!this.completionSignaled) {
-                    let first = this.local_block_num;
-                    let last = this.local_last_block;
-                    if (last === 0) {
-                        if (process.env.last_block) {
-                            last = parseInt(process.env.last_block, 10);
-                        }
-                    }
-                    last = last - 1;
-                    if (first === 0) {
-                        if (process.env.first_block) {
-                            first = parseInt(process.env.first_block, 10);
-                        }
-                    }
-                    if (first > last) {
-                        last = first + 1;
-                    }
-                    hLog(`Resuming stream from block ${first} to ${last}...`);
-                    if (last - first > 0) {
-                        this.requestBlockRange(first, last);
-                        this.recovery = false;
-                    } else {
-                        hLog('Invalid range!');
-                    }
-                } else {
-                    hLog('Reader already finished, no need to restart.');
-                    this.recovery = false;
-                }
-            }
+            } else hLog('Invalid range!');
+        } else {
+            hLog('Reader already finished, no need to restart.');
+            this.recovery = false;
         }
     }
 
-    private processFirstABI(data: Buffer) {
+    private async processFirstABI(data: Buffer) {
         const abiString = data.toString();
-        this.abieos.loadAbi('0', abiString);
-        this.shipABI = ABI.from(abiString);
+        const generation = this.activeIngressGeneration;
+        this.assertCurrentIngress(generation);
+        this.verifiedReaderSessionId = undefined;
+        this.revokeCoordinatorSource();
+        await this.initializeProtocolShip(abiString);
+        this.assertCurrentIngress(generation);
+        if (this.usesExtensionProtocol) {
+            const stop = this.profiler.start('protocol_source_prepare_context');
+            try {
+                this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
+                const context = await this.protocolSourceBindingStore.prepareContext({schemaVersion: 1, chainId: this.chainId,
+                    protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []}, schemaJson: abiString});
+                this.assertCurrentIngress(generation);
+                this.sourceContext = {id: context.id, schemaJson: abiString, readerSessionId: randomUUID(), generation};
+            } finally { stop(); }
+        }
+        this.shipABI = abiString;
+        const requestAbi = JSON.parse(abiString).structs?.find(struct => struct.name === 'get_blocks_request_' + this.shipRev);
+        for (const field of requestAbi?.fields ?? []) {
+            if (field.type === 'bool' && /^fetch_/.test(field.name) && !Object.hasOwn(this.baseRequest, field.name)) {
+                this.baseRequest[field.name] = field.name === 'fetch_block_header';
+            }
+        }
         process.send?.({event: 'init_abi', data: abiString});
         // request status
         this.send(['get_status_request_v0', {}]);
     }
 
+    private async bindProtocolSource(result: GetBlocksResultV0, frame: Buffer): Promise<Record<string, string>> {
+        // Snapshot before awaiting storage: reconnects cannot rebind queued bytes.
+        const context = this.sourceContext;
+        if (!context || !this.protocolSourceBindingStore) throw new Error('Reader source context is not durably initialized');
+        if (this.verifiedReaderSessionId !== context.readerSessionId) throw new Error('Reader source chain is not verified for this session');
+        this.assertCurrentIngress(context.generation);
+        const stop = this.profiler.start('protocol_source_prepare_selection');
+        try {
+            const capture = protocolSourceCapture(this.chainId, result, context.schemaJson);
+            const position = (value: BlockInfo) => ({blockNum: protocolNumber(value?.block_num),
+                blockId: value?.block_id?.toString().toLowerCase() ?? ''});
+            const selection = await this.protocolSourceBindingStore.prepareSelection({schemaVersion: 1, contextId: context.id,
+                readerSessionId: context.readerSessionId, readerRole: this.isLiveReader ? 'live' : this.repairMode ? 'repair' : 'bulk',
+                assignmentId: this.assignmentId ?? null, source: capture.source,
+                frameSha256: createHash('sha256').update(frame).digest('hex'), captureSha256: capture.captureSha256,
+                head: position(result.head), irreversible: position(result.last_irreversible)});
+            this.assertCurrentIngress(context.generation);
+            if (this.isLiveReader) await this.admitCoordinatorSelection(selection.id, context.readerSessionId, context.generation);
+            return {[protocolSourceSelectionHeader]: selection.id};
+        } finally { stop(); }
+    }
+
+    private async openCoordinatorSource(): Promise<void> {
+        const context = this.sourceContext;
+        if (!context || this.verifiedReaderSessionId !== context.readerSessionId) throw new Error('Cannot coordinate an unverified reader source');
+        if (this.coordinatorSource?.readerSessionId === context.readerSessionId && this.coordinatorSource.generation) return;
+        this.coordinatorRpc ??= new ProtocolAbiCoordinatorRpc();
+        const source = {readerSessionId: context.readerSessionId, generation: undefined as string | undefined};
+        this.coordinatorSource = source;
+        const stop = this.profiler.start('protocol_abi_open_source');
+        try {
+            const opened = await this.coordinatorRpc.open(context.id, context.readerSessionId);
+            this.assertCurrentIngress(context.generation);
+            if (this.coordinatorSource !== source) throw new StaleProtocolIngress('Reader source changed while coordinator opened');
+            source.generation = opened.generation;
+            this.coordinatorResumeFromBlock = opened.resumeFromBlock;
+            if (opened.resumeFromBlock !== null) {
+                this.local_block_num = opened.resumeFromBlock - 1;
+                // This is a new local publication epoch, not a fabricated master checkpoint.
+                // Only fresh confirmed irreversible publications may emit live_checkpoint.
+                this.liveCheckpoint = new LiveReaderCheckpoint(opened.resumeFromBlock, '', this.conf.settings.reader_recovery_window_blocks);
+            }
+        } catch (error) {
+            this.assertCurrentIngress(context.generation);
+            throw error;
+        } finally { stop(); }
+    }
+
+    private async admitCoordinatorSelection(selectionId: string, readerSessionId: string, generation?: number): Promise<void> {
+        const source = this.coordinatorSource;
+        if (!source?.generation || source.readerSessionId !== readerSessionId || !this.coordinatorRpc) throw new RevokedProtocolSource('Live source lacks coordinator authority');
+        for (;;) {
+            this.assertCurrentIngress(generation);
+            if (this.coordinatorSource !== source) throw new StaleProtocolIngress('Reader source changed during admission');
+            const stop = this.profiler.start('protocol_abi_admit_source');
+            let admitted;
+            try { admitted = await this.coordinatorRpc.admit(selectionId, readerSessionId, source.generation); }
+            catch (error) { this.assertCurrentIngress(generation); throw error; }
+            finally { stop(); }
+            this.assertCurrentIngress(generation);
+            if (this.coordinatorSource !== source) throw new StaleProtocolIngress('Reader source changed during admission');
+            if (admitted.status === 'stale') throw new RevokedProtocolSource('Coordinator revoked this source generation');
+            if (admitted.status === 'accepted') { source.generation = admitted.generation; return; }
+            // One retained selection waits at the reader. No master queue waiter or extra frame is created.
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+
+    private revokeCoordinatorSource(): void {
+        const source = this.coordinatorSource;
+        this.coordinatorSource = undefined;
+        this.coordinatorResumeFromBlock = undefined;
+        this.coordinatorRpc?.cancel();
+        if (source) process.send?.({event: 'protocol_abi_source_revoked', data: {readerSessionId: source.readerSessionId,
+            ...(source.generation ? {generation: source.generation} : {})}});
+    }
+
+    private assertCurrentIngress(generation = this.activeIngressGeneration): void {
+        if (this.usesExtensionProtocol && this.socketGeneration && generation !== this.physicalIngressGeneration) {
+            throw new StaleProtocolIngress('Reader socket changed while source capture was pending');
+        }
+    }
+
+    private async quarantineIngress(frame: Buffer, message: string, code = 'protocol_reader_stale_ingress'): Promise<void> {
+        this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
+        const stop = this.profiler.start('protocol_source_quarantine');
+        try {
+            const capsule = await this.protocolSourceBindingStore.quarantine({schemaVersion: 1, chainId: this.chainId,
+                protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
+                frameHex: frame.toString('hex'), claimedSelectionId: null, reason: {code, message}});
+            process.send?.({event: 'ds_error', data: {type: 'protocol_source_incomplete', code, capsuleId: capsule.id}});
+        } finally { stop(); }
+    }
+
     private requestBlocks(start: number) {
+        if (this.usesExtensionProtocol && this.isLiveReader) {
+            if (!this.coordinatorSource?.generation) return;
+            if (this.coordinatorResumeFromBlock !== null && this.coordinatorResumeFromBlock !== undefined) start = this.coordinatorResumeFromBlock;
+            this.coordinatorResumeFromBlock = undefined;
+        }
         this.rangeRequested = true;
         let first_block: string | number = start > 0 ? start : process.env.first_block ? process.env.first_block : 1;
         const last_block = start > 0 ? 0xffffffff : process.env.last_block ? process.env.last_block : 0xffffffff;
         const request = this.baseRequest;
-        if (this.isLiveReader && process.env.worker_last_processed_block_id) {
+        if (this.isLiveReader && this.usesExtensionProtocol) {
+            request.have_positions = [];
+        } else if (this.isLiveReader && process.env.worker_last_processed_block_id) {
             request.have_positions = [{block_num: Number(process.env.worker_last_processed_block) - 1,
                 block_id: process.env.worker_last_processed_block_id}];
         }
@@ -952,13 +1160,14 @@ export default class StateReader extends HyperionWorker {
         }
     }
 
-    private send(req_data: (string | any)[]) {
+    private send(req_data: (string | any)[], generation = this.activeIngressGeneration ?? this.sourceContext?.generation) {
+        if (this.usesExtensionProtocol && /^get_blocks_request_/.test(req_data[0])
+            && (!this.sourceContext || this.verifiedReaderSessionId !== this.sourceContext.readerSessionId)) return;
+        // Commands and credits from an old await must never reach a new physical socket.
+        if (this.usesExtensionProtocol && this.socketGeneration
+            && (generation === undefined || generation !== this.physicalIngressGeneration)) return;
         this.ship.send(
-            Serializer.encode({
-                object: req_data,
-                type: 'request',
-                abi: this.shipABI
-            }).array
+            this.shipSession!.encodeRequest(req_data)
         );
     }
 
@@ -1134,6 +1343,29 @@ export default class StateReader extends HyperionWorker {
     }
 
     private startWS() {
+        if (this.usesExtensionProtocol) {
+            if (this.finishing || this.publisherFailure) return;
+            this.clearProtocolReconnect();
+            const generation = ++this.socketGeneration;
+            this.physicalIngressGeneration = undefined;
+            this.revokeCoordinatorSource();
+            this.ship.connect(
+                (data: any) => { void this.blockReadingQueue.push({kind: 'frame', generation, data: Buffer.from(data)}).catch(console.log); },
+                () => {
+                    if (this.physicalIngressGeneration !== generation) return;
+                    this.physicalIngressGeneration = undefined;
+                    this.revokeCoordinatorSource();
+                    this.handleLostConnection();
+                },
+                () => { hLog('connection failed'); },
+                () => {
+                    if (generation !== this.socketGeneration) return;
+                    this.reconnectCount = 0;
+                    this.physicalIngressGeneration = generation;
+                    void this.blockReadingQueue.push({kind: 'connected', generation}).catch(console.log);
+                });
+            return;
+        }
         this.ship.connect(
             this.blockReadingQueue.push,
             this.handleLostConnection.bind(this),
@@ -1142,11 +1374,22 @@ export default class StateReader extends HyperionWorker {
             },
             () => {
                 this.reconnectCount = 0;
+                this.shipABI = undefined;
+                this.sourceContext = undefined;
+                this.shipSession?.close?.();
+                this.shipSession = undefined;
             }
         );
     }
 
+    private clearProtocolReconnect(): void {
+        if (!this.usesExtensionProtocol) return;
+        if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = undefined;
+    }
+
     private handleLostConnection() {
+        if (this.usesExtensionProtocol && (this.reconnectTimer || this.finishing || this.publisherFailure)) return;
         this.recovery = true;
         this.ship.close(false);
         hLog(`Retrying connection in 5 seconds... [attempt: ${this.reconnectCount + 1}]`);
@@ -1156,10 +1399,16 @@ export default class StateReader extends HyperionWorker {
         // switch to next endpoint if available
         this.ship.nextUrl();
 
-        setTimeout(() => {
+        const reconnect = () => {
+            if (this.usesExtensionProtocol) {
+                this.reconnectTimer = undefined;
+                if (this.finishing || this.publisherFailure) return;
+            }
             this.reconnectCount++;
             this.startWS();
-        }, 5000);
+        };
+        if (this.usesExtensionProtocol) this.reconnectTimer = setTimeout(reconnect, 5000);
+        else setTimeout(reconnect, 5000);
     }
 
     private emitCompletedSignal() {
@@ -1180,6 +1429,8 @@ export default class StateReader extends HyperionWorker {
         if (this.confirmationDeadline) clearTimeout(this.confirmationDeadline);
         this.confirmationDeadline = undefined;
         this.confirmationDeadlineAt = undefined;
+        this.clearProtocolReconnect();
+        this.revokeCoordinatorSource();
         process.send?.({event: 'reader_recovery_required', error: reason, assignment_id: this.assignmentId});
         hLog(`Reader publication outcome incomplete; supervised source replay required: ${reason}`);
         this.ship?.close(true);

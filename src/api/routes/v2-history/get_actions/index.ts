@@ -32,15 +32,15 @@ export const getActionResponseSchema = {
             type: "object",
             properties: {
                 "receiver": {type: "string"},
-                "global_sequence": {type: "number"},
-                "recv_sequence": {type: "number"},
+                "global_sequence": {type: "string"},
+                "recv_sequence": {type: "string"},
                 "auth_sequence": {
                     type: "array",
                     items: {
                         type: "object",
                         properties: {
                             "account": {type: "string"},
-                            "sequence": {type: "number"},
+                            "sequence": {type: "string"},
                         }
                     }
                 }
@@ -60,7 +60,7 @@ export const getActionResponseSchema = {
             additionalProperties: true
         }
     },
-    "global_sequence": {type: "number"},
+    "global_sequence": {type: "string"},
     "producer": {type: "string"},
     "parent": {type: "number"},
     "action_ordinal": {type: 'number'},

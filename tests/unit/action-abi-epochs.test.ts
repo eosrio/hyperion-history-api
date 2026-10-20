@@ -81,3 +81,114 @@ test('production pool selects historical ABI before native decode across shuffle
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({code, stdout, stderr}).toEqual({code: 0, stdout: 'action-abi-epoch-probe-passed\n', stderr: ''});
 }, 15000);
+
+async function runNativeReviewProbe(probe: string) {
+    const poolUrl = new URL('../../build/indexer/workers/ds-pool.js', import.meta.url).href;
+    const nativeUrl = new URL('../../node_modules/@eosrio/node-abieos/dist/abieos.js', import.meta.url).href;
+    const antelopeUrl = new URL('../../node_modules/@wharfkit/antelope/lib/antelope.js', import.meta.url).href;
+    const script = `
+        import assert from 'node:assert/strict';
+        import {mkdtempSync, mkdirSync, writeFileSync, rmSync} from 'node:fs';
+        import {tmpdir} from 'node:os'; import {join} from 'node:path';
+        import {Abieos} from ${JSON.stringify(nativeUrl)};
+        import {ABI, Serializer} from ${JSON.stringify(antelopeUrl)};
+        const previous = process.cwd(); const directory = mkdtempSync(join(tmpdir(), 'hyperion-abi-review-'));
+        try {
+            mkdirSync(join(directory, 'config'));
+            writeFileSync(join(directory, 'chain.json'), JSON.stringify({settings: {chain: 'epoch-test'}, indexer: {}}));
+            writeFileSync(join(directory, 'config/connections.json'), '{}');
+            process.chdir(directory); process.env.CONFIG_JSON = join(directory, 'chain.json');
+            const {default: Pool} = await import(${JSON.stringify(poolUrl)});
+            const engine = Abieos.getInstance();
+            const abi = revision => ({version: 'eosio::abi/1.2', types: [], structs: [{name: 'record', base: '', fields: [
+                {name: 'sequence', type: 'uint64'}, ...(revision === 2 ? [{name: 'revision', type: 'uint32'}] : []), {name: 'memo', type: 'string'}]}],
+                actions: [{name: 'record', type: 'record', ricardian_contract: ''}], tables: [], variants: []});
+            const encode = (value, definition) => Buffer.from(Serializer.encode({object: value, type: 'record', abi: definition}).array).toString('hex');
+            const historical = {block: 10, actions: ['record'], tables: [], abi: JSON.stringify(abi(1)),
+                abi_hex: Buffer.from(Serializer.encode({object: ABI.from(abi(1))}).array).toString('hex')};
+            function makePool(reference = historical, custom = []) {
+                engine.deleteContract('hyp.replay'); const queries = [];
+                const pool = Object.assign(Object.create(Pool.prototype), {chain: 'epoch-test',
+                    conf: {settings: {allow_custom_abi: custom.length > 0}}, profiler: {start: () => () => {}}, abieos: engine,
+                    failedAbiMap: new Map(), poolAbiCache: new Map(), poolTypeCache: new Map(), loadedActionAbis: new Map(),
+                    contracts: new Map(), contractUsage: {}, totalHits: 0,
+                    customAbiMap: new Map([['hyp.replay', custom]]),
+                    client: {search: async query => {queries.push(query.query.bool.must[1].range.block.lte); return {hits: {hits: reference ? [{_source: reference}] : []}};}},
+                    loadCurrentAbiHex: async () => {throw new Error('unexpected current fallback');}});
+                return {pool, queries};
+            }
+            const action = value => ({account: 'hyp.replay', name: 'record', authorization: [], data: value});
+            ${probe}
+            console.log('action-abi-review-probe-passed');
+        } finally { process.chdir(previous); rmSync(directory, {recursive: true, force: true}); }
+    `;
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--input-type=module', '--eval', script], {stdout: 'pipe', stderr: 'pipe', timeout: 10000});
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect({code, stdout, stderr}).toEqual({code: 0, stdout: 'action-abi-review-probe-passed\n', stderr: ''});
+}
+
+test('matching custom ABI overrides a declaring historical ABI and tracks range and contents', async () => {
+    await runNativeReviewProbe(`
+        const custom = {startingBlock: 10, endingBlock: 30, abi: JSON.stringify(abi(2))};
+        const {pool, queries} = makePool(historical, [custom]);
+        let customLoads = 0; const historicalLoads = [];
+        const nativeLoad = engine.loadAbi.bind(engine);
+        engine.loadAbi = (account, json) => {customLoads++; return nativeLoad(account, json);};
+        const historicalLoad = pool.loadAbiHex;
+        pool.loadAbiHex = function (account, block, hex) {historicalLoads.push(block); return historicalLoad.call(this, account, block, hex);};
+        for (const [index, block] of [11, 12, 10, 29, 30, 11, 11].entries()) {
+            const revision = block > 10 && block < 30 ? 2 : 1;
+            const expected = {sequence: String(index + 1), ...(revision === 2 ? {revision: 2} : {}), memo: 'custom-' + index};
+            assert.deepEqual(await pool.deserializeActionAtBlockNative(pool, action(encode(expected, abi(revision))), block), expected,
+                'custom precedence or exclusive range was lost at block ' + block);
+        }
+        assert.deepEqual(queries, [10, 30], 'custom overrides should not require a historical lookup');
+        assert.deepEqual(historicalLoads, [10, 10], 'history must reload when switching out of custom context');
+        assert.equal(customLoads, 3, 'a stable custom context should not reload per action or block');
+        const replacement = abi(2); replacement.structs[0].fields[1].name = 'replacement';
+        custom.abi = JSON.stringify(replacement);
+        const changed = {sequence: '99', replacement: 7, memo: 'replaced custom file'};
+        assert.deepEqual(await pool.deserializeActionAtBlockNative(pool, action(encode(changed, replacement)), 11), changed);
+        assert.equal(customLoads, 4, 'changing custom ABI contents must replace the native context');
+        custom.startingBlock = 9;
+        assert.deepEqual(await pool.deserializeActionAtBlockNative(pool, action(encode(changed, replacement)), 11), changed);
+        assert.equal(customLoads, 5, 'custom range identity must include both configured bounds');
+        pool.deleteCache('hyp.replay');
+        assert.deepEqual(await pool.deserializeActionAtBlockNative(pool, action(encode(changed, replacement)), 11), changed);
+        assert.equal(customLoads, 6, 'explicit eviction must also invalidate custom ABI identity');
+    `);
+}, 15000);
+
+test('rejected historical ABI can use custom or current ABI without retaining a failed context', async () => {
+    await runNativeReviewProbe(`
+        const malformed = {...historical, abi_hex: '00'};
+        const expected = {sequence: '1', revision: 2, memo: 'recovered'};
+        for (const mode of ['custom', 'current']) {
+            const custom = mode === 'custom' ? [{startingBlock: 0, endingBlock: 100, abi: JSON.stringify(abi(2))}] : [];
+            const {pool, queries} = makePool(malformed, custom); let currentLoads = 0;
+            pool.loadCurrentAbiHex = async () => {currentLoads++; return engine.loadAbi('hyp.replay', JSON.stringify(abi(2)));};
+            for (let attempt = 0; attempt < 2; attempt++) assert.deepEqual(await pool.deserializeActionAtBlockNative(pool,
+                action(encode(expected, abi(2))), 21), expected, mode + ' rescue failed after rejected historical ABI');
+            assert.equal(currentLoads, mode === 'custom' ? 0 : 2);
+            assert.deepEqual(queries, mode === 'custom' ? [] : [21], 'historical lookups remain memoized per block');
+        }
+        // Native loaders can reject after changing their context. A false result
+        // or a thrown current fallback must not leave a type cache or native ABI
+        // that a later action could mistake for a successful selection.
+        for (const mode of ['false', 'throw']) {
+            const {pool} = makePool(malformed);
+            pool.loadAbiHex = () => {engine.loadAbi('hyp.replay', JSON.stringify(abi(1))); return false;};
+            pool.loadCurrentAbiHex = async () => {
+                engine.loadAbi('hyp.replay', JSON.stringify(abi(2)));
+                if (mode === 'throw') throw new Error('rejected current ABI');
+                return false;
+            };
+            assert.deepEqual(await pool.verifyLocalType('hyp.replay', 'record', 21, 'action'), [false, '']);
+            assert.equal(pool.loadedActionAbis.has('hyp.replay'), false);
+            assert.throws(() => engine.getTypeForAction('hyp.replay', 'record'), 'failed context remained native-loaded');
+            pool.loadCurrentAbiHex = async () => engine.loadAbi('hyp.replay', JSON.stringify(abi(2)));
+            assert.deepEqual(await pool.deserializeActionAtBlockNative(pool, action(encode(expected, abi(2))), 21), expected,
+                'a failed type result must not poison a later successful current fallback');
+        }
+    `);
+}, 15000);
