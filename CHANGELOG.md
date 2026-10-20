@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased (dev)
+
+### Fixes
+
+*   **QRY Hub publisher reconnects on its own**: the API's hub connection now survives hub restarts, network drops and server-side disconnects. Previously a server-side disconnect (for example a rejected or replaced session) left socket.io without retries, so the instance stayed offline on the hub until the Hyperion API process was restarted. Every reconnect now repeats the challenge/session login with exponential backoff (3 s up to 5 min), so expired sessions (`SESSION_EXPIRED`) are replaced instead of being re-sent. Unregistered instances keep retrying with backoff and log the condition once.
+*   **`hub.hub_url` is honored**: the hub address was hardcoded to `api.hub.qry.network` and the configured value was ignored. It accepts a host (`api.hub.qry.network`, `localhost:3501`) or a full URL; the default is unchanged.
+*   **An invalid `hub.instance_key` no longer stops the API**: it logs `QRY Hub publishing disabled` and the API keeps serving.
+*   **API usage is re-sent after hub restarts**: the past 24 hours of usage are published on every metadata request from the hub, not only on the first connection after the API starts, so a restarted hub is backfilled. The hub de-duplicates repeated buckets.
+*   **Indexer status sent to the hub reflects the real controller connection**: it read the WebSocket `OPEN` constant (always truthy) instead of the connection state, so `active` was reported even while the indexer was unreachable.
+
 ## 4.1.0 (2026-08-07)
 
 ### New Features
