@@ -1,0 +1,42 @@
+{
+  "name": "@eosrio/hyperion-backend-mongodb",
+  "version": "0.0.0-dev.1",
+  "private": true,
+  "description": "MongoDB execution adapter for Hyperion portable projections",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "bun check -p tsconfig.json",
+    "test": "npm run build && node --test tests/*.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eosrio/hyperion-history-api.git",
+    "directory": "packages/backend-mongodb"
+  },
+  "peerDependencies": {
+    "@eosrio/hyperion-sdk": "0.0.0-dev.1"
+  },
+  "dependencies": {
+    "mongodb": "7.2.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "@types/node": "25.5.0",
+    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#6913a7fcee0b29d3b8e4104806a4caa98469f463"
+  }
+}
