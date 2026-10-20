@@ -68,6 +68,41 @@ export class PortableProjectionSource {
         await this.control();
         await this.reader.revalidate(proof);
     }
+    private async definitionState(proof: ProtocolAbiProofView, definition: ProjectionDefinition, allowBeforeDeployment: boolean) {
+        const state = await this.reader.inspectFinalState(proof, definition.source.contract);
+        if (state?.present && state.abiHex) {
+            const deployment = protocolDeployment(this.options.provider, {account: state.account, block: state.source.blockNum,
+                block_id: state.source.blockId, abi_hex: state.abiHex, protocol_profile: state.protocol.profileId},
+            state.account, proof.source.blockNum, proof.source.blockId);
+            if (deployment.id !== definition.source.abiDeployment || digest(Buffer.from(deployment.abiHex, 'hex')) !== definition.source.abiSha256)
+                throw new ProjectionContractError('projection.invalid-contract', 'Canonical ABI epoch does not match this fixed projection definition');
+            return deployment;
+        }
+        if (!allowBeforeDeployment) throw new ProjectionContractError('projection.incomplete', 'Projection definition ABI is not currently deployed');
+        // Null under complete genesis coverage means never observed. Empty/deleted states retain provenance:
+        // look behind each empty epoch so an active ABI clear cannot masquerade as first deployment absence.
+        let prior = state;
+        for (let count = 0; prior !== null && count <= this.maximumAncestry; count++) {
+            if (prior.present && prior.abiHex)
+                throw new ProjectionContractError('projection.invalid-contract', 'An active projection ABI was cleared or removed');
+            if (prior.source.blockNum === 1) return undefined;
+            prior = await this.reader.inspectFinalState(proof, definition.source.contract, {atBlockNum: prior.source.blockNum - 1});
+        }
+        if (prior !== null) unavailable('Pre-deployment ABI history exceeds bounded inspection');
+        return undefined;
+    }
+    /** Serving requires the fixed ABI at both the completed view and current canonical head. */
+    async assertDefinition(proof: ProtocolAbiProofView, definition: ProjectionDefinition): Promise<void> {
+        await this.definitionState(proof, definition, false);
+        const control = await this.control();
+        const current = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
+        await this.definitionState(current, definition, false);
+        const settled = await this.control();
+        if (settled.ownerId !== control.ownerId || settled.generation !== control.generation
+            || settled.head.commitId !== control.head.commitId)
+            throw new ProjectionContractError('projection.stale-view', 'Canonical ABI head changed during definition validation');
+        await this.revalidate(proof);
+    }
     /** Bounded certified ancestry; missing old input never becomes an empty frame. */
     async frame(blockNum: number, definition: ProjectionDefinition): Promise<PortableProjectionFrame> {
         if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
@@ -104,6 +139,7 @@ export class PortableProjectionSource {
         const evidence = Object.freeze({certificateId: proof.certificateId, commitId: proof.commitId,
             selectionId: proof.selectionId, observationId: link.observationId, observationDigest: link.observationDigest,
             captureSha256: selection.captureSha256, frameSha256: selection.frameSha256});
+        const selectedDefinitionDeployment = await this.definitionState(proof, definition, true);
         if (blockNum === 1) {
             verifyNativeGenesisRecord(observation, this.options.provider.verifyNativeGenesis?.bind(this.options.provider));
             const frame = await this.reader.nativeGenesisFrame(proof);
@@ -125,7 +161,7 @@ export class PortableProjectionSource {
             if (!Array.isArray(deltas)) unavailable('Projection deltas are not a complete vector');
             const changes: ProjectionTableChange[] = [];
             let ordinal = 0;
-            let deployment: ReturnType<typeof protocolDeployment> | undefined;
+            let deployment: ReturnType<typeof protocolDeployment> | undefined = selectedDefinitionDeployment;
             for (const delta of deltas) {
                 if (!Array.isArray(delta) || !['table_delta_v0', 'table_delta_v1'].includes(delta[0])
                     || !Array.isArray(delta[1]?.rows)) unavailable('Invalid projection delta framing');

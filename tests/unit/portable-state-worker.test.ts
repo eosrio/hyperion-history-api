@@ -5,6 +5,7 @@ import {PortableStateController} from '../../src/indexer/projection/controller.j
 import {resolvePortableStateConfiguration} from '../../src/indexer/projection/config.js';
 import {PortableProjectionFrameError} from '../../src/indexer/projection/source.js';
 import {createPortableStateReadGate} from '../../src/indexer/projection/production.js';
+import {createPortableStateQueryService} from '../../src/indexer/projection/query-service.js';
 
 const zero = '0'.repeat(64), chainId = 'c'.repeat(64);
 const block = (height: number) => ({blockNum: height, blockId: String(height).padStart(64, '0'),
@@ -110,7 +111,8 @@ test('canonical gate refuses checkpoint0 and forged contexts, initializes nothin
     await r.adapter.initialize(selected, binding, {blockNum: 0, blockId: zero}); r.calls.length = 0;
     let revoked = false, opens = 0;
     const gate = createPortableStateReadGate({chainId, configuration, adapter: r.adapter,
-        source: {open: async () => {opens++; return {} as any;}, revalidate: async () => {if (revoked) throw new Error('source revoked');}}});
+        source: {open: async () => {opens++; return {} as any;}, assertDefinition: async () => {},
+            revalidate: async () => {if (revoked) throw new Error('source revoked');}}});
     await expect(gate.readReady(selected.id)).rejects.toMatchObject({code: 'projection.incomplete'}); expect(opens).toBe(0);
     r.slots.get(selected.id).checkpoint = {blockNum: 1, blockId: block(1).blockId};
     const context = await gate.readReady(selected.id);
@@ -119,4 +121,25 @@ test('canonical gate refuses checkpoint0 and forged contexts, initializes nothin
     revoked = false; r.slots.get(selected.id).checkpoint = {blockNum: 2, blockId: block(2).blockId};
     await expect(gate.assertCurrent(context)).rejects.toMatchObject({code: 'projection.stale-view'});
     expect(r.calls).not.toContain('initialize'); expect(r.calls).not.toContain('query');
+});
+
+test('pre-deployment ABI refuses public queries and a no-row ABI change during a query cannot publish a last-valid result', async () => {
+    const r = reference(2), selected = definition(), configuration = config(selected);
+    const {portableStateBinding} = await import('../../src/indexer/projection/config.js');
+    const binding = portableStateBinding(configuration, selected, chainId);
+    await r.adapter.initialize(selected, binding, {blockNum: 0, blockId: zero});
+    let deployed = false, changedDuringQuery = false;
+    const gate = createPortableStateReadGate({chainId, configuration, adapter: r.adapter, source: {
+        open: async () => ({} as any), revalidate: async () => {}, assertDefinition: async () => {
+            if (!deployed || changedDuringQuery) throw new ProjectionContractError('projection.incomplete', 'ABI epoch unavailable');
+        },
+    }});
+    const service = createPortableStateQueryService({chainId, configuration, adapter: r.adapter, gate});
+    await expect(service.query(selected.id, {filter: [], limit: 1})).rejects.toMatchObject({statusCode: 503});
+    expect(r.calls).not.toContain('query');
+    deployed = true;
+    expect((await service.query(selected.id, {filter: [], limit: 1})).view.checkpoint.blockNum).toBe(2);
+    r.adapter.query = async view => {changedDuringQuery = true; return {view, rows: [{key: 'old', value: {owner: 'alice'}}]};};
+    await expect(service.query(selected.id, {filter: [], limit: 1})).rejects.toMatchObject({statusCode: 503, retryable: true});
+    expect(r.slots.get(selected.id).checkpoint.blockNum).toBe(2); // No row/checkpoint movement concealed the new ABI.
 });

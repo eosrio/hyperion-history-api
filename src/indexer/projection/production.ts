@@ -7,7 +7,7 @@ import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 
 /** Public reads attach to existing storage; only the projection worker may initialize it. */
 export function createPortableStateReadGate(options: {chainId: string; configuration: ResolvedPortableStateConfiguration;
-    adapter: ProjectionAdapter; source: Pick<PortableProjectionSource, 'open' | 'revalidate'>}): PortableStateReadGate {
+    adapter: ProjectionAdapter; source: Pick<PortableProjectionSource, 'open' | 'revalidate' | 'assertDefinition'>}): PortableStateReadGate {
     const issued = new WeakMap<PortableStateReadContext, ProtocolAbiProofView>();
     const same = (left: unknown, right: unknown) => protocolImmutableJson(left) === protocolImmutableJson(right);
     const unchanged = async (context: PortableStateReadContext) => {
@@ -16,6 +16,7 @@ export function createPortableStateReadGate(options: {chainId: string; configura
         const current = await options.adapter.open(context.view.binding);
         if (!same(current, context.view)) throw new ProjectionContractError('projection.stale-view', 'Portable state checkpoint changed');
         await options.source.revalidate(proof);
+        await options.source.assertDefinition(proof, context.definition);
     };
     return {
         async readReady(projectionId) {
@@ -26,6 +27,7 @@ export function createPortableStateReadGate(options: {chainId: string; configura
             if (!same(view.binding, binding) || view.checkpoint.blockNum < 1)
                 throw new ProjectionContractError('projection.incomplete', 'Projection has no covered initial source');
             const proof = await options.source.open(view.checkpoint);
+            await options.source.assertDefinition(proof, definition);
             const context = Object.freeze({definition, view: Object.freeze({binding: Object.freeze({...view.binding}),
                 checkpoint: Object.freeze({...view.checkpoint})})});
             issued.set(context, proof);
