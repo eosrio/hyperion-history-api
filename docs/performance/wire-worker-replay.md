@@ -52,6 +52,10 @@ captured source and does not query or mutate Spring. MongoDB indexing stays disa
 
 The report binds the input archives, installed package and Node/Rust component manifests,
 source and emitted worker files, executable identity, owned services and configuration.
+It retains the selected component manifests and every member they hash, and verifies
+the same installed bytes again after the run. Each block's retained source context,
+selection, observation link and observation must resolve to the original captured frame
+and independently derived facts. A truthy observation ID or digest alone is insufficient.
 It records original replay requests and ACKs, reader confirmations, ABI coordinator
 evidence, expected and actual indexed outputs, byte-preserved Elasticsearch bulk
 exchanges, queue drain, physical data-node copies and supervised worker shutdown.
@@ -60,6 +64,10 @@ Fixture observation overhead makes this a correctness run, not a throughput meas
 Public action-history admission stays disabled. The actual workers must discover the
 in-range ABI deployments through their original source observations and the real master
 coordinator. Unknown initial system-contract state cannot become a current-head ABI fallback.
+The configuration uses legacy sequence storage: existing sequence fields must remain
+exact decimal strings, and the gated `h45_sequences_v1` field must be absent. The source
+graph diagnostic can inspect retained records after shutdown; it does not establish a
+settled, active coordinator or qualify a completed worker run.
 
 ## Coverage boundaries
 
