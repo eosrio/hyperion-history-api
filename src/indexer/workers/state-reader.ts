@@ -31,7 +31,7 @@ export interface GetBlocksResultV0 {
     head: BlockInfo;
     last_irreversible: BlockInfo;
     this_block: BlockInfo;
-    prev_block: BlockInfo;
+    prev_block: BlockInfo | null;
     block: Bytes;
     traces: Bytes;
     deltas: Bytes;
@@ -337,7 +337,7 @@ export default class StateReader extends HyperionWorker {
         if (data.assignment_id) this.assignmentId = data.assignment_id;
 
         // make sure no data is requested from before the first indexed block on ship
-        if (parseInt(data.first_block) < this.shipInitStatus['trace_begin_block']) {
+        if (!this.sourceRangeAvailable(parseInt(data.first_block))) {
             this.failSourceRecovery(`Requested block ${data.first_block} precedes SHIP retention ${this.shipInitStatus['trace_begin_block']}`);
             return;
         }
@@ -615,7 +615,7 @@ export default class StateReader extends HyperionWorker {
             switch (process.env['worker_role']) {
                 // range reader setup
                 case 'reader': {
-                    if (process.env.first_block && beingBlock > process.env.first_block) {
+                    if (process.env.first_block && !this.sourceRangeAvailable(parseInt(process.env.first_block, 10))) {
                         this.failSourceRecovery(`Requested block ${process.env.first_block} precedes SHIP retention ${beingBlock}`);
                         return;
                     } else {
@@ -644,6 +644,17 @@ export default class StateReader extends HyperionWorker {
             this.ship.close(true);
             process.exit(1);
         }
+    }
+
+    /** Fetch eligibility only. Completeness still requires retained bytes and canonical provider verification. */
+    private sourceRangeAvailable(firstBlock: number): boolean {
+        const traceBegin = Number(this.shipInitStatus['trace_begin_block']);
+        const stateBegin = Number(this.shipInitStatus['chain_state_begin_block'] ?? 0);
+        if (firstBlock >= Math.max(traceBegin, stateBegin)) return true;
+        return firstBlock === 1 && traceBegin === 2 && stateBegin === 1
+            && Number(this.shipInitStatus['chain_state_end_block']) > 1
+            && this.usesExtensionProtocol && typeof this.protocol.verifyNativeGenesis === 'function'
+            && this.baseRequest.fetch_block === true && this.baseRequest.fetch_deltas === true;
     }
 
     private registerReversibleBlock(new_block_num: number, new_block_id: string, res: any) {

@@ -35,6 +35,7 @@ import {actionHistoryImmutableJson} from '../history/action-history-manifest.js'
 import type {ActionPublicationOwner} from '../history/action-confirmed-publication.js';
 import type {ActionSourceInventoryInput} from '../history/action-source-inventory.js';
 import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
+import {snapshotNativeGenesisFacts, zeroBlockId} from '../protocol/native-genesis.js';
 
 class ProtocolProofStorageError extends Error {
     constructor(cause: unknown) {super('Canonical ABI proof storage failed', {cause});}
@@ -541,12 +542,21 @@ export default class MainDSWorker extends HyperionWorker {
                 }
             }
             const provider = this.protocol;
-            if (typeof provider.observeBlockAbi !== 'function') throw new Error('Selected provider has no ABI observation hook');
-            const facts = provider.observeBlockAbi({traces: decoded.traces, accountRows}, position);
-            assertProtocolAbiObservationFacts(facts);
-            decoded.wireActionInputs = facts.actionInputs;
-            // Validate malformed provider output here so raw source survives as an incomplete record.
-            observation = {status: 'observed', facts};
+            if (position.blockNum === 1 && capture.tracesHex === null) {
+                if (!provider.verifyNativeGenesis || capture.schemaJson === null || !capture.blockHex || !capture.deltasHex) {
+                    throw new Error('Native genesis requires a selected verifier and original header/state sections');
+                }
+                const facts = snapshotNativeGenesisFacts(provider.verifyNativeGenesis({schemaJson: capture.schemaJson,
+                    block: Buffer.from(capture.blockHex, 'hex'), traces: null, deltas: Buffer.from(capture.deltasHex, 'hex')}, position));
+                observation = {status: 'native-genesis', facts};
+            } else {
+                if (typeof provider.observeBlockAbi !== 'function') throw new Error('Selected provider has no ABI observation hook');
+                const facts = provider.observeBlockAbi({traces: decoded.traces, accountRows}, position);
+                assertProtocolAbiObservationFacts(facts);
+                decoded.wireActionInputs = facts.actionInputs;
+                // Validate malformed provider output here so raw source survives as an incomplete record.
+                observation = {status: 'observed', facts};
+            }
         } catch (error: any) {
             if (error instanceof ProtocolSourceCodecError) codecFailure = error;
             observation = {status: 'incomplete', error: {code: 'protocol_abi_observation_incomplete',
@@ -634,11 +644,20 @@ export default class MainDSWorker extends HyperionWorker {
                     hLog('Block not found!');
                     return null;
                 }
+                let previousBlockId = res.prev_block?.block_id.toString().toLowerCase();
+                if (!previousBlockId) {
+                    // Genesis has no SHiP predecessor position. The decoded header still has one;
+                    // use it only for this derived document, never rewrite the retained source.
+                    if (block_num !== 1 || block.previous?.toString().toLowerCase() !== zeroBlockId) {
+                        throw new Error('Missing SHiP predecessor outside a zero-parent genesis header');
+                    }
+                    previousBlockId = zeroBlockId;
+                }
                 light_block = {
                     '@timestamp': block['timestamp'],
                     block_num: protocolNumber(res.this_block.block_num),
                     block_id: res.this_block.block_id.toString().toLowerCase(),
-                    prev_id: res.prev_block.block_id.toString().toLowerCase(),
+                    prev_id: previousBlockId,
                     producer: block.producer,
                     new_producers: block.new_producers,
                     schedule_version: block.schedule_version,

@@ -621,6 +621,7 @@ export class HyperionMaster {
                 ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, this.chain, replicas),
                 observations: new ProtocolAbiObservationStore(this.esClient, this.chain, replicas),
                 store: new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas),
+                verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
                 maxPendingBlocks: options?.max_pending_blocks, recoveryWindowBlocks: options?.recovery_window_blocks});
             await coordinator.start();
             this.protocolAbiCoordinator = coordinator;

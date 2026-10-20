@@ -46,6 +46,45 @@ source cursor can continue while ABI knowledge restarts UNKNOWN. A later complet
 earlier gap by implication. Storage transport, unsafe settings and incomplete durable receipts propagate
 to supervision; they cannot become a successful incomplete-source acknowledgment.
 
+## Native genesis
+
+[#240](https://github.com/eosrio/hyperion-history-api/issues/240) adds an optional synchronous
+`ProtocolProvider.verifyNativeGenesis` hook through the independently versioned SDK. The extension owns
+source-specific native initialization semantics. The host retains an explicitly discriminated
+`native-genesis` observation, then invokes its own selected, artifact-verified provider again from the
+original retained schema/header/state sections before reducing it. Journaled provider facts alone grant
+no coverage. Both executions must produce the same bounded portable facts.
+
+This path requires actual block 1, an absent original trace section and SHiP predecessor position, and a
+verified zero predecessor in the decoded block header. `source.previousBlockId:null`, capture bytes,
+capture kind and source-ID derivation remain unchanged. No empty trace vector, native action, deployment
+or receipt is fabricated. Ordinary observations still require traces and deltas. Native ABI states use
+block-end provenance and original physical row ordinals; present-empty ABI bodies remain stored barriers.
+
+The immutable canonical commit can additionally attest `nativeGenesis:{previousBlockId,applicationState:'empty'}`.
+`ProtocolAbiProofReader.nativeGenesisFrame` accepts only a view issued by that reader and revalidates
+current authority before producing the actual block-1 empty application frame. Empty action bindings
+cannot supply this fact. Projections still initialize at `{blockNum:0,blockId:zero64}` and process actual
+block 1 followed by every contiguous actual source block. Callers must revalidate authority after
+asynchronous work and before publication, as for other proof consumers. Production projection job/worker
+integration remains [#191](https://github.com/eosrio/hyperion-history-api/issues/191).
+
+Readers may fetch the single native genesis gap when state retention includes block 1, trace retention
+starts at 2, full blocks/deltas are requested, and the selected provider supports verification. This is
+fetch eligibility only. Missing native evidence or a later source gap still fails verification. The
+derived light-block document uses the decoded zero header parent for block 1; it does not mutate the
+original absent SHiP position. Any later missing predecessor is rejected.
+
+The real-source fixture retains the unchanged [Tools PR58](https://github.com/eosrio/hyperion-tools/pull/58)
+capture. Its production parser/coordinator/proof/runtime exercise uses in-memory broker/storage seams.
+The companion unchanged actual block-2–4 capture establishes contiguous forward processing with ordinary
+ABI observations and native-ABI action bindings. Each later header has zero transactions but one real
+trace action, so header transaction emptiness is deliberately insufficient evidence. Native Node 22.23.3
+and 24.19.0 pass this fixture through checkpoint 4; a skipped source block is refused.
+It does not establish MongoDB durability, a Rust worker, full worker/API or release qualification. The
+current public action-coverage gate stays disabled; native genesis action membership remains a separate
+incomplete result rather than a fabricated trace inventory.
+
 ## Forks, restart and recovery
 
 Fork recovery first durably changes generation and gates the pending branch, then locates a parent among
@@ -54,6 +93,11 @@ and last execution sequence before reducing the replacement branch. Former gener
 cannot publish using stale CAS tokens. A durable replacement replay boundary survives interruption during
 ancestor lookup. Physical disconnect invalidates pending continuations; writes awaiting receipts are
 replayed under the next source epoch rather than promoted into its resume point.
+
+If immutable certificate publication fails after a settled head CAS, the owner's next drain repairs it
+even with no new block. Read-only consumers remain unavailable until that certificate is stored and
+read back. An in-memory certificate ID avoids repeated idle writes after successful publication; a new
+owner, generation or head requires a new settled certificate.
 
 A new runtime owner preserves verified committed progress, clears old admissions and resumes from that
 frontier, or from a pending fork's replacement boundary. A new local Rabbit publication epoch still needs
