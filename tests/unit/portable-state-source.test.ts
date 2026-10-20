@@ -7,7 +7,10 @@ import {ProtocolAbiFrontierStore} from '../../src/indexer/protocol/abi-frontier-
 import {ProtocolAbiObservationStore} from '../../src/indexer/protocol/abi-observation-store.js';
 import {ProtocolSourceBindingStore} from '../../src/indexer/protocol/source-bindings.js';
 import {PortableProjectionSource} from '../../src/indexer/projection/source.js';
-import type {ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
+import type {ProjectionAdapter, ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
+import {resolvePortableStateConfiguration} from '../../src/indexer/projection/config.js';
+import {createPortableStateReadGate} from '../../src/indexer/projection/production.js';
+import {createPortableStateQueryService} from '../../src/indexer/projection/query-service.js';
 // @ts-ignore This shared transport fixture is deliberately not a database or production authority.
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
@@ -27,7 +30,7 @@ const definition: ProjectionDefinition = {schemaVersion: 1, id: 'future-items', 
     fields: [{name: 'owner', path: ['owner'], type: 'string'}], initialization: {kind: 'genesis'}};
 
 /** Actual retained bytes and production source/coordinator methods; broker/ES transport is a component fixture. */
-async function prepared(constructedEpochs: Record<number, {abiHex: string; present?: boolean; publish?: boolean}> = {}) {
+async function prepared(constructedEpochs: Record<number, {abiHex: string; present?: boolean; publish?: boolean}> = {}, initialThrough = 4) {
     const selected = await loadChainProtocol({provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId: capture.profileId});
     const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components!};
     const memory = frontierMemoryClient(), chain = 'portable-source-fixture';
@@ -38,68 +41,71 @@ async function prepared(constructedEpochs: Record<number, {abiHex: string; prese
     await coordinator.start();
     const contextId = (await bindings.prepareContext({schemaVersion: 1, chainId: capture.chainId, protocol: profile, schemaJson})).id;
     const {generation} = await coordinator.openSource(contextId, 'fixture-source');
-    const session = selected.provider.createShipSession(JSON.parse(schemaJson));
     const schema = JSON.parse(schemaJson);
-    const nativeDeltas: any = session.decodeDeltas(Buffer.from((session.decodeResult(frames[0]) as any)[1].deltas, 'hex'));
-    const nativeAbiHex = (session.decodeRow('account', Buffer.from(nativeDeltas[0][1].rows[0].data, 'hex')) as any)[1].abi;
-    const nativeAbi = selected.provider.contractCodec.decodeAbi(Buffer.from(nativeAbiHex, 'hex'));
     const positions: any[] = [], observed: string[] = [];
-    try {
-        for (const frame of frames) {
-            const decoded: any = session.decodeResult(frame), result: any = decoded[1];
-            const source = {chainId: capture.chainId, blockNum: Number(result.this_block.block_num), blockId: result.this_block.block_id,
-                previousBlockId: result.prev_block?.block_id ?? null};
-            const epoch = constructedEpochs[source.blockNum];
-            if (epoch) {
-                // Explicit constructed journal cases. Raw account/action sections are encoded with the production
-                // codec and facts are extracted by the actual observer; these are not additional captured blocks.
-                const account = ['account_v0', {name: 'target', creation_date: '2025-01-01T00:00:00.000', abi: epoch.abiHex}];
-                const raw = selected.provider.contractCodec.encodeValue(schema, 'account', account);
-                result.deltas = Buffer.from(selected.provider.contractCodec.encodeValue(schema, 'table_delta[]',
-                    [['table_delta_v0', {name: 'account', rows: [{present: epoch.present === false ? 0 : 1, data: Buffer.from(raw).toString('hex')}]}]])).toString('hex');
-                if (epoch.publish) {
-                    const traces: any = session.decodeTraces(Buffer.from(result.traces, 'hex'));
-                    const action = traces[0][1].action_traces[0][1];
-                    action.act.name = 'setabi'; action.act.data = Buffer.from(selected.provider.contractCodec.encodeValue(nativeAbi,
-                        'setabi', {account: 'target', abi: epoch.abiHex})).toString('hex');
-                    result.traces = Buffer.from(selected.provider.contractCodec.encodeValue(schema, 'transaction_trace[]', traces)).toString('hex');
-                }
-            }
-            const sourceFrame = epoch ? selected.provider.contractCodec.encodeValue(schema, 'result', decoded) : frame;
-            const sections = {kind: 'unattested-ship-result-sections-v1' as const, schemaJson,
-                blockHex: result.block, tracesHex: result.traces, deltasHex: result.deltas};
-            const {protocolAbiCaptureDigest} = await import('../../src/indexer/protocol/abi-observation-store.js');
-            const captureSha256 = protocolAbiCaptureDigest(source, sections);
-            const selectionId = (await bindings.prepareSelection({schemaVersion: 1, contextId, readerSessionId: 'fixture-source',
-                readerRole: 'live', assignmentId: null, source, frameSha256: hash(sourceFrame), captureSha256,
-                head: {blockNum: Number(result.head.block_num), blockId: result.head.block_id},
-                irreversible: {blockNum: Number(result.last_irreversible.block_num), blockId: result.last_irreversible.block_id}})).id;
-            let observation: any;
-            if (source.blockNum === 1) observation = {status: 'native-genesis', facts: selected.provider.verifyNativeGenesis!({schemaJson,
-                block: Buffer.from(result.block, 'hex'), traces: null, deltas: Buffer.from(result.deltas, 'hex')}, source)};
-            else {
-                const deltas: any = session.decodeDeltas(Buffer.from(result.deltas, 'hex')), rows: any[] = [];
-                let ordinal = 0;
-                for (const [, delta] of deltas) for (const row of delta.rows) {
-                    if (delta.name === 'account') {
-                        const raw = Buffer.from(row.data, 'hex');
-                        rows.push({ordinal, present: row.present === 1, raw, value: session.decodeRow('account', raw)});
+    async function advance(through: number) {
+        const session = selected.provider.createShipSession(JSON.parse(schemaJson));
+        try {
+            const nativeDeltas: any = session.decodeDeltas(Buffer.from((session.decodeResult(frames[0]) as any)[1].deltas, 'hex'));
+            const nativeAbiHex = (session.decodeRow('account', Buffer.from(nativeDeltas[0][1].rows[0].data, 'hex')) as any)[1].abi;
+            const nativeAbi = selected.provider.contractCodec.decodeAbi(Buffer.from(nativeAbiHex, 'hex'));
+            for (const frame of frames.slice(positions.length, through)) {
+                const decoded: any = session.decodeResult(frame), result: any = decoded[1];
+                const source = {chainId: capture.chainId, blockNum: Number(result.this_block.block_num), blockId: result.this_block.block_id,
+                    previousBlockId: result.prev_block?.block_id ?? null};
+                const epoch = constructedEpochs[source.blockNum];
+                if (epoch) {
+                    // Explicit constructed journal cases. Raw account/action sections are encoded with the production
+                    // codec and facts are extracted by the actual observer; these are not additional captured blocks.
+                    const account = ['account_v0', {name: 'target', creation_date: '2025-01-01T00:00:00.000', abi: epoch.abiHex}];
+                    const raw = selected.provider.contractCodec.encodeValue(schema, 'account', account);
+                    result.deltas = Buffer.from(selected.provider.contractCodec.encodeValue(schema, 'table_delta[]',
+                        [['table_delta_v0', {name: 'account', rows: [{present: epoch.present === false ? 0 : 1, data: Buffer.from(raw).toString('hex')}]}]])).toString('hex');
+                    if (epoch.publish) {
+                        const traces: any = session.decodeTraces(Buffer.from(result.traces, 'hex'));
+                        const action = traces[0][1].action_traces[0][1];
+                        action.act.name = 'setabi'; action.act.data = Buffer.from(selected.provider.contractCodec.encodeValue(nativeAbi,
+                            'setabi', {account: 'target', abi: epoch.abiHex})).toString('hex');
+                        result.traces = Buffer.from(selected.provider.contractCodec.encodeValue(schema, 'transaction_trace[]', traces)).toString('hex');
                     }
-                    ordinal++;
                 }
-                observation = {status: 'observed', facts: selected.provider.observeBlockAbi!({
-                    traces: session.decodeTraces(Buffer.from(result.traces, 'hex')), accountRows: rows}, source)};
+                const sourceFrame = epoch ? selected.provider.contractCodec.encodeValue(schema, 'result', decoded) : frame;
+                const sections = {kind: 'unattested-ship-result-sections-v1' as const, schemaJson,
+                    blockHex: result.block, tracesHex: result.traces, deltasHex: result.deltas};
+                const {protocolAbiCaptureDigest} = await import('../../src/indexer/protocol/abi-observation-store.js');
+                const captureSha256 = protocolAbiCaptureDigest(source, sections);
+                const selectionId = (await bindings.prepareSelection({schemaVersion: 1, contextId, readerSessionId: 'fixture-source',
+                    readerRole: 'live', assignmentId: null, source, frameSha256: hash(sourceFrame), captureSha256,
+                    head: {blockNum: Number(result.head.block_num), blockId: result.head.block_id},
+                    irreversible: {blockNum: Number(result.last_irreversible.block_num), blockId: result.last_irreversible.block_id}})).id;
+                let observation: any;
+                if (source.blockNum === 1) observation = {status: 'native-genesis', facts: selected.provider.verifyNativeGenesis!({schemaJson,
+                    block: Buffer.from(result.block, 'hex'), traces: null, deltas: Buffer.from(result.deltas, 'hex')}, source)};
+                else {
+                    const deltas: any = session.decodeDeltas(Buffer.from(result.deltas, 'hex')), rows: any[] = [];
+                    let ordinal = 0;
+                    for (const [, delta] of deltas) for (const row of delta.rows) {
+                        if (delta.name === 'account') {
+                            const raw = Buffer.from(row.data, 'hex');
+                            rows.push({ordinal, present: row.present === 1, raw, value: session.decodeRow('account', raw)});
+                        }
+                        ordinal++;
+                    }
+                    observation = {status: 'observed', facts: selected.provider.observeBlockAbi!({
+                        traces: session.decodeTraces(Buffer.from(result.traces, 'hex')), accountRows: rows}, source)};
+                }
+                const receipt = await observations.prepare({schemaVersion: 1, protocol: profile,
+                    source: {...source, inputSha256: captureSha256}, capture: sections, observation});
+                await bindings.prepareObservationLink({schemaVersion: 1, selectionId, observationId: receipt.id, observationDigest: receipt.digest});
+                await coordinator.admit(selectionId, generation); await coordinator.drain();
+                positions.push(source); observed.push(receipt.id);
             }
-            const receipt = await observations.prepare({schemaVersion: 1, protocol: profile,
-                source: {...source, inputSha256: captureSha256}, capture: sections, observation});
-            await bindings.prepareObservationLink({schemaVersion: 1, selectionId, observationId: receipt.id, observationDigest: receipt.digest});
-            await coordinator.admit(selectionId, generation); await coordinator.drain();
-            positions.push(source); observed.push(receipt.id);
-        }
-    } finally {session.close?.();}
+        } finally {session.close?.();}
+    }
+    await advance(initialThrough);
     const options = {client: memory.client, chain, chainId: capture.chainId, profile, provider: selected.provider};
     memory.calls.length = 0;
-    return {memory, options, coordinator, positions, observed, source: new PortableProjectionSource(options)};
+    return {memory, options, coordinator, positions, observed, advance, source: new PortableProjectionSource(options)};
 }
 
 const observations = JSON.parse(readFileSync(new URL('../../node_modules/@eosrio/hyperion-wire-plugin/fixtures/abi-observations/vectors.json', import.meta.url), 'utf8'));
@@ -192,4 +198,45 @@ test('ordinary no-op account rows preserve the active deployment and strict insp
     expect(await reader.inspectFinalState(proof, 'target', {atBlockNum: 1})).toBeNull();
     await expect(reader.finalState(proof, 'sysio.null')).rejects.toMatchObject({code: 'abi_state_unavailable'});
     expect((await reader.inspectFinalState(proof, 'sysio.null'))?.abiHex).toBe('');
+});
+
+for (const [name, next] of [['replacement', {abiHex: abiB, publish: true}], ['clear', {abiHex: '', publish: true}]] as const) {
+    test(`same-generation ABI ${name} during final proof revalidation rejects the prior checked head`, async () => {
+        const p = await prepared({2: {abiHex: abiA, publish: true}, 3: next}, 2), selected = pinned(p, 2, abiA);
+        const active = await p.source.frame(2, selected), revalidate = p.source.revalidate.bind(p.source);
+        let advanced = false;
+        p.source.revalidate = async proof => {
+            if (!advanced) {advanced = true; await p.advance(4);}
+            await revalidate(proof); // The old proof legitimately remains canonical under this newer same-generation head.
+        };
+        await expect(p.source.assertDefinition(active.proof, selected)).rejects.toMatchObject({code: 'projection.stale-view'});
+        expect(advanced).toBe(true);
+        expect(p.positions).toHaveLength(4);
+    });
+}
+
+test('actual public query gate permits a stable head and refuses a late ABI clear before publication', async () => {
+    const p = await prepared({2: {abiHex: abiA, publish: true}, 3: {abiHex: '', publish: true}}, 2), selected = pinned(p, 2, abiA);
+    const configuration = resolvePortableStateConfiguration({backend: {kind: 'mongodb', id: 'fixture-mongo', database: 'fixture_state'},
+        projections: [selected]}, capture.chainId)!;
+    let arm = false, finalRevalidations = 0, queries = 0;
+    const adapter = {
+        async open(binding: any) {return {binding, checkpoint: {blockNum: 2, blockId: p.positions[1].blockId}};},
+        async query(view: any) {queries++; arm = queries === 2; return {view, rows: [{key: 'old', value: {owner: 'alice'}}]};},
+    } as unknown as ProjectionAdapter;
+    const revalidate = p.source.revalidate.bind(p.source);
+    p.source.revalidate = async proof => {
+        // The final real gate first revalidates the source, then calls assertDefinition. Advance only inside
+        // assertDefinition's own final revalidation, after its checked ABI head has been selected.
+        if (arm && ++finalRevalidations === 2) await p.advance(4);
+        await revalidate(proof);
+    };
+    const gate = createPortableStateReadGate({chainId: capture.chainId, configuration, adapter, source: p.source});
+    const service = createPortableStateQueryService({chainId: capture.chainId, configuration, adapter, gate});
+    expect((await service.query(selected.id, {filter: [], limit: 1})).rows).toEqual([{key: 'old', value: {owner: 'alice'}}]);
+    await expect(service.query(selected.id, {filter: [], limit: 1})).rejects.toMatchObject({statusCode: 503,
+        code: 'projection.stale-view', retryable: true});
+    expect(finalRevalidations).toBe(2);
+    expect(queries).toBe(2);
+    expect(p.positions).toHaveLength(4);
 });

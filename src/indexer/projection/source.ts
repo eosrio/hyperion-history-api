@@ -97,11 +97,12 @@ export class PortableProjectionSource {
         const control = await this.control();
         const current = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
         await this.definitionState(current, definition, false);
+        await this.revalidate(proof);
+        // Revalidation accepts newer canonical ancestry. Only the final exact head check can settle this ABI decision.
         const settled = await this.control();
         if (settled.ownerId !== control.ownerId || settled.generation !== control.generation
             || settled.head.commitId !== control.head.commitId)
             throw new ProjectionContractError('projection.stale-view', 'Canonical ABI head changed during definition validation');
-        await this.revalidate(proof);
     }
     /** Bounded certified ancestry; missing old input never becomes an empty frame. */
     async frame(blockNum: number, definition: ProjectionDefinition): Promise<PortableProjectionFrame> {
