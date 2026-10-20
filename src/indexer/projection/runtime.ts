@@ -123,15 +123,21 @@ export class DeclarativeProjectionRuntime {
         let frameError: ProjectionContractError | undefined;
         let bytes = 1;
         try {
-            if (!Array.isArray(frame.changes) || frame.changes.length > 10000) throw new Error('Invalid change count');
-            changes = structuredClone(frame.changes);
+            if (!Array.isArray(frame.changes)) throw new Error('Invalid source envelope');
+            const selected: ProjectionTableChange[] = [];
+            for (const change of frame.changes) {
+                if (change.contract !== this.definition.source.contract || change.table !== this.definition.source.table) continue;
+                selected.push(change);
+                if (selected.length > 10000) throw new Error('Invalid projection change count');
+            }
+            changes = structuredClone(selected);
             // Retain original values for validation: estimating bytes must not convert NaN or bigint into valid data.
             bytes = Buffer.byteLength(JSON.stringify(changes, (_key, value) => typeof value === 'bigint' ? String(value) : value));
             if (bytes > PROJECTION_LIMITS.batchBytes) throw new Error('Source frame exceeds the supported byte budget');
         } catch {
             changes = [];
             bytes = 1;
-            frameError = new ProjectionContractError('projection.invalid-contract', 'Projection source changes must be bounded cloneable JSON');
+            frameError = new ProjectionContractError('projection.invalid-contract', 'Selected projection changes must be bounded cloneable JSON');
         }
         if (this.pendingFrames >= this.maximumPendingFrames || bytes > this.maximumPendingBytes - this.pendingBytes) {
             return Promise.reject(new ProjectionContractError('projection.apply-unavailable', 'Projection pending-work budget is full; retry this frame'));
@@ -144,7 +150,6 @@ export class DeclarativeProjectionRuntime {
                 if (frameError) throw frameError;
                 const mutations: ProjectionMutation[] = [];
                 for (const change of changes) {
-                    if (change.contract !== this.definition.source.contract || change.table !== this.definition.source.table) continue;
                     if (change.abiDeployment !== this.binding.abiDeployment || change.abiSha256 !== this.binding.abiSha256) {
                         throw new ProjectionContractError('projection.invalid-contract', 'Projection source ABI does not match its fixed deployment');
                     }

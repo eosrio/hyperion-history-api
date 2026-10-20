@@ -22,7 +22,8 @@ function fakeDocker() {
         if (action === 'ls' && kind === 'volume') return [...map.keys()].join('\n');
         if (action === 'create') {
             const key = id();
-            if (kind === 'network') map.set(key, {Id: key, Name: args.at(-1), Labels: labels(args), Containers: {}});
+            if (kind === 'network') map.set(key, {Id: key, Name: args.at(-1), Labels: labels(args),
+                Internal: args.includes('--internal'), Containers: {}});
             else if (kind === 'volume') {
                 map.set(key, {Name: key, Labels: labels(args)});
                 if (loseVolumeResponse) throw Object.assign(new Error('Lost create response'), {status: 124});
@@ -31,7 +32,7 @@ function fakeDocker() {
                 const mounted = args.indexOf('--mount');
                 const volume = mounted < 0 ? undefined : args[mounted + 1].match(/src=([^,]+)/)?.[1];
                 map.set(key, {Id: key, Name: `/${name}`, Config: {Image: MONGODB_IMAGE, Labels: labels(args)},
-                    NetworkSettings: {Ports: {'27017/tcp': [{HostIp: '127.0.0.1', HostPort: '33001'}]}},
+                    HostConfig: {NetworkMode: args[args.indexOf('--network') + 1]}, NetworkSettings: {Ports: {}},
                     Mounts: volume ? [{Destination: '/data/db', Type: 'volume', Name: volume}] : [],
                     State: {StartedAt: 'first'}});
                 if (loseContainerResponse) throw Object.assign(new Error('Lost container create response'), {status: 124});
@@ -40,6 +41,10 @@ function fakeDocker() {
         }
         if (action === 'start' && kind === 'container') {
             if (failStart) throw new Error('Injected start failure');
+            const item = map.get(target);
+            const network = [...objects.network.values()].find(value => value.Name === item.HostConfig.NetworkMode);
+            // Actual CI: internal bridges kept the container running but omitted published host ports.
+            if (!network.Internal) item.NetworkSettings.Ports['27017/tcp'] = [{HostIp: '127.0.0.1', HostPort: '33001'}];
             return target;
         }
         if (action === 'rm') {

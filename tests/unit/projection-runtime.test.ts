@@ -81,6 +81,26 @@ test('the bounded per-projection FIFO snapshots queued values before the first a
     await runtime.process(frame(3));
 });
 
+test('unrelated contract values and change counts cannot consume a projection budget or mark it incomplete', async () => {
+    const selected = frame(1);
+    const other = {...selected.changes[0], contract: 'unrelated'};
+    const oversized = 'x'.repeat(4 * 1024 * 1024 + 1);
+    const cycle: Record<string, unknown> = {}; cycle.self = cycle;
+    for (const unrelated of [
+        [{...other, value: oversized}],
+        Array.from({length: 10001}, () => other),
+        [{...other, value: cycle}],
+        [{...selected.changes[0], table: 'unrelated', value: oversized}],
+    ]) {
+        const fake = reference(), runtime = await create(fake.adapter);
+        expect((await runtime.process({...selected, changes: [...unrelated, ...selected.changes]})).status).toBe('applied');
+        expect(fake.failures).toHaveLength(0);
+        expect(fake.requests[0].mutations).toEqual([
+            {kind: 'put', key: '["items","0x00:opaque"]', value: {owner: 'alice', quantity: 1}},
+        ]);
+    }
+});
+
 test('contract/ABI errors durably mark the affected source before any mutation application', async () => {
     const fake = reference(), runtime = await create(fake.adapter);
     const invalid = frame(1); (invalid.changes[0].value as any).stats.quantity = Number.MAX_SAFE_INTEGER + 1;

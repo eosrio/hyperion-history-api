@@ -104,7 +104,8 @@ export class OwnedMongoFixture {
     prepare() {
         // Reserve the generated network name before creation so failed startup can still clean it.
         this.network.reserved = true;
-        const id = this.command(['network', 'create', '--internal', ...this.labels('network'), this.network.name]);
+        // This bridge must publish a loopback endpoint for the native host-side client.
+        const id = this.command(['network', 'create', '--driver', 'bridge', ...this.labels('network'), this.network.name]);
         assert.match(id, /^[0-9a-f]{64}$/);
         this.network.id = id;
         this.ownedNetwork();
