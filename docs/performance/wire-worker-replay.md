@@ -61,6 +61,11 @@ evidence, expected and actual indexed outputs, byte-preserved Elasticsearch bulk
 exchanges, queue drain, physical data-node copies and supervised worker shutdown.
 Fixture observation overhead makes this a correctness run, not a throughput measurement.
 
+The [2026-10-20 evidence](evidence/wire-worker-20261020/README.md) records successful
+bare-metal Linux Node 22/24 runs at the exact tested code commit, together with the
+separate failed Windows pilot and its follow-up. It preserves physical-read and bulk
+acknowledgment limits rather than treating them as equivalent durability evidence.
+
 Public action-history admission stays disabled. The actual workers must discover the
 in-range ABI deployments through their original source observations and the real master
 coordinator. Unknown initial system-contract state cannot become a current-head ABI fallback.

@@ -71,6 +71,9 @@ jobs:
       - name: Verify action source admission evidence checksums
         working-directory: docs/performance/evidence/action-source-admission-20261020
         run: sha256sum -c SHA256SUMS
+      - name: Verify captured Wire worker evidence checksums
+        working-directory: docs/performance/evidence/wire-worker-20261020
+        run: sha256sum -c SHA256SUMS
       - name: Verify protocol adapter observation checksum
         working-directory: docs/performance/evidence/protocol-adapter-20261019
         run: sha256sum -c SHA256SUMS
