@@ -68,7 +68,8 @@ function makeClient(uri) {
         trace.push(item); outstanding.set(event.requestId, item);
     });
     result.on('commandSucceeded', event => {
-        if (outstanding.has(event.requestId)) trace.push({command: event.commandName, requestId: event.requestId, phase: 'succeeded'});
+        if (outstanding.has(event.requestId)) trace.push({command: event.commandName, requestId: event.requestId, phase: 'succeeded',
+            writeErrorCodes: Array.isArray(event.reply?.writeErrors) ? event.reply.writeErrors.map(error => error.code) : []});
     });
     result.on('commandFailed', event => {
         if (outstanding.has(event.requestId)) trace.push({command: event.commandName, requestId: event.requestId,
@@ -111,6 +112,12 @@ try {
     const runtimeFor = (adapter, selectedDefinition = definition, selectedBinding = binding) =>
         DeclarativeProjectionRuntime.create({adapter, definition: selectedDefinition, binding: selectedBinding, genesis});
 
+    report.dockerKernel = fixture.command(['info', '--format', '{{.KernelVersion}}']);
+    const kernel = /^(\d+)\.(\d+)\.(\d+)/.exec(report.dockerKernel);
+    if (kernel && ((Number(kernel[1]) === 6 && Number(kernel[2]) >= 19) ||
+        (Number(kernel[1]) === 7 && Number(kernel[2]) === 0 && Number(kernel[3]) < 14))) {
+        throw new Error('MongoDB 8.0.34 refuses kernels 6.19 through 7.0.13; select a supported fixture host: https://www.mongodb.com/docs/v8.0/release-notes/8.0/');
+    }
     fixture.prepare();
     const standaloneUri = fixture.start('standalone');
     let standalone = await ready(standaloneUri);
@@ -196,8 +203,11 @@ try {
     try { await errorCode(runtime.process(thirdFrame), 'projection.apply-unavailable'); }
     finally { await client.db('admin').command({configureFailPoint: 'failCommand', mode: 'off'}); }
     const failureTrace = trace.slice(beforeFailure);
+    report.writeFailureTrace = failureTrace;
     const preparedAt = failureTrace.findIndex(event => event.command === 'findAndModify' && event.phase === 'succeeded');
-    const failedAt = failureTrace.findIndex(event => event.command === 'update' && event.phase === 'failed' && event.code === 121);
+    // MongoDB can return an acknowledged command containing a failed write; the driver then rejects the operation.
+    const failedAt = failureTrace.findIndex(event => event.command === 'update' &&
+        ((event.phase === 'failed' && event.code === 121) || event.writeErrorCodes?.includes(121)));
     assert.ok(preparedAt >= 0 && failedAt > preparedAt, 'Effect failure must follow successful durable intent');
     const pending = await client.db(databaseName).collection(`${prefix}_metadata`).findOne({'binding.projectionId': definition.id});
     assert.equal(pending.checkpoint.blockNum, 2); assert.equal(pending.pending.block.blockNum, 3);
@@ -289,6 +299,7 @@ try {
 } catch (error) {
     report.status = 'failed';
     report.error = {name: error.name, message: error.message, stack: error.stack};
+    report.recentCommands = trace.slice(-128);
     report.fixtureFailure = fixture.diagnostics();
     process.exitCode = 1;
 } finally {

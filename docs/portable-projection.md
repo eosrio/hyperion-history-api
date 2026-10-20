@@ -72,6 +72,12 @@ CI runs this real fixture separately on Node.js 22 and 24. Cleanup unit tests an
 in-memory runtime tests do not replace the actual MongoDB result. See the
 [adapter package](../packages/backend-mongodb/README.md) for its API and limits.
 
+The runner records the Docker host kernel and refuses the known incompatible
+6.19 through 7.0.13 range before startup, following the
+[MongoDB 8.0 release notes](https://www.mongodb.com/docs/v8.0/release-notes/8.0/).
+Container images share that kernel. The CI image label alone does not establish
+compatibility; unsupported hosts fail rather than skipping the database checks.
+
 ## Remaining release work
 
 Existing-worker/RabbitMQ integration, operator configuration and HTTP serving remain
