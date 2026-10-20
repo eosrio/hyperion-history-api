@@ -1687,7 +1687,10 @@ export default class MainDSWorker extends HyperionWorker {
             return;
         }
 
-        const operatorAuthorized = contractState.enabled === true && contractState.contracts?.[jsonRow.code]?.[jsonRow.table];
+        const contracts = contractState.contracts;
+        const tables = contracts && Object.hasOwn(contracts, jsonRow.code) ? contracts[jsonRow.code] : undefined;
+        const operatorAuthorized = contractState.enabled === true && tables &&
+            Object.hasOwn(tables, jsonRow.table) && tables[jsonRow.table];
         const pluginAuthorized = this.allowedDynamicContracts.has(jsonRow.code);
         if (!operatorAuthorized && !pluginAuthorized) {
             return;

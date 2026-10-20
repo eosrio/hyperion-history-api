@@ -52,22 +52,28 @@ try {
         ['unselected-table', {enabled: true, contracts: {contracta: {other: {}}}}, []],
         ['false-table', {enabled: true, contracts: {contracta: {records: false}}}, []],
         ['wrong-plugin-account', {enabled: false, contracts}, ['other']],
+        ['inherited-contract', {enabled: true, contracts: Object.create({contracta: {records: {}}})}, []],
+        ['inherited-table', {enabled: true, contracts: {contracta: Object.create({records: {}})}}, []],
+        ['unselected-constructor-table', {enabled: true, contracts}, [], {table: 'constructor'}],
+        ['unselected-constructor-contract', {enabled: true, contracts: {}}, [], {code: 'constructor', table: 'prototype'}],
     ];
-    for (const [name, state, allowed] of denied) {
+    for (const [name, state, allowed, overrides = {}] of denied) {
         const {worker, sent} = fixture(state, allowed);
         // A denied record must return before it reads/serializes the payload or rotates queues.
-        const input = {...row, get data() {assert.fail(name + ' accessed denied data');}};
+        const input = {...row, ...overrides, get data() {assert.fail(name + ' accessed denied data');}};
         worker.pushToDynamicTableQueue(input); await new Promise(resolve => setImmediate(resolve));
         assert.equal(sent.length, 0, name + ' published'); assert.equal(worker.dyn_emit_idx, 1, name + ' advanced queue');
     }
     checks.push('denied-opt-in-selection-and-zero-effects');
-    for (const [name, state, allowed] of [
+    for (const [name, state, allowed, overrides = {}] of [
         ['enabled-operator', {enabled: true, contracts}, []],
+        ['explicit-constructor-table', {enabled: true, contracts: {contracta: {constructor: {}}}}, [], {table: 'constructor'}],
+        ['explicit-constructor-contract', {enabled: true, contracts: {constructor: {prototype: {}}}}, [], {code: 'constructor', table: 'prototype'}],
         ['disabled-plugin', {enabled: false, contracts: {}}, ['contracta']],
         ['omitted-enabled-plugin', {contracts: {}}, ['contracta']],
         ['plugin-without-operator-contracts', {enabled: false}, ['contracta']],
     ]) {
-        const {worker, sent} = fixture(state, allowed); worker.pushToDynamicTableQueue(structuredClone(row));
+        const {worker, sent} = fixture(state, allowed); worker.pushToDynamicTableQueue({...structuredClone(row), ...overrides});
         await new Promise(resolve => setImmediate(resolve)); assert.equal(sent.length, 1, name + ' did not publish'); assert.equal(worker.dyn_emit_idx, 2);
     }
     checks.push('explicit-plugin-dependency-authorization');
