@@ -1,0 +1,2 @@
+# Immutable original capture bytes are hashed on every platform.
+*.json -text
