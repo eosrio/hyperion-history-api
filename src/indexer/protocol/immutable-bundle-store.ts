@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
+import {boundedCanonicalJson} from '../helpers/bounded-json.js';
 interface StoredDocument {
     kind: 'chunk' | 'manifest';
     bundle_id: string;
@@ -17,48 +18,14 @@ const settingsValue = (entry: any, name: string) => entry?.settings?.[`index.${n
 
 /** Bound JSON before assembly; descriptors avoid invoking accessors or toJSON. */
 export function protocolImmutableJson(input: unknown, maximumBytes = 128 * 1024 * 1024): string {
-    let bytes = 0, nodes = 0;
-    const ancestors = new Set<object>();
-    const take = (size: number) => {if ((bytes += size) > maximumBytes) throw new Error('ABI observation exceeds bounded JSON byte budget');};
-    const string = (value: string) => {
-        if (!value.isWellFormed()) throw new Error('ABI observation contains malformed UTF-16');
-        take(2);
-        for (let index = 0; index < value.length; index++) {
-            const code = value.charCodeAt(index);
-            if (code < 32) take([8, 9, 10, 12, 13].includes(code) ? 2 : 6);
-            else if (code === 34 || code === 92) take(2);
-            else if (code < 128) take(1);
-            else if (code < 2048) take(2);
-            else if (code >= 0xd800 && code <= 0xdbff) {take(4); index++;}
-            else take(3);
-        }
-        return JSON.stringify(value);
-    };
-    const visit = (value: unknown, depth: number): string => {
-        if (++nodes > 1_000_000 || depth > 64) throw new Error('ABI observation exceeds bounded JSON node/depth budget');
-        if (value === null || typeof value === 'boolean' || (typeof value === 'number' && Number.isSafeInteger(value))) {
-            const result = JSON.stringify(value); take(result.length); return result;
-        }
-        if (typeof value === 'string') return string(value);
-        if (!value || typeof value !== 'object' || ancestors.has(value)) throw new Error('ABI observation is not portable JSON');
-        const array = Array.isArray(value), prototype = Object.getPrototypeOf(value);
-        if ((array && prototype !== Array.prototype) || (!array && prototype !== Object.prototype && prototype !== null)
-            || Object.getOwnPropertySymbols(value).length) throw new Error('ABI observation contains a native value');
-        const descriptors = Object.getOwnPropertyDescriptors(value);
-        const entries = Object.entries(descriptors).filter(([key]) => !array || key !== 'length');
-        if (entries.some(([, descriptor]) => !descriptor.enumerable || !Object.hasOwn(descriptor, 'value'))
-            || (array && (entries.length !== descriptors.length.value
-                || entries.some(([key]) => !/^(0|[1-9][0-9]*)$/.test(key))))) throw new Error('ABI observation contains accessors or sparse data');
-        ancestors.add(value);take(2 + Math.max(0, entries.length - 1));
-        try {
-            if (array) return '[' + entries.map(([, descriptor]) => visit(descriptor.value, depth + 1)).join(',') + ']';
-            return '{' + entries.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
-                .map(([key, descriptor]) => {const encodedKey = string(key); take(1); return encodedKey + ':' + visit(descriptor.value, depth + 1);}).join(',') + '}';
-        } finally {ancestors.delete(value);}
-    };
-    return visit(input, 0);
+    return boundedCanonicalJson(input, {maximumBytes, numberPolicy: 'safe-integer', errorPrefix: 'ABI observation'});
 }
 const canonical = protocolImmutableJson;
+
+async function checkedIo<T>(signal: AbortSignal | undefined, operation: () => Promise<T>): Promise<T> {
+    signal?.throwIfAborted();
+    try {return await operation();} finally {signal?.throwIfAborted();}
+}
 
 export type ImmutableProtocolBundleReadCode='missing'|'incomplete'|'invalid';
 export class ImmutableProtocolBundleReadError extends Error {
@@ -93,14 +60,14 @@ export class ImmutableProtocolBundleStore {
     }
     private async initialize(signal?:AbortSignal) {
         signal?.throwIfAborted();
-        if (!this.initialized) this.initialized = (this.options.readOnly?Promise.resolve():this.provision())
+        if (!this.initialized) this.initialized = (this.options.readOnly?Promise.resolve():this.provision(signal))
             .catch(error => {this.initialized = undefined; throw error;});
         await this.initialized;
         signal?.throwIfAborted();
         await this.validateMapping(signal);
         // Do not retain a stale startup assumption if an operator changes this projection's durability.
         signal?.throwIfAborted();
-        const settings = await this.client.indices.getSettings({index: this.index, flat_settings: true, include_defaults: true}, {signal});
+        const settings = await checkedIo(signal, () => this.client.indices.getSettings({index: this.index, flat_settings: true, include_defaults: true}, {signal}));
         signal?.throwIfAborted();
         const entry = settings[this.index];
         const sourceMode = settingsValue(entry, 'mapping.source.mode');
@@ -118,25 +85,26 @@ export class ImmutableProtocolBundleStore {
         }
     }
 
-    private async provision() {
+    private async provision(signal?: AbortSignal) {
         try {
-            const created = await this.client.indices.create({index: this.index,
+            const created = await checkedIo(signal, () => this.client.indices.create({index: this.index,
                 settings: {number_of_shards: 1, number_of_replicas: this.replicas,
                     'translog.durability': 'request', auto_expand_replicas: 'false', default_pipeline: '_none', final_pipeline: '_none'},
                 mappings: {_meta: {hyperion_kind: this.kind, schema_version: 1}, dynamic: 'strict',
                     properties: {kind: {type: 'keyword'}, bundle_id: {type: 'keyword'}, digest: {type: 'keyword'},
-                        byte_length: {type: 'long'}, chunk_index: {type: 'integer'}, chunk_ids: {type: 'keyword'}, payload: {type: 'binary'}}}});
+                        byte_length: {type: 'long'}, chunk_index: {type: 'integer'}, chunk_ids: {type: 'keyword'}, payload: {type: 'binary'}}}}, {signal}));
             if (created.acknowledged !== true || created.shards_acknowledged !== true || created.index !== this.index) {
                 throw new Error('ABI observation index creation was not acknowledged');
             }
         } catch (error: any) {
+            signal?.throwIfAborted();
             if (error?.meta?.statusCode !== 400 || error?.meta?.body?.error?.type !== 'resource_already_exists_exception') throw error;
         }
     }
 
     private async validateMapping(signal?:AbortSignal) {
         signal?.throwIfAborted();
-        const mappings = await this.client.indices.getMapping({index: this.index}, {signal});
+        const mappings = await checkedIo(signal, () => this.client.indices.getMapping({index: this.index}, {signal}));
         signal?.throwIfAborted();
         const mapping = mappings[this.index]?.mappings;
         const expectedFields = {kind: 'keyword', bundle_id: 'keyword', digest: 'keyword', byte_length: 'long',
@@ -161,7 +129,7 @@ export class ImmutableProtocolBundleStore {
 
     private async get(id: string, signal?:AbortSignal): Promise<any> {
         signal?.throwIfAborted();
-        const response: any = await this.client.get({index: this.index, id, realtime: true, _source: true}, {signal});
+        const response: any = await checkedIo(signal, () => this.client.get({index: this.index, id, realtime: true, _source: true}, {signal}));
         signal?.throwIfAborted();
         if (!response || response._index !== this.index || response._id !== id || response.found !== true
             || !response._source || !Number.isSafeInteger(response._seq_no) || response._seq_no < 0
@@ -169,44 +137,49 @@ export class ImmutableProtocolBundleStore {
         return response;
     }
 
-    private async createImmutable(id: string, document: StoredDocument) {
+    private async createImmutable(id: string, document: StoredDocument, signal?: AbortSignal) {
         for (let attempt = 0; attempt < 4; attempt++) {
             try {
-                const response = await this.client.create({index: this.index, id, document, refresh: false, wait_for_active_shards: 'all', pipeline: '_none'});
+                const response = await checkedIo(signal, () => this.client.create({index: this.index, id, document, refresh: false,
+                    wait_for_active_shards: 'all', pipeline: '_none'}, {signal}));
                 this.assertWrite(response, id, 'created');
                 return;
             } catch (error: any) {
+                signal?.throwIfAborted();
                 if (error?.meta?.statusCode !== 409 || error?.meta?.body?.error?.type !== 'version_conflict_engine_exception') throw error;
             }
-            const existing = await this.get(id);
+            const existing = await this.get(id, signal);
             if (canonical(existing._source) !== canonical(document)) throw new Error(`Immutable ABI observation conflict: ${id}`);
             // A prior partial/unknown receipt cannot become durable just because GET found it.
             // Reassert identical bytes under CAS and require a fresh complete copy receipt.
             try {
-                const response = await this.client.index({index: this.index, id, document, refresh: false, wait_for_active_shards: 'all', pipeline: '_none',
-                    if_seq_no: existing._seq_no, if_primary_term: existing._primary_term});
+                const response = await checkedIo(signal, () => this.client.index({index: this.index, id, document, refresh: false,
+                    wait_for_active_shards: 'all', pipeline: '_none', if_seq_no: existing._seq_no, if_primary_term: existing._primary_term}, {signal}));
                 this.assertWrite(response, id, 'updated');
                 return;
             } catch (error: any) {
+                signal?.throwIfAborted();
                 if (error?.meta?.statusCode !== 409 || error?.meta?.body?.error?.type !== 'version_conflict_engine_exception') throw error;
             }
         }
         throw new Error('ABI observation CAS retry budget exhausted');
     }
 
-    async prepare(id:string, record:unknown): Promise<{id:string;digest:string}> {
+    async prepare(id:string, record:unknown, signal?: AbortSignal): Promise<{id:string;digest:string}> {
+        signal?.throwIfAborted();
         if(this.options.readOnly)throw new Error('Read-only protocol bundles cannot prepare records');
         const bytes=Buffer.from(canonical(record,this.bounds.maximumBytes));
         const count = Math.ceil(bytes.length / this.bounds.chunkBytes);
         if (bytes.length > this.bounds.maximumBytes || count > this.bounds.maximumChunks) throw new Error('ABI observation exceeds bounded storage budget');
-        await this.initialize();
+        await this.initialize(signal);
         const digest = sha256(bytes);
         const chunks = Array.from({length: count}, (_, index) => `${id}:${digest}:${index}`);
         const manifest: StoredDocument = {kind: 'manifest', bundle_id: id, digest, byte_length: bytes.length, chunk_ids: chunks};
         try {
-            const existing = await this.get(id);
+            const existing = await this.get(id, signal);
             if (canonical(existing._source) !== canonical(manifest)) throw new Error(`Immutable ABI observation conflict: ${id}`);
         } catch (error: any) {
+            signal?.throwIfAborted();
             const missing = error?.meta?.body;
             if (error?.meta?.statusCode !== 404 || missing?.found !== false || missing?._index !== this.index || missing?._id !== id) throw error;
         }
@@ -214,10 +187,10 @@ export class ImmutableProtocolBundleStore {
             const payload = bytes.subarray(index * this.bounds.chunkBytes, (index + 1) * this.bounds.chunkBytes);
             const chunkId = `${id}:${digest}:${index}`;
             await this.createImmutable(chunkId, {kind: 'chunk', bundle_id: id, digest: sha256(payload),
-                byte_length: payload.length, chunk_index: index, payload: payload.toString('base64')});
+                byte_length: payload.length, chunk_index: index, payload: payload.toString('base64')}, signal);
         }
         // The immutable manifest is the sole PREPARE completion marker; partial chunks grant nothing.
-        await this.createImmutable(id, manifest);
+        await this.createImmutable(id, manifest, signal);
         return {id, digest};
     }
 

@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers" ]
+    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter" ]
 
 jobs:
   build:
@@ -133,6 +133,30 @@ jobs:
         with:
           name: action-sequences-design-${{ matrix.node }}
           path: action-sequences-${{ matrix.node }}.json
+          if-no-files-found: error
+
+  action-source-journal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22.x, 24.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --allow-git=all
+      - name: Qualify source journal records and two-copy recovery on owned Elasticsearch 9.5.5
+        run: node scripts/qualification/check-action-source-journal.mjs action-source-journal-${{ matrix.node }}.json
+      - name: Retain source journal evidence and cleanup result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: action-source-journal-${{ matrix.node }}
+          path: action-source-journal-${{ matrix.node }}.json
           if-no-files-found: error
 
   es955-fixture:
