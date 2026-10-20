@@ -15,7 +15,7 @@ import {validateFixture} from './es955-replicas.ts';
 import {assertSuccessfulWorkerShutdown} from './es955-workers.ts';
 import {startBulkLedger, summarizeBulkLedger} from './replay-bulk-ledger.ts';
 import {auditWireReplayFixture, createWireReplayRpc, serveWireReplay, assertWireReplayComplete,
-    type AuditedWireReplayFixture} from './wire-replay-fixture.ts';
+    wireReplayPins, type AuditedWireReplayFixture} from './wire-replay-fixture.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 export const wireReplayLimits = Object.freeze({runMs: 600_000, completionMs: 240_000, requestMs: 5000,
@@ -173,10 +173,48 @@ const runtimeSources = ['package.json', 'package-lock.json', '.bun-version', 'AG
         'protocol/abi-coordinator', 'protocol/abi-frontier-store', 'protocol/abi-reducer', 'protocol/abi-proof',
         'protocol/immutable-bundle-store'].flatMap(file => [`src/indexer/${file}.ts`, `build/indexer/${file}.js`])];
 
-async function sourceSnapshot(output?: string) {
+/** Keep the installed components' exact bytes, including source-only Rust members. */
+export async function readWireComponentSources(packageRoot: string, selected: readonly {runtime: string; sha256: string}[]) {
+    assert.equal(selected.length, 2);
+    assert.deepEqual(selected.map(component => component.runtime).sort(), ['node', 'rust']);
+    const files = new Map<string, Buffer>();
+    const expected = new Map<string, string>();
+    for (const file of ['package.json', 'protocol-profile.json', 'dist/protocol-provider.json',
+        'dist/protocol-node-artifact.json', 'dist/protocol-rust-artifact.json']) files.set(file, await boundedFile(join(packageRoot, file)));
+    assert.equal(JSON.parse(files.get('package.json')!.toString()).name, '@eosrio/hyperion-wire-plugin');
+    for (const component of selected) {
+        const bytes = files.get(`dist/protocol-${component.runtime}-artifact.json`)!;
+        assert.equal(digest(bytes), component.sha256, 'selected Wire component manifest changed');
+        const manifest = JSON.parse(bytes.toString());
+        assert.equal(manifest.schemaVersion, 1); assert.equal(manifest.sourceModified, false);
+        assert.equal(manifest.sourceRevision, wireReplayPins.packageRevision);
+        assert.ok(Array.isArray(manifest.files) && manifest.files.length > 0 && manifest.files.length <= 512);
+        for (const member of manifest.files) {
+            assert.ok(typeof member.path === 'string' && /^(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+$/.test(member.path)
+                && member.path.split('/').every((part: string) => part !== '.' && part !== '..'), 'invalid Wire artifact member path');
+            assert.match(member.sha256, /^[0-9a-f]{64}$/);
+            const previous = expected.get(member.path);
+            assert.ok(previous === undefined || previous === member.sha256, 'conflicting Wire artifact member hashes');
+            expected.set(member.path, member.sha256);
+        }
+    }
+    let total = 0;
+    for (const [file, sha256] of expected) {
+        const bytes = files.get(file) ?? await boundedFile(join(packageRoot, file));
+        assert.equal(digest(bytes), sha256, `Wire artifact member changed: ${file}`);
+        total += bytes.length; assert.ok(total <= 32 * 1024 * 1024, 'Wire artifact source byte budget exceeded'); files.set(file, bytes);
+    }
+    return files;
+}
+
+async function sourceSnapshot(selected: readonly {runtime: string; sha256: string}[], output?: string) {
     const hashes: Record<string, string> = {}; let total = 0;
-    for (const file of runtimeSources) {
-        const bytes = await boundedFile(join(repo, file)); total += bytes.length; assert.ok(total <= 64 * 1024 * 1024, 'source evidence exceeds byte bound');
+    const prefix = 'node_modules/@eosrio/hyperion-wire-plugin';
+    const componentFiles = await readWireComponentSources(join(repo, prefix), selected);
+    const members = new Map([...componentFiles].map(([file, bytes]) => [prefix + '/' + file, bytes]));
+    for (const file of runtimeSources) if (!members.has(file)) members.set(file, await boundedFile(join(repo, file)));
+    for (const [file, bytes] of members) {
+        total += bytes.length; assert.ok(total <= 64 * 1024 * 1024, 'source evidence exceeds byte bound');
         hashes[file] = digest(bytes);
         if (output) {const target = join(output, 'sources', file); await mkdir(dirname(target), {recursive: true}); await writeFile(target, bytes, {flag: 'wx'});}
     }
@@ -233,7 +271,7 @@ export async function runWireWorkerReplay(stateFile: string, outputDirectory: st
             ready: row.messages_ready, unacked: row.messages_unacknowledged, messages: row.messages, consumers: row.consumers}));
     };
     try {
-        report.sourceHashes = await sourceSnapshot(output); report.sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: repo, encoding: 'utf8', timeout: 5000}).trim();
+        report.sourceHashes = await sourceSnapshot(fixture.lineage.components, output); report.sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: repo, encoding: 'utf8', timeout: 5000}).trim();
         report.runtime.executable = process.execPath; report.runtime.executableSha256 = digest(await boundedFile(process.execPath, 256 * 1024 * 1024)); report.runtime.versions = process.versions;
         report.fixture = {profileId: fixture.profileId, chainId: fixture.chainId, packageRevision: fixture.packageRevision,
             lineage: fixture.lineage, blocks: fixture.records.length, range: {start: fixture.replayStart, end: fixture.replayEnd}};
@@ -303,7 +341,7 @@ export async function runWireWorkerReplay(stateFile: string, outputDirectory: st
             assert.equal(String(entry.settings.index.translog?.durability ?? entry.defaults.index.translog.durability).toLowerCase(), 'request');
         }
         assert.deepEqual(rpc.requests.filter(entry => entry.denied), [], 'Wire replay used forbidden RPC');
-        assert.deepEqual(await sourceSnapshot(), report.sourceHashes, 'qualification sources changed during replay');
+        assert.deepEqual(await sourceSnapshot(fixture.lineage.components), report.sourceHashes, 'qualification sources changed during replay');
         report.lastIndexedBeforeShutdown = await redis.get(chain + '::last_indexed_block'); report.status = 'passed';
     } catch (error) {report.status = 'failed'; report.error = errorText(error);}
     finally {

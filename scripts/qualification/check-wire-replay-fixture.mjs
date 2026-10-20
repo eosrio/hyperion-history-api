@@ -2,9 +2,11 @@
 import assert from 'node:assert/strict';
 import {createWireShipCodec, resolveCodecProfile} from '@eosrio/hyperion-wire-plugin';
 import {auditWireReplayFixture, createWireReplaySession, createWireReplayRpc} from './wire-replay-fixture.ts';
+import {readWireComponentSources} from './wire-worker-replay.ts';
 
 assert.ok(/^(22|24)\./.test(process.versions.node) && !process.versions.bun);
 const fixture = await auditWireReplayFixture();
+const artifacts = await readWireComponentSources(fixture.packageRoot, fixture.lineage.components);
 const records = fixture.records;
 const originalFirst = Buffer.from(records[0].frame);
 records[0].frame.fill(0);
@@ -42,5 +44,6 @@ assert.throws(() => rpc.reply('POST', '/v1/chain/get_abi', {account_name: 'wirem
 console.log(JSON.stringify({status: 'passed-offline-source-and-credit-check', node: process.version,
     packageRevision: fixture.packageRevision, blocks: next, acknowledgedBlocks: session.flow.acknowledgedBlocks.length,
     physicalRows: fixture.audit.physicalDeltaRows, sourceActionReceipts: fixture.audit.actionReceiptCount,
+    selectedComponents: fixture.lineage.components, verifiedComponentFiles: artifacts.size,
     originalStatus: fixture.originalStatus, startupBlock: 2,
     fullWorkerAcceptance: false, sourceAuthority: false, selectedTestnetAcceptance: false}));

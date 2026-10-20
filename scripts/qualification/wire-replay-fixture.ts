@@ -217,6 +217,7 @@ export async function auditWireReplayFixture(options: AuditWireReplayOptions = {
         }
         assert.equal(rows, 627); assert.equal(actionInputs, 160); assert.equal(deployments, 8);
         const lineage = freeze({kind: 'audited-installed-wire-application-capture', packageRevision: wireReplayPins.packageRevision,
+            components: clone(selection.components!),
             sourceArchiveSha256: wireReplayPins.archiveSha256, exportManifestSha256: wireReplayPins.exportSha256,
             supplementArchiveSha256: wireReplayPins.supplementSha256, manifestSha256: hash(read(capturePrefix + 'manifest.json')),
             schemaSha256: hash(schemaBytes), statusSha256: hash(read(capturePrefix + 'status.bin')),

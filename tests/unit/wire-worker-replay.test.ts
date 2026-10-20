@@ -4,9 +4,64 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {digest} from '../../scripts/qualification/contract-fixture.ts';
 import {assertNewWireReplayOutput, assertWireReaderConfirmations, parseWireWorkerReplayArguments,
-    wireBulkPublications, wireReplayAccounts, wireWorkerConfig, wireWorkerEnvironment} from '../../scripts/qualification/wire-worker-replay.ts';
+    readWireComponentSources, wireBulkPublications, wireReplayAccounts, wireWorkerConfig, wireWorkerEnvironment} from '../../scripts/qualification/wire-worker-replay.ts';
+import {wireReplayPins} from '../../scripts/qualification/wire-replay-fixture.ts';
 
 describe('bounded real Wire worker qualification guards', () => {
+    async function artifactFixture() {
+        const root = await mkdtemp(join(tmpdir(), 'hyp-wire-artifacts-'));
+        await mkdir(join(root, 'dist'));
+        const packageBytes = Buffer.from('{"name":"@eosrio/hyperion-wire-plugin"}\n');
+        await writeFile(join(root, 'package.json'), packageBytes);
+        await writeFile(join(root, 'protocol-profile.json'), '{}');
+        await writeFile(join(root, 'dist/protocol-provider.json'), '{}');
+        await writeFile(join(root, 'dist/provider.js'), 'export const original = true;');
+        const selected: {runtime: string; sha256: string}[] = [];
+        const manifests: Record<string, any> = {};
+        for (const runtime of ['node', 'rust']) {
+            const manifest = {schemaVersion: 1, sourceModified: false, sourceRevision: wireReplayPins.packageRevision,
+                files: [{path: 'dist/provider.js', sha256: digest('export const original = true;')}]};
+            const bytes = Buffer.from(JSON.stringify(manifest)); manifests[runtime] = manifest;
+            await writeFile(join(root, `dist/protocol-${runtime}-artifact.json`), bytes);
+            selected.push({runtime, sha256: digest(bytes)});
+        }
+        return {root, selected, manifests, packageBytes};
+    }
+    async function removeArtifactFixture(root: string) {
+        expect(dirname(resolve(root))).toBe(resolve(tmpdir()));
+        expect(root.includes('hyp-wire-artifacts-')).toBe(true);
+        await rm(root, {recursive: true});
+    }
+    test('component evidence retains executable members and rejects drift with unchanged package metadata', async () => {
+        const fixture = await artifactFixture();
+        try {
+            const members = await readWireComponentSources(fixture.root, fixture.selected);
+            expect(members.get('dist/provider.js')!.toString()).toBe('export const original = true;');
+            expect(members.has('dist/protocol-node-artifact.json')).toBe(true);
+            expect(members.has('dist/protocol-rust-artifact.json')).toBe(true);
+            await writeFile(join(fixture.root, 'dist/provider.js'), 'export const changed = true;');
+            expect(await readFile(join(fixture.root, 'package.json'))).toEqual(fixture.packageBytes);
+            await expect(readWireComponentSources(fixture.root, fixture.selected)).rejects.toThrow('member changed');
+        } finally {await removeArtifactFixture(fixture.root);}
+    });
+    test('rewritten component manifests cannot replace the selected artifact identity', async () => {
+        const fixture = await artifactFixture();
+        try {
+            const changed = {...fixture.manifests.node, additional: 'changed after selection'};
+            await writeFile(join(fixture.root, 'dist/protocol-node-artifact.json'), JSON.stringify(changed));
+            await expect(readWireComponentSources(fixture.root, fixture.selected)).rejects.toThrow('manifest changed');
+        } finally {await removeArtifactFixture(fixture.root);}
+    });
+    test('artifact evidence rejects a member outside the selected package', async () => {
+        const fixture = await artifactFixture();
+        try {
+            fixture.manifests.node.files[0].path = '../outside.js';
+            const bytes = Buffer.from(JSON.stringify(fixture.manifests.node));
+            await writeFile(join(fixture.root, 'dist/protocol-node-artifact.json'), bytes);
+            fixture.selected[0].sha256 = digest(bytes);
+            await expect(readWireComponentSources(fixture.root, fixture.selected)).rejects.toThrow('member path');
+        } finally {await removeArtifactFixture(fixture.root);}
+    });
     test('CLI declares only source package, state and fresh output inputs', () => {
         expect(parseWireWorkerReplayArguments(['state.json', 'output'])).toEqual({stateFile: 'state.json', outputDirectory: 'output', packageRoot: undefined});
         expect(parseWireWorkerReplayArguments(['state.json', 'output', '--package-root', 'installed package'])).toEqual({stateFile: 'state.json', outputDirectory: 'output', packageRoot: 'installed package'});
