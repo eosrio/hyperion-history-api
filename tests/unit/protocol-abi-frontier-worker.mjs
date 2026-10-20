@@ -212,6 +212,40 @@ try {
     assert.equal(resumed.commands.at(-1)[1].start_block_num,107);
     afterAdmission.message(frame(107));await resumed.drain();await b.consume(publications.at(-1));
     await until(async()=>(await frontier.readControl()).value.head?.blockNum===107);
+    // Master rotation fences the old physical socket before closing it, then
+    // explicitly schedules one reconnect. Its own late close must not stall or duplicate it.
+    const rotationGeneration=resumed.worker.coordinatorSource.generation,rotationCommands=resumed.commands.length;
+    const rotationPublications=publications.length,rotationTimers=[],rotationCloses=[];
+    const originalNextUrl=resumed.worker.ship.nextUrl,originalClose=resumed.worker.ship.close;
+    let rotatedUrls=0;
+    resumed.worker.ship.nextUrl=()=>{rotatedUrls++;};
+    resumed.worker.ship.close=()=>{
+        rotationCloses.push({physical:resumed.worker.physicalIngressGeneration,source:resumed.worker.coordinatorSource,masterSource:currentMaster.protocolAbiSource});
+        afterAdmission.disconnect();
+    };
+    globalThis.setTimeout=(callback,delay,...args)=>{
+        if(delay===5000){const timer={unref(){return this;},fire(){callback(...args);}};rotationTimers.push(timer);return timer;}
+        return realSetTimeout(callback,delay,...args);
+    };
+    try {
+        resumed.wref.send({event:'next_server'});resumed.wref.send({event:'next_server'});afterAdmission.disconnect();
+        assert.equal(rotatedUrls,1);assert.equal(rotationTimers.length,1);assert.equal(rotationCloses.length,1);
+        assert.deepEqual(rotationCloses[0],{physical:undefined,source:undefined,masterSource:undefined});
+        assert.equal(resumed.worker.coordinatorSource,undefined);assert.equal(resumed.commands.length,rotationCommands);
+        await until(async()=>(await frontier.readControl()).value.source===null);
+        rotationTimers[0].fire();assert.equal(resumed.worker.reconnectTimer,undefined);
+        const rotated=resumed.sockets.at(-1);rotated.open();await resumed.drain();
+        afterAdmission.disconnect();afterAdmission.message(frame(108));await resumed.drain();
+        assert.equal(rotatedUrls,1);assert.equal(rotationTimers.length,1);assert.equal(resumed.commands.length,rotationCommands);
+        assert.equal(publications.length,rotationPublications);
+        rotated.message(Buffer.from(schemaJson));await resumed.drain();rotated.message(status());await resumed.drain();
+        assert.equal(resumed.commands.at(-1)[1].start_block_num,108);
+        assert.notEqual(resumed.worker.coordinatorSource.generation,rotationGeneration);
+        assert.equal((await frontier.readControl()).value.source.readerSessionId,resumed.worker.sourceContext.readerSessionId);
+        assert.equal(rotatedUrls,1);assert.equal(rotationTimers.length,1);
+    } finally {
+        globalThis.setTimeout=realSetTimeout;resumed.worker.ship.nextUrl=originalNextUrl;resumed.worker.ship.close=originalClose;
+    }
     // A current reader's identity, not a claimed role field, controls admission.
     const forged=Object.assign(new EventEmitter(),{isConnected:()=>true,send(message){this.reply=message;}});
     const beforeUnauthorized=(await frontier.readControl()).value.revision;
@@ -258,6 +292,20 @@ try {
     coldReplacement.connection.message(status(901));await coldReplacement.drain();
     assert.equal(coldReplacement.commands.at(-1)[1].start_block_num,900,'New owner lost the cold replay boundary after pending was cleared');
     assert.equal(currentMaster.liveReader.worker_last_processed_block,902);assert.equal((await coldFrontier.readControl()).value.head,null);
+    const shutdownTimers=[],realClearTimeout=globalThis.clearTimeout;
+    globalThis.setTimeout=(callback,delay,...args)=>{
+        if(delay===5000){const timer={cancelled:false,fire(){callback(...args);}};shutdownTimers.push(timer);return timer;}
+        if(delay===2000)return {unref(){return this;}};
+        return realSetTimeout(callback,delay,...args);
+    };
+    globalThis.clearTimeout=timer=>{if(shutdownTimers.includes(timer))timer.cancelled=true;else realClearTimeout(timer);};
+    try {
+        coldReplacement.wref.send({event:'next_server'});assert.equal(shutdownTimers.length,1);
+        coldReplacement.wref.send({event:'stop'});
+        assert.equal(shutdownTimers[0].cancelled,true);assert.equal(coldReplacement.worker.reconnectTimer,undefined);
+        const socketCount=coldReplacement.sockets.length;shutdownTimers[0].fire();
+        assert.equal(coldReplacement.sockets.length,socketCount,'Already queued retry reopened a stopped reader');
+    } finally {globalThis.setTimeout=realSetTimeout;globalThis.clearTimeout=realClearTimeout;}
     clearInterval(currentMaster.protocolAbiDrainTimer);currentMaster=originalMaster;
     writeFileSync(join(directory,'chain.json'),JSON.stringify(config));
     // Periodic infrastructure failures require supervised shutdown, rather than log-only success.

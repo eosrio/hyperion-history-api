@@ -78,6 +78,7 @@ export default class StateReader extends HyperionWorker {
     private local_distributed_count = 0;
     private local_last_block = 0;
     private reconnectCount = 0;
+    private reconnectTimer?: NodeJS.Timeout;
     private future_block = 0;
     private drainCount = 0;
     private currentIdx = 1;
@@ -407,13 +408,18 @@ export default class StateReader extends HyperionWorker {
             }
             case 'next_server': {
                 hLog('received next server action from master');
-                if (this.usesExtensionProtocol) { this.physicalIngressGeneration = undefined; this.revokeCoordinatorSource(); }
-                this.ship.close(false);
+                if (this.usesExtensionProtocol) {
+                    this.physicalIngressGeneration = undefined;
+                    this.revokeCoordinatorSource();
+                    this.handleLostConnection();
+                } else this.ship.close(false);
                 break;
             }
             case 'stop': {
                 if (this.isLiveReader) {
                     hLog('[LIVE READER] Closing Websocket');
+                    if (this.usesExtensionProtocol) { this.finishing = true; this.physicalIngressGeneration = undefined; }
+                    this.clearProtocolReconnect();
                     this.revokeCoordinatorSource();
                     this.ship.close(true);
                     setTimeout(() => {
@@ -468,6 +474,7 @@ export default class StateReader extends HyperionWorker {
         const deadline = performance.now() + 10000;
         this.finishing = true;
         this.allowRequests = false;
+        this.clearProtocolReconnect();
         this.revokeCoordinatorSource();
         this.ship.close(true);
         while (!this.stageOneDistQueue.idle() || this.publications.size || !this.blockReadingQueue.idle()) {
@@ -1337,6 +1344,8 @@ export default class StateReader extends HyperionWorker {
 
     private startWS() {
         if (this.usesExtensionProtocol) {
+            if (this.finishing || this.publisherFailure) return;
+            this.clearProtocolReconnect();
             const generation = ++this.socketGeneration;
             this.physicalIngressGeneration = undefined;
             this.revokeCoordinatorSource();
@@ -1373,7 +1382,14 @@ export default class StateReader extends HyperionWorker {
         );
     }
 
+    private clearProtocolReconnect(): void {
+        if (!this.usesExtensionProtocol) return;
+        if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = undefined;
+    }
+
     private handleLostConnection() {
+        if (this.usesExtensionProtocol && (this.reconnectTimer || this.finishing || this.publisherFailure)) return;
         this.recovery = true;
         this.ship.close(false);
         hLog(`Retrying connection in 5 seconds... [attempt: ${this.reconnectCount + 1}]`);
@@ -1383,10 +1399,16 @@ export default class StateReader extends HyperionWorker {
         // switch to next endpoint if available
         this.ship.nextUrl();
 
-        setTimeout(() => {
+        const reconnect = () => {
+            if (this.usesExtensionProtocol) {
+                this.reconnectTimer = undefined;
+                if (this.finishing || this.publisherFailure) return;
+            }
             this.reconnectCount++;
             this.startWS();
-        }, 5000);
+        };
+        if (this.usesExtensionProtocol) this.reconnectTimer = setTimeout(reconnect, 5000);
+        else setTimeout(reconnect, 5000);
     }
 
     private emitCompletedSignal() {
@@ -1407,6 +1429,7 @@ export default class StateReader extends HyperionWorker {
         if (this.confirmationDeadline) clearTimeout(this.confirmationDeadline);
         this.confirmationDeadline = undefined;
         this.confirmationDeadlineAt = undefined;
+        this.clearProtocolReconnect();
         this.revokeCoordinatorSource();
         process.send?.({event: 'reader_recovery_required', error: reason, assignment_id: this.assignmentId});
         hLog(`Reader publication outcome incomplete; supervised source replay required: ${reason}`);
