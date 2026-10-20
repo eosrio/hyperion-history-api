@@ -7,6 +7,8 @@ import {ProtocolAbiFrontierReadError,type ProtocolAbiFrontierStore} from './abi-
 import {protocolImmutableJson} from './immutable-bundle-store.js';
 import {isProtocolHex} from './hex.js';
 import type {ProtocolAbiCoordinatorControl} from './abi-coordinator.js';
+import {validNativeGenesisCoverage, type ProtocolNativeGenesisCoverage} from './native-genesis.js';
+import type {ProjectionFrame} from '../projection/runtime.js';
 
 export interface ProtocolAbiProofSource {readonly chainId:string;readonly blockNum:number;readonly blockId:string}
 export type ProtocolAbiProofBinding=Omit<ProtocolAbiActionInput,'rawHex'> & {readonly rawSha256:string;readonly stateId:string|null};
@@ -45,6 +47,7 @@ interface CanonicalCommit {
     source:ProtocolSourcePosition;previousCommitId:string|null;selectionId:string;
     status:'complete'|'incomplete';stateRootId:string|null;bindings:ProtocolAbiProofBinding[];
     coverageStart:number|null;lastGlobalSequence:string|null;
+    nativeGenesis?:ProtocolNativeGenesisCoverage;
 }
 interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit}
 const hex64=/^[0-9a-f]{64}$/;
@@ -137,6 +140,10 @@ export class ProtocolAbiProofReader {
             &&value.coverageStart===null&&value.lastGlobalSequence===null,'Incomplete ABI commit grants knowledge');
         else requireProof(ident('h45abi1',value.observationId)&&hex64.test(value.observationDigest)
             &&value.coverageStart!==null,'Complete ABI commit lacks its retained observation');
+        if(value.nativeGenesis!==undefined)requireProof(validNativeGenesisCoverage(value.nativeGenesis)&&value.status==='complete'
+            &&value.source.blockNum===1&&value.source.previousBlockId===null&&value.previousCommitId===null
+            &&value.bindings.length===0&&value.lastGlobalSequence===null&&value.coverageStart===1,
+            'Invalid native genesis coverage');
         const seen=new Set<string>();
         for(const binding of value.bindings){
             const key=binding.transactionId+':'+binding.actionOrdinal;
@@ -223,6 +230,15 @@ export class ProtocolAbiProofReader {
         if(current.ownerId!==prior.ownerId||current.generation!==prior.generation||current.head.blockNum<prior.head.blockNum
             ||(current.head.blockNum===prior.head.blockNum&&json(current.head)!==json(prior.head)))
             unavailable('authority_changed','Canonical ABI authority changed during consumption');
+    }
+    /** An issued, current proof of native empty application state supplies the actual 0 -> 1 frame. */
+    async nativeGenesisFrame(view:ProtocolAbiProofView,options:ProtocolAbiProofReadOptions={}):Promise<ProjectionFrame> {
+        const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
+        const facts=issued.commit.nativeGenesis;
+        if(!facts)unavailable('native_genesis_unavailable','Source has no verified native genesis application state');
+        await this.revalidate(view,options);
+        return freeze({chainId:issued.commit.source.chainId,block:{blockNum:1,blockId:issued.commit.source.blockId,
+            previousBlockId:facts.previousBlockId},changes:[]});
     }
     async action(view:ProtocolAbiProofView,input:Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number},
                  {signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiResolvedAction> {

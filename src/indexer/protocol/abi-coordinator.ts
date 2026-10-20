@@ -6,6 +6,7 @@ import {ImmutableProtocolBundleReadError, protocolImmutableJson} from './immutab
 import {ProtocolAbiFrontierStore, ProtocolAbiFrontierConflictError, ProtocolAbiFrontierReadError, ProtocolAbiFrontierLimitError} from './abi-frontier-store.js';
 import {reduceProtocolAbiBlock, type ProtocolAbiAccountState, type ProtocolAbiBlockReduction} from './abi-reducer.js';
 import {protocolAbiCertificateForControl} from './abi-proof.js';
+import {validNativeGenesisCoverage, type ProtocolNativeGenesisCoverage, type ProtocolNativeGenesisVerifier} from './native-genesis.js';
 
 type Head = {blockNum:number;blockId:string;commitId:string;stateRootId:string|null;
     lastGlobalSequence:string|null;coverageStart:number|null};
@@ -20,6 +21,7 @@ interface Commit {
     previousCommitId:string|null; selectionId:string; observationId:string|null; observationDigest:string|null;
     source:ProtocolSourcePosition; status:'complete'|'incomplete'; reason:Gap|null;
     stateRootId:string|null; lastGlobalSequence:string|null; coverageStart:number|null;
+    nativeGenesis?:ProtocolNativeGenesisCoverage;
     bindings:Array<{transactionId:string;actionOrdinal:number;inputActionOrdinal:number;receiver:string;account:string;
         name:string;globalSequence:string;receiptAbiSequence:string;rawSha256:string;stateId:string|null}>;
 }
@@ -28,6 +30,7 @@ export interface ProtocolAbiCoordinatorOptions {
     chainId:string; profile:ProtocolSourceProfile; ownerId:string; bindings:ProtocolSourceBindingStore;
     observations:ProtocolAbiObservationStore; store:ProtocolAbiFrontierStore;
     maxPendingBlocks?:number; recoveryWindowBlocks?:number;
+    verifyNativeGenesis?:ProtocolNativeGenesisVerifier;
 }
 export class ProtocolAbiCoordinatorStaleError extends Error {
     constructor(message='Protocol ABI source was superseded'){super(message);this.name='ProtocolAbiCoordinatorStaleError';}
@@ -57,6 +60,7 @@ export class ProtocolAbiCoordinator {
     private sourceEpoch=0;
     private activeSession?:string;
     private openingSession?:string;
+    private certifiedId?:string;
 
     constructor(private readonly options:ProtocolAbiCoordinatorOptions) {
         if(!hex64.test(options.chainId)||!text(options.ownerId))throw new Error('Invalid ABI coordinator identity');
@@ -231,6 +235,9 @@ export class ProtocolAbiCoordinator {
             ||(value.source.previousBlockId!==null&&!hex64.test(value.source.previousBlockId))
             ||(value.previousCommitId!==null&&!id('h45abicmt1',value.previousCommitId))
             ||!['complete','incomplete'].includes(value.status)||!Array.isArray(value.bindings)
+            ||(value.nativeGenesis!==undefined&&(!validNativeGenesisCoverage(value.nativeGenesis)||value.status!=='complete'
+                ||value.source.blockNum!==1||value.source.previousBlockId!==null||value.previousCommitId!==null
+                ||value.bindings.length!==0||value.lastGlobalSequence!==null||value.coverageStart!==1))
             ||(value.status==='incomplete'&&(value.bindings.length||value.stateRootId!==null||value.lastGlobalSequence!==null||value.coverageStart!==null)))
             throw new InvalidPreparedObservation('Invalid immutable canonical ABI commit');
         this.validateHead(this.head(value,commitId));return value;
@@ -263,7 +270,8 @@ export class ProtocolAbiCoordinator {
             const commit:Commit={schemaVersion:1,kind:'canonical-abi-block',chainId:this.options.chainId,profile:this.profile,generation:control.generation,
                 previousCommitId:control.head?.commitId??null,selectionId:selectedId,observationId:link.observationId,observationDigest:link.observationDigest,
                 source:selected.source,status:complete?'complete':'incomplete',reason,stateRootId,
-                lastGlobalSequence:value.lastGlobalSequence,coverageStart:complete?(control.head?.coverageStart??selected.source.blockNum):null,bindings};
+                lastGlobalSequence:value.lastGlobalSequence,coverageStart:complete?(control.head?.coverageStart??selected.source.blockNum):null,bindings,
+                ...(value.status==='complete'&&value.nativeGenesis?{nativeGenesis:value.nativeGenesis}:{})};
             const prepared=await this.options.store.prepareCommit(commit);
             if(json(await this.readCommit(prepared.id))!==json(commit))throw new Error('Prepared canonical ABI commit readback mismatch');
             return {commit,id:prepared.id};
@@ -274,6 +282,18 @@ export class ProtocolAbiCoordinator {
             return materialize({status:'incomplete',reset:true,bindings:[],updates:[],lastGlobalSequence:null,
                 reason:{code:error.code,message:error.message}});
         }
+    }
+
+    private async certify(control:ProtocolAbiCoordinatorControl,epoch:number):Promise<void> {
+        this.assertEpoch(epoch);
+        const certificate=protocolAbiCertificateForControl(control);
+        const certificateId=this.options.store.certificateId(certificate);
+        if(this.certifiedId===certificateId)return;
+        const certified=await this.options.store.prepareCertificate(certificate);
+        if(json(await this.options.store.readCertificate(certified.id))!==json(certificate))
+            throw new Error('Settled ABI certificate readback mismatch');
+        this.assertEpoch(epoch);
+        this.certifiedId=certificateId;
     }
 
     async drain():Promise<{committed:number;pending:number}> {
@@ -297,7 +317,7 @@ export class ProtocolAbiCoordinator {
                         let state=accounts.get(account);
                         if(!state){state=this.options.store.readAccount(version.value.head?.stateRootId??null,account) as Promise<ProtocolAbiAccountState|null>;accounts.set(account,state);}
                         return state;
-                    },version.value.head?.lastGlobalSequence??null);
+                    },version.value.head?.lastGlobalSequence??null,this.options.verifyNativeGenesis);
                 } catch(error){
                     if(!dataUnavailable(error))throw error;
                     reduction={status:'incomplete',reset:true,bindings:[],updates:[],lastGlobalSequence:null,
@@ -311,12 +331,12 @@ export class ProtocolAbiCoordinator {
                 this.assertEpoch(epoch);
                 // Prepared commits and primary-visible control are not consumer authority.
                 // Certify only after the complete CAS receipt and settled source-epoch check.
-                const certificate=protocolAbiCertificateForControl(version.value);
-                const certified=await this.options.store.prepareCertificate(certificate);
-                if(json(await this.options.store.readCertificate(certified.id))!==json(certificate))
-                    throw new Error('Settled ABI certificate readback mismatch');
-                this.assertEpoch(epoch);committed++;
+                await this.certify(version.value,epoch);committed++;
             }
+            // A failed certificate PREPARE may follow a successful settled head CAS.
+            // Retry it even without a new block; owned() has re-established durable ownership.
+            if(!committed&&version.value.head&&version.value.source&&version.value.replayFromBlock===null
+                &&['following','incomplete'].includes(version.value.phase))await this.certify(version.value,epoch);
             return {committed,pending:version.value.pending.length};
         });} catch(error){if(error instanceof ProtocolAbiCoordinatorStaleError)return {committed:0,pending:this.known?.value.pending.length??0};throw error;}
     }
