@@ -234,8 +234,8 @@ export function buildWireReplayExpectations(fixture: AuditedWireReplayFixture, n
             'Recorded primary history tombstone only; no Elasticsearch delete or dynamic-state readiness is certified.',
             'Legacy sequence storage only: exact decimal values in the existing fields; the gated h45_sequences_v1 representation and full-range indexing remain unqualified.',
             'No observed secondary update/deletion, fork/reconnect, initial ABI frontier, full-width source sequence or selected-testnet qualification.',
-            'contract_state remains disabled. Follow-up: deserializer.pushToDynamicTableQueue emits neither body.id/body.present nor headers.id; '
-            + 'ElasticRoutes.buildDynamicTableBulk reads body.id/body.present. Enabling contract_state requires an owning reproduction/fix, not a relaxed history assertion.',
+            'Materialized state requires separate write/readiness evidence. Active Mongo routes consume headers.present and full protocol keys; '
+            + 'the unregistered Elasticsearch dynamic helper is not the operational path. Portable host integration and canonical recovery remain #191/#221.',
         ]});
 }
 

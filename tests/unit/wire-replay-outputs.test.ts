@@ -215,7 +215,7 @@ describe('Wire replay output qualification guards (constructed component records
         const result = assertWireReplayOutputDocuments(expected, actual);
         expect(result).toMatchObject({blocks: 119, actions: 7, actionReceipts: 9, sourceBindings: 16, historyDeltas: 4,
             primaryHistoryTombstones: 1, secondaryHistoryTombstones: 0, coordinatorCommits: 119});
-        expect(result.gaps.join(' ')).toContain('contract_state remains disabled');
+        expect(result.gaps.join(' ')).toContain('Materialized state requires separate write/readiness evidence');
         expect(result.sourceProofs).toHaveLength(119); expect(result.protocolComponents).toEqual(profile.components);
         expect(result.sequenceStorageMode).toBe('legacy');
         expect(result.sourceProofs.every(row => /^[0-9a-f]{64}$/.test(row.frameSha256) && /^h45abi1:[0-9a-f]{64}$/.test(row.observationId))).toBe(true);

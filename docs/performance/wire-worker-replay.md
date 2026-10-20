@@ -94,3 +94,27 @@ contention, coordinated distribution and the selected new testnet remain open.
 The sink/canonical-history/PIT gates under
 [History API #225](https://github.com/eosrio/hyperion-history-api/issues/225) and retained
 history upgrade qualification are not completed by this replay.
+
+## Legacy Mongo write qualification
+
+`--contract-state enabled` opts into a separate actual-write case. The fixture uses the
+same explicit source-derived contract/table map with `auto_index:false`, enables its
+owned Mongo connection, and holds the original source at blocks 78, 81, 84, 87, 90, 93,
+96, 99 and 120. At each held prefix, the expected block is indexed, worker queues drain,
+and bounded database reads check the complete selected state, including the actual
+absence of the deleted primary key after block 87. Primary and secondary identities
+remain distinct. Original result/status bytes and source credits are preserved.
+
+`--contract-state disabled` uses the identical configured table map and an enabled owned
+Mongo connection, but requires empty selected collections after the complete replay.
+This exercises the operator opt-in correction in
+[#238](https://github.com/eosrio/hyperion-history-api/issues/238). Explicit plugin-declared
+dynamic dependencies keep their existing authorization; these cases install no such plugin.
+
+These checks inspect the existing Mongo route's effects. They do not grant complete
+initial state, a canonical rollback view, checkpoint/restart or HTTP readiness. The
+portable runtime/backend integration under #191 and state recovery under #221 remain
+required. The earlier speculation about missing body fields in the Elasticsearch dynamic
+helper did not describe the active path: that helper is unregistered, while Mongo reads
+presence from message headers. Original archived reports keep their unmodified gap text;
+the current history assertion records the corrected boundary.
