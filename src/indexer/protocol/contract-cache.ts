@@ -1,4 +1,5 @@
 import type {ProtocolContractCodec} from '@eosrio/hyperion-sdk/protocol';
+import {isProtocolHex} from './hex.js';
 
 /** Internal compatibility facade for the existing worker caches; not an SDK/native API. */
 export interface ContractDecoder {
@@ -13,7 +14,7 @@ export interface ContractDecoder {
 
 export function protocolBytes(input: unknown): Uint8Array {
     if (input instanceof Uint8Array) return input;
-    if (typeof input === 'string' && /^(?:[0-9a-fA-F]{2})*$/.test(input)) return Buffer.from(input, 'hex');
+    if (isProtocolHex(input,true)) return Buffer.from(input, 'hex');
     if (input && typeof input === 'object' && 'array' in input) return protocolBytes(input.array);
     throw new Error('Invalid protocol byte payload');
 }

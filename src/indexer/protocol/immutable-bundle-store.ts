@@ -247,7 +247,7 @@ export class ImmutableProtocolBundleStore {
         if (bytes !== manifest.byte_length || sha256(payload) !== manifest.digest) throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation bundle integrity mismatch');
         try {
             const record=JSON.parse(payload.toString('utf8'));
-            if(canonical(record)!==payload.toString('utf8'))throw new Error('Noncanonical bundle');
+            if(!Buffer.from(canonical(record)).equals(payload))throw new Error('Noncanonical bundle');
             return record;
         } catch {throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation source identity mismatch');}
     }

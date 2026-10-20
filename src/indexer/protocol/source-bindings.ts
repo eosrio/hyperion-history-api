@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import type {ProtocolComponent} from '@eosrio/hyperion-sdk/protocol';
 import {ImmutableProtocolBundleStore, ImmutableProtocolBundleReadError, protocolImmutableJson} from './immutable-bundle-store.js';
+import {isProtocolHex} from './hex.js';
 
 export const protocolSourceSelectionHeader = 'hyperion-source-selection-v1';
 export interface ProtocolSourceProfile {id:string;profileId:string;components:readonly ProtocolComponent[]}
@@ -111,7 +112,7 @@ function quarantine(value:unknown):ProtocolSourceQuarantine {
     const record=snapshot<any>(value,128*1024*1024);
     if(!keys(record,['schemaVersion','chainId','protocol','frameHex','reason','claimedSelectionId'])||record.schemaVersion!==1
         ||typeof record.chainId!=='string'||!hex64.test(record.chainId)||typeof record.frameHex!=='string'
-        ||!/^(?:[0-9a-f]{2})*$/.test(record.frameHex)||!keys(record.reason,['code','message'])
+        ||!isProtocolHex(record.frameHex)||!keys(record.reason,['code','message'])
         ||!text(record.reason.code,256)||!text(record.reason.message,4096)
         ||(record.claimedSelectionId!==null&&(typeof record.claimedSelectionId!=='string'||record.claimedSelectionId.length>4096)))fail();
     profile(record.protocol);return record;
@@ -154,6 +155,7 @@ export class ProtocolSourceBindingStore {
         if(storedContext.chainId!==value.source.chainId)throw new ProtocolSourceBindingReadError('invalid','selection',recordId,'Source context chain mismatch');
         return {selection:value,context:storedContext};
     }
+    async readContext(recordId:string):Promise<ProtocolSourceContext> {return this.readRecord('context',recordId);}
     async readQuarantine(recordId:string):Promise<ProtocolSourceQuarantine> {return this.readRecord('quarantine',recordId);}
     async prepareObservationLink(input:ProtocolSourceObservationLink):Promise<{id:string}> {
         const value=observationLink(input);await this.readSelection(value.selectionId);

@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import {ImmutableProtocolBundleStore,protocolImmutableJson} from './immutable-bundle-store.js';
 import type {ProtocolComponent} from '@eosrio/hyperion-sdk/protocol';
+import {isProtocolHex} from './hex.js';
 
 export interface ProtocolAbiObservationRecord {
     schemaVersion: 1;
@@ -39,7 +40,7 @@ export function protocolAbiObservationId(record: ProtocolAbiObservationRecord): 
         || record.capture?.kind !== 'unattested-ship-result-sections-v1'
         || (record.capture.schemaJson !== null && typeof record.capture.schemaJson !== 'string')
         || ['blockHex', 'tracesHex', 'deltasHex'].some(key => record.capture[key] !== null
-            && (typeof record.capture[key] !== 'string' || !/^(?:[0-9a-f]{2})*$/.test(record.capture[key])))) {
+            && !isProtocolHex(record.capture[key]))) {
         throw new Error('Invalid ABI observation source or profile');
     }
     const {inputSha256, ...position} = source;

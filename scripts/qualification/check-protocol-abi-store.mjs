@@ -5,6 +5,9 @@ import {writeFileSync} from 'node:fs';
 import {Client} from '@elastic/elasticsearch';
 import {ProtocolAbiObservationStore,protocolAbiCaptureDigest} from '../../build/indexer/protocol/abi-observation-store.js';
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
+import {ProtocolAbiFrontierStore,ProtocolAbiFrontierConflictError} from '../../build/indexer/protocol/abi-frontier-store.js';
+import {ProtocolAbiCoordinator} from '../../build/indexer/protocol/abi-coordinator.js';
+import {createHash} from 'node:crypto';
 
 // Own the exact server and namespace; this runner never accepts a borrowed cluster URL.
 const image='docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c';
@@ -158,6 +161,86 @@ try {
     await assert.rejects(filteredSources.prepareContext(context),/incompatible/);
     assert.equal((await client.count({index:filteredSourceIndex})).count,0);
     report.checks.push('source-binding source-pruning mappings refused before writes');
+
+    const frontierChain=`${chain}-frontier`,frontierStore=new ProtocolAbiFrontierStore(client,frontierChain);
+    const frontierSources=new ProtocolSourceBindingStore(client,frontierChain),frontierObservations=new ProtocolAbiObservationStore(client,frontierChain);
+    const frontierContext={...context,schemaJson:'{"version":"eosio::abi/1.1"}'};
+    const frontierContextId=(await frontierSources.prepareContext(frontierContext)).id;
+    const coordinatorOptions={chainId:context.chainId,profile:context.protocol,ownerId:'disposable-master-a',
+        bindings:frontierSources,observations:frontierObservations,store:frontierStore,maxPendingBlocks:2,recoveryWindowBlocks:2};
+    const coordinator=new ProtocolAbiCoordinator(coordinatorOptions);await coordinator.start();
+    let generation=(await coordinator.openSource(frontierContextId,'frontier-session-a')).generation;
+    await client.indices.putSettings({index:frontierStore.controlIndex,settings:{refresh_interval:'-1'}});
+    const positionId=number=>number.toString(16).padStart(64,'0');
+    const selectedBlock=async(number,identity=number,parent=number-1)=>{
+        const source={chainId:context.chainId,blockNum:number,blockId:positionId(identity),previousBlockId:number===1?null:positionId(parent)};
+        const capture={kind:'unattested-ship-result-sections-v1',schemaJson:frontierContext.schemaJson,blockHex:'00',tracesHex:'00',deltasHex:'00'};
+        const captureSha256=protocolAbiCaptureDigest(source,capture);
+        const facts={schemaVersion:1,actionInputs:[],deployments:[],finalStates:[]};
+        if(number===1)facts.finalStates.push({account:'alpha',present:true,abiHex:'aa',deltaOrdinal:0});
+        else facts.actionInputs.push({transactionId:'a'.repeat(64),actionOrdinal:1,inputActionOrdinal:1,receiver:'alpha',account:'alpha',name:'act',
+            rawHex:'07',globalSequence:identity===20?'1':'9007199254740993',receiptAbiSequence:'0'});
+        const input={schemaVersion:1,protocol:context.protocol,source:{...source,inputSha256:captureSha256},capture,observation:{status:'observed',facts}};
+        const selected=(await frontierSources.prepareSelection({schemaVersion:1,contextId:frontierContextId,readerSessionId:'frontier-session-a',
+            readerRole:'live',assignmentId:null,source,captureSha256,frameSha256:createHash('sha256').update('synthetic-frame-'+identity).digest('hex'),
+            head:{blockNum:number,blockId:source.blockId},irreversible:{blockNum:0,blockId:positionId(0)}})).id;
+        return {selected,input};
+    };
+    const prepareBlock=async(value)=>{
+        const prepared=await frontierObservations.prepare(value.input);
+        await frontierSources.prepareObservationLink({schemaVersion:1,selectionId:value.selected,observationId:prepared.id,observationDigest:prepared.digest});
+    };
+    const frontierFirst=await selectedBlock(1),frontierSecond=await selectedBlock(2);
+    await coordinator.admit(frontierFirst.selected,generation);await coordinator.admit(frontierSecond.selected,generation);
+    await prepareBlock(frontierSecond);assert.deepEqual(await coordinator.drain(),{committed:0,pending:2});
+    await client.indices.putSettings({index:frontierObservations.index,settings:{refresh_interval:'-1'}});
+    await prepareBlock(frontierFirst);assert.deepEqual(await coordinator.drain(),{committed:2,pending:0});
+    const canonicalView=await coordinator.inspect();assert.equal(canonicalView.head.blockNum,2);assert.equal(canonicalView.head.coverageStart,1);
+    const canonicalCommit=await frontierStore.readCommit(canonicalView.head.commitId);
+    assert.equal((await frontierStore.readAccountState(canonicalCommit.bindings[0].stateId)).abiHex,'aa');
+    const currentControl=await client.get({index:frontierStore.controlIndex,id:'control',realtime:true});
+    const hiddenControl=await client.search({index:frontierStore.controlIndex,
+        query:{bool:{filter:[{ids:{values:['control']}},{term:{digest:currentControl._source.digest}}]}},size:1});
+    assert.equal(hiddenControl.timed_out,false);assert.equal(hiddenControl._shards.failed,0);assert.equal(hiddenControl.hits.hits.length,0);
+    report.checks.push('real canonical coordinator activates ordered PREPAREs and compact bindings without search refresh');
+
+    const fork=await selectedBlock(2,20,1);await prepareBlock(fork);
+    const admittedFork=await coordinator.admit(fork.selected,generation);assert.equal(admittedFork.status,'accepted');
+    assert.notEqual(admittedFork.generation,generation);generation=admittedFork.generation;
+    assert.equal((await coordinator.inspect()).head.blockNum,1);assert.deepEqual(await coordinator.drain(),{committed:1,pending:0});
+    assert.equal((await coordinator.inspect()).head.blockId,positionId(20));
+    report.checks.push('real generation fence and fork rewind restore an immutable ancestor state root');
+
+    const reopenedFrontier=new ProtocolAbiFrontierStore(client,frontierChain),previousControl=await reopenedFrontier.readControl();
+    const restarted=new ProtocolAbiCoordinator({...coordinatorOptions,store:reopenedFrontier,ownerId:'disposable-master-b'});
+    await restarted.start();assert.equal((await restarted.inspect()).head.blockId,positionId(20));
+    assert.equal((await restarted.openSource(frontierContextId,'frontier-session-b')).resumeFromBlock,3);
+    await assert.rejects(reopenedFrontier.compareAndSet(previousControl,previousControl.value),error=>error instanceof ProtocolAbiFrontierConflictError);
+    assert.equal((await coordinator.admit(frontierSecond.selected,generation)).status,'stale');
+    report.checks.push('fresh runtime owner resumes the exact frontier and fences stale writers with real ES CAS');
+
+    let partialControl=true;
+    const receiptClient=new Proxy(client,{get(target,key){
+        if(key==='create')return async request=>{const receipt=await target.create(request);
+            if(partialControl&&request.id==='control'){partialControl=false;return {...receipt,_shards:{...receipt._shards,successful:0}};}return receipt;};
+        const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+    }});
+    const receiptStore=new ProtocolAbiFrontierStore(receiptClient,`${frontierChain}-receipt`),desiredControl={schemaVersion:1,owner:'receipt-fixture'};
+    await assert.rejects(receiptStore.compareAndSet(null,desiredControl),/receipt/);
+    const repairedControl=await receiptStore.compareAndSet(null,desiredControl);assert.deepEqual(repairedControl.value,desiredControl);
+    report.checks.push('real control document exists after partial receipt but needs identical CAS and a fresh complete receipt');
+
+    await client.indices.putSettings({index:frontierStore.controlIndex,settings:{'translog.durability':'async'}});
+    try{await assert.rejects(reopenedFrontier.readControl(),/durability|retention/);}finally{
+        await client.indices.putSettings({index:frontierStore.controlIndex,settings:{'translog.durability':'request'}});
+    }
+    for(const index of [frontierStore.controlIndex,frontierStore.recordsIndex]){
+        await client.indices.putSettings({index,settings:{final_pipeline:pipeline}});
+        try{await assert.rejects(index===frontierStore.controlIndex?reopenedFrontier.readControl():reopenedFrontier.readCommit(canonicalView.head.commitId),/retention/);}finally{
+            await client.indices.putSettings({index,settings:{final_pipeline:'_none'}});
+        }
+    }
+    report.checks.push('canonical control and immutable frontier refuse changed durability and source-pruning pipelines');
     report.status='passed';
 } catch(error){report.status='failed';report.error=String(error.stack??error);}
 finally {

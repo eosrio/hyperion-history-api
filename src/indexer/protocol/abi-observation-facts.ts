@@ -1,5 +1,6 @@
 import type {ProtocolBlockAbiObservations} from '@eosrio/hyperion-sdk/protocol';
 import {protocolAbiObservationJson} from './abi-observation-store.js';
+import {isProtocolHex} from './hex.js';
 
 /** Validate portable SDK shapes only; ABI bodies and canonical applicability remain unexamined. */
 export function assertProtocolAbiObservationFacts(value: unknown): asserts value is ProtocolBlockAbiObservations {
@@ -8,7 +9,7 @@ export function assertProtocolAbiObservationFacts(value: unknown): asserts value
     const record = (input: any) => input && typeof input === 'object' && !Array.isArray(input);
     const text = (input: any) => typeof input === 'string' && input.length > 0 && input.length <= 256;
     const integer = (input: any, minimum = 0) => Number.isSafeInteger(input) && input >= minimum;
-    const hex = (input: any) => typeof input === 'string' && /^(?:[0-9a-f]{2})*$/.test(input);
+    const hex = isProtocolHex;
     const decimal = (input: any, maximum: bigint, minimum = 0n) => typeof input === 'string' && input.length <= 20
         && /^(?:0|[1-9][0-9]*)$/.test(input) && BigInt(input) >= minimum && BigInt(input) <= maximum;
     const anchor = (input: any) => record(input) && typeof input.transactionId === 'string'
