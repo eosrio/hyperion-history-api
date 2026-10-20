@@ -28,6 +28,8 @@ jobs:
       - run: npm run build
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
+      - name: Check retained Wire source and replay credits with native Node
+        run: node --experimental-strip-types scripts/qualification/check-wire-replay-fixture.mjs
       - name: Verify Elasticsearch evidence checksums
         working-directory: docs/performance/evidence/es955-20261018
         run: sha256sum -c SHA256SUMS
