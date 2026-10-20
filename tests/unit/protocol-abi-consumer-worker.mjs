@@ -23,7 +23,7 @@ try {
     const config={settings:{chain,parser:'3.2',protocol:{provider:'extension',package:'@eosrio/hyperion-wire-plugin',profileId},
         eosio_alias:'sysio',system_contract:'sysio',index_version:'v1',index_partition_size:10000,es_replicas:0,ds_profiling:false},
         indexer:{fetch_block:true,fetch_traces:true,fetch_deltas:true,process_deltas:true,disable_indexing:false,live_reader:true},
-        features:{index_all_deltas:true,index_deltas:true,index_deltas_deletions:true,contract_state:{contracts:{'hyp.replay':{records:{}}}},
+        features:{index_all_deltas:true,index_deltas:true,index_deltas_deletions:true,contract_state:{enabled:true,contracts:{'hyp.replay':{records:{}}}},
             streaming:{deltas:false,traces:false},tables:{},failed_trx:false},scaling:{ds_pool_size:1,routing_mode:'round_robin',
             indexing_queues:1,ad_idx_queues:1,dyn_idx_queues:1},prefetch:{read:1,block:1,index:1},plugins:{},
         whitelists:{root_only:false,actions:[],deltas:[]},api:{tx_cache_mode:'batch'}};

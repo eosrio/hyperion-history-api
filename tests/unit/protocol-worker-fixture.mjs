@@ -40,7 +40,7 @@ try {
             ds_profiling:false,allow_custom_abi:false,max_ws_payload_mb:16},
         indexer:{fetch_block:true,fetch_traces:true,fetch_deltas:true,process_deltas:true,abi_scan_mode:false,disable_indexing:false},
         features:{index_all_deltas:true,index_deltas:true,index_deltas_deletions:true,index_transfer_memo:true,
-            contract_state:{contracts:{'hyp.replay':{People:{}}}},streaming:{deltas:false,traces:false},tables:{},failed_trx:false},
+            contract_state:{enabled:true,contracts:{'hyp.replay':{People:{}}}},streaming:{deltas:false,traces:false},tables:{},failed_trx:false},
         scaling:{ds_pool_size:1,routing_mode:'round_robin',indexing_queues:1,ad_idx_queues:1,dyn_idx_queues:1},
         prefetch:{read:1,block:1,index:1},plugins:{},whitelists:{root_only:false,actions:[],deltas:[]},api:{tx_cache_mode:'batch'},
     };
