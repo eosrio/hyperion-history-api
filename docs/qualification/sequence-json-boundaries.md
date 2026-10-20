@@ -57,6 +57,8 @@ their original proof and revocation cases. Those gates were not removed to accom
 The [owned native Elasticsearch prototype](action-sequences-design.md) tests an additive physical
 representation and one-query mixed-history ordering separately. It does not install a production
 mapping or adapter. Current signed-long storage still cannot accept the entire uint64 range.
+The subsequent [#225 adapter foundation](action-history-adapter.md) adds gated production modules;
+existing production callers remain disabled until durable coverage and reader integration are complete.
 Before closing #219 or releasing 4.5, integrate and qualify the production writer/query adapter,
 mapping installation on existing targets, complete predicate/tuple/sort/page/count behavior, exact
 coverage and bounded recovery for retained partitions, and direct/plugin/maintenance readers.

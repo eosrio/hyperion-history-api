@@ -96,10 +96,13 @@ cluster or script restrictions. Runtime queries are not the fallback: they are a
 
 ## Coverage and retained precision gaps
 
-Precision-dependent unknown rows must not disappear from membership, order or totals. Check missing exact
-coverage against the non-sequence base scope in the **same PIT** as the search. The fixture includes an unsafe
-old row outside a requested scope, an affected scope that must fail with retryable status 503, and a newly
-inserted unsafe row seen only by a fresh PIT. This is a scope/race experiment, not a durable coverage journal.
+Precision-dependent unknown rows must not disappear from membership, order or totals. The original
+category-filtered probe in this prototype demonstrates PIT visibility, **not completeness**: filtering the
+probe by contract/time can hide the surviving neighbor of an overwritten action. Even an index-wide zero
+unsafe-survivor result cannot certify completeness after selective replay removes the last survivor. The
+[gated production foundation](action-history-adapter.md) requires a source-backed coverage authority and
+retains index-wide same-PIT probes only as additional rejection checks. The
+[coverage investigation](action-history-coverage.md) defines the missing-row counterexamples and activation barrier.
 
 A rounded number alone cannot restore its original sequence. The old parser and ordinary writer can also
 have mapped adjacent originals to the same rounded `_id`; the fixture demonstrates one row overwriting the
@@ -121,7 +124,7 @@ them. [Nested-array behavior](https://www.elastic.co/docs/reference/elasticsearc
 
 ## Running the prototype
 
-After `npm ci --allow-git=root`, run:
+After `npm ci --allow-git=root` and `npm run build`, run:
 
 ```sh
 node scripts/qualification/check-action-sequences.mjs action-sequences-report.json
@@ -137,6 +140,10 @@ The JSON report records source/client/server identity, effective mappings/settin
 descriptive resource counters and cleanup. It covers exact neighbors around `2^53`, `2^63` and `2^64-1`, default
 serializer rounding, native predicates/exclusion/counts, mixed offset/PIT pages, same-PIT coverage checks,
 rounded legacy `_id` collision, numeric uint32 metadata and script capability refusal.
+
+The runner also imports emitted production codec, mapping, bulk and PIT modules for the gated #225
+foundation. Its authority is explicitly fixture-only; the durable host coverage journal and live reader
+activation remain absent. `productionModules` records those module checks separately from release qualification.
 
 Latest PIT IDs and exact returned sort arrays are retained, and all numeric tie-breakers must be safe. Contexts
 are closed on success and failure. A padded sequence key does not prove an arbitrary custom numeric sort or

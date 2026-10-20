@@ -88,7 +88,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --allow-git=root
-      - name: Probe exact sequence storage and mixed-history query design with owned Elasticsearch 9.5.5
+      - run: npm run build
+      - name: Probe gated exact history modules and mixed-history query design with owned Elasticsearch 9.5.5
         run: node scripts/qualification/check-action-sequences.mjs action-sequences-${{ matrix.node }}.json
       - name: Retain design evidence and cleanup result
         if: always()

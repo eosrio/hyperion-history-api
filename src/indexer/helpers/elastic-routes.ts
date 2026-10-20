@@ -5,6 +5,7 @@ import {hLog} from "./common_functions.js";
 import {createHash} from "crypto";
 import {Client, estypes} from "@elastic/elasticsearch";
 import {protocolDocumentIds} from './protocol-document-id.js';
+import {encodeActionSequenceStorage} from '../history/action-sequence-storage.js';
 
 type MaxBlockCb = (maxBlock: number) => void;
 type PartitionRoutingFunction = (blockNum: number) => string;
@@ -58,13 +59,16 @@ function buildActionBulk(payloads: Message[],
                          routerFunc: PartitionRoutingFunction,
                          indexName: string,
                          _retryOnConflict: number,
-                         extension = false) {
+                         extension = false,
+                         exactActionSequenceStorage = false) {
     return flatMap(payloads, (payload, body) => {
+        const physical = exactActionSequenceStorage ? encodeActionSequenceStorage(body) : body;
         let id = body['global_sequence'];
         if(extension){
             const sequence=body.protocol?.input?.globalSequence;
             if(typeof sequence!=='string'||!/^[1-9][0-9]{0,19}$/.test(sequence)||BigInt(sequence)>0xffffffffffffffffn)
                 throw new Error('Extension action lacks a lossless receipt identity');
+            if (exactActionSequenceStorage && id !== sequence) throw new Error('Extension action sequence differs from its source identity');
             id=sequence;
         }
         messageMap.set(id, _.omit(payload, ['content']));
@@ -73,7 +77,7 @@ function buildActionBulk(payloads: Message[],
                 _id: id,
                 _index: `${indexName}-${routerFunc(body.block_num)}`
             }
-        }, body];
+        }, physical];
     });
 }
 
@@ -299,7 +303,10 @@ export class ElasticRoutes {
     ingestNodeCounters = {};
     retryOnConflict: number = 3;
 
-    constructor(connectionManager: ConnectionManager, private readonly onSettlementFailure?: (channel: Channel) => void) {
+    // An internal qualification option, intentionally absent from operator config.
+    // Existing readers and source coverage must be migrated before production activation.
+    constructor(connectionManager: ConnectionManager, private readonly onSettlementFailure?: (channel: Channel) => void,
+                private readonly engineering: {exactActionSequenceStorage?: boolean} = {}) {
         this.routes = {
             generic: this.handleGenericRoute.bind(this)
         };
@@ -358,7 +365,8 @@ export class ElasticRoutes {
                     if (status === 200 || status === 201) {
                         channel.ack(collection[i]);
                         indexed++;
-                    } else if (status === 404) {
+                    } else if (status === 404 && !(this.engineering.exactActionSequenceStorage === true &&
+                        index_name.startsWith(this.chain + '-action-'))) {
                         // Preserve the existing missing-document disposition.
                         channel.ack(collection[i]);
                     } else {
@@ -481,7 +489,12 @@ export class ElasticRoutes {
         if (!bulkData.operations) {
             return null;
         }
-        const client = this.selectLeastLoadedIngestClient(bulkData.operations.length);
+        const operationCount = bulkData.operations.length;
+        if (this.engineering.exactActionSequenceStorage === true && typeof bulkData.index === 'string' &&
+            bulkData.index.startsWith(this.chain + '-action-')) {
+            bulkData = {...bulkData, pipeline: '_none'};
+        }
+        const client = this.selectLeastLoadedIngestClient(operationCount);
         return client.bulk<any, any>(bulkData);
     }
 
@@ -513,7 +526,8 @@ export class ElasticRoutes {
         this.addRoute('abi', buildAbiBulk, partitionRouter);
         const extensionActions=this.cm.config.settings.protocol?.provider==='extension';
         this.addRoute('action',(payloads,messageMap,maxBlockCb,router,indexName,retries)=>
-            buildActionBulk(payloads,messageMap,maxBlockCb,router,indexName,retries,extensionActions),partitionRouter);
+            buildActionBulk(payloads,messageMap,maxBlockCb,router,indexName,retries,extensionActions,
+                this.engineering.exactActionSequenceStorage === true),partitionRouter);
         this.addRoute('block', buildBlockBulk, partitionRouter);
         this.addRoute('delta', buildDeltaBulk, partitionRouter);
         this.addRoute('table-voters', buildTableVotersBulk, partitionRouter);

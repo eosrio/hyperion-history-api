@@ -49,6 +49,8 @@ import {ProtocolSourceBindingStore} from '../protocol/source-bindings.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
+import {assertActionSequenceTemplateReadback, ensureActionSequenceMappings,
+    ensureActionSequenceWriteTemplate} from '../history/action-sequence-storage.js';
 
 import Timeout = NodeJS.Timeout;
 import { IPermission } from '../../interfaces/table-permissions.js';
@@ -188,7 +190,9 @@ export class HyperionMaster {
 
     pendingReloadPromises: Map<number, (value: void | PromiseLike<void>) => void> = new Map();
 
-    constructor() {
+    // Internal qualification seam only. Public readers and durable source coverage must
+    // be migrated before the exact physical writer can be enabled in production.
+    constructor(private readonly engineering: {exactActionSequenceStorage?: boolean} = {}) {
         this.cm = new ConfigurationModule();
 
         if (!this.cm.config) {
@@ -948,8 +952,12 @@ export class HyperionMaster {
                         }
                     });
                     if (!creation_status || !creation_status.acknowledged) {
+                        if (index.type === 'action') throw new Error('Action sequence template update was not acknowledged: ' + name);
                         hLog(`Failed to create template: ${name}`);
                     } else {
+                        if (index.type === 'action') {
+                            assertActionSequenceTemplateReadback(await this.esClient.indices.getIndexTemplate({name}), name);
+                        }
                         updateCounter++;
                         debugLog(`${name} template updated!`);
                         // Drop a superseded legacy template lingering from a pre-composable run.
@@ -1882,6 +1890,12 @@ export class HyperionMaster {
         if(this.conf.settings.protocol?.provider==='extension'){
             const mapping=await ensureProtocolActionMapping(this.esClient,this.chain);
             hLog(`Protocol source evidence: ${mapping.updated}/${mapping.inspected} retained action mappings initialized`);
+        }
+        if (this.engineering.exactActionSequenceStorage === true) {
+            await ensureActionSequenceWriteTemplate(this.esClient,
+                `${this.chain}-action-${this.conf.settings.index_version}-000001`);
+            const mapping = await ensureActionSequenceMappings(this.esClient, this.chain);
+            hLog(`Exact action sequences: ${mapping.updated}/${mapping.inspected} retained action mappings initialized`);
         }
 
         // await this.createIndices(indicesList);
