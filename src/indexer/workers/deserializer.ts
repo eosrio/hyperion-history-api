@@ -28,6 +28,7 @@ import {ProtocolSourceBindingStore, ProtocolSourceBindingReadError, protocolSour
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
+import {AsyncLocalStorage} from 'node:async_hooks';
 
 class ProtocolProofStorageError extends Error {
     constructor(cause: unknown) {super('Canonical ABI proof storage failed', {cause});}
@@ -37,6 +38,13 @@ interface QueuePayload {
     queue: string;
     content: Buffer;
     headers?: any;
+}
+
+interface ProtocolDerivedPublications {
+    accepting: boolean;
+    bytes: number;
+    effects: Array<() => unknown | Promise<unknown>>;
+    failure?: ProtocolAbiProofUnavailableError;
 }
 
 function extractDeltaStruct(deltas: [string, TableDelta][]) {
@@ -85,6 +93,7 @@ export default class MainDSWorker extends HyperionWorker {
     private protocolAbiProofReader?: ProtocolAbiProofReader;
     private activeProtocolAbiProofView?: ProtocolAbiProofView;
     private protocolAbiProofDeployments = new Map<string, ProtocolAbiProofView>();
+    private readonly protocolDerivedPublications = new AsyncLocalStorage<ProtocolDerivedPublications>();
     private activeSourceDelivery?: {message: Message; channel: Channel | undefined};
     private readonly protocolDeliveryOwners = new WeakMap<Message, Channel>();
 
@@ -797,7 +806,7 @@ export default class MainDSWorker extends HyperionWorker {
     async pushToBlocksQueue(light_block: HyperionLightBlock) {
         if (!this.conf.indexer.disable_indexing) {
             const q = this.chain + ":index_blocks:" + (this.block_emit_idx);
-            await this.preIndexingQueue.push({
+            await this.enqueueDerivedPublication({
                 queue: q,
                 content: bufferFromJson(light_block)
             });
@@ -1496,17 +1505,48 @@ export default class MainDSWorker extends HyperionWorker {
         }
     }
 
+    /** Core helpers stage effects while a protocol row's async handlers are unresolved. */
+    private stageProtocolPublication(effect: () => unknown | Promise<unknown>, bytes: number): boolean {
+        const scope = this.protocolDerivedPublications?.getStore();
+        if (!scope) return false;
+        if (!scope.accepting) {
+            process.send?.({event: 'ds_error', data: {type: 'protocol_derived_publication_incomplete',
+                code: 'protocol_derived_scope_closed', message: 'Detached work cannot publish after its protocol record scope settled'}});
+            return true;
+        }
+        // One record cannot retain an unbounded set of helper publications.
+        if (scope.failure || scope.effects.length >= 4096 || scope.bytes + bytes > 64 * 1024 * 1024) {
+            scope.failure ??= new ProtocolAbiProofUnavailableError('protocol_derived_publication_limit', 'Protocol record derived publication budget exceeded');
+            return true;
+        }
+        scope.bytes += bytes; scope.effects.push(effect); return true;
+    }
+
+    private enqueueDerivedPublication(payload: QueuePayload): Promise<unknown> {
+        if (!this.protocolDerivedPublications?.getStore()) return this.preIndexingQueue.push(payload);
+        const retained: QueuePayload = {queue: payload.queue, content: Buffer.from(payload.content),
+            ...(payload.headers !== undefined ? {headers: structuredClone(payload.headers)} : {})};
+        this.stageProtocolPublication(() => this.preIndexingQueue.push(retained),
+            retained.content.length + Buffer.byteLength(JSON.stringify(retained.headers ?? {})));
+        return Promise.resolve();
+    }
+
     pushToDeltaStreamingQueue(payload, jsonRow) {
         if (this.allowStreaming && this.conf.features.streaming.deltas && this.ch) {
-            this.ch.publish('', this.chain + ':stream', payload, {
-                headers: {
+            const options = {headers: {
                     event: 'delta',
                     code: jsonRow.code,
                     table: jsonRow.table,
                     scope: jsonRow.scope,
                     payer: jsonRow.payer
-                }
-            });
+                }};
+            if (!this.protocolDerivedPublications?.getStore()) {
+                this.ch.publish('', this.chain + ':stream', payload, options);
+                return;
+            }
+            const bytes = Buffer.from(payload);
+            const publish = () => this.ch?.publish('', this.chain + ':stream', bytes, options);
+            this.stageProtocolPublication(publish, bytes.length + Buffer.byteLength(JSON.stringify(options.headers)));
         }
     }
 
@@ -1549,7 +1589,7 @@ export default class MainDSWorker extends HyperionWorker {
                     data: jsonRow.data,
                     ...(jsonRow['protocol'] ? {protocol: jsonRow['protocol']} : {})
                 };
-                this.preIndexingQueue.push({
+                this.enqueueDerivedPublication({
                     queue: this.chain + ":index_dynamic:" + (this.dyn_emit_idx),
                     content: bufferFromJson(doc),
                     headers: {
@@ -1569,7 +1609,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     async pushToDeltaQueue(bufferData: any, block_num) {
         const q = this.chain + ":index_deltas:" + (this.delta_emit_idx);
-        await this.preIndexingQueue.push({
+        await this.enqueueDerivedPublication({
             queue: q,
             content: bufferData,
             headers: { block_num }
@@ -1582,7 +1622,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     async pushToIndexQueue(data: any, type: string) {
         const q = this.chain + ":index_generic:" + (this.emit_idx);
-        await this.preIndexingQueue.push({
+        await this.enqueueDerivedPublication({
             queue: q,
             content: bufferFromJson(data),
             headers: { type }
@@ -1595,7 +1635,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     async pushToStateIndexQueue(data: any, type: string) {
         const q = this.chain + ":index_state:" + (this.emit_idx);
-        await this.preIndexingQueue.push({
+        await this.enqueueDerivedPublication({
             queue: q,
             content: bufferFromJson(data),
             headers: { type }
@@ -1734,7 +1774,7 @@ export default class MainDSWorker extends HyperionWorker {
                         if (this.usesExtensionProtocol) this.protocolAbiAtBlock.set(account.name, new_abi_object as IndexedProtocolAbi);
                         debugLog(`[Worker ${process.env.worker_id}] read ${account['name']} ABI at block ${block_num}`);
                         const q = this.chain + ":index_abis:1";
-                        await this.preIndexingQueue.push({ queue: q, content: bufferFromJson(new_abi_object) });
+                        await this.enqueueDerivedPublication({ queue: q, content: bufferFromJson(new_abi_object) });
 
                         // update locally cached abi
                         if (process.env['live_mode'] === 'true') {
@@ -1996,7 +2036,7 @@ export default class MainDSWorker extends HyperionWorker {
                 block: blockNum, block_id: blockId, profileId: this.protocol.profileId,
                 abiHex: reference.abi_hex, message: reference.abi_error}});
         }
-        await this.preIndexingQueue.push({queue: this.chain + ':index_abis:1', content: bufferFromJson(reference)});
+        await this.enqueueDerivedPublication({queue: this.chain + ':index_abis:1', content: bufferFromJson(reference)});
         process.send?.({event: 'save_abi', data: reference, live_mode: process.env.live_mode, worker_id: process.env.worker_id});
     }
 
@@ -2066,20 +2106,38 @@ export default class MainDSWorker extends HyperionWorker {
         const isPrimary = metadata.recordKind === 'row';
         if (!this.conf.indexer.disable_indexing) {
             const dynamicPayload = structuredClone(payload);
-            // Both primary and source-secondary records have full identities and
-            // delete semantics. Secondary rows do not execute primary-table hooks.
-            await revalidate();
-            if (isPrimary && metadata.present) await this.processTableDelta(payload, true);
-            if (this.conf.features.index_deltas && (metadata.present || this.conf.features.index_deltas_deletions)) {
-                if (isPrimary && metadata.present) await this.mLoader.processDeltaData(payload);
-                await revalidate();
-                const bytes = bufferFromJson(payload);
-                if (process.env.live_mode === 'true') this.pushToDeltaStreamingQueue(bytes, payload);
-                await this.pushToDeltaQueue(bytes, source.blockNum);
-                this.temp_delta_counter++;
-            }
-            await revalidate();
-            this.pushToDynamicTableQueue(dynamicPayload);
+            const scope: ProtocolDerivedPublications = {accepting: true, bytes: 0, effects: []};
+            await this.protocolDerivedPublications.run(scope, async () => {
+                try {
+                    // Both primary and source-secondary records have full identities and
+                    // delete semantics. Secondary rows do not execute primary-table hooks.
+                    await revalidate();
+                    if (isPrimary && metadata.present) {
+                        await this.processTableDelta(payload, true);
+                        await revalidate();
+                    }
+                    if (this.conf.features.index_deltas && (metadata.present || this.conf.features.index_deltas_deletions)) {
+                        if (isPrimary && metadata.present) await this.mLoader.processDeltaData(payload);
+                        await revalidate();
+                        const bytes = bufferFromJson(payload);
+                        if (process.env.live_mode === 'true') this.pushToDeltaStreamingQueue(bytes, payload);
+                        await this.pushToDeltaQueue(bytes, source.blockNum);
+                        this.temp_delta_counter++;
+                    }
+                    await revalidate();
+                    this.pushToDynamicTableQueue(dynamicPayload);
+                    scope.accepting = false;
+                    if (scope.failure) throw scope.failure;
+                    // Builtin handlers can await and call several core publication helpers.
+                    // No staged write is visible until their final applicability check passes.
+                    await revalidate();
+                    for (const effect of scope.effects) {
+                        await revalidate();
+                        try { await effect(); }
+                        catch (error) { throw new ProtocolProofStorageError(error); }
+                    }
+                } finally { scope.accepting = false; scope.effects.length = 0; }
+            });
         }
     }
 
@@ -2195,7 +2253,7 @@ export default class MainDSWorker extends HyperionWorker {
         };
         if (!this.conf.indexer.disable_indexing) {
             const q = this.chain + ":index_table_proposals:" + (this.tbl_prop_emit_idx);
-            await this.preIndexingQueue.push({
+            await this.enqueueDerivedPublication({
                 queue: q,
                 content: bufferFromJson(proposalDoc)
             });
@@ -2229,7 +2287,7 @@ export default class MainDSWorker extends HyperionWorker {
         };
         if (!this.conf.indexer.disable_indexing) {
             const q = this.chain + ":index_table_proposals:" + (this.tbl_prop_emit_idx);
-            await this.preIndexingQueue.push({
+            await this.enqueueDerivedPublication({
                 queue: q,
                 content: bufferFromJson(proposalDoc)
             });
@@ -2259,7 +2317,7 @@ export default class MainDSWorker extends HyperionWorker {
             }
             if (!this.conf.indexer.disable_indexing) {
                 const q = this.chain + ":index_table_voters:" + (this.tbl_vote_emit_idx);
-                await this.preIndexingQueue.push({
+                await this.enqueueDerivedPublication({
                     queue: q,
                     content: bufferFromJson(voterDoc)
                 });
@@ -2289,7 +2347,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         if (!this.conf.indexer.disable_indexing) {
             const q = this.chain + ":index_table_accounts:" + (this.tbl_acc_emit_idx);
-            await this.preIndexingQueue.push({
+            await this.enqueueDerivedPublication({
                 queue: q,
                 content: bufferFromJson(accountDoc)
             });

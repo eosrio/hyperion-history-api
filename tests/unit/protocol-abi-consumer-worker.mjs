@@ -61,15 +61,18 @@ try {
             .catch(error=>reader.onIpcMessage({event:'protocol_abi_coordinator_reply',mId:request.mId,data:{ok:false,error:{code:'fixture',message:error.message}}}));
         callback(null);
     });
-    const publications=[],poolMessages=[],indexOutput=[],actions=[],acks=[];
+    const publications=[],poolMessages=[],indexOutput=[],actions=[],acks=[],sourceAcks=[],rowStreams=[];
     reader.ship={connected:true,send(){},close(){}};reader.stageOneDistQueue={push:async value=>publications.push(value)};
     await reader.onMessage(Buffer.from(JSON.stringify(fixture.handshake)));
-    await reader.onMessage(Buffer.from(codec.encode('result',['get_status_result_v0',{head:template[1].head,
-        last_irreversible:{block_num:0,block_id:blockId(0)},trace_begin_block:1,trace_end_block:1000,chain_state_begin_block:1,chain_state_end_block:1000,chain_id:chainId}])));
+    const status=()=>Buffer.from(codec.encode('result',['get_status_result_v0',{head:template[1].head,
+        last_irreversible:{block_num:0,block_id:blockId(0)},trace_begin_block:1,trace_end_block:1000,chain_state_begin_block:1,chain_state_end_block:1000,chain_id:chainId}]));
+    await reader.onMessage(status());
     process.env.worker_role='deserializer';const main=new MainDS();workers.push(main);await main.protocolReady;await until(()=>main.mLoader.parser);
     main.client=memory.client;main.protocolSourceBindingStore=sources;main.protocolAbiObservationStore=observations;main.ch_ready=true;
     main.preIndexingQueue={push:async value=>indexOutput.push(value)};
-    main.ch={ack(){},nack(){throw new Error('Unexpected MainDS NACK');},sendToQueue(queue,content,options){poolMessages.push({content,properties:options,queue});return true;}};
+    main.ch={ack(message){sourceAcks.push(message);},nack(){throw new Error('Unexpected MainDS NACK');},
+        publish(_exchange,_queue,content,options){rowStreams.push({content,options});return true;},
+        sendToQueue(queue,content,options){poolMessages.push({content,properties:options,queue});return true;}};
     const createPool=async()=>{
         process.env.worker_role='ds_pool_worker';const result=new Pool();result.ioRedisClient.disconnect();result.ioRedisClient=null;workers.push(result);
         await result.protocolReady;result.client=memory.client;result.mLoader=main.mLoader;result.ch_ready=true;
@@ -82,7 +85,7 @@ try {
         ricardian_clauses:[],error_messages:[],abi_extensions:[],variants:[]});
     const abiA=Buffer.from(reader.protocol.contractCodec.encodeAbi(abi('old'))).toString('hex'),abiB=Buffer.from(reader.protocol.contractCodec.encodeAbi(abi('new'))).toString('hex');
     const encode=(type,value)=>Buffer.from(codec.encode(type,value)).toString('hex');
-    const account=(bytes,present=true)=>({present,data:encode('account',['account_v0',{name:'hyp.replay',creation_date:'2025-01-01T00:00:00.000',abi:bytes}])});
+    const account=(bytes,present=true,name='hyp.replay')=>({present,data:encode('account',['account_v0',{name,creation_date:'2025-01-01T00:00:00.000',abi:bytes}])});
     const occurrence=(ordinal,globalSequence,{account='hyp.replay',name='record',receiver=account,creator=0,raw='07000000',abiSequence=0}={})=>{
         const result=structuredClone(originalTrace.action_traces[0][1]);
         Object.assign(result,{action_ordinal:ordinal,creator_action_ordinal:creator,receiver,act:{account,name,authorization:[{actor:'alice',permission:'active'}],data:raw},except:null,error_code:null});
@@ -170,6 +173,114 @@ try {
     const prior=actions.length;await consumePool(later.pool.map(message=>({...message})));assert.equal(actions.length,prior+1);
     assert.equal(actions.at(-1).protocol.status,'incomplete');assert.equal(actions.at(-1).act.data,'07000000');assert.equal(actions.at(-1)['@record'],undefined);
     assert(events.some(message=>message.event==='ds_error'&&message.data?.type==='protocol_action_incomplete'));
+    // Reopen the actual source after revocation, then run the real async msig
+    // builtin. Only its nested proposed-action decode is held by the test.
+    await reader.processFirstABI(Buffer.from(JSON.stringify(fixture.handshake)));await reader.onMessage(status());
+    main.conf.features.tables.proposals=true;
+    main.conf.features.contract_state.contracts['sysio.msig']={proposal:{}};
+    const proposalAbi={...abi('unused'),structs:[{name:'proposal',base:'',fields:[{name:'proposal_name',type:'name'},{name:'packed_transaction',type:'bytes'}]}],
+        actions:[],tables:[{name:'proposal',index_type:'i64',key_names:[],key_types:[],type:'proposal',table_id:0,secondary_indexes:[]}]};
+    const proposalAbiHex=Buffer.from(reader.protocol.contractCodec.encodeAbi(proposalAbi)).toString('hex');
+    const packedTransaction=encode('transaction',{expiration:'2025-01-01T00:00:00',ref_block_num:0,ref_block_prefix:0,
+        max_net_usage_words:0,max_cpu_usage_ms:0,delay_sec:0,context_free_actions:[],
+        actions:[{account:'hyp.replay',name:'record',authorization:[],data:'07000000'}],transaction_extensions:[]});
+    const proposalValue=Buffer.from(reader.protocol.contractCodec.encodeValue(proposalAbi,'proposal',
+        {proposal_name:'test',packed_transaction:packedTransaction})).toString('hex');
+    const proposalRow={present:1,data:encode('contract_row_kv',['contract_row_kv_v0',
+        {code:'sysio.msig',payer:'alice',table_id:0,key:'01',value:proposalValue}])};
+    const proposalDelta=['table_delta_v0',{name:'contract_row_kv',rows:[proposalRow]}];
+    const realBuiltin=main.tableHandlers['sysio.msig:proposal'];assert.equal(typeof realBuiltin,'function');
+    main.deserializeActionAtBlockNative=async action=>{assert.equal(action.account,'hyp.replay');return {new:7};};
+    const processDeltaData=main.mLoader.processDeltaData.bind(main.mLoader),lateRelease=gate();let lateWork;
+    main.mLoader.processDeltaData=async payload=>{
+        await processDeltaData(payload);
+        const content=Buffer.from('retained'),headers={nested:{value:'retained'}};
+        await main.enqueueDerivedPublication({queue:'fixture:snapshot',content,headers});
+        content.fill(0);headers.nested.value='mutated';
+        lateWork=(async()=>{await lateRelease.promise;await main.pushToIndexQueue({late:true},'fixture');})();
+    };
+    indexOutput.length=0;
+    await prepare(frame(7,[],[account(proposalAbiHex,true,'sysio.msig')],[proposalDelta]));
+    const proposalDocuments=indexOutput.filter(value=>value.queue.includes('index_table_proposals')).map(value=>JSON.parse(value.content));
+    assert.equal(proposalDocuments.length,1);assert.deepEqual(proposalDocuments[0].trx.actions[0].data,{new:7});
+    assert.equal(indexOutput.filter(value=>value.queue.includes('index_dynamic')).length,1);
+    assert.equal(indexOutput.find(value=>value.queue==='fixture:snapshot').content.toString(),'retained');
+    assert.deepEqual(indexOutput.find(value=>value.queue==='fixture:snapshot').headers,{nested:{value:'retained'}});
+    const afterScope=indexOutput.length;lateRelease.release();await lateWork;assert.equal(indexOutput.length,afterScope,
+        'Detached hook work published after its real protocol record scope settled');
+    assert(events.some(message=>message.event==='ds_error'&&message.data?.code==='protocol_derived_scope_closed'));
+    main.mLoader.processDeltaData=processDeltaData;
+    assert.equal(main.tableHandlers['sysio.msig:proposal'],realBuiltin,'Fixture must retain the actual builtin handler');
+    const builtinEntered=gate(),builtinRelease=gate();
+    main.deserializeActionAtBlockNative=async()=>{builtinEntered.release();await builtinRelease.promise;return {new:7};};
+    main.allowStreaming=true;main.conf.features.streaming.deltas=true;process.env.live_mode='true';
+    indexOutput.length=0;rowStreams.length=0;
+    const acknowledgedBeforeBuiltin=sourceAcks.length,pendingBuiltin=prepare(frame(8,[],[],[proposalDelta]));
+    await builtinEntered.promise;
+    assert.equal(indexOutput.filter(value=>/index_table_proposals|index_deltas|index_dynamic/.test(value.queue)).length,0);
+    await coordinator.revokeSource(reader.sourceContext.readerSessionId);builtinRelease.release();
+    const revokedBuiltin=await pendingBuiltin;
+    assert.equal(indexOutput.filter(value=>/index_table_proposals|index_deltas|index_dynamic/.test(value.queue)).length,0,
+        'Async builtin published derived state after its proof was revoked');
+    assert.equal(rowStreams.filter(value=>value.options?.headers?.event==='delta').length,0);
+    assert.equal(sourceAcks.length,acknowledgedBeforeBuiltin+1);
+    assert.equal((await sources.readObservationLink(revokedBuiltin.selectionId)).selectionId,revokedBuiltin.selectionId,
+        'Incomplete derived processing must retain its exact raw source/PREPARE link');
+    assert(events.some(message=>message.event==='ds_error'&&message.data?.type==='protocol_record_incomplete'&&message.data.blockNum===8));
+    // A proof can also be revoked while the first staged queue write awaits.
+    // That already-started write precedes revocation; later effects must stop.
+    await reader.processFirstABI(Buffer.from(JSON.stringify(fixture.handshake)));await reader.onMessage(status());
+    main.deserializeActionAtBlockNative=async()=>({new:7});
+    const drainEntered=gate(),drainRelease=gate();
+    main.preIndexingQueue.push=async value=>{
+        indexOutput.push(value);
+        if(value.queue.includes('index_table_proposals')){drainEntered.release();await drainRelease.promise;}
+    };
+    indexOutput.length=0;rowStreams.length=0;
+    const pendingDrain=prepare(frame(9,[],[],[proposalDelta]));await drainEntered.promise;
+    await coordinator.revokeSource(reader.sourceContext.readerSessionId);drainRelease.release();await pendingDrain;
+    assert.equal(indexOutput.filter(value=>value.queue.includes('index_table_proposals')).length,1);
+    assert.equal(indexOutput.filter(value=>/index_deltas|index_dynamic/.test(value.queue)).length,0,
+        'Staged drain resumed publishing after an awaited queue write and known revocation');
+    assert.equal(rowStreams.filter(value=>value.options?.headers?.event==='delta').length,0);
+    main.preIndexingQueue.push=async value=>indexOutput.push(value);
+    await reader.processFirstABI(Buffer.from(JSON.stringify(fixture.handshake)));await reader.onMessage(status());
+    for(const [number,fill] of [[10,async()=>{
+        for(let index=0;index<4097;index++)await main.enqueueDerivedPublication({queue:'fixture:count-budget',content:Buffer.alloc(0)});
+    }],[11,async()=>{
+        const content=Buffer.alloc(1024*1024);
+        for(let index=0;index<64;index++)await main.enqueueDerivedPublication({queue:'fixture:byte-budget',content,headers:{tag:'bytes-count-too'}});
+    }]]) {
+        main.mLoader.processDeltaData=fill;indexOutput.length=0;rowStreams.length=0;
+        const acknowledged=sourceAcks.length;await prepare(frame(number,[],[],[proposalDelta]));
+        assert.equal(indexOutput.filter(value=>value.queue.startsWith('fixture:')||/index_table_proposals|index_deltas|index_dynamic/.test(value.queue)).length,0,
+            'Publication budget failure emitted a partial derived batch');
+        assert.equal(rowStreams.filter(value=>value.options?.headers?.event==='delta').length,0);
+        assert.equal(sourceAcks.length,acknowledged+1);
+        assert(events.some(message=>message.event==='ds_error'&&message.data?.blockNum===number&&/budget/.test(message.data.message)));
+    }
+    main.mLoader.processDeltaData=processDeltaData;
+    // A core queue failure is infrastructure failure, never a contract-local
+    // incomplete success. Preserve the original source delivery for redelivery.
+    const beforeQueueFailure=sourceAcks.length;
+    main.preIndexingQueue.push=async value=>{if(value.queue.includes('index_table_proposals'))throw new Error('Injected staged queue failure');indexOutput.push(value);};
+    await assert.rejects(prepare(frame(12,[],[],[proposalDelta])),/Canonical ABI proof storage failed/);
+    assert.equal(sourceAcks.length,beforeQueueFailure);
+    main.preIndexingQueue.push=async value=>indexOutput.push(value);
+    const retryPublication=publications.at(-1),retryMessage={content:retryPublication.content,properties:{headers:retryPublication.headers}};
+    main.captureProtocolSourceDelivery(retryMessage,main.ch);await main.mLoader.parser.parseMessage(main,[retryMessage]);await draining;
+    assert.equal(sourceAcks.length,beforeQueueFailure+1);
+    // Native/default helpers retain their immediate sink and buffer behavior.
+    const nativeQueue=[],nativeStreams=[],nativeWorker=Object.assign(Object.create(MainDS.prototype),{chain:'native-fixture',
+        conf:{settings:{},features:{streaming:{deltas:true}},scaling:{indexing_queues:1,ad_idx_queues:1}},
+        emit_idx:1,delta_emit_idx:1,allowStreaming:true,preIndexingQueue:{push:value=>{nativeQueue.push(value);return Promise.resolve();}},
+        ch:{publish(_exchange,_queue,content){nativeStreams.push(content);return true;}}});
+    assert.equal(nativeWorker.usesExtensionProtocol,false);
+    const nativeContent=Buffer.from('native');await nativeWorker.pushToDeltaQueue(nativeContent,1);
+    assert.equal(nativeQueue[0].content,nativeContent);assert.equal(nativeQueue[0].headers.block_num,1);
+    nativeWorker.pushToDeltaStreamingQueue(nativeContent,{code:'eosio',table:'proposal',scope:'alice',payer:'alice'});
+    assert.equal(nativeStreams[0],nativeContent);
+    delete process.env.live_mode;
     const mapping=await import('../../build/indexer/definitions/index-templates.js');assert.deepEqual(mapping.action.mappings.properties.protocol,{enabled:false});
     console.log(JSON.stringify({passed:true,profileId,syntheticConsensus:false,proofBoundActions:true,certifiedOrigins:true,
         finalRootKv:true,losslessAnchors:true,rawIsolation:true,oldChannelFenced:true,stalePublicationFenced:true}));
