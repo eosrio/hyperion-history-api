@@ -223,6 +223,17 @@ test('failed transaction leaves durable intent across restart and exact replay n
     await assert.rejects(adapter.apply(request(1, [put('x', 'alice', 1)])), errorCode('projection.apply-unavailable'));
     const restarted = fixture.adapter({ receiptRetention: 2 });
     await assert.rejects(restarted.open(binding), errorCode('projection.incomplete'));
+    const progress = await restarted.recovery(binding);
+    assert.deepEqual(progress.checkpoint, genesis);
+    assert.deepEqual(progress.binding, binding);
+    assert.equal(progress.initialized, true);
+    assert.deepEqual(progress.pending.block, request(1, []).block);
+    assert.match(progress.pending.digest, /^[a-f0-9]{64}$/);
+    assert.equal(progress.gap, null);
+    // Recovery snapshots cannot mutate storage or grant an incomplete serving view.
+    progress.pending.block.blockNum = 99;
+    assert.equal((await restarted.recovery(binding)).pending.block.blockNum, 1);
+    await assert.rejects(restarted.recovery({...binding, generation: 'other'}), errorCode('projection.stale-view'));
     await assert.rejects(restarted.apply(request(1, [put('x', 'alice', 9)])), errorCode('projection.conflicting-replay'));
     assert.equal((await restarted.apply(request(1, [put('x', 'alice', 1)]))).status, 'applied');
     const second = await restarted.apply(request(2, [put('x', 'alice', 2)]));
@@ -234,6 +245,8 @@ test('failed transaction leaves durable intent across restart and exact replay n
     assert.equal((await restarted.query(duplicate.view, { filter: [], limit: 2 })).rows[0].value.balance, 2);
     await assert.rejects(restarted.apply(request(1, [put('x', 'alice', 8)])), errorCode('projection.conflicting-replay'));
     const third = await restarted.apply(request(3, [put('x', 'alice', 3)]));
+    assert.deepEqual(await restarted.recovery(binding), {binding, checkpoint: third.view.checkpoint,
+        initialized: true, pending: null, gap: null});
     await assert.rejects(restarted.apply(request(1, [put('x', 'alice', 1)])), errorCode('projection.replay-unavailable'));
     const meta = [...fixture.storage.values()].flatMap(collection => [...collection.values()]).find(record => record.storageVersion);
     assert.equal(meta.receipts.length, 2);

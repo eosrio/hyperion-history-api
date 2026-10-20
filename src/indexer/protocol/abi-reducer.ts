@@ -269,6 +269,10 @@ export async function reduceProtocolAbiBlock(record: ProtocolAbiObservationRecor
             const priorState = await getAccount(final.account);
             requireFact(!priorState || !final.present || (priorState.present ? priorState.abiHex === final.abiHex : final.abiHex === ''),
                 'Final ABI changed without an observed publication', 'protocol_abi_final_state_mismatch');
+            // Ordinary account touches repeat the same ABI in final-state deltas. Retain the
+            // deployment epoch, rather than inventing a deployment at every such block. An
+            // explicit native ABI publication (even of identical bytes) was handled above.
+            if (priorState && priorState.present === final.present && priorState.abiHex === final.abiHex) continue;
             const source: ProtocolAbiAccountSource = Object.freeze({...position, phase: 'block-end', deltaOrdinal: final.deltaOrdinal});
             const state = Object.freeze({account: final.account, present: final.present, abiHex: final.abiHex, protocol, source});
             accounts.set(final.account, state);updated.set(final.account, state);

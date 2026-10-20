@@ -42,6 +42,12 @@ recorded, and cannot replace the retained authority or accumulate stored inputs.
 A successful apply result reports durable
 progress; `open` and `query` determine whether that progress is ready to serve.
 
+`recovery(binding)` exposes the adapter-owned durable checkpoint and pending/gap
+identities to restarting workers, including while `open` rejects incomplete state.
+The returned snapshot validates the full storage/binding invariants and never
+grants serving readiness. Resume at the next contiguous source, using the exact
+retained pending identity; do not replay from zero beyond receipt retention.
+
 Logical records contain all declared scalar fields. Equality filters, binary
 UTF-8 key ordering, keyset pagination and capped counts execute inside the adapter.
 A query reads its records and count from one checkpoint and rejects a stale or

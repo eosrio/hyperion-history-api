@@ -110,6 +110,33 @@ describe('canonical block ABI occurrence reduction', () => {
         expect(result.updates[0].state).toMatchObject({present: false, abiHex: 'beef', source: {phase: 'block-end'}});
     });
 
+    it('retains the actual ABI deployment across ordinary unchanged account touches', async () => {
+        for (const present of [true, false]) {
+            const before = priorState('alice', 'abcd', present), input = facts();
+            input.actionInputs = [action(1, '10')];
+            input.finalStates = [final('alice', 'abcd', 7, present)];
+            const result = complete(await reduceProtocolAbiBlock(record(input), async () => before));
+            expect(result.bindings[0].state).toMatchObject({account: before.account, abiHex: before.abiHex,
+                present: before.present, source: before.source});
+            expect(result.updates).toEqual([]);
+        }
+    });
+
+    it('keeps identical-byte native setabi as a new deployment despite unchanged final bytes', async () => {
+        const deploy = action(1, '10', 'sysio', {name: 'setabi'}), input = facts();
+        input.actionInputs = [deploy, action(2, '11')];
+        input.deployments = [publication(deploy, 'alice', 'abcd')];
+        input.finalStates = [final('alice', 'abcd')];
+        const before = priorState('alice', 'abcd');
+        const result = complete(await reduceProtocolAbiBlock(record(input), async account =>
+            account === 'alice' ? before : priorState(account, '00')));
+        expect(result.updates).toHaveLength(1);
+        expect(result.updates[0].state.source).toMatchObject({blockNum: 10, phase: 'native-effect',
+            action: {actionOrdinal: 1, globalSequence: '10'}});
+        expect(result.bindings[1].state).toEqual(result.updates[0].state);
+        expect(result.updates[0].state.source).not.toEqual(before.source);
+    });
+
     it('resets the entire carried applicability result if any native target lacks its matching final barrier', async () => {
         for (const end of [[], [final('alice', 'aa')], [final('alice', 'bb', 0, false)]]) {
             const deploy = action(1, '10', 'sysio');const input = facts();input.actionInputs = [deploy, action(2, '11', 'unrelated')];

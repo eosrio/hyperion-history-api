@@ -136,8 +136,8 @@ export function protocolSourceObservationLinkId(value:string):string {
 export class ProtocolSourceBindingStore {
     private readonly bundles:ImmutableProtocolBundleStore;
     get index():string{return this.bundles.index;}
-    constructor(client:Client,chain:string,replicas=0) {
-        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-source-bindings','protocol-source-bindings-v1');
+    constructor(client:Client,chain:string,replicas=0,options:{readOnly?:boolean}={}) {
+        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-source-bindings','protocol-source-bindings-v1',undefined,options);
     }
     async prepareContext(input:ProtocolSourceContext):Promise<{id:string}> {
         const value=context(input),recordId=protocolSourceContextId(value);await this.bundles.prepare(recordId,value);return {id:recordId};

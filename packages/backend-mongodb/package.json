@@ -35,8 +35,8 @@
     "mongodb": "7.2.0"
   },
   "devDependencies": {
-    "typescript": "7.0.2",
+    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#414e7c2771d55f730a316310ff0d0ed54492d9e2",
     "@types/node": "25.5.0",
-    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#6913a7fcee0b29d3b8e4104806a4caa98469f463"
+    "typescript": "7.0.2"
   }
 }

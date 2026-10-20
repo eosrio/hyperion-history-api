@@ -21,6 +21,7 @@ import {
     type ProjectionQuery,
     type ProjectionQueryResult,
     type ProjectionReadView,
+    type ProjectionRecoveryView,
 } from '@eosrio/hyperion-sdk/projection';
 import {
     ReadConcern,
@@ -227,6 +228,18 @@ class MongoDbProjectionAdapter implements ProjectionAdapter {
             const metadata = await this.load(binding);
             assertReady(metadata);
             return readView(metadata);
+        });
+    }
+
+    async recovery(input: ProjectionBinding): Promise<ProjectionRecoveryView> {
+        const binding = checkBinding(input, this.backendId);
+        return this.guarded(async () => {
+            // load validates the full immutable binding and persisted checkpoint/intent/receipt
+            // invariants using majority-visible primary storage. Pending work fences open/query,
+            // but must not hide the completed checkpoint from a restarting source scheduler.
+            const metadata = await this.load(binding);
+            return snapshot({binding: metadata.binding, checkpoint: metadata.checkpoint,
+                initialized: metadata.initialized, pending: metadata.pending, gap: metadata.gap});
         });
     }
 

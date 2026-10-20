@@ -5,9 +5,11 @@ import {CacheManager} from "../../src/api/helpers/cacheManager.js";
 import {Client} from "@elastic/elasticsearch";
 import {AccountObject, ChainAPI} from "@wharfkit/antelope";
 import {SavedAbi} from "../../src/interfaces/hyperion-abi.js";
+import type {PortableStateQueryHost} from '../../src/indexer/projection/query-service.js';
 
 declare module 'fastify' {
     export interface FastifyInstance {
+        portableState?: PortableStateQueryHost;
         elastic: Client;
         manager: ConnectionManager;
         explorerTheme?: Record<string, any>

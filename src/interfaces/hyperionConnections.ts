@@ -66,6 +66,10 @@ export interface MongoDbConfig {
     database_prefix: string;
     user: string;
     pass: string;
+    /** Explicit single-seed access, including a reachable replica-set member behind a proxy. */
+    directConnection?: boolean;
+    /** Expected replica-set name; topology is still validated by the selected state adapter. */
+    replicaSet?: string;
 }
 
 export interface HyperionConnections {
