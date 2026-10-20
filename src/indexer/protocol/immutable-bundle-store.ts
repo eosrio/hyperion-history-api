@@ -75,7 +75,8 @@ export class ImmutableProtocolBundleStore {
 
     constructor(private readonly client:Client,chain:string,private readonly replicas:number,
                 private readonly kind:string,suffix:string,
-                bounds:ImmutableProtocolBundleBounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256}) {
+                bounds:ImmutableProtocolBundleBounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256},
+                private readonly options:{readOnly?:boolean}={}) {
         if(!/^[a-z0-9][a-z0-9_.-]{0,120}$/.test(chain)||!/^[a-z0-9-]{1,80}$/.test(suffix)||!/^[a-z0-9-]{1,80}$/.test(kind)
             ||!Number.isSafeInteger(replicas)||replicas<0
             ||!Number.isSafeInteger(bounds.chunkBytes)||bounds.chunkBytes<1||bounds.chunkBytes>1024*1024
@@ -91,7 +92,8 @@ export class ImmutableProtocolBundleStore {
             &&error?.meta?.body?._index===this.index&&error?.meta?.body?._id===id;
     }
     private async initialize() {
-        if (!this.initialized) this.initialized = this.provision().catch(error => {this.initialized = undefined; throw error;});
+        if (!this.initialized) this.initialized = (this.options.readOnly?Promise.resolve():this.provision())
+            .catch(error => {this.initialized = undefined; throw error;});
         await this.initialized;
         await this.validateMapping();
         // Do not retain a stale startup assumption if an operator changes this projection's durability.
@@ -185,6 +187,7 @@ export class ImmutableProtocolBundleStore {
     }
 
     async prepare(id:string, record:unknown): Promise<{id:string;digest:string}> {
+        if(this.options.readOnly)throw new Error('Read-only protocol bundles cannot prepare records');
         const bytes=Buffer.from(canonical(record,this.bounds.maximumBytes));
         const count = Math.ceil(bytes.length / this.bounds.chunkBytes);
         if (bytes.length > this.bounds.maximumBytes || count > this.bounds.maximumChunks) throw new Error('ABI observation exceeds bounded storage budget');

@@ -2,6 +2,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
 import {API} from "@wharfkit/antelope";
 import {regroupActions} from "../../../helpers/regroup-actions.js";
+import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
 
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
@@ -125,6 +126,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         for (let action of hits) {
             action = action._source;
             mergeActionMeta(action);
+            await protectProtocolAction(fastify, request, action);
             rawActions.push(action);
         }
 

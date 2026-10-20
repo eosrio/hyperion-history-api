@@ -7,18 +7,7 @@ import {Client} from "@elastic/elasticsearch";
 import {ABI, Serializer} from "@wharfkit/antelope";
 import {SavedAbi} from "../../../../interfaces/hyperion-abi.js";
 import {ActionTrace} from "../../../../interfaces/action-trace.js";
-import {loadChainProtocol} from "../../../../indexer/protocol/selection.js";
-
-// A server owns its selection; importing a route never constructs an Antelope decoder.
-const protocolSelections = new WeakMap<FastifyInstance, ReturnType<typeof loadChainProtocol>>();
-function selectedProtocol(fastify: FastifyInstance) {
-    let selected = protocolSelections.get(fastify);
-    if (!selected) {
-        selected = loadChainProtocol(fastify.manager.config.settings?.protocol);
-        protocolSelections.set(fastify, selected);
-    }
-    return selected;
-}
+import {protectProtocolAction, protocolActionInput as actionInput} from '../../../helpers/protocol-abi.js';
 
 async function fetchSavedAbiAtBlock(
     client: Client,
@@ -58,37 +47,9 @@ async function fetchSavedAbiAtBlock(
 
 const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
-interface EncodingAbi {
-    types?: {new_type_name: string; type: string}[];
-    structs?: {name: string; base: string; fields: {name: string; type: string}[]}[];
-}
-
-/** Indexed projection metadata is not part of a contract action's binary value. */
-function actionInput(abi: EncodingAbi, type: string, data: unknown): unknown {
-    if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
-    const seen = new Set<string>();
-    const fields = (name: string): string[] | undefined => {
-        if (seen.has(name) || seen.size >= 128) throw new Error('Invalid action ABI type ancestry');
-        seen.add(name);
-        const alias = abi.types?.find(entry => entry.new_type_name === name);
-        if (alias) return fields(alias.type);
-        const struct = abi.structs?.find(entry => entry.name === name);
-        if (!struct) return;
-        return [...(struct.base ? fields(struct.base) ?? [] : []), ...struct.fields.map(field => field.name)];
-    };
-    const allowed = fields(type);
-    // Protobuf and other non-struct roots retain their provider-specific JSON representation.
-    return allowed ? Object.fromEntries(allowed.filter(name => Object.hasOwn(data, name))
-        .map(name => [name, (data as Record<string, unknown>)[name]])) : data;
-}
-
-async function encodeActionData(fastify: FastifyInstance, action: ActionTrace) {
-    const {id} = await selectedProtocol(fastify);
-    if (id !== 'antelope') {
-        // A latest ES hit can omit a newer deployment awaiting bulk/refresh.
-        // Enable extension encoding only after source-bound coverage/trace-epoch
-        // proof exists; neither head ABI nor unversioned history is that proof.
-        throw Object.assign(new Error('Protocol action encoding unavailable: source-bound ABI coverage has not been established'), {statusCode: 503});
+async function encodeActionData(fastify: FastifyInstance, request: FastifyRequest, action: ActionTrace) {
+    if (fastify.manager.config.settings?.protocol?.provider === 'extension') {
+        return protectProtocolAction(fastify, request, action, true);
     }
     try {
         const {Abieos} = await import('@eosrio/node-abieos');
@@ -360,8 +321,8 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             act.action_trace.act = action.act;
 
             if (reqBody.hex_data) {
-                action.act.hex_data = await encodeActionData(fastify, action);
-            }
+                action.act.hex_data = await encodeActionData(fastify, request, action);
+            } else await protectProtocolAction(fastify, request, action);
 
             if (action.act.account_ram_deltas) {
                 act.action_trace.account_ram_deltas = action.account_ram_deltas

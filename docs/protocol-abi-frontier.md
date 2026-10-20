@@ -2,8 +2,9 @@
 
 This implements the live-source coordinator portion of [#213](https://github.com/eosrio/hyperion-history-api/issues/213),
 on top of the [source handoff](protocol-source-bindings.md) and immutable ABI observation PREPARE journal.
-It creates internal canonical input/state bindings. Action-pool decoding, historical KV selection and API
-encoding retain their existing guards until their consumers validate those bindings and fork generations.
+It creates internal canonical input/state bindings. The [proof consumers](protocol-abi-consumers.md)
+validate settled certificates, exact bindings and current fork authority before action/KV decoding or API
+encoding. Missing certified ancestry and unproven inputs remain unavailable.
 This implementation does not establish release or Wire testnet qualification.
 
 ## Source ownership and ordered activation
@@ -92,7 +93,7 @@ distinct resolved prior account states separately at 64 MiB. These are implement
 capacity or throughput claims.
 
 These bounds do not enforce cumulative journal retention. Safe retention/checkpoint/compaction ownership,
-qualified historical/bulk recovery, trusted bootstrap manifests, downstream proof consumption and complete
+qualified historical/bulk recovery, trusted bootstrap manifests and complete
 fork/query qualification remain open before production activation. The new projection is initialized
 separately; existing Elasticsearch history needs no full reindex.
 

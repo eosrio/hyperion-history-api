@@ -8,4 +8,5 @@ export interface TrxMetadata {
     net_usage_words: number;
     inline_count: number;
     filtered: boolean;
+    protocolSelectionId?: string;
 }

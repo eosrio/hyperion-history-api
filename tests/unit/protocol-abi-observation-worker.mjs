@@ -4,6 +4,7 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {observationMemoryClient} from './protocol-observation-memory.mjs';
+import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
 registerHooks({resolve(specifier,context,next){if(specifier.includes('node-abieos'))throw new Error('Wire imported the legacy addon');return next(specifier,context);}});
 const previous=process.cwd(),directory=mkdtempSync(join(tmpdir(),'hyperion-abi-observation-'));
@@ -30,6 +31,7 @@ try {
     const {ProtocolAbiObservationStore,protocolAbiCaptureDigest}=await import('../../build/indexer/protocol/abi-observation-store.js');
     const wire=await import('@eosrio/hyperion-wire-plugin');
     main=new MainDS();workers.push(main);await main.protocolReady;await main.initializeProtocolShip(JSON.stringify(fixture.handshake));
+    main.client=frontierMemoryClient().client;
     const limit=Date.now()+3000;while(!main.mLoader.parser){assert(Date.now()<limit);await new Promise(resolve=>setTimeout(resolve,5));}
     const memory=observationMemoryClient();const store=new ProtocolAbiObservationStore(memory.client,chain);
     main.protocolAbiObservationStore=store;
@@ -164,6 +166,7 @@ try {
     const settlements=[];
     const createWorker=async label=>{
         const worker=new MainDS();workers.push(worker);await worker.protocolReady;await worker.initializeProtocolShip(JSON.stringify(fixture.handshake));
+        worker.client=frontierMemoryClient().client;
         const deadline=Date.now()+3000;while(!worker.mLoader.parser){assert(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,5));}
         worker.protocolAbiObservationStore=new ProtocolAbiObservationStore(cargoMemory.client,chain);
         worker.protocolSourceBindingStore=sourceStore;

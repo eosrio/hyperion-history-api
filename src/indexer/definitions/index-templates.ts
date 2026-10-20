@@ -58,6 +58,7 @@ export const action = {
         properties: {
             "@timestamp": {"type": "date"},
             "ds_error": {"type": "boolean"},
+            "protocol": {"enabled": false},
             "global_sequence": {"type": "long"},
             "account_ram_deltas.delta": {"type": "integer"},
             "account_ram_deltas.account": {"type": "keyword"},

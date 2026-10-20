@@ -48,6 +48,7 @@ import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore} from '../protocol/source-bindings.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
+import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
 
 import Timeout = NodeJS.Timeout;
 import { IPermission } from '../../interfaces/table-permissions.js';
@@ -1878,6 +1879,10 @@ export class HyperionMaster {
 
         await this.appendExtraMappings(indexConfig);
         await this.updateIndexTemplates(indicesList, indexConfig);
+        if(this.conf.settings.protocol?.provider==='extension'){
+            const mapping=await ensureProtocolActionMapping(this.esClient,this.chain);
+            hLog(`Protocol source evidence: ${mapping.updated}/${mapping.inspected} retained action mappings initialized`);
+        }
 
         // await this.createIndices(indicesList);
 

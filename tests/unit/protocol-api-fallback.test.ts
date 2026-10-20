@@ -30,7 +30,7 @@ const setup = `
             getAbi:async()=>{headCalls++;throw new Error('Unexpected head ABI lookup');}});
         app.decorate('allowedActionQueryParamSet',new Set());
         await app.register(registerV1,{prefix:'/v1/history'}); await app.ready();
-        return {app,setAction:index=>{current=index;},abiSearches:()=>abiSearches,headCalls:()=>headCalls,
+        return {app,setAction:index=>{current=index;},setRaw:hex=>{actions[current].act.data=hex;},abiSearches:()=>abiSearches,headCalls:()=>headCalls,
             request:(hex_data=true)=>app.inject({method:'POST',url:'/v1/history/get_actions',payload:{account_name:'alice',hex_data}})};
     }
     const action = (block,data)=> ({global_sequence:block,block_num:block,block_id:'b'.repeat(64),
@@ -82,8 +82,10 @@ test('Wire v1 selects without native imports and refuses action encoding without
             f.setAction(index); const response = await f.request(); assert.equal(response.statusCode,503,response.body);
             assert.match(response.json().message,/source-bound ABI coverage/);
             assert.equal(response.json().actions,undefined);
+            const decoded = await f.request(false); assert.equal(decoded.statusCode,503,decoded.body);
+            f.setRaw('0700000003666f6f');
             const history = await f.request(false); assert.equal(history.statusCode,200,history.body);
-            assert.equal(history.json().actions[0].action_trace.act.data.value,7);
+            assert.equal(history.json().actions[0].action_trace.act.data,'0700000003666f6f');
             assert.equal(history.json().actions[0].action_trace.act.hex_data,undefined);
         }
         assert.equal(f.abiSearches(),0); assert.equal(f.headCalls(),0);

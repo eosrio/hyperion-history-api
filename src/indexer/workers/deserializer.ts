@@ -26,6 +26,12 @@ import {ProtocolAbiObservationStore, type ProtocolAbiObservationRecord} from '..
 import {assertProtocolAbiObservationFacts} from '../protocol/abi-observation-facts.js';
 import {ProtocolSourceBindingStore, ProtocolSourceBindingReadError, protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
+import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
+import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
+
+class ProtocolProofStorageError extends Error {
+    constructor(cause: unknown) {super('Canonical ABI proof storage failed', {cause});}
+}
 
 interface QueuePayload {
     queue: string;
@@ -75,6 +81,10 @@ export default class MainDSWorker extends HyperionWorker {
     private protocolAbiObservationStore?: ProtocolAbiObservationStore;
     private protocolSourceBindingStore?: ProtocolSourceBindingStore;
     private activeSourceSelectionId?: string;
+    private activeSourceRole?: 'live' | 'bulk' | 'repair';
+    private protocolAbiProofReader?: ProtocolAbiProofReader;
+    private activeProtocolAbiProofView?: ProtocolAbiProofView;
+    private protocolAbiProofDeployments = new Map<string, ProtocolAbiProofView>();
     private activeSourceDelivery?: {message: Message; channel: Channel | undefined};
     private readonly protocolDeliveryOwners = new WeakMap<Message, Channel>();
 
@@ -376,13 +386,15 @@ export default class MainDSWorker extends HyperionWorker {
         } finally { stopVerify(); }
         if (invalid) { await quarantine('protocol_source_invalid', validationError); return; }
         this.activeSourceSelectionId = claimed;
+        this.activeSourceRole = binding!.selection.readerRole;
         this.activeSourceDelivery = {message, channel: ownerChannel};
         try { await processBound(result!); }
         catch (error) {
             if (!(error instanceof ProtocolSourceCodecError)) throw error;
             await quarantine('protocol_source_codec_incomplete', error);
         }
-        finally { this.activeSourceSelectionId = undefined; this.activeSourceDelivery = undefined; close?.(); }
+        finally { this.activeSourceSelectionId = undefined; this.activeSourceRole = undefined; this.activeProtocolAbiProofView = undefined;
+            this.activeSourceDelivery = undefined; close?.(); }
     }
 
     ackProtocolSourceDelivery(message: Message): void {
@@ -457,7 +469,23 @@ export default class MainDSWorker extends HyperionWorker {
             });
         } catch (error: any) { debugLog('ABI preparation hint could not reach master:', error?.message ?? error); }
         if (codecFailure) throw codecFailure;
+        const stopProof = this.profiler.start('protocol_abi_block_wait');
+        try {
+            const reader = this.getProtocolAbiProofReader();
+            this.activeProtocolAbiProofView = await (this.activeSourceRole === 'live'
+                ? reader.waitForOpen(position, this.activeSourceSelectionId) : reader.open(position, this.activeSourceSelectionId));
+        } catch (error) {
+            if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;
+            this.activeProtocolAbiProofView = undefined;
+        } finally { stopProof(); }
         return decoded;
+    }
+
+    private getProtocolAbiProofReader(): ProtocolAbiProofReader {
+        return this.protocolAbiProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
+            profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
+            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
+            maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
     }
 
     private initConsumer() {
@@ -739,7 +767,8 @@ export default class MainDSWorker extends HyperionWorker {
                                     ts,
                                     inline_count,
                                     filtered,
-                                    live: process.env['live_mode']
+                                    live: process.env['live_mode'],
+                                    ...(this.usesExtensionProtocol ? {[protocolSourceSelectionHeader]: this.activeSourceSelectionId} : {})
                                 });
                             } catch (e) {
                                 hLog(e);
@@ -1414,7 +1443,7 @@ export default class MainDSWorker extends HyperionWorker {
         return fun.constructor.name === 'AsyncFunction';
     }
 
-    async processTableDelta(contractRowDelta: any) {
+    async processTableDelta(contractRowDelta: any, deferDynamic = false) {
 
         if (contractRowDelta['table'] && contractRowDelta['data']) {
             contractRowDelta['primary_key'] = String(contractRowDelta['primary_key']);
@@ -1425,7 +1454,7 @@ export default class MainDSWorker extends HyperionWorker {
             const key2 = `${contractRowDelta.code}:*`;
             const key3 = `*:${contractRowDelta.table}`;
 
-            this.pushToDynamicTableQueue(contractRowDelta);
+            if (!deferDynamic) this.pushToDynamicTableQueue(contractRowDelta);
 
             // strict code::table handlers
             if (this.tableHandlers[key]) {
@@ -1982,6 +2011,20 @@ export default class MainDSWorker extends HyperionWorker {
 
     private async fetchProtocolAbi(account: string, blockNum: number, blockId: string): Promise<ProtocolAbiDeployment> {
         if (!/^[a-z1-5.]{1,13}$/.test(account)) throw new Error('Invalid protocol ABI account');
+        const view = this.activeProtocolAbiProofView;
+        if (view && view.source.blockNum === blockNum && view.source.blockId === blockId) {
+            let state;
+            try { state = await this.getProtocolAbiProofReader().finalState(view, account); }
+            catch (error) {
+                if (error instanceof ProtocolAbiProofUnavailableError) throw error;
+                throw new ProtocolProofStorageError(error);
+            }
+            const deployment = protocolDeployment(this.protocol, {account: state.account, block: state.source.blockNum,
+                block_id: state.source.blockId, abi_hex: state.abiHex, protocol_profile: state.protocol.profileId,
+                abi_available: state.present && !!state.abiHex}, account, blockNum, blockId);
+            this.protocolAbiProofDeployments.set(deployment.id, view);
+            return deployment;
+        }
         const local = this.protocolAbiAtBlock.get(account);
         if (local?.block === blockNum && local.block_id === blockId) {
             return protocolDeployment(this.protocol, local, account, blockNum, blockId);
@@ -1996,6 +2039,16 @@ export default class MainDSWorker extends HyperionWorker {
         const record: any = normalized.record;
         const source = normalized.source;
         const metadata = normalized.metadata;
+        const proof = this.protocolAbiProofDeployments.get(String(source.abiDeployment));
+        const revalidate = async () => {
+            if (!proof) return;
+            const stop = this.profiler.start('protocol_abi_final_revalidate');
+            try { await this.getProtocolAbiProofReader().revalidate(proof); }
+            catch (error) {
+                if (error instanceof ProtocolAbiProofUnavailableError) throw error;
+                throw new ProtocolProofStorageError(error);
+            } finally { stop(); }
+        };
         if (!['row', 'index'].includes(String(metadata.recordKind)) || typeof metadata.present !== 'boolean'
             || typeof metadata.code !== 'string' || typeof metadata.payer !== 'string') throw new Error('Incomplete normalized protocol record');
         const payload: any = {
@@ -2012,17 +2065,21 @@ export default class MainDSWorker extends HyperionWorker {
         if (this.checkDeltaBlacklist(payload) || (this.filters.delta_whitelist.size && !this.checkDeltaWhitelist(payload))) return;
         const isPrimary = metadata.recordKind === 'row';
         if (!this.conf.indexer.disable_indexing) {
+            const dynamicPayload = structuredClone(payload);
             // Both primary and source-secondary records have full identities and
             // delete semantics. Secondary rows do not execute primary-table hooks.
-            if (isPrimary && metadata.present) await this.processTableDelta(payload);
-            else this.pushToDynamicTableQueue(payload);
+            await revalidate();
+            if (isPrimary && metadata.present) await this.processTableDelta(payload, true);
             if (this.conf.features.index_deltas && (metadata.present || this.conf.features.index_deltas_deletions)) {
                 if (isPrimary && metadata.present) await this.mLoader.processDeltaData(payload);
+                await revalidate();
                 const bytes = bufferFromJson(payload);
                 if (process.env.live_mode === 'true') this.pushToDeltaStreamingQueue(bytes, payload);
                 await this.pushToDeltaQueue(bytes, source.blockNum);
                 this.temp_delta_counter++;
             }
+            await revalidate();
+            this.pushToDynamicTableQueue(dynamicPayload);
         }
     }
 
@@ -2033,6 +2090,7 @@ export default class MainDSWorker extends HyperionWorker {
         // A block-local final-state ABI is usable before its async ES write becomes visible.
         this.protocolAbiAtBlock?.clear();
         this.protocolAbiSelections?.clear();
+        this.protocolAbiProofDeployments?.clear();
         let ordinal = 0;
         try {
             for (const delta of deltas) {
@@ -2059,6 +2117,7 @@ export default class MainDSWorker extends HyperionWorker {
                             if (normalized.kind === 'abi-required') throw new Error('Provider repeated an ABI dependency request');
                             if (normalized.kind === 'ignore') continue;
                         } catch (error: any) {
+                            if (error instanceof ProtocolProofStorageError) throw error;
                             process.send?.({event: 'ds_error', data: {type: 'protocol_projection_incomplete',
                                 ...position, stream: key, message: error.message, rawHex: Buffer.from(raw).toString('hex')}});
                             hLog(`Protocol contract record incomplete: ${key} at ${block_num}: ${error.message}`);
@@ -2083,6 +2142,7 @@ export default class MainDSWorker extends HyperionWorker {
                                 {...row, present: present ? 1 : 0, ordinal: position.ordinal}, block_id);
                         }
                     } catch (error: any) {
+                        if (error instanceof ProtocolProofStorageError) throw error;
                         if (this.usesExtensionProtocol) process.send?.({event: 'ds_error', data: {type: 'protocol_record_incomplete',
                             ...position, stream: key, message: error.message, rawHex: Buffer.from(raw).toString('hex')}});
                         hLog(`Delta struct [${key}] processing error: ${error.message}`);

@@ -4,6 +4,7 @@ import {regroupActions} from "../../../helpers/regroup-actions.js";
 import {hydrateActions} from "../../../helpers/archive-hydration.js";
 import {isHydrationDisabled} from "../../../helpers/archive-query.js";
 import {API} from "@wharfkit/antelope";
+import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
     const redis = fastify.redis;
@@ -123,6 +124,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         for (let action of hits) {
             if (action._source.block_num === highestBlockNum) {
                 mergeActionMeta(action._source);
+                await protectProtocolAction(fastify, request, action._source);
                 rawActions.push(action._source);
             }
         }
@@ -132,6 +134,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
 
         // add notified field derived from receipts
         response.actions = grouped.map(action => {
+            if (fastify.manager.config.settings?.protocol?.provider === 'extension') delete action.protocol;
             if (action.receipts && action.receipts.length > 0) {
                 const receivers = new Set<string>(
                     action.receipts.map((r: any) => r.receiver)

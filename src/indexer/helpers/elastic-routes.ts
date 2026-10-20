@@ -56,9 +56,17 @@ function buildActionBulk(payloads: Message[],
                          messageMap: MMap,
                          _maxBlockCb: MaxBlockCb,
                          routerFunc: PartitionRoutingFunction,
-                         indexName: string) {
+                         indexName: string,
+                         _retryOnConflict: number,
+                         extension = false) {
     return flatMap(payloads, (payload, body) => {
-        const id = body['global_sequence'];
+        let id = body['global_sequence'];
+        if(extension){
+            const sequence=body.protocol?.input?.globalSequence;
+            if(typeof sequence!=='string'||!/^[1-9][0-9]{0,19}$/.test(sequence)||BigInt(sequence)>0xffffffffffffffffn)
+                throw new Error('Extension action lacks a lossless receipt identity');
+            id=sequence;
+        }
         messageMap.set(id, _.omit(payload, ['content']));
         return [{
             index: {
@@ -503,7 +511,9 @@ export class ElasticRoutes {
         const partitionRouter = this.getIndexPartition.bind(this);
         // this.registerDynamicTableRoute();
         this.addRoute('abi', buildAbiBulk, partitionRouter);
-        this.addRoute('action', buildActionBulk, partitionRouter);
+        const extensionActions=this.cm.config.settings.protocol?.provider==='extension';
+        this.addRoute('action',(payloads,messageMap,maxBlockCb,router,indexName,retries)=>
+            buildActionBulk(payloads,messageMap,maxBlockCb,router,indexName,retries,extensionActions),partitionRouter);
         this.addRoute('block', buildBlockBulk, partitionRouter);
         this.addRoute('delta', buildDeltaBulk, partitionRouter);
         this.addRoute('table-voters', buildTableVotersBulk, partitionRouter);

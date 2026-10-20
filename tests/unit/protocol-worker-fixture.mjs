@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {EventEmitter} from 'node:events';
 import {observationMemoryClient} from './protocol-observation-memory.mjs';
+import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
 // A real selected extension must work when importing the legacy addon is impossible.
 registerHooks({resolve(specifier, context, next) {
@@ -93,6 +94,7 @@ try {
     assert(!Object.hasOwn(requestV1[1],'fetch_block_header'));
 
     const main = new Deserializer(); workers.push(main);
+    main.client = frontierMemoryClient().client;
     await main.protocolReady;
     main.protocolSourceBindingStore = sourceStore;
     main.protocolAbiObservationStore = new ProtocolAbiObservationStore(observationMemoryClient().client,chain);
@@ -149,12 +151,14 @@ try {
         return complete(at>=10?[tokenReference]:[]);
     };
     const actions = [];
-    const pool = Object.assign(Object.create(Pool.prototype),{...selected,protocol:selected.provider,protocolId:selected.id,abieos:selected.decoder,
+    const pool = Object.assign(Object.create(Pool.prototype),{...selected,protocol:selected.provider,protocolId:selected.id,protocolComponents:selected.components,abieos:selected.decoder,
         chain,chainId,conf:config,profiler:{start:()=>()=>{}},poolAbiCache:new Map(),poolTypeCache:new Map(),loadedActionAbis:new Map(),
         failedAbiMap:new Map(),customAbiMap:new Map(),contracts:new Map(),contractUsage:{},totalHits:0,actionDsCounter:0,act_emit_idx:1,
-        client:{search},mLoader:main.mLoader,ch_ready:true,ch:{ack(){},sendToQueue:(queue,content)=>{actions.push(JSON.parse(content));return true;}},
+        client:{...frontierMemoryClient().client,search},protocolDeliveryOwners:new WeakMap(),
+        mLoader:main.mLoader,ch_ready:true,ch:{ack(){},sendToQueue:(queue,content)=>{actions.push(JSON.parse(content));return true;}},
         preIndexingQueue:{push:async()=>{}},allowStreaming:false,ioRedisClient:null});
     pool.common = {deserializeActionAtBlockNative:pool.deserializeActionAtBlockNative,attachActionExtras:pool.attachActionExtras};
+    for(const message of poolMessages)pool.captureProtocolActionDelivery(message,pool.ch);
     await pool.processMessages(poolMessages);
     assert.equal(actions.length,2);
     for(const action of actions) {

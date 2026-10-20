@@ -3,6 +3,7 @@ import {getTrackTotalHits, mergeActionMeta, timedQuery} from "../../../helpers/f
 import {assertActionSearchActive, searchActions} from "../../../helpers/action-search.js";
 import {hydrateActions} from "../../../helpers/archive-hydration.js";
 import {isHydrationDisabled} from "../../../helpers/archive-query.js";
+import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
 import {
     addSortedBy,
     applyAccountFilters,
@@ -113,6 +114,8 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             }
 
             mergeActionMeta(action);
+            await protectProtocolAction(fastify, request, action);
+            if (fastify.manager.config.settings?.protocol?.provider === 'extension') delete action.protocol;
 
             if (query.noBinary === true) {
                 for (const key in action['act']['data']) {

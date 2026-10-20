@@ -5,7 +5,7 @@ import {ImmutableProtocolBundleStore,ImmutableProtocolBundleReadError,protocolIm
 export interface ProtocolAbiFrontierToken {seqNo:number;primaryTerm:number}
 export interface ProtocolAbiFrontierControl extends ProtocolAbiFrontierToken {value:unknown}
 export interface ProtocolAbiAccountUpdate {account:string;state:unknown|null}
-export type ProtocolAbiFrontierRecordKind='commit'|'account-state'|'bucket'|'root';
+export type ProtocolAbiFrontierRecordKind='commit'|'account-state'|'bucket'|'root'|'certificate';
 export class ProtocolAbiFrontierReadError extends Error {
     constructor(readonly code:'missing'|'incomplete'|'invalid',readonly recordKind:ProtocolAbiFrontierRecordKind,
                 readonly recordId:string,message:string) {super(message);this.name='ProtocolAbiFrontierReadError';}
@@ -21,10 +21,11 @@ export class ProtocolAbiFrontierLimitError extends Error {
 
 const hash=(value:Uint8Array|string)=>createHash('sha256').update(value).digest('hex');
 const hex64=/^[0-9a-f]{64}$/;
-const prefix={commit:'h45abicmt1:','account-state':'h45abist1:',bucket:'h45abibkt1:',root:'h45abiroot1:'};
+const prefix={commit:'h45abicmt1:','account-state':'h45abist1:',bucket:'h45abibkt1:',root:'h45abiroot1:',certificate:'h45abicert1:'};
 const immutableLimit={bytes:128*1024*1024,nodes:1000000};
 const limits={commit:immutableLimit,'account-state':immutableLimit,
-    bucket:{bytes:4*1024*1024,nodes:50000},root:{bytes:64*1024,nodes:1024},control:{bytes:1024*1024,nodes:20000}};
+    bucket:{bytes:4*1024*1024,nodes:50000},root:{bytes:64*1024,nodes:1024},certificate:{bytes:64*1024,nodes:2048},
+    control:{bytes:1024*1024,nodes:20000}};
 const recordKeys=(value:any,keys:readonly string[])=>value&&typeof value==='object'&&!Array.isArray(value)
     &&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 const validAccount=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=256&&value.isWellFormed();
@@ -66,17 +67,19 @@ export class ProtocolAbiFrontierStore {
     private readonly bundles:ImmutableProtocolBundleStore;
     private readonly provisioning=new Map<string,Promise<void>>(); // Exactly the two owned indices, never session/account state.
 
-    constructor(private readonly client:Client,private readonly chain:string,private readonly replicas=0) {
+    constructor(private readonly client:Client,private readonly chain:string,private readonly replicas=0,
+                private readonly options:{readOnly?:boolean}={}) {
         if(!/^[a-z0-9][a-z0-9_.-]{0,120}$/.test(chain)||!Number.isSafeInteger(replicas)||replicas<0)throw new Error('Invalid ABI frontier store configuration');
         this.controlIndex=chain+'-protocol-abi-frontier-v1';this.recordsIndex=chain+'-protocol-abi-frontier-records-v1';
-        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-abi-frontier-records','protocol-abi-frontier-records-v1');
+        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-abi-frontier-records','protocol-abi-frontier-records-v1',undefined,options);
     }
 
     private async initialize(control:boolean) {
         const index=control?this.controlIndex:this.recordsIndex,kind=control?'protocol-abi-frontier':'protocol-abi-frontier-records';
         const fields=control?controlFields:immutableFields;
         if(!this.provisioning.has(index)){
-            const provision=this.provision(index,kind,fields).catch(error=>{this.provisioning.delete(index);throw error;});
+            const provision=(this.options.readOnly?Promise.resolve():this.provision(index,kind,fields))
+                .catch(error=>{this.provisioning.delete(index);throw error;});
             this.provisioning.set(index,provision);
         }
         await this.provisioning.get(index);
@@ -149,6 +152,7 @@ export class ProtocolAbiFrontierStore {
     }
 
     async compareAndSet(expected:ProtocolAbiFrontierToken|null,nextControl:unknown):Promise<ProtocolAbiFrontierControl> {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot publish control');
         if(expected!==null&&!validToken(expected))throw new Error('Invalid ABI frontier expected CAS token');
         const desired=this.document(nextControl);
         let token=expected===null?null:{seqNo:expected.seqNo,primaryTerm:expected.primaryTerm};
@@ -181,6 +185,7 @@ export class ProtocolAbiFrontierStore {
         return prefix[record.kind]+hash(bounded(['hyperion-abi-frontier-'+record.kind+'-v1',record],immutableLimit).json);
     }
     private async prepare(kind:ProtocolAbiFrontierRecordKind,value:unknown):Promise<{id:string;digest:string}> {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare records');
         const record=this.envelope(kind,value),id=this.id(record);await this.initialize(false);
         return this.bundles.prepare(id,record);
     }
@@ -202,6 +207,10 @@ export class ProtocolAbiFrontierStore {
 
     async prepareCommit(value:unknown):Promise<{id:string;digest:string}> {return this.prepare('commit',value);}
     async readCommit(id:string):Promise<unknown> {return this.read('commit',id);}
+    /** Deterministic lookup only; computing this ID conveys no publication authority. */
+    certificateId(value:unknown):string {return this.id(this.envelope('certificate',value));}
+    async prepareCertificate(value:unknown):Promise<{id:string;digest:string}> {return this.prepare('certificate',value);}
+    async readCertificate(id:string):Promise<unknown> {return this.read('certificate',id);}
     async prepareAccountState(state:unknown):Promise<{id:string;digest:string}> {
         const copy=bounded(state,limits['account-state']).value;
         if(!copy||typeof copy!=='object'||Array.isArray(copy)||!Object.hasOwn(copy,'account')||!validAccount(copy.account))throw new Error('Invalid ABI account state identity');
@@ -233,6 +242,7 @@ export class ProtocolAbiFrontierStore {
     }
 
     async prepareState(previousRootId:string|null,updates:readonly ProtocolAbiAccountUpdate[],reset=false):Promise<string|null> {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare state');
         if(typeof reset!=='boolean'||(previousRootId!==null&&!validId('root',previousRootId)))throw new Error('Invalid ABI state root or reset');
         const input=bounded(updates,{bytes:64*1024*1024,nodes:500000}).value;
         if(!Array.isArray(input))throw new Error('Invalid ABI state updates');

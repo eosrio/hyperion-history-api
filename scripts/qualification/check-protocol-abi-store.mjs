@@ -7,6 +7,8 @@ import {ProtocolAbiObservationStore,protocolAbiCaptureDigest} from '../../build/
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 import {ProtocolAbiFrontierStore,ProtocolAbiFrontierConflictError} from '../../build/indexer/protocol/abi-frontier-store.js';
 import {ProtocolAbiCoordinator} from '../../build/indexer/protocol/abi-coordinator.js';
+import {ProtocolAbiProofReader,ProtocolAbiProofUnavailableError} from '../../build/indexer/protocol/abi-proof.js';
+import {ensureProtocolActionMapping} from '../../build/indexer/protocol/action-proof-mapping.js';
 import {createHash} from 'node:crypto';
 
 // Own the exact server and namespace; this runner never accepts a borrowed cluster URL.
@@ -162,7 +164,19 @@ try {
     assert.equal((await client.count({index:filteredSourceIndex})).count,0);
     report.checks.push('source-binding source-pruning mappings refused before writes');
 
-    const frontierChain=`${chain}-frontier`,frontierStore=new ProtocolAbiFrontierStore(client,frontierChain);
+    let incompleteHeadReceipt=false;
+    const frontierClient=new Proxy(client,{get(target,key){
+        if(key==='index')return async request=>{
+            const receipt=await target.index(request);
+            if(incompleteHeadReceipt&&request.id==='control'
+                &&JSON.parse(Buffer.from(request.document.payload,'base64').toString('utf8')).head?.blockNum===4){
+                incompleteHeadReceipt=false;return {...receipt,_shards:{...receipt._shards,successful:0}};
+            }
+            return receipt;
+        };
+        const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+    }});
+    const frontierChain=`${chain}-frontier`,frontierStore=new ProtocolAbiFrontierStore(frontierClient,frontierChain);
     const frontierSources=new ProtocolSourceBindingStore(client,frontierChain),frontierObservations=new ProtocolAbiObservationStore(client,frontierChain);
     const frontierContext={...context,schemaJson:'{"version":"eosio::abi/1.1"}'};
     const frontierContextId=(await frontierSources.prepareContext(frontierContext)).id;
@@ -171,17 +185,19 @@ try {
     const coordinator=new ProtocolAbiCoordinator(coordinatorOptions);await coordinator.start();
     let generation=(await coordinator.openSource(frontierContextId,'frontier-session-a')).generation;
     await client.indices.putSettings({index:frontierStore.controlIndex,settings:{refresh_interval:'-1'}});
+    await frontierStore.prepareCommit({fixture:'unactivated-record-index-initialization'});
+    await client.indices.putSettings({index:frontierStore.recordsIndex,settings:{refresh_interval:'-1'}});
     const positionId=number=>number.toString(16).padStart(64,'0');
-    const selectedBlock=async(number,identity=number,parent=number-1)=>{
+    const selectedBlock=async(number,identity=number,parent=number-1,session='frontier-session-a')=>{
         const source={chainId:context.chainId,blockNum:number,blockId:positionId(identity),previousBlockId:number===1?null:positionId(parent)};
         const capture={kind:'unattested-ship-result-sections-v1',schemaJson:frontierContext.schemaJson,blockHex:'00',tracesHex:'00',deltasHex:'00'};
         const captureSha256=protocolAbiCaptureDigest(source,capture);
         const facts={schemaVersion:1,actionInputs:[],deployments:[],finalStates:[]};
         if(number===1)facts.finalStates.push({account:'alpha',present:true,abiHex:'aa',deltaOrdinal:0});
         else facts.actionInputs.push({transactionId:'a'.repeat(64),actionOrdinal:1,inputActionOrdinal:1,receiver:'alpha',account:'alpha',name:'act',
-            rawHex:'07',globalSequence:identity===20?'1':'9007199254740993',receiptAbiSequence:'0'});
+            rawHex:'07',globalSequence:identity===20?'1':String(9007199254740991n+BigInt(number)),receiptAbiSequence:'0'});
         const input={schemaVersion:1,protocol:context.protocol,source:{...source,inputSha256:captureSha256},capture,observation:{status:'observed',facts}};
-        const selected=(await frontierSources.prepareSelection({schemaVersion:1,contextId:frontierContextId,readerSessionId:'frontier-session-a',
+        const selected=(await frontierSources.prepareSelection({schemaVersion:1,contextId:frontierContextId,readerSessionId:session,
             readerRole:'live',assignmentId:null,source,captureSha256,frameSha256:createHash('sha256').update('synthetic-frame-'+identity).digest('hex'),
             head:{blockNum:number,blockId:source.blockId},irreversible:{blockNum:0,blockId:positionId(0)}})).id;
         return {selected,input};
@@ -204,20 +220,53 @@ try {
     assert.equal(hiddenControl.timed_out,false);assert.equal(hiddenControl._shards.failed,0);assert.equal(hiddenControl.hits.hits.length,0);
     report.checks.push('real canonical coordinator activates ordered PREPAREs and compact bindings without search refresh');
 
+    // This consumer has no write or index-creation methods. All authority must
+    // come from the settled certificate, never from a consumer-side CAS repair.
+    const readClient={get:request=>client.get(request),indices:{
+        getMapping:request=>client.indices.getMapping(request),getSettings:request=>client.indices.getSettings(request)}};
+    const readStore=new ProtocolAbiFrontierStore(readClient,frontierChain,0,{readOnly:true});
+    const proofReader=new ProtocolAbiProofReader({chainId:context.chainId,profile:context.protocol,store:readStore,maxAncestryBlocks:2});
+    const secondProof=await proofReader.open(frontierSecond.input.source,frontierSecond.selected);
+    assert.equal((await proofReader.action(secondProof,frontierSecond.input.observation.facts.actionInputs[0])).state.abiHex,'aa');
+    const hiddenCertificate=await client.search({index:frontierStore.recordsIndex,query:{ids:{values:[secondProof.certificateId]}},size:1});
+    assert.equal(hiddenCertificate.timed_out,false);assert.equal(hiddenCertificate._shards.failed,0);
+    assert.equal(hiddenCertificate.hits.hits.length,0);
+    await assert.rejects(proofReader.action(secondProof,{...frontierSecond.input.observation.facts.actionInputs[0],rawHex:'08'}),
+        error=>error instanceof ProtocolAbiProofUnavailableError);
+    report.checks.push('read-only exact input proof consumes an unrefreshed settled certificate and rejects changed raw bytes');
+
     const fork=await selectedBlock(2,20,1);await prepareBlock(fork);
     const admittedFork=await coordinator.admit(fork.selected,generation);assert.equal(admittedFork.status,'accepted');
     assert.notEqual(admittedFork.generation,generation);generation=admittedFork.generation;
+    await assert.rejects(proofReader.revalidate(secondProof),error=>error instanceof ProtocolAbiProofUnavailableError);
     assert.equal((await coordinator.inspect()).head.blockNum,1);assert.deepEqual(await coordinator.drain(),{committed:1,pending:0});
     assert.equal((await coordinator.inspect()).head.blockId,positionId(20));
     report.checks.push('real generation fence and fork rewind restore an immutable ancestor state root');
+    const forkProof=await proofReader.open(fork.input.source,fork.selected);
+    assert.equal((await proofReader.action(forkProof,fork.input.observation.facts.actionInputs[0])).state.abiHex,'aa');
+    report.checks.push('fork revokes existing consumer views before replacement activation and certifies the restored input ABI');
 
-    const reopenedFrontier=new ProtocolAbiFrontierStore(client,frontierChain),previousControl=await reopenedFrontier.readControl();
+    const reopenedFrontier=new ProtocolAbiFrontierStore(frontierClient,frontierChain),previousControl=await reopenedFrontier.readControl();
     const restarted=new ProtocolAbiCoordinator({...coordinatorOptions,store:reopenedFrontier,ownerId:'disposable-master-b'});
     await restarted.start();assert.equal((await restarted.inspect()).head.blockId,positionId(20));
     assert.equal((await restarted.openSource(frontierContextId,'frontier-session-b')).resumeFromBlock,3);
     await assert.rejects(reopenedFrontier.compareAndSet(previousControl,previousControl.value),error=>error instanceof ProtocolAbiFrontierConflictError);
     assert.equal((await coordinator.admit(frontierSecond.selected,generation)).status,'stale');
     report.checks.push('fresh runtime owner resumes the exact frontier and fences stale writers with real ES CAS');
+    await assert.rejects(proofReader.revalidate(forkProof),error=>error instanceof ProtocolAbiProofUnavailableError);
+    await assert.rejects(proofReader.open(fork.input.source,fork.selected),error=>error instanceof ProtocolAbiProofUnavailableError);
+    const third=await selectedBlock(3,3,20,'frontier-session-b');await prepareBlock(third);
+    const restartGeneration=(await restarted.inspect()).generation;
+    assert.equal((await restarted.admit(third.selected,restartGeneration)).status,'accepted');await restarted.drain();
+    const firstProof=await proofReader.open(frontierFirst.input.source,frontierFirst.selected);
+    assert.equal((await proofReader.finalState(firstProof,'alpha')).abiHex,'aa');
+    const thirdProof=await proofReader.open(third.input.source,third.selected);
+    const fourth=await selectedBlock(4,4,3,'frontier-session-b');await prepareBlock(fourth);
+    assert.equal((await restarted.admit(fourth.selected,restartGeneration)).status,'accepted');incompleteHeadReceipt=true;
+    await assert.rejects(restarted.drain(),/receipt/);
+    await assert.rejects(proofReader.open(fourth.input.source,fourth.selected),error=>error instanceof ProtocolAbiProofUnavailableError);
+    await proofReader.revalidate(thirdProof);
+    report.checks.push('new owner certifies mixed-generation ancestry while primary-visible partial head receipts grant no new input proof');
 
     let partialControl=true;
     const receiptClient=new Proxy(client,{get(target,key){
@@ -241,6 +290,20 @@ try {
         }
     }
     report.checks.push('canonical control and immutable frontier refuse changed durability and source-pruning pipelines');
+
+    const historyChain=`${chain}-history`,historyIndex=`${historyChain}-action-v1-000001`;
+    const oldAction={global_sequence:1,act:{account:'alpha',name:'act',data:'07000000'}};
+    await client.indices.create({index:historyIndex,settings:{number_of_shards:1,number_of_replicas:0},
+        mappings:{properties:{global_sequence:{type:'long'},act:{enabled:false}}}});
+    await client.index({index:historyIndex,id:'retained',document:oldAction,refresh:true});
+    assert.deepEqual(await ensureProtocolActionMapping(client,historyChain),{inspected:1,updated:1});
+    assert.deepEqual((await client.get({index:historyIndex,id:'retained'}))._source,oldAction);
+    const protocol={schemaVersion:1,input:{globalSequence:'9007199254740993',rawHex:'07000000'}};
+    await client.index({index:historyIndex,id:'new',document:{...oldAction,global_sequence:2,protocol},refresh:true});
+    assert.deepEqual((await client.get({index:historyIndex,id:'new'}))._source.protocol,protocol);
+    assert.equal((await client.count({index:historyIndex})).count,2);
+    assert.deepEqual(await ensureProtocolActionMapping(client,historyChain),{inspected:1,updated:0});
+    report.checks.push('additive opaque action mapping preserves retained history and exact new proof metadata without reindex');
     report.status='passed';
 } catch(error){report.status='failed';report.error=String(error.stack??error);}
 finally {

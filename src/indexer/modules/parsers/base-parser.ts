@@ -158,6 +158,10 @@ export abstract class BaseParser {
     async deserializeActionData(worker: DSPoolWorker, action: ActionTrace, trx_data) {
         const stopDsActionData = worker.profiler.start('deserialize_action_data');
         try {
+        if (worker.usesExtensionProtocol) {
+            await worker.deserializeProtocolAction(action, trx_data);
+            return;
+        }
         let act = action.act;
         const original_act = Object.assign({}, act);
         let ds_act: any | null = null;

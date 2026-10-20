@@ -1,5 +1,5 @@
 import { cargo, queue } from "async";
-import { ConsumeMessage, Message } from "amqplib";
+import { Channel, ConsumeMessage, Message } from "amqplib";
 import { join, resolve } from "path";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { Redis, RedisValue } from "ioredis";
@@ -13,6 +13,18 @@ import { ABI, Action, Serializer } from "@wharfkit/antelope";
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
 import { groupActionTraces } from "../helpers/action-dedup.js";
 import {assertCompleteProtocolSearch} from '../protocol/search.js';
+import {protocolBytes} from '../protocol/contract-cache.js';
+import {protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
+import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
+import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView,
+    type ProtocolActionMetadata, type ProtocolActionSourceMetadata} from '../protocol/abi-proof.js';
+import type {TrxMetadata} from '../../interfaces/trx-metadata.js';
+
+interface ProtocolActionWork {
+    original: ActionTrace;
+    metadata: ProtocolActionMetadata;
+    view?: ProtocolAbiProofView;
+}
 
 type ActionAbiIdentity =
     | {kind: "historical"; block: number; hex: string}
@@ -93,6 +105,12 @@ export default class DSPoolWorker extends HyperionWorker {
 
     customAbiMap: Map<string, CustomAbiDef[]> = new Map();
     private noActionCounter = 0;
+    private protocolProofReader?: ProtocolAbiProofReader;
+    private protocolTrace?: {view?: ProtocolAbiProofView; error?: ProtocolAbiProofUnavailableError};
+    private protocolActions = new WeakMap<ActionTrace, ProtocolActionWork>();
+    private protocolCacheViews = new Set<ProtocolAbiProofView>();
+    private readonly protocolDeliveryOwners = new WeakMap<Message, Channel>();
+    private activeProtocolDelivery?: {message: Message; channel: Channel};
 
     // tx caching layer
     private readonly ioRedisClient: Redis;
@@ -112,7 +130,13 @@ export default class DSPoolWorker extends HyperionWorker {
 
         this.consumerQueue = cargo((payload: ConsumeMessage[], cb) => {
             // hLog(`Processing ${payload.length} messages`);
-            this.processMessages(payload).catch((err) => {
+            this.processMessages(payload).then(() => cb()).catch((err) => {
+                if (this.usesExtensionProtocol) {
+                    hLog('Protocol action processing failed; supervised replacement required:', err.message);
+                    this.ch_ready = false;
+                    this.consumerQueue.kill();
+                    return process.exit(1);
+                }
                 hLog('NackAll:', err);
                 if (this.ch && this.ch_ready) {
                     try {
@@ -121,7 +145,6 @@ export default class DSPoolWorker extends HyperionWorker {
                         hLog(e.message);
                     }
                 }
-            }).finally(() => {
                 cb();
             });
         }, this.conf.prefetch.block);
@@ -457,6 +480,96 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
+    private getProtocolProofReader(): ProtocolAbiProofReader {
+        return this.protocolProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
+            profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
+            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
+            maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
+    }
+
+    /** Called before parser mutation; only the certified occurrence can select an ABI. */
+    async deserializeProtocolAction(action: ActionTrace, transaction: TrxMetadata): Promise<void> {
+        const receipt = Array.isArray(action.receipt) ? action.receipt[1] : action.receipt;
+        const input = {transactionId: transaction.trx_id, actionOrdinal: action.action_ordinal,
+            receiver: String((action as any).receiver ?? ''), account: action.act.account, name: action.act.name,
+            rawHex: Buffer.from(protocolBytes(action.act.data)).toString('hex'),
+            globalSequence: receipt?.global_sequence,
+            receiptAbiSequence: Number.isSafeInteger(receipt?.abi_sequence) && receipt.abi_sequence >= 0 && receipt.abi_sequence <= 0xffffffff
+                ? String(receipt.abi_sequence) : receipt?.abi_sequence};
+        const metadata: ProtocolActionSourceMetadata = {schemaVersion: 1,
+            source: {chainId: this.chainId, blockNum: Number(transaction.block_num), blockId: transaction.block_id},
+            selectionId: transaction.protocolSelectionId ?? '', input, status: 'incomplete',
+            error: {code: 'proof_unavailable', message: 'Canonical action ABI proof is unavailable'}};
+        const work: ProtocolActionWork = {original: structuredClone(action), metadata, view: this.protocolTrace?.view};
+        this.protocolActions ??= new WeakMap(); this.protocolActions.set(action, work);
+        if (!work.view) { this.restoreProtocolAction(action, this.protocolTrace?.error ?? new ProtocolAbiProofUnavailableError('source_unbound', metadata.error.message)); return; }
+        let selected;
+        const stopProof = this.profiler.start('protocol_abi_action_proof');
+        try { selected = await this.getProtocolProofReader().action(work.view, input); }
+        catch (error) {
+            if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;
+            this.restoreProtocolAction(action, error); return;
+        } finally { stopProof(); }
+        work.metadata = Object.freeze({schemaVersion: 1, source: Object.freeze({...metadata.source}), selectionId: metadata.selectionId,
+            input: Object.freeze({...input, inputActionOrdinal: selected.binding.inputActionOrdinal})});
+        try {
+            const abi: any = this.protocol.contractCodec.decodeAbi(protocolBytes(selected.state.abiHex));
+            const type = abi.actions?.find(entry => String(entry.name) === input.name)?.type;
+            if (!type) throw new Error('Certified ABI has no action mapping');
+            action.act.data = this.protocol.contractCodec.decodeValue(abi, type, protocolBytes(input.rawHex));
+            action.protocol = work.metadata; delete action['ds_error'];
+            this.common.attachActionExtras(this, action);
+        } catch (error: any) {
+            this.restoreProtocolAction(action, new ProtocolAbiProofUnavailableError('protocol_action_abi_invalid', String(error?.message ?? error)));
+        }
+    }
+
+    private restoreProtocolAction(action: ActionTrace, error: ProtocolAbiProofUnavailableError): void {
+        const work = this.protocolActions.get(action);
+        if (!work) throw error;
+        const hadExcept = Object.hasOwn(action, 'except'), hadErrorCode = Object.hasOwn(action, 'error_code');
+        const parsed: Record<string, unknown> = {};
+        for (const key of ['@timestamp', 'block_num', 'block_id', 'producer', 'trx_id', 'global_sequence', 'receipts', 'receipt',
+            'code_sequence', 'abi_sequence', 'act_digest', 'cpu_usage_us', 'net_usage_words', 'signatures', 'inline_count', 'max_inline', 'inline_filtered']) {
+            if (Object.hasOwn(action, key)) parsed[key] = action[key];
+        }
+        for (const key of Object.keys(action)) delete action[key];
+        Object.assign(action, structuredClone(work.original), parsed);
+        action.act = {...work.original.act, data: work.metadata.input.rawHex};
+        if (Object.hasOwn(parsed, 'receipts')) {delete action.receipt; delete action['receiver'];}
+        if (!hadExcept) delete action.except;
+        if (!hadErrorCode) delete action.error_code;
+        const {inputActionOrdinal: _origin, ...input} = work.metadata.input as any;
+        work.metadata = {schemaVersion: 1, source: work.metadata.source, selectionId: work.metadata.selectionId,
+            input, status: 'incomplete', error: {code: error.code, message: error.message.slice(0, 4096).toWellFormed()}};
+        action.protocol = work.metadata; action['ds_error'] = true;
+        process.send?.({event: 'ds_error', data: {type: 'protocol_action_incomplete', ...work.metadata.source,
+            account: action.act.account, action: action.act.name, globalSequence: input.globalSequence, message: work.metadata.error.message}});
+    }
+
+    private async revalidateProtocolAction(action: ActionTrace): Promise<void> {
+        const work = this.protocolActions.get(action);
+        if (!work?.view || 'status' in work.metadata) return;
+        const stop = this.profiler.start('protocol_abi_action_revalidate');
+        try { await this.getProtocolProofReader().revalidate(work.view); action.protocol = work.metadata; }
+        catch (error) {
+            if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;
+            this.restoreProtocolAction(action, error);
+        } finally { stop(); }
+    }
+
+    private assertProtocolDelivery(): void {
+        if (!this.usesExtensionProtocol) return;
+        if (!this.activeProtocolDelivery || this.activeProtocolDelivery.channel !== this.ch || !this.ch_ready)
+            throw new Error('Protocol action delivery lost its original broker channel');
+    }
+
+    captureProtocolActionDelivery(message: Message, channel: Channel): void {
+        const previous = this.protocolDeliveryOwners.get(message);
+        if (previous && previous !== channel) throw new Error('Cannot replace a protocol action broker receipt');
+        this.protocolDeliveryOwners.set(message, channel);
+    }
+
     // Per-batch Redis pipeline accumulator. processTraces appends its
     // tx-cache writes here instead of doing its own round-trip; processMessages
     // flushes the whole batch with a single .exec() at the end.
@@ -485,6 +598,7 @@ export default class DSPoolWorker extends HyperionWorker {
         const stop = this.profiler.start('process_messages_batch');
         this.poolAbiCache.clear();   // per-cargo ABI-lookup memo
         this.poolTypeCache.clear();  // per-cargo type-resolution memo
+        this.protocolCacheViews?.clear();
         try {
             this.redisBatchPipeline = this.ioRedisClient
                 ? this.ioRedisClient.pipeline()
@@ -493,8 +607,21 @@ export default class DSPoolWorker extends HyperionWorker {
 
             try {
                 for (const data of messages) {
+                    if (this.usesExtensionProtocol) {
+                        const owner = this.protocolDeliveryOwners.get(data);
+                        if (!owner || owner !== this.ch || !this.ch_ready) throw new Error('Protocol action delivery lacks its original broker channel');
+                        this.activeProtocolDelivery = {message: data, channel: owner};
+                    }
                     const parsedData = JSON.parse(Buffer.from(data.content).toString());
                     await this.processTraces(parsedData, data.properties.headers);
+                    if (this.usesExtensionProtocol) {
+                        await this.flushRedisBatch();
+                        this.assertProtocolDelivery();
+                        this.activeProtocolDelivery!.channel.ack(data);
+                        this.activeProtocolDelivery = undefined;
+                        this.redisBatchPipeline = this.ioRedisClient ? this.ioRedisClient.pipeline() : null;
+                        continue;
+                    }
                     // ack message
                     if (this.ch_ready && this.ch) {
                         try {
@@ -515,7 +642,8 @@ export default class DSPoolWorker extends HyperionWorker {
                 // batch fails to deserialize. Worst case the flush itself
                 // fails and we log it; the durable AMQP path for those
                 // traces is unaffected.
-                await this.flushRedisBatch();
+                if (!this.usesExtensionProtocol) await this.flushRedisBatch();
+                else {this.redisBatchPipeline = null; this.redisBatchHasOps = false; this.activeProtocolDelivery = undefined;}
             }
         } finally {
             stop();
@@ -524,16 +652,30 @@ export default class DSPoolWorker extends HyperionWorker {
 
     private async flushRedisBatch(): Promise<void> {
         if (this.redisBatchPipeline && this.redisBatchHasOps) {
+            if (this.usesExtensionProtocol && !await this.protocolCacheIsCurrent()) {
+                this.redisBatchPipeline = null; this.redisBatchHasOps = false; return;
+            }
             try {
                 const stopRedis = this.profiler.start('redis_batch_exec');
-                await this.redisBatchPipeline.exec();
-                stopRedis();
+                try { await this.redisBatchPipeline.exec(); } finally { stopRedis(); }
             } catch (e) {
+                if (this.usesExtensionProtocol) throw e;
                 hLog(e);
             }
         }
         this.redisBatchPipeline = null;
         this.redisBatchHasOps = false;
+    }
+
+    private async protocolCacheIsCurrent(): Promise<boolean> {
+        const stop = this.profiler.start('protocol_abi_cache_revalidate');
+        try {
+            for (const view of this.protocolCacheViews ?? []) await this.getProtocolProofReader().revalidate(view);
+            this.assertProtocolDelivery(); return true;
+        } catch (error) {
+            if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;
+            return false;
+        } finally { this.protocolCacheViews?.clear(); stop(); }
     }
 
     /**
@@ -558,6 +700,23 @@ export default class DSPoolWorker extends HyperionWorker {
             const { block_num, block_id, producer, ts, inline_count, filtered, live } = extra;
 
             if (transaction_trace.status === 0) {
+                const selectionId = extra?.[protocolSourceSelectionHeader];
+                if (this.usesExtensionProtocol) {
+                    this.protocolActions = new WeakMap();
+                    this.protocolCacheViews ??= new Set();
+                    this.protocolTrace = undefined;
+                    const stop = this.profiler.start('protocol_abi_trace_wait');
+                    try {
+                        if (typeof selectionId !== 'string' || !/^h45srcsel1:[0-9a-f]{64}$/.test(selectionId))
+                            throw new ProtocolAbiProofUnavailableError('source_unbound', 'Action trace lacks its source selection');
+                        const view = await this.getProtocolProofReader().waitForOpen({chainId: this.chainId,
+                            blockNum: Number(block_num), blockId: String(block_id)}, selectionId);
+                        this.protocolTrace = {view};
+                    } catch (error) {
+                        if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;
+                        this.protocolTrace = {error};
+                    } finally { stop(); }
+                }
                 let action_count = 0;
                 const trx_id = transaction_trace['id'].toLowerCase();
                 const _actDataArray: any[] = [];
@@ -573,7 +732,8 @@ export default class DSPoolWorker extends HyperionWorker {
                     ts,
                     inline_count,
                     filtered,
-                    signatures
+                    signatures,
+                    protocolSelectionId: typeof selectionId === 'string' ? selectionId : undefined
                 };
 
                 const usageIncluded = { status: false };
@@ -615,13 +775,22 @@ export default class DSPoolWorker extends HyperionWorker {
 
                 // Group action traces: merge notification receipts while preserving
                 // genuinely distinct duplicate actions (fixes #148)
-                const _finalTraces = groupActionTraces(_processedTraces);
+                if (this.usesExtensionProtocol) for (const action of _processedTraces) await this.revalidateProtocolAction(action);
+                const _finalTraces = groupActionTraces(_processedTraces, this.usesExtensionProtocol);
 
                 // Submit Actions after deduplication
 
                 const redisPayload = new Map<string, RedisValue>();
 
                 for (const uniqueAction of _finalTraces) {
+
+                    if (this.usesExtensionProtocol) {
+                        await this.revalidateProtocolAction(uniqueAction);
+                        this.assertProtocolDelivery();
+                        const work = this.protocolActions.get(uniqueAction);
+                        if (this.redisBatchPipeline && !this.conf.api.disable_tx_cache && work?.view && !('status' in work.metadata))
+                            this.protocolCacheViews.add(work.view);
+                    }
 
                     cleanActionTrace(uniqueAction);
 
@@ -635,7 +804,8 @@ export default class DSPoolWorker extends HyperionWorker {
                     }
 
                     const payload = Buffer.from(JSON.stringify(uniqueAction));
-                    redisPayload.set(uniqueAction.global_sequence.toString(), payload);
+                    redisPayload.set(this.usesExtensionProtocol && typeof uniqueAction.protocol?.input.globalSequence === 'string'
+                        ? uniqueAction.protocol.input.globalSequence : uniqueAction.global_sequence.toString(), payload);
                     this.actionDsCounter++;
                     this.pushToActionsQueue(payload, block_num);
                     if (live === 'true') {
@@ -666,8 +836,9 @@ export default class DSPoolWorker extends HyperionWorker {
                         // one for any subsequent traces in the same batch.
                         const stopLive = this.profiler.start('redis_live_flush');
                         try {
-                            await this.redisBatchPipeline.exec();
+                            if (!this.usesExtensionProtocol || await this.protocolCacheIsCurrent()) await this.redisBatchPipeline.exec();
                         } catch (e) {
+                            if (this.usesExtensionProtocol) throw e;
                             hLog(e);
                         } finally {
                             stopLive();
@@ -680,6 +851,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 }
             }
         } finally {
+            this.protocolTrace = undefined;
             stopTraces();
         }
     }
@@ -738,9 +910,11 @@ export default class DSPoolWorker extends HyperionWorker {
 
     async initConsumer() {
         if (this.ch_ready && this.ch) {
-            await this.ch.prefetch(this.conf.prefetch.block);
-            await this.ch.consume(this.local_queue, (data) => {
+            const consumer = this.ch;
+            await consumer.prefetch(this.conf.prefetch.block);
+            await consumer.consume(this.local_queue, (data) => {
                 if (data) {
+                    if (this.usesExtensionProtocol) this.captureProtocolActionDelivery(data, consumer);
                     this.consumerQueue.push(data);
                 }
             });

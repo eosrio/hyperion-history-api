@@ -4,6 +4,7 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {observationMemoryClient} from './protocol-observation-memory.mjs';
+import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
 registerHooks({resolve(specifier,context,next){if(specifier.includes('node-abieos'))throw new Error('Wire imported the legacy addon');return next(specifier,context);}});
 const previous=process.cwd(),directory=mkdtempSync(join(tmpdir(),'hyperion-source-binding-'));
@@ -55,6 +56,7 @@ try {
     };
     const reader=await createReader();await reader.onMessage(Buffer.from(schemaJson));await reader.onMessage(statusFrame());
     const main=new MainDS();workers.push(main);await main.protocolReady;instrument(main);
+    main.client=frontierMemoryClient().client;
     main.protocolSourceBindingStore=sources;main.protocolAbiObservationStore=observations;
     await main.initializeProtocolShip(schemaJson);await until(()=>main.mLoader.parser);
     let ack=0;const indexed=[];main.ch_ready=true;main.preIndexingQueue={push:async value=>indexed.push(value)};
@@ -171,6 +173,7 @@ try {
 
     // Receipt ownership is captured by the production consume callback before cargo waits.
     const queued=new MainDS();workers.push(queued);await queued.protocolReady;await until(()=>queued.mLoader.parser);
+    queued.client=frontierMemoryClient().client;
     queued.protocolSourceBindingStore=sources;queued.protocolAbiObservationStore=observations;queued.preIndexingQueue={push:async()=>{}};
     queued.ch_ready=true;const receipts=[],oldAcks=[],newAcks=[];
     const channel=settled=>({prefetch(){},consume(queue,callback){receipts.push(callback);},on(){},

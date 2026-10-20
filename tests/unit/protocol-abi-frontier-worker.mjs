@@ -96,7 +96,7 @@ try {
     };
     const ds=async()=>{
         process.env.worker_role='deserializer';const result=new MainDS();workers.push(result);await result.protocolReady;await until(()=>result.mLoader.parser);
-        result.protocolSourceBindingStore=sources;result.protocolAbiObservationStore=observations;result.preIndexingQueue={push:async()=>{}};result.ch_ready=true;
+        result.client=memory.client;result.protocolSourceBindingStore=sources;result.protocolAbiObservationStore=observations;result.preIndexingQueue={push:async()=>{}};result.ch_ready=true;
         const wref=Object.assign(new EventEmitter(),{id:++workerId,isConnected:()=>true,send(message,callback){result.onIpcMessage(message);callback?.(null);}});
         currentMaster.workerMap.push({worker_id:wref.id,worker_role:'deserializer',wref});const acks=[];let received;
         result.ch={prefetch(){},consume(queue,callback){received=callback;},on(){},ack(message){acks.push(message.fields.deliveryTag);},nack(){throw new Error('Unexpected fixture NACK');},sendToQueue(){return true;}};

@@ -5,6 +5,7 @@ import _ from "lodash";
 import {Socket} from "socket.io";
 import {checkMetaFilter, hLog} from "../../indexer/helpers/common_functions.js";
 import {StreamActionsRequest, StreamDeltasRequest, StreamTypeMap} from "../../interfaces/stream-requests.js";
+import {protocolResponseForCache, validateProtocolCachedResponse} from './protocol-abi.js';
 
 export type BoolQuerySearchBody = estypes.SearchRequest & {
     query: estypes.QueryDslQueryContainer & {
@@ -972,7 +973,7 @@ export async function timedQuery(
         }
     }
 
-    if (cachedResponse && !query["ignoreCache"]) {
+    if (cachedResponse && !query["ignoreCache"] && await validateProtocolCachedResponse(fastify, request, route, cachedResponse)) {
         // add cached query time
         cachedResponse['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
         if (lastIndexedBlock) {
@@ -984,6 +985,7 @@ export async function timedQuery(
 
     // call query function
     const response = await queryFunction(fastify, request);
+    const cacheResponse = await protocolResponseForCache(fastify, request, route, response);
 
     // save response to cache
     if (hash) {
@@ -991,7 +993,7 @@ export async function timedQuery(
         if (defaultRouteCacheMap[route]) {
             EX = defaultRouteCacheMap[route];
         }
-        setCacheByHash(fastify, hash, response, EX);
+        setCacheByHash(fastify, hash, cacheResponse, EX);
     }
 
     // add normal query time

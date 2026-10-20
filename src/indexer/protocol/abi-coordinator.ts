@@ -5,6 +5,7 @@ import {ProtocolSourceBindingStore, ProtocolSourceBindingReadError, protocolSour
 import {ImmutableProtocolBundleReadError, protocolImmutableJson} from './immutable-bundle-store.js';
 import {ProtocolAbiFrontierStore, ProtocolAbiFrontierConflictError, ProtocolAbiFrontierReadError, ProtocolAbiFrontierLimitError} from './abi-frontier-store.js';
 import {reduceProtocolAbiBlock, type ProtocolAbiAccountState, type ProtocolAbiBlockReduction} from './abi-reducer.js';
+import {protocolAbiCertificateForControl} from './abi-proof.js';
 
 type Head = {blockNum:number;blockId:string;commitId:string;stateRootId:string|null;
     lastGlobalSequence:string|null;coverageStart:number|null};
@@ -307,6 +308,13 @@ export class ProtocolAbiCoordinator {
                 this.assertEpoch(epoch);
                 version=await this.save(version,{...version.value,head:this.head(commit,preparedId),pending:version.value.pending.slice(1),
                     phase:commit.status==='complete'?'following':'incomplete',gap:commit.reason??version.value.gap,replayFromBlock:null});
+                this.assertEpoch(epoch);
+                // Prepared commits and primary-visible control are not consumer authority.
+                // Certify only after the complete CAS receipt and settled source-epoch check.
+                const certificate=protocolAbiCertificateForControl(version.value);
+                const certified=await this.options.store.prepareCertificate(certificate);
+                if(json(await this.options.store.readCertificate(certified.id))!==json(certificate))
+                    throw new Error('Settled ABI certificate readback mismatch');
                 this.assertEpoch(epoch);committed++;
             }
             return {committed,pending:version.value.pending.length};
