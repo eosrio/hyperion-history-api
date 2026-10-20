@@ -116,6 +116,12 @@ try {
     const root=actions.find(action=>action.action_ordinal===1),inline=actions.find(action=>action.action_ordinal===3),native=actions.find(action=>action.action_ordinal===2);
     assert.deepEqual(root.act.data,{old:7});assert.deepEqual(inline.act.data,{new:7});assert.equal(root.receipts.length,2);assert.equal(inline.receipts.length,1);
     assert.equal(root.protocol.input.globalSequence,'9007199254740993');assert.equal(root.protocol.input.inputActionOrdinal,1);
+    assert.equal(root.global_sequence,'9007199254740993');assert.equal(inline.global_sequence,'9007199254740996');
+    assert.deepEqual(root.receipts.map(receipt=>receipt.global_sequence),['9007199254740993','9007199254740995']);
+    for(const document of [root,inline,native])for(const receipt of document.receipts){
+        assert.equal(typeof receipt.global_sequence,'string');assert.equal(typeof receipt.recv_sequence,'string');
+        for(const authorization of receipt.auth_sequence)assert.equal(typeof authorization.sequence,'string');
+    }
     assert.equal(inline.protocol.input.inputActionOrdinal,3);assert.equal(root.protocol.input.rawHex,'07000000');
     assert.equal(native.ds_error,true);assert.equal(native.protocol.status,'incomplete');assert.equal(typeof native.act.data,'string');
     // Historical final KV uses the certified target root despite an unrefreshed/missing ABI index.

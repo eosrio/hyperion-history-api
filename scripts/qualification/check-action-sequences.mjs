@@ -29,6 +29,9 @@ const report = {schemaVersion: 1, status: 'running', createdAt: new Date().toISO
     checks: [], observations: {}, cleanup: {containers: [], network: false, verified: false}};
 const containers = new Map(), clients = new Set(), pits = new Set();
 let networkId;
+// The pinned transport may leave only unreferenced handles while a native
+// request is pending. Keep the runner alive through its owned-resource finally.
+const keepAlive = setInterval(() => {}, 1000);
 
 function labels(role) {
     return ['--label', `io.eosrio.qualifier=${qualifier}`, '--label', `io.eosrio.run=${run}`, '--label', `io.eosrio.role=${role}`];
@@ -250,14 +253,22 @@ async function launch(role, denySort = false) {
     assert.equal(bindings.length, 1); assert.equal(bindings[0].HostIp, '127.0.0.1');
     const port = Number(bindings[0].HostPort); assert(Number.isInteger(port) && port > 1024 && port !== 9200);
     state.url = `http://127.0.0.1:${port}`;
-    state.client = new Client({node: state.url, requestTimeout: 10000, maxRetries: 0}); clients.add(state.client);
     let info, lastError;
     const deadline = Date.now() + 90000;
     while (Date.now() < deadline) {
-        try {info = await state.client.info(); break;} catch (error) {lastError = error; await sleep(250);}
+        try {
+            const response = await fetch(state.url, {signal: AbortSignal.timeout(2000)});
+            if (!response.ok) throw new Error(`Startup identity status ${response.status}`);
+            info = await response.json(); break;
+        } catch (error) {lastError = error; await sleep(250);}
     }
     assert.equal(info?.version?.number, '9.5.5', `Owned server did not start: ${lastError?.message ?? 'no response'}`);
     assert.equal(info.cluster_name, `${clusterName}-${role}`); assert.match(info.cluster_uuid, /^[A-Za-z0-9_-]{16,64}$/);
+    // Open the pinned client only after the owned server is listening. A
+    // port-closed startup attempt must not poison its pool or hide a deadline.
+    state.client = new Client({node: state.url, requestTimeout: 10000, maxRetries: 0}); clients.add(state.client);
+    const nativeInfo = await state.client.info({}, {signal: AbortSignal.timeout(10000)});
+    assert.equal(nativeInfo.version.number, info.version.number); assert.equal(nativeInfo.cluster_uuid, info.cluster_uuid);
     state.server = {version: info.version.number, clusterName: info.cluster_name, clusterUuid: info.cluster_uuid};
     return state;
 }
@@ -305,7 +316,7 @@ try {
         }
         assert.deepEqual((await client.get({index: indices[0], id: '1'}))._source, retained);
         const after = (await client.indices.getSettings({index: indices[0], flat_settings: true}))[indices[0]].settings;
-        assert.deepEqual(after, before); assert.deepEqual(after['index.sort.field'], ['global_sequence']);
+        assert.deepEqual(after, before); assert.equal(after['index.sort.field'], 'global_sequence');
         report.effective = {settings: after, mapping: (await client.indices.getMapping({index: indices[0]}))[indices[0]].mappings,
             limitations: 'Selected production scalar fields and four primaries; zero replicas in this one-node design fixture, not the complete production plugin template'};
     });
@@ -450,7 +461,7 @@ try {
     });
     await check('the main server releases all PIT contexts before shutdown', async () => {
         assert.equal(pits.size, 0);
-        const stats = await client.nodes.stats({metric: ['indices', 'jvm', 'process'], index_metric: ['search', 'store', 'segments', 'merges', 'refresh']});
+        const stats = await client.nodes.stats({metric: ['indices', 'jvm', 'process'], index_metric: ['search', 'store', 'segments', 'merge', 'refresh']});
         const nodes = Object.values(stats.nodes); assert.equal(nodes.length, 1);
         const node = nodes[0]; assert.equal(node.indices.search.open_contexts, 0);
         report.observations.resources = {indices: node.indices, heapUsedBytes: node.jvm.mem.heap_used_in_bytes,
@@ -510,6 +521,8 @@ try {
         && !report.cleanup.pitErrors && !report.cleanup.clientErrors;
     if (!report.cleanup.verified) report.status = 'failed';
     report.completedAt = new Date().toISOString();
-    const text = JSON.stringify(report, null, 2) + '\n'; if (output) writeFileSync(output, text); process.stdout.write(text);
-    if (report.status !== 'passed') process.exitCode = 1;
+    try {
+        const text = JSON.stringify(report, null, 2) + '\n'; if (output) writeFileSync(output, text); process.stdout.write(text);
+        if (report.status !== 'passed') process.exitCode = 1;
+    } finally {clearInterval(keepAlive);}
 }

@@ -9,7 +9,7 @@ test('uint64 values retain canonical decimal strings across all integer precisio
         expect(canonicalUint64(value)).toBe(value);
         expect(JSON.parse(JSON.stringify({sequence: canonicalUint64(value)}))).toEqual({sequence: value});
     }
-    for (const value of ['', '00', '01', '+1', '-1', '-0', ' 1', '1 ', '1.0', '1e3', '18446744073709551616',
+    for (const value of ['', '00', '01', '+1', '-1', '-0', ' 1', '1 ', '1\n', '1\r\n', '\n1', '１２', '١', '1.0', '1e3', '18446744073709551616',
         '999999999999999999999', 0, 1, 9007199254740992, null, undefined, true]) {
         expect(() => canonicalUint64(value)).toThrow(Uint64ValueError);
     }

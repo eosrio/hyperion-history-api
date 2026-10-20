@@ -1,9 +1,12 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
+import {assertActionSearchActive, assertCompleteActionSearch, searchActions} from '../../../helpers/action-search.js';
+import {canonicalUint64, compatibleUint64, subtractUint64} from '../../../../indexer/helpers/uint64.js';
 
-async function getLastSeq(fastify: FastifyInstance, date: string) {
-    const req = await fastify.elastic.search<any>({
+async function getLastSeq(fastify: FastifyInstance, request: FastifyRequest, date: string) {
+    const req = await searchActions<any>(fastify, request, {
         index: fastify.manager.readIndexset('action'),
+        timeout: fastify.manager.config.api.query_timeout || '10s',
         "size": 1,
         "query": {
             "bool": {
@@ -17,7 +20,11 @@ async function getLastSeq(fastify: FastifyInstance, date: string) {
         },
         "sort": [{"global_sequence": "desc"}]
     });
-    return req.hits.hits[0]._source.global_sequence;
+    try {
+        return compatibleUint64(req.hits.hits[0]?._source?.global_sequence);
+    } catch {
+        throw Object.assign(new Error('Exact action usage sequence bounds are unavailable'), {statusCode: 503});
+    }
 }
 
 async function getTxCount(fastify: FastifyInstance, dateFrom: string, dateTo: string) {
@@ -32,11 +39,12 @@ async function getTxCount(fastify: FastifyInstance, dateFrom: string, dateTo: st
             }
         }
     });
+    assertCompleteActionSearch({timed_out: false, _shards: req._shards});
     return req.count;
 }
 
-async function getUniqueActors(fastify: FastifyInstance, dateFrom: string, dateTo: string) {
-    const req = await fastify.elastic.search<any, any>({
+async function getUniqueActors(fastify: FastifyInstance, request: FastifyRequest, dateFrom: string, dateTo: string) {
+    const req = await searchActions<any>(fastify, request, {
         index: fastify.manager.readIndexset('action'),
         size: 0,
         "aggs": {
@@ -52,7 +60,7 @@ async function getUniqueActors(fastify: FastifyInstance, dateFrom: string, dateT
             }
         }
     });
-    return req.aggregations.unique_actors.value;
+    return (req.aggregations!.unique_actors as {value: number}).value;
 }
 
 async function getActionUsage(fastify: FastifyInstance, request: FastifyRequest) {
@@ -81,28 +89,38 @@ async function getActionUsage(fastify: FastifyInstance, request: FastifyRequest)
     const pStart = periodStart.toISOString();
     const pEnd = now.toISOString();
 
-    const cacheKey = `${fastify.manager.chain}_act_stats_${pStart}_${pEnd}_${query.unique_actors}`;
+    const cacheKey = `${fastify.manager.chain}_act_stats_seq_v1_${pStart}_${pEnd}_${query.unique_actors}`;
     const cachedValue = await fastify.redis.get(cacheKey);
     if (cachedValue) {
-        const cachedResponse = JSON.parse(cachedValue);
-        cachedResponse.cached = true;
-        cachedResponse.cache_exp = expiration;
-        return cachedResponse;
+        try {
+            const cachedResponse = JSON.parse(cachedValue);
+            canonicalUint64(cachedResponse.action_count);
+            cachedResponse.cached = true;
+            cachedResponse.cache_exp = expiration;
+            return cachedResponse;
+        } catch {
+            // Recompute an old or malformed cache entry from exact source bounds.
+        }
     }
 
-    const firstReq = await getLastSeq(fastify, pStart);
-    const lastReq = await getLastSeq(fastify, pEnd);
-    response.action_count = lastReq - firstReq;
+    const firstReq = await getLastSeq(fastify, request, pStart);
+    const lastReq = await getLastSeq(fastify, request, pEnd);
+    try {
+        response.action_count = subtractUint64(lastReq, firstReq);
+    } catch {
+        throw Object.assign(new Error('Exact action usage sequence bounds are inconsistent'), {statusCode: 503});
+    }
     response.tx_count = await getTxCount(fastify, pStart, pEnd);
 
     if (query.unique_actors) {
-        response.unique_actors = await getUniqueActors(fastify, pStart, pEnd);
+        response.unique_actors = await getUniqueActors(fastify, request, pStart, pEnd);
     }
 
     response.period = query.period;
     response.from = pStart;
     response.to = pEnd;
 
+    assertActionSearchActive(request);
     await fastify.redis.set(cacheKey, JSON.stringify(response), 'EX', expiration);
     return response;
 }

@@ -6,9 +6,12 @@ import {Socket} from "socket.io";
 import {checkMetaFilter, hLog} from "../../indexer/helpers/common_functions.js";
 import {StreamActionsRequest, StreamDeltasRequest, StreamTypeMap} from "../../interfaces/stream-requests.js";
 import {protectProtocolAction, protocolResponseForCache, revalidateProtocolActionScope, validateProtocolCachedResponse} from './protocol-abi.js';
-import {assertCompleteActionSearch} from './action-search.js';
+import {assertCompleteActionSearch, normalizeActionSearchSources} from './action-search.js';
 import {assertProtocolProjectionReady, assertProtocolRouteReady} from './protocol-state-readiness.js';
 import {assertProtocolActionRequestReady, assertProtocolActionStreamReady} from './protocol-action-query.js';
+import {canonicalUint64} from '../../indexer/helpers/uint64.js';
+import {isActionSequenceField} from '../../indexer/helpers/action-sequences.js';
+import {validateActionSequenceQuery} from './action-sequence-query.js';
 
 export type BoolQuerySearchBody = estypes.SearchRequest & {
     query: estypes.QueryDslQueryContainer & {
@@ -140,7 +143,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
     if (data.filters && data.filters.length > 0) {
         data.filters.forEach(f => {
-            if (f.field && f.value) {
+            if (f.field && (f.value || (dataKind === 'action' && isActionSequenceField(f.field)))) {
                 if (f.operator && f.operator !== "eq") {
                     onDemandFilters.push(f);
                 } else {
@@ -182,7 +185,10 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
     const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
     let pendingScrollId: estypes.ScrollId | undefined = init_response._scroll_id;
     try {
-        if (dataKind === 'action') assertCompleteActionSearch(init_response);
+        if (dataKind === 'action') {
+            assertCompleteActionSearch(init_response);
+            normalizeActionSearchSources(init_response);
+        }
 
         const totalHits = getTotalValue(init_response);
 
@@ -222,7 +228,10 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                 if (rp._scroll_id) pendingScrollId = rp._scroll_id;
                 const enqueuedMessages: any[] = [];
                 const proofScope = {};
-                if (dataKind === 'action') assertCompleteActionSearch(rp);
+                if (dataKind === 'action') {
+                    assertCompleteActionSearch(rp);
+                    normalizeActionSearchSources(rp);
+                }
                 counter += rp.hits.hits.length;
 
                 for (const doc of rp.hits.hits) {
@@ -919,7 +928,7 @@ export async function getCachedResponse(server: FastifyInstance, route: string, 
     const chain = server.manager.chain;
     let resp, hash;
     if (server.manager.config.api.enable_caching) {
-        [resp, hash] = await getCacheByHash(server.redis, route + JSON.stringify(key), chain);
+        [resp, hash] = await getCacheByHash(server.redis, 'sequences-v1:' + route + JSON.stringify(key), chain);
         if (resp) {
             resp = JSON.parse(resp);
             resp['cached'] = true;
@@ -961,11 +970,27 @@ const defaultRouteCacheMap = {
     health: 10
 };
 
+function cachedCountMatchesContract(route: string, response: any): boolean {
+    if (route !== 'get_action_usage') return true;
+    try {
+        canonicalUint64(response?.action_count);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export async function timedQuery(
     queryFunction: (fastify: FastifyInstance, request: FastifyRequest) => Promise<any>,
     fastify: FastifyInstance, request: FastifyRequest, route: string): Promise<any> {
     assertProtocolRouteReady(fastify, route);
     assertProtocolActionRequestReady(fastify, request, route);
+
+    if (route === 'get_actions') {
+        const input = request.method === 'POST' ? request.body : request.query;
+        validateActionSequenceQuery(typeof input === 'string' ? JSON.parse(input) : input as Record<string, unknown>,
+            request.method === 'POST');
+    }
 
     const query = request.query as any;
 
@@ -991,7 +1016,8 @@ export async function timedQuery(
         }
     }
 
-    if (cachedResponse && !query["ignoreCache"] && await validateProtocolCachedResponse(fastify, request, route, cachedResponse)) {
+    if (cachedResponse && !query["ignoreCache"] && cachedCountMatchesContract(route, cachedResponse)
+        && await validateProtocolCachedResponse(fastify, request, route, cachedResponse)) {
         // add cached query time
         cachedResponse['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
         if (lastIndexedBlock) {

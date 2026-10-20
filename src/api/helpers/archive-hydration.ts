@@ -2,6 +2,7 @@ import {request as undiciRequest} from 'undici';
 import {FastifyInstance} from "fastify";
 import {hLog} from "../../indexer/helpers/common_functions.js";
 import {ArchiveRegistry} from "./archive-registry.js";
+import {compatibleUint64} from '../../indexer/helpers/uint64.js';
 
 /**
  * Archive hydration
@@ -16,7 +17,7 @@ import {ArchiveRegistry} from "./archive-registry.js";
  *
  *   POST <archive>/actions
  *   request body: JSON array
- *     [{"block_num": <number>, "global_sequence": <number|string>}, ...]
+ *     [{"block_num": <number>, "global_sequence": <canonical decimal string>}, ...]
  *   response 200:
  *     {"actions":[
  *        {"block_num":<n>,"global_sequence":<g>,"account":"..","name":"..",
@@ -74,7 +75,7 @@ interface ActionHit {
 /** Item we send to an archive. */
 interface ArchiveRequestItem {
     block_num: number;
-    global_sequence: number | string;
+    global_sequence: string;
 }
 
 /** Item we expect back from an archive (in request order). */
@@ -175,9 +176,11 @@ export async function hydrateActions(
         if (!url) {
             continue; // hot / not covered by any archive
         }
-        const gs = src.global_sequence;
-        if (gs === undefined || gs === null) {
-            continue; // cannot identify the action without a global_sequence
+        let gs: string;
+        try {
+            gs = compatibleUint64(src.global_sequence);
+        } catch {
+            continue; // A rounded source cannot identify the archive occurrence.
         }
         let bucket = byArchive.get(url);
         if (!bucket) {
@@ -277,6 +280,17 @@ async function postBatch(
         hLog(`[archive-hydration] ${endpoint} length mismatch: sent ${items.length}, got ${actions.length}`);
         return null;
     }
+    for (let i = 0; i < items.length; i++) {
+        try {
+            if (actions[i]?.block_num !== items[i].block_num
+                || compatibleUint64(actions[i]?.global_sequence) !== items[i].global_sequence) {
+                throw new Error('Archive occurrence mismatch');
+            }
+        } catch {
+            hLog(`[archive-hydration] ${endpoint} identity mismatch at item ${i}`);
+            return null;
+        }
+    }
     return actions as ArchiveResponseItem[];
 }
 
@@ -285,6 +299,17 @@ async function postBatch(
  * `found:false` (or no `data`) are left untouched (act.data stays absent).
  */
 function assignData(hits: ActionHit[], decoded: ArchiveResponseItem[]): void {
+    // Validate the entire chunk before attaching any data; order alone is not an identity proof.
+    for (let i = 0; i < hits.length; i++) {
+        const act = hits[i]?._source?.act;
+        const entry = decoded[i];
+        if (entry?.found === true && act
+            && ((act.account !== undefined && entry.account !== act.account)
+                || (act.name !== undefined && entry.name !== act.name))) {
+            hLog(`[archive-hydration] contract/action identity mismatch at item ${i}`);
+            return;
+        }
+    }
     for (let i = 0; i < hits.length; i++) {
         const entry = decoded[i];
         const src = hits[i]?._source;
