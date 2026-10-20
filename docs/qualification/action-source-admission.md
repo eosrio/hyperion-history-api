@@ -135,3 +135,10 @@ its failure with exit 1. Only that precisely matched deliberate fault may pass t
 check; extra failures, forced shutdown, missing redelivery or incomplete output fail it.
 This exercises process recovery, with no host/power-loss or master-failover durability claim.
 Directory fsync is unavailable on Windows; file fsync remains required and recorded.
+
+The [2026-10-20 evidence bundle](../performance/evidence/action-source-admission-20261020/README.md)
+records both Wire runs and all six Antelope process-exit cases at code commit
+`8b483fd0aec2819e1c15171e3950d39e715c6bd6`, with seven verified cleanup receipts.
+Its raw reports preserve the exact inputs, source/emitted/runtime hashes, expected failure
+codes and native bulk copy-count distributions. These are Windows process correctness
+results; the remaining sink, canonical, query-activation and selected-testnet gates stay open.
