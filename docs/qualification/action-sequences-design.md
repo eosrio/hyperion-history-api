@@ -124,7 +124,7 @@ them. [Nested-array behavior](https://www.elastic.co/docs/reference/elasticsearc
 
 ## Running the prototype
 
-After `npm ci --allow-git=root` and `npm run build`, run:
+After `npm ci --allow-git=all` and `npm run build`, run:
 
 ```sh
 node scripts/qualification/check-action-sequences.mjs action-sequences-report.json
