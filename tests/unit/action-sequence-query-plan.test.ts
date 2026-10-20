@@ -297,3 +297,17 @@ test('safe-root proofs withstand independent possible worlds, including missing 
     expect(proven).toBeGreaterThan(50);
     expect(counterexamples).toEqual([]);
 });
+
+test('wildcard field lists and inline fields cannot expose any reserved namespace leaf', () => {
+    for (const query of [
+        {query_string: {fields: ['h45*global.value'], query: '1'}},
+        {query_string: {fields: ['act.account'], query: 'h45*global.value:1'}},
+        {query_string: {fields: ['act.account'], query: '_exists_:h45*authorization.account'}},
+        {multi_match: {fields: ['h45*receive*'], query: '1'}},
+        {script: {script: {source: "doc['\\u0067lobal_sequence'].value == 1"}}},
+        {script_score: {query: {match_all: {}}, script: {source: "doc['\\u0067lobal_sequence'].value"}}},
+        {nested: {path: 'act.data.items', query: {match_all: {}}, inner_hits: {_source: ['global_sequence']}}}
+    ]) expect(() => compileActionSequenceQuery(query as any, 'exact')).toThrow();
+    expect(() => actionSequenceSort({_script: {type: 'number', order: 'asc',
+        script: {source: "doc['\\u0067lobal_sequence'].value"}}} as any)).toThrow();
+});

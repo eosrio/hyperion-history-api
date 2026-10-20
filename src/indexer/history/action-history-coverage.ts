@@ -29,7 +29,8 @@ export interface ActionHistorySnapshot {
  *
  * A lease binds its coverage generation to this PIT and the concrete index UUIDs.
  * assertComplete proves the entire logical predicate, including all Boolean
- * branches, and every legacy sequence leaf used by the mixed-cohort compiler.
+ * branches, and every legacy metadata domain used by the mixed-cohort compiler
+ * (safe uint64 leaves, signed-integer root counters and uint32 receipt counters).
  * assertCurrent fences forks, replay/deletion and replacement of certified data.
  * Append-only writes outside this immutable PIT need not invalidate its lease.
  */

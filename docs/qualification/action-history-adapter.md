@@ -72,6 +72,11 @@ Native membership, total hits, offset and cursor pagination happen before return
 aggregations can use the adapter; metadata aggregations, nested top hits and secondary filter queries
 remain explicitly unsupported until translated. Filtered/routed aliases also require a scoped coverage
 implementation; unfiltered aliases and concrete/wildcard targets retain their actual index identities.
+PIT opening uses the resolved concrete names, never a second mutable alias/wildcard lookup. Selected
+metric operators are explicitly allowlisted; `global`, `filter`, `filters`, opaque scripts and other
+unqualified aggregation/query paths cannot escape the compiled membership and coverage scope. The mixed
+legacy counter profile uses the existing root signed-integer domain; wider retained root counters require
+separate qualification and are refused rather than clipped out of successful counts.
 
 Each context owns one request at a time and the latest PIT ID, including IDs returned with partial results.
 Timeout, failed shards, early termination, cancellation, stale generations, source mismatch and shaping

@@ -403,6 +403,24 @@ async function qualifyProductionModules(client, parentChain) {
         } finally {await context.close();}
         return {predicateCases: cases.length, countSharesPit: true};
     });
+    await check('production alias resolution and metric allowlist preserve the coverage-qualified query scope', async () => {
+        const alias = `${chain}-action-read`;
+        await client.indices.updateAliases({actions: [index, empty].map(name => ({add: {index: name, alias}}))});
+        assert.equal(total(await adapter.search(alias, {size: 0, track_total_hits: true})), source.length);
+        const query = {range: {global_sequence: {gte: '1', lte: '9'}}};
+        const result = await adapter.search(alias, {query, size: 0, aggs: {blocks: {stats: {field: 'block_num'}}}});
+        assert.equal(result.aggregations.blocks.count, 4);
+        for (const aggs of [
+            {missing_max: {filters: {filters: {maximum: {term: {global_sequence: '18446744073709551615'}}}}}},
+            {outside_scope: {global: {}, aggs: {all_blocks: {stats: {field: 'block_num'}}}}},
+            {physical: {cardinality: {field: 'h45*global.value'}}}
+        ]) await assert.rejects(adapter.search(alias, {query, size: 0, aggs}), error => error.statusCode === 503);
+        for (const query of [
+            {query_string: {fields: ['h45*global.value'], query: '1'}},
+            {query_string: {fields: ['act.account'], query: 'h45*global.value:1'}}
+        ]) await assert.rejects(adapter.search(alias, {query}), error => error.statusCode === 503);
+        return {unfilteredAlias: true, metricMembership: 4, unqualifiedAggregationAndPhysicalWildcardStatus: 503};
+    });
     await check('production multivalue min/max sorts and negated pure-should predicates follow native semantics', async () => {
         const context = await adapter.open(index);
         try {

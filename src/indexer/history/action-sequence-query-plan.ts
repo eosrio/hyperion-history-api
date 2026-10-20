@@ -22,6 +22,9 @@ const sequencePaths = new Map([
 ]);
 const counterPaths = ['code_sequence', 'abi_sequence', 'receipts.code_sequence', 'receipts.abi_sequence'];
 const metadataPaths = [...sequencePaths.keys(), ...counterPaths];
+const physicalMetadataPaths = [`${prefix}.version`, ...counterPaths.map(field => `${prefix}.${field}`),
+    `${prefix}.receipts.index`, `${prefix}.receipts.receiver`, `${prefix}.receipts.authorization.index`, `${prefix}.receipts.authorization.account`,
+    ...[...sequencePaths.values()].flatMap(path => [`${prefix}.${path}.value`, `${prefix}.${path}.key`])];
 const opaqueFieldQueries = new Set(['term', 'terms', 'range', 'match', 'match_phrase', 'match_phrase_prefix',
     'match_bool_prefix', 'prefix', 'wildcard', 'regexp', 'fuzzy', 'span_term']);
 const fieldListQueries = new Set(['query_string', 'simple_query_string', 'combined_fields', 'multi_match']);
@@ -56,7 +59,7 @@ function metadataReference(field: string): boolean {
         /^receipts\.auth_sequence\.sequence[.[]/.test(field) || field === 'receipts.auth_sequence') return true;
     if (/[*?]/.test(field)) {
         const pattern = new RegExp('^' + field.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
-        return [...metadataPaths, prefix, `${prefix}.version`].some(path => pattern.test(path));
+        return [...metadataPaths, prefix, ...physicalMetadataPaths].some(path => pattern.test(path));
     }
     return false;
 }
@@ -228,7 +231,7 @@ function mentionsMetadata(input: unknown, key?: string): boolean {
     if (Array.isArray(input)) return input.some(item => mentionsMetadata(item, key));
     if (input === null || typeof input !== 'object') return false;
     return Object.entries(input).some(([field, child]) => {
-        if (metadataReference(field) || (field === 'script' && typeof child === 'string') || (field === 'id' && key === 'script')) return true;
+        if (metadataReference(field) || field === 'script' || field === 'inner_hits' || (field === 'id' && key === 'script')) return true;
         if (opaqueFieldQueries.has(field)) return Object.keys(object(child, field)).some(metadataReference);
         if (fieldListQueries.has(field)) {
             const body = object(child, field), fields = body.fields ?? body.default_field;
@@ -240,6 +243,7 @@ function mentionsMetadata(input: unknown, key?: string): boolean {
 }
 
 function unknownQuery(kind: string, body: unknown): Plan {
+    if (kind === 'script') unavailable('Opaque action history scripts require a qualified logical adapter');
     if (['match', 'match_phrase', 'match_phrase_prefix', 'match_bool_prefix', 'prefix', 'wildcard', 'regexp', 'fuzzy', 'span_term'].includes(kind)) {
         if (Object.keys(object(body, kind)).some(metadataReference)) unavailable(`Unsupported ${kind} action sequence query`);
         return {query: {[kind]: structuredClone(body)} as estypes.QueryDslQueryContainer, bounds: unknownBounds()};
@@ -355,7 +359,8 @@ function walk(input: unknown, cohort: Cohort, depth = 0): Plan {
 /**
  * Translate a complete logical predicate tree. The transport supplies disjoint cohort
  * guards and source coverage at its PIT. A legacy cohort is licensed only when every
- * participating legacy metadata leaf is qualified safe; clipping is not coverage proof.
+ * participating legacy metadata leaf is qualified for its declared cohort domain;
+ * clipping is not coverage proof.
  */
 export function compileActionSequenceQuery(query: estypes.QueryDslQueryContainer, cohort: Cohort): estypes.QueryDslQueryContainer {
     if (cohort !== 'exact' && cohort !== 'legacy') unavailable('Invalid action sequence cohort');
@@ -429,6 +434,7 @@ function sortEntries(input: estypes.SortCombinations): Array<{field: string; inp
         return [{field, input: direction ?? 'asc', leaf: found, original: input}];
     }
     return Object.entries(object(input, 'sort')).map(([field, value]) => {
+        if (field === '_script') unavailable('Opaque action history script sorts require a qualified logical adapter');
         if (field.startsWith('_') && mentionsMetadata(value)) unavailable('Unsupported action sequence sort expression');
         return {field, input: value, leaf: leaf(field), original: {[field]: structuredClone(value)} as estypes.SortCombinations};
     });

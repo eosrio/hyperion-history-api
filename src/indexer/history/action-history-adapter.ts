@@ -43,21 +43,26 @@ function membership(query: Query): Query {
     ], minimum_should_match: 1}};
 }
 
+const metricAggregations = new Set(['stats', 'extended_stats', 'min', 'max', 'avg', 'sum', 'value_count', 'cardinality', 'percentiles', 'percentile_ranks']);
 function validateAggregations(value: unknown): void {
-    if (value === null || typeof value !== 'object') return;
-    for (const [key, entry] of Object.entries(value)) {
-        if (['top_hits', 'top_metrics', 'script', 'scripted_metric'].includes(key)) {
-            unavailable('Action history aggregation requires a qualified logical adapter: ' + key);
+    if (value === undefined) return;
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) unavailable('Invalid action history aggregations');
+    for (const aggregation of Object.values(value)) {
+        if (aggregation === null || typeof aggregation !== 'object' || Array.isArray(aggregation)) unavailable('Invalid action history aggregation');
+        const operators = Object.entries(aggregation).filter(([key]) => key !== 'meta');
+        if (operators.length !== 1 || !metricAggregations.has(operators[0][0])) {
+            // In particular, global/filter/filters can escape compiled membership.
+            unavailable('Action history aggregation requires a qualified logical adapter');
         }
-        if (key === 'field' && typeof entry === 'string' &&
-            (fields.includes(entry) || /^(?:receipts\.)?(?:code_sequence|abi_sequence)$/.test(entry) || entry.startsWith(ACTION_SEQUENCE_NAMESPACE))) {
-            unavailable('Exact sequence metadata aggregations are not qualified');
+        const operand = operators[0][1];
+        if (!operand || typeof operand !== 'object' || Array.isArray(operand) ||
+            !('field' in operand) || typeof operand.field !== 'string' || 'script' in operand) {
+            unavailable('Action history metrics require an explicit qualified non-sequence field');
         }
-        if (key === 'filter' && entry && typeof entry === 'object') {
-            // A secondary query would otherwise bypass the cohort compiler.
-            unavailable('Action history filter aggregations require a qualified logical adapter');
-        }
-        validateAggregations(entry);
+        // Reuse the planner's reserved-field and wildcard recognizer instead of
+        // maintaining an incomplete second list of physical metadata names.
+        const translated = compileActionSequenceQuery({exists: {field: operand.field}}, 'exact');
+        if (translated.exists?.field !== operand.field) unavailable('Exact sequence metadata aggregations are not qualified');
     }
 }
 
@@ -87,6 +92,11 @@ export class ActionHistoryAdapter {
         active(signal);
         const resolved = await this.client.indices.resolveIndex({name: index, expand_wildcards: 'open'}, {signal});
         if (resolved.data_streams?.length) unavailable('Action history data-stream routing is not qualified');
+        const names = [...new Set([...(resolved.indices ?? []).map(entry => entry.name),
+            ...(resolved.aliases ?? []).flatMap(alias => alias.indices)])].sort();
+        if (!names.length || names.some(name => typeof name !== 'string' || !name.startsWith(`${this.chain}-action-`))) {
+            unavailable('Action history could not resolve concrete owned index identities');
+        }
         if (resolved.aliases?.length) {
             const aliases = await this.client.indices.getAlias({name: resolved.aliases.map(alias => alias.name)}, {signal});
             for (const entry of Object.values(aliases)) for (const alias of Object.values(entry.aliases)) {
@@ -94,12 +104,18 @@ export class ActionHistoryAdapter {
                     unavailable('Filtered or routed action-history aliases require a qualified coverage scope');
                 }
             }
+            for (const selected of resolved.aliases) {
+                const actual = Object.entries(aliases).filter(([, value]) => Object.hasOwn(value.aliases, selected.name)).map(([name]) => name).sort();
+                if (JSON.stringify(actual) !== JSON.stringify([...selected.indices].sort())) {
+                    unavailable('Action history alias targets changed during resolution');
+                }
+            }
         }
         // Flat settings use the literal key "index.uuid". Filtering through a
         // fictitious nested index.uuid path silently removes every identity.
-        const settings = await this.client.indices.getSettings({index, flat_settings: true, filter_path: '*.settings'}, {signal});
+        const settings = await this.client.indices.getSettings({index: names, flat_settings: true, filter_path: '*.settings'}, {signal});
         const identities = Object.entries(settings).map(([name, value]) => ({name, uuid: value.settings?.['index.uuid']}));
-        if (identities.length === 0 || identities.some(item => !item.name.startsWith(`${this.chain}-action-`) ||
+        if (identities.length !== names.length || identities.some(item => !names.includes(item.name) ||
             typeof item.uuid !== 'string' || item.uuid.length === 0)) {
             unavailable('Action history could not resolve concrete owned index identities');
         }
@@ -114,11 +130,12 @@ export class ActionHistoryAdapter {
         let pitId: string | undefined, lease: ActionHistoryCoverageLease | undefined;
         try {
             const indices = await this.identities(index, controller.signal);
-            const opened = await this.client.openPointInTime({index, keep_alive: '1m', allow_partial_search_results: false}, {signal: controller.signal});
+            const targets = indices.map(entry => entry.name);
+            const opened = await this.client.openPointInTime({index: targets, keep_alive: '1m', allow_partial_search_results: false}, {signal: controller.signal});
             pitId = opened.id;
             if (!pitId) unavailable('Elasticsearch did not return an action history PIT');
             assertCompleteActionHistorySearch({timed_out: false, _shards: opened._shards});
-            const current = await this.identities(index, controller.signal);
+            const current = await this.identities(targets, controller.signal);
             if (!sameIndices(indices, current)) unavailable('Action history index identities changed while opening the PIT');
             lease = await this.coverage.acquire({pitId, indices}, controller.signal);
             qualifiedLease(lease, indices);
@@ -205,7 +222,8 @@ export class ActionHistoryReadContext {
         // Safe-root loss is disjoint from unsafe-root collisions only when the
         // authority qualified that producer. Other legacy metadata still needs
         // its own domain check; safe root alone never proves safe receipt leaves.
-        const unsafeMetadata = fields.slice(1).map(field => ({range: {[field]: {gt: safeMaximum}}}));
+        const unsafeMetadata: Query[] = fields.slice(1).map(field => ({range: {[field]: {gt: safeMaximum}}}));
+        for (const field of ['code_sequence', 'abi_sequence']) unsafeMetadata.push({range: {[field]: {gt: '2147483647'}}});
         const result = await this.native({size: 0, _source: false, query: {bool: {filter: [legacy],
             should: unsafeMetadata, minimum_should_match: 1}}, track_total_hits: true});
         if (total(result) !== 0) unavailable('Exact legacy receipt or authorization sequence coverage is incomplete');
@@ -221,6 +239,7 @@ export class ActionHistoryReadContext {
     private async searchPage<T>(params: ActionHistorySearchRequest): Promise<estypes.SearchResponse<T>> {
         active(this.controller.signal);
         if (Object.keys(params).some(key => !searchKeys.has(key))) unavailable('Unsupported action history search option');
+        if (params.aggs !== undefined && params.aggregations !== undefined) unavailable('Use one logical aggregation container');
         validateAggregations(params.aggs ?? params.aggregations);
         const query = params.query ?? {match_all: {}};
         const logicalSort = params.sort ?? (params.size === 0 ? undefined : {global_sequence: 'desc'});

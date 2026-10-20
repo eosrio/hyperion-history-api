@@ -145,6 +145,24 @@ describe('gated exact action history adapter', () => {
         expect(f.searches).toHaveLength(0);
     });
 
+    test.each([
+        {buckets: {filters: {filters: {maximum: {term: {global_sequence: '18446744073709551615'}}}}}},
+        {everything: {global: {}, aggs: {actors: {cardinality: {field: 'act.account'}}}}},
+        {physical: {cardinality: {field: 'h45*global.value'}}},
+        {scripted: {sum: {field: 'cpu_usage_us', script: '1'}}}
+    ])('secondary aggregation queries cannot escape logical membership or coverage: %j', async aggs => {
+        const f = fixture();
+        await expect(f.adapter.search(index, {query: {term: {global_sequence: '1'}}, aggs: aggs as any})).rejects.toMatchObject({statusCode: 503});
+        expect(f.searches).toHaveLength(0);
+    });
+
+    test('selected field-only metrics retain top-level native membership', async () => {
+        const f = fixture();
+        await f.adapter.search(index, {query: {term: {global_sequence: '1'}}, size: 0,
+            aggs: {cpu: {stats: {field: 'cpu_usage_us'}}, actors: {cardinality: {field: 'act.authorization.actor'}}}});
+        expect(f.searches.at(-1)?.aggs).toEqual({cpu: {stats: {field: 'cpu_usage_us'}}, actors: {cardinality: {field: 'act.authorization.actor'}}});
+    });
+
     test('a borrowed index from another chain is rejected', async () => {
         const f = fixture();
         const adapter = new ActionHistoryAdapter(f.native as unknown as Client, 'another', f.authority);
@@ -154,9 +172,32 @@ describe('gated exact action history adapter', () => {
 
     test('a filtered alias is refused rather than hiding a collision survivor', async () => {
         const f = fixture();
-        f.native.indices.resolveIndex = async () => ({indices: [], aliases: [{name: 'read'}] as any, data_streams: []});
+        f.native.indices.resolveIndex = async () => ({indices: [], aliases: [{name: 'read', indices: [index]}] as any, data_streams: []});
         f.native.indices.getAlias = async () => ({[index]: {aliases: {read: {filter: {term: {'act.account': 'alpha'}}}}}});
         await expect(f.adapter.open('read')).rejects.toThrow('Filtered or routed');
+    });
+
+    test('an alias A to B to A race cannot replace the fixed concrete PIT targets', async () => {
+        const f = fixture();
+        f.native.indices.resolveIndex = async (request?: any) => request.name === 'read' ?
+            {indices: [], aliases: [{name: 'read', indices: [index]}] as any, data_streams: []} :
+            {indices: [{name: index}], aliases: [], data_streams: []};
+        let opened: unknown;
+        f.native.openPointInTime = async (request?: any) => {
+            // The mutable alias points to B just for the open, then returns to A.
+            opened = request.index === 'read' ? ['test-action-foreign-B'] : request.index;
+            return {id: 'pit-open', _shards: shards};
+        };
+        const context = await f.adapter.open('read'); await context.close();
+        expect(opened).toEqual([index]);
+    });
+
+    test('alias targets moving during metadata resolution are refused before opening a PIT', async () => {
+        const f = fixture();
+        f.native.indices.resolveIndex = async () => ({indices: [], aliases: [{name: 'read', indices: [index]}] as any, data_streams: []});
+        f.native.indices.getAlias = async () => ({'test-action-other': {aliases: {read: {}}}});
+        await expect(f.adapter.open('read')).rejects.toThrow('alias targets changed');
+        expect(f.closed).toEqual([]);
     });
 
     test('cancellation during a pending search still closes its PIT and releases its lease', async () => {
