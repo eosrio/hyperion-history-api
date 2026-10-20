@@ -41,7 +41,7 @@ export class ActionHistorySourceJournal {
     constructor(client: Client, private readonly chain: string, replicas = 0, options: {readOnly?: boolean} = {}) {
         this.readOnly = options.readOnly === true;
         this.bundles = new ImmutableProtocolBundleStore(client, chain, replicas, 'action-source-journal',
-            'action-source-journal-v1', undefined, {readOnly: this.readOnly});
+            'history-source-journal-v1', undefined, {readOnly: this.readOnly});
         this.index = this.bundles.index;
     }
 

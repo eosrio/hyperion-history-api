@@ -28,7 +28,8 @@ provided block ID must match the plan. Full finite contract data contributes to 
 without retyping arbitrary contract fields. Known sequence metadata is validated independently using
 the production exact storage codec, including uint64 boundaries and numeric uint32 code/ABI counters.
 
-The dedicated index is `<chain>-action-source-journal-v1`. It requires stored unpruned source,
+The dedicated index is `<chain>-history-source-journal-v1`, outside the ordinary
+`<chain>-action-*` template and wildcard and its `<chain>-action-read` alias. It requires stored unpruned source,
 `translog.durability=request`, one primary shard, the requested replica count, disabled automatic
 replica expansion and no default/final ingest pipeline. Fresh complete-copy receipts are required for
 every prepared record. Identical redelivery uses bounded CAS repair and requires a fresh receipt;

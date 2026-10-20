@@ -73,7 +73,8 @@ function captureIo(memory: ReturnType<typeof frontierMemoryClient>, after: (meth
 describe('durable action source membership journal', () => {
     it('stores a strict independent namespace and survives restart with source-ordered complete membership', async () => {
         const {memory, journal, id, source, fragments} = await prepared(1), sealed = await journal.seal(id);
-        expect(journal.index).toBe('fixture-action-source-journal-v1');
+        expect(journal.index).toBe('fixture-history-source-journal-v1');
+        expect(journal.index.startsWith('fixture-action-')).toBe(false);
         expect(memory.mappings.get(journal.index)._meta).toEqual({hyperion_kind: 'action-source-journal', schema_version: 1});
         const restarted = new ActionHistorySourceJournal(memory.client as any, 'fixture', 1);
         expect(await restarted.readPlan(id)).toEqual({id, plan: source});

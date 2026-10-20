@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
+import {execFileSync, spawnSync} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
-import {dirname, join} from 'node:path';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@elastic/elasticsearch';
 
@@ -18,7 +19,8 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const docker = args => execFileSync('docker', args, {encoding: 'utf8', timeout: 180000, maxBuffer: 8 * 1024 * 1024}).trim();
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const inspect = id => JSON.parse(docker(['inspect', id]))[0];
+const inspect = (id, timeout = 10000) => JSON.parse(execFileSync('docker', ['inspect', id],
+    {encoding: 'utf8', timeout, maxBuffer: 256 * 1024, windowsHide: true}))[0];
 const clients = new Set(), containers = new Map();
 let networkId, client, fixtureChain;
 // The pinned transport can leave only unreferenced handles during a request.
@@ -45,19 +47,45 @@ function owned(value, role) {
     assert.equal(values?.['io.eosrio.role'], role, 'Refuse a foreign fixture role');
 }
 
-function verifyContainer(state) {
-    const value = inspect(state.id); owned(value, state.role);
+function verifyContainer(state, {portMayBePending = false, inspectionTimeoutMs = 10000} = {}) {
+    delete state.url;
+    const value = inspect(state.id, inspectionTimeoutMs); owned(value, state.role);
     assert.equal(value.Id, state.id); assert.equal(value.Name, '/' + state.name); assert.equal(value.Config.Image, image);
     assert.equal(value.HostConfig.NanoCpus, 2_000_000_000); assert.equal(value.HostConfig.Memory, 2 * 1024 ** 3);
     assert.match(value.HostConfig.Tmpfs?.['/usr/share/elasticsearch/data'] ?? '', /size=268435456/);
     assert.equal(value.HostConfig.Binds?.length ?? 0, 0);
-    assert(Object.hasOwn(value.NetworkSettings.Networks, network));
+    assert.equal(value.HostConfig.NetworkMode, network);
+    const configured = value.HostConfig.PortBindings?.['9200/tcp'];
+    assert.equal(configured?.length, 1); assert.equal(configured[0].HostIp, '127.0.0.1');
+    const requestedPort = configured[0].HostPort;
+    assert(requestedPort === '' || requestedPort === '0' ||
+        (/^[0-9]+$/.test(requestedPort) && Number(requestedPort) > 1024 && Number(requestedPort) <= 65535 && Number(requestedPort) !== 9200));
+    const networks = Object.keys(value.NetworkSettings.Networks ?? {});
+    assert(networks.every(name => name === network), 'Refuse an unexpected container network');
+    const phase = value.State?.Status;
+    assert(!value.State?.Dead && !value.State?.OOMKilled && !value.State?.Paused &&
+        !['exited', 'dead', 'removing'].includes(phase),
+    `Owned container cannot become ready: ${phase ?? 'unknown'} (exit ${value.State?.ExitCode ?? 'unknown'})`);
     const ports = value.NetworkSettings.Ports?.['9200/tcp'];
+    if (portMayBePending && (ports === null || ports === undefined || ports.length === 0)) return value;
     assert.equal(ports?.length, 1); assert.equal(ports[0].HostIp, '127.0.0.1');
     const port = Number(ports[0].HostPort);
-    assert(Number.isInteger(port) && port > 1024 && port !== 9200);
+    assert(Number.isInteger(port) && port > 1024 && port <= 65535 && port !== 9200);
+    if (portMayBePending && (networks.length === 0 || value.State?.Running !== true)) return value;
+    assert.equal(networks.length, 1); assert.equal(value.State?.Running, true);
     state.url = `http://127.0.0.1:${port}`;
     return value;
+}
+
+async function waitForContainerPort(state, maximumWaitMs = 30000) {
+    const deadline = Date.now() + maximumWaitMs;
+    for (;;) {
+        const value = verifyContainer(state, {portMayBePending: true,
+            inspectionTimeoutMs: Math.max(1, Math.min(10000, deadline - Date.now()))});
+        if (state.url) return value;
+        if (Date.now() >= deadline) throw new Error(`Owned container did not publish its loopback port within ${maximumWaitMs}ms: ${state.name}`);
+        await sleep(100);
+    }
 }
 
 function launch(role) {
@@ -73,12 +101,12 @@ function launch(role) {
         '-e', 'network.host=0.0.0.0', '-e', 'xpack.security.enabled=false',
         '-e', 'xpack.security.autoconfiguration.enabled=false', '-e', 'xpack.ml.enabled=false',
         '-e', 'ingest.geoip.downloader.enabled=false', '-e', 'ES_JAVA_OPTS=-Xms512m -Xmx512m', image]);
-    assert.match(state.id, /^[a-f0-9]{64}$/); verifyContainer(state);
+    assert.match(state.id, /^[a-f0-9]{64}$/); verifyContainer(state, {portMayBePending: true});
     return state;
 }
 
 async function connect(state) {
-    verifyContainer(state);
+    await waitForContainerPort(state);
     const deadline = Date.now() + 90000;
     let info, lastError;
     while (Date.now() < deadline) {
@@ -100,6 +128,29 @@ async function connect(state) {
     const observed = await state.client.info(); assert.equal(observed.cluster_uuid, info.cluster_uuid);
     state.server = {version: info.version.number, clusterName, clusterUuid: info.cluster_uuid, url: state.url};
     return state.client;
+}
+
+function captureFailureDiagnostics(state) {
+    const diagnostic = {name: state.name, id: state.id ?? null};
+    try {
+        const value = inspect(state.id ?? state.name); owned(value, state.role);
+        assert.equal(value.Name, '/' + state.name); assert.equal(value.Config.Image, image);
+        if (state.id) assert.equal(value.Id, state.id);
+        diagnostic.id = value.Id;
+        diagnostic.state = Object.fromEntries(['Status', 'Running', 'Paused', 'Restarting', 'OOMKilled', 'Dead', 'ExitCode',
+            'StartedAt', 'FinishedAt'].map(key => [key, value.State?.[key]]));
+        diagnostic.stateError = String(value.State?.Error ?? '').slice(0, 4096);
+        diagnostic.configuredBindings = value.HostConfig.PortBindings?.['9200/tcp'] ?? null;
+        diagnostic.publishedBindings = value.NetworkSettings.Ports?.['9200/tcp'] ?? null;
+        diagnostic.networks = Object.keys(value.NetworkSettings.Networks ?? {});
+        const result = spawnSync('docker', ['logs', '--tail', '80', '--timestamps', value.Id],
+            {encoding: 'utf8', timeout: 10000, maxBuffer: 64 * 1024, windowsHide: true});
+        const bounded = text => Buffer.from(String(text ?? '')).subarray(-16 * 1024).toString('utf8');
+        diagnostic.stdoutTail = bounded(result.stdout); diagnostic.stderrTail = bounded(result.stderr);
+        diagnostic.logExitCode = result.status;
+        if (result.error) diagnostic.logReadError = bounded(result.error.message);
+    } catch (error) {diagnostic.observationError = String(error.stack ?? error).slice(0, 4096);}
+    return diagnostic;
 }
 
 async function check(name, action) {
@@ -180,6 +231,53 @@ function installedVersion(packageName) {
     throw new Error(`Installed package metadata was not found for ${packageName}`);
 }
 
+// ConfigurationModule reads process configuration at import time. Isolate those
+// imports in a child with constructed files, never the operator's configuration.
+// Capture the actual master-built template, including its read-alias policy.
+function productionActionTemplate(chain) {
+    const parent = resolve(tmpdir()), prefix = 'hyperion-journal-template-';
+    const directory = mkdtempSync(join(parent, prefix));
+    try {
+        mkdirSync(join(directory, 'config'));
+        writeFileSync(join(directory, 'chain.json'), JSON.stringify({settings: {chain, debug: false,
+            eosio_alias: 'eosio', parser: '3.2', es_replicas: 1, use_read_aliases: true},
+        indexer: {}, features: {}, scaling: {}, api: {}, whitelists: {actions: [], deltas: []}}));
+        writeFileSync(join(directory, 'config/connections.json'), JSON.stringify({
+            amqp: {protocol: 'http'}, elasticsearch: {host: '127.0.0.1:1', user: '', pass: ''},
+            chains: {[chain]: {chain_id: '1'.repeat(64), http: 'http://127.0.0.1:1', ship: 'ws://127.0.0.1:1'}},
+            redis: {host: '127.0.0.1', port: 1}
+        }));
+        const script = `
+            const {HyperionMaster} = await import(${JSON.stringify(new URL('../../build/indexer/modules/master.js', import.meta.url).href)});
+            const {action} = await import(${JSON.stringify(new URL('../../build/indexer/definitions/index-templates.js', import.meta.url).href)});
+            let request;
+            const master = Object.assign(Object.create(HyperionMaster.prototype), {
+                conf: {settings: {chain: ${JSON.stringify(chain)}, use_read_aliases: true}},
+                esClient: {indices: {
+                    putIndexTemplate: async value => {request = value; return {acknowledged: true};},
+                    getIndexTemplate: async () => ({index_templates: [{name: request.name,
+                        index_template: {index_patterns: request.index_patterns, template: request.template}}]}),
+                    deleteTemplate: async () => ({acknowledged: true})
+                }}
+            });
+            await master.updateIndexTemplates([{name: 'action', type: 'action'}], {action});
+            if (!request) throw new Error('Production action template was not captured');
+            console.log('ACTION_TEMPLATE=' + JSON.stringify(request));
+        `;
+        const stdout = execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+            cwd: directory, env: {...process.env, CONFIG_JSON: join(directory, 'chain.json'), CHAIN_NAME: chain, TRACE_LOGS: 'false'},
+            encoding: 'utf8', timeout: 15000, maxBuffer: 512 * 1024, windowsHide: true
+        });
+        const lines = stdout.split(/\r?\n/).filter(line => line.startsWith('ACTION_TEMPLATE='));
+        assert.equal(lines.length, 1);
+        return JSON.parse(lines[0].slice('ACTION_TEMPLATE='.length));
+    } finally {
+        const target = resolve(directory);
+        assert.equal(dirname(target), parent); assert(basename(target).startsWith(prefix));
+        rmSync(target, {recursive: true, force: true});
+    }
+}
+
 async function emptyIndexCount(index) {
     await client.indices.refresh({index});
     const result = await client.count({index}); assert.equal(result._shards.failed, 0); return result.count;
@@ -195,11 +293,24 @@ try {
     }
     report.source = {gitHead: execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8', timeout: 10000}).trim(),
         scriptSha256: sha256(readFileSync(fileURLToPath(import.meta.url))), modules: {}};
+    const gitInputHash = relative => {
+        const disk = readFileSync(join(root, relative));
+        const committed = execFileSync('git', ['show', `${report.source.gitHead}:${relative}`],
+            {cwd: root, timeout: 10000, maxBuffer: 8 * 1024 * 1024});
+        assert.equal(disk.toString('utf8').replaceAll('\r\n', '\n'), committed.toString('utf8').replaceAll('\r\n', '\n'),
+            `Qualification input differs from its reported Git commit: ${relative}`);
+        return sha256(committed);
+    };
+    report.source.gitScriptSha256 = gitInputHash('scripts/qualification/check-action-source-journal.mjs');
+    report.source.gitLockfileSha256 = gitInputHash('package-lock.json');
     for (const [directory, name] of [['history', 'action-source-journal'], ['history', 'action-history-manifest'],
-        ['history', 'action-sequence-storage'], ['protocol', 'immutable-bundle-store'], ['helpers', 'bounded-json']]) {
+        ['history', 'action-sequence-storage'], ['protocol', 'immutable-bundle-store'], ['helpers', 'bounded-json'],
+        ['definitions', 'index-templates'], ['modules', 'master']]) {
         report.source.modules[name] = {sourceSha256: sha256(readFileSync(new URL(`../../src/indexer/${directory}/${name}.ts`, import.meta.url))),
+            gitSourceSha256: gitInputHash(`src/indexer/${directory}/${name}.ts`),
             emittedSha256: sha256(readFileSync(new URL(`../../build/indexer/${directory}/${name}.js`, import.meta.url)))};
     }
+    report.source.trackedInputsMatchHead = true;
     const {ActionHistorySourceJournal} = await import('../../build/indexer/history/action-source-journal.js');
     const {validateActionHistoryBlockPlan, actionHistoryPlanId, fingerprintActionHistoryEffect, actionHistoryManifestBounds,
         actionHistoryManifestId} = await import('../../build/indexer/history/action-history-manifest.js');
@@ -222,6 +333,22 @@ try {
         '9223372036854775807', '9223372036854775808', '18446744073709551615'];
     const actions = sequences.map(value => logical(first, first.transactions[0].transactionId, value));
     let sealed;
+
+    const ordinaryIndex = `${chain}-action-v1-journal-isolation`, readAlias = `${chain}-action-read`, actionWildcard = `${chain}-action-*`;
+    await check('the actual production action template, index sort and read alias are present before journal provisioning', async () => {
+        const template = productionActionTemplate(chain);
+        assert.deepEqual(template.index_patterns, [actionWildcard]);
+        assert.deepEqual(template.template.aliases, {[readAlias]: {}});
+        assert.equal(template.template.settings.index.sort.field, 'global_sequence');
+        assert.equal((await client.indices.putIndexTemplate(template)).acknowledged, true);
+        assert.equal((await client.indices.create({index: ordinaryIndex})).acknowledged, true);
+        const write = await client.index({index: ordinaryIndex, id: 'ordinary-history-sentinel',
+            document: {global_sequence: 1, block_num: 1}, wait_for_active_shards: 'all', refresh: true});
+        assert.equal(write._shards.failed, 0); assert.equal(write._shards.successful, 2);
+        assert.deepEqual(Object.keys(await client.indices.getAlias({name: readAlias})), [ordinaryIndex]);
+        return {template: template.name, ordinaryIndex, wildcard: actionWildcard, readAlias,
+            source: 'Actual emitted index-templates.action and HyperionMaster.updateIndexTemplates'};
+    });
 
     await check('malformed plans, count/copy bounds and pre-cancellation fail before journal provisioning', async () => {
         const invalidChain = `${chain}-invalid`, invalid = new ActionHistorySourceJournal(client, invalidChain, 1);
@@ -282,6 +409,27 @@ try {
             sequences, finiteOpaqueDataFingerprinted: true, readinessAuthority: false};
     });
 
+    await check('journal records stay outside ordinary action wildcards, read aliases, mappings and index sort', async () => {
+        await client.indices.refresh({index: journal.index});
+        assert((await client.count({index: journal.index})).count > 0);
+        for (const target of [actionWildcard, readAlias]) {
+            assert.deepEqual(Object.keys(await client.indices.get({index: target})), [ordinaryIndex]);
+            const result = await client.search({index: target, query: {match_all: {}}, track_total_hits: true});
+            assert.equal(result._shards.failed, 0); assert.equal(result.timed_out, false);
+            assert.deepEqual(result.hits.total, {value: 1, relation: 'eq'});
+            assert.deepEqual(result.hits.hits.map(hit => hit._id), ['ordinary-history-sentinel']);
+        }
+        assert.deepEqual((await client.indices.getAlias({index: journal.index}))[journal.index].aliases, {});
+        const settings = (await client.indices.getSettings({index: journal.index, flat_settings: true}))[journal.index].settings;
+        assert.equal(settings['index.sort.field'], undefined);
+        const mappings = (await client.indices.getMapping({index: journal.index}))[journal.index].mappings;
+        assert.equal(mappings._meta.hyperion_kind, 'action-source-journal'); assert.equal(mappings.dynamic, 'strict');
+        assert.equal(mappings.properties.global_sequence, undefined); assert.equal(mappings.properties.payload.type, 'binary');
+        report.observations.actionHistoryIsolation = {journalIndex: journal.index, ordinaryIndex, readAlias,
+            wildcard: actionWildcard, ordinaryHits: 1, journalInActionAlias: false, inheritedActionSort: false};
+        return report.observations.actionHistoryIsolation;
+    });
+
     await check('complete exact metadata and opaque finite data are fingerprinted without source coercion', async () => {
         const baseline = actions.at(-1), pristine = structuredClone(baseline), effect = fingerprintActionHistoryEffect(baseline);
         assert.deepEqual(baseline, pristine); assert.equal(effect.globalSequence, '18446744073709551615');
@@ -339,7 +487,7 @@ try {
         const restartedCopy = beforePlacement.find(shard => shard.node === replica.name); assert(restartedCopy);
         const ownedReplica = verifyContainer(replica); assert.equal(ownedReplica.State.Running, true);
         await replica.client.close(); clients.delete(replica.client);
-        docker(['restart', replica.id]); verifyContainer(replica); await connect(replica);
+        docker(['restart', replica.id]); await connect(replica);
         const recovered = await client.cluster.health({index: journal.index, wait_for_status: 'green', wait_for_nodes: '2', timeout: '60s'},
             {requestTimeout: 65000});
         assert.equal(recovered.timed_out, false); assert.equal(recovered.status, 'green'); assert.equal(recovered.number_of_nodes, 2);
@@ -507,6 +655,7 @@ try {
 } catch (error) {
     report.status = 'failed'; report.error = String(error.stack ?? error);
 } finally {
+    if (report.status === 'failed') report.failureDiagnostics = [...containers.values()].map(captureFailureDiagnostics);
     // Even failed tests must check the owned server's remaining search contexts
     // when it is reachable; verified server removal also destroys its contexts.
     if (client && report.cleanup.openSearchContextsBeforeRemoval === null) {
