@@ -10,7 +10,7 @@ Install Bun 1.4.3 for development, and use the committed `package-lock.json` for
 the dependency tree, matching `.github/workflows/build.yml`:
 
 ```sh
-npm ci --ignore-scripts
+npm ci
 npm run typecheck
 npm run build
 bun test tests/unit
@@ -26,15 +26,18 @@ to `main`, `dev`, and `release/4.5`. Bun checks and runs the unit tests against
 the npm-installed dependencies. `package-lock.json` is the canonical install
 lockfile; the stale Bun install lockfile has been removed.
 
-`--ignore-scripts` matches CI and skips dependency lifecycle scripts, including
-native setup. This is a build/test recipe, not a replacement for an operator's
-runtime installation procedure or live service qualification.
+Keep the pinned dependency preparation scripts enabled, as in the Node 22/24 build jobs. The
+source-pinned Wire provider verifies its Git revision and preparation receipt during installation.
+The Node 22 design-fixture job failed that verification while using `--ignore-scripts`, before any
+Elasticsearch test ran; the ordinary Node 22 install and complete tests passed. The fixture follows
+the ordinary install recipe rather than bypassing the provider's source checks. Build/test checks
+remain separate from operator installation and live runtime qualification.
 
 On npm versions that reject the explicitly declared Git dependency with
 `EALLOWGIT`, allow only direct Git dependencies for this invocation:
 
 ```sh
-npm ci --ignore-scripts --allow-git=root
+npm ci --allow-git=root
 ```
 
 Do not change a global Git-dependency policy to run these checks.

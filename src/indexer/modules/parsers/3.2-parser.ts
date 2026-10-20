@@ -8,6 +8,8 @@ import { hLog } from "../../helpers/common_functions.js";
 import { PackedTransaction, Serializer } from "@wharfkit/antelope";
 import { GetBlocksResultV0 } from "../../workers/state-reader.js";
 import {protocolBytes} from "../../protocol/contract-cache.js";
+import {normalizeActionSequences} from '../../helpers/action-sequences.js';
+import {canonicalUint64, Uint64ValueError} from '../../helpers/uint64.js';
 
 export default class HyperionParser extends BaseParser {
 
@@ -37,6 +39,12 @@ export default class HyperionParser extends BaseParser {
             }
         }
 
+        // Preserve receipt identities before contract hooks, grouping or cache publication.
+        normalizeActionSequences(action);
+        const receipt = Array.isArray(action.receipt) ? action.receipt[1] : action.receipt;
+        const globalSequence = action.except === null ? canonicalUint64(receipt?.global_sequence) : undefined;
+        if (globalSequence === '0') throw new Uint64ValueError('Committed action global sequence must be positive');
+
         await this.deserializeActionData(worker, action, trx_data);
 
         action["@timestamp"] = ts;
@@ -58,8 +66,9 @@ export default class HyperionParser extends BaseParser {
                 console.log(full_trace.status);
                 console.log(action);
             }
-            action.receipt = action.receipt[1];
-            action.global_sequence = parseInt(action.receipt.global_sequence, 10);
+            action.receipt = receipt;
+            action.global_sequence = globalSequence!;
+            normalizeActionSequences(action);
             delete action.except;
             if (action.error_code === null) {
                 delete action.error_code;

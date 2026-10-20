@@ -19,6 +19,9 @@ import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView,
     type ProtocolActionMetadata, type ProtocolActionSourceMetadata} from '../protocol/abi-proof.js';
 import type {TrxMetadata} from '../../interfaces/trx-metadata.js';
+import {normalizeActionSequences} from '../helpers/action-sequences.js';
+import {compatibleUint64, compareUint64} from '../helpers/uint64.js';
+import {transactionSequenceCacheKey} from '../helpers/transaction-cache.js';
 
 interface ProtocolActionWork {
     original: ActionTrace;
@@ -743,7 +746,7 @@ export default class DSPoolWorker extends HyperionWorker {
                     const trace_counters = { trace_index: 0 };
                     action_traces = await this.mLoader.parser.flattenInlineActions(action_traces, 0, trace_counters, 0);
                     action_traces.sort((a, b) => {
-                        return a[1].receipt[1].global_sequence - b[1].receipt[1].global_sequence;
+                        return compareUint64(compatibleUint64(a[1].receipt[1].global_sequence), compatibleUint64(b[1].receipt[1].global_sequence));
                     });
                 }
 
@@ -792,6 +795,7 @@ export default class DSPoolWorker extends HyperionWorker {
                             this.protocolCacheViews.add(work.view);
                     }
 
+                    normalizeActionSequences(uniqueAction);
                     cleanActionTrace(uniqueAction);
 
                     // remove contract console logs by default
@@ -804,8 +808,7 @@ export default class DSPoolWorker extends HyperionWorker {
                     }
 
                     const payload = Buffer.from(JSON.stringify(uniqueAction));
-                    redisPayload.set(this.usesExtensionProtocol && typeof uniqueAction.protocol?.input.globalSequence === 'string'
-                        ? uniqueAction.protocol.input.globalSequence : uniqueAction.global_sequence.toString(), payload);
+                    redisPayload.set(uniqueAction.global_sequence, payload);
                     this.actionDsCounter++;
                     this.pushToActionsQueue(payload, block_num);
                     if (live === 'true') {
@@ -826,9 +829,10 @@ export default class DSPoolWorker extends HyperionWorker {
                 // the experiment-1 per-trace pipeline already proved is
                 // safe and ~half the cost of two separate awaits.
                 if (this.redisBatchPipeline && !this.conf.api.disable_tx_cache && redisPayload.size > 0) {
+                    const cacheKey = transactionSequenceCacheKey(this.chain, trx_data.trx_id);
                     this.redisBatchPipeline
-                        .hset('trx_' + trx_data.trx_id, redisPayload)
-                        .expire('trx_' + trx_data.trx_id, this.txCacheExpiration);
+                        .hset(cacheKey, redisPayload)
+                        .expire(cacheKey, this.txCacheExpiration);
                     this.redisBatchHasOps = true;
 
                     if (this.shouldFlushTxCacheNow(live)) {
