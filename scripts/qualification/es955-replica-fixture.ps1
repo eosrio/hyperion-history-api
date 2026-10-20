@@ -1,7 +1,9 @@
 param(
     [Parameter(Mandatory)][ValidateSet('create','cleanup')][string]$Action,
     [Parameter(Mandatory)][string]$StateFile,
-    [switch]$ExposeRabbitManagement
+    [switch]$ExposeRabbitManagement,
+    # Pressure qualification keeps its one-MiB default. Actual source journals can require larger individual writes.
+    [ValidateRange(1,256)][int]$IndexingPressureLimitMb=1
 )
 $ErrorActionPreference='Stop'
 $label='es198-replicas'
@@ -23,7 +25,7 @@ if ($Action -eq 'create') {
     $state=[ordered]@{schemaVersion=1;run=$run;clusterName="hyperion-es198-$run";createdAt=[DateTime]::UtcNow.ToString('o');
         esImage='docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c';
         rabbitImage='rabbitmq@sha256:09b39ca8a3e884e91cab8842cd41264de21aab0625e1f1d016a9a3135ba590ef';
-        network=$network;nodes=@();broker=$null;status='creating'}
+        network=$network;nodes=@();broker=$null;status='creating';indexingPressureLimitMb=$IndexingPressureLimitMb}
     Save-State $state
     $null=Invoke-FixtureDocker @('network','create','--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",$network)
     $names=@("$network-a","$network-b","$network-witness")
@@ -42,7 +44,7 @@ if ($Action -eq 'create') {
             '-e',"cluster.name=$($state.clusterName)",'-e',"node.name=$name",'-e',"node.roles=$roles",
             '-e',"discovery.seed_hosts=$($names -join ',')",'-e',"cluster.initial_master_nodes=$($names -join ',')",
             '-e','xpack.security.enabled=false','-e','xpack.security.autoconfiguration.enabled=false','-e','xpack.ml.enabled=false',
-            '-e','ingest.geoip.downloader.enabled=false','-e','indexing_pressure.memory.limit=1mb',
+            '-e','ingest.geoip.downloader.enabled=false','-e',"indexing_pressure.memory.limit=$($IndexingPressureLimitMb)mb",
             '-e','cluster.routing.allocation.disk.watermark.low=20gb','-e','cluster.routing.allocation.disk.watermark.high=10gb',
             '-e','cluster.routing.allocation.disk.watermark.flood_stage=5gb','-e',"ES_JAVA_OPTS=-Xms$heap -Xmx$heap",$state.esImage)
         $cid=(Invoke-FixtureDocker $args).Trim()
