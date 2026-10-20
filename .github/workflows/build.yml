@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier" ]
+    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers" ]
 
 jobs:
   build:
@@ -73,6 +73,30 @@ jobs:
       - name: Check ABI journal, source bindings and canonical frontier against disposable Elasticsearch 9.5.5
         if: matrix.node-version == '24.x'
         run: node scripts/qualification/check-protocol-abi-store.mjs
+
+  action-sequences-design:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22.x, 24.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --ignore-scripts --allow-git=all
+      - name: Probe exact sequence storage and mixed-history query design with owned Elasticsearch 9.5.5
+        run: node scripts/qualification/check-action-sequences.mjs action-sequences-${{ matrix.node }}.json
+      - name: Retain design evidence and cleanup result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: action-sequences-design-${{ matrix.node }}
+          path: action-sequences-${{ matrix.node }}.json
+          if-no-files-found: error
 
   es955-fixture:
     runs-on: ubuntu-latest
