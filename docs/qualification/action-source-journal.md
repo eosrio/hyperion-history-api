@@ -77,12 +77,14 @@ source comparison permits Windows CRLF checkout normalization and retains both r
 The final status requires verified cleanup too.
 
 The only input is the optional evidence output filename. There is no cluster URL, credential, image,
-index-name or live-settings input. The runner creates a fresh labeled internal Docker network and two
+index-name or live-settings input. The runner creates a fresh labeled user-defined Docker bridge and two
 containers from Elasticsearch 9.5.5 digest
 `sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c`.
 Each node is limited to 2 CPU, 2 GiB memory, 512 MiB Java heap and a 256 MiB data tmpfs; HTTP binds only
 to an inspected random loopback port. Aggregate container limits are 4 CPU, 4 GiB memory and 512 MiB
-data tmpfs. No host data directories are mounted.
+data tmpfs. No host data directories are mounted. The inspected bridge is not `--internal`, which can
+suppress requested host port publication; this matches the existing sequence qualification harness.
+The report retains the Docker server version/revision along with owned-container identity.
 
 One node is master/data/ingest; the second is data/ingest. The journal has one primary plus one replica,
 and intercepted **real** write responses must show both configured copies successful. Actual shard

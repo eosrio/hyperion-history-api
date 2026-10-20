@@ -79,12 +79,19 @@ function verifyContainer(state, {portMayBePending = false, inspectionTimeoutMs =
 
 async function waitForContainerPort(state, maximumWaitMs = 30000) {
     const deadline = Date.now() + maximumWaitMs;
+    const expired = cause => new Error(`Owned container did not publish its loopback port within ${maximumWaitMs}ms: ${state.name}`, {cause});
     for (;;) {
-        const value = verifyContainer(state, {portMayBePending: true,
-            inspectionTimeoutMs: Math.max(1, Math.min(10000, deadline - Date.now()))});
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw expired();
+        let value;
+        try {value = verifyContainer(state, {portMayBePending: true, inspectionTimeoutMs: Math.min(10000, remaining)});}
+        catch (error) {
+            if (error.code === 'ETIMEDOUT' && Date.now() >= deadline) throw expired(error);
+            throw error;
+        }
         if (state.url) return value;
-        if (Date.now() >= deadline) throw new Error(`Owned container did not publish its loopback port within ${maximumWaitMs}ms: ${state.name}`);
-        await sleep(100);
+        if (Date.now() >= deadline) throw expired();
+        await sleep(Math.min(100, Math.max(1, deadline - Date.now())));
     }
 }
 
@@ -314,9 +321,11 @@ try {
     const {ActionHistorySourceJournal} = await import('../../build/indexer/history/action-source-journal.js');
     const {validateActionHistoryBlockPlan, actionHistoryPlanId, fingerprintActionHistoryEffect, actionHistoryManifestBounds,
         actionHistoryManifestId} = await import('../../build/indexer/history/action-history-manifest.js');
-    networkId = docker(['network', 'create', '--internal', ...labels('network'), network]); assert.match(networkId, /^[a-f0-9]{64}$/);
+    const engine = JSON.parse(docker(['version', '--format', '{{json .Server}}']));
+    report.docker = Object.fromEntries(['Version', 'ApiVersion', 'GitCommit', 'Os', 'Arch'].map(key => [key, engine[key]]));
+    networkId = docker(['network', 'create', '--driver', 'bridge', ...labels('network'), network]); assert.match(networkId, /^[a-f0-9]{64}$/);
     const net = JSON.parse(docker(['network', 'inspect', networkId]))[0]; owned(net, 'network');
-    assert.equal(net.Id, networkId); assert.equal(net.Name, network); assert.equal(net.Internal, true);
+    assert.equal(net.Id, networkId); assert.equal(net.Name, network); assert.equal(net.Driver, 'bridge'); assert.equal(net.Internal, false);
     const primary = launch('primary'), replica = launch('replica');
     client = await connect(primary); await connect(replica);
     assert.equal(primary.server.clusterUuid, replica.server.clusterUuid);
