@@ -449,6 +449,13 @@ export default class MainDSWorker extends HyperionWorker {
             await this.protocolSourceBindingStore.prepareObservationLink({schemaVersion: 1, selectionId: this.activeSourceSelectionId,
                 observationId: prepared.id, observationDigest: prepared.digest});
         } finally { stopLink(); }
+        // This is only a wake-up hint. Master resolves the durable link and source order itself.
+        // Losing IPC cannot erase PREPARE; the master's bounded periodic drain repairs it.
+        try {
+            process.send?.({event: 'protocol_abi_prepared', data: {selectionId: this.activeSourceSelectionId}}, error => {
+                if (error) debugLog('ABI preparation hint could not reach master:', error.message);
+            });
+        } catch (error: any) { debugLog('ABI preparation hint could not reach master:', error?.message ?? error); }
         if (codecFailure) throw codecFailure;
         return decoded;
     }

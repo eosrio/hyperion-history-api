@@ -7,6 +7,7 @@ import {protocolNumber} from '../protocol/contract-cache.js';
 import {HyperionWorker, protocolSourceCapture} from './hyperionWorker.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {ProtocolSourceBindingStore, protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
+import {ProtocolAbiCoordinatorRpc} from '../protocol/abi-coordinator-rpc.js';
 import {debugLog, hLog} from '../helpers/common_functions.js';
 import {RabbitQueueDef} from '../definitions/index-queues.js';
 import {LiveReaderCheckpoint, ReaderConfirmRange} from '../helpers/reader-progress.js';
@@ -22,6 +23,7 @@ interface BlockInfo {
 }
 
 class StaleProtocolIngress extends Error {}
+class RevokedProtocolSource extends Error {}
 type ProtocolIngress = {generation: number; kind: 'connected'} | {generation: number; kind: 'frame'; data: Buffer};
 
 export interface GetBlocksResultV0 {
@@ -45,6 +47,9 @@ export default class StateReader extends HyperionWorker {
     private physicalIngressGeneration?: number;
     private activeIngressGeneration?: number;
     private verifiedReaderSessionId?: string;
+    private coordinatorRpc?: ProtocolAbiCoordinatorRpc;
+    private coordinatorSource?: {readerSessionId: string; generation?: string};
+    private coordinatorResumeFromBlock?: number | null;
 
     private recovery = false;
     private allowRequests = true;
@@ -375,6 +380,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     onIpcMessage(msg: any): void {
+        if (this.coordinatorRpc?.onMessage(msg)) return;
         switch (msg.event) {
             case 'new_range': {
                 if (msg.target === process.env.worker_id) {
@@ -401,12 +407,14 @@ export default class StateReader extends HyperionWorker {
             }
             case 'next_server': {
                 hLog('received next server action from master');
+                if (this.usesExtensionProtocol) { this.physicalIngressGeneration = undefined; this.revokeCoordinatorSource(); }
                 this.ship.close(false);
                 break;
             }
             case 'stop': {
                 if (this.isLiveReader) {
                     hLog('[LIVE READER] Closing Websocket');
+                    this.revokeCoordinatorSource();
                     this.ship.close(true);
                     setTimeout(() => {
                         hLog('[LIVE READER] Process killed');
@@ -460,6 +468,7 @@ export default class StateReader extends HyperionWorker {
         const deadline = performance.now() + 10000;
         this.finishing = true;
         this.allowRequests = false;
+        this.revokeCoordinatorSource();
         this.ship.close(true);
         while (!this.stageOneDistQueue.idle() || this.publications.size || !this.blockReadingQueue.idle()) {
             if (this.publisherFailure) throw new Error(this.publisherFailure);
@@ -543,6 +552,10 @@ export default class StateReader extends HyperionWorker {
                         credits++;
                     }
                 } catch (error) {
+                    if (error instanceof RevokedProtocolSource) {
+                        await this.quarantineIngress(item.data, error.message, 'protocol_reader_coordinator_stale');
+                        throw error;
+                    }
                     if (!(error instanceof StaleProtocolIngress)) throw error;
                     await this.quarantineIngress(item.data, error.message);
                 } finally { this.activeIngressGeneration = undefined; }
@@ -923,11 +936,13 @@ export default class StateReader extends HyperionWorker {
                         const chainId = result[1]?.chain_id?.toString().toLowerCase();
                         if (!this.sourceContext || !/^[0-9a-f]{64}$/.test(chainId ?? '') || chainId !== this.chainId) {
                             this.verifiedReaderSessionId = undefined;
+                            this.revokeCoordinatorSource();
                             await this.quarantineIngress(data, 'SHiP status does not identify the configured chain', 'protocol_reader_chain_unverified');
                             return 'other';
                         }
                         this.assertCurrentIngress(this.sourceContext.generation);
                         this.verifiedReaderSessionId = this.sourceContext.readerSessionId;
+                        if (this.isLiveReader) await this.openCoordinatorSource();
                     }
                     this.handleStatusResult(result[1]);
                     break;
@@ -984,6 +999,7 @@ export default class StateReader extends HyperionWorker {
         const generation = this.activeIngressGeneration;
         this.assertCurrentIngress(generation);
         this.verifiedReaderSessionId = undefined;
+        this.revokeCoordinatorSource();
         await this.initializeProtocolShip(abiString);
         this.assertCurrentIngress(generation);
         if (this.usesExtensionProtocol) {
@@ -1025,8 +1041,64 @@ export default class StateReader extends HyperionWorker {
                 frameSha256: createHash('sha256').update(frame).digest('hex'), captureSha256: capture.captureSha256,
                 head: position(result.head), irreversible: position(result.last_irreversible)});
             this.assertCurrentIngress(context.generation);
+            if (this.isLiveReader) await this.admitCoordinatorSelection(selection.id, context.readerSessionId, context.generation);
             return {[protocolSourceSelectionHeader]: selection.id};
         } finally { stop(); }
+    }
+
+    private async openCoordinatorSource(): Promise<void> {
+        const context = this.sourceContext;
+        if (!context || this.verifiedReaderSessionId !== context.readerSessionId) throw new Error('Cannot coordinate an unverified reader source');
+        if (this.coordinatorSource?.readerSessionId === context.readerSessionId && this.coordinatorSource.generation) return;
+        this.coordinatorRpc ??= new ProtocolAbiCoordinatorRpc();
+        const source = {readerSessionId: context.readerSessionId, generation: undefined as string | undefined};
+        this.coordinatorSource = source;
+        const stop = this.profiler.start('protocol_abi_open_source');
+        try {
+            const opened = await this.coordinatorRpc.open(context.id, context.readerSessionId);
+            this.assertCurrentIngress(context.generation);
+            if (this.coordinatorSource !== source) throw new StaleProtocolIngress('Reader source changed while coordinator opened');
+            source.generation = opened.generation;
+            this.coordinatorResumeFromBlock = opened.resumeFromBlock;
+            if (opened.resumeFromBlock !== null) {
+                this.local_block_num = opened.resumeFromBlock - 1;
+                // This is a new local publication epoch, not a fabricated master checkpoint.
+                // Only fresh confirmed irreversible publications may emit live_checkpoint.
+                this.liveCheckpoint = new LiveReaderCheckpoint(opened.resumeFromBlock, '', this.conf.settings.reader_recovery_window_blocks);
+            }
+        } catch (error) {
+            this.assertCurrentIngress(context.generation);
+            throw error;
+        } finally { stop(); }
+    }
+
+    private async admitCoordinatorSelection(selectionId: string, readerSessionId: string, generation?: number): Promise<void> {
+        const source = this.coordinatorSource;
+        if (!source?.generation || source.readerSessionId !== readerSessionId || !this.coordinatorRpc) throw new RevokedProtocolSource('Live source lacks coordinator authority');
+        for (;;) {
+            this.assertCurrentIngress(generation);
+            if (this.coordinatorSource !== source) throw new StaleProtocolIngress('Reader source changed during admission');
+            const stop = this.profiler.start('protocol_abi_admit_source');
+            let admitted;
+            try { admitted = await this.coordinatorRpc.admit(selectionId, readerSessionId, source.generation); }
+            catch (error) { this.assertCurrentIngress(generation); throw error; }
+            finally { stop(); }
+            this.assertCurrentIngress(generation);
+            if (this.coordinatorSource !== source) throw new StaleProtocolIngress('Reader source changed during admission');
+            if (admitted.status === 'stale') throw new RevokedProtocolSource('Coordinator revoked this source generation');
+            if (admitted.status === 'accepted') { source.generation = admitted.generation; return; }
+            // One retained selection waits at the reader. No master queue waiter or extra frame is created.
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+
+    private revokeCoordinatorSource(): void {
+        const source = this.coordinatorSource;
+        this.coordinatorSource = undefined;
+        this.coordinatorResumeFromBlock = undefined;
+        this.coordinatorRpc?.cancel();
+        if (source) process.send?.({event: 'protocol_abi_source_revoked', data: {readerSessionId: source.readerSessionId,
+            ...(source.generation ? {generation: source.generation} : {})}});
     }
 
     private assertCurrentIngress(generation = this.activeIngressGeneration): void {
@@ -1047,11 +1119,18 @@ export default class StateReader extends HyperionWorker {
     }
 
     private requestBlocks(start: number) {
+        if (this.usesExtensionProtocol && this.isLiveReader) {
+            if (!this.coordinatorSource?.generation) return;
+            if (this.coordinatorResumeFromBlock !== null && this.coordinatorResumeFromBlock !== undefined) start = this.coordinatorResumeFromBlock;
+            this.coordinatorResumeFromBlock = undefined;
+        }
         this.rangeRequested = true;
         let first_block: string | number = start > 0 ? start : process.env.first_block ? process.env.first_block : 1;
         const last_block = start > 0 ? 0xffffffff : process.env.last_block ? process.env.last_block : 0xffffffff;
         const request = this.baseRequest;
-        if (this.isLiveReader && process.env.worker_last_processed_block_id) {
+        if (this.isLiveReader && this.usesExtensionProtocol) {
+            request.have_positions = [];
+        } else if (this.isLiveReader && process.env.worker_last_processed_block_id) {
             request.have_positions = [{block_num: Number(process.env.worker_last_processed_block) - 1,
                 block_id: process.env.worker_last_processed_block_id}];
         }
@@ -1260,11 +1339,13 @@ export default class StateReader extends HyperionWorker {
         if (this.usesExtensionProtocol) {
             const generation = ++this.socketGeneration;
             this.physicalIngressGeneration = undefined;
+            this.revokeCoordinatorSource();
             this.ship.connect(
                 (data: any) => { void this.blockReadingQueue.push({kind: 'frame', generation, data: Buffer.from(data)}).catch(console.log); },
                 () => {
                     if (this.physicalIngressGeneration !== generation) return;
                     this.physicalIngressGeneration = undefined;
+                    this.revokeCoordinatorSource();
                     this.handleLostConnection();
                 },
                 () => { hLog('connection failed'); },
@@ -1326,6 +1407,7 @@ export default class StateReader extends HyperionWorker {
         if (this.confirmationDeadline) clearTimeout(this.confirmationDeadline);
         this.confirmationDeadline = undefined;
         this.confirmationDeadlineAt = undefined;
+        this.revokeCoordinatorSource();
         process.send?.({event: 'reader_recovery_required', error: reason, assignment_id: this.assignmentId});
         hLog(`Reader publication outcome incomplete; supervised source replay required: ${reason}`);
         this.ship?.close(true);

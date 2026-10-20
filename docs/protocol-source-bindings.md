@@ -55,6 +55,9 @@ Observation IDs and previously retained journal payloads stay compatible.
 
 ## Authority and recovery limits
 
+The [live-source canonical coordinator](protocol-abi-frontier.md) now consumes these exact associations.
+Its internal frontier and bindings do not by themselves activate downstream decoding or qualify recovery.
+
 A source binding proves the runtime's retained handoff context. It does not prove
 canonical membership, full snapshot coverage, an applicable contract ABI, or a
 ready projection. The observed head/LIB fields are source evidence, not an activated
