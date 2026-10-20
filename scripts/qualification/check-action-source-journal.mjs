@@ -78,20 +78,20 @@ function verifyContainer(state, {portMayBePending = false, inspectionTimeoutMs =
 }
 
 async function waitForContainerPort(state, maximumWaitMs = 30000) {
-    const deadline = Date.now() + maximumWaitMs;
+    const deadline = performance.now() + maximumWaitMs;
     const expired = cause => new Error(`Owned container did not publish its loopback port within ${maximumWaitMs}ms: ${state.name}`, {cause});
     for (;;) {
-        const remaining = deadline - Date.now();
+        const remaining = Math.floor(deadline - performance.now());
         if (remaining <= 0) throw expired();
         let value;
         try {value = verifyContainer(state, {portMayBePending: true, inspectionTimeoutMs: Math.min(10000, remaining)});}
         catch (error) {
-            if (error.code === 'ETIMEDOUT' && Date.now() >= deadline) throw expired(error);
+            if (error.code === 'ETIMEDOUT' && performance.now() >= deadline) throw expired(error);
             throw error;
         }
         if (state.url) return value;
-        if (Date.now() >= deadline) throw expired();
-        await sleep(Math.min(100, Math.max(1, deadline - Date.now())));
+        if (performance.now() >= deadline) throw expired();
+        await sleep(Math.min(100, Math.max(1, deadline - performance.now())));
     }
 }
 
@@ -290,6 +290,26 @@ async function emptyIndexCount(index) {
     const result = await client.count({index}); assert.equal(result._shards.failed, 0); return result.count;
 }
 
+// The pinned Undici connection retains its constructor header/body timeout.
+// A longer per-request timeout cannot extend that pool limit. Keep every health
+// request short while preserving Elasticsearch's normal delayed allocation.
+async function waitForHealthyCopies(index, maximumWaitMs) {
+    const started = performance.now(), deadline = started + maximumWaitMs;
+    let polls = 0, maximumDelayedShards = 0, health;
+    for (;;) {
+        const remaining = Math.floor(deadline - performance.now());
+        if (remaining <= 0) throw new Error(`Owned two-node cluster did not recover green within ${maximumWaitMs}ms: ${JSON.stringify(health)}`);
+        health = await client.cluster.health({...(index ? {index} : {}), wait_for_nodes: '2', wait_for_status: 'green',
+            timeout: `${Math.min(1000, remaining)}ms`}, {requestTimeout: Math.min(5000, remaining)});
+        polls++; maximumDelayedShards = Math.max(maximumDelayedShards, health.delayed_unassigned_shards ?? 0);
+        if (!health.timed_out && health.status === 'green' && health.number_of_nodes === 2) {
+            return {health, polls, elapsedMs: performance.now() - started, maximumDelayedShards,
+                serverTimeoutPerPollMs: 1000, requestTimeoutPerPollMs: 5000, maximumWaitMs};
+        }
+        await sleep(Math.min(100, Math.max(0, deadline - performance.now())));
+    }
+}
+
 try {
     const lock = JSON.parse(readFileSync(new URL('../../package-lock.json', import.meta.url), 'utf8'));
     report.versions = {};
@@ -329,7 +349,7 @@ try {
     const primary = launch('primary'), replica = launch('replica');
     client = await connect(primary); await connect(replica);
     assert.equal(primary.server.clusterUuid, replica.server.clusterUuid);
-    const health = await client.cluster.health({wait_for_nodes: '2', wait_for_status: 'green', timeout: '30s'}, {requestTimeout: 35000});
+    const {health} = await waitForHealthyCopies(undefined, 30000);
     assert.equal(health.timed_out, false); assert.equal(health.number_of_nodes, 2); assert.equal(health.status, 'green');
     report.server = {primary: primary.server, replica: replica.server,
         topology: 'One master/data/ingest node and one data/ingest replica; no master failover qualification',
@@ -497,8 +517,7 @@ try {
         const ownedReplica = verifyContainer(replica); assert.equal(ownedReplica.State.Running, true);
         await replica.client.close(); clients.delete(replica.client);
         docker(['restart', replica.id]); await connect(replica);
-        const recovered = await client.cluster.health({index: journal.index, wait_for_status: 'green', wait_for_nodes: '2', timeout: '60s'},
-            {requestTimeout: 65000});
+        const recoveryWait = await waitForHealthyCopies(journal.index, 90000), recovered = recoveryWait.health;
         assert.equal(recovered.timed_out, false); assert.equal(recovered.status, 'green'); assert.equal(recovered.number_of_nodes, 2);
         const after = await client.nodes.info();
         const newNode = Object.entries(after.nodes).find(([, node]) => node.name === replica.name)?.[0]; assert(newNode); assert.notEqual(newNode, oldNode);
@@ -511,7 +530,7 @@ try {
         report.qualification.replicaPeerRecovery = true;
         return {oldDataNodeId: oldNode, recoveredDataNodeId: newNode, primaryAndReplicaStarted: true,
             restartedCopyWas: restartedCopy.prirep === 'p' ? 'primary' : 'replica', beforePlacement, afterPlacement: shards,
-            dataTmpfsRecreated: true, newJournalAdapters: true, masterFailoverQualified: false};
+            recoveryWait, dataTmpfsRecreated: true, newJournalAdapters: true, masterFailoverQualified: false};
     });
 
     await check('interrupted multi-chunk plan preparation remains incomplete until identical repair', async () => {

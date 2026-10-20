@@ -93,6 +93,10 @@ replica copy; role labels do not establish shard placement. Its tmpfs is recreat
 and the recovered cluster must expose both STARTED copies and the same journal membership from new
 adapters on both HTTP endpoints. This exercises data-copy recovery with the sole master continuously
 alive. It does not qualify master failover, availability during a node outage, or a production topology.
+Recovery preserves the default delayed allocation and waits at most 90 seconds, using health polls
+with a 1-second server wait and a 5-second request budget. The pinned transport's constructor-level
+Undici timeout can expire before a longer per-request override, so the fixture does not depend on
+extending that timeout. Evidence records poll count, elapsed wait and observed delayed shards.
 
 Fault wrappers first perform the real two-copy ES side effect, inspect its complete receipt, then
 simulate a lost or partial returned receipt. Evidence labels these injected response faults. They are
