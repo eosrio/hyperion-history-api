@@ -39,6 +39,10 @@ npm ci --ignore-scripts --allow-git=root
 
 Do not change a global Git-dependency policy to run these checks.
 
+The [portable projection checks](portable-projection.md) additionally build an
+independent MongoDB adapter and exercise an owned database fixture. Those checks
+have separate dependency locks and do not qualify the complete 4.5 state path.
+
 ## Historical dependency-related type errors
 
 On 2026-10-18, the unchanged `release/4.5` source at

@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier" ]
+    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers" ]
 
 jobs:
   build:
@@ -73,6 +73,35 @@ jobs:
       - name: Check ABI journal, source bindings and canonical frontier against disposable Elasticsearch 9.5.5
         if: matrix.node-version == '24.x'
         run: node scripts/qualification/check-protocol-abi-store.mjs
+
+  projection-mongodb:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22.x, 24.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            packages/backend-mongodb/package-lock.json
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: npm ci --allow-git=all
+      - name: Install independently packaged MongoDB adapter
+        run: npm ci --prefix packages/backend-mongodb --allow-git=all
+      - name: Check and build MongoDB adapter
+        run: |
+          bun check -p packages/backend-mongodb/tsconfig.json
+          npm test --prefix packages/backend-mongodb
+      - name: Exercise the portable runtime and adapter against owned MongoDB 8.0.34
+        run: node scripts/qualification/check-projection-mongodb.mjs
 
   es955-fixture:
     runs-on: ubuntu-latest
