@@ -1,7 +1,9 @@
 import {describe, expect, it} from 'bun:test';
 import {PortableSourceFlow, portableSourceLimits, servePortableWorkerSource} from '../../scripts/qualification/portable-state-worker-source.ts';
 import {independentWirePrimaryRow} from '../../scripts/qualification/portable-state-worker-oracle.ts';
-import {assertPortableApiResult, portableWorkerConfig, portableWorkerEnvironment, validatePortableWorkerPlan} from '../../scripts/qualification/portable-state-worker.ts';
+import {assertPortableApiResult, assertPortablePending, assertPortableUnavailable, describePortableWorkerError, portableWorkerConfig,
+    portableWorkerEnvironment, portableWorkerFaultDefinition, validatePortableWorkerPlan} from '../../scripts/qualification/portable-state-worker.ts';
+import {projectTableValue, validateProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
 
 const request = (last: number, window = 8) => ['get_blocks_request_v0', {start_block_num: 1, end_block_num: last + 1,
     max_messages_in_flight: window, have_positions: [], irreversible_only: true, fetch_block: true, fetch_traces: true, fetch_deltas: true}];
@@ -16,6 +18,38 @@ const plan = () => ({schemaVersion: 1, source: {directory: 'source', receiptSha2
         {through: 4, rows: {rows: [{key: 'a', value: {value: 'after'}}]}}]});
 
 describe('portable actual-source harness guards', () => {
+    it('adds only a distinct invalid mapping and preserves every healthy definition and oracle', () => {
+        const input = validatePortableWorkerPlan(plan()), before = structuredClone(input), invalid = portableWorkerFaultDefinition(input);
+        expect(input).toEqual(before); expect(invalid.id).not.toBe(input.definitions[0].id);
+        expect(invalid.mappingRevision).not.toBe(input.definitions[0].mappingRevision); expect(invalid.source).toEqual(input.definitions[0].source);
+        expect(validateProjectionDefinition(invalid).valid).toBe(true); const projected = projectTableValue(invalid, {value: 'real-original-value'});
+        expect(projected.valid).toBe(false); if (!projected.valid) expect(projected.errors[0].message).toBe('Required source field is missing');
+    });
+    it('requires a durable exact pending predecessor and distinguishes write failures from contract failures', () => {
+        const binding: any = {projectionId: 'rows'}, previous = {blockNum: 1, blockId: '1'.repeat(64)}, block = {blockNum: 2, blockId: '2'.repeat(64)};
+        const recovery: any = {binding, checkpoint: previous, initialized: true, gap: null,
+            pending: {block: {...block, previousBlockId: previous.blockId}, digest: 'f'.repeat(64), reason: null}};
+        expect(() => assertPortablePending(recovery, binding, previous, block, false)).not.toThrow();
+        expect(() => assertPortablePending({...recovery, checkpoint: block}, binding, previous, block, false)).toThrow();
+        expect(() => assertPortablePending({...recovery, pending: {...recovery.pending, block: {...block, previousBlockId: '0'.repeat(64)}}}, binding, previous, block, false)).toThrow();
+        expect(() => assertPortablePending({...recovery, gap: recovery.pending}, binding, previous, block, false)).toThrow();
+        expect(() => assertPortablePending(recovery, binding, previous, block, true)).toThrow();
+        expect(() => assertPortablePending({...recovery, pending: {...recovery.pending, digest: null, reason: 'Required source field is missing'}}, binding, previous, block, true)).not.toThrow();
+    });
+    it('requires retryable unavailable responses without a stale success body or served-state headers', () => {
+        const response = {status: 503, headers: new Headers({'retry-after': '1'}), body: {retryable: true}};
+        expect(() => assertPortableUnavailable(response)).not.toThrow();
+        expect(() => assertPortableUnavailable({...response, body: {...response.body, rows: []}})).toThrow();
+        expect(() => assertPortableUnavailable({...response, headers: new Headers({'retry-after': '1', 'hyperion-state-last-valid': 'false'})})).toThrow();
+        expect(() => assertPortableUnavailable({...response, status: 200})).toThrow();
+    });
+    it('preserves bounded nested causes and aggregate members without cycling', () => {
+        const cause = new Error('actual primary-readiness condition'), outer = new Error('owned readiness deadline', {cause});
+        const error = new AggregateError([outer], 'qualification failed'); error.cause = error;
+        expect(describePortableWorkerError(error)).toContain('actual primary-readiness condition');
+        expect(describePortableWorkerError(error)).toContain('owned readiness deadline');
+        expect(describePortableWorkerError(new Error('x'.repeat(100000))).length).toBeLessThanOrEqual(16384);
+    });
     it('holds every source message until explicitly released; status requests grant no credits', () => {
         const flow = new PortableSourceFlow(4);
         expect(flow.receive(['get_status_request_v0', {}])).toEqual({status: true, blocks: []});

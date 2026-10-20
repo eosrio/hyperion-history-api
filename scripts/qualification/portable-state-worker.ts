@@ -13,7 +13,7 @@ import {performance} from 'node:perf_hooks';
 import {Client} from '@elastic/elasticsearch';
 import {MongoClient} from 'mongodb';
 import {Redis} from 'ioredis';
-import type {ProjectionDefinition, ProjectionQuery, ProjectionQueryResult} from '@eosrio/hyperion-sdk/projection';
+import type {ProjectionBinding, ProjectionDefinition, ProjectionQuery, ProjectionQueryResult, ProjectionRecoveryView} from '@eosrio/hyperion-sdk/projection';
 import {validateFixture, assertNodeOwnership} from './es955-replicas.ts';
 import {assertOwnedBinding, assertSuccessfulWorkerShutdown} from './es955-workers.ts';
 import {startBulkLedger, summarizeBulkLedger} from './replay-bulk-ledger.ts';
@@ -25,7 +25,17 @@ import {assertPortableWorkerOracle} from './portable-state-worker-oracle.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
-const describeError = (error: unknown) => String(error instanceof Error ? error.stack ?? error.message : error).slice(0, 8192);
+export function describePortableWorkerError(error: unknown): string {
+    const seen = new Set<unknown>(); const parts: string[] = [];
+    const visit = (value: unknown, label: string, depth: number) => {
+        if (depth > 4 || seen.has(value)) return;
+        seen.add(value); parts.push(label + String(value instanceof Error ? value.stack ?? value.message : value).slice(0, 4096));
+        if (value instanceof Error && value.cause !== undefined) visit(value.cause, '\nCaused by: ', depth + 1);
+        if (value instanceof AggregateError) for (const item of value.errors.slice(0, 4)) visit(item, '\nAggregate member: ', depth + 1);
+    };
+    visit(error, '', 0); return parts.join('').slice(0, 16384);
+}
+const describeError = describePortableWorkerError;
 type Row = ProjectionQueryResult['rows'][number];
 export interface PortableWorkerBarrier {readonly through: number; readonly rows: Readonly<Record<string, readonly Row[]>>}
 export interface PortableWorkerPlan {
@@ -35,6 +45,31 @@ export interface PortableWorkerPlan {
     readonly expectationOrigin: string; readonly barriers: readonly PortableWorkerBarrier[];
 }
 const rowOrder = (left: Row, right: Row) => Buffer.compare(Buffer.from(left.key), Buffer.from(right.key));
+
+/** A deliberately invalid mapping is qualification configuration, never a replacement source oracle. */
+export function portableWorkerFaultDefinition(plan: PortableWorkerPlan): ProjectionDefinition {
+    const original = plan.definitions.find(definition => plan.barriers[0].rows[definition.id].length > 0);
+    assert.ok(original, 'the first held prefix must contain an independently expected insertion');
+    assert.ok(plan.barriers[0].through > 1, 'the failure needs a real completed predecessor');
+    const definition = {...structuredClone(original), id: 'qualification-invalid-' + portableSourceHash(JSON.stringify(original)).slice(0, 16),
+        fields: [{name: 'qualification_missing_required', path: ['__hyperion_qualification_missing_required_v1__'], type: 'string' as const}]};
+    assert.ok(!plan.definitions.some(value => value.id === definition.id));
+    return {...definition, mappingRevision: portableSourceHash(JSON.stringify({...definition, mappingRevision: 'qualification-invalid-required-v1'}))};
+}
+
+export function assertPortableUnavailable(response: {status: number; headers: Headers; body: any}) {
+    assert.equal(response.status, 503); assert.equal(response.body.retryable, true); assert.equal(response.headers.get('retry-after'), '1');
+    for (const name of ['hyperion-state-block-num', 'hyperion-state-block-id', 'hyperion-state-last-valid']) assert.equal(response.headers.get(name), null);
+    assert.equal(response.body.view, undefined); assert.equal(response.body.rows, undefined);
+}
+
+export function assertPortablePending(recovery: ProjectionRecoveryView, binding: ProjectionBinding,
+                                      previous: {blockNum: number; blockId: string}, block: {blockNum: number; blockId: string}, contractFailure: boolean) {
+    assert.deepEqual(recovery.binding, binding); assert.equal(recovery.initialized, true); assert.deepEqual(recovery.checkpoint, previous);
+    assert.deepEqual(recovery.pending?.block, {...block, previousBlockId: previous.blockId}); assert.equal(recovery.gap, null);
+    if (contractFailure) {assert.equal(recovery.pending!.digest, null); assert.match(recovery.pending!.reason!, /Required source field is missing/);}
+    else {assert.match(recovery.pending!.digest!, /^[a-f0-9]{64}$/); assert.equal(recovery.pending!.reason, null);}
+}
 
 export function validatePortableWorkerPlan(value: unknown): PortableWorkerPlan {
     assert.ok(value && typeof value === 'object' && !Array.isArray(value)); const plan = value as PortableWorkerPlan;
@@ -224,10 +259,17 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             processCrashRecoveryQualified: false, writeFailureIsolationQualified: false,
             note: 'Actual Node worker/Mongo/HTTP tracer; no AtomicAssets, full release, fork or Bun qualification.'}};
     const chain = `hyp-p191-${state.run}`, database = `h45_p191_${state.run}`;
+    const invalidDefinition = portableWorkerFaultDefinition(plan), faultThrough = plan.barriers[0].through;
     const mongoFixture = new OwnedMongoFixture({command: docker});
     let mongo: MongoClient | undefined, redis: Redis | undefined, master: ChildProcess | undefined, api: ChildProcess | undefined;
     let replay: Awaited<ReturnType<typeof servePortableWorkerSource>> | undefined, rpc: Awaited<ReturnType<typeof sourceRpc>> | undefined;
     let ledger: Awaited<ReturnType<typeof startBulkLedger>> | undefined;
+    let mongoWriteFaultActive = false;
+    const configureMongoWriteFault = async (mode: 'alwaysOn' | 'off') => {
+        assert.ok(mongo); mongoFixture.ownedContainer('replica');
+        return mongo.db('admin').command({configureFailPoint: 'failCommand', mode,
+            ...(mode === 'alwaysOn' ? {data: {failCommands: ['update'], errorCode: 2}} : {})});
+    };
     const es = new Client({node: state.core.nodes[0].url, requestTimeout: 10000, maxRetries: 0});
     const wait = async (name: string, condition: () => Promise<void>, milliseconds = 60000) => {
         const end = Math.min(deadline, performance.now() + milliseconds); let last: unknown;
@@ -275,7 +317,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         mongoFixture.prepare(); const mongoUri = mongoFixture.start('replica');
         const initial = await waitForMongo(() => new MongoClient(mongoUri, {directConnection: true, serverSelectionTimeoutMS: 1500, timeoutMS: 5000})); await initial.close();
         mongoFixture.initializeReplica(); mongo = await waitForMongo(() => new MongoClient(mongoUri, {directConnection: true, retryWrites: false,
-            replicaSet: mongoFixture.replicaSet, serverSelectionTimeoutMS: 1500, timeoutMS: 5000}), {primary: true});
+            replicaSet: mongoFixture.replicaSet, serverSelectionTimeoutMS: 1500, timeoutMS: 5000}), {primary: true, replicaSet: mongoFixture.replicaSet});
         assert.ok(mongo); assert.equal((await mongo.db('admin').command({hello: 1})).setName, mongoFixture.replicaSet);
         assert.equal((await mongo.db('admin').command({buildInfo: 1})).version, MONGODB_VERSION);
         assert.deepEqual(await mongo.db(database).listCollections({}, {nameOnly: true}).toArray(), []);
@@ -283,13 +325,16 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         replay = await servePortableWorkerSource(source, report.errors); rpc = await sourceRpc(source, report.errors);
         report.rpc = {requests: rpc.requests, lineage: rpc.lineage};
         ledger = await startBulkLedger(state.core.nodes[0].url, join(output, 'bulk'), report.errors);
-        const apiPort = await freePort(), controlPort = await freePort(), config = portableWorkerConfig(chain, database, plan.definitions, apiPort, rpc.url);
+        const apiPort = await freePort(), controlPort = await freePort(), config = portableWorkerConfig(chain, database,
+            [...plan.definitions, invalidDefinition], apiPort, rpc.url);
         const configFile = join(output, 'chain.json');
         const configModule = await import(new URL('../../build/indexer/projection/config.js', import.meta.url).href);
         const selectedConfig = configModule.resolvePortableStateConfiguration(config.features.portable_state, source.chainId);
         const bindings = plan.definitions.map(definition => configModule.portableStateBinding(selectedConfig, definition, source.chainId));
+        const invalidBinding = configModule.portableStateBinding(selectedConfig, invalidDefinition, source.chainId);
         const backendModule = await import(new URL('../../packages/backend-mongodb/dist/index.js', import.meta.url).href);
         const adapters = bindings.map(() => backendModule.createMongoDbProjectionAdapter({client: mongo, databaseName: database, backendId: config.features.portable_state.backend.id}));
+        const invalidAdapter = backendModule.createMongoDbProjectionAdapter({client: mongo, databaseName: database, backendId: config.features.portable_state.backend.id});
         assert.ok(adapters.every(adapter => typeof adapter.recovery === 'function'), 'a non-serving durable recovery cursor is required for bounded replay');
         const mongoUrl = new URL(mongoUri), redisUrl = new URL(state.redis.url);
         const connections = {elasticsearch: {protocol: 'http', host: new URL(state.core.nodes[0].url).host, ingest_nodes: [new URL(ledger.url).host], user: '', pass: ''},
@@ -302,6 +347,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             [join(output, 'config/connections.json'), connections], [join(output, 'package.json'), JSON.parse((await boundedPortableFile(join(repo, 'package.json'), 65536)).toString())]] as const)
             await writeFile(path, JSON.stringify(value, null, 2) + '\n', {flag: 'wx'});
         report.config = config; report.bindings = bindings; report.connections = connections;
+        report.contractFailure = {definition: invalidDefinition, binding: invalidBinding,
+            description: 'Fixture-only missing required source field; healthy definitions and independent expected rows are unchanged.', observations: []};
         master = await spawnOwned('build/indexer/launcher.js', configFile); report.masterPid = master.pid;
         api = await spawnOwned('build/api/server.js', configFile); report.apiPid = api.pid;
         const query = async (projection: string, value: ProjectionQuery = {filter: [], limit: 256, count: {upTo: 1000}}) => {
@@ -309,13 +356,77 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 body: JSON.stringify({projection, query: value}), signal: AbortSignal.timeout(Math.min(5000, remaining()))});
             return {status: response.status, headers: response.headers, body: await boundedResponse(response)};
         };
+        const responseReceipt = (response: Awaited<ReturnType<typeof query>>) =>
+            ({status: response.status, headers: Object.fromEntries(response.headers), body: response.body});
+        const history = async (through: number) => {
+            const block = source.records[through - 1];
+            await es.indices.refresh({index: chain + '-block-*'});
+            const information = await es.nodes.info(); const dataNodes = Object.entries(information.nodes).filter(([, node]) =>
+                state.core.nodes.some((owned: any) => owned.role === 'data' && owned.name === node.name));
+            assert.equal(dataNodes.length, 2); const physical: any[] = [];
+            for (const [nodeId, node] of dataNodes) {
+                const result = await es.search<any>({index: chain + '-block-*', size: 2, track_total_hits: true,
+                    preference: `_only_nodes:${nodeId}`, query: {term: {block_num: through}}});
+                assert.equal(result.timed_out, false); assert.equal(result._shards.failed, 0);
+                assert.ok(result._shards.total > 0); assert.equal(result._shards.successful, result._shards.total);
+                assert.deepEqual(result.hits.total, {value: 1, relation: 'eq'}); const hit = result.hits.hits[0];
+                assert.equal(hit._id, String(through)); assert.equal(hit._source.block_num, through);
+                assert.equal(hit._source.block_id, block.blockId); assert.equal(hit._source.prev_id, block.previousBlockId);
+                physical.push({nodeId, nodeName: node.name, response: result});
+            }
+            const response = await fetch(`http://127.0.0.1:${apiPort}/v2/history/get_block?block_num=${through}`,
+                {signal: AbortSignal.timeout(Math.min(5000, remaining()))});
+            const body = await boundedResponse(response); assert.equal(response.status, 200);
+            assert.equal(body.block_num, through); assert.equal(body.block_id, block.blockId); assert.equal(body.prev_id, block.previousBlockId);
+            return {through, blockId: block.blockId, physical, api: {status: response.status, headers: Object.fromEntries(response.headers), body}};
+        };
         await wait('API unavailable before actual block1', async () => {const response = await query(plan.definitions[0].id);
-            assert.equal(response.status, 503); assert.equal(response.body.retryable, true); assert.equal(response.headers.get('retry-after'), '1');
-            assert.equal(response.headers.get('hyperion-state-block-num'), null); report.beforeSource = response.body;});
+            assertPortableUnavailable(response); report.beforeSource = responseReceipt(response);});
+        let writeFailureObserved = false;
         let through = 0;
         for (const barrier of plan.barriers) {
             while (through < barrier.through) {
-                through = Math.min(through + portableSourceLimits.window, barrier.through); replay.releaseThrough(through);
+                if (!writeFailureObserved && through === faultThrough - 1) {
+                    const previous = {blockNum: through, blockId: source.records[through - 1].blockId};
+                    const failed = {blockNum: faultThrough, blockId: source.records[faultThrough - 1].blockId};
+                    let beforeInvalid: ProjectionRecoveryView | undefined;
+                    await wait('invalid tracer completed the real failure predecessor', async () => {
+                        beforeInvalid = await invalidAdapter.recovery(invalidBinding);
+                        assert.equal(beforeInvalid!.initialized, true); assert.deepEqual(beforeInvalid!.checkpoint, previous);
+                        assert.equal(beforeInvalid!.pending, null); assert.equal(beforeInvalid!.gap, null);
+                    });
+                    const beforeApi: ReturnType<typeof responseReceipt>[] = [];
+                    for (const [index, definition] of plan.definitions.entries()) {
+                        const response = await query(definition.id); assert.equal(response.status, 200);
+                        assertPortableApiResult(response.body, response.headers, bindings[index], previous, []); beforeApi.push(responseReceipt(response));
+                    }
+                    mongoWriteFaultActive = true;
+                    const enabled = await configureMongoWriteFault('alwaysOn');
+                    assert.equal(enabled.ok, 1); assert.ok(Number.isSafeInteger(enabled.count) && enabled.count >= 0);
+                    report.writeFailure = {block: failed, previous, enabled, beforeInvalid, beforeApi,
+                        description: 'Owned replica failCommand rejects actual update commands with error2 after durable source intent; history acknowledgments remain independent.'};
+                    replay.releaseThrough(faultThrough);
+                    await wait('actual Mongo failpoint entered', async () => {
+                        report.writeFailure.entered = await mongo!.db('admin').command({waitForFailPoint: 'failCommand',
+                            timesEntered: enabled.count + 1, maxTimeMS: Math.min(1000, remaining())});
+                        assert.equal(report.writeFailure.entered.ok, 1);
+                    }, 15000);
+                    await wait('durable failed Mongo intent and fenced HTTP', async () => {
+                        const recoveries = await Promise.all(adapters.map((adapter, index) => adapter.recovery(bindings[index])));
+                        const responses: ReturnType<typeof responseReceipt>[] = [];
+                        for (const [index, recovery] of recoveries.entries()) {
+                            assertPortablePending(recovery, bindings[index], previous, failed, false);
+                            const response = await query(plan.definitions[index].id); assertPortableUnavailable(response); responses.push(responseReceipt(response));
+                        }
+                        replay!.assertThrough(faultThrough); report.writeFailure.pending = recoveries; report.writeFailure.api = responses;
+                        report.writeFailure.historyWhilePending = await history(faultThrough); report.writeFailure.queuesWhilePending = await queues();
+                    });
+                    const disabled = await configureMongoWriteFault('off'); mongoWriteFaultActive = false;
+                    assert.equal(disabled.ok, 1); assert.ok(Number.isSafeInteger(disabled.count) && disabled.count > enabled.count);
+                    report.writeFailure.disabled = disabled; writeFailureObserved = true;
+                }
+                through = Math.min(through + portableSourceLimits.window, barrier.through,
+                    !writeFailureObserved ? faultThrough - 1 : source.endBlock); replay.releaseThrough(through);
                 const block = source.records[through - 1];
                 await wait(`durable contiguous projection cursor ${through}`, async () => {
                     const recoveries = await Promise.all(adapters.map((adapter, index) => adapter.recovery(bindings[index])));
@@ -324,6 +435,16 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     replay!.assertThrough(through); report.lastRecovery = recoveries;
                 });
             }
+            let isolation: any;
+            await wait(`invalid mapping remains durably isolated at${through}`, async () => {
+                const recovery = await invalidAdapter.recovery(invalidBinding);
+                assertPortablePending(recovery, invalidBinding,
+                    {blockNum: faultThrough - 1, blockId: source.records[faultThrough - 2].blockId},
+                    {blockNum: faultThrough, blockId: source.records[faultThrough - 1].blockId}, true);
+                const response = await query(invalidDefinition.id); assertPortableUnavailable(response);
+                isolation = {through, recovery, api: responseReceipt(response), history: await history(through)};
+            });
+            report.contractFailure.observations.push(isolation);
             const block = source.records[through - 1], responses: any[] = [];
             for (const [index, definition] of plan.definitions.entries()) {
                 await wait(`actual HTTP ${definition.id} prefix${through}`, async () => {const response = await query(definition.id);
@@ -345,7 +466,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             }
             await wait(`owned Rabbit queues drained at${through}`, async () => {const rows = await queues(); assert.ok(rows.length > 0);
                 assert.ok(rows.every((row: any) => row.ready === 0 && row.unacked === 0 && row.messages === 0));});
-            const observed = {through, blockId: block.blockId, responses, queues: await queues(), recovery: report.lastRecovery, source: replay.metrics()};
+            const observed = {through, blockId: block.blockId, responses, queues: await queues(), recovery: report.lastRecovery, source: replay.metrics(), isolation};
             const bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n'); const file = `prefixes/block-${through}.json`;
             await writeFile(join(output, file), bytes, {flag: 'wx'}); report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
         }
@@ -367,10 +488,16 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         assert.equal((await query('unconfigured-projection')).status, 404);
         const afterSource = await auditPortableWorkerSource(plan.source);
         assert.deepEqual(afterSource.inputHashes, source.inputHashes); assert.deepEqual(afterSource.components, source.components);
+        assert.equal(writeFailureObserved, true); assert.ok(report.contractFailure.observations.length >= 2);
+        report.limits.writeFailureIsolationQualified = true;
         report.status = 'passed';
     } catch (error) {report.status = 'failed'; report.error = describeError(error);}
     finally {
         cleanupDeadline = performance.now() + 90_000;
+        if (mongoWriteFaultActive) {
+            try {report.writeFailureCleanup = await configureMongoWriteFault('off'); mongoWriteFaultActive = false;}
+            catch (error) {report.status = 'failed'; report.cleanup.push({name: 'owned-mongodb-failpoint', ok: false, error: describeError(error)});}
+        }
         for (const [name, child] of [['api', api], ['master', master]] as const) if (child) {
             try {if (child.exitCode === null && child.signalCode === null && child.connected) child.send({event: 'qualifier_shutdown'});
                 if (child.exitCode === null && child.signalCode === null) await Promise.race([once(child, 'exit'), pause(10000)]);
