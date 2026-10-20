@@ -116,7 +116,10 @@ async function readRegular(root: string, file: string) {
     assert.ok(!(await lstat(root)).isSymbolicLink(), 'fixture root must not be a link');
     if (file.includes('/')) assert.ok(!(await lstat(join(root, file.split('/')[0]))).isSymbolicLink(), 'input parent must not be a link');
     const info = await lstat(path); assert.ok(info.isFile() && !info.isSymbolicLink(), 'input must be a regular file');
-    return readFile(path);
+    const maximum = file === 'manifest.json' ? 1024 * 1024 : maximumFixtureBytes;
+    assert.ok(info.size > 0 && info.size <= maximum, 'fixture file exceeds byte budget');
+    const bytes = await readFile(path); assert.equal(bytes.length, info.size, 'fixture input changed while reading');
+    assert.ok(bytes.length <= maximum, 'fixture file exceeds byte budget'); return bytes;
 }
 export function decodeBlock(frame: Buffer, abi: ABI) {
     const result: any = decodeExact(frame, 'result', abi);
@@ -152,10 +155,11 @@ export function decodeBlock(frame: Buffer, abi: ABI) {
         assert.match(id, /^[a-f0-9]{64}$/); return {id, status: Number(receipt.status), actions};
     });
     assert.equal(new Set(receipts.map(receipt => receipt.id)).size, receipts.length, 'duplicate signed transaction receipt');
-    return {block, number, id, previous: header.previous.toString(), receipts};
+    return {block, header, number, id, previous: header.previous.toString(), receipts};
 }
 export async function auditFixture(root: string) {
-    const manifest: ContractFixture = JSON.parse(await readRegular(root, 'manifest.json').then(bytes => bytes.toString()));
+    const manifestBytes = await readRegular(root, 'manifest.json');
+    const manifest: ContractFixture = JSON.parse(manifestBytes.toString());
     validateManifest(manifest); const files = new Map<string, Buffer>();
     for (const input of manifest.inputs) {
         const bytes = await readRegular(root, input.file); assert.equal(bytes.length, input.bytes, `size mismatch: ${input.file}`);
@@ -232,7 +236,7 @@ export async function auditFixture(root: string) {
     assert.equal(receiptCoverage.size, expectedReceipts.size, 'expected signed transaction receipt coverage differs');
     assert.equal(found.length, expected.size); assert.equal(new Set(found.map(entry => entry.trxId)).size, expected.size);
     let sequence = 0; for (const action of found) { assert.ok(action.globalSequence > sequence); sequence = action.globalSequence; }
-    return {manifest, abi, files, records, actions: found, replayStart: traceBegin};
+    return {manifest, manifestBytes, abi, files, records, actions: found, replayStart: traceBegin};
 }
 export async function captureFixture(url: string, directory: string, end: number, base: Omit<ContractFixture, 'inputs' | 'shards' | 'blocks'>, genesis: Buffer) {
     await mkdir(directory); await mkdir(join(directory, 'shards')); const frames: Buffer[] = [];

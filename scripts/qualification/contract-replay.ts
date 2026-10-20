@@ -11,8 +11,11 @@ import {ABI, Serializer} from '@wharfkit/antelope';
 import {Redis} from 'ioredis';
 import {validateFixture, assertNodeOwnership} from './es955-replicas.ts';
 import {assertOwnedBinding, assertSuccessfulWorkerShutdown} from './es955-workers.ts';
-import {actionAbi, canonical, captureFixture, contractAccount, contractWasm, digest, genesisChainId, serveFixture} from './contract-fixture.ts';
+import {actionAbi, auditFixture, canonical, captureFixture, contractAccount, contractWasm, digest, genesisChainId, serveFixture} from './contract-fixture.ts';
 import {startBulkLedger, summarizeBulkLedger} from './replay-bulk-ledger.ts';
+import {createRetainedReplayRpc, retainedRpcLimits} from './retained-replay-rpc.ts';
+import {assertActionSourceCrashStage, createActionSourceCrashControl, readActionSourceCrashEvidence,
+    verifyActionSourceCrashRecovery} from './action-source-admission-fault.mjs';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const sleep = (ms: number) => new Promise(done => setTimeout(done, ms));
@@ -46,7 +49,7 @@ export function assertActionOutputs(hits: any[], expected: any[]) {
     assert.equal(hits.length, expected.length, 'action output coverage differs');
     for (const [i, expectation] of expected.entries()) {
         const hit = hits[i]; const actual = hit._source;
-        assert.equal(hit._id, String(expectation.globalSequence)); assert.equal(actual.global_sequence, expectation.globalSequence);
+        assert.equal(hit._id, String(expectation.globalSequence)); assert.equal(actual.global_sequence, String(expectation.globalSequence));
         assert.equal(actual.trx_id, expectation.trxId); assert.equal(actual.block_num, expectation.block); assert.equal(actual.block_id, expectation.blockId);
         assert.equal(actual.act.account, contractAccount); assert.equal(actual.act.name, 'record');
         assert.equal(actual.ds_error, undefined); assert.deepEqual(actual.act.authorization, [{actor: contractAccount, permission: 'active'}]);
@@ -91,7 +94,10 @@ export async function readAllOutputs(client: {search: (request: any) => Promise<
         for (const hit of page) {
             assert.ok(Array.isArray(hit.sort) && hit.sort.length === 1 && Number.isSafeInteger(hit.sort[0]), 'output page has invalid sort key');
             const next = hit.sort[0]; assert.ok(cursor === undefined || next > cursor, 'output cursor did not advance');
-            assert.equal(hit._source?.[field], next, 'output cursor differs from document key'); cursor = next; hits.push(hit);
+            // The finite captured fixture has safe integer roots; production JSON metadata is decimal text.
+            // This fixture comparator is not a general uint64 pagination implementation.
+            assert.equal(hit._source?.[field], field === 'global_sequence' ? String(next) : next, 'output cursor differs from document key');
+            cursor = next; hits.push(hit);
         }
         if (hits.length === total) return hits;
         assert.equal(page.length, size, 'output pagination ended before exact total');
@@ -120,7 +126,30 @@ export function assertResourceIsolation(state: any, network: any, volumes: any[]
         assert.deepEqual(users[item.volume], [item.containerId], 'unexpected volume consumer');
     }
 }
-export async function runContractReplay(stateFile: string, outputDirectory: string) {
+export type ActionSourceCrashStage = 'before-fragment' | 'after-fragment' | 'before-ack';
+export interface ContractReplayOptions {retainedFixture?: string; actionSourceAdmission?: boolean; actionSourceCrashAt?: ActionSourceCrashStage;}
+export function parseContractReplayArguments(args: string[]) {
+    assert.ok(args.length === 2 || (args.length === 4 && args[2] === '--retained-fixture'),
+        'usage: node contract-replay.ts STATE_FILE NEW_OUTPUT_DIRECTORY [--retained-fixture FIXTURE_DIRECTORY]');
+    const values = args.length === 4 ? [args[0], args[1], args[3]] : args;
+    assert.ok(values.every(value => typeof value === 'string' && value.trim().length > 0 && !value.startsWith('--')),
+        'invalid replay argument');
+    return {stateFile: args[0], outputDirectory: args[1], options: args.length === 4 ? {retainedFixture: args[3]} : {}};
+}
+export async function runContractReplay(stateFile: string, outputDirectory: string, options: ContractReplayOptions = {}) {
+    assert.ok(options !== null && typeof options === 'object' && !Array.isArray(options) &&
+        Object.keys(options).every(key => ['retainedFixture', 'actionSourceAdmission', 'actionSourceCrashAt'].includes(key)), 'invalid replay options');
+    if (Object.hasOwn(options, 'actionSourceAdmission')) assert.equal(typeof options.actionSourceAdmission, 'boolean');
+    if (Object.hasOwn(options, 'retainedFixture')) assert.ok(typeof options.retainedFixture === 'string' && options.retainedFixture.trim().length > 0,
+        'retained fixture directory is required');
+    if (Object.hasOwn(options, 'actionSourceCrashAt')) {
+        assertActionSourceCrashStage(options.actionSourceCrashAt);
+        assert.equal(options.actionSourceAdmission, true, 'crash qualification requires admission activation');
+        assert.ok(options.retainedFixture, 'crash qualification requires audited retained source');
+    }
+    // Audit and detach the source before any output, Docker interaction, service write or worker launch.
+    const retained = options.retainedFixture === undefined ? undefined : await auditFixture(resolve(options.retainedFixture));
+    const retainedRpc = retained && createRetainedReplayRpc(retained);
     const stateBytes = await readFile(stateFile); const state = JSON.parse(stateBytes.toString());
     // Inspect all immutable identities before any chain mutation, worker launch or result directory.
     const inspections: Record<string, any> = {};
@@ -134,7 +163,9 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
     }
     assertResourceIsolation(state, network, volumes, users);
     const output = resolve(outputDirectory); await mkdir(output); await mkdir(join(output, 'observer'));
-    const report: any = {schemaVersion: 1, status: 'running', startedAt: new Date().toISOString(), fixtureRun: state.run,
+    const report: any = {schemaVersion: 1, mode: retained ? 'retained-fixture' : 'fresh-capture', status: 'running', startedAt: new Date().toISOString(), fixtureRun: state.run,
+        actionSourceAdmission: options.actionSourceAdmission === true,
+        actionSourceCrashAt: options.actionSourceCrashAt ?? null,
         stateSha256: digest(stateBytes), runtime: {node: process.version, platform: process.platform, arch: process.arch},
         sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], {cwd: repo, encoding: 'utf8'}).trim(), sourceHashes: {},
         limits: ['Known-genesis no-op contract; no historical mainnet ABI or contract-compute qualification.',
@@ -144,6 +175,7 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         cleanup: [], rpcRequests: [], replayErrors: []};
     const reportHandle = await open(join(output, 'report.json'), 'wx');
     let master: ChildProcess | undefined; let replay: Awaited<ReturnType<typeof serveFixture>> | undefined;
+    let crashControl: ReturnType<typeof createActionSourceCrashControl> | undefined;
     let bulkLedger: Awaited<ReturnType<typeof startBulkLedger>> | undefined;
     let proxy: ReturnType<typeof createServer> | undefined; let redis: Redis | undefined;
     const client = new Client({node: state.core.nodes[0].url, maxRetries: 0, requestTimeout: 15000});
@@ -176,14 +208,20 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         report.runtime.executable = process.execPath; report.runtime.executableSha256 = digest(await readFile(process.execPath)); report.runtime.versions = process.versions;
         report.dockerVersion = JSON.parse(docker(['version', '--format', '{{json .}}']));
         for (const file of ['package-lock.json', 'package.json', 'AGENTS.md', 'scripts/qualification/contract-fixture.ts',
-            'scripts/qualification/contract-replay.ts', 'scripts/qualification/es955-worker-observer.mjs',
+            'scripts/qualification/contract-replay.ts', 'scripts/qualification/retained-replay-rpc.ts', 'scripts/qualification/es955-worker-observer.mjs',
             'scripts/qualification/replay-bulk-ledger.ts',
             'scripts/qualification/fixture/contract-replay.wat', '.bun-version',
             'src/indexer/helpers/reader-progress.ts', 'src/interfaces/hyperionWorkerDef.ts', 'src/interfaces/hyperionConfig.ts',
             'src/indexer/workers/hyperionWorker.ts', 'build/indexer/helpers/reader-progress.js', 'build/indexer/workers/hyperionWorker.js',
             'src/indexer/workers/state-reader.ts', 'src/indexer/workers/deserializer.ts', 'src/indexer/workers/ds-pool.ts',
             'src/indexer/workers/indexer.ts', 'src/indexer/modules/master.ts', 'src/indexer/modules/parsers/3.2-parser.ts',
+            'src/indexer/modules/loader.ts', 'build/indexer/modules/loader.js',
             'src/indexer/modules/parsers/base-parser.ts', 'src/indexer/helpers/elastic-routes.ts',
+            ...['action-source-inventory', 'action-source-admission', 'action-source-journal', 'action-history-manifest',
+                'action-producer-epoch', 'action-confirmed-publication'].flatMap(name => [
+                `src/indexer/history/${name}.ts`, `build/indexer/history/${name}.js`]),
+            'scripts/qualification/action-source-admission-preload.mjs', 'scripts/qualification/action-source-admission-replay.ts',
+            'scripts/qualification/action-source-admission-inspect.ts', 'scripts/qualification/action-source-admission-fault.mjs',
             'build/indexer/launcher.js', 'build/indexer/workers/state-reader.js', 'build/indexer/workers/deserializer.js',
             'build/indexer/workers/ds-pool.js', 'build/indexer/workers/indexer.js', 'build/indexer/modules/master.js',
             'build/indexer/modules/parsers/3.2-parser.js', 'build/indexer/modules/parsers/base-parser.js', 'build/indexer/helpers/elastic-routes.js',
@@ -198,46 +236,57 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         assert.equal(info.cluster_name, state.core.clusterName); assert.equal(info.cluster_uuid, state.core.clusterUuid); assert.equal(info.version.number, '9.5.5');
         // HEAD wildcard can return 200 for an empty expansion. Read actual metadata instead.
         assertEmptyProjection(await client.indices.get({index: chain + '-*', allow_no_indices: true, ignore_unavailable: true}), await queues());
-        const chainInfo = await json(state.spring.httpUrl + '/v1/chain/get_info'); assert.equal(chainInfo.chain_id, state.spring.chainId);
-        const genesis = await readFile(join(repo, 'tests/e2e/nodeos/genesis.json')); assert.equal(digest(genesis), state.spring.genesisSha256);
-        assert.equal(genesisChainId(genesis), chainInfo.chain_id, 'node is not the exact known genesis');
-        const accountResponse = await fetch(state.spring.httpUrl + '/v1/chain/get_account', {method: 'POST', body: JSON.stringify({account_name: contractAccount}), signal: AbortSignal.timeout(5000)});
-        const accountError: any = await accountResponse.json(); report.accountPreflight = {status: accountResponse.status, body: accountError};
-        assertContractAbsent(accountResponse.status, accountError);
-        await writeFile(join(output, 'contract.wasm'), contractWasm, {flag: 'wx'}); assert.equal(WebAssembly.validate(contractWasm), true);
-        const cleos = (args: string[], parse = true): any => {
-            const result = docker(['exec', state.spring.containerId, 'cleos', '-u', 'http://127.0.0.1:8888', ...args]);
-            return parse ? JSON.parse(result) : undefined;
-        };
-        // Only the public Antelope genesis development key is used, on the owned disposable chain.
-        cleos(['wallet', 'create', '--name', 'hyp-replay', '--to-console'], false);
-        cleos(['wallet', 'import', '--name', 'hyp-replay', '--private-key', '5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3'], false);
-        const publicKey = 'EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV';
-        report.createAccount = cleos(['create', 'account', 'eosio', contractAccount, publicKey, publicKey, '-j']);
-        const remoteDirectory = '/tmp/hyp-replay-' + state.run; docker(['exec', state.spring.containerId, 'mkdir', remoteDirectory]);
-        docker(['cp', join(output, 'contract.wasm'), `${state.spring.containerId}:${remoteDirectory}/contract.wasm`]);
-        report.setCode = cleos(['set', 'code', contractAccount, remoteDirectory + '/contract.wasm', '-j']);
-        const abiHistory: any[] = []; const expected: any[] = [];
-        for (const revision of [1, 2] as const) {
-            const abi = actionAbi(revision); const bytes = Buffer.from(JSON.stringify(abi, null, 2) + '\n'); const file = `contract-v${revision}.abi`;
-            await writeFile(join(output, file), bytes, {flag: 'wx'}); docker(['cp', join(output, file), `${state.spring.containerId}:${remoteDirectory}/${file}`]);
-            const receipt = cleos(['set', 'abi', contractAccount, remoteDirectory + '/' + file, '-j']);
-            const abiHex = Buffer.from(Serializer.encode({object: ABI.from(abi)}).array).toString('hex');
-            const block = receipt.processed.block_num; abiHistory.push({account: contractAccount, revision, block,
-                trxId: receipt.transaction_id, abiHex, sha256: digest(Buffer.from(abiHex, 'hex'))});
-            await wait('ABI deployment separate block', async () => (await json(state.spring.httpUrl + '/v1/chain/get_info')).head_block_num > block);
-            for (let index = 0; index < 6; index++) {
-                const data = {sequence: expected.length + 1, ...(revision === 2 ? {revision: 2} : {}), memo: `replay-v${revision}-${index}`};
-                const action = cleos(['push', 'action', contractAccount, 'record', JSON.stringify(data), '-p', contractAccount + '@active', '-j']);
-                assert.equal(action.processed.receipt.status, 'executed'); expected.push({revision, data, trxId: action.transaction_id, block: action.processed.block_num});
+        let fixture: Awaited<ReturnType<typeof auditFixture>>;
+        if (retained) {
+            fixture = retained; report.retainedRpc = retainedRpc!.lineage;
+            report.retainedInput = {directory: resolve(options.retainedFixture!), manifestSha256: digest(retained.manifestBytes),
+                inputs: retained.manifest.inputs, sourceChainId: retained.manifest.chainId, liveChainRpcUsed: false};
+            await mkdir(join(output, 'fixture')); await mkdir(join(output, 'fixture/shards'));
+            await writeFile(join(output, 'fixture/manifest.json'), retained.manifestBytes, {flag: 'wx'});
+            for (const [file, bytes] of retained.files) await writeFile(join(output, 'fixture', file), bytes, {flag: 'wx'});
+        } else {
+            const chainInfo = await json(state.spring.httpUrl + '/v1/chain/get_info'); assert.equal(chainInfo.chain_id, state.spring.chainId);
+            const genesis = await readFile(join(repo, 'tests/e2e/nodeos/genesis.json')); assert.equal(digest(genesis), state.spring.genesisSha256);
+            assert.equal(genesisChainId(genesis), chainInfo.chain_id, 'node is not the exact known genesis');
+            const accountResponse = await fetch(state.spring.httpUrl + '/v1/chain/get_account', {method: 'POST', body: JSON.stringify({account_name: contractAccount}), signal: AbortSignal.timeout(5000)});
+            const accountError: any = await accountResponse.json(); report.accountPreflight = {status: accountResponse.status, body: accountError};
+            assertContractAbsent(accountResponse.status, accountError);
+            await writeFile(join(output, 'contract.wasm'), contractWasm, {flag: 'wx'}); assert.equal(WebAssembly.validate(contractWasm), true);
+            const cleos = (args: string[], parse = true): any => {
+                const result = docker(['exec', state.spring.containerId, 'cleos', '-u', 'http://127.0.0.1:8888', ...args]);
+                return parse ? JSON.parse(result) : undefined;
+            };
+            // Only the public Antelope genesis development key is used, on the owned disposable chain.
+            cleos(['wallet', 'create', '--name', 'hyp-replay', '--to-console'], false);
+            cleos(['wallet', 'import', '--name', 'hyp-replay', '--private-key', '5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3'], false);
+            const publicKey = 'EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV';
+            report.createAccount = cleos(['create', 'account', 'eosio', contractAccount, publicKey, publicKey, '-j']);
+            const remoteDirectory = '/tmp/hyp-replay-' + state.run; docker(['exec', state.spring.containerId, 'mkdir', remoteDirectory]);
+            docker(['cp', join(output, 'contract.wasm'), `${state.spring.containerId}:${remoteDirectory}/contract.wasm`]);
+            report.setCode = cleos(['set', 'code', contractAccount, remoteDirectory + '/contract.wasm', '-j']);
+            const abiHistory: any[] = []; const expected: any[] = [];
+            for (const revision of [1, 2] as const) {
+                const abi = actionAbi(revision); const bytes = Buffer.from(JSON.stringify(abi, null, 2) + '\n'); const file = `contract-v${revision}.abi`;
+                await writeFile(join(output, file), bytes, {flag: 'wx'}); docker(['cp', join(output, file), `${state.spring.containerId}:${remoteDirectory}/${file}`]);
+                const receipt = cleos(['set', 'abi', contractAccount, remoteDirectory + '/' + file, '-j']);
+                const abiHex = Buffer.from(Serializer.encode({object: ABI.from(abi)}).array).toString('hex');
+                const block = receipt.processed.block_num; abiHistory.push({account: contractAccount, revision, block,
+                    trxId: receipt.transaction_id, abiHex, sha256: digest(Buffer.from(abiHex, 'hex'))});
+                await wait('ABI deployment separate block', async () => (await json(state.spring.httpUrl + '/v1/chain/get_info')).head_block_num > block);
+                for (let index = 0; index < 6; index++) {
+                    const data = {sequence: expected.length + 1, ...(revision === 2 ? {revision: 2} : {}), memo: `replay-v${revision}-${index}`};
+                    const action = cleos(['push', 'action', contractAccount, 'record', JSON.stringify(data), '-p', contractAccount + '@active', '-j']);
+                    assert.equal(action.processed.receipt.status, 'executed'); expected.push({revision, data, trxId: action.transaction_id, block: action.processed.block_num});
+                }
+                await wait('actions separate from next ABI deployment', async () => (await json(state.spring.httpUrl + '/v1/chain/get_info')).head_block_num > expected.at(-1).block);
             }
-            await wait('actions separate from next ABI deployment', async () => (await json(state.spring.httpUrl + '/v1/chain/get_info')).head_block_num > expected.at(-1).block);
+            const end = expected.at(-1).block + 2;
+            await wait('captured range irreversible', async () => (await json(state.spring.httpUrl + '/v1/chain/get_info')).last_irreversible_block_num >= end, 120000);
+            fixture = await captureFixture(state.spring.shipUrl, join(output, 'fixture'), end, {schemaVersion: 1,
+                origin: 'known-genesis', complete: true, chainId: state.spring.chainId, genesisSha256: digest(genesis),
+                range: {start: 1, end}, flags: {fetch_block: true, fetch_traces: true, fetch_deltas: true}, expected, abiHistory}, genesis);
         }
-        const end = expected.at(-1).block + 2;
-        await wait('captured range irreversible', async () => (await json(state.spring.httpUrl + '/v1/chain/get_info')).last_irreversible_block_num >= end, 120000);
-        const fixture = await captureFixture(state.spring.shipUrl, join(output, 'fixture'), end, {schemaVersion: 1,
-            origin: 'known-genesis', complete: true, chainId: state.spring.chainId, genesisSha256: digest(genesis),
-            range: {start: 1, end}, flags: {fetch_block: true, fetch_traces: true, fetch_deltas: true}, expected, abiHistory}, genesis);
+        const end = fixture.manifest.range.end, abiHistory = fixture.manifest.abiHistory;
         const replayRecords = fixture.records.filter(record => record.blockNum >= fixture.replayStart);
         report.fixture = {manifestSha256: digest(await readFile(join(output, 'fixture/manifest.json'))), blocks: fixture.records.length,
             replayRange: {start: fixture.replayStart, end}, replayBlocks: replayRecords.length,
@@ -251,16 +300,42 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         report.bulkReceipts = bulkLedger.receipts;
         proxy = createServer(async (request, response) => {
             try {
-                const chunks: Buffer[] = []; let size = 0; for await (const chunk of request) { size += chunk.length; assert.ok(size <= 1024 * 1024); chunks.push(Buffer.from(chunk)); }
+                if (retainedRpc) {
+                    assert.ok(report.replayErrors.length === 0, 'retained RPC already failed');
+                    assert.ok(report.rpcRequests.length < retainedRpcLimits.requests, 'retained RPC request budget exceeded');
+                }
+                const chunks: Buffer[] = []; let size = 0; for await (const chunk of request) {
+                    size += chunk.length; assert.ok(size <= (retainedRpc ? retainedRpcLimits.requestBytes : 1024 * 1024), 'RPC request byte budget exceeded');
+                    chunks.push(Buffer.from(chunk));
+                }
                 const body = Buffer.concat(chunks); const requested: any = body.length ? JSON.parse(body.toString()) : {};
+                if (retainedRpc) {
+                    // Recheck after the body await: concurrent requests cannot overrun the report budget.
+                    assert.ok(report.replayErrors.length === 0, 'retained RPC already failed');
+                    assert.ok(report.rpcRequests.length < retainedRpcLimits.requests, 'retained RPC request budget exceeded');
+                    const reply = retainedRpc.reply(request.method, request.url, requested);
+                    report.rpcRequests.push({method: request.method, path: request.url, denied: false,
+                        source: retainedRpc.lineage.kind, responseSha256: retainedRpc.lineage.responseSha256});
+                    response.writeHead(200, {'content-type': 'application/json'}); response.end(JSON.stringify(reply)); return;
+                }
                 const denied = ['/v1/chain/get_abi', '/v1/chain/get_raw_abi', '/v1/chain/get_raw_code_and_abi'].includes(request.url ?? '') && requested.account_name === contractAccount;
                 report.rpcRequests.push({path: request.url, account: requested.account_name, denied});
                 if (denied) { response.writeHead(503); response.end(JSON.stringify({error: 'current contract ABI disabled in fixture'})); return; }
                 const upstream = await fetch(state.spring.httpUrl + request.url, {method: request.method, body: body.length ? body : undefined,
                     headers: {'content-type': 'application/json'}, signal: AbortSignal.timeout(5000)});
                 response.writeHead(upstream.status, {'content-type': 'application/json'}); response.end(Buffer.from(await upstream.arrayBuffer()));
-            } catch (error) { report.replayErrors.push(String(error)); response.writeHead(500); response.end(); }
-        }); proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening');
+            } catch (error) {
+                if (!retainedRpc || report.replayErrors.length === 0) report.replayErrors.push(String(error));
+                if (retainedRpc && report.rpcRequests.length < retainedRpcLimits.requests) report.rpcRequests.push({method: request.method,
+                    path: request.url?.slice(0, 256), denied: true, source: retainedRpc.lineage.kind, error: String(error).slice(0, 512)});
+                if (retainedRpc) {
+                    response.writeHead(503, {'content-type': 'application/json'}); response.end(JSON.stringify({error: 'fixture RPC unavailable'}));
+                } else { response.writeHead(500); response.end(); }
+            }
+        });
+        proxy.requestTimeout = 5000; proxy.headersTimeout = 5000; proxy.maxHeadersCount = 32;
+        if (retainedRpc) proxy.maxConnections = 16;
+        proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening');
         const rpcUrl = `http://127.0.0.1:${(proxy.address() as any).port}`;
         await mkdir(join(output, 'config/chains'), {recursive: true}); await writeFile(join(output, 'package.json'), await readFile(join(repo, 'package.json')), {flag: 'wx'});
         const control = createServer(); control.listen(0, '127.0.0.1'); await once(control, 'listening'); const controlPort = (control.address() as any).port;
@@ -269,7 +344,7 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         const connections = {elasticsearch: {protocol: 'http', host: new URL(state.core.nodes[0].url).host, ingest_nodes: [new URL(bulkLedger.url).host], user: '', pass: ''},
             amqp: {protocol: 'http', host: new URL(state.core.broker.url).host, api: new URL(state.core.broker.managementUrl).host, user: 'qualifier', pass: 'qualifier-test-only', vhost: '/', frameMax: '0x10000'},
             redis: {host: redisUrl.hostname, port: Number(redisUrl.port)}, mongodb: {enabled: false, host: mongo.hostname, port: Number(mongo.port), database_prefix: chain, user: '', pass: ''},
-            chains: {[chain]: {chain_id: state.spring.chainId, http: rpcUrl, ship: [{label: 'verified-capture', url: replay.url}], control_port: controlPort}}, alerts: {enabled: false}};
+            chains: {[chain]: {chain_id: fixture.manifest.chainId, http: rpcUrl, ship: [{label: 'verified-capture', url: replay.url}], control_port: controlPort}}, alerts: {enabled: false}};
         const config = {api: {enabled: false, disable_tx_cache: true}, indexer: {enabled: true, start_on: fixture.replayStart, stop_on: end + 1, rewrite: false,
             purge_queues: false, live_reader: false, live_only_mode: false, abi_scan_mode: false, fetch_block: true, fetch_traces: true,
             fetch_deltas: true, process_deltas: true, disable_reading: false, disable_indexing: false},
@@ -284,9 +359,16 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
         await writeFile(join(output, 'config/connections.json'), JSON.stringify(connections, null, 2) + '\n', {flag: 'wx'});
         const configFile = join(output, 'config/chain.json'); await writeFile(configFile, JSON.stringify(config, null, 2) + '\n', {flag: 'wx'});
         report.config = config; report.connections = connections;
+        if (options.actionSourceCrashAt) {
+            crashControl = createActionSourceCrashControl({output, configFile, chain, sourceChainId: fixture.manifest.chainId,
+                fixtureSha256: report.fixture.manifestSha256, stateSha256: report.stateSha256, stage: options.actionSourceCrashAt});
+            report.actionSourceCrashControl = crashControl.control;
+        }
         const stdout = await open(join(output, 'master.stdout.log'), 'wx'); const stderr = await open(join(output, 'master.stderr.log'), 'wx');
-        master = spawn(process.execPath, ['--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href, join(repo, 'build/indexer/launcher.js')],
-            {cwd: output, env: {...process.env, CONFIG_JSON: configFile, CHAIN_NAME: chain, ES198_OBSERVER_DIR: join(output, 'observer'), ES198_CPU_PROFILE: '0'}, stdio: ['ignore', stdout.fd, stderr.fd, 'ipc']});
+        const admissionPreload = options.actionSourceAdmission ? ['--import', pathToFileURL(join(repo, 'scripts/qualification/action-source-admission-preload.mjs')).href] : [];
+        master = spawn(process.execPath, [...admissionPreload, '--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href, join(repo, 'build/indexer/launcher.js')],
+            {cwd: output, env: {...process.env, CONFIG_JSON: configFile, CHAIN_NAME: chain, ES198_OBSERVER_DIR: join(output, 'observer'),
+                ES198_CPU_PROFILE: '0', ES198_ACTION_CRASH_CONTROL: crashControl?.file ?? ''}, stdio: ['ignore', stdout.fd, stderr.fd, 'ipc']});
         master.on('error', error => report.replayErrors.push(String(error))); await stdout.close(); await stderr.close(); report.masterPid = master.pid;
         const all = (index: string, field: string, query: any = {match_all: {}}) => readAllOutputs(client, index, field, query);
         await wait('finite verified output and queue drain', async () => {
@@ -318,6 +400,10 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
             } finally { await copy.close(); }
         }
         assert.equal(report.durableCopies.length, 4);
+        if (options.actionSourceAdmission) {
+            const {inspectActionSourceAdmission} = await import('./action-source-admission-inspect.ts');
+            report.actionMembership = await inspectActionSourceAdmission(client, chain, fixture);
+        }
         report.indexSettings = await client.indices.getSettings({index: chain + '-*', include_defaults: true});
         for (const entry of Object.values(report.indexSettings) as any[]) {
             assert.equal(entry.settings.index.number_of_replicas, '1');
@@ -335,7 +421,15 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
                 if (master.exitCode === null && master.connected) master.send?.({event: 'qualifier_shutdown'});
                 if (master.exitCode === null) await Promise.race([once(master, 'exit'), sleep(10000)]);
                 const rows = await events(); report.masterExit = {code: master.exitCode, signal: master.signalCode};
-                report.shutdown = assertSuccessfulWorkerShutdown(rows, report.masterPid, master.exitCode, master.signalCode);
+                report.shutdown = rows.find(row => row.kind === 'shutdown' && row.pid === report.masterPid) ?? null;
+                if (crashControl) {
+                    const evidence = readActionSourceCrashEvidence(crashControl.control);
+                    report.actionSourceCrashObserved = evidence;
+                    const recovered = verifyActionSourceCrashRecovery({control: crashControl.control, ...evidence, rows,
+                        masterPid: report.masterPid, masterExit: report.masterExit, membership: report.actionMembership, finalActions: report.finalActions});
+                    assertSuccessfulWorkerShutdown(recovered.verificationRows, report.masterPid, 0, null);
+                    report.intentionalRecovery = recovered.evidence;
+                } else report.shutdown = assertSuccessfulWorkerShutdown(rows, report.masterPid, master.exitCode, master.signalCode);
                 report.lastIndexedRedis = redis ? await redis.get(chain + '::last_indexed_block') : null;
                 report.cleanup.push({name: 'workers', ok: true});
             } catch (error) { report.cleanup.push({name: 'workers', ok: false, error: String(error)}); report.status = 'failed'; }
@@ -353,8 +447,8 @@ export async function runContractReplay(stateFile: string, outputDirectory: stri
     } return report;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-    const [state, output] = process.argv.slice(2); assert.ok(state && output, 'usage: node contract-replay.ts STATE_FILE NEW_OUTPUT_DIRECTORY');
-    const report = await runContractReplay(state, output); console.log(JSON.stringify({status: report.status, error: report.error,
+    const {stateFile, outputDirectory, options} = parseContractReplayArguments(process.argv.slice(2));
+    const report = await runContractReplay(stateFile, outputDirectory, options); console.log(JSON.stringify({status: report.status, mode: report.mode, error: report.error,
         capturedBlocks: report.fixture?.blocks, replayedBlocks: report.fixture?.replayBlocks, actions: report.fixture?.actions.length}));
     if (report.status !== 'passed') process.exitCode = 1;
 }

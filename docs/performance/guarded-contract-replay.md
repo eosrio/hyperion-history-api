@@ -24,7 +24,56 @@ pwsh -NoProfile -File scripts/qualification/es955-worker-fixture.ps1 \
   -Action cleanup -StateFile /absolute/new-fixture.json
 ```
 
-The result directory and fixture state must be new. The replay also requires no matching indices or queues and no existing `hyp.replay` account. It exposes no reset, purge, wildcard deletion, or forced replacement. A failed deployment leaves its exact fixture available for inspection; create another fixture for a clean final run. The separate fixture cleanup validates all identities, labels, images, volume users and network consumers before deleting owned resources.
+The result directory and fixture state must be new. Both modes require no matching indices or queues;
+fresh capture also requires no existing `hyp.replay` account. Neither mode exposes reset, purge,
+wildcard deletion, or forced replacement. A failed deployment leaves its exact fixture available for
+inspection; create another fixture for a clean final run. The separate fixture cleanup validates all
+identities, labels, images, volume users and network consumers before deleting owned resources.
+
+### Replay retained source
+
+The optional retained mode skips contract deployment and fresh capture. Use an independently verified
+capture directory with the same complete, known-genesis fixture format:
+
+```sh
+node --experimental-strip-types scripts/qualification/contract-replay.ts \
+  /absolute/new-fixture.json /absolute/new-result-directory \
+  --retained-fixture /absolute/audited-source-fixture
+```
+
+The exported seam is `runContractReplay(stateFile, outputDirectory, {retainedFixture})`; omitting the
+third argument preserves fresh capture. The input audit precedes output creation, Docker inspection,
+service writes and worker launch. Missing files, oversized manifests, changed digests, incomplete
+coverage or invalid ABI history fail explicitly. The runner copies the detached audited input bytes
+and original manifest into the new output, then uses the same production launcher, workers, RabbitMQ,
+Elasticsearch ledger and physical-copy oracle. Expected-output JSON is only an oracle; it never
+becomes an action or transaction input to the workers. The finite fixture oracle now requires decimal
+strings for production action sequence metadata. Its safe-integer sort checks apply only to these
+audited low-sequence fixtures and are not a general uint64 query implementation.
+
+The retained report records `mode: retained-fixture`, the source manifest and member hashes, source
+chain ID and `liveChainRpcUsed: false`. Existing ownership, pinned image, volume-consumer, fresh target
+and cleanup guards still apply. The current fixture state includes Spring and MongoDB even though
+retained replay neither queries nor mutates Spring and MongoDB is disabled for indexing. This mode
+does not contact their live chain as an RPC fallback.
+
+`retained-replay-rpc.ts` permits only `GET` or `POST /v1/chain/get_info` with an empty body. The accepted
+earlier run observed only this RPC path. Chain ID, tip IDs, time and producer come from the audited
+captured prefix; head and LIB describe its independently checked irreversible end. This is a derived
+fixture control-plane view, not a retained live RPC response. The explicit fixture server-version
+label and zero capacity sentinels satisfy the API client's response schema and are listed as
+synthetic fields in evidence. They provide no action, ABI, transaction, performance or node-version
+authority. RPC bodies and responses are bounded to 4 KiB, the run allows at most 128 calls, and request
+and header timeouts are five seconds. Unknown RPC paths, methods or payloads return unavailable,
+record a failure and fail the run; they cannot acquire current ABIs or unrelated live state.
+
+The retained archive below contains a real accepted Antelope capture at `run/final/fixture/`. Verify
+the archive SHA-256 before extracting only those final members to a fresh directory. Do not combine
+`pilots/excluded/**` with that fixture. The normal audit then rechecks all member identities and source
+coverage. Retained-mode unit checks are separate from a native full-worker qualification: a passing
+new run must retain its exact source/emitted hashes, service identity, outputs and cleanup evidence.
+Source-admission/grouped-manifest activation in #230, sink/canonical/PIT coverage in #225, actual
+Wire6508c9 node capture and selected Wire testnet launch pins remain separate gates.
 
 ## Evidence contract
 
