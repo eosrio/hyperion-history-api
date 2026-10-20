@@ -55,6 +55,8 @@ delete secondFrame.changes[1].value;
 const expectedSecond = [expected('["scope","10"]', 'alice', 11, false), expectedFirst[1], ...expectedFirst.slice(3)];
 const thirdFrame = frame(3, [row('2', 'carol', 33, false)]);
 const fourthFrame = frame(4, [row('é', 'dora', 44, true)]);
+// BadValue is a non-transient error without required errorExtraInfo payload fields.
+const injectedWriteError = 2;
 
 function makeClient(uri) {
     const result = new MongoClient(uri, {appName: `h45-projection-${fixture.run}`, monitorCommands: true,
@@ -199,7 +201,7 @@ try {
     const beforeFailure = trace.length;
     fixture.ownedContainer('replica');
     await client.db('admin').command({configureFailPoint: 'failCommand', mode: {times: 1},
-        data: {failCommands: ['update'], errorCode: 121}});
+        data: {failCommands: ['update'], errorCode: injectedWriteError}});
     try { await errorCode(runtime.process(thirdFrame), 'projection.apply-unavailable'); }
     finally { await client.db('admin').command({configureFailPoint: 'failCommand', mode: 'off'}); }
     const failureTrace = trace.slice(beforeFailure);
@@ -207,7 +209,7 @@ try {
     const preparedAt = failureTrace.findIndex(event => event.command === 'findAndModify' && event.phase === 'succeeded');
     // MongoDB can return an acknowledged command containing a failed write; the driver then rejects the operation.
     const failedAt = failureTrace.findIndex(event => event.command === 'update' &&
-        ((event.phase === 'failed' && event.code === 121) || event.writeErrorCodes?.includes(121)));
+        ((event.phase === 'failed' && event.code === injectedWriteError) || event.writeErrorCodes?.includes(injectedWriteError)));
     assert.ok(preparedAt >= 0 && failedAt > preparedAt, 'Effect failure must follow successful durable intent');
     const pending = await client.db(databaseName).collection(`${prefix}_metadata`).findOne({'binding.projectionId': definition.id});
     assert.equal(pending.checkpoint.blockNum, 2); assert.equal(pending.pending.block.blockNum, 3);
