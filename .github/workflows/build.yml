@@ -74,6 +74,9 @@ jobs:
       - name: Verify captured Wire worker evidence checksums
         working-directory: docs/performance/evidence/wire-worker-20261020
         run: sha256sum -c SHA256SUMS
+      - name: Verify Wire Mongo state write evidence checksums
+        working-directory: docs/performance/evidence/wire-state-writes-20261020
+        run: sha256sum -c SHA256SUMS
       - name: Verify protocol adapter observation checksum
         working-directory: docs/performance/evidence/protocol-adapter-20261019
         run: sha256sum -c SHA256SUMS

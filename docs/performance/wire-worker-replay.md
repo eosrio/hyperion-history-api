@@ -48,7 +48,8 @@ node --experimental-strip-types scripts/qualification/wire-worker-replay.ts STAT
 Always run the fixture helper's ownership-checked cleanup with the same state file,
 including after a failed replay. Each attempt needs a fresh resource journal and output
 directory. The existing helper includes Spring and MongoDB; this replay uses the
-captured source and does not query or mutate Spring. MongoDB indexing stays disabled.
+captured source and does not query or mutate Spring. MongoDB indexing stays disabled
+in this default invocation. Explicit enabled/disabled write cases are described below.
 
 The report binds the input archives, installed package and Node/Rust component manifests,
 source and emitted worker files, executable identity, owned services and configuration.
@@ -86,8 +87,8 @@ settled, active coordinator or qualify a completed worker run.
 | Primary deletion tombstone | The observed `present: false` source row is retained in delta history. This is separate from deleting a state projection record. |
 | Physical Elasticsearch reads | The final expected history documents are visible on both owned data-node copies. This is separate from each bulk response's acknowledgment count. |
 
-Dynamic contract-state writes and actual state-record deletion remain separate acceptance
-work. This corpus has two secondary insertions and no secondary update or deletion.
+The separate legacy Mongo write cases below check actual state-record deletion.
+This corpus has two secondary insertions and no secondary update or deletion.
 Starting ancestry, a 6508 node capture, Rust/offline worker execution, same-block ABI
 replacement or clearing, malformed deployments, fork/reconnect recovery, live/bulk
 contention, coordinated distribution and the selected new testnet remain open.
@@ -111,6 +112,10 @@ Mongo connection, but requires empty selected collections after the complete rep
 This exercises the operator opt-in correction in
 [#238](https://github.com/eosrio/hyperion-history-api/issues/238). Explicit plugin-declared
 dynamic dependencies keep their existing authorization; these cases install no such plugin.
+
+The [2026-10-20 Mongo write evidence](evidence/wire-state-writes-20261020/README.md)
+records both modes under native Node 22 and 24 on bare-metal Linux, including the
+excluded version-guard preflight and all ownership-checked cleanup receipts.
 
 These checks inspect the existing Mongo route's effects. They do not grant complete
 initial state, a canonical rollback view, checkpoint/restart or HTTP readiness. The

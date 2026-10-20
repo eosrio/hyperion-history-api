@@ -2,3 +2,4 @@
 tests/unit/fixtures/wire-host/receipts.json text eol=lf
 docs/performance/evidence/protocol-adapter-20261019/observation.json text eol=lf
 docs/performance/evidence/wire-worker-20261020/* -text
+docs/performance/evidence/wire-state-writes-20261020/* -text
