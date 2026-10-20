@@ -9,7 +9,7 @@ export interface ActionTrace {
     protocol?: ProtocolActionMetadata;
     block_num: number;
     block_id: string;
-    global_sequence: number;
+    global_sequence: string;
     producer: string;
     trx_id: string;
     account_ram_deltas?: any[];

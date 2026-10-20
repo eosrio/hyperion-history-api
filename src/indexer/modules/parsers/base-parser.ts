@@ -8,6 +8,7 @@ import { ActionTrace } from "../../../interfaces/action-trace.js";
 import { debugLog, hLog } from "../../helpers/common_functions.js";
 import { HyperionActionAct } from "../../../interfaces/hyperion-action.js";
 import { Action } from "@wharfkit/antelope";
+import {compatibleUint64} from '../../helpers/uint64.js';
 
 export abstract class BaseParser {
 
@@ -228,7 +229,7 @@ export abstract class BaseParser {
                     block: trx_data.block_num,
                     account: act.account,
                     action: act.name,
-                    gs: parseInt(action.receipt[1].global_sequence, 10),
+                    gs: compatibleUint64((Array.isArray(action.receipt) ? action.receipt[1] : action.receipt).global_sequence),
                     message: error_message
                 }
             });

@@ -18,6 +18,7 @@ import {mergeActionMeta, streamPastCommon} from "./helpers/functions.js";
 import {protectProtocolAction, revalidateProtocolActionScope} from './helpers/protocol-abi.js';
 import {assertProtocolProjectionReady} from './helpers/protocol-state-readiness.js';
 import {assertProtocolActionStreamReady} from './helpers/protocol-action-query.js';
+import {normalizeActionSequences} from '../indexer/helpers/action-sequences.js';
 import {
     checkActionFilters,
     checkDeltaFilters,
@@ -460,9 +461,14 @@ export class SocketManager {
         for (const [clientId, requests] of targetClients) if (!requests.length) targetClients.delete(clientId);
         if (!targetClients.size) return Promise.resolve();
         if (this.server.manager.config.settings?.protocol?.provider !== 'extension') {
-            targetClients.forEach((requests, clientId) => this.io.sockets.sockets.get(clientId)?.emit('message', {
-                type: 'action_trace', mode: 'live', targets: requests, message: traceData.message
-            }));
+            try {
+                const message = JSON.stringify(normalizeActionSequences(JSON.parse(traceData.message)));
+                targetClients.forEach((requests, clientId) => this.io.sockets.sockets.get(clientId)?.emit('message', {
+                    type: 'action_trace', mode: 'live', targets: requests, message
+                }));
+            } catch (error) {
+                this.emitActionUnavailable(targetClients, error);
+            }
             return;
         }
 
@@ -500,7 +506,7 @@ export class SocketManager {
                 try {
                     let message = pending.trace.message;
                     if (this.server.manager.config.settings?.protocol?.provider === 'extension') {
-                        const action = JSON.parse(message), proofScope = {};
+                        const action = normalizeActionSequences(JSON.parse(message)), proofScope = {};
                         const notified = new Set([
                             ...(action.receipts ?? []).map((receipt: any) => receipt.receiver),
                             ...(action.act?.authorization ?? []).map((authorization: any) => authorization.actor)

@@ -60,12 +60,13 @@ facts.deployments = [{account: 'alpha', abiHex: newAbi, action: {transactionId, 
 facts.finalStates = [{account: 'alpha', present: true, abiHex: newAbi, deltaOrdinal: 0}];
 const bound = await append(2, facts);
 const action = (occurrence = facts.actionInputs[0], data = {value: 7, enrichment: 'ignored'}) => ({
-    global_sequence: Number(occurrence.globalSequence), block_num: 2, block_id: blockId(2), '@timestamp': '2026-10-20T00:00:00.000',
+    global_sequence: occurrence.globalSequence, block_num: 2, block_id: blockId(2), '@timestamp': '2026-10-20T00:00:00.000',
     trx_id: transactionId, action_ordinal: occurrence.actionOrdinal, creator_action_ordinal: 0,
     act: {account: occurrence.account, name: occurrence.name, authorization: [], data},
-    receipts: [{receiver: occurrence.receiver, recv_sequence: 1, global_sequence: Number(occurrence.globalSequence), auth_sequence: []}],
+    receipts: [{receiver: occurrence.receiver, recv_sequence: '1', global_sequence: occurrence.globalSequence, auth_sequence: []}],
     protocol: {schemaVersion: 1, source: structuredClone(bound.source), selectionId: bound.selectionId, input: structuredClone(occurrence)}});
 const responseCache = new Map(); let current = action(), transactionCache = {}, searches = 0;
+const cacheAction = value => ({[value.global_sequence]: JSON.stringify(value)});
 const complete = value => ({took: 1, timed_out: false, _shards: {total: 1, successful: 1, failed: 0, skipped: 0},
     hits: {total: {value: value.length, relation: 'eq'}, hits: value.map(_source => ({_source: structuredClone(_source)}))}});
 async function createApp(ancestryBound) {
@@ -78,7 +79,8 @@ app.decorate('elastic', {...memory.client, search: async query => {
     assert.equal(query.index, chain + '-action-*', 'API attempted an unversioned ABI/history lookup'); searches++; return complete([current]);
 }});
 app.decorate('redis', {get: async key => responseCache.get(key) ?? null,
-    set: async (key, value) => {responseCache.set(key, value); return 'OK';}, hgetall: async () => transactionCache, ttl: async () => 60});
+    set: async (key, value) => {responseCache.set(key, value); return 'OK';},
+    hgetall: async key => {assert.equal(key, `trx_seq_v1:${chain}:${transactionId}`); return transactionCache;}, ttl: async () => 60});
 app.decorate('antelope', {chain: {get_info: async () => ({last_irreversible_block_num: {toNumber: () => 99}})},
     getAbi: async () => {throw new Error('API attempted a head ABI fallback');}});
 app.decorate('allowedActionQueryParamSet', new Set());
@@ -125,7 +127,7 @@ try {
         const encoded = await request(true); assert.equal(encoded.statusCode, 503, encoded.body);
     }
     // The same {id} must select each API version's public shape, including final-response cache hits.
-    responseCache.clear(); current = action(); transactionCache = {one: JSON.stringify(current)};
+    responseCache.clear(); current = action(); transactionCache = cacheAction(current);
     const v1Transaction = {method: 'POST', url: '/v1/history/get_transaction', payload: {id: transactionId}};
     const v2Transaction = {method: 'GET', url: '/v2/history/get_transaction?id=' + transactionId};
     for (const requests of [[v1Transaction, v2Transaction], [v2Transaction, v1Transaction]]) {
@@ -144,13 +146,13 @@ try {
     }
     // Both transaction Redis paths validate original occurrences before grouping or serving JSON.
     for (const version of [1, 2]) {
-        responseCache.clear(); transactionCache = {one: JSON.stringify(action())};
+        responseCache.clear(); transactionCache = cacheAction(action());
         const response = await transaction(version); assert.equal(response.statusCode, 200, response.body);
         assert(!response.body.includes('inputActionOrdinal')); assert(!response.body.includes('_hyperion_protocol_abi'));
-        responseCache.clear(); const bad = action(); bad.protocol.input.rawHex = '08000000'; transactionCache = {one: JSON.stringify(bad)};
+        responseCache.clear(); const bad = action(); bad.protocol.input.rawHex = '08000000'; transactionCache = cacheAction(bad);
         const refused = await transaction(version); assert.equal(refused.statusCode, 503, refused.body);
         responseCache.clear(); const raw = action(facts.actionInputs[0], facts.actionInputs[0].rawHex); delete raw.protocol;
-        transactionCache = {one: JSON.stringify(raw)};
+        transactionCache = cacheAction(raw);
         const retained = await transaction(version); assert.equal(retained.statusCode, 200, retained.body);
     }
     transactionCache = {}; responseCache.clear(); current = action();
@@ -177,7 +179,7 @@ try {
     await append(2, facts, 20, 1);
     const stale = await request(); assert.equal(stale.statusCode, 503, stale.body);
     for (const version of [1, 2]) {
-        responseCache.clear(); transactionCache = {one: JSON.stringify(action())};
+        responseCache.clear(); transactionCache = cacheAction(action());
         const orphaned = await transaction(version); assert.equal(orphaned.statusCode, 503, orphaned.body);
     }
     transactionCache = {};
@@ -221,7 +223,7 @@ try {
     responseCache.set(cachedNullEntry[0], JSON.stringify(legacyNull));
     const legacyCachedNull = await v2(); assert.equal(legacyCachedNull.statusCode, 503, legacyCachedNull.body);
     for (const version of [1, 2]) {
-        responseCache.clear(); transactionCache = {one: JSON.stringify(nullable)};
+        responseCache.clear(); transactionCache = cacheAction(nullable);
         const orphanedNull = await transaction(version); assert.equal(orphanedNull.statusCode, 503, orphanedNull.body);
     }
     responseCache.clear(); transactionCache = {}; current = {...nullable, act: {...nullable.act, data: '00'}}; delete current.protocol;

@@ -302,7 +302,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             action = action._source;
             let act: any = {
                 "global_action_seq": action.global_sequence,
-                "account_action_seq": i,
+                "account_action_seq": String(i),
                 "block_num": action.block_num,
                 "block_time": action['@timestamp'],
                 "action_trace": {

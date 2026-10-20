@@ -117,10 +117,10 @@ facts.actionInputs.push({transactionId, actionOrdinal: timestampOrdinal, inputAc
     name: 'timestamp', rawHex, globalSequence: String(100 + timestampOrdinal), receiptAbiSequence: '0'});
 const bound = await append(2, facts);
 const action = (index = 0, raw = false) => ({block_num: 2, block_id: blockId(2), trx_id: transactionId, '@timestamp': '2026-10-20T00:00:00.000',
-    global_sequence: Number(facts.actionInputs[index].globalSequence), action_ordinal: index + 1, creator_action_ordinal: 0,
+    global_sequence: facts.actionInputs[index].globalSequence, action_ordinal: index + 1, creator_action_ordinal: 0,
     act: {account: facts.actionInputs[index].account, name: facts.actionInputs[index].name, authorization: [{actor: 'alice', permission: 'active'}],
         data: raw ? facts.actionInputs[index].rawHex : structuredClone(value)},
-    receipts: [{receiver: facts.actionInputs[index].receiver, global_sequence: Number(facts.actionInputs[index].globalSequence), recv_sequence: 1, auth_sequence: []}],
+    receipts: [{receiver: facts.actionInputs[index].receiver, global_sequence: facts.actionInputs[index].globalSequence, recv_sequence: '1', auth_sequence: []}],
     protocol: {schemaVersion: 1, source: structuredClone(bound.source), selectionId: bound.selectionId, input: structuredClone(facts.actionInputs[index])}});
 let current = action(), streamRows = null, streamTotal, initialFault, nextFault, emptySearch = false, nodeKeys = false;
 let searches = 0, cacheReads = 0, clearCalls = [];
@@ -333,6 +333,28 @@ try {
     cache.clear(); current = action(); packets.length = 0; await history();
     assert.equal(packets.length, 1); assert.equal(packets[0].messages[0].act.data.value, 7); assert.equal(packets[0].messages[0].protocol, undefined);
     await live(); assert.equal(JSON.parse(livePackets.at(-1).message).act.data.value, 7); assert.equal(JSON.parse(livePackets.at(-1).message).protocol, undefined);
+    // Native Antelope relays share the exact public contract, including retained safe numbers.
+    const extensionProtocol = app.manager.config.settings.protocol;
+    try {
+        delete app.manager.config.settings.protocol;
+        for (const sequence of [9, '9007199254740993', '18446744073709551615']) {
+            const native = action(); delete native.protocol;
+            native.global_sequence = sequence;
+            native.receipts[0].global_sequence = sequence;
+            native.receipts[0].recv_sequence = 0;
+            native.code_sequence = 4294967295;
+            native.act.data = {global_sequence: '0009', count: 7};
+            livePackets.length = 0; await live(native);
+            const emitted = JSON.parse(livePackets[0].message);
+            assert.equal(emitted.global_sequence, String(sequence));
+            assert.equal(emitted.receipts[0].recv_sequence, '0');
+            assert.equal(emitted.code_sequence, 4294967295);
+            assert.deepEqual(emitted.act.data, {global_sequence: '0009', count: 7});
+        }
+        const unsafe = action(); delete unsafe.protocol; unsafe.global_sequence = 9007199254740992;
+        livePackets.length = 0; await live(unsafe);
+        assert.equal(livePackets[0].message, undefined); assert.equal(livePackets[0].error.statusCode, 503);
+    } finally {app.manager.config.settings.protocol = extensionProtocol; livePackets.length = 0;}
     // With no matching subscribers, the relay must not start any proof/storage operation.
     const subscriptions = manager.actionContractMap; manager.actionContractMap = new Map();
     const noTargetsReads = memory.calls.length; await live(); assert.equal(memory.calls.length, noTargetsReads); manager.actionContractMap = subscriptions;
@@ -346,7 +368,7 @@ try {
     assert.equal(livePackets.length, 1); assert.equal(livePackets[0].error.code, 'protocol_live_backlog'); assert.equal(livePackets[0].message, undefined);
     release.resolve(); await Promise.all(accepted); delete memory.faults.beforeRead;
     const delivered = livePackets.filter(packet => packet.message).map(packet => JSON.parse(packet.message).global_sequence);
-    assert.deepEqual(delivered, [101, ...Array.from({length: maximumPendingLiveActions - 1}, (_, index) => 103 + index)]);
+    assert.deepEqual(delivered, ['101', ...Array.from({length: maximumPendingLiveActions - 1}, (_, index) => String(103 + index))]);
     assert.equal(manager.liveActionQueue.length, 0); assert.equal(manager.liveActionPendingBytes, 0);
     livePackets.length = 0; const byteReads = memory.calls.length;
     await live({...action(), padding: 'x'.repeat(maximumPendingLiveActionBytes)});
