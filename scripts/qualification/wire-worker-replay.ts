@@ -307,7 +307,7 @@ export async function runWireWorkerReplay(stateFile: string, outputDirectory: st
             await mongo.connect();
             const database = mongo.db(chain + '_' + chain);
             assert.deepEqual(await database.listCollections({}, {nameOnly: true}).toArray(), [], 'refusing existing Wire state collections');
-            const server = await mongo.db('admin').command({buildInfo: 1}); assert.equal(server.version, '8.0.34');
+            const server = await mongo.db('admin').command({buildInfo: 1}); assert.equal(server.version, '8.0.32');
             report.stateWrites = {mode: stateMode, database: database.databaseName, serverVersion: server.version,
                 servingReadinessQualified: false, snapshots: []};
             report.limits[2] = 'Legacy Mongo effects are checked separately; no portable runtime initialization, canonical rollback or state API readiness is certified.';

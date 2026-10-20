@@ -97,7 +97,8 @@ history upgrade qualification are not completed by this replay.
 
 ## Legacy Mongo write qualification
 
-`--contract-state enabled` opts into a separate actual-write case. The fixture uses the
+`--contract-state enabled` opts into a separate actual-write case against the worker
+fixture's digest-pinned MongoDB 8.0.32, using driver 7.2.0. The fixture uses the
 same explicit source-derived contract/table map with `auto_index:false`, enables its
 owned Mongo connection, and holds the original source at blocks 78, 81, 84, 87, 90, 93,
 96, 99 and 120. At each held prefix, the expected block is indexed, worker queues drain,
