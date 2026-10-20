@@ -1,7 +1,7 @@
 # Wire legacy Mongo write qualification — 2026-10-20
 
 [PR #239](https://github.com/eosrio/hyperion-history-api/pull/239) fixes operator state
-opt-in and extends the [captured Wire worker harness](../../../wire-worker-replay.md).
+opt-in and extends the [captured Wire worker harness](../../wire-worker-replay.md).
 The tested code commit is `093e111e739805a9b4eb531259709647042a8c20`, stacked on
 [PR #236](https://github.com/eosrio/hyperion-history-api/pull/236).
 
