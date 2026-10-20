@@ -12,6 +12,17 @@ export function assertActionSearchActive(request: FastifyRequest) {
     }
 }
 
+/** Shared by HTTP action queries and each historical stream page. */
+export function assertCompleteActionSearch(result: {timed_out?: boolean; _shards?: {total?: number; successful?: number; failed?: number; skipped?: number}}): void {
+    if (result.timed_out === true) throw searchError(503, 'Elasticsearch search timed out');
+    const shards = result._shards;
+    if (result.timed_out !== false || !shards
+        || ![shards.total, shards.successful, shards.failed, shards.skipped].every(value => Number.isSafeInteger(value) && value! >= 0)
+        || shards.failed !== 0 || shards.successful !== shards.total || shards.skipped! > shards.successful!) {
+        throw searchError(503, 'Elasticsearch search returned incomplete shard metadata');
+    }
+}
+
 /** Only complete action searches may become successful, cacheable API responses. */
 export async function searchActions<T>(
     fastify: FastifyInstance,
@@ -34,12 +45,7 @@ export async function searchActions<T>(
         if (controller.signal.aborted) {
             throw searchError(503, 'Elasticsearch search was cancelled');
         }
-        if (result.timed_out) {
-            throw searchError(503, 'Elasticsearch search timed out');
-        }
-        if (result._shards.failed > 0) {
-            throw searchError(503, 'Elasticsearch search returned failed shards');
-        }
+        assertCompleteActionSearch(result);
         return result;
     } catch (error) {
         if (controller.signal.aborted || error instanceof errors.RequestAbortedError) {

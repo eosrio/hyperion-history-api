@@ -14,13 +14,26 @@ import {
     StreamRequest,
     StreamTypeMap
 } from "../interfaces/stream-requests.js";
-import { streamPastCommon } from "./helpers/functions.js";
+import {mergeActionMeta, streamPastCommon} from "./helpers/functions.js";
+import {protectProtocolAction, revalidateProtocolActionScope} from './helpers/protocol-abi.js';
+import {assertProtocolProjectionReady} from './helpers/protocol-state-readiness.js';
+import {assertProtocolActionStreamReady} from './helpers/protocol-action-query.js';
 import {
     checkActionFilters,
     checkDeltaFilters,
     processActionRequests,
     processTableRequests
 } from "./helpers/streamFunctions.js";
+
+export const maximumPendingLiveActions = 64;
+export const maximumPendingLiveActionBytes = 16 * 1024 * 1024;
+
+interface PendingLiveAction {
+    trace: {account: string; name: string; notified: string; message: string};
+    targets: Map<string, string[]>;
+    bytes: number;
+    done: () => void;
+}
 
 export class SocketManager {
 
@@ -33,6 +46,11 @@ export class SocketManager {
     private readonly uwsApp: TemplatedApp;
     private readonly chainId: string;
     private currentBlockNum = 0;
+    // One chain-local FIFO preserves relay arrival order while proofs await storage.
+    // The active item counts against both budgets; the relay cannot queue unlimited waiters.
+    private liveActionQueue: PendingLiveAction[] = [];
+    private liveActionPendingBytes = 0;
+    private liveActionDraining = false;
 
     // client_id >> request_uuid >> delta request
     private clientDeltaRequestMap: Map<string, Map<string, StreamDeltasRequest>> = new Map();
@@ -218,11 +236,11 @@ export class SocketManager {
         });
 
         this.relay.on('action', (traceData) => {
-            this.routeActionTraceToClients(traceData);
+            void this.routeActionTraceToClients(traceData).catch(error => hLog('Action relay failed:', error));
         });
 
         this.relay.on('delta', (traceData) => {
-            this.routeDeltaToClients(traceData);
+            void this.routeDeltaToClients(traceData).catch(error => hLog('Delta relay failed:', error));
         });
 
         // update local current block info from relay
@@ -265,6 +283,7 @@ export class SocketManager {
 
     // process a single action request to attach to the maps
     private attachActionRequests(data: StreamActionsRequest, client_id: string, requestUUID: string) {
+        assertProtocolActionStreamReady(this.server, data);
         if (data.contract && data.action) {
 
             if (!this.actionContractMap.has(data.contract)) {
@@ -406,7 +425,7 @@ export class SocketManager {
         }
     }
 
-    private routeActionTraceToClients(traceData: any) {
+    private async routeActionTraceToClients(traceData: any): Promise<void> {
         const { account: contract, name: action, notified } = traceData;
         const targetClients = new Map<string, string[]>();
         const notifiedAccounts = notified.split(',');
@@ -438,18 +457,82 @@ export class SocketManager {
             }
         });
 
-        targetClients.forEach((reqs: string[], clientId: string) => {
-            this.io.sockets.sockets.get(clientId)?.emit('message', {
-                type: 'action_trace',
-                mode: 'live',
-                targets: reqs,
-                message: traceData.message
-            });
-        });
+        for (const [clientId, requests] of targetClients) if (!requests.length) targetClients.delete(clientId);
+        if (!targetClients.size) return Promise.resolve();
+        if (this.server.manager.config.settings?.protocol?.provider !== 'extension') {
+            targetClients.forEach((requests, clientId) => this.io.sockets.sockets.get(clientId)?.emit('message', {
+                type: 'action_trace', mode: 'live', targets: requests, message: traceData.message
+            }));
+            return;
+        }
 
+        // Snapshot mutable relay envelopes, retaining only bounded strings and selected targets.
+        const trace = {account: contract, name: action, notified, message: traceData.message as string};
+        const bytes = Buffer.byteLength(trace.message) + Buffer.byteLength(notified)
+            + [...targetClients].reduce((total, [clientId, requests]) => total + clientId.length * 2 + requests.join().length * 2, 0);
+        if (this.liveActionQueue.length >= maximumPendingLiveActions
+            || bytes + this.liveActionPendingBytes > maximumPendingLiveActionBytes) {
+            this.emitActionUnavailable(targetClients, Object.assign(new Error('Live action delivery is busy; retry from the last received block.'),
+                {statusCode: 503, code: 'protocol_live_backlog'}));
+            return Promise.resolve();
+        }
+        return new Promise(resolve => {
+            this.liveActionQueue.push({trace, targets: targetClients, bytes, done: resolve});
+            this.liveActionPendingBytes += bytes;
+            if (!this.liveActionDraining) {
+                this.liveActionDraining = true;
+                void this.drainLiveActions().catch(error => hLog('Action delivery lane failed:', error));
+            }
+        });
     }
 
-    private routeDeltaToClients(traceData: any) {
+    private emitActionUnavailable(targets: Map<string, string[]>, error: any): void {
+        targets.forEach((requests, clientId) => this.io.sockets.sockets.get(clientId)?.emit('message', {
+            type: 'action_trace', mode: 'live', targets: requests,
+            error: {statusCode: error.statusCode ?? 503, code: error.code, retryable: true, message: error.message}
+        }));
+    }
+
+    private async drainLiveActions(): Promise<void> {
+        try {
+            while (this.liveActionQueue.length) {
+                const pending = this.liveActionQueue[0];
+                try {
+                    let message = pending.trace.message;
+                    if (this.server.manager.config.settings?.protocol?.provider === 'extension') {
+                        const action = JSON.parse(message), proofScope = {};
+                        const notified = new Set([
+                            ...(action.receipts ?? []).map((receipt: any) => receipt.receiver),
+                            ...(action.act?.authorization ?? []).map((authorization: any) => authorization.actor)
+                        ]);
+                        const headerNotified = new Set(pending.trace.notified.split(','));
+                        if (action.act?.account !== pending.trace.account || action.act?.name !== pending.trace.name
+                            || notified.size !== headerNotified.size || [...notified].some(account => !headerNotified.has(account))) {
+                            throw Object.assign(new Error('Action relay headers do not match the retained occurrence.'), {statusCode: 503});
+                        }
+                        mergeActionMeta(action, false, true);
+                        await protectProtocolAction(this.server, proofScope, action);
+                        delete action.protocol;
+                        message = JSON.stringify(action);
+                        await revalidateProtocolActionScope(this.server, proofScope);
+                    }
+                    pending.targets.forEach((requests, clientId) => this.io.sockets.sockets.get(clientId)?.emit('message', {
+                        type: 'action_trace', mode: 'live', targets: requests, message
+                    }));
+                } catch (error) {
+                    this.emitActionUnavailable(pending.targets, error);
+                } finally {
+                    this.liveActionQueue.shift();
+                    this.liveActionPendingBytes -= pending.bytes;
+                    pending.done();
+                }
+            }
+        } finally {
+            this.liveActionDraining = false;
+        }
+    }
+
+    private async routeDeltaToClients(traceData: any) {
 
         // const tRef = process.hrtime.bigint();
         const { code, table, payer, scope, message } = traceData;
@@ -481,6 +564,14 @@ export class SocketManager {
         // console.log(targetClients);
         // console.dir(this.deltaCodeMap, {depth: Infinity, colors: true});
 
+        try {assertProtocolProjectionReady(this.server, 'row-history');}
+        catch (error: any) {
+            targetClients.forEach((reqs, clientId) => this.io.sockets.sockets.get(clientId)?.emit('message', {
+                type: 'delta_trace', mode: 'live', targets: reqs,
+                error: {statusCode: error.statusCode ?? 503, retryable: true, message: error.message}
+            }));
+            return;
+        }
         if (targetClients.size > 0) {
             targetClients.forEach((reqs: string[], clientId: string) => {
                 this.io.sockets.sockets.get(clientId)?.emit('message', {
@@ -533,7 +624,12 @@ export class SocketManager {
         data: StreamTypeMap[K]['request'],
         callback: (resp: any) => void
     ) {
+        const originalCallback = callback;
+        let acknowledged = false;
+        callback = response => {if (!acknowledged) {acknowledged = true; originalCallback(response);}};
         try {
+            if (type === 'delta') assertProtocolProjectionReady(this.server, 'row-history');
+            if (type === 'action') assertProtocolActionStreamReady(this.server, data as StreamActionsRequest);
 
             const validation = await this.validateRequest(data, type);
             if (validation.status === 'ERROR') {
@@ -618,6 +714,9 @@ export class SocketManager {
             }
         } catch (e: any) {
             hLog(`[processStreamRequest] Failed to process ${type.toUpperCase()} request:`, e.message);
+            const error = {statusCode: e.statusCode ?? 503, retryable: true, message: e.message};
+            socket.emit('message', {type: `${type}_trace`, mode: 'history', error});
+            callback({status: 'ERROR', ...error});
         }
     }
 
@@ -739,7 +838,9 @@ export class SocketManager {
             contract = (data as StreamDeltasRequest).code;
         }
 
-        if (contract) {
+        // A current node ABI cannot validate a retained extension action's historical epoch.
+        // Exact source/occurrence proofs qualify each delivered payload instead.
+        if (contract && this.server.manager.config.settings?.protocol?.provider !== 'extension') {
             const abiData = await this.server.antelope.getAbi(contract);
             if (!abiData) {
                 return {

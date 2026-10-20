@@ -103,7 +103,7 @@ try {
     }
     assert.equal(writes(), before, 'An API proof consumer wrote/repaired coordinator storage');
     const searchBefore = searches, cached = await request(); assert.equal(cached.statusCode, 200, cached.body); assert.equal(searches, searchBefore);
-    assert([...responseCache.values()].some(value => value.includes('_hyperion_protocol_abi_v2')));
+    assert([...responseCache.values()].some(value => value.includes('_hyperion_protocol_abi_v3')));
     // Tampered rendered JSON and exact original anchors/raw hashes cannot borrow a valid ABI.
     for (const mutate of [value => {value.act.data.value = 8;}, value => {value.protocol.input.rawHex = '08000000';},
         value => {value.protocol.input.globalSequence = String(Number(value.protocol.input.globalSequence));},
@@ -113,15 +113,34 @@ try {
     }
     // Legacy response entries with decoded data and no proof sidecar miss and re-evaluate the source.
     responseCache.clear(); current = action(); await request();
-    const entry = [...responseCache.entries()][0], unversioned = JSON.parse(entry[1]); delete unversioned._hyperion_protocol_abi_v2;
+    const entry = [...responseCache.entries()][0], unversioned = JSON.parse(entry[1]); delete unversioned._hyperion_protocol_abi_v3;
     responseCache.set(entry[0], JSON.stringify(unversioned)); delete current.protocol;
     const missing = await request(); assert.equal(missing.statusCode, 503, missing.body);
     // Incomplete and old unproved raw history stays readable, including response-cache hits.
     for (const metadata of [undefined, {...action().protocol, status: 'incomplete', input: {...facts.actionInputs[0], inputActionOrdinal: undefined}, error: {code: 'gap', message: 'retained input'}}]) {
         responseCache.clear(); current = action(facts.actionInputs[0], facts.actionInputs[0].rawHex); current.protocol = metadata;
+        current['@record'] = {unproven: 'annotation cannot replace retained raw data'};
         const raw = await request(false); assert.equal(raw.statusCode, 200, raw.body); assert.equal(raw.json().actions[0].action_trace.act.data, '07000000');
         const rawCached = await request(false); assert.equal(rawCached.statusCode, 200, rawCached.body);
         const encoded = await request(true); assert.equal(encoded.statusCode, 503, encoded.body);
+    }
+    // The same {id} must select each API version's public shape, including final-response cache hits.
+    responseCache.clear(); current = action(); transactionCache = {one: JSON.stringify(current)};
+    const v1Transaction = {method: 'POST', url: '/v1/history/get_transaction', payload: {id: transactionId}};
+    const v2Transaction = {method: 'GET', url: '/v2/history/get_transaction?id=' + transactionId};
+    for (const requests of [[v1Transaction, v2Transaction], [v2Transaction, v1Transaction]]) {
+        responseCache.clear();
+        for (const request of requests) {
+            const response = await app.inject(request); assert.equal(response.statusCode, 200, response.body);
+            const cached = await app.inject(request); assert.equal(cached.statusCode, 200, cached.body);
+            if (request.method === 'POST') {
+                assert.equal(response.json().id, transactionId); assert.equal(cached.json().id, transactionId);
+                assert(Array.isArray(response.json().traces)); assert.equal(response.json().actions, undefined);
+            } else {
+                assert.equal(response.json().trx_id, transactionId); assert.equal(cached.json().trx_id, transactionId);
+                assert(Array.isArray(response.json().actions)); assert.equal(response.json().traces, undefined);
+            }
+        }
     }
     // Both transaction Redis paths validate original occurrences before grouping or serving JSON.
     for (const version of [1, 2]) {
@@ -198,7 +217,7 @@ try {
     const staleNull = await v2(); assert.equal(staleNull.statusCode, 503, 'Cached derived null bypassed a fork fence: ' + staleNull.body);
     const cachedNullEntry = [...responseCache.entries()].find(([, value]) => JSON.parse(value).actions?.[0]?.act?.data === null);
     const legacyNull = JSON.parse(cachedNullEntry[1]);
-    legacyNull._hyperion_protocol_abi_v1 = {...legacyNull._hyperion_protocol_abi_v2, actions: []}; delete legacyNull._hyperion_protocol_abi_v2;
+    legacyNull._hyperion_protocol_abi_v1 = {...legacyNull._hyperion_protocol_abi_v3, actions: []}; delete legacyNull._hyperion_protocol_abi_v3;
     responseCache.set(cachedNullEntry[0], JSON.stringify(legacyNull));
     const legacyCachedNull = await v2(); assert.equal(legacyCachedNull.statusCode, 503, legacyCachedNull.body);
     for (const version of [1, 2]) {

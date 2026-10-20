@@ -74,7 +74,8 @@ export class ProtocolAbiFrontierStore {
         this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-abi-frontier-records','protocol-abi-frontier-records-v1',undefined,options);
     }
 
-    private async initialize(control:boolean) {
+    private async initialize(control:boolean,signal?:AbortSignal) {
+        signal?.throwIfAborted();
         const index=control?this.controlIndex:this.recordsIndex,kind=control?'protocol-abi-frontier':'protocol-abi-frontier-records';
         const fields=control?controlFields:immutableFields;
         if(!this.provisioning.has(index)){
@@ -83,7 +84,9 @@ export class ProtocolAbiFrontierStore {
             this.provisioning.set(index,provision);
         }
         await this.provisioning.get(index);
-        const mappingResponse=await this.client.indices.getMapping({index}),mapping=mappingResponse[index]?.mappings;
+        signal?.throwIfAborted();
+        const mappingResponse=await this.client.indices.getMapping({index},{signal}),mapping=mappingResponse[index]?.mappings;
+        signal?.throwIfAborted();
         if(Object.keys(mappingResponse).length!==1||mapping?._meta?.hyperion_kind!==kind||mapping._meta.schema_version!==1
             ||mapping.dynamic!=='strict'||mapping._source?.enabled===false
             ||(mapping._source&&(Object.hasOwn(mapping._source,'includes')||Object.hasOwn(mapping._source,'excludes')
@@ -91,7 +94,8 @@ export class ProtocolAbiFrontierStore {
             ||Object.entries(fields).some(([name,field])=>mapping.properties?.[name]?.type!==field.type)) {
             throw new Error('Unowned or incompatible ABI frontier index mapping');
         }
-        const settings=await this.client.indices.getSettings({index,flat_settings:true,include_defaults:true}),entry=settings[index];
+        const settings=await this.client.indices.getSettings({index,flat_settings:true,include_defaults:true},{signal}),entry=settings[index];
+        signal?.throwIfAborted();
         const mode=settingsValue(entry,'mapping.source.mode');
         if(Object.keys(settings).length!==1||!entry||settingsValue(entry,'translog.durability')!=='request'
             ||Number(settingsValue(entry,'number_of_shards'))!==1||Number(settingsValue(entry,'number_of_replicas'))!==this.replicas
@@ -121,10 +125,10 @@ export class ProtocolAbiFrontierStore {
     }
 
     /** Read tokens describe observed bytes only; only compareAndSet returns a fresh complete-copy receipt. */
-    async readControl():Promise<ProtocolAbiFrontierControl|null> {
-        await this.initialize(true);
+    async readControl(signal?:AbortSignal):Promise<ProtocolAbiFrontierControl|null> {
+        await this.initialize(true,signal);
         let response:any;
-        try {response=await this.client.get({index:this.controlIndex,id:'control',realtime:true,_source:true});} catch(error:any) {
+        try {response=await this.client.get({index:this.controlIndex,id:'control',realtime:true,_source:true},{signal});signal?.throwIfAborted();} catch(error:any) {
             if(error?.meta?.statusCode===404&&error?.meta?.body?.found===false&&error?.meta?.body?._index===this.controlIndex
                 &&error?.meta?.body?._id==='control')return null;
             throw error;
@@ -189,11 +193,12 @@ export class ProtocolAbiFrontierStore {
         const record=this.envelope(kind,value),id=this.id(record);await this.initialize(false);
         return this.bundles.prepare(id,record);
     }
-    private async read(kind:ProtocolAbiFrontierRecordKind,id:string):Promise<any> {
+    private async read(kind:ProtocolAbiFrontierRecordKind,id:string,signal?:AbortSignal):Promise<any> {
+        signal?.throwIfAborted();
         if(!validId(kind,id))throw new ProtocolAbiFrontierReadError('invalid',kind,id,'Invalid ABI frontier record ID');
-        await this.initialize(false);
+        await this.initialize(false,signal);
         let raw:unknown;
-        try {raw=await this.bundles.read(id);}catch(error) {
+        try {raw=await this.bundles.read(id,signal);}catch(error) {
             if(error instanceof ImmutableProtocolBundleReadError)throw new ProtocolAbiFrontierReadError(error.code,kind,id,error.message);
             throw error;
         }
@@ -206,34 +211,35 @@ export class ProtocolAbiFrontierStore {
     }
 
     async prepareCommit(value:unknown):Promise<{id:string;digest:string}> {return this.prepare('commit',value);}
-    async readCommit(id:string):Promise<unknown> {return this.read('commit',id);}
+    async readCommit(id:string,signal?:AbortSignal):Promise<unknown> {return this.read('commit',id,signal);}
     /** Deterministic lookup only; computing this ID conveys no publication authority. */
     certificateId(value:unknown):string {return this.id(this.envelope('certificate',value));}
     async prepareCertificate(value:unknown):Promise<{id:string;digest:string}> {return this.prepare('certificate',value);}
-    async readCertificate(id:string):Promise<unknown> {return this.read('certificate',id);}
+    async readCertificate(id:string,signal?:AbortSignal):Promise<unknown> {return this.read('certificate',id,signal);}
     async prepareAccountState(state:unknown):Promise<{id:string;digest:string}> {
         const copy=bounded(state,limits['account-state']).value;
         if(!copy||typeof copy!=='object'||Array.isArray(copy)||!Object.hasOwn(copy,'account')||!validAccount(copy.account))throw new Error('Invalid ABI account state identity');
         return this.prepare('account-state',copy);
     }
-    async readAccountState(id:string):Promise<unknown> {
-        const state=await this.read('account-state',id);
+    async readAccountState(id:string,signal?:AbortSignal):Promise<unknown> {
+        const state=await this.read('account-state',id,signal);
         if(!state||typeof state!=='object'||Array.isArray(state)||!Object.hasOwn(state,'account')||!validAccount(state.account)) {
             throw new ProtocolAbiFrontierReadError('invalid','account-state',id,'Invalid ABI account state identity');
         }
         return state;
     }
 
-    private async root(id:string|null):Promise<Record<string,string>> {
+    private async root(id:string|null,signal?:AbortSignal):Promise<Record<string,string>> {
+        signal?.throwIfAborted();
         if(id===null)return Object.create(null);
-        const value=await this.read('root',id);
+        const value=await this.read('root',id,signal);
         if(!recordKeys(value,['buckets'])||!recordKeysMap(value.buckets,256,([key,entry])=>/^[0-9a-f]{2}$/.test(key)&&validId('bucket',entry))) {
             throw new ProtocolAbiFrontierReadError('invalid','root',id,'Invalid ABI root bucket map');
         }
         return Object.assign(Object.create(null),value.buckets);
     }
-    private async bucket(id:string,key:string):Promise<Record<string,string>> {
-        const value=await this.read('bucket',id);
+    private async bucket(id:string,key:string,signal?:AbortSignal):Promise<Record<string,string>> {
+        const value=await this.read('bucket',id,signal);
         if(!recordKeys(value,['prefix','accounts'])||value.prefix!==key
             ||!recordKeysMap(value.accounts,20000,([account,stateId])=>validAccount(account)&&hash(account).slice(0,2)===key&&validId('account-state',stateId))) {
             throw new ProtocolAbiFrontierReadError('invalid','bucket',id,'Invalid ABI account bucket map');
@@ -279,12 +285,12 @@ export class ProtocolAbiFrontierStore {
         return (await this.prepare('root',{buckets})).id;
     }
 
-    async readAccount(rootId:string|null,account:string):Promise<unknown|null> {
+    async readAccount(rootId:string|null,account:string,signal?:AbortSignal):Promise<unknown|null> {
         if(!validAccount(account))throw new Error('Invalid ABI account lookup');
-        const buckets=await this.root(rootId),key=hash(account).slice(0,2);
+        const buckets=await this.root(rootId,signal),key=hash(account).slice(0,2);
         if(!buckets[key])return null;
-        const accounts=await this.bucket(buckets[key],key),id=accounts[account];if(!id)return null;
-        const state:any=await this.readAccountState(id);
+        const accounts=await this.bucket(buckets[key],key,signal),id=accounts[account];if(!id)return null;
+        const state:any=await this.readAccountState(id,signal);
         if(state.account!==account)throw new ProtocolAbiFrontierReadError('invalid','account-state',id,'ABI bucket/account identity mismatch');
         return state;
     }

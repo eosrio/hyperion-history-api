@@ -4,6 +4,9 @@ import {getSkipLimit} from "../../v2-history/get_actions/functions.js";
 import {hLog} from "../../../../indexer/helpers/common_functions.js";
 import {PublicKey} from "@wharfkit/antelope";
 import {request as undiciRequest} from "undici";
+import {assertProtocolProjectionReady} from '../../../helpers/protocol-state-readiness.js';
+import {markProtocolNodeResponse} from '../../../helpers/protocol-abi.js';
+import {searchActions} from '../../../helpers/action-search.js';
 
 
 function invalidKey() {
@@ -58,6 +61,7 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
         response.permissions = [];
     }
 
+    let completeNodeResponse = false;
     // use get_accounts_by_authorizers if available
     try {
         const server = fastify.manager.config.api.chain_api;
@@ -69,7 +73,8 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
         });
         if (data.statusCode === 200) {
             const body = await data.body.json() as any;
-            if (body.accounts) {
+            if (Array.isArray(body.accounts)) {
+                completeNodeResponse = true;
                 for (const account of body.accounts) {
                     response.account_names.push(account.account_name);
                     if (request.method === 'GET' && query.details) {
@@ -95,12 +100,15 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
     }
 
     // early return if we have results from get_accounts_by_authorizers
-    if (response.account_names.length > 0) {
+    if (response.account_names.length > 0
+        || (completeNodeResponse && fastify.manager.config.settings?.protocol?.provider === 'extension')) {
         response.account_names = [...(new Set(response.account_names))];
+        markProtocolNodeResponse(request);
         return response;
     }
 
     try {
+        assertProtocolProjectionReady(fastify, 'native-permissions');
         const permTableResults = await fastify.elastic.search<any>({
             index: fastify.manager.chain + '-perm-*',
             size: (limit > maxDocs ? maxDocs : limit) || 100,
@@ -131,7 +139,8 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
     }
 
     // Fallback to action search
-    const results = await fastify.elastic.search<any>({
+    assertProtocolProjectionReady(fastify, 'action-filter');
+    const results = await searchActions<any>(fastify, request, {
         index: fastify.manager.readIndexset('action'),
         size: (limit > maxDocs ? maxDocs : limit) || 100,
         from: skip || 0,
@@ -151,7 +160,7 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
     if (results.hits.hits.length > 0) {
         response.account_names = results.hits.hits.map((v) => {
             if (v._source.act.name === 'newaccount') {
-                if (v._source['@newaccount'].newact) {
+                if (v._source['@newaccount']?.newact) {
                     return v._source['@newaccount'].newact;
                 } else if (v._source.act.data.newact) {
                     return v._source.act.data.newact;

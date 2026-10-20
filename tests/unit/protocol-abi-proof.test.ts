@@ -229,7 +229,10 @@ describe('source-bound canonical ABI consumers',()=>{
             .then(value=>({kind:'resolved' as const,value}),error=>({kind:'rejected' as const,error}));
         await entered.promise;let timer:ReturnType<typeof setTimeout>|undefined;
         const result=await Promise.race([waiting,new Promise<{kind:'still_pending'}>(resolve=>{timer=setTimeout(()=>resolve({kind:'still_pending'}),250);})]);
+        const reads=f.memory.calls.filter((call:any)=>call.method==='get').length;
         release.release();if(timer)clearTimeout(timer);delete f.memory.faults.beforeRead;await waiting;
+        await new Promise<void>(resolve=>setImmediate(resolve));
+        expect(f.memory.calls.filter((call:any)=>call.method==='get').length).toBe(reads);
         expect(result.kind).toBe('rejected');
         if(result.kind==='rejected')expect(result.error).toMatchObject({statusCode:503});
     });
@@ -243,9 +246,39 @@ describe('source-bound canonical ABI consumers',()=>{
             .then(value=>({kind:'resolved' as const,value}),error=>({kind:'rejected' as const,error}));
         await entered.promise;abort.abort();let timer:ReturnType<typeof setTimeout>|undefined;
         const result=await Promise.race([waiting,new Promise<{kind:'still_pending'}>(resolve=>{timer=setTimeout(()=>resolve({kind:'still_pending'}),250);})]);
+        const reads=f.memory.calls.filter((call:any)=>call.method==='get').length;
         release.release();if(timer)clearTimeout(timer);delete f.memory.faults.beforeRead;
         const settled=await waiting;expect(result.kind).toBe('rejected');expect(settled.kind).toBe('rejected');
+        await new Promise<void>(resolve=>setImmediate(resolve));
+        expect(f.memory.calls.filter((call:any)=>call.method==='get').length).toBe(reads);
         if(result.kind==='rejected')expect(result.error).toMatchObject({statusCode:503,code:'proof_cancelled'});
+    });
+
+    it('propagates cancellation through record manifests, chunks and state traversal without subsequent reads',async()=>{
+        for(const phase of ['control','certificate','chunk','commit','action-state','root','bucket'] as const){
+            const f=await fixture();await seed(f);const observed=facts();observed.actionInputs=[action(1,'1')];
+            const second=await f.append(2,observed),reader=f.reader(),view=await reader.open(f.source(2));
+            const abort=new AbortController(),entered=gate(),release=gate();let held=false;
+            const signals:Array<AbortSignal|undefined>=[],get=f.memory.client.get;
+            f.memory.client.get=async(request:any,options?:{signal?:AbortSignal})=>{signals.push(options?.signal);return get(request);};
+            f.memory.faults.beforeRead=async(request:any)=>{
+                const match=phase==='control'?request.index===f.store.controlIndex
+                    :phase==='certificate'?request.id===view.certificateId
+                    :phase==='chunk'?request.id.startsWith(view.certificateId+':')
+                    :phase==='commit'?request.id===second.head.commitId
+                    :phase==='action-state'?request.id===view.bindings[0].stateId
+                    :phase==='root'?request.id===second.head.stateRootId:request.id.startsWith('h45abibkt1:');
+                if(!held&&match){held=true;entered.release();await release.promise;}
+            };
+            const pending=phase==='action-state'?reader.action(view,observed.actionInputs[0],{signal:abort.signal})
+                :phase==='root'||phase==='bucket'?reader.finalState(view,'alpha',{signal:abort.signal})
+                    :reader.open(f.source(2),second.selectionId,{signal:abort.signal});
+            await entered.promise;const reads=f.memory.calls.filter((call:any)=>call.method==='get').length;
+            abort.abort();release.release();
+            expect((await unavailable(pending)).code).toBe('proof_cancelled');
+            expect(f.memory.calls.filter((call:any)=>call.method==='get').length).toBe(reads);
+            expect(signals.length).toBeGreaterThan(0);expect(signals.every(signal=>signal===abort.signal)).toBe(true);
+        }
     });
 
     it('allows mixed-generation ancestors only through a new settled certificate after owner replacement',async()=>{

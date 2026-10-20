@@ -24,7 +24,9 @@ ABIs retain raw input and explicit incompleteness, without an older-schema fallb
 `waitForOpen` permits at most a 30-second deadline (five seconds by default) and accepts cancellation,
 including while a storage operation is pending. A reader permits at most 64 concurrent storage reads;
 an expired waiter cannot start additional reads or publish a late successful result. The underlying
-client's transport timeout still bounds an already-issued read. Consumers never provision proof indices.
+client receives the cancellation signal for already-issued reads. HTTP disconnects cancel their own
+proof work and remove request listeners; independent stream scopes keep their own lifetime. Consumers
+never provision proof indices.
 
 `revalidate(view)` is mandatory after asynchronous decoding and before publishing/serving a derived
 result. Readers recheck current owner/generation, phase and replay fencing. Cache immutable bytes or
@@ -38,15 +40,53 @@ the same certified source when available. The API encodes only with the certifie
 response/transaction cache paths too. Proof failures affect the requested data; unrelated indexing
 continues. Native storage queries remain inside adapters.
 
+Built-in and plugin state handlers may await nested decoding. Core publication helpers retain bounded,
+snapshotted effects for each normalized row until the handler finishes and its proof is revalidated;
+every drained effect checks validity again. A revoked proof discards the remaining effects. Arbitrary
+plugin-owned external I/O remains the plugin's responsibility. These guards do not establish complete
+state rollback or projection qualification.
+
 Optional action roots that decode to JSON `null` are derived values too. Their cached responses require
 the same proof checks as object payloads; retained raw `00` remains readable. Internal response-cache
 sidecars are versioned separately and never appear in public JSON.
+
+The API preserves the certified JSON root, including arrays, scalars, optional nulls and contract fields
+named `account`, `name`, `authorization` or `data`. Standard compacting handlers keep enrichment separate
+from the retained contract payload. Missing members are restored from the certified raw bytes, supplied
+contract values must re-encode exactly, and contract values take precedence over lossy annotations.
+Response-cache identity includes the HTTP method and versioned route; each extension hit still requires
+fresh proof validation. Live action delivery uses a per-chain FIFO with a bounded pending count and byte
+budget, snapshots retained input before waiting, and revalidates before emission.
 
 The master adds the opaque action `protocol` mapping to existing open/hidden partitions before workers
 start and verifies the result. Existing documents are not rewritten. Incompatible existing fields are
 refused rather than reinterpreted. New extension action document IDs and transaction-cache keys use the
 original decimal receipt sequence. The legacy public numeric sequence and query/sort precision across
-the full uint64 range still need separate Wire history qualification; these fixtures do not establish it.
+the full uint64 range still need [separate Wire history qualification](https://github.com/eosrio/hyperion-history-api/issues/219);
+these fixtures do not establish it.
+
+The legacy extension state projections do not yet provide canonical rollback or a compatible read
+view. A final-block ABI proof cannot establish missing/deleted query members, complete counts, or
+pagination. Until those capabilities are qualified, the shared API boundary rejects affected
+extension projection routes before response-cache or storage access with retryable HTTP 503 and
+`Retry-After`. This covers contract state, native permission/link projections, row history and table
+state; delta streams use the same readiness guard. Composite account responses cannot bypass it.
+Antelope routes, raw action history and deployment evidence retain their existing behavior.
+
+Decoded-field predicates and sorts also require a complete query-membership contract. Validating
+only the returned hits cannot detect a true member omitted by stale indexed contract fields. The
+shared action-query classifier therefore gates unqualified extension decoded-field queries before
+response caches, searches or stream registration. Metadata-only history, certified action bodies,
+created-account queries selected by native metadata, and unfiltered CPU/net statistics remain usable.
+Action-derived membership lookups and transfer-filtered resource aggregates retain an explicit
+readiness gate until their complete query plans are qualified.
+
+These are temporary readiness gates, not working Wire state support or a release waiver. Their
+replacements require [source-bound row and action query coverage](https://github.com/eosrio/hyperion-history-api/issues/220)
+and [runtime/adapter state read views and canonical recovery](https://github.com/eosrio/hyperion-history-api/issues/221),
+coordinated with #191 and eosrio/hyperion-tools#21. A configuration flag cannot authorize an
+unqualified projection. The route tests exercise poisoned retained caches and unavailable feature
+paths as well as unchanged Antelope cache serving.
 
 Waits, ancestry and retained proof work are bounded. Existing Elasticsearch history remains usable;
 new metadata/mappings initialize separately without a full history reindex. Cumulative retention,

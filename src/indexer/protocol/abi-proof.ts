@@ -26,6 +26,7 @@ export interface ProtocolActionSourceMetadata {
 }
 export type ProtocolActionMetadata=ProtocolActionProofMetadata|ProtocolActionSourceMetadata;
 export interface ProtocolAbiResolvedAction {readonly binding:ProtocolAbiProofBinding;readonly state:ProtocolAbiAccountState}
+export interface ProtocolAbiProofReadOptions {readonly signal?:AbortSignal}
 export interface ProtocolAbiProofReaderOptions {
     readonly chainId:string;readonly profile:ProtocolSourceProfile;readonly store:ProtocolAbiFrontierStore;
     readonly maxAncestryBlocks?:number;
@@ -93,18 +94,23 @@ export class ProtocolAbiProofReader {
         if(!uint(this.maximumAncestry,1)||this.maximumAncestry>4096)throw new Error('Invalid ABI proof ancestry bound');
     }
     private sameProfile(value:unknown):boolean {try{return json(value)===json(this.profile);}catch{return false;}}
-    private async retained<T>(operation:()=>Promise<T>,code='retained_data_unavailable'):Promise<T> {
+    private assertActive(signal?:AbortSignal):void {
+        if(signal?.aborted)unavailable('proof_cancelled','ABI proof request was cancelled');
+    }
+    private async retained<T>(operation:()=>Promise<T>,code='retained_data_unavailable',signal?:AbortSignal):Promise<T> {
+        this.assertActive(signal);
         if(this.activeReads>=64)unavailable('proof_busy','Canonical ABI proof read budget is exhausted');
         this.activeReads++;
-        try{return await operation();}catch(error:any){
+        try{const result=await operation();this.assertActive(signal);return result;}catch(error:any){
+            this.assertActive(signal);
             if(error instanceof ProtocolAbiFrontierReadError)unavailable(error.code==='invalid'?'invalid_proof':code,error.message);
             if(error?.meta?.statusCode===404&&error?.meta?.body?.error?.type==='index_not_found_exception')
                 unavailable('authority_unavailable','Canonical ABI projection has not been initialized');
             throw error;
         }finally{this.activeReads--;}
     }
-    private async authority():Promise<ProtocolAbiHeadCertificate> {
-        const observed=await this.retained(()=>this.options.store.readControl());
+    private async authority(signal?:AbortSignal):Promise<ProtocolAbiHeadCertificate> {
+        const observed=await this.retained(()=>this.options.store.readControl(signal),undefined,signal);
         if(!observed)unavailable('authority_unavailable','Canonical ABI coordinator has no control record');
         const value=observed.value as ProtocolAbiCoordinatorControl;
         requireProof(value?.schemaVersion===1&&value.chainId===this.options.chainId&&text(value.ownerId)&&text(value.generation)
@@ -142,21 +148,21 @@ export class ProtocolAbiProofReader {
         }
         return value;
     }
-    async open(source:ProtocolAbiProofSource,selectionId?:string):Promise<ProtocolAbiProofView> {
+    async open(source:ProtocolAbiProofSource,selectionId?:string,{signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiProofView> {
         requireProof(source?.chainId===this.options.chainId&&uint(source.blockNum,1)&&hex64.test(source.blockId)
             &&(selectionId===undefined||ident('h45srcsel1',selectionId)),'Invalid requested ABI source');
         // Snapshot caller-owned data before any storage await.
         source=copy(source);
-        const certificate=await this.authority();
+        const certificate=await this.authority(signal);
         if(certificate.head.blockNum<source.blockNum)unavailable('source_pending','Requested ABI source has not committed');
         if(certificate.head.blockNum-source.blockNum>this.maximumAncestry)
             unavailable('ancestry_unavailable','Requested ABI source is outside verified ancestry');
         const certificateId=this.options.store.certificateId(certificate);
-        const stored=await this.retained(()=>this.options.store.readCertificate(certificateId),'certificate_unavailable');
+        const stored=await this.retained(()=>this.options.store.readCertificate(certificateId,signal),'certificate_unavailable',signal);
         requireProof(json(stored)===json(certificate),'Settled ABI certificate does not match the observed authority');
         let commitId=certificate.head.commitId,commit:CanonicalCommit|undefined,child:CanonicalCommit|undefined;
         for(let distance=0;distance<=this.maximumAncestry;distance++){
-            commit=this.validateCommit(await this.retained(()=>this.options.store.readCommit(commitId),'ancestry_unavailable'));
+            commit=this.validateCommit(await this.retained(()=>this.options.store.readCommit(commitId,signal),'ancestry_unavailable',signal));
             if(!child){
                 requireProof(json({blockNum:commit.source.blockNum,blockId:commit.source.blockId,commitId,stateRootId:commit.stateRootId,
                     lastGlobalSequence:commit.lastGlobalSequence,coverageStart:commit.coverageStart})===json(certificate.head),
@@ -174,7 +180,7 @@ export class ProtocolAbiProofReader {
         if(commit.status!=='complete')unavailable('source_incomplete','Requested ABI source has incomplete knowledge');
         const view=freeze(copy({certificateId,commitId,selectionId:commit.selectionId,source:commit.source,bindings:commit.bindings}));
         this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit))});
-        await this.revalidate(view);return view;
+        await this.revalidate(view,{signal});return view;
     }
     async waitForOpen(source:ProtocolAbiProofSource,selectionId?:string,
                       options:{timeoutMs?:number;signal?:AbortSignal}={}):Promise<ProtocolAbiProofView> {
@@ -195,7 +201,7 @@ export class ProtocolAbiProofReader {
             while(true){
                 if(controller.signal.aborted)throw reason();
                 try{
-                    const view=await this.open(source,selectionId);
+                    const view=await this.open(source,selectionId,{signal:controller.signal});
                     if(controller.signal.aborted)throw reason();
                     return view;
                 }catch(error){
@@ -211,14 +217,16 @@ export class ProtocolAbiProofReader {
         finally{clearTimeout(timer);options.signal?.removeEventListener('abort',cancel);
             controller.signal.removeEventListener('abort',onAbort);controller.abort();}
     }
-    async revalidate(view:ProtocolAbiProofView):Promise<void> {
+    async revalidate(view:ProtocolAbiProofView,{signal}:ProtocolAbiProofReadOptions={}):Promise<void> {
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
-        const current=await this.authority(),prior=issued.certificate;
+        const current=await this.authority(signal),prior=issued.certificate;
         if(current.ownerId!==prior.ownerId||current.generation!==prior.generation||current.head.blockNum<prior.head.blockNum
             ||(current.head.blockNum===prior.head.blockNum&&json(current.head)!==json(prior.head)))
             unavailable('authority_changed','Canonical ABI authority changed during consumption');
     }
-    async action(view:ProtocolAbiProofView,input:Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number}):Promise<ProtocolAbiResolvedAction> {
+    async action(view:ProtocolAbiProofView,input:Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number},
+                 {signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiResolvedAction> {
+        this.assertActive(signal);
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
         requireProof(input&&hex64.test(input.transactionId)&&ordinal(input.actionOrdinal,1)&&[input.receiver,input.account].every(text)&&actionName(input.name)
             &&isProtocolHex(input.rawHex)&&sequence(input.globalSequence)&&sequence(input.receiptAbiSequence,false,0xffffffffn)
@@ -231,14 +239,15 @@ export class ProtocolAbiProofReader {
             ||binding.rawSha256!==hash(Buffer.from(input.rawHex,'hex')))
             unavailable('input_not_bound','Original action does not match its certified ABI input binding');
         if(!binding.stateId)unavailable('abi_state_unavailable','Action input ABI state is unknown');
-        const state=this.state(await this.retained(()=>this.options.store.readAccountState(binding.stateId!)),view,input.account);
-        await this.revalidate(view);return freeze({binding,state});
+        const state=this.state(await this.retained(()=>this.options.store.readAccountState(binding.stateId!,signal),undefined,signal),view,input.account);
+        await this.revalidate(view,{signal});return freeze({binding,state});
     }
-    async finalState(view:ProtocolAbiProofView,account:string):Promise<ProtocolAbiAccountState> {
+    async finalState(view:ProtocolAbiProofView,account:string,{signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiAccountState> {
+        this.assertActive(signal);
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
         requireProof(text(account),'Invalid final ABI account');
-        const state=this.state(await this.retained(()=>this.options.store.readAccount(issued.commit.stateRootId,account)),view,account);
-        await this.revalidate(view);return state;
+        const state=this.state(await this.retained(()=>this.options.store.readAccount(issued.commit.stateRootId,account,signal),undefined,signal),view,account);
+        await this.revalidate(view,{signal});return state;
     }
     private state(value:any,view:ProtocolAbiProofView,account:string):ProtocolAbiAccountState {
         if(!value||value.account!==account||value.present!==true||!isProtocolHex(value.abiHex)||!value.abiHex)

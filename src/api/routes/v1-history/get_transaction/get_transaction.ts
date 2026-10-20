@@ -3,6 +3,7 @@ import {mergeActionMeta, timedQuery} from "../../../helpers/functions.js";
 import {API} from "@wharfkit/antelope";
 import {regroupActions} from "../../../helpers/regroup-actions.js";
 import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
+import {searchActions} from '../../../helpers/action-search.js';
 
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
@@ -101,7 +102,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         try {
 
             // build search request
-            const $search = fastify.elastic.search({
+            const $search = searchActions(fastify, request, {
                 index: indexPattern,
                 size: _size,
                 query: {bool: {must: [{term: {trx_id: trxId}}]}},
@@ -112,9 +113,10 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             pResults = await Promise.all([$getInfo, $search]);
         } catch (e: any) {
             console.log(e.message);
-            if (e.meta.statusCode === 404) {
+            if (e.meta?.statusCode === 404) {
                 return response;
             }
+            throw e;
         }
         hits = pResults[1].hits.hits;
         response.last_irreversible_block = pResults[0].last_irreversible_block_num;
@@ -125,7 +127,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         const rawActions: any[] = [];
         for (let action of hits) {
             action = action._source;
-            mergeActionMeta(action);
+            mergeActionMeta(action, false, fastify.manager.config.settings?.protocol?.provider === 'extension');
             await protectProtocolAction(fastify, request, action);
             rawActions.push(action);
         }

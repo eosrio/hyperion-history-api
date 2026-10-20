@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { Document, WithId } from "mongodb";
 import { timedQuery } from "../../../helpers/functions.js";
 import { getSkipLimit } from "../../v2-history/get_actions/functions.js";
+import {ProtocolProjectionUnavailableError} from '../../../helpers/protocol-state-readiness.js';
 
 async function getTableRows(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
@@ -183,6 +184,7 @@ export function getTableRowsHandler(fastify: FastifyInstance, route: string) {
             const result = await timedQuery(getTableRows, fastify, request, route);
             reply.send(result);
         } catch (error: any) {
+            if (error instanceof ProtocolProjectionUnavailableError) throw error;
             // Check if the error is about the non-existent collection
             if (error.message.includes("Collection") && error.message.includes("does not exist")) {
                 reply.status(404).send({

@@ -97,7 +97,11 @@ for (const version of [1, 2] as const) {
     describe(`v${version} get_actions search failures`, () => {
         for (const [kind, incomplete] of [
             ['timed out', {timed_out: true}],
-            ['failed shard', {_shards: {total: 2, successful: 1, failed: 1, skipped: 0}}]
+            ['failed shard', {_shards: {total: 2, successful: 1, failed: 1, skipped: 0}}],
+            ['missing shards', {_shards: undefined}],
+            ['missing completion', {_shards: {failed: 0}}],
+            ['inconsistent completion', {_shards: {total: 2, successful: 1, failed: 0, skipped: 0}}],
+            ['malformed completion', {_shards: {total: 2, successful: 2, failed: -1, skipped: 0}}]
         ] as const) {
             it(`rejects ${kind} hits before response shaping or caching and can retry`, async () => {
                 let calls = 0;

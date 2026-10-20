@@ -5,15 +5,18 @@ import {ProtocolAbiFrontierStore} from '../../indexer/protocol/abi-frontier-stor
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError,
     type ProtocolActionProofMetadata, type ProtocolAbiProofView} from '../../indexer/protocol/abi-proof.js';
 import {isProtocolHex} from '../../indexer/protocol/hex.js';
+import {assertProtocolProofRequestActive, withProtocolProofRequest} from './protocol-proof-request.js';
 
 const contexts = new WeakMap<FastifyInstance, Promise<{selected: Awaited<ReturnType<typeof loadChainProtocol>>; reader: ProtocolAbiProofReader}>>();
-const requests = new WeakMap<FastifyRequest, {actions: ProtocolActionProofMetadata[]; views: ProtocolAbiProofView[]}>();
-const cacheProofKey = '_hyperion_protocol_abi_v2';
-const maximumActions = 10000;
+const requests = new WeakMap<object, {actions: ProtocolActionProofMetadata[]; views: ProtocolAbiProofView[]; nodeResponse?: boolean}>();
+const cacheProofKey = '_hyperion_protocol_abi_v3';
+const maximumProtocolApiActions = 10000;
+const actionResponseRoutes = new Set(['get_actions', 'get_transaction', 'get_block', 'get_controlled_accounts',
+    'get_created_accounts', 'get_creator', 'get_key_accounts', 'get_resource_usage', 'get_account']);
 
 export function isExtensionActionResponse(fastify: FastifyInstance, route: string): boolean {
     return fastify.manager.config.settings?.protocol?.provider === 'extension'
-        && (route === 'get_actions' || route === 'get_transaction');
+        && actionResponseRoutes.has(route);
 }
 
 async function context(fastify: FastifyInstance) {
@@ -39,10 +42,15 @@ function unavailable(message: string): ProtocolAbiProofUnavailableError {
         'Protocol action unavailable: source-bound ABI coverage ' + message);
 }
 
-function requestProofs(request: FastifyRequest) {
+function requestProofs(request: object) {
     let value = requests.get(request);
     if (!value) {value = {actions: [], views: []}; requests.set(request, value);}
     return value;
+}
+
+/** Node-authorized key-account results do not rely on local decoded-field membership. */
+export function markProtocolNodeResponse(request: object): void {
+    requestProofs(request).nodeResponse = true;
 }
 
 interface EncodingAbi {
@@ -58,6 +66,7 @@ export function protocolActionInput(abi: EncodingAbi, type: string, data: unknow
     const fields = (name: string): string[] | undefined => {
         if (seen.has(name) || seen.size >= 128) throw new Error('Invalid action ABI type ancestry');
         seen.add(name);
+        if (name.endsWith('?') || name.endsWith('$')) return fields(name.slice(0, -1));
         const alias = abi.types?.find(entry => entry.new_type_name === name);
         if (alias) return fields(alias.type);
         const struct = abi.structs?.find(entry => entry.name === name);
@@ -74,21 +83,65 @@ function successfulMetadata(input: any): input is ProtocolActionProofMetadata {
         && typeof input.selectionId === 'string' && input.input && Number.isInteger(input.input.inputActionOrdinal);
 }
 
-async function resolve(fastify: FastifyInstance, metadata: ProtocolActionProofMetadata) {
+/** Core handlers compact declared members into annotations. Restore absent members from
+ * certified bytes, retaining supplied members so exact re-encoding still detects tampering.
+ */
+function restoreContractMembers(certified: any, retained: any, depth = 0): any {
+    if (depth > 128) throw unavailable('exceeds the contract value traversal budget');
+    if (Array.isArray(certified) && Array.isArray(retained)) {
+        return retained.map((value, index) => index < certified.length
+            ? restoreContractMembers(certified[index], value, depth + 1) : value);
+    }
+    if (certified && retained && typeof certified === 'object' && typeof retained === 'object'
+        && !Array.isArray(certified) && !Array.isArray(retained)) {
+        return Object.fromEntries([...new Set([...Object.keys(certified), ...Object.keys(retained)])].map(key => [key,
+            !Object.hasOwn(retained, key) ? certified[key] : Object.hasOwn(certified, key)
+                ? restoreContractMembers(certified[key], retained[key], depth + 1) : retained[key]]));
+    }
+    return retained;
+}
+
+/** Enrichment remains compatible, but declared contract members always come from certified bytes. */
+function enrichContractValue(certified: any, retained: any, annotation: any, depth = 0): any {
+    if (depth > 128) throw unavailable('exceeds the contract value traversal budget');
+    if (Array.isArray(certified) && Array.isArray(retained)) {
+        return certified.map((value, index) => enrichContractValue(value, retained[index], undefined, depth + 1));
+    }
+    if (certified && typeof certified === 'object' && !Array.isArray(certified)) {
+        const original = retained && typeof retained === 'object' && !Array.isArray(retained) ? retained : {};
+        const extra = annotation && typeof annotation === 'object' && !Array.isArray(annotation) ? annotation : {};
+        return Object.fromEntries([...new Set([...Object.keys(extra), ...Object.keys(original), ...Object.keys(certified)])].map(key => [key,
+            Object.hasOwn(certified, key) ? enrichContractValue(certified[key],
+                Object.hasOwn(original, key) ? original[key] : undefined, Object.hasOwn(extra, key) ? extra[key] : undefined, depth + 1)
+                : Object.hasOwn(original, key) ? original[key] : extra[key]]));
+    }
+    return retained === undefined ? certified : retained;
+}
+
+async function resolve(fastify: FastifyInstance, scope: object, metadata: ProtocolActionProofMetadata) {
     if (!successfulMetadata(metadata)) throw unavailable('requires complete original occurrence metadata');
-    const selected = await context(fastify);
-    const view = await selected.reader.waitForOpen(metadata.source, metadata.selectionId);
-    const resolved = await selected.reader.action(view, metadata.input);
-    return {...selected, view, resolved};
+    return withProtocolProofRequest(scope, async options => {
+        const selected = await context(fastify);
+        const view = await selected.reader.waitForOpen(metadata.source, metadata.selectionId, options);
+        const resolved = await selected.reader.action(view, metadata.input, options);
+        return {...selected, view, resolved};
+    });
 }
 
 /** Call before grouping/shaping drops original anchors. Raw history remains available without ABI authority. */
-export async function protectProtocolAction(fastify: FastifyInstance, request: FastifyRequest, action: any, encoding = false): Promise<string | undefined> {
+export async function protectProtocolAction(fastify: FastifyInstance, request: object, action: any,
+    options: {encoding?: boolean; decode?: boolean} = {}): Promise<string | undefined> {
     if (fastify.manager.config.settings?.protocol?.provider !== 'extension') return;
+    assertProtocolProofRequestActive(request);
     const data = action.act?.data;
+    const annotationKey = '@' + action.act?.name;
+    const candidateAnnotation = annotationKey === '@timestamp' ? undefined : action[annotationKey];
+    const annotation = candidateAnnotation !== null && typeof candidateAnnotation === 'object' && !Array.isArray(candidateAnnotation)
+        ? candidateAnnotation : undefined;
     const retainedRaw = isProtocolHex(data, true) && (action.protocol === undefined
         || action.protocol?.input?.rawHex === data.toLowerCase());
-    if (!encoding && (data === undefined || retainedRaw)) {
+    if (!options.encoding && !options.decode && ((data === undefined && annotation === undefined) || retainedRaw)) {
+        if (annotation !== undefined) delete action[annotationKey];
         return;
     }
     try {
@@ -102,22 +155,26 @@ export async function protectProtocolAction(fastify: FastifyInstance, request: F
             throw unavailable('does not match the indexed action occurrence');
         }
         const proofs = requestProofs(request);
-        if (proofs.actions.length >= maximumActions) throw unavailable('exceeds the bounded response proof budget');
-        const {reader, selected, view, resolved} = await resolve(fastify, metadata);
+        if (proofs.actions.length >= maximumProtocolApiActions) throw unavailable('exceeds the bounded response proof budget');
+        const {reader, selected, view, resolved} = await resolve(fastify, request, metadata);
         if (!resolved.state.present || !resolved.state.abiHex) throw unavailable('does not select a usable input ABI');
         const codec = selected.provider.contractCodec;
         const abi = codec.decodeAbi(Buffer.from(resolved.state.abiHex, 'hex')) as EncodingAbi;
         const type = abi.actions?.find(entry => String(entry.name) === input.name)?.type;
         if (!type) throw unavailable('does not define the requested action');
-        const value = isProtocolHex(data, true) && data.toLowerCase() === input.rawHex
-            ? codec.decodeValue(abi, type, Buffer.from(input.rawHex, 'hex')) : protocolActionInput(abi, type, data);
+        const certifiedValue = codec.decodeValue(abi, type, Buffer.from(input.rawHex, 'hex'));
+        const value = data === undefined || retainedRaw ? certifiedValue
+            : restoreContractMembers(certifiedValue, protocolActionInput(abi, type, data));
         const encoded = Buffer.from(codec.encodeValue(abi, type, value)).toString('hex');
         if (encoded !== input.rawHex) {
             throw unavailable('does not match the original raw action bytes');
         }
-        await reader.revalidate(view);
+        await withProtocolProofRequest(request, options => reader.revalidate(view, options));
         proofs.actions.push(structuredClone(metadata)); proofs.views.push(view);
-        if (encoding) action.act.hex_encoder = selected.id;
+        if (options.decode) action.act.data = certifiedValue;
+        else if (!retainedRaw) action.act.data = enrichContractValue(certifiedValue, data, annotation);
+        if (annotation !== undefined) delete action[annotationKey];
+        if (options.encoding) action.act.hex_encoder = selected.id;
         return encoded;
     } catch (error) {
         if (error instanceof ProtocolAbiProofUnavailableError) throw error;
@@ -135,31 +192,42 @@ function bodyDigest(response: any): string {
 export async function protocolResponseForCache(fastify: FastifyInstance, request: FastifyRequest, route: string, response: any): Promise<any> {
     if (!isExtensionActionResponse(fastify, route)) return response;
     const proofs = requestProofs(request);
+    await revalidateProtocolActionScope(fastify, request);
+    return {...response, [cacheProofKey]: {schemaVersion: 1, bodySha256: bodyDigest(response), actions: proofs.actions,
+        ...(proofs.nodeResponse ? {nodeResponse: true} : {})}};
+}
+
+/** HTTP requests and individual stream batches own separate bounded proof scopes. */
+export async function revalidateProtocolActionScope(fastify: FastifyInstance, scope: object): Promise<void> {
+    assertProtocolProofRequestActive(scope);
+    const proofs = requests.get(scope);
+    if (!proofs) return;
     if (proofs.views.length) {
-        const {reader} = await context(fastify);
-        for (const view of proofs.views) await reader.revalidate(view);
+        await withProtocolProofRequest(scope, async options => {
+            const {reader} = await context(fastify);
+            for (const view of proofs.views) await reader.revalidate(view, options);
+        });
     }
-    return {...response, [cacheProofKey]: {schemaVersion: 1, bodySha256: bodyDigest(response), actions: proofs.actions}};
+    assertProtocolProofRequestActive(scope);
 }
 
 /** Unversioned response-cache entries miss; cached derived values reopen the exact proof before serving. */
 export async function validateProtocolCachedResponse(fastify: FastifyInstance, request: FastifyRequest, route: string, response: any): Promise<boolean> {
     if (!isExtensionActionResponse(fastify, route)) return true;
+    assertProtocolProofRequestActive(request);
     const cached = response?.[cacheProofKey];
-    if (cached?.schemaVersion !== 1 || !Array.isArray(cached.actions) || cached.actions.length > maximumActions
+    if (cached?.schemaVersion !== 1 || !Array.isArray(cached.actions) || cached.actions.length > maximumProtocolApiActions
         || cached.bodySha256 !== bodyDigest(response)) return false;
+    if (route === 'get_key_accounts' && cached.nodeResponse !== true) return false;
     try {
         const proofs = requestProofs(request);
         for (const metadata of cached.actions) {
-            const {reader, view} = await resolve(fastify, metadata);
-            await reader.revalidate(view);
+            const {reader, view} = await resolve(fastify, request, metadata);
+            await withProtocolProofRequest(request, options => reader.revalidate(view, options));
             proofs.views.push(view);
         }
         // Recheck earlier views after later asynchronous lookups, immediately before return.
-        if (proofs.views.length) {
-            const {reader} = await context(fastify);
-            for (const view of proofs.views) await reader.revalidate(view);
-        }
+        await revalidateProtocolActionScope(fastify, request);
         delete response[cacheProofKey];
         return true;
     } catch (error) {

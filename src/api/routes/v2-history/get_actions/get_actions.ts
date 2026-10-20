@@ -4,6 +4,7 @@ import {assertActionSearchActive, searchActions} from "../../../helpers/action-s
 import {hydrateActions} from "../../../helpers/archive-hydration.js";
 import {isHydrationDisabled} from "../../../helpers/archive-query.js";
 import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
+import {assertProtocolActionQueryReady} from '../../../helpers/protocol-action-query.js';
 import {
     addSortedBy,
     applyAccountFilters,
@@ -16,6 +17,7 @@ import {
 
 async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
+    assertProtocolActionQueryReady(fastify, query);
     const maxActions = fastify.manager.config.api.limits.get_actions ?? 0;
     const queryStruct = {
         "bool": {
@@ -104,7 +106,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
         for (let action of actions.map(a => a._source)) {
 
             try {
-                if (action.act.data) {
+                if (fastify.manager.config.settings?.protocol?.provider !== 'extension' && action.act.data) {
                     if (action.act.data.account && action.act.data.name && action.act.data.authorization) {
                         action.act.data = action.act.data.data;
                     }
@@ -113,7 +115,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
                 console.log(e);
             }
 
-            mergeActionMeta(action);
+            mergeActionMeta(action, false, fastify.manager.config.settings?.protocol?.provider === 'extension');
             await protectProtocolAction(fastify, request, action);
             if (fastify.manager.config.settings?.protocol?.provider === 'extension') delete action.protocol;
 

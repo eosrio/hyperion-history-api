@@ -104,7 +104,7 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                                                         additionalProperties: true,
                                                     }
                                                 },
-                                                data: {anyOf: [{type: 'object', additionalProperties: true}, {type: 'string'}, {type: 'null'}]},
+                                                data: {},
                                                 hex_data: {type: 'string'},
                                                 hex_encoder: {type: 'string'}
                                             }

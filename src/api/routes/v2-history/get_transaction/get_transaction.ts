@@ -5,6 +5,7 @@ import {hydrateActions} from "../../../helpers/archive-hydration.js";
 import {isHydrationDisabled} from "../../../helpers/archive-query.js";
 import {API} from "@wharfkit/antelope";
 import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
+import {searchActions} from '../../../helpers/action-search.js';
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
     const redis = fastify.redis;
@@ -85,7 +86,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         try {
 
             // build search request
-            const $search = fastify.elastic.search<any>({
+            const $search = searchActions<any>(fastify, request, {
                 index: indexPattern,
                 size: _size,
                 query: {bool: {must: [{term: {trx_id: trxId}}]}},
@@ -96,10 +97,11 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
             pResults = await Promise.all([$getInfo, $search]);
         } catch (e: any) {
             console.log(e.message);
-            if (e.meta.statusCode === 404) {
+            if (e.meta?.statusCode === 404) {
                 response.error = 'no data near block_hint'
                 return response;
             }
+            throw e;
         }
         hits = pResults[1].hits.hits;
         response.lib = pResults[0].last_irreversible_block_num;
@@ -123,7 +125,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         const rawActions: any[] = [];
         for (let action of hits) {
             if (action._source.block_num === highestBlockNum) {
-                mergeActionMeta(action._source);
+                mergeActionMeta(action._source, false, fastify.manager.config.settings?.protocol?.provider === 'extension');
                 await protectProtocolAction(fastify, request, action._source);
                 rawActions.push(action._source);
             }

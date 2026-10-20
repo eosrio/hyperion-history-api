@@ -1,5 +1,6 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
+import {searchActions} from '../../../helpers/action-search.js';
 
 async function getControlledAccounts(fastify: FastifyInstance, request: FastifyRequest) {
     let body = request.body as any;
@@ -7,7 +8,7 @@ async function getControlledAccounts(fastify: FastifyInstance, request: FastifyR
         body = JSON.parse(body)
     }
     let controlling_account = body["controlling_account"];
-    const results = await fastify.elastic.search<any>({
+    const results = await searchActions<any>(fastify, request, {
         index: fastify.manager.readIndexset('action'),
         size: 100,
         query: {
@@ -19,7 +20,7 @@ async function getControlledAccounts(fastify: FastifyInstance, request: FastifyR
                     {
                         bool: {
                             must: [
-                                {term: {"act.account": "eosio"}},
+                                {term: {"act.account": fastify.manager.config.settings.eosio_alias ?? 'eosio'}},
                                 {term: {"act.name": "newaccount"}},
                                 {term: {"act.authorization.actor": controlling_account}}
                             ]
@@ -43,7 +44,7 @@ async function getControlledAccounts(fastify: FastifyInstance, request: FastifyR
     if (hits.length > 0) {
         response.controlled_accounts = hits.map((v: any) => {
             if (v._source.act.name === 'newaccount') {
-                if (v._source['@newaccount'].newact) {
+                if (v._source['@newaccount']?.newact) {
                     return v._source['@newaccount'].newact;
                 } else if (v._source.act.data.newact) {
                     return v._source.act.data.newact;

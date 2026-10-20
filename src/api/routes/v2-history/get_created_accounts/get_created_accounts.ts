@@ -1,6 +1,9 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 import {getSkipLimit} from "../get_actions/functions.js";
+import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
+import {searchActions} from '../../../helpers/action-search.js';
+import {ProtocolAbiProofUnavailableError} from '../../../../indexer/protocol/abi-proof.js';
 
 async function getCreatedAccounts(fastify: FastifyInstance, request: FastifyRequest) {
 
@@ -8,7 +11,7 @@ async function getCreatedAccounts(fastify: FastifyInstance, request: FastifyRequ
     const query: any = request.query;
     const {skip, limit} = getSkipLimit(query);
     const maxActions = fastify.manager.config.api.limits.get_created_accounts ?? 0;
-    const results = await fastify.elastic.search<any>({
+    const results = await searchActions<any>(fastify, request, {
         index: fastify.manager.readIndexset('action'),
         from: skip || 0,
         size: (limit > maxActions ? maxActions : limit) || 100,
@@ -17,7 +20,7 @@ async function getCreatedAccounts(fastify: FastifyInstance, request: FastifyRequ
                 must: [
                     {term: {"act.authorization.actor": query.account.toLowerCase()}},
                     {term: {"act.name": "newaccount"}},
-                    {term: {"act.account": "eosio"}}
+                    {term: {"act.account": fastify.manager.config.settings.eosio_alias ?? 'eosio'}}
                 ]
             }
         },
@@ -30,12 +33,18 @@ async function getCreatedAccounts(fastify: FastifyInstance, request: FastifyRequ
 
     if (results.hits.hits.length > 0) {
         const actions = results.hits.hits;
-        for (let action of actions) {
-            action = action._source;
+        for (const hit of actions) {
+            const action = hit._source;
+            await protectProtocolAction(fastify, request, action, {decode: true});
             const _tmp = {};
-            if (action['act']['data']['newact']) {
+            if (fastify.manager.config.settings?.protocol?.provider === 'extension') {
+                const name = action.act.data?.newact ?? action.act.data?.name;
+                if (typeof name !== 'string' || !name) throw new ProtocolAbiProofUnavailableError('created_account_unavailable',
+                    'The certified account creation input does not supply an account name');
+                _tmp['name'] = name;
+            } else if (action['act']['data']['newact']) {
                 _tmp['name'] = action['act']['data']['newact'];
-            } else if (action['@newaccount']['newact']) {
+            } else if (action['@newaccount']?.['newact']) {
                 _tmp['name'] = action['@newaccount']['newact'];
             } else {
                 console.log(action);

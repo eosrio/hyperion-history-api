@@ -49,7 +49,7 @@ const extendedActions = new Set(["transfer", "newaccount", "updateauth"]);
 
 async function encodeActionData(fastify: FastifyInstance, request: FastifyRequest, action: ActionTrace) {
     if (fastify.manager.config.settings?.protocol?.provider === 'extension') {
-        return protectProtocolAction(fastify, request, action, true);
+        return protectProtocolAction(fastify, request, action, {encoding: true});
     }
     try {
         const {Abieos} = await import('@eosrio/node-abieos');
@@ -317,7 +317,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
                 }
             };
 
-            mergeActionMeta(action);
+            mergeActionMeta(action, false, fastify.manager.config.settings?.protocol?.provider === 'extension');
             act.action_trace.act = action.act;
 
             if (reqBody.hex_data) {

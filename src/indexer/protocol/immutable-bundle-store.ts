@@ -91,13 +91,17 @@ export class ImmutableProtocolBundleStore {
         return error?.meta?.statusCode===404&&error?.meta?.body?.found===false
             &&error?.meta?.body?._index===this.index&&error?.meta?.body?._id===id;
     }
-    private async initialize() {
+    private async initialize(signal?:AbortSignal) {
+        signal?.throwIfAborted();
         if (!this.initialized) this.initialized = (this.options.readOnly?Promise.resolve():this.provision())
             .catch(error => {this.initialized = undefined; throw error;});
         await this.initialized;
-        await this.validateMapping();
+        signal?.throwIfAborted();
+        await this.validateMapping(signal);
         // Do not retain a stale startup assumption if an operator changes this projection's durability.
-        const settings = await this.client.indices.getSettings({index: this.index, flat_settings: true, include_defaults: true});
+        signal?.throwIfAborted();
+        const settings = await this.client.indices.getSettings({index: this.index, flat_settings: true, include_defaults: true}, {signal});
+        signal?.throwIfAborted();
         const entry = settings[this.index];
         const sourceMode = settingsValue(entry, 'mapping.source.mode');
         if (Object.keys(settings).length !== 1 || !entry || settingsValue(entry, 'translog.durability') !== 'request'
@@ -130,8 +134,10 @@ export class ImmutableProtocolBundleStore {
         }
     }
 
-    private async validateMapping() {
-        const mappings = await this.client.indices.getMapping({index: this.index});
+    private async validateMapping(signal?:AbortSignal) {
+        signal?.throwIfAborted();
+        const mappings = await this.client.indices.getMapping({index: this.index}, {signal});
+        signal?.throwIfAborted();
         const mapping = mappings[this.index]?.mappings;
         const expectedFields = {kind: 'keyword', bundle_id: 'keyword', digest: 'keyword', byte_length: 'long',
             chunk_index: 'integer', chunk_ids: 'keyword', payload: 'binary'};
@@ -153,8 +159,10 @@ export class ImmutableProtocolBundleStore {
         }
     }
 
-    private async get(id: string): Promise<any> {
-        const response: any = await this.client.get({index: this.index, id, realtime: true, _source: true});
+    private async get(id: string, signal?:AbortSignal): Promise<any> {
+        signal?.throwIfAborted();
+        const response: any = await this.client.get({index: this.index, id, realtime: true, _source: true}, {signal});
+        signal?.throwIfAborted();
         if (!response || response._index !== this.index || response._id !== id || response.found !== true
             || !response._source || !Number.isSafeInteger(response._seq_no) || response._seq_no < 0
             || !Number.isSafeInteger(response._primary_term) || response._primary_term < 1) throw new Error('Incomplete ABI observation realtime read');
@@ -213,10 +221,10 @@ export class ImmutableProtocolBundleStore {
         return {id, digest};
     }
 
-    async read(id: string): Promise<unknown> {
-        await this.initialize();
+    async read(id: string, signal?:AbortSignal): Promise<unknown> {
+        await this.initialize(signal);
         let manifest;
-        try {manifest=(await this.get(id))._source;} catch(error) {
+        try {manifest=(await this.get(id,signal))._source;} catch(error) {
             if(this.isMissing(error,id))throw new ImmutableProtocolBundleReadError('missing',id,'Immutable protocol bundle is missing');
             throw error;
         }
@@ -229,7 +237,7 @@ export class ImmutableProtocolBundleStore {
         for (const [index, chunkId] of manifest.chunk_ids.entries()) {
             if (chunkId !== `${id}:${manifest.digest}:${index}`) throw new ImmutableProtocolBundleReadError('invalid',id,'Invalid ABI observation chunk identity');
             let chunk;
-            try {chunk=(await this.get(chunkId))._source;} catch(error) {
+            try {chunk=(await this.get(chunkId,signal))._source;} catch(error) {
                 if(this.isMissing(error,chunkId))throw new ImmutableProtocolBundleReadError('incomplete',id,'Immutable protocol bundle has a missing chunk');
                 throw error;
             }
