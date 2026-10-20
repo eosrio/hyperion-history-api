@@ -68,10 +68,13 @@ node scripts/qualification/check-action-source-journal.mjs action-source-journal
 ```
 
 The runner supports native Node 22 and 24. It imports the emitted production journal, manifest, exact
-metadata and immutable storage modules. Its JSON evidence records their source/emitted SHA-256 hashes,
+metadata and immutable storage modules, plus the production action template and master alias logic.
+Its JSON evidence records their source/emitted SHA-256 hashes and committed Git blob hashes,
 the script hash, Git head, native runtime, actual installed Elasticsearch client/transport versions
 (`8.19.1`/`8.10.1`), exact image pin and each check's result/time. Recorded elapsed times describe this
-fixture and are not component profiling results. The final status requires verified cleanup too.
+fixture and are not component profiling results. Tracked inputs must match the reported Git head;
+source comparison permits Windows CRLF checkout normalization and retains both raw and Git hashes.
+The final status requires verified cleanup too.
 
 The only input is the optional evidence output filename. There is no cluster URL, credential, image,
 index-name or live-settings input. The runner creates a fresh labeled internal Docker network and two
@@ -97,6 +100,8 @@ retries must obtain fresh all-copy CAS receipts before the API reports successfu
 The checks exercise:
 
 - Invalid schema, count/copy bounds, accessor rejection and cancellation before provisioning.
+- Production action-template, wildcard and read-alias isolation with one inert owned history sentinel;
+  journal records must inherit neither action mappings nor the action index sort.
 - Durable plan preparation, real all-copy receipts, source-order manifests and idempotent reopening.
 - Complete membership including explicit process-empty, excluded/no-effect and zero-transaction cases.
 - Missing/unplanned/malformed transactions; cross-plan/source actions; duplicate effect roots within
@@ -112,7 +117,9 @@ The checks exercise:
 Destructive guard probes modify only the run-owned journal indices/pipeline. Cleanup checks exact
 names, full IDs, labels and image identity before deleting containers, removes the empty owned network,
 then verifies container names/IDs and network absence. Partial startup and failed tests still enter
-this cleanup path. The component opens no PIT. When reachable, native per-node search-context counters
+this cleanup path. Startup waits at most 30 seconds for inspected loopback port publication while
+rechecking ownership, resource and configured-binding guards. Failures retain bounded owned-container
+state and log tails before removal. The component opens no PIT. When reachable, native per-node search-context counters
 must be zero; verified removal also destroys all contexts in those owned servers. An unavailable
 counter observation is recorded explicitly rather than invented as zero.
 
@@ -120,7 +127,9 @@ counter observation is recorded explicitly rather than invented as zero.
 
 Inputs are constructed **journal component fixtures**. Their source/trace digests, target UUID and
 producer labels describe fixture records. They are not a captured chain, consensus-valid source,
-actual worker fanout or a certified action sink. The runner never writes action-history documents.
+actual worker fanout or a certified action sink. The isolation regression writes one inert sentinel
+to an owned action index through the production template/read alias. It processes no chain action
+effects and does not certify that index as an action sink or as the plans' declared target.
 Native success demonstrates this journal's expected-membership and storage behavior for these cases.
 It does not enable ordinary live fanout or physical field omissions and does not authorize queries.
 
