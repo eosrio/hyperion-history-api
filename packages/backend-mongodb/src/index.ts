@@ -24,7 +24,7 @@ import {
 } from '@eosrio/hyperion-sdk/projection';
 import { MongoProjectionStorage, serverErrorCode, type MongoDbProjectionAdapterOptions } from './storage.js';
 export type { MongoDbProjectionAdapterOptions } from './storage.js';
-export { createMongoDbRollbackAdapter, type MongoDbRollbackAdapterOptions } from './rollback.js';
+export { createMongoDbRollbackAdapter, createMongoDbRecoveryAdapter, type MongoDbRollbackAdapterOptions } from './rollback.js';
 import {
     assertReady,
     assertView,
