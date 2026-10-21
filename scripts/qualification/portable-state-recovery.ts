@@ -206,6 +206,7 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
             await es.cluster.getSettings({include_defaults: true, flat_settings: true}));
         replay = await serveRecoveryEngineeringSource(source, report.errors);
         report.rpcRequests = []; report.rpcRejections = []; report.rpcRejectionsOmitted = 0;
+        report.discoveryProbes = []; report.discoveryProbesOmitted = 0;
         rpc = createServer(async (incoming, outgoing) => {
           const request: any = {at: Date.now(), method: incoming.method, path: incoming.url, userAgent: incoming.headers['user-agent'], bytes: 0};
           try {let bytes = 0; const chunks: Buffer[] = [];
@@ -214,6 +215,11 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
             request.bodyPreviewHex = raw.subarray(0, 512).toString('hex');
             const body = bytes ? JSON.parse(raw.toString()) : {};
             request.body = body;
+            // Fleet listener discovery may probe this loopback socket; it is not a chain RPC input.
+            if (incoming.method === 'GET' && incoming.url === '/v2/health' && bytes === 0) {
+                if (report.discoveryProbes.length < 64) report.discoveryProbes.push({...request, status: 404}); else report.discoveryProbesOmitted++;
+                outgoing.writeHead(404, {'content-type': 'application/json'}); outgoing.end('{"error":"not_found"}'); return;
+            }
             assert.ok(report.rpcRequests.length < 512 && ['POST', 'GET'].includes(incoming.method!)
                 && incoming.url === '/v1/chain/get_info' && Object.keys(body).length === 0);
             const info = replay!.info(); report.rpcRequests.push({at: Date.now(), body, info}); outgoing.writeHead(200, {'content-type': 'application/json'}); outgoing.end(JSON.stringify(info));
