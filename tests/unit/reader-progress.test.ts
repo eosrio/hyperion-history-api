@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {LiveReaderCheckpoint, ReaderConfirmRange} from '../../src/indexer/helpers/reader-progress.js';
+import {LiveReaderCheckpoint, ReaderConfirmRange, liveReaderResumePosition, portableLiveReaderStart} from '../../src/indexer/helpers/reader-progress.js';
 
 describe('reader successful-confirm boundaries', () => {
     it('requires every block, independently of callback-window emptiness or highest block', () => {
@@ -24,6 +24,34 @@ describe('reader successful-confirm boundaries', () => {
 });
 
 describe('live source replay checkpoint', () => {
+    it('reopens at the confirmed irreversible prefix instead of a reversible coordinator tip', () => {
+        const old = new LiveReaderCheckpoint(10, 'nine');
+        const late = old.observe({num: 10, id: 'orphan-ten', previous: 'nine'}, 9);
+        const reopened = old.reopen(14);
+        expect(reopened.position).toEqual({nextBlock: 10, blockId: 'nine'});
+        expect(late()).toBeUndefined();
+        expect(() => old.observe({num: 10, id: 'ten', previous: 'nine'}, 10)).toThrow('retired');
+        expect(reopened.observe({num: 10, id: 'replacement-ten', previous: 'nine'}, 10)())
+            .toEqual({nextBlock: 11, blockId: 'replacement-ten'});
+        expect(reopened.position).toEqual({nextBlock: 11, blockId: 'replacement-ten'});
+    });
+
+    it('honors an earlier durable source gap and only retains a matching anchor', () => {
+        expect(liveReaderResumePosition({nextBlock: 10, blockId: 'nine'}, 8)).toEqual({nextBlock: 8, blockId: ''});
+        expect(liveReaderResumePosition({nextBlock: 10, blockId: 'nine'}, null)).toEqual({nextBlock: 10, blockId: 'nine'});
+        expect(liveReaderResumePosition({nextBlock: 10, blockId: 'nine'}, null, true)).toEqual({nextBlock: 1, blockId: ''});
+        expect(() => liveReaderResumePosition({nextBlock: 10, blockId: 'nine'}, 0)).toThrow('boundary');
+    });
+
+    it('starts portable live replay at an internally consistent RPC LIB without certifying it', () => {
+        const point = (blockNum: number, character: string) => ({blockNum, blockId: character.repeat(64)});
+        expect(portableLiveReaderStart(point(15, 'a'), point(10, 'b'))).toBe(10);
+        expect(portableLiveReaderStart(point(1, 'a'), point(0, '0'))).toBe(1);
+        expect(() => portableLiveReaderStart(point(10, 'a'), point(11, 'b'))).toThrow('finality');
+        expect(() => portableLiveReaderStart(point(10, 'a'), point(10, 'b'))).toThrow('finality');
+        expect(() => portableLiveReaderStart(point(10, 'a'), {blockNum: 9, blockId: 'bad'})).toThrow('boundary');
+    });
+
     it('holds reverse publication above a missing lower confirm and retains reversible input', () => {
         const checkpoint = new LiveReaderCheckpoint(10, 'nine');
         const low = checkpoint.observe({num: 10, id: 'ten', previous: 'nine'}, 9);

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "kind": "synthetic-engineering-fork",
+  "nodeAuthenticated": false,
+  "original": {
+    "directory": "../portable-state-worker",
+    "archive": "source-1-1480-20261020.tar.gz",
+    "archiveSha256": "42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7",
+    "chainId": "9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d",
+    "profileId": "wire-sysio-6508c9e8-engineering-v1",
+    "upstreamRevision": "6508c9e8f4044df8d5acb082a7af3be6a80cd9a0",
+    "abiDeploymentBlock": 222,
+    "abiSha256": "5adef7ede21018b2891598858d2bb57cc9e06a5761ee7b794f15cf8b532db28b"
+  },
+  "common": {
+    "firstBlock": 1,
+    "lastBlock": 1243,
+    "blockId": "000004db125e7699dd83225a0d167fe47d1b292fbf0a685232d50e7ae8b4c7bb",
+    "nestedSections": "Original block, traces, deltas and this/previous identity bytes remain exact; synthetic outer head/LIB advances with each block."
+  },
+  "branches": {
+    "A": {
+      "range": [1244, 1247],
+      "reportedIrreversible": 1243,
+      "mutations": [
+        ["put-attseq-5", "put-out-1", "put-out-2"],
+        ["put-attseq-9"],
+        ["delete-out-1", "delete-out-2", "put-out-3", "put-out-4"],
+        []
+      ],
+      "expectedTip": {"attseqNext": "9", "envelopeIds": ["3", "4"]}
+    },
+    "B": {
+      "range": [1244, 1249],
+      "reportedIrreversibleBefore1248": 1243,
+      "reportedIrreversibleAt1248": 1246,
+      "reportedIrreversibleAt1249": 1247,
+      "mutations": [
+        ["put-attseq-9", "put-out-3", "put-out-4"],
+        ["put-attseq-5"],
+        ["delete-out-3", "delete-out-4", "put-out-1", "put-out-2"],
+        [],
+        [],
+        []
+      ],
+      "expectedTipAndIrreversible1246": {"attseqNext": "5", "envelopeIds": ["1", "2"]}
+    }
+  },
+  "unaffected": {"contract": "sysio.msgch", "table": "attestations", "tableId": 4978, "expectedRows": []},
+  "derived": {"records": 1253, "recordsSha256": "78b6838d44ebcee1f8f4abd41e741d0e8e7a48d545eb76a012c0c128442d5088"},
+  "scope": "Only the host engineering fork/finality/restart path. This does not authenticate a Wire producer fork, qualify Rust/rs_abieos, legacy state routes, AtomicAssets or the full release."
+}
