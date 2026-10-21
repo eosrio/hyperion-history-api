@@ -103,7 +103,7 @@ export class DeclarativeProjectionRuntime {
             maximumPendingFrames, maximumPendingBytes);
     }
 
-    process(frame: ProjectionFrame): Promise<ProjectionApplyResult> {
+    process(frame: ProjectionFrame, admitSource?: (block: ProjectionBlock) => Promise<void>): Promise<ProjectionApplyResult> {
         // A source from another chain must not poison this projection's durable readiness.
         if (frame.chainId !== this.binding.chainId) {
             return Promise.reject(new ProjectionContractError('projection.invalid-contract', 'Projection frame belongs to another chain'));
@@ -145,6 +145,9 @@ export class DeclarativeProjectionRuntime {
         this.pendingFrames++;
         this.pendingBytes += bytes;
         const work = this.tail.then(async () => {
+            // Production admission is durable before mapping can reject. Ordinary callers retain exact
+            // adapter duplicate-replay behavior and need not reserve an already completed source again.
+            await admitSource?.(header.block);
             let request: ProjectionApplyRequest;
             try {
                 if (frameError) throw frameError;

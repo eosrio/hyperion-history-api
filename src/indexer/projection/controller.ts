@@ -1,4 +1,4 @@
-import {ProjectionContractError, type ProjectionAdapter, type ProjectionBinding, type ProjectionCheckpoint,
+import {ProjectionContractError, type ProjectionAdapter, type ProjectionBinding, type ProjectionBlock, type ProjectionCheckpoint,
     type ProjectionRecoveryView} from '@eosrio/hyperion-sdk/projection';
 import {DeclarativeProjectionRuntime} from './runtime.js';
 import {portableStateBinding, type ResolvedPortableStateConfiguration} from './config.js';
@@ -62,10 +62,25 @@ export class PortableStateController {
             let recovery: ProjectionRecoveryView | undefined;
             try {
                 recovery = await this.recovery(runtime);
-                const selected = await this.options.source.frame(recovery.checkpoint.blockNum + 1, runtime.definition);
+                let admitted: ProjectionBlock | undefined;
+                const admit = async (block: ProjectionBlock) => {
+                    const target = Object.freeze(structuredClone(block));
+                    if (admitted) {
+                        if (json(target) !== json(admitted))
+                            throw new ProjectionContractError('projection.conflicting-replay', 'Interpreted frame differs from its admitted canonical target');
+                        return;
+                    }
+                    if (this.stopped) throw new ProjectionContractError('projection.apply-unavailable', 'Projection owner stopped before source admission');
+                    await this.options.adapter.markIncomplete(runtime.binding, target,
+                        'Canonical projection source admitted; durable application is pending');
+                    admitted = target;
+                };
+                const selected = await this.options.source.frame(recovery.checkpoint.blockNum + 1, runtime.definition, admit);
                 if (this.stopped) return;
                 await this.options.source.revalidate(selected.proof);
-                const applied = await runtime.process(selected.frame);
+                // Runtime repeats the admission after its immutable capture. This binds the exact target and
+                // also reserves before mapping for compatible source fixtures that omit the early callback.
+                const applied = await runtime.process(selected.frame, admit);
                 await this.options.source.revalidate(selected.proof);
                 this.report({...common, status: applied.status, checkpoint: applied.view.checkpoint, evidence: selected.evidence});
             } catch (error) {

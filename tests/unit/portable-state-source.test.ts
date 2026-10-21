@@ -11,6 +11,8 @@ import type {ProjectionAdapter, ProjectionDefinition} from '@eosrio/hyperion-sdk
 import {resolvePortableStateConfiguration} from '../../src/indexer/projection/config.js';
 import {createPortableStateReadGate} from '../../src/indexer/projection/production.js';
 import {createPortableStateQueryService} from '../../src/indexer/projection/query-service.js';
+import {PortableStateController} from '../../src/indexer/projection/controller.js';
+import {admissionReason, projectionFailureApi, projectionFailureFixture} from './portable-state-failure-fixture.js';
 // @ts-ignore This shared transport fixture is deliberately not a database or production authority.
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
@@ -149,7 +151,10 @@ test('corrupted source bytes fail the immutable graph; incompatible selected art
 
 test('bounded old-input loss exposes a real canonical future target and source revocation invalidates issued proofs', async () => {
     const p = await prepared(), bounded = new PortableProjectionSource({...p.options, maxAncestryBlocks: 1});
-    await expect(bounded.frame(1, definition)).rejects.toMatchObject({name: 'PortableProjectionFrameError', block: {blockNum: 4}});
+    const admitted: unknown[] = [];
+    await expect(bounded.frame(1, definition, async block => {admitted.push(block);})).rejects
+        .toMatchObject({name: 'PortableProjectionFrameError', block: {blockNum: 4}});
+    expect(admitted).toEqual([{blockNum: 4, blockId: p.positions[3].blockId, previousBlockId: p.positions[2].blockId}]);
     const selected = await p.source.frame(4, definition);
     await p.coordinator.revokeSource('fixture-source');
     await expect(p.source.revalidate(selected.proof)).rejects.toMatchObject({code: 'projection_source_unavailable'});
@@ -160,7 +165,9 @@ test('read-only missing journal lookup never provisions indices or projection st
     const memory = frontierMemoryClient();
     const source = new PortableProjectionSource({client: memory.client, chain: 'absent-fixture', chainId: capture.chainId,
         profile: {id: selected.id, profileId: selected.provider.profileId, components: selected.components!}, provider: selected.provider});
-    await expect(source.frame(1, definition)).rejects.toThrow();
+    let admissions = 0;
+    await expect(source.frame(1, definition, async () => {admissions++;})).rejects.toThrow();
+    expect(admissions).toBe(0);
     expect(memory.calls.some((call: any) => ['createIndex', 'create', 'index'].includes(call.method))).toBe(false);
 });
 
@@ -239,4 +246,40 @@ test('actual public query gate permits a stable head and refuses a late ABI clea
     expect(finalRevalidations).toBe(2);
     expect(queries).toBe(2);
     expect(p.positions).toHaveLength(4);
+});
+
+test('actual canonical source reserves before provider decode and a rejected failure marker cannot serve old state', async () => {
+    const p = await prepared({2: {abiHex: abiA, publish: true}}), selected = pinned(p, 2, abiA);
+    const checkpoint = {blockNum: 2, blockId: p.positions[1].blockId};
+    const fixture = projectionFailureFixture(selected, capture.chainId, checkpoint), progress: any[] = [];
+    fixture.faults.rejectDetailedMarker = true;
+    let rejectDecode = true, decodes = 0;
+    const createSession = p.options.provider.createShipSession.bind(p.options.provider);
+    p.options.provider.createShipSession = schema => {
+        const session = createSession(schema);
+        return {...session, decodeDeltas(bytes) {
+            decodes++;
+            if (rejectDecode) throw new Error('controlled provider delta decode failure');
+            return session.decodeDeltas(bytes);
+        }};
+    };
+    const options = {chainId: capture.chainId, configuration: fixture.configuration, adapter: fixture.adapter,
+        source: p.source, maximumFramesPerProjection: 1, onProgress: (value: any) => progress.push(value)};
+    const controller = await PortableStateController.create(options), api = await projectionFailureApi(fixture, p.source);
+    try {
+        expect((await api.query()).statusCode).toBe(200);
+        await controller.drain();
+        const failure = await api.query(); expect(failure.statusCode).toBe(503); expect(failure.json().retryable).toBe(true);
+        expect(fixture.metadata().pending).toEqual({block: {blockNum: 3, blockId: p.positions[2].blockId,
+            previousBlockId: checkpoint.blockId}, digest: null, reason: admissionReason});
+        expect(fixture.metadata().checkpoint).toEqual(checkpoint);
+        expect(progress.at(-1).status).toBe('incomplete'); expect(decodes).toBe(1);
+        expect(fixture.calls.some(call => call.command === 'replace')).toBe(false);
+        await controller.stop(); rejectDecode = false; fixture.faults.rejectDetailedMarker = false;
+        const restarted = await PortableStateController.create({...options, adapter: fixture.createAdapter()});
+        await restarted.drain();
+        expect((await api.query()).statusCode).toBe(200);
+        expect(fixture.metadata().checkpoint).toEqual({blockNum: 3, blockId: p.positions[2].blockId});
+        expect(fixture.metadata().pending).toBeNull(); await restarted.stop();
+    } finally {await controller.stop(); await api.app.close();}
 });

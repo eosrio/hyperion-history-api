@@ -39,6 +39,7 @@ function databaseFixture() {
         failPut: false,
         foreignErrors: false,
         beforeFind: null,
+        failFindAndModify: null,
         native,
         get storage() { return storage; },
     };
@@ -88,8 +89,13 @@ function databaseFixture() {
             return { acknowledged: true, matchedCount: update(name, filter, change, options?.session) === null ? 0 : 1 };
         },
         async findOneAndUpdate(filter, change, options) {
-            native.push({ command: 'findAndModify', name, options });
-            return copy(update(name, filter, change, options?.session));
+            native.push({ command: 'findAndModify', name, filter: copy(filter), change: copy(change), options });
+            const fault = fixture.failFindAndModify; fixture.failFindAndModify = null;
+            if (fault === 'before') throw new Error('injected pre-persistence CAS rejection');
+            if (fault === 'miss') return null;
+            const result = copy(update(name, filter, change, options?.session));
+            if (fault === 'after') throw new Error('injected lost durable CAS receipt');
+            return result;
         },
         async replaceOne(filter, replacement, options) {
             native.push({ command: 'replace', name, options });
@@ -187,6 +193,43 @@ test('initialize incomplete is reserved for a valid exact stored binding and def
     const meta = [...fixture.storage.values()].flatMap(collection => [...collection.values()]).find(record => record.storageVersion);
     meta.definitionHash = hex(999);
     await assert.rejects(adapter.initialize(definition, binding, genesis), errorCode('projection.invalid-contract'));
+});
+
+test('incomplete source reservation uses exact majority-journaled CAS and snapshots caller input', async () => {
+    const fixture = databaseFixture(), adapter = fixture.adapter();
+    await adapter.initialize(definition, binding, genesis); fixture.native.length = 0;
+    const block = request(1, []).block, expected = copy(block);
+    const marking = adapter.markIncomplete(binding, block, 'canonical source admitted');
+    block.blockId = hex(999); await marking;
+    const operation = fixture.native.find(call => call.command === 'findAndModify');
+    assert.ok(operation); assert.equal(operation.options.writeConcern.w, 'majority');
+    assert.equal(operation.options.writeConcern.journal, true); assert.equal(operation.options.returnDocument, 'after');
+    assert.deepEqual(operation.filter.checkpoint, genesis); assert.equal(operation.filter.pending, null);
+    assert.equal(operation.filter.gap, null); assert.equal(operation.filter.initialized, true);
+    assert.deepEqual(operation.change.$set.pending, {block: expected, digest: null, reason: 'canonical source admitted'});
+    assert.equal(fixture.native.some(call => ['update', 'transaction', 'replace', 'delete'].includes(call.command)), false);
+    const restarted = fixture.adapter();
+    assert.deepEqual((await restarted.recovery(binding)).pending, operation.change.$set.pending);
+    await assert.rejects(restarted.open(binding), errorCode('projection.incomplete'));
+});
+
+test('rejected or unknown admission receipts never authorize processing and durable unknown writes keep reads fenced', async () => {
+    for (const fault of ['before', 'miss', 'after']) {
+        const fixture = databaseFixture(), adapter = fixture.adapter();
+        await adapter.initialize(definition, binding, genesis); await adapter.apply(request(1, [put('x', 'alice', 1)]));
+        fixture.failFindAndModify = fault;
+        await assert.rejects(adapter.markIncomplete(binding, request(2, []).block, 'canonical source admitted'),
+            errorCode('projection.apply-unavailable'));
+        const restarted = fixture.adapter(), recovery = await restarted.recovery(binding);
+        assert.deepEqual(recovery.checkpoint, {blockNum: 1, blockId: hex(1)});
+        if (fault === 'after') {
+            assert.deepEqual(recovery.pending.block, request(2, []).block);
+            await assert.rejects(restarted.open(binding), errorCode('projection.incomplete'));
+        } else {
+            assert.equal(recovery.pending, null);
+            assert.deepEqual((await restarted.open(binding)).checkpoint, recovery.checkpoint);
+        }
+    }
 });
 
 test('ordered effects, checkpoint, receipt, binary paging and capped count share a completed view', async () => {

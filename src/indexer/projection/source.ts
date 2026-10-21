@@ -105,14 +105,17 @@ export class PortableProjectionSource {
             throw new ProjectionContractError('projection.stale-view', 'Canonical ABI head changed during definition validation');
     }
     /** Bounded certified ancestry; missing old input never becomes an empty frame. */
-    async frame(blockNum: number, definition: ProjectionDefinition): Promise<PortableProjectionFrame> {
+    async frame(blockNum: number, definition: ProjectionDefinition,
+                admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>): Promise<PortableProjectionFrame> {
         if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
         const control = await this.control();
         if (blockNum > control.head.blockNum) unavailable('Next projection source has not committed');
         if (control.head.blockNum - blockNum > this.maximumAncestry) {
             const head = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
-            throw new PortableProjectionFrameError({blockNum: head.source.blockNum, blockId: head.source.blockId,
-                previousBlockId: head.source.previousBlockId ?? zero},
+            const target = Object.freeze({blockNum: head.source.blockNum, blockId: head.source.blockId,
+                previousBlockId: head.source.previousBlockId ?? zero});
+            await admitCanonicalTarget?.(target);
+            throw new PortableProjectionFrameError(target,
             new Error('Projection source is outside bounded canonical ancestry; historical recovery input is required'));
         }
         let commitId: string = control.head.commitId, commit: any, child: any;
@@ -126,6 +129,10 @@ export class PortableProjectionSource {
         }
         const proof = await this.open({blockNum, blockId: commit.source?.blockId});
         if (proof.commitId !== commitId || proof.selectionId !== commit.selectionId) unavailable('Projection source authority changed');
+        // A failed capture/ABI/provider interpretation must not leave an older completed view serving.
+        // Admission failures stay outside the interpretation catch: no contract work has started yet.
+        await admitCanonicalTarget?.(Object.freeze({blockNum, blockId: proof.source.blockId,
+            previousBlockId: proof.source.previousBlockId ?? zero}));
         try {
         const {selection, context} = await this.bindings.readSelection(proof.selectionId);
         const link = await this.bindings.readObservationLink(proof.selectionId);

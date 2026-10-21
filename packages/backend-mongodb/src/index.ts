@@ -383,10 +383,10 @@ class MongoDbProjectionAdapter implements ProjectionAdapter {
             const pending: PendingApplication = {
                 block: snapshot(request.block), digest: metadata.pending?.digest ?? null, reason,
             };
-            const result = await this.metadata.updateOne({
+            const result = await this.metadata.findOneAndUpdate({
                 _id: metadata._id, initialized: true, checkpoint: metadata.checkpoint, pending: metadata.pending, gap: metadata.gap,
-            }, { $set: { pending } }, { writeConcern: this.writeConcern, timeoutMS: this.operationTimeoutMS });
-            if (result.matchedCount !== 1) {
+            }, { $set: { pending } }, { writeConcern: this.writeConcern, timeoutMS: this.operationTimeoutMS, returnDocument: 'after' });
+            if (result === null) {
                 throw new ProjectionContractError('projection.apply-unavailable', 'Projection changed while recording incomplete source; retry its failure marker');
             }
         });

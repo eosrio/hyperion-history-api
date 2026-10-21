@@ -139,6 +139,13 @@ The driver starts the actual indexer/API processes and requires:
 - No undeclared RPC fallback, drained owned queues, exact source hashes after the
   run, parent-observed clean worker/API shutdown and verified owned-Mongo cleanup.
 
+The production worker reserves the exact certified source target as non-serving
+before contract-dependent source materialization or declarative mapping. Only
+successful exact-source application clears that durable intent. Failure to persist
+a later diagnostic reason must not reopen the old checkpoint. Ordinary lag before
+source admission retains its existing serving behavior; this fence does not add
+a state-backend barrier to history/source acknowledgments.
+
 Inspect `report.json`, `prefixes/`, byte-preserving `bulk/` requests/responses,
 `observer/`, and process stdout/stderr. A passing report must also have successful
 shutdown and cleanup receipts; source files alone provide no such result. Failure

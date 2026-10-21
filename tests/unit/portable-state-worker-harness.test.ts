@@ -28,8 +28,11 @@ describe('portable actual-source harness guards', () => {
     it('requires a durable exact pending predecessor and distinguishes write failures from contract failures', () => {
         const binding: any = Object.assign(Object.create(null), {projectionId: 'rows'}), previous = {blockNum: 1, blockId: '1'.repeat(64)}, block = {blockNum: 2, blockId: '2'.repeat(64)};
         const recovery: any = {binding: JSON.parse(JSON.stringify(binding)), checkpoint: previous, initialized: true, gap: null,
-            pending: {block: {...block, previousBlockId: previous.blockId}, digest: 'f'.repeat(64), reason: null}};
+            pending: {block: {...block, previousBlockId: previous.blockId}, digest: 'f'.repeat(64),
+                reason: 'Canonical projection source admitted; durable application is pending'}};
         expect(() => assertPortablePending(recovery, binding, previous, block, false)).not.toThrow();
+        expect(() => assertPortablePending({...recovery, pending: {...recovery.pending, reason: null}}, binding, previous, block, false)).toThrow();
+        expect(() => assertPortablePending({...recovery, pending: {...recovery.pending, reason: 'unrelated failure'}}, binding, previous, block, false)).toThrow();
         expect(() => assertPortablePending({...recovery, checkpoint: block}, binding, previous, block, false)).toThrow();
         expect(() => assertPortablePending({...recovery, pending: {...recovery.pending, block: {...block, previousBlockId: '0'.repeat(64)}}}, binding, previous, block, false)).toThrow();
         expect(() => assertPortablePending({...recovery, gap: recovery.pending}, binding, previous, block, false)).toThrow();

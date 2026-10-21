@@ -76,7 +76,10 @@ test('selected contract failure is durably incomplete while an independent lane 
         maximumFramesPerProjection: 1, source: {frame: async (height, selected) => {
             seen.push([selected.id, height]); return input(height, selected, invalid && selected.id === first.id ? {} : {owner: 'alice'});
         }, revalidate: async () => {}}});
-    await worker.drain(); expect(r.marked.map(value => value.binding.projectionId)).toEqual(['first']);
+    await worker.drain();
+    const admitted = r.marked.filter(value => value.reason === 'Canonical projection source admitted; durable application is pending');
+    expect(admitted.map(value => value.binding.projectionId)).toEqual(['first', 'other']);
+    expect(r.marked.filter(value => !admitted.includes(value)).map(value => value.binding.projectionId)).toEqual(['first']);
     expect(r.applied.map(value => value.binding.projectionId)).toEqual(['other']);
     const restarted = await PortableStateController.create({chainId, configuration: config(first, other), adapter: r.adapter,
         maximumFramesPerProjection: 1, source: {frame: async (height, selected) => {seen.push([selected.id, height]);

@@ -69,7 +69,8 @@ export function assertPortablePending(recovery: ProjectionRecoveryView, binding:
     assert.deepEqual(recovery.binding, {...binding}); assert.equal(recovery.initialized, true); assert.deepEqual(recovery.checkpoint, previous);
     assert.deepEqual(recovery.pending?.block, {...block, previousBlockId: previous.blockId}); assert.equal(recovery.gap, null);
     if (contractFailure) {assert.equal(recovery.pending!.digest, null); assert.match(recovery.pending!.reason!, /Required source field is missing/);}
-    else {assert.match(recovery.pending!.digest!, /^[a-f0-9]{64}$/); assert.equal(recovery.pending!.reason, null);}
+    else {assert.match(recovery.pending!.digest!, /^[a-f0-9]{64}$/);
+        assert.equal(recovery.pending!.reason, 'Canonical projection source admitted; durable application is pending');}
 }
 
 export function validatePortableWorkerPlan(value: unknown): PortableWorkerPlan {
@@ -420,6 +421,10 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                             assertPortablePending(recovery, bindings[index], previous, failed, false);
                             const response = await query(plan.definitions[index].id); assertPortableUnavailable(response); responses.push(responseReceipt(response));
                         }
+                        const invalidRecovery = await invalidAdapter.recovery(invalidBinding);
+                        assertPortablePending(invalidRecovery, invalidBinding, previous, failed, true);
+                        const invalidResponse = await query(invalidDefinition.id); assertPortableUnavailable(invalidResponse);
+                        report.writeFailure.invalidWhilePending = {recovery: invalidRecovery, api: responseReceipt(invalidResponse)};
                         replay!.assertThrough(faultThrough); report.writeFailure.pending = recoveries; report.writeFailure.api = responses;
                         report.writeFailure.historyWhilePending = await history(faultThrough); report.writeFailure.queuesWhilePending = await queues();
                     });
