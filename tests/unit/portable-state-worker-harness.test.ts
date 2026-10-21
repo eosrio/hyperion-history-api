@@ -26,8 +26,8 @@ describe('portable actual-source harness guards', () => {
         expect(projected.valid).toBe(false); if (!projected.valid) expect(projected.errors[0].message).toBe('Required source field is missing');
     });
     it('requires a durable exact pending predecessor and distinguishes write failures from contract failures', () => {
-        const binding: any = {projectionId: 'rows'}, previous = {blockNum: 1, blockId: '1'.repeat(64)}, block = {blockNum: 2, blockId: '2'.repeat(64)};
-        const recovery: any = {binding, checkpoint: previous, initialized: true, gap: null,
+        const binding: any = Object.assign(Object.create(null), {projectionId: 'rows'}), previous = {blockNum: 1, blockId: '1'.repeat(64)}, block = {blockNum: 2, blockId: '2'.repeat(64)};
+        const recovery: any = {binding: JSON.parse(JSON.stringify(binding)), checkpoint: previous, initialized: true, gap: null,
             pending: {block: {...block, previousBlockId: previous.blockId}, digest: 'f'.repeat(64), reason: null}};
         expect(() => assertPortablePending(recovery, binding, previous, block, false)).not.toThrow();
         expect(() => assertPortablePending({...recovery, checkpoint: block}, binding, previous, block, false)).toThrow();

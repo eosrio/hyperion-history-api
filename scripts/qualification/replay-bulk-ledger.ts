@@ -48,7 +48,9 @@ export function summarizeBulkLedger(receipts: any[]) {
         attemptsAfterObservedFailure: afterObservedFailure, acknowledgedCopies,
         limits: ['Repeated IDs alone do not establish retries; only attempts following an observed failure are correlated.']};
 }
-export async function startBulkLedger(url: string, directory: string, errors: string[]) {
+export async function startBulkLedger(url: string, directory: string, errors: string[], maximumRequests = 10000) {
+    assert.ok(Number.isSafeInteger(maximumRequests) && maximumRequests >= 1 && maximumRequests <= 20000,
+        'maximumRequests must be an integer between 1 and 20000');
     const target = new URL(url); assert.equal(target.protocol, 'http:'); assert.equal(target.hostname, '127.0.0.1'); assert.ok(target.port && target.port !== '9200');
     const receipts: any[] = []; let next = 0; let capturedBytes = 0; let active = 0;
     const upstreamRequests = new Set<ReturnType<typeof request>>();
@@ -59,7 +61,7 @@ export async function startBulkLedger(url: string, directory: string, errors: st
             const body = Buffer.concat(chunks); const bulk = incoming.url?.split('?')[0].endsWith('/_bulk');
             let receipt: any;
             if (bulk) {
-                assert.ok(receipts.length < 10000, 'bulk receipt budget exceeded'); capturedBytes += body.length; assert.ok(capturedBytes <= 256 * 1024 * 1024);
+                assert.ok(receipts.length < maximumRequests, 'bulk receipt budget exceeded'); capturedBytes += body.length; assert.ok(capturedBytes <= 256 * 1024 * 1024);
                 const name = String(++next).padStart(5, '0'); receipt = {number: next, startedAt: Date.now(), path: incoming.url,
                     request: {file: `${name}-request.ndjson`, bytes: body.length, sha256: digest(body)}, operations: bulkOperations(incoming.url!, body)};
                 receipts.push(receipt); await writeFile(join(directory, receipt.request.file), body, {flag: 'wx'});
@@ -88,6 +90,7 @@ export async function startBulkLedger(url: string, directory: string, errors: st
     });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
     return {url: `http://127.0.0.1:${(server.address() as any).port}`, receipts,
+        limits: Object.freeze({maximumRequests, maximumCapturedBytes: 256 * 1024 * 1024}),
         assertIdle: () => assert.equal(active, 0, 'HTTP worker writes still active'),
         close: async () => {
             for (const remote of upstreamRequests) remote.destroy(new Error('qualification ledger closed'));

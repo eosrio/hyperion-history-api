@@ -144,6 +144,11 @@ Inspect `report.json`, `prefixes/`, byte-preserving `bulk/` requests/responses,
 shutdown and cleanup receipts; source files alone provide no such result. Failure
 outputs are preserved, including nested error causes and uncertain failpoint cleanup.
 The run is bounded to 15 minutes plus a separate 90 second cleanup reserve.
+This tracer reserves at most 20,000 captured bulk requests; other callers retain
+the shared ledger's 10,000-request default. The cumulative request/response byte
+cap remains 256 MiB and each message remains bounded to 16 MiB. `report.bulkCapture`
+records the configured limits and admitted request count, including failed runs.
+These are observation budgets, not permission to skip or truncate publications.
 
 ## Clean Redis before the core fixture
 

@@ -325,7 +325,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         report.mongo = {uri: mongoUri, version: MONGODB_VERSION, replicaSet: mongoFixture.replicaSet, container: mongoFixture.ownedContainer('replica'), database};
         replay = await servePortableWorkerSource(source, report.errors); rpc = await sourceRpc(source, report.errors);
         report.rpc = {requests: rpc.requests, lineage: rpc.lineage};
-        ledger = await startBulkLedger(state.core.nodes[0].url, join(output, 'bulk'), report.errors);
+        ledger = await startBulkLedger(state.core.nodes[0].url, join(output, 'bulk'), report.errors, 20000);
+        report.bulkCapture = {...ledger.limits, recordedRequests: 0};
         const apiPort = await freePort(), controlPort = await freePort(), config = portableWorkerConfig(chain, database,
             [...plan.definitions, invalidDefinition], apiPort, rpc.url);
         const configFile = join(output, 'chain.json');
@@ -516,6 +517,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             ['owned-mongodb', () => mongoFixture.cleanup()]] as const) {
             try {await close(); report.cleanup.push({name, ok: true});} catch (error) {report.status = 'failed'; report.cleanup.push({name, ok: false, error: describeError(error)});}
         }
+        if (ledger) report.bulkCapture = {...ledger.limits, recordedRequests: ledger.receipts.length};
         report.mongoCleanup = mongoFixture.cleanupResult; report.completedAt = new Date().toISOString();
         await reportHandle.writeFile(JSON.stringify(report, null, 2) + '\n'); await reportHandle.sync(); await reportHandle.close();
     }

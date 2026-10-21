@@ -37,3 +37,8 @@ drive/home paths in the archived files. The nine original `/proc/self/fd/3` orac
 arguments identify its descriptor-provided ABI input, not a machine-specific file.
 Those arguments and all original payload bytes are retained. No assertion here
 qualifies forks, crashes, Rust, Bun, other contracts/backends or full Wire support.
+
+The portable driver's bulk observation budget is 20,000 requests and 256 MiB of
+combined request/response bytes, recorded in `report.bulkCapture`. The shared
+ledger keeps its 10,000-request default for other qualification callers. Reaching
+either bound fails the run; no publication or assertion is omitted.
