@@ -131,6 +131,7 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
     const masters: {child: ChildProcess; name: string; kills: number[]; stopped: boolean}[] = [];
     const apis: {child: ChildProcess; name: string; stopped: boolean}[] = [];
     let probeTask: Promise<void> | undefined, stopProbes = false, probeStage = 'initial', knownFork = false;
+    let captureFailure: (() => Promise<unknown>) | undefined;
     const wait = async (name: string, condition: () => Promise<void>, duration = 180000) => {
         const end = Math.min(deadline, performance.now() + duration); let last: unknown;
         while (performance.now() < end) {assert.deepEqual(report.errors, []);
@@ -204,13 +205,19 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
             await es.nodes.info({metric: ['settings'], flat_settings: true}), await es.nodes.stats({metric: ['fs']}),
             await es.cluster.getSettings({include_defaults: true, flat_settings: true}));
         replay = await serveRecoveryEngineeringSource(source, report.errors);
-        report.rpcRequests = []; rpc = createServer(async (incoming, outgoing) => {try {let bytes = 0; const chunks: Buffer[] = [];
+        report.rpcRequests = []; report.rpcRejections = []; report.rpcRejectionsOmitted = 0;
+        rpc = createServer(async (incoming, outgoing) => {
+          const request: any = {at: Date.now(), method: incoming.method, path: incoming.url, userAgent: incoming.headers['user-agent'], bytes: 0};
+          try {let bytes = 0; const chunks: Buffer[] = [];
             for await (const chunk of incoming) {bytes += chunk.length; assert.ok(bytes <= 4096); chunks.push(Buffer.from(chunk));}
             const body = bytes ? JSON.parse(Buffer.concat(chunks).toString()) : {};
+            request.bytes = bytes; request.body = body;
             assert.ok(report.rpcRequests.length < 512 && ['POST', 'GET'].includes(incoming.method!)
                 && incoming.url === '/v1/chain/get_info' && Object.keys(body).length === 0);
             const info = replay!.info(); report.rpcRequests.push({at: Date.now(), body, info}); outgoing.writeHead(200, {'content-type': 'application/json'}); outgoing.end(JSON.stringify(info));
-        } catch (error) {report.errors.push(describe(error)); outgoing.writeHead(503); outgoing.end('{}');}});
+        } catch (error) {
+            if (report.rpcRejections.length < 16) report.rpcRejections.push(request); else report.rpcRejectionsOmitted++;
+            report.errors.push(describe(error)); outgoing.writeHead(503); outgoing.end('{}');}});
         rpc.listen(0, '127.0.0.1'); await once(rpc, 'listening'); const rpcUrl = 'http://127.0.0.1:' + (rpc.address() as any).port;
         ledger = await startBulkLedger(state.core.nodes[0].url, join(output, 'bulk'), report.errors, 20000);
         const unaffected = recoveryUnaffectedDefinition(plan), definitions = [...plan.definitions, unaffected];
@@ -222,6 +229,13 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
         const bindings: ProjectionBinding[] = definitions.map(definition => configModule.portableStateBinding(selected, definition, source.chainId));
         const {ProtocolAbiFrontierStore} = await import(new URL('../../build/indexer/protocol/abi-frontier-store.js', import.meta.url).href);
         const frontier = new ProtocolAbiFrontierStore(es, chain, 1, {readOnly: true});
+        captureFailure = async () => {
+            const targets = [...bindings, ...(report.gapBinding ? [report.gapBinding] : [])];
+            const labels = ['canonical-frontier', ...targets.map(binding => binding.projectionId)];
+            const results = await Promise.allSettled([frontier.readControl(), ...targets.map(binding => inspectRecoveryPhysical(mongo!, database, binding))]);
+            return {at: Date.now(), source: replay?.metrics(), snapshots: results.map((result, index) => result.status === 'fulfilled'
+                ? {name: labels[index], ok: true, value: result.value} : {name: labels[index], ok: false, error: describe(result.reason)})};
+        };
         const mongoUrl = new URL(mongoUri), redisUrl = new URL(state.redis.url), connections = {
             elasticsearch: {protocol: 'http', host: new URL(state.core.nodes[0].url).host, ingest_nodes: [new URL(ledger.url).host], user: '', pass: ''},
             amqp: {protocol: 'http', host: new URL(state.core.broker.url).host, api: new URL(state.core.broker.managementUrl).host,
@@ -315,6 +329,7 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
         (gapConfig.settings as any).protocol_abi_coordination = {recovery_window_blocks: 3};
         const selectedGap = configModule.resolvePortableStateConfiguration(gapConfig.features.portable_state, source.chainId);
         const gapBinding: ProjectionBinding = configModule.portableStateBinding(selectedGap, gapDefinition, source.chainId);
+        report.gapBinding = gapBinding;
         for (const file of [configFile, join(output, 'config/chains', chain + '.config.json')]) await writeFile(file, JSON.stringify(gapConfig, null, 2) + '\n');
         owner = await startMaster(); apiOwner = await startApi();
         await stage('bounded-gap-existing', 'B', finality === 'reversible' ? 1248 : 1246);
@@ -350,6 +365,10 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
     } catch (error) {report.status = 'failed'; report.error = describe(error);}
     finally {
         cleanupDeadline = performance.now() + 90000; stopProbes = true; await probeTask;
+        if (report.status === 'failed' && captureFailure) {
+            try {report.failureSnapshot = await captureFailure();}
+            catch (error) {report.failureSnapshot = {error: describe(error)};}
+        }
         for (const entry of masters) if (!entry.stopped) {try {await stopMaster(entry);} catch (error) {report.status = 'failed'; report.cleanup.push({name: entry.name, ok: false, error: describe(error)});
             try {if (entry.child.pid && entry.child.exitCode === null && entry.child.signalCode === null) process.kill(-entry.child.pid, 'SIGKILL');} catch (forced: any) {if (forced.code !== 'ESRCH') report.cleanup.push({name: entry.name + '-forced', ok: false, error: describe(forced)});}}}
         for (const entry of apis) if (!entry.stopped) try {await stopApi(entry);}
