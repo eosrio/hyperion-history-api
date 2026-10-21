@@ -46,27 +46,34 @@ def core_state(directory):
     return value
 
 
-def core_command(action, directory, pwsh):
+def core_command(action, directory, pwsh, disk_watermark_profile="20-10-5gb"):
+    if disk_watermark_profile not in ("20-10-5gb", "8-4-2gb"):
+        raise ValueError("Unsupported disposable fixture disk watermark profile")
     arguments = [pwsh, "-NoProfile", "-File", "scripts/qualification/es955-replica-fixture.ps1",
                  "-Action", action, "-StateFile", str(directory / "core-state.json")]
     if action == "create":
-        arguments += ["-ExposeRabbitManagement", "-IndexingPressureLimitMb", "64"]
+        arguments += ["-ExposeRabbitManagement", "-IndexingPressureLimitMb", "64",
+                      "-DiskWatermarkProfile", disk_watermark_profile]
     # Preserve diagnostics if core setup or ownership-checked cleanup fails.
     with (directory / ("core-" + action + ".log")).open("ab") as log:
         subprocess.run(arguments, cwd=REPO, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=360)
 
 
-def create(directory, pwsh):
+def create(directory, pwsh, disk_watermark_profile="20-10-5gb"):
+    if disk_watermark_profile not in ("20-10-5gb", "8-4-2gb"):
+        raise ValueError("Unsupported disposable fixture disk watermark profile")
     directory = Path(directory).absolute()
     parent = ordinary(directory.parent, directory=True)
     if os.path.lexists(directory):
         raise FileExistsError("Service fixture directory must be new")
     directory = parent / directory.name
     directory.mkdir()
-    core_command("create", directory, pwsh)
+    core_command("create", directory, pwsh, disk_watermark_profile)
     core = core_state(directory)
     if core["status"] != "ready" or core["indexingPressureLimitMb"] != 64:
         raise ValueError("Core fixture is not ready at the actual-source pressure budget")
+    if core.get("diskWatermarkProfile") != disk_watermark_profile:
+        raise ValueError("Core disposable fixture disk watermark profile differs")
     run = core["run"]
     name = core["network"] + "-redis"
     volume = name + "-data"
@@ -166,5 +173,10 @@ if __name__ == "__main__":
     parser.add_argument("action", choices=["create", "cleanup"])
     parser.add_argument("directory", help="new service directory for create; preserved service directory for cleanup")
     parser.add_argument("--pwsh", default="pwsh", help="PowerShell7 executable; defaults to PATH")
+    parser.add_argument("--disk-watermark-profile", choices=["20-10-5gb", "8-4-2gb"], default="20-10-5gb",
+                        help="create only: explicit disposable fixture disk profile; default20/10/5GiB")
     arguments = parser.parse_args()
-    print(json.dumps((create if arguments.action == "create" else cleanup)(arguments.directory, arguments.pwsh), indent=2))
+    if arguments.action == "cleanup" and arguments.disk_watermark_profile != "20-10-5gb":
+        parser.error("cleanup uses preserved ownership state; disk profile applies only to create")
+    result = create(arguments.directory, arguments.pwsh, arguments.disk_watermark_profile) if arguments.action == "create" else cleanup(arguments.directory, arguments.pwsh)
+    print(json.dumps(result, indent=2))

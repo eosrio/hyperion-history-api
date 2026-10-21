@@ -87,9 +87,11 @@ and HTTP path; the adapter-only fixture above does not establish that acceptance
 Canonical fork rollback, recovery-window input coverage, live mapping activation
 and the broader restart lifecycle remain
 [tools #21](https://github.com/eosrio/hyperion-tools/issues/21) and its follow-ups.
-The separate [bounded rollback path](projection-rollback.md) adds opt-in SDK v2
-runtime/adapter recovery and a native process-crash fixture; the production
-controller and live source/publication integration still require their own work.
+The [bounded rollback path](projection-rollback.md) supplies SDK v2 recovery.
+The configured production controller now uses this path and selects exact retained
+ancestors against certified source proofs. Worker, public HTTP and restart
+qualification is tracked in [#246](https://github.com/eosrio/hyperion-history-api/issues/246);
+the adapter's native crash fixture alone does not establish that acceptance.
 Legacy extension state integration remains
 [History API #221](https://github.com/eosrio/hyperion-history-api/issues/221).
 
@@ -110,6 +112,7 @@ path; its native MongoDB fields and filters do not become portable queries.
 features.portable_state = {
   backend: {kind: 'mongodb', id: 'chain-state-1', database: 'hyperion_portable_state'},
   projections: [definition],
+  finality: 'reversible', // Default. Use 'irreversible' for this chain's state projections.
 };
 ```
 
@@ -124,10 +127,26 @@ flag. Unrelated projection additions do not replace existing instance identities
 Changed definitions still require the adapter's explicit activation/cutover
 contract rather than silently adopting existing state.
 
+Finality applies to every portable projection on the chain. Reversible mode
+follows the certified canonical head. Irreversible mode applies only through
+the eligible source LIB and leaves reversible history indexing enabled. Each
+mode has a separate stored instance; changing modes requires a controlled worker
+and API restart and independent state initialization. Existing reversible effects
+cannot seed an irreversible instance. A regressive LIB report or an orphaned
+irreversible checkpoint leaves that view unavailable rather than undoing its
+previously qualified irreversible effects.
+
+The supervised worker explicitly activates the revision-fenced MongoDB adapter.
+For an existing matching v1 instance, coordinate the old owner shutdown before
+activation: rows and the actual checkpoint are preserved, and undo coverage starts
+there. Old retry receipts cannot supply missing before-images. A fork outside the
+retained exact branch needs separately qualified historical recovery or a state
+rebuild; it does not require an Elasticsearch history reindex.
+
 The API attaches read-only consumers. It never initializes storage, publishes a
 ready flag or marks a failed projection complete. A ready adapter checkpoint must
 be greater than zero and have current certified canonical source coverage from
-actual block one. Readiness, exact binding/checkpoint and source authority are
+actual block one. Readiness, exact binding/checkpoint/revision, finality and source authority are
 checked again after asynchronous query work. Snapshot rows and an optional count
 come from the shared logical query contract.
 
@@ -153,7 +172,8 @@ stale or source-fenced state returns 503 with `retryable:true` and `Retry-After:
 An initialized empty database at checkpoint zero cannot return a successful page.
 
 Shared browser-readable response headers are `Hyperion-State-Block-Num`,
-`Hyperion-State-Block-Id` and `Hyperion-State-Last-Valid`. They identify the actual
+`Hyperion-State-Block-Id`, `Hyperion-State-Last-Valid` and
+`Hyperion-State-Finality` (`reversible` or `irreversible`). They identify the actual
 returned view; this slice always uses `false` for last-valid mode and serves no
 fallback after failure. This route uses `Cache-Control: no-store` and bypasses
 the history response cache, so history's last indexed block cannot replace its
