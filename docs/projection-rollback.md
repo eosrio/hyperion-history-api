@@ -116,6 +116,15 @@ duplicates, stale writers/views, bounded coverage, oversized undo and migration.
 It also reproduces the historical v1 update filter against actual migrated
 storage. It does not claim execution of a complete historical binary.
 
+A killed worker can leave an open server transaction until MongoDB's periodic
+[transaction expiry cleanup](https://www.mongodb.com/docs/v8.0/reference/parameters/#transactionLifetimeLimitSeconds).
+Immediate replay may therefore return retryable unavailable while the original
+checkpoint, pending target and rows remain intact. The fixture preserves default
+server settings, bounds recovery to 180 seconds per crashed boundary and records
+each received retryable failure before retrying the same fenced input. Each
+attempt must preserve an explicitly expected physical state; a timeout cannot
+stand in for successful application or completed rollback.
+
 Reports retain the native child exits and command barriers, physical row hashes,
 checkpoints, source/emission fingerprints and cleanup results. A failing rollback
 run remains in the report. The Node.js 22/24 CI matrix runs this fixture separately
