@@ -304,7 +304,7 @@ try {
     assert.deepEqual([...boundedPage.rows, ...continuation.rows], expectedLarge);
     check('actual adapter shortens a large page at 4 MiB and resumes without omitted or repeated rows');
     report.rollback = await runProjectionRollbackQualification({uri: fixture.endpoint('replica'),
-        databaseName: `${databaseName}_rollback`, run: fixture.run,
+        databaseName: `hyp_rollback_${fixture.run}`, run: fixture.run,
         assertOwned: () => fixture.ownedContainer('replica')});
     check('opt-in rollback retains canonical effects and progress across real worker process crashes', report.rollback);
     report.status = 'passed';
