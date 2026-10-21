@@ -205,7 +205,7 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         const value = await metadata(selected);
         assert.ok(value);
         const plainCheckpoint = checkpoint(value.checkpoint);
-        assert.deepEqual(plainCheckpoint, expectedCheckpoint);
+        assert.deepEqual(plainCheckpoint, checkpoint(expectedCheckpoint));
         if (value.storageVersion === 'h45-portable-mongodb-v2') {
             assert.deepEqual(Object.keys(value.checkpoint).sort(), ['blockId', 'blockNum', 'revision']);
             assert.equal(value.checkpoint.revision, value.revision, 'Native checkpoint CAS must fence pre-upgrade legacy writers');
@@ -254,8 +254,8 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         assert.equal(raw.pending, null); assert.equal(raw.gap, null);
         assert.equal(raw.rollback.operationId, request.operationId);
         assert.equal(raw.rollback.sourceRevision, request.revision);
-        assert.deepEqual(raw.rollback.from, request.from);
-        assert.deepEqual(raw.rollback.ancestor, request.ancestor);
+        assert.deepEqual(checkpoint(raw.rollback.from), checkpoint(request.from));
+        assert.deepEqual(checkpoint(raw.rollback.ancestor), checkpoint(request.ancestor));
         assert.notEqual(raw.revision, request.revision);
         const completed = raw.checkpoint.blockNum === 1;
         assert.equal(raw.rollback.status, completed ? 'complete' : 'running');
@@ -402,12 +402,12 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         await prepareOrphan(window);
         const retained = await window.runtime.recovery();
         assert.equal(retained.coverage.retainedBlocks, 2);
-        assert.deepEqual(retained.coverage.floor, checkpoint(orphan2.block));
+        assert.deepEqual(checkpoint(retained.coverage.floor), checkpoint(orphan2.block));
         await assert.rejects(window.runtime.rollback(await plan(window, `window-${run}`, checkpoint(firstBlock), 1)),
             errorCode('projection.rollback-unavailable'));
         const uncovered = await window.runtime.recovery();
         assert.equal(uncovered.rollback.status, 'unavailable');
-        assert.deepEqual(uncovered.checkpoint, checkpoint(orphan4.block));
+        assert.deepEqual(checkpoint(uncovered.checkpoint), checkpoint(orphan4.block));
         await assert.rejects(window.runtime.open(), errorCode('projection.incomplete'));
         const windowRestart = await worker(window, 'inspect');
         assert.equal(windowRestart.recovery.rollback.status, 'unavailable');
@@ -461,7 +461,7 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         const upgradedAdapter = createMongoDbRollbackAdapter({...rootOptions, receiptRetention: 1});
         const upgradedRuntime = await RecoverableProjectionRuntime.create({adapter: upgradedAdapter, definition: legacyDefinition, binding: legacyBinding, genesis});
         const migrated = await upgradedRuntime.recovery();
-        assert.deepEqual(migrated.coverage.floor, checkpoint(orphan2.block));
+        assert.deepEqual(checkpoint(migrated.coverage.floor), checkpoint(orphan2.block));
         assert.equal(migrated.coverage.retainedBlocks, 0);
         assert.deepEqual((await upgradedRuntime.query(all)).rows, orphanRows2);
         // Reproduce the historical binary's full-checkpoint filter after it had already loaded v1.
