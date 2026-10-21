@@ -102,8 +102,9 @@ describe('portable actual-source harness guards', () => {
         expect(environment.NODE_OPTIONS).toBe(''); expect(environment.worker_role).toBeUndefined(); expect(environment.ES198_FAULT).toBeUndefined(); expect(environment.PATH).toBe('kept');
     });
     it('requires exact HTTP checkpoint, binding, rows/count and shared completeness headers', () => {
-        const binding = {projectionId: 'rows'}, block = {blockNum: 4, blockId: '4'.repeat(64)}, rows = [{key: 'a', value: {value: 'after'}}];
-        const result = {view: {binding, checkpoint: block}, rows, count: {value: 1, exact: true}};
+        // SDK validation uses null-prototype records; HTTP JSON and adapter snapshots use ordinary records.
+        const binding = Object.assign(Object.create(null), {projectionId: 'rows'}), block = {blockNum: 4, blockId: '4'.repeat(64)}, rows = [{key: 'a', value: {value: 'after'}}];
+        const result = JSON.parse(JSON.stringify({view: {binding, checkpoint: block}, rows, count: {value: 1, exact: true}}));
         const headers = new Headers({'hyperion-state-block-num': '4', 'hyperion-state-block-id': block.blockId,
             'hyperion-state-last-valid': 'false', 'cache-control': 'no-store'});
         expect(() => assertPortableApiResult(result, headers, binding, block, rows)).not.toThrow();

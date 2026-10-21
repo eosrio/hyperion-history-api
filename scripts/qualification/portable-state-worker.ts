@@ -65,7 +65,8 @@ export function assertPortableUnavailable(response: {status: number; headers: He
 
 export function assertPortablePending(recovery: ProjectionRecoveryView, binding: ProjectionBinding,
                                       previous: {blockNum: number; blockId: string}, block: {blockNum: number; blockId: string}, contractFailure: boolean) {
-    assert.deepEqual(recovery.binding, binding); assert.equal(recovery.initialized, true); assert.deepEqual(recovery.checkpoint, previous);
+    // SDK records may have a null prototype; durable/HTTP JSON snapshots have ordinary prototypes.
+    assert.deepEqual(recovery.binding, {...binding}); assert.equal(recovery.initialized, true); assert.deepEqual(recovery.checkpoint, previous);
     assert.deepEqual(recovery.pending?.block, {...block, previousBlockId: previous.blockId}); assert.equal(recovery.gap, null);
     if (contractFailure) {assert.equal(recovery.pending!.digest, null); assert.match(recovery.pending!.reason!, /Required source field is missing/);}
     else {assert.match(recovery.pending!.digest!, /^[a-f0-9]{64}$/); assert.equal(recovery.pending!.reason, null);}
@@ -159,7 +160,7 @@ async function boundedResponse(response: Response, maximum = 4 * 1024 * 1024) {
 }
 
 export function assertPortableApiResult(result: any, headers: Headers, binding: unknown, block: {blockNum: number; blockId: string}, rows: readonly Row[]) {
-    assert.deepEqual(result.view, {binding, checkpoint: block}); assert.deepEqual(result.rows, rows);
+    assert.deepEqual(result.view, {binding: {...binding as ProjectionBinding}, checkpoint: block}); assert.deepEqual(result.rows, rows);
     assert.equal(result.count?.value, rows.length); assert.equal(result.count?.exact, true);
     assert.equal(result.nextAfterKey, undefined);
     assert.equal(headers.get('hyperion-state-block-num'), String(block.blockNum));
