@@ -2,7 +2,7 @@ import {
     PROJECTION_CAPABILITIES, ProjectionContractError,
     validateProjectionRollbackActivation, validateProjectionRollbackRecovery,
     validateProjectionRollbackRequest, validateProjectionRollbackView, validateProjectionView,
-    type ProjectionAdapter, type ProjectionBinding, type ProjectionCheckpoint,
+    type ProjectionAdapter, type ProjectionBinding, type ProjectionBlock, type ProjectionCheckpoint,
     type ProjectionDefinition, type ProjectionQuery, type ProjectionReadView,
     type ProjectionRollbackAdapter, type ProjectionRollbackApplyResult,
     type ProjectionRollbackQueryResult, type ProjectionRollbackReadView,
@@ -94,7 +94,7 @@ class RevisionLane {
 /**
  * Runtime-owned recovery of one projection. The caller establishes canonical ancestry before
  * supplying an ancestor; this seam does not infer chain authority from a matching block number.
- * The existing production SHiP/controller path remains on v1 until its own recovery integration.
+ * Production canonical selection remains the source/controller's responsibility.
  */
 export class RecoverableProjectionRuntime {
     private lane!: {revision: RevisionLane; runtime: DeclarativeProjectionRuntime};
@@ -134,11 +134,15 @@ export class RecoverableProjectionRuntime {
         if (this.recovering)
             throw new ProjectionContractError('projection.incomplete', 'Projection canonical recovery is pending');
     }
-    process(frame: ProjectionFrame): Promise<ProjectionRollbackApplyResult> {
+    process(frame: ProjectionFrame, admitSource?: (block: ProjectionBlock) => Promise<void>): Promise<ProjectionRollbackApplyResult> {
         try {this.available();} catch (error) {return Promise.reject(error);}
         const lane = this.lane;
         // The callback runs before mapping inside the old queue. It never adopts a newer revision.
-        const work = lane.runtime.process(frame, async () => lane.revision.assertActive())
+        const work = lane.runtime.process(frame, async block => {
+            lane.revision.assertActive();
+            await admitSource?.(block);
+            lane.revision.assertActive();
+        })
             .then(result => ({status: result.status, view: lane.revision.fenced(result.view)}));
         this.pending.add(work);
         work.then(() => this.pending.delete(work), () => this.pending.delete(work));

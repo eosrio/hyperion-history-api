@@ -12,12 +12,27 @@ The runtime's caller establishes canonical source authority and selects an exact
 ancestor. The MongoDB adapter validates that ancestor against its retained branch
 and owns native undo, transactions and storage integrity.
 
-This is a separate interface, activated through `createMongoDbRollbackAdapter`.
-The existing factory, v1 SDK validators and production controller retain their
-current interface. Integrating the new path with live SHiP fork selection, legacy
-state routes and publication gates remains
-[#221](https://github.com/eosrio/hyperion-history-api/issues/221). Creating an
-adapter alone never changes an existing projection.
+The rollback-only factory remains `createMongoDbRollbackAdapter`. The production
+portable-state controller uses `createMongoDbRecoveryAdapter`, which independently
+declares retained-checkpoint inspection without widening the existing closed v1
+or v2 capability manifests. Both factories require explicit initialization before
+changing a matching stored instance. Legacy state routes and broader publication
+integration remain [#221](https://github.com/eosrio/hyperion-history-api/issues/221).
+
+The recovery factory reads the validated durable metadata once and returns the
+actual applied block IDs, descending through the retained floor inclusive, bound
+to the caller's exact revision. The controller intersects that path with separately
+certified canonical source ancestry; a matching height alone is insufficient.
+Running operations resume from their original operation ID, source revision,
+starting checkpoint and ancestor before a new canonical plan is considered.
+The per-call block budget is not part of that durable operation identity.
+
+Affected queries require the same revision, canonical source and configured
+finality after asynchronous work. They return retryable 503 during recovery;
+unrelated projection lanes and history indexing continue. Production worker/API
+and restart qualification is tracked in
+[#246](https://github.com/eosrio/hyperion-history-api/issues/246). Constructed branch
+fixtures are engineering evidence; a live Wire fork remains separate acceptance.
 
 ## Durable processing and recovery
 

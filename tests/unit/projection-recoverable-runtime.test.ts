@@ -91,6 +91,22 @@ test('rollback capability, genesis and pending bounds fail before native initial
     expect(fake.initializeCalls()).toBe(0);
 });
 
+test('production admission runs before mapping and remains fenced while an asynchronous callback is pending', async () => {
+    const fake = reference(), runtime = await create(fake.adapter), entered = deferred(), release = deferred();
+    const work = runtime.process(frame(1), async block => {
+        expect(block).toEqual(frame(1).block);
+        entered.resolve(); await release.promise;
+    });
+    const observed = Promise.allSettled([work]);
+    await entered.promise;
+    const recovery = runtime.rollback(plan('admission-race', checkpoint(0)));
+    expect(fake.batches).toHaveLength(0);
+    release.resolve();
+    expect((await observed)[0].status).toBe('rejected');
+    expect((await recovery).status).toBe('rolled-back');
+    expect(fake.batches).toHaveLength(0);
+});
+
 test('rollback invalidates queued work, drains an in-flight commit and inspects its actual checkpoint', async () => {
     const fake = reference(), entered = deferred(), release = deferred(), apply = fake.adapter.apply.bind(fake.adapter);
     fake.adapter.apply = async request => {entered.resolve(); await release.promise; return apply(request);};
