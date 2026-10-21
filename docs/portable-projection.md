@@ -157,3 +157,10 @@ the history response cache, so history's last indexed block cannot replace its
 state checkpoint. Existing extension state routes and streams retain their
 readiness guards. Stream-client compatibility remains a separate
 [#231](https://github.com/eosrio/hyperion-history-api/issues/231) gate.
+
+The [actual-source worker reproduction](qualification/portable-state-worker.md)
+packages a bounded Wire primary-KV tracer through the existing workers, RabbitMQ,
+portable runtime, MongoDB adapter and real HTTP API, including controlled write
+failure and projection isolation checks. Its source fixture and instructions do
+not establish a successful run; record exact runtime results separately from
+fork, crash, Bun and broader release qualification.

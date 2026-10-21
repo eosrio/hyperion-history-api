@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "directory": "source",
+    "receiptSha256": "40740fa53af8c53142dadbfc63e1336a3f33e79ea9c2ae256cc5e9c9d7ff84dc",
+    "endBlock": 1480,
+    "status": {
+      "path": "status.bin",
+      "bytes": 121,
+      "sha256": "8806e481f5e310068eb5ff86506e5d39c1acee5444cd11326744d4fd8b1d8deb"
+    },
+    "getInfo": {
+      "path": "get-info.json",
+      "bytes": 932,
+      "sha256": "83550f97a7a8fa3a1343a45ab187f192ec70d22258c10bbbe12f3fcda234a9e2"
+    }
+  },
+  "definitions": [
+    {
+      "schemaVersion": 1,
+      "id": "sysio-msgch-attseq",
+      "source": {
+        "contract": "sysio.msgch",
+        "table": "attseq",
+        "abiDeployment": "000000de77fe7cb815625de908087f303e890cb1510e086889079a24b65401f9:sysio.msgch:5adef7ede21018b2891598858d2bb57cc9e06a5761ee7b794f15cf8b532db28b",
+        "abiSha256": "5adef7ede21018b2891598858d2bb57cc9e06a5761ee7b794f15cf8b532db28b"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "path": [
+            "id"
+          ],
+          "type": "string"
+        },
+        {
+          "name": "next",
+          "path": [
+            "next"
+          ],
+          "type": "string"
+        }
+      ],
+      "initialization": {
+        "kind": "genesis"
+      },
+      "mappingRevision": "22ff7d7f90f243582d34129eebe3b875bd7ac0a3af75b23fc24fb7668ffe6cdb"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "sysio-msgch-outenvelopes",
+      "source": {
+        "contract": "sysio.msgch",
+        "table": "outenvelopes",
+        "abiDeployment": "000000de77fe7cb815625de908087f303e890cb1510e086889079a24b65401f9:sysio.msgch:5adef7ede21018b2891598858d2bb57cc9e06a5761ee7b794f15cf8b532db28b",
+        "abiSha256": "5adef7ede21018b2891598858d2bb57cc9e06a5761ee7b794f15cf8b532db28b"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "path": [
+            "id"
+          ],
+          "type": "string"
+        },
+        {
+          "name": "epoch_index",
+          "path": [
+            "epoch_index"
+          ],
+          "type": "integer"
+        },
+        {
+          "name": "chain_code",
+          "path": [
+            "chain_code"
+          ],
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "path": [
+            "status"
+          ],
+          "type": "string"
+        },
+        {
+          "name": "envelope_hash",
+          "path": [
+            "envelope_hash"
+          ],
+          "type": "string"
+        }
+      ],
+      "initialization": {
+        "kind": "genesis"
+      },
+      "mappingRevision": "c1615f461d998645e9da1f724a91538bbc539262d97045f0c112b26f92c97f29"
+    }
+  ],
+  "barriers": [
+    {
+      "through": 1244,
+      "rows": {
+        "sysio-msgch-attseq": [
+          {
+            "key": "[\"\",\"wire-kv-v1:row:9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d:14389258105242393088:1067:0000000000000000\"]",
+            "value": {
+              "id": "0",
+              "next": "5"
+            }
+          }
+        ],
+        "sysio-msgch-outenvelopes": [
+          {
+            "key": "[\"\",\"wire-kv-v1:row:9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d:14389258105242393088:18398:0000000000000001\"]",
+            "value": {
+              "id": "1",
+              "epoch_index": 1,
+              "chain_code": "23373300651341",
+              "status": "ENVELOPE_STATUS_PENDING_DELIVERY",
+              "envelope_hash": "45021eb6414c11f48a958ac362fd9f4d9d1d419c49fd8b38329ec11f56a99852"
+            }
+          },
+          {
+            "key": "[\"\",\"wire-kv-v1:row:9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d:14389258105242393088:18398:0000000000000002\"]",
+            "value": {
+              "id": "2",
+              "epoch_index": 1,
+              "chain_code": "84606581215232",
+              "status": "ENVELOPE_STATUS_PENDING_DELIVERY",
+              "envelope_hash": "ae1869827e74f6b14697397055826dce2d9e9260e768e7da389e67d46b9a28ca"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "through": 1480,
+      "rows": {
+        "sysio-msgch-attseq": [
+          {
+            "key": "[\"\",\"wire-kv-v1:row:9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d:14389258105242393088:1067:0000000000000000\"]",
+            "value": {
+              "id": "0",
+              "next": "9"
+            }
+          }
+        ],
+        "sysio-msgch-outenvelopes": [
+          {
+            "key": "[\"\",\"wire-kv-v1:row:9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d:14389258105242393088:18398:0000000000000003\"]",
+            "value": {
+              "id": "3",
+              "epoch_index": 2,
+              "chain_code": "23373300651341",
+              "status": "ENVELOPE_STATUS_PENDING_DELIVERY",
+              "envelope_hash": "4998383bce42d3c0de8d76c5b88282551a44d98314581e648fed277975064bb1"
+            }
+          },
+          {
+            "key": "[\"\",\"wire-kv-v1:row:9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d:14389258105242393088:18398:0000000000000004\"]",
+            "value": {
+              "id": "4",
+              "epoch_index": 2,
+              "chain_code": "84606581215232",
+              "status": "ENVELOPE_STATUS_PENDING_DELIVERY",
+              "envelope_hash": "25f4c909c6aedd31ec0adb05a533a8ef7089728f8fdea0156a1e96787437d07c"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "oracleFiles": [
+    {
+      "path": "source/official-oracle.json",
+      "bytes": 118491,
+      "sha256": "dfd01e79c8eafaa641fef03a2b3e241b6c90d8d675818ddea52a52a0d37940e9"
+    },
+    {
+      "path": "source/source-control.json",
+      "bytes": 979,
+      "sha256": "dfe31b4865f8f8134c6ddd08dc311a02d39182d3534ded9ffb77a50b0339464e"
+    }
+  ],
+  "expectationOrigin": "Original irreversible 6508 frames, original block222 ABI and independent exact-source official-clio value conversions; no worker/database-derived expectations."
+}
