@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {MongoClient} from 'mongodb';
+import {validateProjectionRollbackRequest} from '@eosrio/hyperion-sdk/projection';
 import {validateWorkerJob} from './projection-rollback-worker.mjs';
 
 const workerPath = fileURLToPath(new URL('./projection-rollback-worker.mjs', import.meta.url));
@@ -11,9 +12,9 @@ const zero = '0'.repeat(64);
 const genesis = {blockNum: 0, blockId: zero};
 const copy = value => structuredClone(value);
 const hash = value => createHash('sha256').update(value).digest('hex');
-const canonical = value => value !== null && typeof value === 'object'
-    ? (Array.isArray(value) ? `[${value.map(canonical).join(',')}]`
-        : `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`)
+const canonicalJson = value => value !== null && typeof value === 'object'
+    ? (Array.isArray(value) ? `[${value.map(canonicalJson).join(',')}]`
+        : `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`)
     : JSON.stringify(value);
 const checkpoint = block => ({blockNum: block.blockNum, blockId: block.blockId});
 const key = value => JSON.stringify(['scope', value]);
@@ -21,6 +22,41 @@ const record = (id, owner, amount) => ({key: key(id), value: {owner, amount, ena
 const sorted = rows => copy(rows).sort((a, b) => Buffer.compare(Buffer.from(a.key), Buffer.from(b.key)));
 const errorCode = code => error => error?.code === code;
 const all = {filter: [], limit: 1000};
+export const RECOVERY_RETRY_LIMITS = Object.freeze({maxAttempts: 3, rollbackMaxCalls: 8, deadlineMS: 180_000});
+
+/** Capture once. Retrying a retired request must never replace its original revision or from. */
+export function captureRollbackPlan(recovery, operationId, ancestor, maxBlocks) {
+    const result = validateProjectionRollbackRequest({binding: recovery.binding, revision: recovery.revision,
+        from: recovery.checkpoint, operationId, ancestor, maxBlocks});
+    assert.equal(result.valid, true, 'Fixture rollback plan must satisfy the complete SDK contract');
+    return result.value;
+}
+
+/** Explicitly inspect every acknowledged unavailable attempt, then retry only the exact work. */
+export async function retryAcknowledgedUnavailable({operation, observeFailure, deadline, failures, context = {}, now = Date.now}) {
+    assert.equal(typeof operation, 'function');
+    assert.equal(typeof observeFailure, 'function');
+    assert.ok(Array.isArray(failures));
+    assert.ok(Number.isSafeInteger(deadline));
+    assert.ok(deadline - now() <= RECOVERY_RETRY_LIMITS.deadlineMS, 'Recovery deadline cannot exceed 180 seconds');
+    for (let attempt = 1; attempt <= RECOVERY_RETRY_LIMITS.maxAttempts; attempt++) {
+        const remainingMS = deadline - now();
+        assert.ok(remainingMS >= 100, 'Crashed-boundary recovery exceeded its shared 180-second deadline');
+        try {
+            const result = await operation({attempt, timeoutMS: Math.min(120_000, remainingMS)});
+            assert.ok(now() <= deadline, 'Crashed-boundary recovery exceeded its shared 180-second deadline');
+            return result;
+        }
+        catch (error) {
+            if (error?.workerAcknowledged !== true || error?.code !== 'projection.apply-unavailable' || error?.retryable !== true) throw error;
+            const failure = {context, attempt, remainingMS: deadline - now(), process: error.worker, physical: null};
+            failures.push(failure);
+            failure.physical = await observeFailure(error);
+            if (attempt === RECOVERY_RETRY_LIMITS.maxAttempts || deadline - now() < 100) throw error;
+        }
+    }
+    throw new Error('Bounded recovery attempt limit exhausted');
+}
 
 /** A private runner seam: resources are already owned, and only this child handle can be killed. */
 export async function runRollbackWorker(job, {assertOwned, children = new Set(), processes = [], timeoutMS = 120_000} = {}) {
@@ -61,10 +97,12 @@ export async function runRollbackWorker(job, {assertOwned, children = new Set(),
     }
     const lines = stdout.split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
     const barrier = lines.find(line => line.type === 'barrier');
-    const entry = {action: job.action, crash: job.crash ?? null, pid: barrier?.pid ?? envelope?.value?.pid ?? child.pid,
-        node: barrier?.node ?? envelope?.value?.node ?? null, elapsedMS: Date.now() - started,
+    const evidence = envelope?.value ?? envelope?.evidence;
+    const entry = {action: job.action, crash: job.crash ?? null, pid: barrier?.pid ?? evidence?.pid ?? child.pid,
+        node: barrier?.node ?? evidence?.node ?? null, startedAt: new Date(started).toISOString(), elapsedMS: Date.now() - started,
         exitCode: closed.code, signal: closed.signal, barrier: barrier ?? null,
-        trace: envelope?.value?.trace ?? [], stderr};
+        trace: evidence?.trace ?? barrier?.trace ?? [], traceTruncated: evidence?.traceTruncated ?? barrier?.traceTruncated ?? false,
+        error: envelope?.type === 'error' ? envelope.error : null, stderr};
     processes.push(entry);
     assert.equal(timedOut, false, 'Owned rollback worker exceeded its deadline');
     assert.equal(overflow, false, 'Owned rollback worker exceeded its evidence budget');
@@ -73,6 +111,16 @@ export async function runRollbackWorker(job, {assertOwned, children = new Set(),
         assert.equal(barrier?.boundary, job.crash, 'Actual durable boundary was not observed before SIGKILL');
         assert.equal(envelope, undefined, 'Crashed worker unexpectedly acknowledged completion');
         return {barrier, process: entry};
+    }
+    if (envelope?.type === 'error') {
+        assert.equal(closed.code, 1, 'Acknowledged worker failure must exit with code 1');
+        assert.equal(closed.signal, null);
+        assert.equal(entry.pid, child.pid);
+        assert.equal(entry.node, process.version);
+        assert.ok(envelope.error && typeof envelope.error === 'object');
+        throw Object.assign(new Error(`Worker acknowledged failure: ${envelope.error.message}`), {
+            workerAcknowledged: true, code: envelope.error.code, retryable: envelope.error.retryable === true, worker: entry,
+        });
     }
     assert.equal(closed.code, 0, `Worker failed: ${JSON.stringify(envelope)} ${stderr}`);
     assert.equal(closed.signal, null);
@@ -103,7 +151,7 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
     process.on('SIGTERM', cancelChildren);
     const report = {schemaVersion: 1, status: 'running', qualification: false, run, node: process.version,
         scope: 'SDK v2 and shared declarative runtime/adapter process-crash rollback; no live SHiP fork or release qualification',
-        checks: [], processes, cleanup: {children: false, client: false}};
+        retryPolicy: RECOVERY_RETRY_LIMITS, unavailableAttempts: [], checks: [], processes, cleanup: {children: false, client: false}};
     const client = new MongoClient(uri, {appName: `h45-rollback-oracle-${run}`, directConnection: true,
         retryWrites: false, maxPoolSize: 4, serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000, timeoutMS: 30_000});
     const check = (name, details) => report.checks.push({name, ...(details === undefined ? {} : {details})});
@@ -139,6 +187,8 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
     const orphanRows4 = sorted([record('update', 'orphan', 204), record('insert', 'orphan', 401), record('second', 'orphan', 500)]);
     const replacementRows = sorted([record('survivor', 'canonical', 901), record('update', 'canonical', 900),
         record('repeat', 'canonical', 777), record('replacement', 'canonical', 600)]);
+    const replacementRows2 = sorted([record('survivor', 'alice', 100), record('update', 'canonical', 900),
+        record('repeat', 'canonical', 777), record('replacement', 'canonical', 600)]);
     const scenario = async (name, adapterOptions = {}) => {
         const definition = definitionFor(name), binding = bindingFor(definition);
         const adapter = createMongoDbRollbackAdapter({...rootOptions, ...adapterOptions});
@@ -146,7 +196,10 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         const job = {schemaVersion: 1, uri, databaseName, collectionPrefix: prefix, backendId, definition, binding, adapterOptions};
         return {definition, binding, adapter, runtime, job, adapterOptions};
     };
-    const worker = (selected, action, extra = {}) => runRollbackWorker({...selected.job, action, ...extra}, {assertOwned, children, processes});
+    const worker = (selected, action, extra = {}, timeoutMS = 120_000) =>
+        runRollbackWorker({...selected.job, action, ...extra}, {assertOwned, children, processes, timeoutMS});
+    const plan = async (selected, operationId, ancestor, maxBlocks) =>
+        captureRollbackPlan(await selected.runtime.recovery(), operationId, ancestor, maxBlocks);
     const metadata = selected => client.db(databaseName).collection(`${prefix}_metadata`).findOne({'binding.projectionId': selected.binding.projectionId});
     const physical = async (selected, expectedCheckpoint, expectedRows) => {
         const value = await metadata(selected);
@@ -157,11 +210,11 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
             assert.deepEqual(Object.keys(value.checkpoint).sort(), ['blockId', 'blockNum', 'revision']);
             assert.equal(value.checkpoint.revision, value.revision, 'Native checkpoint CAS must fence pre-upgrade legacy writers');
         } else assert.deepEqual(Object.keys(value.checkpoint).sort(), ['blockId', 'blockNum']);
-        const documents = await client.db(databaseName).collection(`${prefix}_r_${hash(canonical(selected.binding))}`)
+        const documents = await client.db(databaseName).collection(`${prefix}_r_${hash(canonicalJson(selected.binding))}`)
             .find({}).sort({_id: 1}).toArray();
         const rows = documents.map(document => ({key: document._id, value: document.value}));
         assert.deepEqual(rows, expectedRows);
-        return {checkpoint: plainCheckpoint, rows: rows.length, rowSha256: hash(canonical(rows)),
+        return {checkpoint: plainCheckpoint, rows: rows.length, rowSha256: hash(canonicalJson(rows)),
             revision: value.revision, pending: value.pending !== null, rollback: value.rollback?.status ?? null};
     };
     const prepareOrphan = async selected => {
@@ -173,10 +226,56 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
     };
     const reopen = async selected => RecoverableProjectionRuntime.create({
         adapter: createMongoDbRollbackAdapter({...rootOptions, ...selected.adapterOptions}), definition: selected.definition, binding: selected.binding, genesis});
-    const resumeRollback = async (selected, request) => {
-        let value;
-        for (let attempts = 0; attempts < 8; attempts++) {
-            value = await worker(selected, 'rollback', {request: {...request, maxBlocks: 1}});
+    const observeApplyState = async selected => {
+        const raw = await metadata(selected);
+        assert.ok(raw);
+        const completed = raw.checkpoint.blockNum === 2 && raw.checkpoint.blockId === orphan2.block.blockId;
+        const state = await physical(selected, checkpoint(completed ? orphan2.block : firstBlock), completed ? orphanRows2 : baseRows);
+        assert.equal(raw.gap, null);
+        assert.equal(raw.rollback, null);
+        if (completed) {
+            assert.equal(raw.pending, null);
+            assert.deepEqual((await selected.adapter.query(await selected.adapter.open(selected.binding), all)).rows, orphanRows2);
+        } else {
+            assert.deepEqual(raw.pending.block, orphan2.block);
+            assert.match(raw.pending.digest, /^[0-9a-f]{64}$/);
+            await assert.rejects(selected.adapter.open(selected.binding), errorCode('projection.incomplete'));
+        }
+        return {...state, completed, pendingSource: copy(raw.pending)};
+    };
+    const observeRollbackState = async (selected, request) => {
+        const raw = await metadata(selected);
+        assert.ok(raw);
+        const allowed = new Map([[4, [orphan4.block, orphanRows4]], [3, [orphan3.block, orphanRows3]],
+            [2, [orphan2.block, orphanRows2]], [1, [firstBlock, baseRows]]]);
+        const expected = allowed.get(raw.checkpoint.blockNum);
+        assert.ok(expected, 'Rollback may expose only the explicitly known canonical ancestor states');
+        const state = await physical(selected, checkpoint(expected[0]), expected[1]);
+        assert.equal(raw.pending, null); assert.equal(raw.gap, null);
+        assert.equal(raw.rollback.operationId, request.operationId);
+        assert.equal(raw.rollback.sourceRevision, request.revision);
+        assert.deepEqual(raw.rollback.from, request.from);
+        assert.deepEqual(raw.rollback.ancestor, request.ancestor);
+        assert.notEqual(raw.revision, request.revision);
+        const completed = raw.checkpoint.blockNum === 1;
+        assert.equal(raw.rollback.status, completed ? 'complete' : 'running');
+        if (completed) assert.deepEqual((await selected.adapter.query(await selected.adapter.open(selected.binding), all)).rows, baseRows);
+        else await assert.rejects(selected.adapter.open(selected.binding), errorCode('projection.incomplete'));
+        return {...state, completed, pendingSource: null};
+    };
+    const resumeRollback = async (selected, request, deadline, boundary) => {
+        let value, calls = 0;
+        for (let attempts = 0; attempts < RECOVERY_RETRY_LIMITS.rollbackMaxCalls; attempts++) {
+            value = await retryAcknowledgedUnavailable({
+                operation: ({timeoutMS}) => {
+                    assert.ok(++calls <= RECOVERY_RETRY_LIMITS.rollbackMaxCalls, 'Rollback resume exhausted its total native-process attempt budget');
+                    return worker(selected, 'rollback', {request: {...request, maxBlocks: 1}}, timeoutMS);
+                },
+                observeFailure: () => observeRollbackState(selected, request), deadline, failures: report.unavailableAttempts,
+                context: {boundary, action: 'rollback', operationId: request.operationId, revision: request.revision, from: request.from},
+            });
+            const observed = await observeRollbackState(selected, request);
+            assert.deepEqual(value.recovery.checkpoint, observed.checkpoint);
             if (value.result.status !== 'in-progress') return value;
             await assert.rejects(selected.adapter.open(selected.binding), errorCode('projection.incomplete'));
         }
@@ -195,48 +294,62 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         for (const boundary of ['after-apply-intent', 'before-apply-commit', 'after-apply-commit']) {
             const selected = await scenario(boundary);
             await selected.runtime.process(first);
-            const crashed = await worker(selected, 'process', {frame: orphan2, crash: boundary});
+            const started = Date.now(), deadline = started + RECOVERY_RETRY_LIMITS.deadlineMS;
+            const crashed = await worker(selected, 'process', {frame: orphan2, crash: boundary}, Math.min(120_000, deadline - Date.now()));
             const committed = boundary === 'after-apply-commit';
             const beforeRestart = await physical(selected, checkpoint(committed ? orphan2.block : firstBlock), committed ? orphanRows2 : baseRows);
-            const inspection = await worker(selected, 'inspect');
+            const inspection = await worker(selected, 'inspect', {}, Math.min(120_000, deadline - Date.now()));
             assert.notEqual(inspection.pid, crashed.barrier.pid);
             if (!committed) {
                 assert.equal(inspection.result.query.error, 'projection.incomplete');
                 assert.equal(inspection.recovery.pending.block.blockId, orphan2.block.blockId);
                 assert.match(inspection.recovery.pending.digest, /^[0-9a-f]{64}$/);
             } else assert.deepEqual(inspection.result.query.rows, orphanRows2);
-            const replay = await worker(selected, 'process', {frame: orphan2});
-            assert.equal(replay.result.status, committed ? 'duplicate' : 'applied');
+            const failureStart = report.unavailableAttempts.length;
+            const replay = await retryAcknowledgedUnavailable({
+                operation: ({timeoutMS}) => worker(selected, 'process', {frame: orphan2}, timeoutMS),
+                observeFailure: () => observeApplyState(selected), deadline, failures: report.unavailableAttempts,
+                context: {boundary, action: 'process', block: checkpoint(orphan2.block), frameSha256: hash(canonicalJson(orphan2))},
+            });
+            const failures = report.unavailableAttempts.slice(failureStart);
+            assert.equal(replay.result.status, committed || failures.some(failure => failure.physical.completed) ? 'duplicate' : 'applied');
             const afterRestart = await physical(selected, checkpoint(orphan2.block), orphanRows2);
             await assertIndependent();
-            check(`native worker SIGKILL ${boundary}; fresh process resumes exact apply/checkpoint`, {beforeRestart, afterRestart});
+            assert.ok(Date.now() <= deadline, 'Apply recovery exceeded its crashed-boundary deadline');
+            check(`native worker SIGKILL ${boundary}; fresh process resumes exact apply/checkpoint`,
+                {beforeRestart, afterRestart, unavailableAttempts: failures.length, elapsedMS: Date.now() - started});
         }
 
-        for (const boundary of ['after-rollback-intent', 'after-rollback-step']) {
+        for (const boundary of ['after-rollback-intent', 'before-rollback-commit', 'after-rollback-step']) {
             const selected = await scenario(boundary);
             await prepareOrphan(selected);
-            const request = {operationId: `${boundary}-${run}`, ancestor: checkpoint(firstBlock), maxBlocks: 1};
-            const crashed = await worker(selected, 'rollback', {request, crash: boundary});
+            const request = await plan(selected, `${boundary}-${run}`, checkpoint(firstBlock), 1);
+            const started = Date.now(), deadline = started + RECOVERY_RETRY_LIMITS.deadlineMS;
+            const failureStart = report.unavailableAttempts.length;
+            const crashed = await worker(selected, 'rollback', {request, crash: boundary}, Math.min(120_000, deadline - Date.now()));
             const undoCommitted = boundary === 'after-rollback-step';
             const beforeRestart = await physical(selected, checkpoint(undoCommitted ? orphan3.block : orphan4.block),
                 undoCommitted ? orphanRows3 : orphanRows4);
-            const inspection = await worker(selected, 'inspect');
+            const inspection = await worker(selected, 'inspect', {}, Math.min(120_000, deadline - Date.now()));
             assert.notEqual(inspection.pid, crashed.barrier.pid);
             assert.equal(inspection.result.query.error, 'projection.incomplete');
             assert.equal(inspection.recovery.rollback.status, 'running');
             await assertIndependent();
-            const resumed = await resumeRollback(selected, request);
+            const resumed = await resumeRollback(selected, request, deadline, boundary);
             assert.equal(resumed.result.status, 'rolled-back');
             const afterRestart = await physical(selected, checkpoint(firstBlock), baseRows);
-            assert.deepEqual((await worker(selected, 'inspect')).result.query.rows, baseRows);
-            check(`native worker SIGKILL ${boundary}; independent processes resume one-block undo`, {beforeRestart, afterRestart});
+            assert.deepEqual((await worker(selected, 'inspect', {}, Math.min(120_000, deadline - Date.now()))).result.query.rows, baseRows);
+            assert.ok(Date.now() <= deadline, 'Rollback recovery exceeded its crashed-boundary deadline');
+            check(`native worker SIGKILL ${boundary}; independent processes resume one-block undo`, {beforeRestart, afterRestart,
+                unavailableAttempts: report.unavailableAttempts.length - failureStart, elapsedMS: Date.now() - started});
         }
 
         const canonical = await scenario('canonical');
         const oldAncestorView = await prepareOrphan(canonical);
         const oldHeadView = await canonical.runtime.open();
-        const operation = {operationId: `canonical-${run}`, ancestor: checkpoint(firstBlock), maxBlocks: 256};
-        await worker(canonical, 'rollback', {request: operation, crash: 'after-result'});
+        const operation = await plan(canonical, `canonical-${run}`, checkpoint(firstBlock), 256);
+        const canonicalStarted = Date.now(), canonicalDeadline = canonicalStarted + RECOVERY_RETRY_LIMITS.deadlineMS;
+        await worker(canonical, 'rollback', {request: operation, crash: 'after-result'}, Math.min(120_000, canonicalDeadline - Date.now()));
         const rolledBack = await physical(canonical, checkpoint(firstBlock), baseRows);
         assert.notEqual(rolledBack.revision, oldAncestorView.revision);
         await assert.rejects(canonical.adapter.query(oldAncestorView, all), errorCode('projection.stale-revision'));
@@ -256,18 +369,30 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         await assertIndependent();
         check('lost rollback response, same-height replacement, first-image CRUD undo, stale views/writers and exact duplicates', {rolledBack, replaced});
 
+        const secondOperation = await plan(canonical, `second-canonical-${run}`, checkpoint(replacement2.block), 256);
+        assert.equal((await worker(canonical, 'rollback', {request: secondOperation})).result.status, 'rolled-back');
+        const afterSecond = await physical(canonical, checkpoint(replacement2.block), replacementRows2);
+        await assert.rejects(worker(canonical, 'rollback', {request: operation}), errorCode('projection.stale-revision'));
+        assert.deepEqual(await physical(canonical, checkpoint(replacement2.block), replacementRows2), afterSecond);
+        assert.deepEqual((await worker(canonical, 'inspect')).result.query.rows, replacementRows2);
+        await assertIndependent();
+        assert.ok(Date.now() <= canonicalDeadline, 'Lost-response recovery and retired-plan checks exceeded the crashed-boundary deadline');
+        check('two successive recoveries reject the retired original full request without rewriting its revision/from or stored state',
+            {afterSecond, elapsedMS: Date.now() - canonicalStarted,
+                retiredOperation: {revision: operation.revision, from: operation.from, operationId: operation.operationId}});
+
         const cancelled = await scenario('same-checkpoint');
         await cancelled.runtime.process(first);
         const beforeGap = await cancelled.runtime.open();
         await assert.rejects(cancelled.runtime.process(orphan3), errorCode('projection.source-gap'));
         assert.equal((await cancelled.runtime.recovery()).gap.block.blockNum, 3);
         await assert.rejects(cancelled.runtime.open(), errorCode('projection.incomplete'));
-        assert.equal((await cancelled.runtime.rollback({operationId: `cancel-gap-${run}`, ancestor: checkpoint(firstBlock), maxBlocks: 1})).status, 'rolled-back');
+        assert.equal((await cancelled.runtime.rollback(await plan(cancelled, `cancel-gap-${run}`, checkpoint(firstBlock), 1))).status, 'rolled-back');
         await assert.rejects(cancelled.adapter.query(beforeGap, all), errorCode('projection.stale-revision'));
         const invalid = copy(orphan2); invalid.changes[0].value.owner = 123;
         await assert.rejects(cancelled.runtime.process(invalid), errorCode('projection.invalid-contract'));
         assert.equal((await cancelled.runtime.recovery()).pending.block.blockNum, 2);
-        assert.equal((await cancelled.runtime.rollback({operationId: `cancel-pending-${run}`, ancestor: checkpoint(firstBlock), maxBlocks: 1})).status, 'rolled-back');
+        assert.equal((await cancelled.runtime.rollback(await plan(cancelled, `cancel-pending-${run}`, checkpoint(firstBlock), 1))).status, 'rolled-back');
         assert.deepEqual((await cancelled.runtime.query(all)).rows, baseRows);
         await physical(cancelled, checkpoint(firstBlock), baseRows);
         await assertIndependent();
@@ -278,7 +403,7 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         const retained = await window.runtime.recovery();
         assert.equal(retained.coverage.retainedBlocks, 2);
         assert.deepEqual(retained.coverage.floor, checkpoint(orphan2.block));
-        await assert.rejects(window.runtime.rollback({operationId: `window-${run}`, ancestor: checkpoint(firstBlock), maxBlocks: 1}),
+        await assert.rejects(window.runtime.rollback(await plan(window, `window-${run}`, checkpoint(firstBlock), 1)),
             errorCode('projection.rollback-unavailable'));
         const uncovered = await window.runtime.recovery();
         assert.equal(uncovered.rollback.status, 'unavailable');
@@ -293,8 +418,8 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
 
         const wrongBranch = await scenario('wrong-branch');
         await prepareOrphan(wrongBranch);
-        await assert.rejects(wrongBranch.runtime.rollback({operationId: `wrong-branch-${run}`,
-            ancestor: {blockNum: 2, blockId: hash('not-the-retained-block')}, maxBlocks: 1}), errorCode('projection.rollback-unavailable'));
+        await assert.rejects(wrongBranch.runtime.rollback(await plan(wrongBranch, `wrong-branch-${run}`,
+            {blockNum: 2, blockId: hash('not-the-retained-block')}, 1)), errorCode('projection.rollback-unavailable'));
         await assert.rejects(wrongBranch.runtime.open(), errorCode('projection.incomplete'));
         await physical(wrongBranch, checkpoint(orphan4.block), orphanRows4);
         check('same-height wrong branch identity cannot select a retained ancestor');
@@ -307,7 +432,7 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         assert.ok(byteRecovery.coverage.retainedBytes <= 7000);
         assert.ok(byteRecovery.coverage.floor.blockNum > 0);
         assert.ok(byteRecovery.coverage.retainedBlocks < 7);
-        await assert.rejects(byteWindow.runtime.rollback({operationId: `bytes-${run}`, ancestor: genesis, maxBlocks: 1}),
+        await assert.rejects(byteWindow.runtime.rollback(await plan(byteWindow, `bytes-${run}`, genesis, 1)),
             errorCode('projection.rollback-unavailable'));
         await assert.rejects(byteWindow.runtime.open(), errorCode('projection.incomplete'));
         check('actual BSON undo byte budget prunes truthful coverage independently of the block budget', {coverage: byteRecovery.coverage});
@@ -352,12 +477,12 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         await assert.rejects(legacyAdapter.open(legacyBinding));
         await assert.rejects(legacyRuntime.process(orphan3));
         await upgradedRuntime.process(orphan3); await upgradedRuntime.process(orphan4);
-        const migrationRollback = {operationId: `migration-floor-${run}`, ancestor: checkpoint(orphan2.block), maxBlocks: 1};
+        const migrationRollback = await plan({runtime: upgradedRuntime}, `migration-floor-${run}`, checkpoint(orphan2.block), 1);
         assert.equal((await upgradedRuntime.rollback(migrationRollback)).status, 'in-progress');
         assert.equal((await upgradedRuntime.rollback(migrationRollback)).status, 'rolled-back');
         await physical(legacySelected, checkpoint(orphan2.block), orphanRows2);
         assert.equal((await upgradedRuntime.process(orphan2)).status, 'duplicate');
-        await assert.rejects(upgradedRuntime.rollback({operationId: `legacy-${run}`, ancestor: checkpoint(firstBlock), maxBlocks: 1}),
+        await assert.rejects(upgradedRuntime.rollback(await plan({runtime: upgradedRuntime}, `legacy-${run}`, checkpoint(firstBlock), 1)),
             errorCode('projection.rollback-unavailable'));
         await physical(legacySelected, checkpoint(orphan2.block), orphanRows2);
         await assertIndependent();

@@ -5,8 +5,32 @@ const prefixPattern = /^[a-z][a-z0-9_]{0,31}$/;
 const databasePattern = /^[a-zA-Z0-9_-]{1,48}$/;
 export const CRASH_BOUNDARIES = Object.freeze([
     'after-apply-intent', 'before-apply-commit', 'after-apply-commit',
-    'after-rollback-intent', 'after-rollback-step', 'after-result',
+    'after-rollback-intent', 'before-rollback-commit', 'after-rollback-step', 'after-result',
 ]);
+let activeEvidence = {pid: process.pid, node: process.version, trace: [], traceTruncated: false};
+
+/** Keep the actual native cause chain bounded, including timeout labels and cleanup errors. */
+export function serializeWorkerError(error, depth = 0, seen = new Set(), budget = {nodes: 12, bytes: 32768}) {
+    if (depth >= 4 || --budget.nodes < 0 || budget.bytes <= 0) return {message: 'Error evidence limit reached', truncated: true};
+    const text = (value, maximum) => {
+        const limit = Math.max(0, budget.bytes);
+        let selected = Buffer.from(String(value).slice(0, maximum)).subarray(0, limit).toString('utf8');
+        while (Buffer.byteLength(selected) > limit) selected = selected.slice(0, -1);
+        budget.bytes -= Buffer.byteLength(selected);
+        return selected;
+    };
+    if (!error || typeof error !== 'object') return {message: text(error, 4096)};
+    if (seen.has(error)) return {message: 'Circular error cause', truncated: true};
+    seen.add(error);
+    const code = typeof error.code === 'string' ? text(error.code, 256) : typeof error.code === 'number' ? error.code : null;
+    const value = {name: text(error.name ?? 'Error', 256), message: text(error.message ?? error, 4096),
+        code, retryable: error.retryable === true, stack: text(error.stack ?? '', 8192),
+        labels: Array.isArray(error.errorLabels) ? error.errorLabels.slice(0, 16).map(label => text(label, 256)) : []};
+    if (error.cause !== undefined) value.cause = serializeWorkerError(error.cause, depth + 1, seen, budget);
+    if (error.cleanupError !== undefined) value.cleanupError = serializeWorkerError(error.cleanupError, depth + 1, seen, budget);
+    if (Array.isArray(error.errors)) value.errors = error.errors.slice(0, 4).map(item => serializeWorkerError(item, depth + 1, seen, budget));
+    return value;
+}
 
 /** The public runner creates the resources; this IPC child accepts only its loopback endpoint. */
 export function validateWorkerJob(input) {
@@ -61,6 +85,7 @@ export function matchesCrashBoundary(boundary, phase, stage) {
         || (boundary === 'before-apply-commit' && phase === 'apply' && stage === 'commit-started')
         || (boundary === 'after-apply-commit' && phase === 'apply' && stage === 'commit-succeeded')
         || (boundary === 'after-rollback-intent' && phase === 'rollback-intent' && stage === 'succeeded')
+        || (boundary === 'before-rollback-commit' && phase === 'rollback-step' && stage === 'commit-started')
         || (boundary === 'after-rollback-step' && phase === 'rollback-step' && stage === 'commit-succeeded');
 }
 
@@ -75,7 +100,12 @@ async function runJob(raw) {
         directConnection: true, retryWrites: false, maxPoolSize: 4, serverSelectionTimeoutMS: 5000,
         connectTimeoutMS: 5000, timeoutMS: 30_000});
     const trace = [], requests = new Map(), transactions = new Map();
+    activeEvidence = {pid: process.pid, node: process.version, trace, traceTruncated: false};
     let armed = false, crashed = false;
+    const appendTrace = item => {
+        if (trace.length < 1000) trace.push(item);
+        else activeEvidence.traceTruncated = true;
+    };
     const transactionKey = command => command?.txnNumber === undefined ? undefined
         : `${command.lsid?.id?.toString('hex') ?? 'session'}:${command.txnNumber.toString()}`;
     const crash = (phase, details = {}) => {
@@ -83,7 +113,7 @@ async function runJob(raw) {
         crashed = true;
         // Synchronous pipe write survives SIGKILL; an asynchronous IPC send can be lost at this boundary.
         writeSync(1, `${JSON.stringify({type: 'barrier', boundary: job.crash, phase, pid: process.pid,
-            node: process.version, ...details, trace})}\n`);
+            node: process.version, ...details, trace, traceTruncated: activeEvidence.traceTruncated})}\n`);
         process.kill(process.pid, 'SIGKILL');
     };
     client.on('commandStarted', event => {
@@ -91,25 +121,40 @@ async function runJob(raw) {
         const key = transactionKey(event.command);
         const classified = classifyMongoCommand(event, job.databaseName, job.collectionPrefix);
         if (classified && key) transactions.set(key, classified);
-        const phase = classified ?? (event.commandName === 'commitTransaction' ? transactions.get(key) : undefined);
-        if (!phase) return;
+        const scoped = event.databaseName === job.databaseName;
+        if (!scoped && !(['commitTransaction', 'abortTransaction'].includes(event.commandName) && transactions.has(key))) return;
+        if (scoped && key && !transactions.has(key)) transactions.set(key, 'storage-transaction');
+        if (transactions.size > 128) transactions.delete(transactions.keys().next().value);
+        const phase = classified ?? transactions.get(key) ?? 'storage';
         const item = {command: event.commandName, phase, stage: event.commandName === 'commitTransaction' ? 'commit-started' : 'started',
             requestId: event.requestId, transaction: key ?? null};
         requests.set(event.requestId, item);
-        if (trace.length < 1000) trace.push(item);
+        appendTrace(item);
         if (matchesCrashBoundary(job.crash, phase, item.stage)) crash(phase, {event: item});
     });
     client.on('commandSucceeded', event => {
         if (!armed) return;
         const request = requests.get(event.requestId);
         if (!request) return;
+        requests.delete(event.requestId);
         const item = {...request, stage: event.commandName === 'commitTransaction' ? 'commit-succeeded' : 'succeeded',
             writeErrorCodes: event.reply?.writeErrors?.map(error => error.code) ?? [],
             writeConcernErrorCode: event.reply?.writeConcernError?.code ?? null};
-        if (trace.length < 1000) trace.push(item);
+        appendTrace(item);
         if (event.reply?.ok === 1 && item.writeErrorCodes.length === 0 && item.writeConcernErrorCode === null
             && matchesCrashBoundary(job.crash, item.phase, item.stage)) crash(item.phase, {event: item});
     });
+    client.on('commandFailed', event => {
+        const request = requests.get(event.requestId);
+        if (!armed || !request) return;
+        requests.delete(event.requestId);
+        appendTrace({...request, stage: 'failed', failure: {
+            name: String(event.failure?.name ?? 'Error').slice(0, 128),
+            code: typeof event.failure?.code === 'number' ? event.failure.code : String(event.failure?.code ?? '').slice(0, 128),
+            message: String(event.failure?.message ?? event.failure).slice(0, 1024),
+        }});
+    });
+    let operationError;
     try {
         await client.connect();
         const adapter = createMongoDbRollbackAdapter({client, databaseName: job.databaseName, backendId: job.backendId,
@@ -131,9 +176,13 @@ async function runJob(raw) {
         if (job.crash === 'after-result') crash('completed-operation', {completed: result});
         if (job.crash !== undefined) throw new Error(`Crash boundary ${job.crash} was not observed`);
         const recovery = await runtime.recovery();
-        return {result, recovery, trace, pid: process.pid, node: process.version};
+        return {result, recovery, trace, traceTruncated: activeEvidence.traceTruncated, pid: process.pid, node: process.version};
+    } catch (error) {
+        operationError = error;
+        throw error;
     } finally {
-        await client.close();
+        try {await client.close();}
+        catch (error) {if (operationError) operationError.cleanupError = error; else throw error;}
     }
 }
 
@@ -145,8 +194,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     process.once('message', async message => {
         let envelope;
         try {envelope = {type: 'result', value: await runJob(message)};}
-        catch (error) {envelope = {type: 'error', error: {message: String(error?.message ?? error),
-            code: error?.code ?? null, stack: String(error?.stack ?? '').slice(0, 8192)}}; process.exitCode = 1;}
+        catch (error) {envelope = {type: 'error', error: serializeWorkerError(error), evidence: activeEvidence}; process.exitCode = 1;}
         process.send(envelope, error => {
             if (error) process.exitCode = 1;
             finished = true;

@@ -1,7 +1,8 @@
 import {expect, test} from 'bun:test';
-import {CRASH_BOUNDARIES, classifyMongoCommand, matchesCrashBoundary, validateWorkerJob}
+import {CRASH_BOUNDARIES, classifyMongoCommand, matchesCrashBoundary, serializeWorkerError, validateWorkerJob}
     from '../../scripts/qualification/projection-rollback-worker.mjs';
-import {runRollbackWorker} from '../../scripts/qualification/projection-rollback.mjs';
+import {captureRollbackPlan, RECOVERY_RETRY_LIMITS, retryAcknowledgedUnavailable, runRollbackWorker}
+    from '../../scripts/qualification/projection-rollback.mjs';
 
 const job = () => ({schemaVersion: 1, action: 'inspect', uri: 'mongodb://127.0.0.1:58321/?directConnection=true',
     databaseName: 'owned_fixture', collectionPrefix: 'h45_rollback', backendId: 'fixture-backend', definition: {}, binding: {}});
@@ -61,6 +62,7 @@ test('crash matrix separates prepare, transaction send, durable commit and undo 
         ['before-apply-commit', 'apply', 'commit-started'],
         ['after-apply-commit', 'apply', 'commit-succeeded'],
         ['after-rollback-intent', 'rollback-intent', 'succeeded'],
+        ['before-rollback-commit', 'rollback-step', 'commit-started'],
         ['after-rollback-step', 'rollback-step', 'commit-succeeded'],
     ];
     expect(CRASH_BOUNDARIES).toContain('after-result');
@@ -70,4 +72,87 @@ test('crash matrix separates prepare, transaction send, durable commit and undo 
             expect(matchesCrashBoundary(other, phase, stage)).toBe(false);
         expect(matchesCrashBoundary(boundary, 'unrelated', stage)).toBe(false);
     }
+});
+
+const unavailable = (pid: number) => Object.assign(new Error('Acknowledged unavailable worker'), {
+    workerAcknowledged: true, code: 'projection.apply-unavailable', retryable: true,
+    worker: {pid, node: 'v24.19.0', trace: [{command: 'update', stage: 'failed'}], error: {cause: {code: 50, message: 'operation timeout'}}},
+});
+
+test('full recovery plan freezes original revision/from across later recovery snapshots and retries', async () => {
+    const binding = {chainId: 'a'.repeat(64), backendId: 'fixture', projectionId: 'items', mappingRevision: 'b'.repeat(64),
+        abiDeployment: 'fixture:1', abiSha256: 'c'.repeat(64), generation: 'instance'};
+    const recovery = {binding, revision: 'd'.repeat(64), checkpoint: {blockNum: 4, blockId: 'e'.repeat(64)}};
+    const ancestor = {blockNum: 1, blockId: 'f'.repeat(64)};
+    const plan = captureRollbackPlan(recovery, 'first-operation', ancestor, 1);
+    recovery.revision = '1'.repeat(64); recovery.checkpoint.blockNum = 9; ancestor.blockNum = 0;
+    expect(plan.revision).toBe('d'.repeat(64));
+    expect(plan.from).toEqual({blockNum: 4, blockId: 'e'.repeat(64)});
+    expect(plan.ancestor.blockNum).toBe(1);
+    expect(Object.isFrozen(plan)).toBe(true);
+    let attempts = 0;
+    const requests: unknown[] = [], failures: unknown[] = [];
+    await retryAcknowledgedUnavailable({deadline: 180_000, failures, now: () => 0,
+        operation: async () => {requests.push(plan); if (++attempts === 1) throw unavailable(1); return 'completed';},
+        observeFailure: async () => ({checkpoint: plan.from, pending: true})});
+    expect(requests).toEqual([plan, plan]);
+    expect(requests[0]).toBe(requests[1]);
+    expect(failures).toHaveLength(1);
+});
+
+test('acknowledged unavailable retry records every failed process and physical check before another exact attempt', async () => {
+    let clock = 0, observations = 0;
+    const timeouts: number[] = [], failures: any[] = [];
+    const result = await retryAcknowledgedUnavailable({deadline: RECOVERY_RETRY_LIMITS.deadlineMS, failures, now: () => clock,
+        context: {boundary: 'before-apply-commit'},
+        operation: async ({attempt, timeoutMS}: {attempt: number; timeoutMS: number}) => {
+            expect(observations).toBe(attempt - 1);
+            timeouts.push(timeoutMS); clock += 61_000;
+            if (attempt < 3) throw unavailable(attempt);
+            clock = 150_000; return 'exact-source-completed';
+        },
+        observeFailure: async (error: any) => {observations++; return {checkpoint: 1, pending: 2, pid: error.worker.pid};},
+    });
+    expect(result).toBe('exact-source-completed');
+    expect(timeouts).toEqual([120_000, 119_000, 58_000]);
+    expect(failures.map(failure => failure.process.pid)).toEqual([1, 2]);
+    expect(failures.map(failure => failure.physical)).toEqual([{checkpoint: 1, pending: 2, pid: 1}, {checkpoint: 1, pending: 2, pid: 2}]);
+    expect(failures[0].process.error.cause.code).toBe(50);
+});
+
+test('unexpected errors, unacknowledged failures and non-retryable errors never trigger fixture retry', async () => {
+    for (const fields of [{workerAcknowledged: false}, {code: 'projection.stale-revision'}, {retryable: false}]) {
+        let attempts = 0, observed = 0;
+        const failures: unknown[] = [], error = Object.assign(unavailable(1), fields);
+        await expect(retryAcknowledgedUnavailable({deadline: 180_000, failures, now: () => 0,
+            operation: async () => {attempts++; throw error;}, observeFailure: async () => {observed++;}})).rejects.toBe(error);
+        expect(attempts).toBe(1); expect(observed).toBe(0); expect(failures).toHaveLength(0);
+    }
+});
+
+test('attempt and shared-deadline caps retain the final acknowledged failure and never report late success', async () => {
+    let attempts = 0;
+    const failures: unknown[] = [];
+    await expect(retryAcknowledgedUnavailable({deadline: 180_000, failures, now: () => 0,
+        operation: async () => {throw unavailable(++attempts);}, observeFailure: async () => ({checkpoint: 1, pending: 2})})).rejects.toThrow();
+    expect(attempts).toBe(3); expect(failures).toHaveLength(3);
+    let clock = 0, inspected = 0;
+    await expect(retryAcknowledgedUnavailable({deadline: 180_000, failures: [], now: () => clock,
+        operation: async () => {clock = 180_001; throw unavailable(4);}, observeFailure: async () => {inspected++;}})).rejects.toThrow();
+    expect(inspected).toBe(1);
+    clock = 0;
+    await expect(retryAcknowledgedUnavailable({deadline: 180_000, failures: [], now: () => clock,
+        operation: async () => {clock = 180_001; return 'too late';}, observeFailure: async () => {}})).rejects.toThrow('deadline');
+});
+
+test('worker errors retain bounded native cause/labels and terminate circular or expanding causes', () => {
+    const native = Object.assign(new Error('Mongo operation timeout'), {code: 50, errorLabels: ['TransientTransactionError']});
+    const wrapped = Object.assign(new Error('Adapter unavailable', {cause: native}), {code: 'projection.apply-unavailable', retryable: true});
+    const evidence = serializeWorkerError(wrapped);
+    expect(evidence.code).toBe('projection.apply-unavailable'); expect(evidence.retryable).toBe(true);
+    expect(evidence.cause.code).toBe(50); expect(evidence.cause.labels).toEqual(['TransientTransactionError']);
+    const cycle: any = new Error('cycle'); cycle.cause = cycle;
+    expect(serializeWorkerError(cycle).cause.truncated).toBe(true);
+    const huge = new AggregateError(Array.from({length: 100}, () => new Error('😀'.repeat(20_000))), 'huge');
+    expect(Buffer.byteLength(JSON.stringify(serializeWorkerError(huge)))).toBeLessThan(40 * 1024);
 });
