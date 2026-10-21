@@ -29,7 +29,7 @@
     "@elastic/elasticsearch": "8.19.1",
     "@eosrio/hyperion-backend-mongodb": "file:packages/backend-mongodb",
     "@eosrio/hyperion-plugin-core": "^0.1.0",
-    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#414e7c2771d55f730a316310ff0d0ed54492d9e2",
+    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#1597db16188b510b751a7b95fd33f011e9fb6408",
     "@eosrio/hyperion-wire-plugin": "git+https://github.com/eosrio/hyperion-wire-plugin.git#e8c7162437a0d0f4e2211979b959f2d002bf3552",
     "@eosrio/node-abieos": "4.2.0-f7d5b45",
     "@fastify/autoload": "6.3.1",

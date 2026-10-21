@@ -6,6 +6,7 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import {release} from 'node:os';
 import {MongoClient} from 'mongodb';
 import {OwnedMongoFixture, MONGODB_IMAGE, MONGODB_VERSION, waitForMongo} from './projection-fixture.mjs';
+import {runProjectionRollbackQualification} from './projection-rollback.mjs';
 
 const require = createRequire(import.meta.url);
 const output = process.argv[2];
@@ -13,7 +14,7 @@ if (process.argv.length > 3 || output?.startsWith('mongodb:')) throw new Error('
 const fixture = new OwnedMongoFixture();
 const report = {schemaVersion: 1, status: 'running', createdAt: new Date().toISOString(), run: fixture.run,
     image: MONGODB_IMAGE, platform: 'linux/amd64', kernel: release(), client: require('mongodb/package.json').version,
-    qualification: false, scope: 'SDK v1 genesis fixed-ABI declarative table projection; no fork rollback, live activation, Wire or launch qualification',
+    qualification: false, scope: 'SDK v1 fixed-ABI table projection and opt-in v2 bounded rollback/process-crash recovery; no live SHiP fork, live activation, Wire or launch qualification',
     checks: [], cleanup: fixture.cleanupResult};
 const clients = new Set();
 const trace = [];
@@ -103,8 +104,13 @@ try {
     assert.equal(report.client, '7.2.0');
     report.source = {head: execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8', cwd: new URL('../../', import.meta.url)}).trim(),
         artifacts: Object.fromEntries(['src/indexer/projection/runtime.ts', 'build/indexer/projection/runtime.js',
+            'src/indexer/projection/recoverable-runtime.ts', 'build/indexer/projection/recoverable-runtime.js',
             'packages/backend-mongodb/src/index.ts', 'packages/backend-mongodb/dist/index.js', 'package-lock.json',
-            'scripts/qualification/check-projection-mongodb.mjs', 'scripts/qualification/projection-fixture.mjs']
+            'packages/backend-mongodb/src/storage.ts', 'packages/backend-mongodb/dist/storage.js',
+            'packages/backend-mongodb/src/rollback.ts', 'packages/backend-mongodb/dist/rollback.js',
+            'packages/backend-mongodb/src/rollback-contract.ts', 'packages/backend-mongodb/dist/rollback-contract.js',
+            'scripts/qualification/check-projection-mongodb.mjs', 'scripts/qualification/projection-fixture.mjs',
+            'scripts/qualification/projection-rollback.mjs', 'scripts/qualification/projection-rollback-worker.mjs']
             .map(path => [path, createHash('sha256').update(readFileSync(new URL(`../../${path}`, import.meta.url))).digest('hex')]))};
     report.source.sdkProjectionSha256 = createHash('sha256').update(readFileSync(new URL(import.meta.resolve('@eosrio/hyperion-sdk/projection')))).digest('hex');
     const {createMongoDbProjectionAdapter} = await import('../../packages/backend-mongodb/dist/index.js');
@@ -297,6 +303,10 @@ try {
     assert.equal(continuation.nextAfterKey, undefined);
     assert.deepEqual([...boundedPage.rows, ...continuation.rows], expectedLarge);
     check('actual adapter shortens a large page at 4 MiB and resumes without omitted or repeated rows');
+    report.rollback = await runProjectionRollbackQualification({uri: fixture.endpoint('replica'),
+        databaseName: `${databaseName}_rollback`, run: fixture.run,
+        assertOwned: () => fixture.ownedContainer('replica')});
+    check('opt-in rollback retains canonical effects and progress across real worker process crashes', report.rollback);
     report.status = 'passed';
 } catch (error) {
     report.status = 'failed';
