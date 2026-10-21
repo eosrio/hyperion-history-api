@@ -19,11 +19,6 @@ export interface RecoverableProjectionRuntimeOptions {
     readonly maximumPendingFrames?: number;
     readonly maximumPendingBytes?: number;
 }
-export interface ProjectionRuntimeRollback {
-    readonly operationId: string;
-    readonly ancestor: ProjectionCheckpoint;
-    readonly maxBlocks: number;
-}
 const zero = '0'.repeat(64);
 
 function checked<T>(result: ProjectionValidationResult<T>): T {
@@ -169,38 +164,40 @@ export class RecoverableProjectionRuntime {
         return result;
     }
 
-    private rollbackInput(input: ProjectionRuntimeRollback): ProjectionRollbackRequest {
-        if (typeof input !== 'object' || input === null || Array.isArray(input)
-            || ![Object.prototype, null].includes(Object.getPrototypeOf(input)) || Object.getOwnPropertySymbols(input).length)
-            throw new ProjectionContractError('projection.invalid-contract', 'Expected plain rollback options');
-        const properties = Object.getOwnPropertyDescriptors(input);
-        const names = ['operationId', 'ancestor', 'maxBlocks'];
-        if (Object.keys(properties).length !== names.length || names.some(name => !properties[name]?.enumerable
-            || !Object.hasOwn(properties[name], 'value')))
-            throw new ProjectionContractError('projection.invalid-contract', 'Expected bounded rollback options with data properties');
-        // Use the SDK's inert snapshot before the first await, including for the nested ancestor.
-        return checked(validateProjectionRollbackRequest({binding: this.binding, revision: zero,
-            operationId: properties.operationId.value, from: properties.ancestor.value,
-            ancestor: properties.ancestor.value, maxBlocks: properties.maxBlocks.value}));
-    }
-    rollback(input: ProjectionRuntimeRollback): Promise<ProjectionRollbackResult> {
+    /** Preserve this complete original request on retry, including after a runtime restart. */
+    rollback(input: ProjectionRollbackRequest): Promise<ProjectionRollbackResult> {
         let captured: ProjectionRollbackRequest;
-        try {captured = this.rollbackInput(input);} catch (error) {return Promise.reject(error);}
+        try {
+            captured = checked(validateProjectionRollbackRequest(input));
+            if (!sameBinding(captured.binding, this.binding))
+                throw new ProjectionContractError('projection.invalid-contract', 'Rollback request belongs to another projection instance');
+        } catch (error) {return Promise.reject(error);}
         if (this.rollbackWork)
             return Promise.reject(new ProjectionContractError('projection.apply-unavailable', 'A projection recovery call is already running'));
-        const sourceRevision = this.lane.revision.revision;
+        const previousRevision = this.lane.revision.revision;
         this.recovering = true;
         this.lane.revision.invalidate();
         const inflight = [...this.pending];
         const work = (async () => {
-            // In-flight durable work may finish; queued old frames fail before mapping. Inspect only
-            // after these settle so the expected source checkpoint includes every completed effect.
+            // In-flight durable work may finish; queued old frames fail before mapping. A stale
+            // planned source must be refused, never rewritten with a newer revision/checkpoint.
             await Promise.allSettled(inflight);
-            const before = await this.recovery();
-            const previous = before.rollback?.operationId === captured.operationId ? before.rollback : undefined;
-            const request = checked(validateProjectionRollbackRequest({...captured,
-                revision: previous?.sourceRevision ?? sourceRevision, from: previous?.from ?? before.checkpoint}));
-            const result = await this.options.adapter.rollback(request);
+            let result: ProjectionRollbackResult;
+            try {result = await this.options.adapter.rollback(captured);}
+            catch (error) {
+                // A refused old request must not disable a still-current lane. Reattach only the
+                // same durable revision; pending/rotated recovery still stays fenced. Initialization
+                // and later open/query enforce readiness independently from recovery inspection.
+                try {
+                    const unchanged = await this.recovery();
+                    if (unchanged.revision === previousRevision
+                        && (unchanged.rollback === null || unchanged.rollback.status === 'complete')) {
+                        await this.attach(previousRevision);
+                        this.recovering = false;
+                    }
+                } catch {}
+                throw error;
+            }
             const recovery = checked(validateProjectionRollbackRecovery(result.recovery));
             if (!sameBinding(recovery.binding, this.binding) || recovery.rollback?.operationId !== captured.operationId
                 || (result.status === 'in-progress' ? recovery.rollback.status !== 'running'

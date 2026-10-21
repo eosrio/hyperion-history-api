@@ -23,6 +23,7 @@ const deferred = () => {let resolve!: () => void; const promise = new Promise<vo
 /** Exercises scheduling and fencing at the public seam; native storage/crashes have a real fixture. */
 function reference(initial = 0) {
     let revision = 'd'.repeat(64), current = checkpoint(initial);
+    let revisionNumber = 0;
     let operation: ProjectionRollbackRecoveryView['rollback'] = null;
     let initializeCalls = 0;
     const batches: ProjectionRollbackApplyRequest[] = [], rollbacks: ProjectionRollbackRequest[] = [];
@@ -56,7 +57,9 @@ function reference(initial = 0) {
                 return {status: 'duplicate', recovery: structuredClone(recovery())};
             if (!operation || operation.operationId !== request.operationId) {
                 checkRevision(request.revision);
-                revision = 'e'.repeat(64);
+                if (request.from.blockNum !== current.blockNum || request.from.blockId !== current.blockId)
+                    throw new ProjectionContractError('projection.stale-view', 'Old recovery checkpoint');
+                revision = ['e', 'f', '1', '2'][revisionNumber++].repeat(64);
                 operation = {operationId: request.operationId, sourceRevision: request.revision, from: current,
                     ancestor: request.ancestor, status: 'running', reason: null};
             }
@@ -65,10 +68,17 @@ function reference(initial = 0) {
             return {status: operation.status === 'complete' ? 'rolled-back' : 'in-progress', recovery: structuredClone(recovery())};
         },
     };
-    return {adapter, batches, rollbacks, initializeCalls: () => initializeCalls};
+    return {adapter, batches, rollbacks, initializeCalls: () => initializeCalls,
+        unavailable(request: ProjectionRollbackRequest) {
+            revision = 'e'.repeat(64);
+            operation = {operationId: request.operationId, sourceRevision: request.revision, from: current,
+                ancestor: request.ancestor, status: 'unavailable', reason: 'Input gap'};
+        }};
 }
 const create = (adapter: ProjectionRollbackAdapter, options = {}) => RecoverableProjectionRuntime.create({adapter, definition,
     binding, genesis: checkpoint(0), ...options});
+const plan = (operationId: string, from: ProjectionCheckpoint, ancestor = checkpoint(0), maxBlocks = 1,
+    revision = 'd'.repeat(64)): ProjectionRollbackRequest => ({binding, revision, operationId, from, ancestor, maxBlocks});
 
 test('rollback capability, genesis and pending bounds fail before native initialization', async () => {
     for (const options of [{maximumPendingFrames: 0}, {maximumPendingBytes: 64 * 1024 * 1024 + 1}, {genesis: checkpoint(1)}]) {
@@ -89,7 +99,7 @@ test('rollback invalidates queued work, drains an in-flight commit and inspects 
     const queued = runtime.process(frame(2));
     // Observe the old work before releasing the deliberately held writer.
     const rejected = Promise.allSettled([first, queued]);
-    const rollback = runtime.rollback({operationId: 'fork-a', ancestor: checkpoint(0), maxBlocks: 1});
+    const rollback = runtime.rollback(plan('fork-a', checkpoint(1)));
     await expect(runtime.process(frame(3))).rejects.toMatchObject({code: 'projection.incomplete'});
     await expect(runtime.open()).rejects.toMatchObject({code: 'projection.incomplete'});
     expect(fake.rollbacks).toHaveLength(0);
@@ -106,7 +116,7 @@ test('rollback invalidates queued work, drains an in-flight commit and inspects 
 
 test('partial recovery remains non-serving through restart; matching calls resume original operation identity', async () => {
     const fake = reference(2), runtime = await create(fake.adapter);
-    const options = {operationId: 'fork-b', ancestor: checkpoint(0), maxBlocks: 1};
+    const options = plan('fork-b', checkpoint(2));
     expect((await runtime.rollback(options)).status).toBe('in-progress');
     expect((await runtime.recovery()).checkpoint).toEqual(checkpoint(1));
     await expect(runtime.query({filter: [], limit: 1})).rejects.toMatchObject({code: 'projection.incomplete'});
@@ -123,7 +133,7 @@ test('partial recovery remains non-serving through restart; matching calls resum
 test('a pre-fork view stays fenced even when the exact old checkpoint is reached again', async () => {
     const fake = reference(), runtime = await create(fake.adapter), old = await runtime.open();
     await runtime.process(frame(1));
-    await runtime.rollback({operationId: 'fork-c', ancestor: checkpoint(0), maxBlocks: 1});
+    await runtime.rollback(plan('fork-c', checkpoint(1)));
     expect((await runtime.open()).checkpoint).toEqual(old.checkpoint);
     await expect(runtime.query({filter: [], limit: 1}, old)).rejects.toMatchObject({code: 'projection.stale-revision'});
     expect((await runtime.query({filter: [], limit: 1})).view.revision).toBe('e'.repeat(64));
@@ -132,10 +142,10 @@ test('a pre-fork view stays fenced even when the exact old checkpoint is reached
 test('rollback options are captured without getters and cannot be changed during quiescence', async () => {
     const fake = reference(), runtime = await create(fake.adapter);
     let getterCalled = false;
-    const invalid = {get operationId() {getterCalled = true; return 'bad';}, ancestor: checkpoint(0), maxBlocks: 1};
+    const invalid = {...plan('bad', checkpoint(0)), get operationId() {getterCalled = true; return 'bad';}};
     await expect(runtime.rollback(invalid)).rejects.toMatchObject({code: 'projection.invalid-contract'});
     expect(getterCalled).toBe(false); expect(fake.rollbacks).toHaveLength(0);
-    const input = {operationId: 'captured', ancestor: checkpoint(0), maxBlocks: 1};
+    const input = plan('captured', checkpoint(0));
     const work = runtime.rollback(input);
     input.operationId = 'tampered'; input.ancestor.blockId = 'f'.repeat(64); input.maxBlocks = 9999;
     await work;
@@ -144,10 +154,40 @@ test('rollback options are captured without getters and cannot be changed during
 
 test('unavailable rollback never reopens the affected lane or prevents another projection from running', async () => {
     const fake = reference(2), other = reference(), runtime = await create(fake.adapter), healthy = await create(other.adapter);
-    fake.adapter.rollback = async () => {throw new ProjectionContractError('projection.rollback-unavailable', 'Input gap');};
-    await expect(runtime.rollback({operationId: 'gap', ancestor: checkpoint(0), maxBlocks: 1}))
+    fake.adapter.rollback = async request => {fake.unavailable(request); throw new ProjectionContractError('projection.rollback-unavailable', 'Input gap');};
+    await expect(runtime.rollback(plan('gap', checkpoint(2))))
         .rejects.toMatchObject({code: 'projection.rollback-unavailable', retryable: true});
     await expect(runtime.open()).rejects.toMatchObject({code: 'projection.incomplete'});
     await healthy.process(frame(1));
     expect((await healthy.open()).checkpoint).toEqual(checkpoint(1));
+});
+
+test('a retired rollback retry preserves its original fence and cannot rewind a newer branch', async () => {
+    const fake = reference(2), runtime = await create(fake.adapter);
+    const first = plan('first-fork', checkpoint(2), checkpoint(0), 2);
+    await runtime.rollback(first);
+    await runtime.process(frame(1)); await runtime.process(frame(2));
+    await runtime.rollback(plan('second-fork', checkpoint(2), checkpoint(1), 1, 'e'.repeat(64)));
+    await runtime.process(frame(2));
+    const before = await runtime.open();
+    await expect(runtime.rollback(first)).rejects.toMatchObject({code: 'projection.stale-revision'});
+    expect(fake.rollbacks.at(-1)).toEqual(first);
+    expect(await runtime.open()).toEqual(before);
+    expect((await runtime.query({filter: [], limit: 1})).view).toEqual(before);
+});
+
+test('a source checkpoint changed by an in-flight commit is refused rather than silently replanned', async () => {
+    const fake = reference(), entered = deferred(), release = deferred(), apply = fake.adapter.apply.bind(fake.adapter);
+    fake.adapter.apply = async request => {entered.resolve(); await release.promise; return apply(request);};
+    const runtime = await create(fake.adapter);
+    const processing = runtime.process(frame(1)); await entered.promise;
+    const settled = Promise.allSettled([processing]);
+    const stalePlan = plan('planned-before-commit', checkpoint(0));
+    const rollback = runtime.rollback(stalePlan);
+    release.resolve(); await settled;
+    await expect(rollback).rejects.toMatchObject({code: 'projection.stale-view'});
+    expect(fake.rollbacks[0]).toEqual(stalePlan);
+    expect((await runtime.open()).checkpoint).toEqual(checkpoint(1));
+    await runtime.rollback(plan('planned-after-commit', checkpoint(1)));
+    expect((await runtime.open()).checkpoint).toEqual(checkpoint(0));
 });

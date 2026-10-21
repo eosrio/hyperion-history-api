@@ -36,10 +36,15 @@ operation identity. A restarted runtime resumes the same operation. Retrying a
 completed operation returns a duplicate result even after replacement blocks
 advance the projection.
 
-The runtime invalidates its old revision lane synchronously and rejects queued
-old work before mapping. It waits for in-flight work to settle before selecting
-the rollback's expected source checkpoint. A durable commit can therefore survive
-a caller losing its result without becoming an omitted effect. Only a completed
+The caller captures a complete SDK rollback request, including its original
+revision and expected source checkpoint, and preserves it across retries. The
+runtime invalidates its old revision lane synchronously, rejects queued old work
+before mapping, and waits for in-flight work to settle before sending that
+unchanged request. If a commit changed the expected checkpoint, the request is
+refused; the coordinator must explicitly plan the still-unadmitted recovery.
+An older operation whose retained receipt was superseded cannot acquire a newer
+revision. A durable commit can survive a caller losing its result without
+becoming an omitted effect. Only a completed
 rollback attaches a new lane; partial or unavailable recovery remains non-serving.
 Read views include the revision, so a view cannot become valid again merely
 because a later branch reaches its old height or checkpoint.
