@@ -209,9 +209,11 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
         rpc = createServer(async (incoming, outgoing) => {
           const request: any = {at: Date.now(), method: incoming.method, path: incoming.url, userAgent: incoming.headers['user-agent'], bytes: 0};
           try {let bytes = 0; const chunks: Buffer[] = [];
-            for await (const chunk of incoming) {bytes += chunk.length; assert.ok(bytes <= 4096); chunks.push(Buffer.from(chunk));}
-            const body = bytes ? JSON.parse(Buffer.concat(chunks).toString()) : {};
-            request.bytes = bytes; request.body = body;
+            for await (const chunk of incoming) {bytes += chunk.length; request.bytes = bytes; assert.ok(bytes <= 4096); chunks.push(Buffer.from(chunk));}
+            const raw = Buffer.concat(chunks); request.bodySha256 = portableSourceHash(raw);
+            request.bodyPreviewHex = raw.subarray(0, 512).toString('hex');
+            const body = bytes ? JSON.parse(raw.toString()) : {};
+            request.body = body;
             assert.ok(report.rpcRequests.length < 512 && ['POST', 'GET'].includes(incoming.method!)
                 && incoming.url === '/v1/chain/get_info' && Object.keys(body).length === 0);
             const info = replay!.info(); report.rpcRequests.push({at: Date.now(), body, info}); outgoing.writeHead(200, {'content-type': 'application/json'}); outgoing.end(JSON.stringify(info));
@@ -365,6 +367,7 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
     } catch (error) {report.status = 'failed'; report.error = describe(error);}
     finally {
         cleanupDeadline = performance.now() + 90000; stopProbes = true; await probeTask;
+        if (report.errors.length) {report.status = 'failed'; report.error ??= 'Asynchronous fixture errors: ' + describe(report.errors[0]);}
         if (report.status === 'failed' && captureFailure) {
             try {report.failureSnapshot = await captureFailure();}
             catch (error) {report.failureSnapshot = {error: describe(error)};}
