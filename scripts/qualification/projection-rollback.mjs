@@ -336,12 +336,13 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
             assert.equal(inspection.recovery.rollback.status, 'running');
             await assertIndependent();
             const resumed = await resumeRollback(selected, request, deadline, boundary);
-            assert.equal(resumed.result.status, 'rolled-back');
+            const failures = report.unavailableAttempts.slice(failureStart);
+            assert.equal(resumed.result.status, failures.some(failure => failure.physical.completed) ? 'duplicate' : 'rolled-back');
             const afterRestart = await physical(selected, checkpoint(firstBlock), baseRows);
             assert.deepEqual((await worker(selected, 'inspect', {}, Math.min(120_000, deadline - Date.now()))).result.query.rows, baseRows);
             assert.ok(Date.now() <= deadline, 'Rollback recovery exceeded its crashed-boundary deadline');
             check(`native worker SIGKILL ${boundary}; independent processes resume one-block undo`, {beforeRestart, afterRestart,
-                unavailableAttempts: report.unavailableAttempts.length - failureStart, elapsedMS: Date.now() - started});
+                unavailableAttempts: failures.length, elapsedMS: Date.now() - started});
         }
 
         const canonical = await scenario('canonical');
