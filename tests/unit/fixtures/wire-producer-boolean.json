@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "kind": "captured-decoded-producer-row",
+  "chainId": "9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d",
+  "profileId": "wire-sysio-6508c9e8-engineering-v1",
+  "source": {
+    "receiptSha256": "40740fa53af8c53142dadbfc63e1336a3f33e79ea9c2ae256cc5e9c9d7ff84dc",
+    "blockNum": 337,
+    "blockId": "00000151d4025adff5053ed9c876b4f3e518e0de16d885757c16e7633fa8db1c",
+    "frameSha256": "18cd62cd3dc54c140a2f71a70cb1c7bfe6c4f84d0a12ff231d10a88e70283740",
+    "stream": "contract_row_kv",
+    "tableId": 11791,
+    "abiBlockNum": 32,
+    "abiSha256": "f92dac127ba2a22bf2769f32f18486b149cfbb1db9ec249d3a6c88faba0ad06b",
+    "abiType": "producer_info",
+    "abiField": {
+      "name": "is_active",
+      "type": "bool"
+    },
+    "physicalHex": "000000000000eab0c70000000000eab0c70f2e084a975bd13a42ae607960ae423ad15b974a00026befd137585229ebf907b43f69b509b76dba4483ab093b4a685933744821e48dffffffffffffffbf010000000000c098cf05365e0600000000010000000100026befd137585229ebf907b43f69b509b76dba4483ab093b4a685933744821e48d010000000000000000000000000000"
+  },
+  "data": {
+    "owner": "defproducera",
+    "producer_key": "PUB_K1_5i2THRhGzWnz5qn4XMhqiSP3MhFhbR7EPkUFpQBG4k92p5MGNf",
+    "rank_score": "13835058055282163711",
+    "is_active": 1,
+    "url": "",
+    "unpaid_blocks": 0,
+    "last_claim_time": "2026-10-19T18:52:59.000",
+    "location": 0,
+    "producer_authority": [
+      "block_signing_authority_v0",
+      {
+        "threshold": 1,
+        "keys": [
+          {
+            "key": "PUB_K1_5i2THRhGzWnz5qn4XMhqiSP3MhFhbR7EPkUFpQBG4k92p5MGNf",
+            "weight": 1
+          }
+        ]
+      }
+    ],
+    "consecutive_missed_rounds": 0,
+    "is_demoted": 0,
+    "snapshot_attestations": 0,
+    "snapshot_period": 0
+  }
+}
