@@ -111,7 +111,6 @@ describe('portable state configuration', () => {
 });
 
 test('irreversible queries require an issued eligible source state and recheck it after the database await', async () => {
-    const f = fixture();
     const configuration = resolvePortableStateConfiguration({...input(), finality: 'irreversible'}, chainId)!;
     const binding = portableStateBinding(configuration, definition, chainId);
     const checkpoint = {blockNum: 3, blockId: 'd'.repeat(64)};
@@ -127,7 +126,6 @@ test('irreversible queries require an issued eligible source state and recheck i
     const service = createPortableStateQueryService({chainId, configuration, adapter,
         gate: createPortableStateReadGate({chainId, configuration, adapter, source})});
     await expect(service.query(definition.id, {filter: [], limit: 1})).rejects.toMatchObject({statusCode: 503, retryable: true});
-    expect(f.calls()).toBe(0);
 });
 
 describe('portable logical query service', () => {
