@@ -311,6 +311,7 @@ try {
 } catch (error) {
     report.status = 'failed';
     report.error = {name: error.name, message: error.message, stack: error.stack};
+    if (error.rollbackReport) report.rollback = error.rollbackReport;
     report.recentCommands = trace.slice(-128);
     report.fixtureFailure = fixture.diagnostics();
     process.exitCode = 1;

@@ -87,6 +87,9 @@ and HTTP path; the adapter-only fixture above does not establish that acceptance
 Canonical fork rollback, recovery-window input coverage, live mapping activation
 and the broader restart lifecycle remain
 [tools #21](https://github.com/eosrio/hyperion-tools/issues/21) and its follow-ups.
+The separate [bounded rollback path](projection-rollback.md) adds opt-in SDK v2
+runtime/adapter recovery and a native process-crash fixture; the production
+controller and live source/publication integration still require their own work.
 Legacy extension state integration remains
 [History API #221](https://github.com/eosrio/hyperion-history-api/issues/221).
 
