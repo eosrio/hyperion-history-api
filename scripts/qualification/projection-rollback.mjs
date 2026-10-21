@@ -330,12 +330,24 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         const legacyRuntime = await DeclarativeProjectionRuntime.create({adapter: legacyAdapter, definition: legacyDefinition, binding: legacyBinding, genesis});
         await legacyRuntime.process(first); await legacyRuntime.process(orphan2);
         const legacySelected = {binding: legacyBinding};
+        const legacyRaw = await metadata(legacySelected);
+        assert.ok(legacyRaw);
         const beforeMigration = await physical(legacySelected, checkpoint(orphan2.block), orphanRows2);
         const upgradedAdapter = createMongoDbRollbackAdapter({...rootOptions, receiptRetention: 1});
         const upgradedRuntime = await RecoverableProjectionRuntime.create({adapter: upgradedAdapter, definition: legacyDefinition, binding: legacyBinding, genesis});
         const migrated = await upgradedRuntime.recovery();
         assert.deepEqual(migrated.coverage.floor, checkpoint(orphan2.block));
         assert.equal(migrated.coverage.retainedBlocks, 0);
+        assert.deepEqual((await upgradedRuntime.query(all)).rows, orphanRows2);
+        // Reproduce the historical binary's full-checkpoint filter after it had already loaded v1.
+        // This is an actual old-filter write, not a claim that the complete old binary was executed.
+        const staleLegacyWrite = await client.db(databaseName).collection(`${prefix}_metadata`).findOneAndUpdate({
+            _id: legacyRaw._id, initialized: true, checkpoint: legacyRaw.checkpoint,
+            pending: legacyRaw.pending, gap: legacyRaw.gap,
+        }, {$set: {pending: {block: orphan3.block, digest: null, reason: 'Preloaded historical v1 admission'}}},
+        {returnDocument: 'after', writeConcern: {w: 'majority', j: true}});
+        assert.equal(staleLegacyWrite, null, 'Historical unfenced full-checkpoint CAS must miss upgraded storage');
+        await physical(legacySelected, checkpoint(orphan2.block), orphanRows2);
         assert.deepEqual((await upgradedRuntime.query(all)).rows, orphanRows2);
         await assert.rejects(legacyAdapter.open(legacyBinding));
         await assert.rejects(legacyRuntime.process(orphan3));
@@ -350,7 +362,7 @@ export async function runProjectionRollbackQualification({uri, databaseName, run
         await physical(legacySelected, checkpoint(orphan2.block), orphanRows2);
         await assertIndependent();
         check('explicit v1 migration preserves state, fences legacy access and restores floor receipts beyond the ordinary replay window',
-            {beforeMigration, coverage: migrated.coverage});
+            {beforeMigration, coverage: migrated.coverage, historicalCheckpointCasMatched: false});
 
         assert.equal(new Set(processes.map(item => item.pid)).size, processes.length, 'Every qualification worker must be a distinct process');
         report.status = 'passed';
