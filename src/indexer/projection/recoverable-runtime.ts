@@ -7,7 +7,7 @@ import {
     type ProjectionRollbackAdapter, type ProjectionRollbackApplyResult,
     type ProjectionRollbackQueryResult, type ProjectionRollbackReadView,
     type ProjectionRollbackRecoveryView, type ProjectionRollbackRequest,
-    type ProjectionRollbackResult, type ProjectionValidationResult,
+    type ProjectionRollbackResult, type ProjectionRollbackState, type ProjectionValidationResult,
 } from '@eosrio/hyperion-sdk/projection';
 import {DeclarativeProjectionRuntime, type ProjectionFrame} from './runtime.js';
 
@@ -30,6 +30,11 @@ function checked<T>(result: ProjectionValidationResult<T>): T {
 function sameBinding(a: ProjectionBinding, b: ProjectionBinding): boolean {
     return (['chainId', 'backendId', 'projectionId', 'mappingRevision', 'abiDeployment', 'abiSha256', 'generation'] as const)
         .every(field => a[field] === b[field]);
+}
+function sameOperation(state: ProjectionRollbackState, request: ProjectionRollbackRequest): boolean {
+    return state.operationId === request.operationId && state.sourceRevision === request.revision
+        && state.from.blockNum === request.from.blockNum && state.from.blockId === request.from.blockId
+        && state.ancestor.blockNum === request.ancestor.blockNum && state.ancestor.blockId === request.ancestor.blockId;
 }
 function bounded(value: number | undefined, maximum: number): void {
     if (value !== undefined && (!Number.isSafeInteger(value) || value < 1 || value > maximum))
@@ -100,6 +105,8 @@ export class RecoverableProjectionRuntime {
     private lane!: {revision: RevisionLane; runtime: DeclarativeProjectionRuntime};
     private readonly pending = new Set<Promise<unknown>>();
     private rollbackWork?: Promise<ProjectionRollbackResult>;
+    private resumeWork?: Promise<ProjectionRollbackRecoveryView>;
+    private interruptedRollback?: {request: ProjectionRollbackRequest; previousRevision: string};
     private recovering = false;
     private constructor(private readonly options: RecoverableProjectionRuntimeOptions,
         readonly definition: ProjectionDefinition, readonly binding: ProjectionBinding,
@@ -168,6 +175,31 @@ export class RecoverableProjectionRuntime {
         return result;
     }
 
+    /** A rotated revision requires the exact interrupted operation receipt; refused work keeps its known lane. */
+    resumeRecovery(): Promise<ProjectionRollbackRecoveryView> {
+        if (this.resumeWork) return this.resumeWork;
+        const work = (async () => {
+            const recovery = await this.recovery(), attempt = this.interruptedRollback;
+            if (!this.recovering || !attempt || this.rollbackWork) return recovery;
+            const matching = recovery.rollback !== null && sameOperation(recovery.rollback, attempt.request);
+            const completed = matching && recovery.rollback!.status === 'complete';
+            // No admitted recovery rotated this known lane. Discard the refused request so the
+            // controller obtains a fresh canonical plan, including after an in-flight commit.
+            const unchanged = recovery.revision === attempt.previousRevision
+                && (recovery.rollback === null || recovery.rollback.status === 'complete');
+            if (!matching && !unchanged)
+                throw new ProjectionContractError('projection.stale-revision', 'Another recovery operation owns this projection revision');
+            if (completed || unchanged) {
+                await this.attach(completed ? recovery.revision : attempt.previousRevision);
+                this.recovering = false;
+                this.interruptedRollback = undefined;
+            }
+            return recovery;
+        })();
+        this.resumeWork = work.finally(() => {this.resumeWork = undefined;});
+        return this.resumeWork;
+    }
+
     /** Preserve this complete original request on retry, including after a runtime restart. */
     rollback(input: ProjectionRollbackRequest): Promise<ProjectionRollbackResult> {
         let captured: ProjectionRollbackRequest;
@@ -176,9 +208,10 @@ export class RecoverableProjectionRuntime {
             if (!sameBinding(captured.binding, this.binding))
                 throw new ProjectionContractError('projection.invalid-contract', 'Rollback request belongs to another projection instance');
         } catch (error) {return Promise.reject(error);}
-        if (this.rollbackWork)
+        if (this.rollbackWork || this.resumeWork)
             return Promise.reject(new ProjectionContractError('projection.apply-unavailable', 'A projection recovery call is already running'));
         const previousRevision = this.lane.revision.revision;
+        this.interruptedRollback = {request: captured, previousRevision};
         this.recovering = true;
         this.lane.revision.invalidate();
         const inflight = [...this.pending];
@@ -198,18 +231,20 @@ export class RecoverableProjectionRuntime {
                         && (unchanged.rollback === null || unchanged.rollback.status === 'complete')) {
                         await this.attach(previousRevision);
                         this.recovering = false;
+                        this.interruptedRollback = undefined;
                     }
                 } catch {}
                 throw error;
             }
             const recovery = checked(validateProjectionRollbackRecovery(result.recovery));
-            if (!sameBinding(recovery.binding, this.binding) || recovery.rollback?.operationId !== captured.operationId
+            if (!sameBinding(recovery.binding, this.binding) || !recovery.rollback || !sameOperation(recovery.rollback, captured)
                 || (result.status === 'in-progress' ? recovery.rollback.status !== 'running'
                     : !['rolled-back', 'duplicate'].includes(result.status) || recovery.rollback.status !== 'complete'))
                 throw new ProjectionContractError('projection.incomplete', 'Adapter did not return the requested durable rollback operation');
             if (result.status !== 'in-progress') {
                 await this.attach(recovery.revision);
                 this.recovering = false;
+                this.interruptedRollback = undefined;
             }
             return {...result, recovery};
         })();

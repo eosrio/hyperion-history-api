@@ -124,6 +124,33 @@ test('ahead-of-coverage checkpoints and unresolved pending or gap work never gra
     expect(gap.intents.gap).toBe('unresolved'); expect(gap.rollback).toBeNull();
 });
 
+test('an aged nonzero checkpoint issues an exact eligible gap without claiming its old branch or replacing existing intents', async () => {
+    const f = await fixture(2); await f.append(1); await f.append(2); await f.append(3); await f.append(4); await f.append(5);
+    const source = f.source(), missing = await source.planRecovery(retained([point(1)]), 'reversible');
+    expect(missing.checkpointStatus).toBe('unresolved'); expect(missing.rollback).toBeNull();
+    expect((missing as any).unavailableSource).toEqual({block: block(5),
+        reason: 'Projection checkpoint is outside bounded canonical ancestry; historical recovery input is required'});
+    const held = await source.planRecovery(retained([point(1)], block(2), block(4)), 'reversible');
+    expect((held as any).unavailableSource).toBeUndefined();
+    expect(held.rollback).toBeNull();
+    await expect(source.revalidateRecovery({...missing})).rejects.toMatchObject({statusCode: 503});
+    await f.coordinator.revokeSource('reader');
+    await expect(source.revalidateRecovery(missing)).rejects.toMatchObject({statusCode: 503});
+});
+
+test('one excluded parent is proved only by the exact certified child, including an eligible target at checkpoint plus one', async () => {
+    const f = await fixture(2), first = await f.append(1); await f.append(2); await f.append(3, 3, 2, point(2)); await f.append(4, 4, 3, point(2));
+    // The bounded source cannot read this excluded parent commit; child2 still certifies its exact predecessor ID.
+    f.memory.documents.delete(f.memory.key(f.store.recordsIndex, first.commitId));
+    const source = f.source(), next = await source.planRecovery(retained([point(1)]), 'irreversible');
+    expect(next.checkpointStatus).toBe('canonical'); expect(next.target).toEqual(point(2));
+    expect(next.unavailableSource).toBeUndefined(); expect(next.rollback).toBeNull();
+    const wrong = await source.planRecovery(retained([point(1, 99)]), 'reversible');
+    expect(wrong.checkpointStatus).toBe('orphaned');
+    expect(wrong.rollback).toEqual({ancestor: point(1), reason: 'retention-unavailable'});
+    await expect(source.planRecovery(retained([point(1, 99)]), 'irreversible')).rejects.toMatchObject({statusCode: 503});
+});
+
 test('missing applied ancestry requests durable rollback-unavailable with an explicit canonical candidate', async () => {
     const f = await fixture(); await f.append(1); await f.append(2); await f.append(3, 30, 2);
     const source = f.source(), plan = await source.planRecovery(retained([point(3)]), 'reversible');

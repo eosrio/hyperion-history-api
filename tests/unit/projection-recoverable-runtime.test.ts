@@ -192,6 +192,30 @@ test('a retired rollback retry preserves its original fence and cannot rewind a 
     expect((await runtime.query({filter: [], limit: 1})).view).toEqual(before);
 });
 
+test('lost completion cannot adopt a rotated revision from a different or retired durable operation tuple', async () => {
+    for (const different of ['operationId', 'sourceRevision', 'from', 'ancestor'] as const) {
+        const fake = reference(2), runtime = await create(fake.adapter), original = plan('lost-completion', checkpoint(2), checkpoint(1), 1);
+        const rollback = fake.adapter.rollback.bind(fake.adapter), recovery = fake.adapter.recovery.bind(fake.adapter);
+        let committed = false;
+        fake.adapter.rollback = async request => {await rollback(request); committed = true; throw new Error('Lost response');};
+        fake.adapter.recovery = async () => {
+            const value = await recovery(binding);
+            if (committed) {
+                const replacement: any = {...value.rollback};
+                replacement[different] = different === 'operationId' ? 'different-operation'
+                    : different === 'sourceRevision' ? 'f'.repeat(64)
+                        : different === 'from' ? {blockNum: 2, blockId: '9'.repeat(64)} : checkpoint(0);
+                return {...value, rollback: replacement};
+            }
+            return value;
+        };
+        await expect(runtime.rollback(original)).rejects.toThrow('Lost response');
+        await expect(runtime.resumeRecovery()).rejects.toMatchObject({code: 'projection.stale-revision'});
+        await expect(runtime.open()).rejects.toMatchObject({code: 'projection.incomplete'});
+        expect(fake.rollbacks).toEqual([original]);
+    }
+});
+
 test('a source checkpoint changed by an in-flight commit is refused rather than silently replanned', async () => {
     const fake = reference(), entered = deferred(), release = deferred(), apply = fake.adapter.apply.bind(fake.adapter);
     fake.adapter.apply = async request => {entered.resolve(); await release.promise; return apply(request);};

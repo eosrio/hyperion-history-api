@@ -128,6 +128,106 @@ test('restart resumes checkpoint+1 rather than replaying beyond retained source 
     expect(seen).toEqual([501, 501, 502]); expect(progress.at(-1).checkpoint.blockNum).toBe(502);
 });
 
+test('an aged nonzero checkpoint is durably incomplete while a separate projection continues', async () => {
+    const r = reference(500), aged = definition('aged'), healthy = definition('healthy'), progress: any[] = [];
+    const source = recoverySource({frame: async (height, selected) => {
+        expect(selected.id).toBe('healthy'); return input(height, selected);
+    }, revalidate: async () => {}});
+    const ordinary = source.planRecovery;
+    source.planRecovery = async (retained, finality) => retained.recovery.binding.projectionId === 'aged'
+        ? {...await ordinary(retained, finality), target: block(1000), checkpointStatus: 'unresolved',
+            unavailableSource: {block: block(1000), reason: 'Historical recovery input is required'}} as any
+        : ordinary(retained, finality);
+    const worker = await PortableStateController.create({chainId, configuration: config(aged, healthy), adapter: r.adapter,
+        source, maximumFramesPerProjection: 1, onProgress: value => progress.push(value)});
+    await worker.drain();
+    expect(r.slots.get('aged').checkpoint).toEqual({blockNum: 500, blockId: block(500).blockId});
+    expect(r.slots.get('aged').gap).toEqual({block: block(1000), digest: null, reason: 'Historical recovery input is required'});
+    expect(r.applied.map(value => value.binding.projectionId)).toEqual(['healthy']);
+    expect(r.rollbacks).toEqual([]);
+    expect(progress.find(value => value.projectionId === 'aged').status).toBe('incomplete');
+    await expect(r.adapter.open(r.slots.get('aged').binding)).rejects.toMatchObject({code: 'projection.incomplete'});
+    await worker.drain();
+    expect(r.marked.filter(value => value.binding.projectionId === 'aged')).toHaveLength(1);
+    expect(r.slots.get('aged').gap).toEqual({block: block(1000), digest: null, reason: 'Historical recovery input is required'});
+    await worker.stop();
+});
+
+test('a completed rollback with a lost response heals on the next drain even if its immediate recovery inspection fails', async () => {
+    for (const loseInspection of [false, true]) {
+        const r = reference(), selected = definition(), progress: any[] = [];
+        let fork = false, failInspection = false, lost = false;
+        const source = recoverySource({frame: async (height, definition) => {
+            const value = input(height, definition);
+            if (fork) value.frame.block.blockId = 'b'.repeat(64);
+            return value;
+        }, revalidate: async () => {}});
+        const ordinary = source.planRecovery;
+        source.planRecovery = async (retained, finality) => ({...await ordinary(retained, finality),
+            target: {blockNum: 3, blockId: fork ? 'b'.repeat(64) : block(3).blockId},
+            rollback: fork && retained.recovery.rollback === null
+                ? {ancestor: {blockNum: 2, blockId: block(2).blockId}, reason: 'orphaned-checkpoint'} : null});
+        const worker = await PortableStateController.create({chainId, configuration: config(selected), adapter: r.adapter,
+            source, maximumFramesPerProjection: 1, onProgress: value => progress.push(value)});
+        await worker.drain(); await worker.drain(); await worker.drain();
+        const rollback = r.adapter.rollback.bind(r.adapter), recovery = r.adapter.recovery.bind(r.adapter);
+        r.adapter.rollback = async request => {
+            const result = await rollback(request);
+            if (!lost) {lost = true; failInspection = loseInspection; throw new Error('Lost rollback completion response');}
+            return result;
+        };
+        r.adapter.recovery = async binding => {
+            if (failInspection) {failInspection = false; throw new Error('Transient recovery inspection failure');}
+            return recovery(binding);
+        };
+        fork = true; await worker.drain();
+        const committed = structuredClone(r.slots.get(selected.id).rollback);
+        expect(committed.status).toBe('complete'); expect(r.slots.get(selected.id).checkpoint.blockNum).toBe(2);
+        await worker.drain();
+        expect(r.slots.get(selected.id).checkpoint).toEqual({blockNum: 3, blockId: 'b'.repeat(64)});
+        expect(r.slots.get(selected.id).rollback).toEqual(committed);
+        expect(r.rollbacks).toHaveLength(1);
+        expect(r.rollbacks[0]).toMatchObject({revision: committed.sourceRevision, operationId: committed.operationId,
+            from: {blockNum: 3, blockId: block(3).blockId}, ancestor: {blockNum: 2, blockId: block(2).blockId}});
+        const initialized = r.calls.filter(call => call === 'initialize').length;
+        await worker.drain();
+        expect(r.calls.filter(call => call === 'initialize')).toHaveLength(initialized);
+        expect(r.rollbacks).toHaveLength(1); expect(progress.at(-1).status).toBe('waiting');
+        await worker.stop();
+    }
+});
+
+test('an unadmitted rollback with failed inspection is discarded before a fresh canonical plan is admitted', async () => {
+    const r = reference(), selected = definition(), attempts: any[] = [];
+    let fork = false, ancestor = 2, rejectInspection = false;
+    const source = recoverySource({frame: async (height, definition) => input(height, definition), revalidate: async () => {}});
+    const ordinary = source.planRecovery;
+    source.planRecovery = async (retained, finality) => ({...await ordinary(retained, finality), target: block(3),
+        rollback: fork && retained.recovery.rollback === null
+            ? {ancestor: {blockNum: ancestor, blockId: block(ancestor).blockId}, reason: 'orphaned-checkpoint'} : null});
+    const worker = await PortableStateController.create({chainId, configuration: config(selected), adapter: r.adapter, source,
+        maximumFramesPerProjection: 1});
+    await worker.drain(); await worker.drain(); await worker.drain();
+    const rollback = r.adapter.rollback.bind(r.adapter), recovery = r.adapter.recovery.bind(r.adapter);
+    r.adapter.rollback = async request => {
+        attempts.push(structuredClone(request));
+        if (attempts.length === 1) {rejectInspection = true; throw new Error('Rollback was never admitted');}
+        return rollback(request);
+    };
+    r.adapter.recovery = async binding => {
+        if (rejectInspection) {rejectInspection = false; throw new Error('Transient inspection failure');}
+        return recovery(binding);
+    };
+    fork = true; await worker.drain();
+    expect(r.rollbacks).toHaveLength(0); expect(r.slots.get(selected.id).checkpoint.blockNum).toBe(3);
+    ancestor = 1; await worker.drain();
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0].ancestor.blockNum).toBe(2); expect(attempts[1].ancestor.blockNum).toBe(1);
+    expect(attempts[1].operationId).not.toBe(attempts[0].operationId);
+    expect(r.rollbacks[0]).toEqual(attempts[1]);
+    await worker.stop();
+});
+
 test('selected contract failure is durably incomplete while an independent lane progresses; recovery retries the original block', async () => {
     const r = reference(), first = definition('first'), other = definition('other'), seen: any[] = [];
     let invalid = true;

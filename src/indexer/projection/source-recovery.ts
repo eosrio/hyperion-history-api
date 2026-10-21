@@ -14,6 +14,8 @@ export interface PortableProjectionRecoveryPlan {
     readonly finality: PortableStateFinality;
     readonly checkpointStatus: 'canonical' | 'orphaned' | 'ahead' | 'unresolved';
     readonly intents: {readonly pending: IntentStatus; readonly gap: IntentStatus};
+    /** Exact eligible source header for durable failure marking; never an old-branch membership grant. */
+    readonly unavailableSource?: {readonly block: ProjectionBlock; readonly reason: string};
     readonly rollback: null | {
         readonly ancestor: ProjectionCheckpoint;
         readonly reason: 'orphaned-checkpoint' | 'orphaned-intent' | 'retention-unavailable';
@@ -112,10 +114,24 @@ export class PortableProjectionRecoverySource {
         if (control.head.commitId !== authority.head.commitId)
             unavailable('Canonical source head changed during finality validation');
     }
+    private async canonicalPoint(authority: Authority, blockNum: number): Promise<ProjectionCheckpoint> {
+        if (authority.head.source.blockNum - blockNum === this.options.maximumAncestry + 1) {
+            const child = await this.ancestor(authority, blockNum + 1);
+            const previous = child.source.previousBlockId;
+            if (!previous || previous === zero.blockId) unavailable('Certified next block lacks an exact predecessor');
+            // This proves only the parent identity, not its excluded capture or ABI state.
+            return point({blockNum, blockId: previous});
+        }
+        return point((await this.ancestor(authority, blockNum)).source);
+    }
     private async status(authority: Authority, value: ProjectionCheckpoint, block?: ProjectionBlock): Promise<'canonical' | 'orphaned' | 'unresolved'> {
         if (value.blockNum === 0) return same(value, zero) ? 'canonical' : 'orphaned';
-        if (value.blockNum > authority.head.source.blockNum
-            || authority.head.source.blockNum - value.blockNum > this.options.maximumAncestry) return 'unresolved';
+        const distance = authority.head.source.blockNum - value.blockNum;
+        if (distance < 0 || distance > this.options.maximumAncestry + 1) return 'unresolved';
+        if (distance === this.options.maximumAncestry + 1) {
+            if (!same(await this.canonicalPoint(authority, value.blockNum), value)) return 'orphaned';
+            return block ? 'unresolved' : 'canonical';
+        }
         const proof = await this.ancestor(authority, value.blockNum);
         return same(proof.source, value) && (!block || block.previousBlockId === (proof.source.previousBlockId ?? zero.blockId))
             ? 'canonical' : 'orphaned';
@@ -163,7 +179,7 @@ export class PortableProjectionRecoverySource {
                 if (retained.blockNum > upper) continue;
                 if (retained.blockNum === 0) {
                     if (await this.zeroAncestor(authority)) ancestor = zero;
-                } else if (authority.head.source.blockNum - retained.blockNum <= this.options.maximumAncestry
+                } else if (authority.head.source.blockNum - retained.blockNum <= this.options.maximumAncestry + 1
                     && await this.status(authority, retained) === 'canonical') ancestor = point(retained);
                 if (ancestor) break;
             }
@@ -174,13 +190,22 @@ export class PortableProjectionRecoverySource {
                 if (upper === 0) {
                     if (!await this.zeroAncestor(authority)) unavailable('Native genesis lineage is outside retained source ancestry');
                     ancestor = zero;
-                } else ancestor = point((await this.ancestor(authority, upper)).source);
+                } else ancestor = await this.canonicalPoint(authority, upper);
                 reason = 'retention-unavailable';
             }
             rollback = {ancestor, reason};
         }
+        let unavailableSource: PortableProjectionRecoveryPlan['unavailableSource'];
+        if (checkpointStatus === 'unresolved' && recovery.checkpoint.blockNum < authority.target.blockNum
+            && recovery.pending === null && recovery.gap === null) {
+            const eligible = authority.targetProof?.source;
+            if (!eligible || !eligible.previousBlockId || eligible.previousBlockId === zero.blockId)
+                unavailable('Eligible source lacks an exact certified gap header');
+            unavailableSource = {block: {blockNum: eligible.blockNum, blockId: eligible.blockId, previousBlockId: eligible.previousBlockId},
+                reason: 'Projection checkpoint is outside bounded canonical ancestry; historical recovery input is required'};
+        }
         const plan = freeze({target: authority.target, reportedIrreversible: authority.reportedIrreversible,
-            finality, checkpointStatus, intents: {pending, gap}, rollback});
+            finality, checkpointStatus, intents: {pending, gap}, rollback, ...(unavailableSource ? {unavailableSource} : {})});
         this.plans.set(plan, authority);
         await this.assertCurrent(authority);
         return plan;

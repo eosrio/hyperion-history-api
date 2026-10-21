@@ -68,7 +68,7 @@ export class PortableStateController {
             let recovery: ProjectionRollbackRecoveryView | undefined;
             let admit: ((block: ProjectionBlock) => Promise<void>) | undefined;
             try {
-                recovery = await runtime.recovery();
+                recovery = await runtime.resumeRecovery();
                 if (recovery.rollback?.status === 'unavailable')
                     throw new ProjectionContractError('projection.rollback-unavailable', recovery.rollback.reason!);
                 // Resume the admitted operation unchanged before planning another canonical move.
@@ -94,6 +94,17 @@ export class PortableStateController {
                     this.report({...common, status: 'recovering', recovery: result.recovery, checkpoint: result.recovery.checkpoint,
                         reason: plan.rollback.reason});
                     continue;
+                }
+                if (plan.unavailableSource && recovery.pending === null && recovery.gap === null) {
+                    const missing = plan.unavailableSource;
+                    if (missing.block.blockNum !== plan.target.blockNum || missing.block.blockId !== plan.target.blockId
+                        || missing.block.blockNum <= recovery.checkpoint.blockNum)
+                        throw new ProjectionContractError('projection.invalid-contract', 'Unavailable source differs from the certified eligible target');
+                    await this.options.adapter.markIncomplete({binding: runtime.binding, revision: recovery.revision,
+                        block: missing.block, reason: missing.reason});
+                    recovery = await runtime.recovery();
+                    this.report({...common, status: 'incomplete', recovery, checkpoint: recovery.checkpoint, reason: missing.reason});
+                    return;
                 }
                 if (plan.checkpointStatus !== 'canonical' || recovery.checkpoint.blockNum >= plan.target.blockNum) {
                     this.report({...common, status: recovery.pending || recovery.gap ? 'incomplete' : 'waiting', recovery,
