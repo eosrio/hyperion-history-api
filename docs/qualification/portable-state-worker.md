@@ -7,6 +7,11 @@ Fastify HTTP host. This document defines the reproduction and its assertions. Th
 fixture files are source inputs, not a successful-run report. Record acceptance for
 each exact code/runtime run separately.
 
+The [2026-10-21 evidence](../performance/evidence/portable-state-worker-20261021/README.md)
+records passing native Linux Node 22/24 runs at the pinned code commit, independent
+reviews, process observations and verified cleanup. Its scope and remaining release
+gates are explicit.
+
 ## Original inputs and independent expectations
 
 The [fixture bundle](../../tests/fixtures/portable-state-worker/README.md) retains
