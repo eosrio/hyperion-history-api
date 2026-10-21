@@ -31,6 +31,40 @@ async function responseBody(response: Response, maximum = 4 * 1024 * 1024) {asse
     for await (const chunk of response.body) {bytes += chunk.length; assert.ok(bytes <= maximum); chunks.push(Buffer.from(chunk));}
     return JSON.parse(Buffer.concat(chunks).toString());}
 
+/** Read actual effective node settings and filesystem headroom; JSON intent alone is insufficient. */
+export function assertRecoveryDiskReadiness(core: any, settings: any, stats: any, cluster: any) {
+    const profiles: Record<string, {low: string; high: string; floodStage: string}> = {
+        '20-10-5gb': {low: '20gb', high: '10gb', floodStage: '5gb'},
+        '8-4-2gb': {low: '8gb', high: '4gb', floodStage: '2gb'},
+    };
+    assert.ok(Object.hasOwn(profiles, core.diskWatermarkProfile), 'An explicit allowlisted disposable disk profile is required');
+    const expected = profiles[core.diskWatermarkProfile]; assert.deepEqual(core.diskWatermarks, expected);
+    const minimumAvailableBytes = (Number.parseInt(expected.low) + 2) * 1024 ** 3;
+    const actual: any[] = [], selected = Object.entries(settings.nodes ?? {});
+    assert.equal(selected.length, core.nodes.length);
+    assert.deepEqual(selected.map(([, value]) => (value as any).name).sort(), core.nodes.map((value: any) => value.name).sort());
+    assert.deepEqual(Object.keys(stats.nodes ?? {}).sort(), selected.map(([id]) => id).sort());
+    for (const [nodeId, value] of selected) {
+        const node = value as any, owned = core.nodes.find((item: any) => item.name === node.name);
+        assert.ok(owned, 'Settings contain an unexpected fixture node'); assert.equal(stats.nodes?.[nodeId]?.name, node.name);
+        const effective = (key: string) => cluster.transient?.[key] ?? cluster.persistent?.[key] ?? node.settings?.[key] ?? cluster.defaults?.[key];
+        const readback: Record<string, unknown> = {};
+        for (const [key, wanted] of Object.entries({'cluster.routing.allocation.disk.watermark.low': expected.low,
+            'cluster.routing.allocation.disk.watermark.high': expected.high, 'cluster.routing.allocation.disk.watermark.flood_stage': expected.floodStage,
+            'indexing_pressure.memory.limit': '64mb'})) {
+            const observed = effective(key); assert.equal(observed, wanted, 'Effective fixture setting differs: ' + node.name + ' ' + key); readback[key] = observed;
+        }
+        const enabled = effective('cluster.routing.allocation.disk.threshold_enabled');
+        assert.ok(enabled === true || enabled === 'true', 'Disk allocation thresholds must remain enabled');
+        const available = stats.nodes[nodeId]?.fs?.total?.available_in_bytes;
+        assert.ok(Number.isSafeInteger(available) && available >= 0, 'Actual available disk bytes are missing');
+        if (owned.role === 'data') assert.ok(available >= minimumAvailableBytes, 'Owned data node lacks low-watermark plus2GiB headroom');
+        actual.push({nodeId, name: node.name, role: owned.role, availableBytes: available, minimumAvailableBytes, settings: readback, thresholdsEnabled: enabled});
+    }
+    return {profile: core.diskWatermarkProfile, watermarks: expected, minimumAvailableBytes, nodes: actual,
+        description: 'Read after Mongo image/startup and before production processes; all-copy writes and one replica remain required.'};
+}
+
 export function assertRecoveryShutdown(rows: any[], parent: ChildProcess, intentionalKills: readonly number[]) {
     const summary = rows.findLast(value => value.kind === 'shutdown' && value.pid === parent.pid);
     assert.ok(summary); assert.deepEqual(summary.forced, []); assert.deepEqual(summary.unresolved, []);
@@ -166,6 +200,9 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
         assert.ok(mongo); assert.equal((await mongo.db('admin').command({buildInfo: 1})).version, MONGODB_VERSION);
         assert.deepEqual(await mongo.db(database).listCollections({}, {nameOnly: true}).toArray(), []);
         report.mongo = {uri: mongoUri, version: MONGODB_VERSION, replicaSet: mongoFixture.replicaSet, database, container: mongoFixture.ownedContainer('replica')};
+        report.diskReadiness = assertRecoveryDiskReadiness(state.core,
+            await es.nodes.info({metric: ['settings'], flat_settings: true}), await es.nodes.stats({metric: ['fs']}),
+            await es.cluster.getSettings({include_defaults: true, flat_settings: true}));
         replay = await serveRecoveryEngineeringSource(source, report.errors);
         report.rpcRequests = []; rpc = createServer(async (incoming, outgoing) => {try {let bytes = 0; const chunks: Buffer[] = [];
             for await (const chunk of incoming) {bytes += chunk.length; assert.ok(bytes <= 4096); chunks.push(Buffer.from(chunk));}
@@ -322,6 +359,7 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
             try {await close(); report.cleanup.push({name, ok: true});} catch (error) {report.status = 'failed'; report.cleanup.push({name, ok: false, error: describe(error)});}
         report.mongoCleanup = mongoFixture.cleanupResult; report.sourceMetrics ??= replay?.metrics(); report.sourceRequests ??= replay?.requests;
         report.bulkCapture = ledger ? {...ledger.limits, recordedRequests: ledger.receipts.length} : null;
+        if (report.errors.length) {report.status = 'failed'; report.error ??= 'Asynchronous fixture errors: ' + describe(report.errors[0]);}
         report.completedAt = new Date().toISOString(); await reportFile.writeFile(JSON.stringify(report, null, 2) + '\n'); await reportFile.sync(); await reportFile.close();
     }
     return report;

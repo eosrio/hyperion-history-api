@@ -3,7 +3,9 @@ param(
     [Parameter(Mandatory)][string]$StateFile,
     [switch]$ExposeRabbitManagement,
     # Pressure qualification keeps its one-MiB default. Actual source journals can require larger individual writes.
-    [ValidateRange(1,256)][int]$IndexingPressureLimitMb=1
+    [ValidateRange(1,256)][int]$IndexingPressureLimitMb=1,
+    # Only fresh disposable fixtures may opt into the smaller absolute disk profile.
+    [ValidateSet('20-10-5gb','8-4-2gb')][string]$DiskWatermarkProfile='20-10-5gb'
 )
 $ErrorActionPreference='Stop'
 $label='es198-replicas'
@@ -22,10 +24,12 @@ if ($Action -eq 'create') {
     if (Test-Path -LiteralPath $StateFile) { throw 'Refusing to replace fixture state' }
     $run=([guid]::NewGuid().ToString('N')).Substring(0,12)
     $network="hyp-es955-replicas-$run"
+    $watermarks=if($DiskWatermarkProfile -eq '8-4-2gb'){@{low='8gb';high='4gb';floodStage='2gb'}}else{@{low='20gb';high='10gb';floodStage='5gb'}}
     $state=[ordered]@{schemaVersion=1;run=$run;clusterName="hyperion-es198-$run";createdAt=[DateTime]::UtcNow.ToString('o');
         esImage='docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c';
         rabbitImage='rabbitmq@sha256:09b39ca8a3e884e91cab8842cd41264de21aab0625e1f1d016a9a3135ba590ef';
-        network=$network;nodes=@();broker=$null;status='creating';indexingPressureLimitMb=$IndexingPressureLimitMb}
+        network=$network;nodes=@();broker=$null;status='creating';indexingPressureLimitMb=$IndexingPressureLimitMb;
+        diskWatermarkProfile=$DiskWatermarkProfile;diskWatermarks=$watermarks}
     Save-State $state
     $null=Invoke-FixtureDocker @('network','create','--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",$network)
     $names=@("$network-a","$network-b","$network-witness")
@@ -45,8 +49,8 @@ if ($Action -eq 'create') {
             '-e',"discovery.seed_hosts=$($names -join ',')",'-e',"cluster.initial_master_nodes=$($names -join ',')",
             '-e','xpack.security.enabled=false','-e','xpack.security.autoconfiguration.enabled=false','-e','xpack.ml.enabled=false',
             '-e','ingest.geoip.downloader.enabled=false','-e',"indexing_pressure.memory.limit=$($IndexingPressureLimitMb)mb",
-            '-e','cluster.routing.allocation.disk.watermark.low=20gb','-e','cluster.routing.allocation.disk.watermark.high=10gb',
-            '-e','cluster.routing.allocation.disk.watermark.flood_stage=5gb','-e',"ES_JAVA_OPTS=-Xms$heap -Xmx$heap",$state.esImage)
+            '-e',"cluster.routing.allocation.disk.watermark.low=$($watermarks.low)",'-e',"cluster.routing.allocation.disk.watermark.high=$($watermarks.high)",
+            '-e',"cluster.routing.allocation.disk.watermark.flood_stage=$($watermarks.floodStage)",'-e',"ES_JAVA_OPTS=-Xms$heap -Xmx$heap",$state.esImage)
         $cid=(Invoke-FixtureDocker $args).Trim()
         $entry.containerId=$cid; Save-State $state
         $url='http://'+(Invoke-FixtureDocker @('port',$cid,'9200/tcp')).Trim()

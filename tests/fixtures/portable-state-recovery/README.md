@@ -25,8 +25,19 @@ Elasticsearch indexing-pressure limit. The driver rejects another pressure budge
 It creates its own pinned Mongo8.0.34 replica set. Run on native Linux Node22/24;
 do not point it at a production service.
 
+The service helper defaults to the unchanged20/10/5GiB low/high/flood disk
+watermarks. A smaller disposable host can explicitly select `8-4-2gb` when
+creating a fresh fixture. The allowlisted profile and exact watermarks persist in
+the core state. After the Mongo image/startup, the recovery driver reads actual
+node settings, cluster overrides and filesystem `available_in_bytes`. It requires
+the selected watermarks, enabled disk thresholds,64MiB indexing pressure and at
+least low-watermark plus2GiB on each data node before production processes start.
+This profile changes no incumbent cluster and preserves one replica and all-copy
+write acknowledgments. Preserve failed allocation/startup attempts as evidence.
+
 ```sh
 python tests/fixtures/portable-state-worker/prepare.py out/p246-original
+python tests/fixtures/portable-state-worker/services.py create out/p246-services --disk-watermark-profile 8-4-2gb
 node scripts/qualification/portable-state-recovery-input.ts out/p246-original/plan.json out/p246-input-receipt.json
 bun check -p tsconfig.json
 bun check -p scripts/qualification/tsconfig.json

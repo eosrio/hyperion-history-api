@@ -2,7 +2,7 @@ import {expect, test} from 'bun:test';
 import {RecoverySourceFlow, recoverySourceLimits, serveRecoveryEngineeringSource} from '../../scripts/qualification/portable-state-recovery-source.ts';
 import {recoveryExpectedRows, assertRecoveryHttp, assertRecoveryUnavailable, assertRecoveryProbe} from '../../scripts/qualification/portable-state-recovery-oracle.ts';
 import {rollbackIntentReceipt} from '../../scripts/qualification/portable-state-recovery-observer.mjs';
-import {assertRecoveryShutdown} from '../../scripts/qualification/portable-state-recovery.ts';
+import {assertRecoveryShutdown, assertRecoveryDiskReadiness} from '../../scripts/qualification/portable-state-recovery.ts';
 
 const request = (start: number, positions: any[] = [], window = 8) => ['get_blocks_request_v0', {
     start_block_num: start, end_block_num: 0xffffffff, max_messages_in_flight: window, have_positions: positions,
@@ -108,4 +108,32 @@ test('shutdown oracle permits only explicitly observed intentional kills and acc
     expect(() => assertRecoveryShutdown(rows, parent, [])).toThrow();
     expect(() => assertRecoveryShutdown(rows, {...parent, exitCode: 0}, [11])).toThrow();
     expect(() => assertRecoveryShutdown([...rows, {kind: 'worker_fork'}], parent, [11])).toThrow();
+});
+
+test('disposable disk profiles require actual settings, active thresholds and available headroom after image pulls', () => {
+    const core: any = {diskWatermarkProfile: '8-4-2gb', diskWatermarks: {low: '8gb', high: '4gb', floodStage: '2gb'},
+        nodes: [{name: 'a', role: 'data'}, {name: 'b', role: 'data'}, {name: 'w', role: 'master'}]};
+    const settings: any = {nodes: Object.fromEntries(core.nodes.map((node: any) => [node.name, {name: node.name, settings: {
+        'cluster.routing.allocation.disk.watermark.low': '8gb', 'cluster.routing.allocation.disk.watermark.high': '4gb',
+        'cluster.routing.allocation.disk.watermark.flood_stage': '2gb', 'indexing_pressure.memory.limit': '64mb'}}]))};
+    const stats: any = {nodes: Object.fromEntries(core.nodes.map((node: any) => [node.name,
+        {name: node.name, fs: {total: {available_in_bytes: 12 * 1024 ** 3, free_in_bytes: 50 * 1024 ** 3}}}]))};
+    const cluster: any = {defaults: {'cluster.routing.allocation.disk.threshold_enabled': 'true'}, transient: {}, persistent: {}};
+    expect(assertRecoveryDiskReadiness(core, settings, stats, cluster).minimumAvailableBytes).toBe(10 * 1024 ** 3);
+    expect(() => assertRecoveryDiskReadiness({...core, diskWatermarkProfile: 'unsafe'}, settings, stats, cluster)).toThrow();
+    expect(() => assertRecoveryDiskReadiness({...core, diskWatermarks: {...core.diskWatermarks, low: '1gb'}}, settings, stats, cluster)).toThrow();
+    const dynamic = structuredClone(cluster); dynamic.persistent['cluster.routing.allocation.disk.watermark.low'] = '20gb';
+    expect(() => assertRecoveryDiskReadiness(core, settings, stats, dynamic)).toThrow();
+    const disabled = structuredClone(cluster); disabled.transient['cluster.routing.allocation.disk.threshold_enabled'] = 'false';
+    expect(() => assertRecoveryDiskReadiness(core, settings, stats, disabled)).toThrow();
+    const insufficient = structuredClone(stats); insufficient.nodes.a.fs.total.available_in_bytes = 9 * 1024 ** 3;
+    expect(() => assertRecoveryDiskReadiness(core, settings, insufficient, cluster)).toThrow();
+    const wrongPressure = structuredClone(settings); wrongPressure.nodes.a.settings['indexing_pressure.memory.limit'] = '1mb';
+    expect(() => assertRecoveryDiskReadiness(core, wrongPressure, stats, cluster)).toThrow();
+    const standard = structuredClone(core); standard.diskWatermarkProfile = '20-10-5gb'; standard.diskWatermarks = {low: '20gb', high: '10gb', floodStage: '5gb'};
+    const standardSettings = structuredClone(settings), room = structuredClone(stats);
+    for (const name of ['a', 'b', 'w']) {Object.assign(standardSettings.nodes[name].settings, {
+        'cluster.routing.allocation.disk.watermark.low': '20gb', 'cluster.routing.allocation.disk.watermark.high': '10gb',
+        'cluster.routing.allocation.disk.watermark.flood_stage': '5gb'}); room.nodes[name].fs.total.available_in_bytes = 24 * 1024 ** 3;}
+    expect(assertRecoveryDiskReadiness(standard, standardSettings, room, cluster).minimumAvailableBytes).toBe(22 * 1024 ** 3);
 });
