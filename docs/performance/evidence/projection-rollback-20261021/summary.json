@@ -167,7 +167,6 @@
   "ciAcceptance": [
     {
       "runId": 39635039652,
-      "headCommit": "216af120f5b45bf43780f967d093224780bc1409",
       "url": "https://github.com/eosrio/hyperion-history-api/actions/runs/39635039652",
       "node": "v22.23.3",
       "status": "passed",
@@ -184,11 +183,18 @@
         "verified": true
       },
       "reportMember": "ci/node22-projection-report.json",
-      "reportSha256": "ef925e0f00977c374186649c8287f05f0d185a28a76524252afd93047067a92d"
+      "reportSha256": "ef925e0f00977c374186649c8287f05f0d185a28a76524252afd93047067a92d",
+      "workflowPrHeadCommit": "216af120f5b45bf43780f967d093224780bc1409",
+      "checkedOutSourceCommit": "747ccc845bb818c5a492b19ffadf2d84896018fe",
+      "checkedOutSourceKind": "GitHub synthetic pull-request merge",
+      "checkedOutParents": [
+        "3a3e1d2a868635386172854c1157c76904547538",
+        "216af120f5b45bf43780f967d093224780bc1409"
+      ],
+      "provenanceFile": "ci-provenance.json"
     },
     {
       "runId": 39635039652,
-      "headCommit": "216af120f5b45bf43780f967d093224780bc1409",
       "url": "https://github.com/eosrio/hyperion-history-api/actions/runs/39635039652",
       "node": "v24.22.0",
       "status": "passed",
@@ -205,7 +211,15 @@
         "verified": true
       },
       "reportMember": "ci/node24-projection-report.json",
-      "reportSha256": "ee720f54a055ec492e6ca168d9357139659d8a4b3e4e9c12887adf24182cd92f"
+      "reportSha256": "ee720f54a055ec492e6ca168d9357139659d8a4b3e4e9c12887adf24182cd92f",
+      "workflowPrHeadCommit": "216af120f5b45bf43780f967d093224780bc1409",
+      "checkedOutSourceCommit": "747ccc845bb818c5a492b19ffadf2d84896018fe",
+      "checkedOutSourceKind": "GitHub synthetic pull-request merge",
+      "checkedOutParents": [
+        "3a3e1d2a868635386172854c1157c76904547538",
+        "216af120f5b45bf43780f967d093224780bc1409"
+      ],
+      "provenanceFile": "ci-provenance.json"
     }
   ],
   "failedRuns": [

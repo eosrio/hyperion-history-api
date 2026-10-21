@@ -43,12 +43,16 @@ binary. A saved floor receipt supports duplicate replay after rollback beyond th
 ordinary replay-receipt window.
 
 The [public CI runner](https://github.com/eosrio/hyperion-history-api/actions/runs/39635039652)
-also passes on Node 22/24 at `216af120f5b45bf43780f967d093224780bc1409`.
-That commit adds only CI branch coverage after the tested code. Its owned Docker
-fixture runs the existing v1 checks and the same 14 rollback checks; both reports
-verify container, network and volume cleanup. Unmodified CI reports are in the
-archive. Runtime, adapter, fixture and dependency pins are unchanged between these
-native and CI code commits.
+also passes on Node 22/24 for PR head
+`216af120f5b45bf43780f967d093224780bc1409`. GitHub checked out synthetic merge
+`747ccc845bb818c5a492b19ffadf2d84896018fe`, whose parents are the base
+`3a3e1d2a868635386172854c1157c76904547538` and that PR head. The original reports
+retain this checked-out source SHA; [ci-provenance.json](ci-provenance.json)
+records the verified distinction. The PR head adds only CI branch coverage after
+the native tested code. Its owned Docker fixture runs the existing 12 v1 checks
+and the same 14 rollback checks; both reports verify container, network and volume
+cleanup. Unmodified CI reports are in the archive. Runtime, adapter, fixture and
+dependency pins are unchanged between these native and CI source trees.
 
 ## Failures retained and corrected
 
