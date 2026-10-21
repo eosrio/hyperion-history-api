@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {ReadConcern, type MongoClient} from 'mongodb';
 import type {ProjectionBinding, ProjectionCheckpoint, ProjectionDefinition, ProjectionQueryResult} from '@eosrio/hyperion-sdk/projection';
 import type {PortableWorkerPlan} from './portable-state-worker.ts';
-import type {RecoveryBranch} from './portable-state-recovery-source.ts';
+import type {RecoveryBranch, RecoveryEngineeringSource} from './portable-state-recovery-source.ts';
 type Row = ProjectionQueryResult['rows'][number];
 
 export function recoveryUnaffectedDefinition(plan: PortableWorkerPlan): ProjectionDefinition {
@@ -52,6 +52,23 @@ export function assertRecoveryUnavailable(response: {status: number; headers: He
     for (const name of ['hyperion-state-block-num', 'hyperion-state-block-id', 'hyperion-state-last-valid', 'hyperion-state-finality'])
         assert.equal(response.headers.get(name), null);
     assert.equal(response.body.view, undefined); assert.equal(response.body.rows, undefined);
+}
+
+/** A canonical block label is insufficient: every probe must also prove its actual row image. */
+export function assertRecoveryProbe(result: any, headers: Headers, binding: ProjectionBinding, finality: 'reversible' | 'irreversible',
+    source: Pick<RecoveryEngineeringSource, 'records'>, plan: PortableWorkerPlan, afterFork: boolean) {
+    const checkpoint = result?.view?.checkpoint;
+    assert.ok(checkpoint && Number.isSafeInteger(checkpoint.blockNum) && checkpoint.blockNum >= 1);
+    const matching = source.records.filter(record => record.blockNum === checkpoint.blockNum && record.blockId === checkpoint.blockId);
+    assert.ok(matching.length > 0, 'Probe returned an unknown served checkpoint');
+    let branch: RecoveryBranch;
+    if (afterFork) {
+        assert.ok(matching.some(record => record.branch === 'common' || record.branch === 'B'), 'Probe served an orphan A checkpoint after fork authority changed');
+        branch = 'B';
+    } else branch = matching.some(record => record.branch === 'common' || record.branch === 'A') ? 'A' : 'B';
+    const expected = binding.projectionId === recoveryUnaffectedDefinition(plan).id ? [] : recoveryExpectedRows(plan, branch, checkpoint.blockNum)[binding.projectionId];
+    assert.ok(expected, 'Probe belongs to an undeclared projection');
+    assertRecoveryHttp(result, headers, binding, checkpoint, expected, finality);
 }
 
 /** Physical layout is inspected independently of adapter methods. Bindings are flat SDK records. */

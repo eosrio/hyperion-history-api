@@ -1,6 +1,6 @@
 import {expect, test} from 'bun:test';
 import {RecoverySourceFlow, recoverySourceLimits, serveRecoveryEngineeringSource} from '../../scripts/qualification/portable-state-recovery-source.ts';
-import {recoveryExpectedRows, assertRecoveryHttp, assertRecoveryUnavailable} from '../../scripts/qualification/portable-state-recovery-oracle.ts';
+import {recoveryExpectedRows, assertRecoveryHttp, assertRecoveryUnavailable, assertRecoveryProbe} from '../../scripts/qualification/portable-state-recovery-oracle.ts';
 import {rollbackIntentReceipt} from '../../scripts/qualification/portable-state-recovery-observer.mjs';
 import {assertRecoveryShutdown} from '../../scripts/qualification/portable-state-recovery.ts';
 
@@ -82,6 +82,22 @@ test('crash observer accepts only the actual owned metadata rollback intent with
     expect(rollbackIntentReceipt(event, 'foreign', id)).toBeUndefined();
     expect(rollbackIntentReceipt(event, event.databaseName, 'f'.repeat(64))).toBeUndefined();
     event.command.writeConcern.j = false; expect(() => rollbackIntentReceipt(event, event.databaseName, id)).toThrow();
+});
+
+test('every successful probe rejects orphan or partial row images even under a canonical checkpoint label', () => {
+    const plan: any = {definitions: [{id: 'counter', source: {table: 'attseq'}}, {id: 'items', source: {table: 'outenvelopes'}}],
+        barriers: [{through: 1244, rows: {counter: [{key: '0', value: {next: '5'}}], items: []}},
+            {through: 1480, rows: {counter: [{key: '0', value: {next: '9'}}], items: []}}]};
+    const binding: any = {projectionId: 'counter'}, a = {blockNum: 1244, blockId: 'a'.repeat(64)}, b = {blockNum: 1244, blockId: 'b'.repeat(64)};
+    const source: any = {records: [{...a, branch: 'A'}, {...b, branch: 'B'}]};
+    const result = (checkpoint: any, rows: any[]) => ({view: {binding, checkpoint, revision: 'c'.repeat(64)}, rows, count: {value: rows.length, exact: true}});
+    const headers = (checkpoint: any) => new Headers({'hyperion-state-block-num': String(checkpoint.blockNum), 'hyperion-state-block-id': checkpoint.blockId,
+        'hyperion-state-last-valid': 'false', 'hyperion-state-finality': 'reversible', 'cache-control': 'no-store'});
+    expect(() => assertRecoveryProbe(result(a, plan.barriers[0].rows.counter), headers(a), binding, 'reversible', source, plan, false)).not.toThrow();
+    expect(() => assertRecoveryProbe(result(a, plan.barriers[0].rows.counter), headers(a), binding, 'reversible', source, plan, true)).toThrow();
+    expect(() => assertRecoveryProbe(result(b, plan.barriers[1].rows.counter), headers(b), binding, 'reversible', source, plan, true)).not.toThrow();
+    expect(() => assertRecoveryProbe(result(b, plan.barriers[0].rows.counter), headers(b), binding, 'reversible', source, plan, true)).toThrow();
+    expect(() => assertRecoveryProbe(result(b, []), headers(b), binding, 'reversible', source, plan, true)).toThrow();
 });
 
 test('shutdown oracle permits only explicitly observed intentional kills and accounts for every fork', () => {

@@ -17,7 +17,7 @@ import {assertPortableWorkerServices, describePortableWorkerError, portableWorke
     validatePortableWorkerPlan} from './portable-state-worker.ts';
 import {auditPortableWorkerSource, boundedPortableFile, ordinaryPortablePath, portableSourceHash} from './portable-state-worker-source.ts';
 import {buildRecoveryEngineeringSource, recoveryRecord, recoverySourceLimits, serveRecoveryEngineeringSource, type RecoveryBranch} from './portable-state-recovery-source.ts';
-import {assertRecoveryHttp, assertRecoveryPhysical, assertRecoveryUnavailable, inspectRecoveryPhysical, recoveryExpectedRows,
+import {assertRecoveryHttp, assertRecoveryPhysical, assertRecoveryUnavailable, assertRecoveryProbe, inspectRecoveryPhysical, recoveryExpectedRows,
     recoveryMetadataId, recoveryUnaffectedDefinition} from './portable-state-recovery-oracle.ts';
 import type {ProjectionBinding, ProjectionQuery} from '@eosrio/hyperion-sdk/projection';
 
@@ -235,12 +235,14 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
         if (finality === 'reversible') await writeFile(join(output, 'barrier/arm.json'), JSON.stringify({database, metadataId: recoveryMetadataId(bindings[0])}) + '\n', {flag: 'wx'});
         probeTask = (async () => {while (!stopProbes) {try {const control = await captureControl();
             if (control && control.generation !== beforeGeneration) knownFork = true;
-            const afterFork = knownFork, response = await query(bindings[0].projectionId);
-            assert.ok(report.probes.length < 12000); report.probes.push({at: Date.now(), stage: probeStage, afterFork, control: {phase: control?.phase, generation: control?.generation}, ...receipt(response)});
-            if (response.status === 503) assertRecoveryUnavailable(response);
-            else {assert.equal(response.status, 200); if (afterFork && finality === 'reversible') {
-                const block = response.body.view.checkpoint; assert.equal(block.blockId, recoveryRecord(source, 'B', block.blockNum).blockId);
-            }}
+            const afterFork = knownFork;
+            for (const binding of bindings) {
+                const response = await query(binding.projectionId);
+                assert.ok(report.probes.length < 12000); report.probes.push({at: Date.now(), stage: probeStage, projection: binding.projectionId,
+                    afterFork, control: {phase: control?.phase, generation: control?.generation}, ...receipt(response)});
+                if (response.status === 503) assertRecoveryUnavailable(response);
+                else {assert.equal(response.status, 200); assertRecoveryProbe(response.body, response.headers, binding, finality, source, plan, afterFork);}
+            }
         } catch (error) {report.errors.push(describe(error)); return;} await pause(50);}})();
         await wait('all A source credits acknowledged', async () => replay!.assertDrained());
         probeStage = 'fork'; replay.replaceAndDisconnect(); replay.release(1248);
