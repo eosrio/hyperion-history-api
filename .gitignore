@@ -63,3 +63,6 @@ test-results/
 tests/e2e/.fixtures/
 tests/e2e/dist/
 reports/
+
+# Local qualification inputs, reports and helper scratch directories
+/out/
