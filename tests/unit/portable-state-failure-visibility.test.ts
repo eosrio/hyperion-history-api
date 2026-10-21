@@ -14,11 +14,17 @@ function source() {
     return {setValue(next: unknown) {value = next;}, async frame(height: number) {
         expect(height).toBe(2); return {frame: {chainId, block: target, changes: [{...definition.source,
             scope: '', primaryKey: 'new-key', present: true, value}]}, proof: {} as any, evidence: {} as any};
-    }, async revalidate() {}, async open() {return {} as any;}, async assertDefinition() {}};
+    }, async revalidate() {}, async open() {return {} as any;}, async assertDefinition() {},
+        async planRecovery(_retained: any, finality: 'reversible' | 'irreversible') {
+            return {target, reportedIrreversible: checkpoint, finality, checkpointStatus: 'canonical' as const,
+                intents: {pending: 'canonical' as const, gap: 'absent' as const}, rollback: null};
+        }, async revalidateRecovery() {}, async openState(completed: any, finality: 'reversible' | 'irreversible') {
+            return {checkpoint: completed, target, reportedIrreversible: checkpoint, finality};
+        }, async assertState() {}};
 }
 
 test('failed detailed marker cannot reopen an admitted mapping failure; restart retries exact source and restores serving only after commit', async () => {
-    const fixture = projectionFailureFixture(definition, chainId, checkpoint), selected = source(), progress: any[] = [];
+    const fixture = projectionFailureFixture(definition, chainId, checkpoint, true), selected = source(), progress: any[] = [];
     fixture.faults.rejectDetailedMarker = true;
     const controller = await PortableStateController.create({chainId, configuration: fixture.configuration, adapter: fixture.adapter,
         source: selected, maximumFramesPerProjection: 1, onProgress: value => progress.push(value)});
@@ -29,7 +35,8 @@ test('failed detailed marker cannot reopen an admitted mapping failure; restart 
         const failed = await api.query();
         expect(failed.statusCode).toBe(503); expect(failed.json().retryable).toBe(true);
         expect(failed.headers['hyperion-state-last-valid']).toBeUndefined();
-        expect(fixture.metadata().checkpoint).toEqual(checkpoint);
+        expect(fixture.metadata().checkpoint).toMatchObject(checkpoint);
+        expect(fixture.metadata().checkpoint.revision).toBe(fixture.metadata().revision);
         expect(fixture.metadata().pending).toEqual({block: target, digest: null, reason: admissionReason});
         expect(fixture.calls.some(call => call.command === 'replace')).toBe(false);
         expect(progress.at(-1).status).toBe('incomplete');
@@ -48,7 +55,7 @@ test('failed detailed marker cannot reopen an admitted mapping failure; restart 
 
 test('rejected admission stays ordinary unadmitted lag, while a lost receipt after persistence fences reads without mapping', async () => {
     for (const mode of ['reject', 'lost-receipt', 'cas-miss']) {
-        const fixture = projectionFailureFixture(definition, chainId, checkpoint), selected = source();
+        const fixture = projectionFailureFixture(definition, chainId, checkpoint, true), selected = source();
         fixture.faults.rejectAdmission = mode === 'reject'; fixture.faults.loseAdmissionReceipt = mode === 'lost-receipt';
         fixture.faults.casMiss = mode === 'cas-miss';
         const controller = await PortableStateController.create({chainId, configuration: fixture.configuration, adapter: fixture.adapter,
@@ -59,7 +66,7 @@ test('rejected admission stays ordinary unadmitted lag, while a lost receipt aft
             expect((await api.query()).statusCode).toBe(mode === 'lost-receipt' ? 503 : 200);
             expect(fixture.calls.filter(call => call.command === 'findAndModify')).toHaveLength(1);
             expect(fixture.calls.some(call => call.command === 'replace')).toBe(false);
-            expect(fixture.metadata().checkpoint).toEqual(checkpoint);
+            expect(fixture.metadata().checkpoint).toMatchObject(checkpoint);
         } finally {await controller.stop(); await api.app.close();}
     }
 });
@@ -85,14 +92,14 @@ test('default runtime duplicates remain receipt-based and production admission n
 });
 
 test('failed transactional completion retains the exact admitted source and known mutation digest across restart', async () => {
-    const fixture = projectionFailureFixture(definition, chainId, checkpoint), selected = source(); selected.setValue({owner: 'bob'});
+    const fixture = projectionFailureFixture(definition, chainId, checkpoint, true), selected = source(); selected.setValue({owner: 'bob'});
     fixture.faults.rejectCompletion = true;
     const controller = await PortableStateController.create({chainId, configuration: fixture.configuration, adapter: fixture.adapter,
         source: selected, maximumFramesPerProjection: 1});
     const api = await projectionFailureApi(fixture, selected);
     try {
         await controller.drain(); expect((await api.query()).statusCode).toBe(503);
-        const durable = fixture.metadata(); expect(durable.checkpoint).toEqual(checkpoint);
+        const durable = fixture.metadata(); expect(durable.checkpoint).toMatchObject(checkpoint);
         expect(durable.pending.block).toEqual(target); expect(durable.pending.digest).toMatch(/^[a-f0-9]{64}$/);
         expect(durable.pending.reason).toBe(admissionReason); expect(fixture.rows().has('["","new-key"]')).toBe(false);
         const restartedAdapter = fixture.createAdapter();
