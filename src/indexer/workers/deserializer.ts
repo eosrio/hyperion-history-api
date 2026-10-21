@@ -2523,9 +2523,10 @@ export default class MainDSWorker extends HyperionWorker {
         this.tableHandlers[systemContract + ':producers'] = (delta: HyperionDelta) => {
             const data = delta['data'];
             if (data) {
+                const isActive = data['is_active'];
                 delta['@producers'] = {
                     total_votes: parseFloat(data['total_votes']),
-                    is_active: data['is_active'],
+                    is_active: isActive === 0 ? false : isActive === 1 ? true : isActive,
                     unpaid_blocks: data['unpaid_blocks']
                 };
                 delete delta['data'];

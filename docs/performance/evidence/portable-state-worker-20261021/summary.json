@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "codeCommit": "ad590df3fc820cbf9723c5d6530b5e88c4b967e4",
+  "runtimeAcceptance": [
+    {
+      "case": "case24-e",
+      "status": "passed",
+      "node": "v24.19.0",
+      "nodeBinarySha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+      "startedAt": "2026-10-21T14:04:43.391Z",
+      "completedAt": "2026-10-21T14:12:41.633Z",
+      "sourceRange": {
+        "first": 1,
+        "last": 1480
+      },
+      "prefixes": [
+        {
+          "through": 1244,
+          "file": "prefixes/block-1244.json",
+          "sha256": "8dd064725293d236357a42ff251cf8809f72c3d3bb5682f4e185e4abd00b08aa"
+        },
+        {
+          "through": 1480,
+          "file": "prefixes/block-1480.json",
+          "sha256": "aec01ca1785a39d76b0924a07db7b44f68b26baf79e6bc47135c06b2b73f2ef2"
+        }
+      ],
+      "bulk": {
+        "requests": 10345,
+        "successfulItems": 11098,
+        "failedItems": 0,
+        "repeatedAttempts": 0,
+        "attemptsAfterObservedFailure": 0,
+        "acknowledgedCopies": {
+          "1": 5,
+          "2": 11093
+        },
+        "limits": [
+          "Repeated IDs alone do not establish retries; only attempts following an observed failure are correlated."
+        ]
+      },
+      "bulkCapture": {
+        "maximumRequests": 20000,
+        "maximumCapturedBytes": 268435456,
+        "recordedRequests": 10345
+      },
+      "sourceSends": 1480,
+      "sourceAcknowledgments": 1480,
+      "queueCount": 10,
+      "allQueuesDrained": true,
+      "mongoFailureEntryCounts": [
+        0,
+        6
+      ],
+      "masterChildCount": 12,
+      "nativeShutdownClean": true,
+      "ownedMongoCleanupVerified": true,
+      "rawReport": {
+        "archive": "case24-e-full.tar.gz",
+        "member": "case24-e/report.json",
+        "bytes": 309393,
+        "sha256": "cd4c6fa03e11103708a0779b22e9f9dd8977b9ad7cb9dce0ebe6c2dbcc0fffdc"
+      }
+    },
+    {
+      "case": "case22-a",
+      "status": "passed",
+      "node": "v22.23.3",
+      "nodeBinarySha256": "fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48",
+      "startedAt": "2026-10-21T14:18:00.183Z",
+      "completedAt": "2026-10-21T14:26:15.711Z",
+      "sourceRange": {
+        "first": 1,
+        "last": 1480
+      },
+      "prefixes": [
+        {
+          "through": 1244,
+          "file": "prefixes/block-1244.json",
+          "sha256": "352e6767e0f146d0410c93dc53a81fe501ed45835c3a2e3136de6e39df47b105"
+        },
+        {
+          "through": 1480,
+          "file": "prefixes/block-1480.json",
+          "sha256": "912f9cc42beb402aa306ab4624809bb121f5229412fa87712a11a0cd9ce28423"
+        }
+      ],
+      "bulk": {
+        "requests": 10371,
+        "successfulItems": 11098,
+        "failedItems": 0,
+        "repeatedAttempts": 0,
+        "attemptsAfterObservedFailure": 0,
+        "acknowledgedCopies": {
+          "1": 5,
+          "2": 11093
+        },
+        "limits": [
+          "Repeated IDs alone do not establish retries; only attempts following an observed failure are correlated."
+        ]
+      },
+      "bulkCapture": {
+        "maximumRequests": 20000,
+        "maximumCapturedBytes": 268435456,
+        "recordedRequests": 10371
+      },
+      "sourceSends": 1480,
+      "sourceAcknowledgments": 1480,
+      "queueCount": 10,
+      "allQueuesDrained": true,
+      "mongoFailureEntryCounts": [
+        0,
+        6
+      ],
+      "masterChildCount": 12,
+      "nativeShutdownClean": true,
+      "ownedMongoCleanupVerified": true,
+      "rawReport": {
+        "archive": "case22-a-full.tar.gz",
+        "member": "case22-a/report.json",
+        "bytes": 309440,
+        "sha256": "636dc976883db743e15a3290a006e88aac726baa657ef9791a01f48872a93718"
+      }
+    }
+  ],
+  "scope": "Finite original Wire testnet replay, native Node workers inside a 6 CPU/12 GiB LXD fixture on Hyperion-3; Docker services inside the fixture.",
+  "releaseQualified": false,
+  "fullWireQualified": false,
+  "forkQualified": false,
+  "processCrashQualified": false,
+  "bunRuntimeQualified": false,
+  "rustQualified": false
+}

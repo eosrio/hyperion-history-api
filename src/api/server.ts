@@ -34,6 +34,8 @@ import { FastifyMongodbOptions } from '@fastify/mongodb';
 
 import { createContext, runInContext } from 'node:vm';
 import fastifyHttpProxy from '@fastify/http-proxy';
+import {createPortableStateApiService} from './helpers/portable-state.js';
+import {PortableStateQueryError} from '../indexer/projection/query-service.js';
 
 class HyperionApiServer {
   private readonly fastify: FastifyInstance;
@@ -353,7 +355,7 @@ class HyperionApiServer {
     await waitUntilReady(
       async () => {
         try {
-          this.manager.prepareMongoClient();
+          if (!this.manager.mongodbClient) this.manager.prepareMongoClient();
           if (this.manager.mongodbClient) {
             await this.manager.mongodbClient.connect();
             const buildInfo = await this.manager.mongodbClient
@@ -376,6 +378,16 @@ class HyperionApiServer {
         process.exit();
       },
     );
+
+    try {
+      const service = await createPortableStateApiService(this.fastify);
+      if (service) this.fastify.decorate('portableState', service);
+    } catch (error) {
+      hLog(`Portable state query initialization is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      this.fastify.decorate('portableState', {async query() {
+        throw new PortableStateQueryError(503, 'projection.query-unavailable', 'Portable state is unavailable; retry later.');
+      }});
+    }
 
     this.addGenericTypeParsing();
 

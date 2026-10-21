@@ -265,10 +265,34 @@ export class ProtocolAbiProofReader {
         const state=this.state(await this.retained(()=>this.options.store.readAccount(issued.commit.stateRootId,account,signal),undefined,signal),view,account);
         await this.revalidate(view,{signal});return state;
     }
+    /** Inspect known absence/empty barriers for lifecycle fencing; this does not authorize decoding. */
+    async inspectFinalState(view:ProtocolAbiProofView,account:string,
+                            {signal,atBlockNum}:ProtocolAbiProofReadOptions&{atBlockNum?:number}={}):Promise<ProtocolAbiAccountState|null> {
+        this.assertActive(signal);
+        const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
+        atBlockNum??=view.source.blockNum;
+        requireProof(text(account)&&uint(atBlockNum,1)&&atBlockNum<=view.source.blockNum
+            &&view.source.blockNum-atBlockNum<=this.maximumAncestry,'Invalid ABI inspection ancestry');
+        let commit=issued.commit;
+        while(commit.source.blockNum>atBlockNum){
+            requireProof(commit.previousCommitId,'ABI inspection ancestry is not retained');
+            const previous=this.validateCommit(await this.retained(()=>this.options.store.readCommit(commit.previousCommitId!,signal),'ancestry_unavailable',signal));
+            requireProof(previous.status==='complete'&&previous.source.blockNum+1===commit.source.blockNum
+                &&previous.source.blockId===commit.source.previousBlockId,'ABI inspection ancestry is not complete and contiguous');
+            commit=previous;
+        }
+        const raw=await this.retained(()=>this.options.store.readAccount(commit.stateRootId,account,signal),undefined,signal);
+        const state=raw===null?null:this.knownState(raw,{...view,source:commit.source},account);
+        await this.revalidate(view,{signal});return state;
+    }
     private state(value:any,view:ProtocolAbiProofView,account:string):ProtocolAbiAccountState {
         if(!value||value.account!==account||value.present!==true||!isProtocolHex(value.abiHex)||!value.abiHex)
             unavailable('abi_state_unavailable','Certified ABI state is unknown, absent or empty');
-        requireProof(this.sameProfile(value.protocol)&&value.source?.chainId===this.options.chainId
+        return this.knownState(value,view,account);
+    }
+    private knownState(value:any,view:ProtocolAbiProofView,account:string):ProtocolAbiAccountState {
+        requireProof(value&&value.account===account&&typeof value.present==='boolean'&&isProtocolHex(value.abiHex)
+            &&this.sameProfile(value.protocol)&&value.source?.chainId===this.options.chainId
             &&uint(value.source.blockNum,1)&&value.source.blockNum<=view.source.blockNum&&hex64.test(value.source.blockId)
             &&(value.source.blockNum!==view.source.blockNum||value.source.blockId===view.source.blockId)
             &&ident('h45abi1',value.source.observationId)&&hex64.test(value.source.inputSha256),'Invalid ABI state provenance');

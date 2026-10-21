@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "workflowRunId": 39635039652,
+  "workflowPrHeadCommit": "216af120f5b45bf43780f967d093224780bc1409",
+  "checkedOutMerge": {
+    "message": "Merge 216af120f5b45bf43780f967d093224780bc1409 into 3a3e1d2a868635386172854c1157c76904547538",
+    "parents": [
+      "3a3e1d2a868635386172854c1157c76904547538",
+      "216af120f5b45bf43780f967d093224780bc1409"
+    ],
+    "sha": "747ccc845bb818c5a492b19ffadf2d84896018fe"
+  },
+  "source": "https://api.github.com/repos/eosrio/hyperion-history-api/git/commits/747ccc845bb818c5a492b19ffadf2d84896018fe"
+}

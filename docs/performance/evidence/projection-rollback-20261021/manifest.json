@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 1,
+  "testedCodeCommit": "781cd19bd30fac42a9d1318b00fb163bc357460e",
+  "privateBackup": {
+    "schemaVersion": 1,
+    "archive": {
+      "file": "evidence-backup.tar.gz",
+      "bytes": 252361,
+      "sha256": "85039e55d4431022f239deab7b0822c70905606a6de2f18095cfe0af44fd6328"
+    },
+    "members": 40,
+    "memberBytes": 7272790,
+    "everyMemberVerified": true,
+    "applicationSnapshot": {
+      "databases": 6,
+      "documents": 442,
+      "bytes": 273857
+    }
+  },
+  "archive": {
+    "file": "raw-evidence.tar.gz",
+    "bytes": 467320,
+    "sha256": "da9e723f83a161861e4643a00f4b7db5c3d479dd2e577f5525ec2e82f3d3e33f"
+  },
+  "files": [
+    {
+      "path": "checks/toolchain.json",
+      "bytes": 1775,
+      "sha256": "40a5454dd263e1ebf94a1da50946a9c3b5cff1431374e910f09c9b57696cdc7d",
+      "origin": "Final local check logs; originals retained privately by listed SHA-256",
+      "projection": true
+    },
+    {
+      "path": "ci/node22-projection-report.json",
+      "bytes": 4359227,
+      "sha256": "ef925e0f00977c374186649c8287f05f0d185a28a76524252afd93047067a92d",
+      "origin": "ci-216af12/node22/projection-report.json",
+      "originalSha256": "ef925e0f00977c374186649c8287f05f0d185a28a76524252afd93047067a92d",
+      "projection": false
+    },
+    {
+      "path": "ci/node24-projection-report.json",
+      "bytes": 4343109,
+      "sha256": "ee720f54a055ec492e6ca168d9357139659d8a4b3e4e9c12887adf24182cd92f",
+      "origin": "ci-216af12/node24/projection-report.json",
+      "originalSha256": "ee720f54a055ec492e6ca168d9357139659d8a4b3e4e9c12887adf24182cd92f",
+      "projection": false
+    },
+    {
+      "path": "failed/node22-retry-a.json",
+      "bytes": 985713,
+      "sha256": "0e2d7eb0a58e7dfe0e77831894daf91129129a718fa2fa2743af053d3db5a1cf",
+      "origin": "native-backup/node22-retry-a.json",
+      "originalSha256": "0e2d7eb0a58e7dfe0e77831894daf91129129a718fa2fa2743af053d3db5a1cf",
+      "projection": false
+    },
+    {
+      "path": "failed/node24-pilot.json",
+      "bytes": 15441,
+      "sha256": "dfda1464131d56768370d13b40267a8e74c1298c8450f6208121a39e6f141ff1",
+      "origin": "native-backup/node24-pilot.json",
+      "originalSha256": "dfda1464131d56768370d13b40267a8e74c1298c8450f6208121a39e6f141ff1",
+      "projection": false
+    },
+    {
+      "path": "failed/node24-retry-a.json",
+      "bytes": 985716,
+      "sha256": "b61731477874b17c149a98f2761da1e7bb766c35a67b519433d7169ff419243e",
+      "origin": "native-backup/node24-retry-a.json",
+      "originalSha256": "b61731477874b17c149a98f2761da1e7bb766c35a67b519433d7169ff419243e",
+      "projection": false
+    },
+    {
+      "path": "native/application-snapshot.json",
+      "bytes": 326972,
+      "sha256": "671fc983f71add448060d47294c784346245de08e87eafaebe372bdc7e683dbc",
+      "origin": "native-backup/application-snapshot.json",
+      "originalSha256": "671fc983f71add448060d47294c784346245de08e87eafaebe372bdc7e683dbc",
+      "projection": false
+    },
+    {
+      "path": "native/cleanup-final.json",
+      "bytes": 2006,
+      "sha256": "82ad24afb81922f90ac87c9d70616bc36368bd41d6e59fc12d67f8a5fa086c80",
+      "origin": "cleanup-final.json",
+      "originalSha256": "82ad24afb81922f90ac87c9d70616bc36368bd41d6e59fc12d67f8a5fa086c80",
+      "projection": false
+    },
+    {
+      "path": "native/cleanup-pre-removal.json",
+      "bytes": 1417,
+      "sha256": "383c3979964640259da8f156bbf0faea35a5fa900ac0faf36366cef247e8e017",
+      "origin": "native-backup/cleanup-pre-removal.json",
+      "originalSha256": "383c3979964640259da8f156bbf0faea35a5fa900ac0faf36366cef247e8e017",
+      "projection": false
+    },
+    {
+      "path": "native/host-platform.log",
+      "bytes": 1064,
+      "sha256": "65af756d300057ca61a2dda189adc7986db29e741ce4bc15d5c1b5bf9c671703",
+      "origin": "host-platform.log",
+      "originalSha256": "65af756d300057ca61a2dda189adc7986db29e741ce4bc15d5c1b5bf9c671703",
+      "projection": false
+    },
+    {
+      "path": "native/mongod.log",
+      "bytes": 931889,
+      "sha256": "312beca144f4c56a09f537b34db71af22997514dbadf4cdd72a6f50ea709f8bb",
+      "origin": "native-backup/logs/mongod.log",
+      "originalSha256": "312beca144f4c56a09f537b34db71af22997514dbadf4cdd72a6f50ea709f8bb",
+      "projection": false
+    },
+    {
+      "path": "native/node22-command.log",
+      "bytes": 373,
+      "sha256": "66d15c49fac6e1d7fd81ae8c370bb4f21d9b44826c3754dcfdb53d8f67f5fa19",
+      "origin": "node22-retry-b-command.log",
+      "originalSha256": "66d15c49fac6e1d7fd81ae8c370bb4f21d9b44826c3754dcfdb53d8f67f5fa19",
+      "projection": false
+    },
+    {
+      "path": "native/node22-retry-b.json",
+      "bytes": 1997083,
+      "sha256": "d88732bbb522f29b26324bac6092719197e524ca9157783c5798f45b9c9d4839",
+      "origin": "native-backup/node22-retry-b.json",
+      "originalSha256": "d88732bbb522f29b26324bac6092719197e524ca9157783c5798f45b9c9d4839",
+      "projection": false
+    },
+    {
+      "path": "native/node24-command.log",
+      "bytes": 373,
+      "sha256": "70597c714e1a803c6d5021335edd038b4013a6ac30ead275c6ebb9d08c017502",
+      "origin": "node24-retry-b-command.log",
+      "originalSha256": "70597c714e1a803c6d5021335edd038b4013a6ac30ead275c6ebb9d08c017502",
+      "projection": false
+    },
+    {
+      "path": "native/node24-retry-b.json",
+      "bytes": 1999668,
+      "sha256": "c491548e5b69ca2dc0f2134bb72b7614610c59fb25d81d1eb5331cef85c73c72",
+      "origin": "native-backup/node24-retry-b.json",
+      "originalSha256": "c491548e5b69ca2dc0f2134bb72b7614610c59fb25d81d1eb5331cef85c73c72",
+      "projection": false
+    },
+    {
+      "path": "native/orphan-transaction-diagnosis.json",
+      "bytes": 3670,
+      "sha256": "d91a89f1460cec7db4bca28c4a3a12dfbba8adbfb6c22e3a64175a0d20a10c40",
+      "origin": "native-backup/orphan-transaction-diagnosis.json",
+      "originalSha256": "d91a89f1460cec7db4bca28c4a3a12dfbba8adbfb6c22e3a64175a0d20a10c40",
+      "projection": false
+    },
+    {
+      "path": "native/resources.public.json",
+      "bytes": 1943,
+      "sha256": "12a7bb72f7ac519557f6a58f266f8a2965a8a0739f1552c239c419f6d50d49b6",
+      "origin": "native-backup/provision.json + owner.json + known owned-unit launch commands",
+      "projection": true,
+      "originalSha256": "1d3702abf297e61030534350d4d13d87aac3c6989b59501091137b3102ca1ea4"
+    },
+    {
+      "path": "native/run-native.mjs",
+      "bytes": 4584,
+      "sha256": "01514d07de06db459b965829dc3a3ca5822892f2594dee5a3557dfcbf53ea2a9",
+      "origin": "native-backup/run-native.mjs",
+      "originalSha256": "01514d07de06db459b965829dc3a3ca5822892f2594dee5a3557dfcbf53ea2a9",
+      "projection": false
+    },
+    {
+      "path": "native/snapshot-native.mjs",
+      "bytes": 3405,
+      "sha256": "fd6af69d5bf72d8ee3479d4281ada2f4928aa417efbe833832a540679bda2194",
+      "origin": "native-backup/snapshot-native.mjs",
+      "originalSha256": "fd6af69d5bf72d8ee3479d4281ada2f4928aa417efbe833832a540679bda2194",
+      "projection": false
+    },
+    {
+      "path": "reviews/final-spec.md",
+      "bytes": 2368,
+      "sha256": "00b40545a04ec4904439409e9a6b75f114642d72d69ad5c42aa4e02a20d3b806",
+      "origin": "received-final-spec.md",
+      "originalSha256": "00b40545a04ec4904439409e9a6b75f114642d72d69ad5c42aa4e02a20d3b806",
+      "projection": true,
+      "changes": "UTF-8 text projection; machine-specific workspace prefixes normalized where present. Findings and validation claims retained."
+    },
+    {
+      "path": "reviews/final-standards.md",
+      "bytes": 2356,
+      "sha256": "f1c55efeaed47ce2290d32df6f28539d4d4d6475fa0fc7f93ccc85111bba2d65",
+      "origin": "received-final-standards.md",
+      "originalSha256": "f1c55efeaed47ce2290d32df6f28539d4d4d6475fa0fc7f93ccc85111bba2d65",
+      "projection": true,
+      "changes": "UTF-8 text projection; machine-specific workspace prefixes normalized where present. Findings and validation claims retained."
+    },
+    {
+      "path": "reviews/fixture-fix-spec.md",
+      "bytes": 2105,
+      "sha256": "ff2dd8880c1b7cfffaa675501401427cf68a6cabf0dcbf514df6dafdd1a744b8",
+      "origin": "received-final-oracle-fix.md",
+      "originalSha256": "ff2dd8880c1b7cfffaa675501401427cf68a6cabf0dcbf514df6dafdd1a744b8",
+      "projection": true,
+      "changes": "UTF-8 text projection; machine-specific workspace prefixes normalized where present. Findings and validation claims retained."
+    },
+    {
+      "path": "reviews/hapi-spec.md",
+      "bytes": 2178,
+      "sha256": "e2f9632cd63103d8540ad3c216e7e09da05cb5343a0bffeb5ef18efcbb151a9d",
+      "origin": "received-hapi-spec.md",
+      "originalSha256": "e2f9632cd63103d8540ad3c216e7e09da05cb5343a0bffeb5ef18efcbb151a9d",
+      "projection": true,
+      "changes": "UTF-8 text projection; machine-specific workspace prefixes normalized where present. Findings and validation claims retained."
+    },
+    {
+      "path": "reviews/hapi-standards.md",
+      "bytes": 2152,
+      "sha256": "6b2c246069894c568d6fd6d4556dcaccd9a291b4d084f31e2bad806fba9eef9c",
+      "origin": "received-hapi-standards.md",
+      "originalSha256": "6b2c246069894c568d6fd6d4556dcaccd9a291b4d084f31e2bad806fba9eef9c",
+      "projection": true,
+      "changes": "UTF-8 text projection; machine-specific workspace prefixes normalized where present. Findings and validation claims retained."
+    },
+    {
+      "path": "reviews/runtime-fix-spec.md",
+      "bytes": 1981,
+      "sha256": "dad02df9d62c21815dc48854985e8b7e31dd22cc01f32a2b5f5f45f7214780bc",
+      "origin": "received-runtime-fix-verification.md",
+      "originalSha256": "dad02df9d62c21815dc48854985e8b7e31dd22cc01f32a2b5f5f45f7214780bc",
+      "projection": true,
+      "changes": "UTF-8 text projection; machine-specific workspace prefixes normalized where present. Findings and validation claims retained."
+    },
+    {
+      "path": "reviews/sdk-spec.md",
+      "bytes": 1864,
+      "sha256": "d86141c4ba4ab36a927023fa8a023f4fbcc865cb49220c23bdd4094a26c54779",
+      "origin": "received-sdk-spec.md",
+      "originalSha256": "d86141c4ba4ab36a927023fa8a023f4fbcc865cb49220c23bdd4094a26c54779",
+      "projection": true,
+      "changes": "UTF-8 text projection; machine-specific workspace prefixes normalized where present. Findings and validation claims retained."
+    },
+    {
+      "path": "reviews/sdk-standards.md",
+      "bytes": 1505,
+      "sha256": "c18f53503a223b1e80b7b8568ed3392e5795d7b7c066ee8bd8fbe445a3dcf99e",
+      "origin": "received-sdk-standards.md",
+      "originalSha256": "c18f53503a223b1e80b7b8568ed3392e5795d7b7c066ee8bd8fbe445a3dcf99e",
+      "projection": true,
+      "changes": "UTF-8 text projection; machine-specific workspace prefixes normalized where present. Findings and validation claims retained."
+    }
+  ]
+}

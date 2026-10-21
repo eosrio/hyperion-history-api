@@ -49,6 +49,7 @@ import {ProtocolSourceBindingStore} from '../protocol/source-bindings.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
+import {resolvePortableStateConfiguration} from '../projection/config.js';
 import {assertActionSequenceTemplateReadback, ensureActionSequenceMappings,
     ensureActionSequenceWriteTemplate} from '../history/action-sequence-storage.js';
 
@@ -290,6 +291,11 @@ export class HyperionMaster {
                 if (!this.workerMap.some(definition => definition.wref === worker && definition.worker_role === 'deserializer')
                     || typeof msg.data?.selectionId !== 'string' || !/^h45srcsel1:[0-9a-f]{64}$/.test(msg.data.selectionId)) return;
                 this.requestProtocolAbiDrain();
+            },
+            portable_state_progress: (worker: Worker, msg: WorkerMessage) => {
+                // Observational only: this message cannot advance source/history progress or grant query readiness.
+                if (this.workerMap.some(definition => definition.wref === worker && definition.worker_role === 'projection'))
+                    debugLog('Portable state projection progress:', msg.data);
             },
             skipped_block: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.block_num) {
@@ -1272,6 +1278,9 @@ export class HyperionMaster {
         await this.setupIndexers();
         await this.setupStreaming();
         await this.setupDSPool();
+        const portable = resolvePortableStateConfiguration(this.conf.features.portable_state,
+            this.manager.conn.chains[this.chain].chain_id);
+        if (portable) this.addWorker({worker_role: 'projection'});
     }
 
     launchWorkers() {

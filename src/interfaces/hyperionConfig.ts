@@ -1,6 +1,7 @@
 import { z } from "zod/v4";
 
 import {AlertManagerOptions} from "../indexer/modules/alertsManager.js";
+import {resolvePortableStateConfiguration, type PortableStateConfiguration} from '../indexer/projection/config.js';
 
 /**
  * Contract usage statistics structure
@@ -280,6 +281,7 @@ export interface HyperionConfig {
         deltas: string[]
     };
     features: {
+        portable_state?: PortableStateConfiguration;
         streaming: {
             enable: boolean,
             traces: boolean,
@@ -559,6 +561,9 @@ const ContractStateSchema = z.object({
 });
 
 const FeaturesSchema = z.object({
+    portable_state: z.custom<PortableStateConfiguration>(value => {
+        try {return resolvePortableStateConfiguration(value, '0'.repeat(64)) !== undefined;} catch {return false;}
+    }, 'Invalid portable state backend or projection definitions').optional(),
     streaming: StreamingFeaturesSchema,
     tables: TablesFeaturesSchema,
     contract_state: ContractStateSchema,
