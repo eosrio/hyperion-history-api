@@ -130,6 +130,10 @@ checkpoints, source/emission fingerprints and cleanup results. A failing rollbac
 run remains in the report. The Node.js 22/24 CI matrix runs this fixture separately
 from the unit and toolchain checks.
 
+The [2026-10-21 evidence](performance/evidence/projection-rollback-20261021/README.md)
+records the native Hyperion-3 matrix, public CI runs, retained failures, independent
+review corrections and verified resource cleanup.
+
 This guarded correctness fixture does not qualify a live Wire fork/reconnect,
 irreversible-only operation, all state routes, AtomicAssets/AtomicMarket parity,
 WormDB, Bun runtime support or sustained-load performance. Those release gates
