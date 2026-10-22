@@ -4,11 +4,27 @@ import {loadChainProtocol} from '../../indexer/protocol/selection.js';
 import {ProtocolAbiFrontierStore} from '../../indexer/protocol/abi-frontier-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError,
     type ProtocolActionProofMetadata, type ProtocolAbiProofView} from '../../indexer/protocol/abi-proof.js';
+import {ProtocolNativeActionReader, ProtocolNativeActionUnavailableError,
+    type ProtocolNativeActionProofMetadata, type ProtocolNativeActionView, type ProtocolNativeActionGrant} from '../../indexer/protocol/native-authorization.js';
+import {ProtocolNativeObservationStore} from '../../indexer/protocol/native-observation-store.js';
+import {protocolImmutableJson} from '../../indexer/protocol/immutable-bundle-store.js';
+import {parseProtocolNativeActionMetadata} from '../../indexer/protocol/native-action-metadata.js';
 import {isProtocolHex} from '../../indexer/protocol/hex.js';
 import {assertProtocolProofRequestActive, withProtocolProofRequest} from './protocol-proof-request.js';
 
-const contexts = new WeakMap<FastifyInstance, Promise<{selected: Awaited<ReturnType<typeof loadChainProtocol>>; reader: ProtocolAbiProofReader}>>();
-const requests = new WeakMap<object, {actions: ProtocolActionProofMetadata[]; views: ProtocolAbiProofView[]; nodeResponse?: boolean}>();
+type ActionMetadata = ProtocolActionProofMetadata | ProtocolNativeActionProofMetadata;
+interface NativeAuthority {
+    readonly metadata: ProtocolNativeActionProofMetadata;
+    readonly view: ProtocolNativeActionView;
+    readonly grant: ProtocolNativeActionGrant;
+    readonly value: unknown;
+    readonly membership: ProtocolAbiProofView;
+}
+interface NativeProof extends NativeAuthority {readonly envelope: Readonly<Record<string, unknown>>}
+type SelectedProtocol = Awaited<ReturnType<typeof loadChainProtocol>>;
+const contexts = new WeakMap<FastifyInstance, Promise<ProtocolActionConsumer>>();
+const requests = new WeakMap<object, {actions: ActionMetadata[]; views: ProtocolAbiProofView[];
+    classifications: ProtocolNativeActionView[]; native: NativeProof[]; nodeResponse?: boolean}>();
 const cacheProofKey = '_hyperion_protocol_abi_v3';
 const maximumProtocolApiActions = 10000;
 const actionResponseRoutes = new Set(['get_actions', 'get_transaction', 'get_block', 'get_controlled_accounts',
@@ -19,19 +35,38 @@ export function isExtensionActionResponse(fastify: FastifyInstance, route: strin
         && actionResponseRoutes.has(route);
 }
 
+/** Internal host service for an already selected, component-verified provider. It never loads executable code. */
+export class ProtocolActionConsumer {
+    readonly reader: ProtocolAbiProofReader;
+    readonly nativeReader?: ProtocolNativeActionReader;
+    constructor(private readonly host: FastifyInstance, readonly selected: SelectedProtocol) {
+        const chain = host.manager.chain, chainId = host.manager.conn?.chains[chain]?.chain_id;
+        if (!chainId) throw unavailable('Configured chain identity is unavailable');
+        const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []};
+        this.reader = new ProtocolAbiProofReader({chainId, profile,
+            maxAncestryBlocks: host.manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
+            store: new ProtocolAbiFrontierStore(host.elastic, chain, host.manager.config.settings.es_replicas ?? 0, {readOnly: true})});
+        this.nativeReader = selected.provider.nativeActions ? new ProtocolNativeActionReader({chainId, profile,
+            provider: selected.provider, proofReader: this.reader,
+            store: new ProtocolNativeObservationStore(host.elastic, chain,
+                host.manager.config.settings.es_replicas ?? 0, undefined, {readOnly: true})}) : undefined;
+    }
+    belongsTo(host: FastifyInstance): boolean {
+        // Fastify route plugins inherit their host's decorators through encapsulation.
+        for (let current: object | null = host, depth = 0; current && depth < 64; current = Object.getPrototypeOf(current), depth++)
+            if (current === this.host) return true;
+        return false;
+    }
+}
+
 async function context(fastify: FastifyInstance) {
     let value = contexts.get(fastify);
     if (!value) {
-        value = (async () => {
-            const selected = await loadChainProtocol(fastify.manager.config.settings.protocol);
-            const chain = fastify.manager.chain;
-            const chainId = fastify.manager.conn?.chains[chain]?.chain_id;
-            if (!chainId) throw unavailable('Configured chain identity is unavailable');
-            return {selected, reader: new ProtocolAbiProofReader({chainId,
-                profile: {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []},
-                maxAncestryBlocks: fastify.manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
-                store: new ProtocolAbiFrontierStore(fastify.elastic, chain, fastify.manager.config.settings.es_replicas ?? 0, {readOnly: true})})};
-        })();
+        const service = (fastify as FastifyInstance & {protocolActionConsumer?: ProtocolActionConsumer}).protocolActionConsumer;
+        if (service !== undefined && (!(service instanceof ProtocolActionConsumer) || !service.belongsTo(fastify)))
+            throw unavailable('has an invalid host action consumer');
+        value = service ? Promise.resolve(service)
+            : loadChainProtocol(fastify.manager.config.settings.protocol).then(selected => new ProtocolActionConsumer(fastify, selected));
         contexts.set(fastify, value);
     }
     return value;
@@ -44,7 +79,7 @@ function unavailable(message: string): ProtocolAbiProofUnavailableError {
 
 function requestProofs(request: object) {
     let value = requests.get(request);
-    if (!value) {value = {actions: [], views: []}; requests.set(request, value);}
+    if (!value) {value = {actions: [], views: [], classifications: [], native: []}; requests.set(request, value);}
     return value;
 }
 
@@ -78,10 +113,19 @@ export function protocolActionInput(abi: EncodingAbi, type: string, data: unknow
         .map(name => [name, (data as Record<string, unknown>)[name]])) : data;
 }
 
-function successfulMetadata(input: any): input is ProtocolActionProofMetadata {
-    return input?.schemaVersion === 1 && input.status === undefined && input.source
-        && typeof input.selectionId === 'string' && input.input && Number.isInteger(input.input.inputActionOrdinal);
+function successfulMetadata(input: any): input is ActionMetadata {
+    const common = input && input.source && typeof input.selectionId === 'string' && input.input
+        && Number.isInteger(input.input.inputActionOrdinal) && input.status === undefined;
+    if (!common) return false;
+    if (input.schemaVersion === 2) {
+        const parsed = parseProtocolNativeActionMetadata(input);
+        return parsed.kind === 'native' && !('status' in parsed);
+    }
+    const fields = input.schemaVersion === 1 ? ['schemaVersion', 'source', 'selectionId', 'input'] : [];
+    return fields.length > 0 && Object.keys(input).length === fields.length && fields.every(key => Object.hasOwn(input, key));
 }
+const metadataJson = (value: unknown) => protocolImmutableJson(value, 64 * 1024 * 1024);
+const copyMetadata = <T>(value: T): T => JSON.parse(metadataJson(value));
 
 /** Core handlers compact declared members into annotations. Restore absent members from
  * certified bytes, retaining supplied members so exact re-encoding still detects tampering.
@@ -119,12 +163,38 @@ function enrichContractValue(certified: any, retained: any, annotation: any, dep
 }
 
 async function resolve(fastify: FastifyInstance, scope: object, metadata: ProtocolActionProofMetadata) {
-    if (!successfulMetadata(metadata)) throw unavailable('requires complete original occurrence metadata');
+    if (!successfulMetadata(metadata) || metadata.schemaVersion !== 1) throw unavailable('requires complete contract occurrence metadata');
     return withProtocolProofRequest(scope, async options => {
         const selected = await context(fastify);
         const view = await selected.reader.waitForOpen(metadata.source, metadata.selectionId, options);
+        let classification: ProtocolNativeActionView | undefined;
+        if (view.nativeActionInterfaceVersion === 1) {
+            if (!selected.nativeReader) throw unavailable('requires its installed native classification provider');
+            classification = await selected.nativeReader.open(metadata.source, metadata.selectionId, options);
+            const decision = await selected.nativeReader.authorize(classification, metadata.input, options);
+            if (decision.kind !== 'contract') throw unavailable('cannot downgrade a native or incomplete origin to contract metadata');
+        }
         const resolved = await selected.reader.action(view, metadata.input, options);
-        return {...selected, view, resolved};
+        return {...selected, view, resolved, classification};
+    });
+}
+
+async function resolveNative(fastify: FastifyInstance, scope: object, metadata: ProtocolNativeActionProofMetadata): Promise<NativeAuthority> {
+    if (!successfulMetadata(metadata) || metadata.schemaVersion !== 2) throw unavailable('requires complete native occurrence metadata');
+    return withProtocolProofRequest(scope, async options => {
+        const {reader, nativeReader} = await context(fastify);
+        if (!nativeReader) throw unavailable('has no installed native provider');
+        // Wait only for canonical membership, without selecting a deployed contract ABI.
+        const membership = await reader.waitForOpen(metadata.source, metadata.selectionId, options);
+        if (membership.nativeActionInterfaceVersion !== 1)
+            throw unavailable('has no canonical native-classification epoch');
+        const view = await nativeReader.open(metadata.source, metadata.selectionId, options);
+        const decision = await nativeReader.authorize(view, metadata.input, options);
+        if (decision.kind !== 'native') throw unavailable('does not select a supported native origin');
+        const canonical = await nativeReader.metadata(decision.grant, options);
+        if (metadataJson(canonical) !== metadataJson(metadata)) throw unavailable('does not match its canonical native journal references');
+        const value = await nativeReader.decodeValue(decision.grant, options);
+        return {metadata: canonical, view, grant: decision.grant, value, membership};
     });
 }
 
@@ -145,7 +215,7 @@ export async function protectProtocolAction(fastify: FastifyInstance, request: o
         return;
     }
     try {
-        const metadata = action.protocol;
+        const metadata = copyMetadata(action.protocol);
         if (!successfulMetadata(metadata)) throw unavailable('requires complete original occurrence metadata');
         const input = metadata.input;
         if (action.block_num !== metadata.source.blockNum || action.block_id !== metadata.source.blockId
@@ -156,7 +226,30 @@ export async function protectProtocolAction(fastify: FastifyInstance, request: o
         }
         const proofs = requestProofs(request);
         if (proofs.actions.length >= maximumProtocolApiActions) throw unavailable('exceeds the bounded response proof budget');
-        const {reader, selected, view, resolved} = await resolve(fastify, request, metadata);
+        if (metadata.schemaVersion === 2) {
+            const proof = await resolveNative(fastify, request, metadata);
+            const {nativeReader, selected} = await context(fastify);
+            if (!nativeReader) throw unavailable('has no installed native provider');
+            const envelope = await withProtocolProofRequest(request, readOptions => nativeReader.verifyEnvelope(proof.grant, action, readOptions));
+            await withProtocolProofRequest(request, readOptions => nativeReader.verifyValue(proof.grant,
+                data === undefined || retainedRaw ? proof.value : (envelope.act as any).data, readOptions));
+            await withProtocolProofRequest(request, readOptions => nativeReader.revalidate(proof.view, readOptions));
+            if (action.act.hex_data !== undefined && action.act.hex_data !== input.rawHex)
+                throw unavailable('changes the native raw hex value');
+            proofs.actions.push(copyMetadata(proof.metadata)); proofs.native.push({...proof, envelope: copyMetadata(envelope)});
+            // Existing v1 renderers retain the act object before awaiting this helper.
+            const act = action.act;
+            for (const key of Object.keys(act)) delete act[key];
+            Object.assign(act, envelope.act);
+            for (const key of Object.keys(action)) delete action[key];
+            Object.assign(action, envelope);
+            action.act = act;
+            if (options.decode || !retainedRaw) action.act.data = structuredClone(proof.value);
+            if (annotation !== undefined) delete action[annotationKey];
+            if (options.encoding) action.act.hex_encoder = selected.id;
+            return input.rawHex;
+        }
+        const {reader, selected, view, resolved, classification} = await resolve(fastify, request, metadata);
         if (!resolved.state.present || !resolved.state.abiHex) throw unavailable('does not select a usable input ABI');
         const codec = selected.provider.contractCodec;
         const abi = codec.decodeAbi(Buffer.from(resolved.state.abiHex, 'hex')) as EncodingAbi;
@@ -171,14 +264,16 @@ export async function protectProtocolAction(fastify: FastifyInstance, request: o
         }
         await withProtocolProofRequest(request, options => reader.revalidate(view, options));
         proofs.actions.push(structuredClone(metadata)); proofs.views.push(view);
+        if (classification) proofs.classifications.push(classification);
         if (options.decode) action.act.data = certifiedValue;
         else if (!retainedRaw) action.act.data = enrichContractValue(certifiedValue, data, annotation);
         if (annotation !== undefined) delete action[annotationKey];
         if (options.encoding) action.act.hex_encoder = selected.id;
         return encoded;
     } catch (error) {
-        if (error instanceof ProtocolAbiProofUnavailableError) throw error;
-        throw unavailable(String((error as Error)?.message ?? error).slice(0, 4096).toWellFormed());
+        assertProtocolProofRequestActive(request);
+        if (error instanceof ProtocolAbiProofUnavailableError || error instanceof ProtocolNativeActionUnavailableError) throw error;
+        throw unavailable('cannot validate the retained action');
     }
 }
 
@@ -188,13 +283,79 @@ function bodyDigest(response: any): string {
     return createHash('sha256').update(JSON.stringify(body)).digest('hex');
 }
 
+function capsuleDigest(capsule: any): string {
+    return createHash('sha256').update(JSON.stringify([capsule.schemaVersion, capsule.bodySha256,
+        capsule.actions, capsule.nodeResponse === true])).digest('hex');
+}
+
+function hasDecodedActions(route: string, body: any): boolean {
+    const actions = [...(body.actions ?? []).map((value: any) => value.action_trace ?? value), ...(body.traces ?? []),
+        ...(body.simple_actions ?? []).map((value: any) => ({act: {data: value.data}})),
+        ...(body.transactions ?? []).flatMap((value: any) => value.actions ?? [])];
+    if (actions.some((value: any) => {
+        const act = value.act ?? value;
+        return act.data !== undefined && (!isProtocolHex(act.data, true) || act.hex_data !== undefined);
+    })) return true;
+    return (route === 'get_created_accounts' && body.accounts?.length > 0)
+        || (route === 'get_controlled_accounts' && body.controlled_accounts?.length > 0)
+        || (route === 'get_creator' && !!body.creator && body.creator !== '__self__');
+}
+
+function assertCachedActionCoverage(body: any, proofs: ReturnType<typeof requestProofs>): void {
+    const candidates = [
+        ...(body.actions ?? []).map((entry: any) => {const action = entry.action_trace ?? entry; return {
+            action, account: action.act?.account, name: action.act?.name, trx: action.trx_id,
+            block: action.block_num, ordinal: action.action_ordinal, sequence: entry.global_action_seq ?? action.global_sequence};}),
+        ...(body.traces ?? []).map((action: any) => ({action, account: action.act?.account, name: action.act?.name,
+            trx: action.trx_id ?? body.id, block: action.block_num, sequence: action.receipt?.global_sequence})),
+        ...(body.simple_actions ?? []).map((action: any) => ({action, account: action.contract, name: action.action,
+            trx: action.transaction_id, block: action.block})),
+        ...(body.transactions ?? []).flatMap((transaction: any) => (transaction.actions ?? []).map((action: any) => ({
+            action, account: action.account, name: action.action, trx: transaction.id, block: body.number, receiver: action.receiver}))),
+    ];
+    for (const candidate of candidates) {
+        const act = candidate.action.act ?? candidate.action;
+        if (act.data === undefined || (isProtocolHex(act.data, true) && act.hex_data === undefined)) continue;
+        const matched = proofs.actions.some(metadata => {
+            const input = metadata.input;
+            if (candidate.account !== input.account || candidate.name !== input.name
+                || candidate.trx !== input.transactionId || candidate.block !== metadata.source.blockNum
+                || ('ordinal' in candidate && candidate.ordinal !== undefined && candidate.ordinal !== input.actionOrdinal)) return false;
+            const membership = metadata.schemaVersion === 2
+                ? proofs.native.find(proof => metadataJson(proof.metadata) === metadataJson(metadata))?.membership
+                : proofs.views.find(view => view.selectionId === metadata.selectionId);
+            if (!membership) return false;
+            return membership.bindings.some(binding => binding.transactionId === input.transactionId
+                && binding.inputActionOrdinal === input.inputActionOrdinal && binding.account === input.account && binding.name === input.name
+                && (!('sequence' in candidate) || candidate.sequence === undefined || candidate.sequence === binding.globalSequence)
+                && (!('receiver' in candidate) || candidate.receiver === undefined || candidate.receiver === binding.receiver));
+        });
+        if (!matched) throw unavailable('does not cover a decoded cached action occurrence');
+    }
+}
+
 /** Cache metadata stays in Redis, never in public JSON or the contract payload. */
 export async function protocolResponseForCache(fastify: FastifyInstance, request: FastifyRequest, route: string, response: any): Promise<any> {
     if (!isExtensionActionResponse(fastify, route)) return response;
     const proofs = requestProofs(request);
+    // Render once before awaiting final authority. Neither cache nor returned JSON retains source/provider objects.
+    const detached = JSON.parse(JSON.stringify(response));
     await revalidateProtocolActionScope(fastify, request);
-    return {...response, [cacheProofKey]: {schemaVersion: 1, bodySha256: bodyDigest(response), actions: proofs.actions,
-        ...(proofs.nodeResponse ? {nodeResponse: true} : {})}};
+    const capsule = {schemaVersion: 2, bodySha256: bodyDigest(detached), actions: proofs.actions.map(metadata =>
+        metadata.schemaVersion === 1 ? {metadata} : (() => {
+            const proof = proofs.native.find(proof => metadataJson(proof.metadata) === metadataJson(metadata));
+            if (!proof) throw unavailable('lacks its checked native response');
+            return {metadata, value: proof.value, envelope: proof.envelope};
+        })()),
+        ...(proofs.nodeResponse ? {nodeResponse: true} : {})};
+    return {...detached, [cacheProofKey]: {...capsule, proofSha256: capsuleDigest(capsule)}};
+}
+
+/** The final cache/response snapshot shares no mutable source objects; its proof capsule stays private. */
+export function protocolResponseForReturn(fastify: FastifyInstance, route: string, response: any): any {
+    if (!isExtensionActionResponse(fastify, route)) return response;
+    const {[cacheProofKey]: _proof, ...body} = response;
+    return body;
 }
 
 /** HTTP requests and individual stream batches own separate bounded proof scopes. */
@@ -208,6 +369,24 @@ export async function revalidateProtocolActionScope(fastify: FastifyInstance, sc
             for (const view of proofs.views) await reader.revalidate(view, options);
         });
     }
+    if (proofs.native.length) {
+        await withProtocolProofRequest(scope, async options => {
+            const {nativeReader} = await context(fastify);
+            if (!nativeReader) throw unavailable('has no installed native provider');
+            for (const proof of proofs.native) {
+                await nativeReader.verifyEnvelope(proof.grant, proof.envelope, options);
+                await nativeReader.verifyValue(proof.grant, proof.value, options);
+                await nativeReader.revalidate(proof.view, options);
+            }
+        });
+    }
+    if (proofs.classifications.length) {
+        await withProtocolProofRequest(scope, async options => {
+            const {nativeReader} = await context(fastify);
+            if (!nativeReader) throw unavailable('requires its installed native classification provider');
+            for (const view of proofs.classifications) await nativeReader.revalidate(view, options);
+        });
+    }
     assertProtocolProofRequestActive(scope);
 }
 
@@ -215,23 +394,47 @@ export async function revalidateProtocolActionScope(fastify: FastifyInstance, sc
 export async function validateProtocolCachedResponse(fastify: FastifyInstance, request: FastifyRequest, route: string, response: any): Promise<boolean> {
     if (!isExtensionActionResponse(fastify, route)) return true;
     assertProtocolProofRequestActive(request);
-    const cached = response?.[cacheProofKey];
-    if (cached?.schemaVersion !== 1 || !Array.isArray(cached.actions) || cached.actions.length > maximumProtocolApiActions
-        || cached.bodySha256 !== bodyDigest(response)) return false;
+    const detached = JSON.parse(JSON.stringify(response));
+    const cached = detached?.[cacheProofKey];
+    // Old capsules safely miss; this does not change schema-v1 ABI documents or public responses.
+    if (cached?.schemaVersion !== 2 || !Array.isArray(cached.actions) || cached.actions.length > maximumProtocolApiActions
+        || cached.bodySha256 !== bodyDigest(detached)) return false;
     if (route === 'get_key_accounts' && cached.nodeResponse !== true) return false;
     try {
+        if (cached.proofSha256 !== capsuleDigest(cached))
+            throw unavailable('has a changed cached proof capsule');
+        if (cached.actions.length === 0 && !cached.nodeResponse && hasDecodedActions(route, detached))
+            throw unavailable('lacks original cached occurrence metadata');
         const proofs = requestProofs(request);
-        for (const metadata of cached.actions) {
-            const {reader, view} = await resolve(fastify, request, metadata);
-            await withProtocolProofRequest(request, options => reader.revalidate(view, options));
-            proofs.views.push(view);
+        for (const entry of cached.actions) {
+            const metadata = copyMetadata(entry?.metadata);
+            if (!successfulMetadata(metadata))
+                throw unavailable('has unsupported cached occurrence metadata');
+            proofs.actions.push(metadata);
+            if (metadata.schemaVersion === 2) {
+                if (!Object.hasOwn(entry, 'value') || !Object.hasOwn(entry, 'envelope')) throw unavailable('lacks its checked native value or envelope');
+                const proof = await resolveNative(fastify, request, metadata), {nativeReader} = await context(fastify);
+                if (!nativeReader) throw unavailable('has no installed native provider');
+                await withProtocolProofRequest(request, options => nativeReader.verifyValue(proof.grant, entry.value, options));
+                const envelope = await withProtocolProofRequest(request, options => nativeReader.verifyEnvelope(proof.grant, entry.envelope, options));
+                proofs.native.push({...proof, envelope});
+            } else {
+                const {reader, view, classification} = await resolve(fastify, request, metadata);
+                await withProtocolProofRequest(request, options => reader.revalidate(view, options));
+                proofs.views.push(view);
+                if (classification) proofs.classifications.push(classification);
+            }
         }
+        assertCachedActionCoverage(detached, proofs);
         // Recheck earlier views after later asynchronous lookups, immediately before return.
         await revalidateProtocolActionScope(fastify, request);
-        delete response[cacheProofKey];
+        delete detached[cacheProofKey];
+        for (const key of Object.keys(response)) delete response[key];
+        Object.defineProperties(response, Object.getOwnPropertyDescriptors(detached));
         return true;
     } catch (error) {
-        if (error instanceof ProtocolAbiProofUnavailableError) throw error;
-        throw unavailable(String((error as Error)?.message ?? error).slice(0, 4096).toWellFormed());
+        assertProtocolProofRequestActive(request);
+        if (error instanceof ProtocolAbiProofUnavailableError || error instanceof ProtocolNativeActionUnavailableError) throw error;
+        throw unavailable('cannot validate cached action evidence');
     }
 }

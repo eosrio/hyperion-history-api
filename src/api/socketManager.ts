@@ -16,6 +16,7 @@ import {
 } from "../interfaces/stream-requests.js";
 import {mergeActionMeta, streamPastCommon} from "./helpers/functions.js";
 import {protectProtocolAction, revalidateProtocolActionScope} from './helpers/protocol-abi.js';
+import {createProtocolStreamScope} from './helpers/protocol-proof-request.js';
 import {assertProtocolProjectionReady} from './helpers/protocol-state-readiness.js';
 import {assertProtocolActionStreamReady} from './helpers/protocol-action-query.js';
 import {normalizeActionSequences} from '../indexer/helpers/action-sequences.js';
@@ -503,10 +504,13 @@ export class SocketManager {
         try {
             while (this.liveActionQueue.length) {
                 const pending = this.liveActionQueue[0];
+                let activeProofScope: ReturnType<typeof createProtocolStreamScope> | undefined;
                 try {
                     let message = pending.trace.message;
                     if (this.server.manager.config.settings?.protocol?.provider === 'extension') {
-                        const action = normalizeActionSequences(JSON.parse(message)), proofScope = {};
+                        activeProofScope = createProtocolStreamScope([...pending.targets.keys()]
+                            .map(clientId => this.io.sockets.sockets.get(clientId)).filter(socket => socket !== undefined));
+                        const action = normalizeActionSequences(JSON.parse(message)), proofScope = activeProofScope.scope;
                         const notified = new Set([
                             ...(action.receipts ?? []).map((receipt: any) => receipt.receiver),
                             ...(action.act?.authorization ?? []).map((authorization: any) => authorization.actor)
@@ -528,6 +532,7 @@ export class SocketManager {
                 } catch (error) {
                     this.emitActionUnavailable(pending.targets, error);
                 } finally {
+                    activeProofScope?.dispose();
                     this.liveActionQueue.shift();
                     this.liveActionPendingBytes -= pending.bytes;
                     pending.done();
