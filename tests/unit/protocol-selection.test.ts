@@ -34,7 +34,12 @@ test('protocol activation verifies complete inert artifacts before importing exe
                 getter:'Object.defineProperty(provider,"nativeActions",'+getter+');',
                 inheritedGetter:'Object.setPrototypeOf(provider,Object.defineProperty({},"nativeActions",'+getter+'));',
                 methodGetter:'provider.nativeActions=Object.defineProperty('+nativeValue+',"observe",'+getter+');',
-                undefined:'provider.nativeActions=undefined;',null:'provider.nativeActions=null;'};
+                undefined:'provider.nativeActions=undefined;',
+                inheritedUndefined:'Object.setPrototypeOf(provider,{nativeActions:undefined});',
+                undefinedOverGetter:'Object.setPrototypeOf(provider,Object.defineProperty({},"nativeActions",'+getter+'));Object.defineProperty(provider,"nativeActions",{value:undefined});',
+                undefinedOverValue:'Object.setPrototypeOf(provider,{nativeActions:'+nativeValue+'});Object.defineProperty(provider,"nativeActions",{value:undefined});',
+                getterOverUndefined:'Object.setPrototypeOf(provider,{nativeActions:undefined});Object.defineProperty(provider,"nativeActions",'+getter+');',
+                null:'provider.nativeActions=null;'};
             const executable='globalThis.fixtureProviderImports=(globalThis.fixtureProviderImports??0)+1; export function createProtocolProvider(profileId){const provider={profileId,contractCodec:'+
                 (options.badCodec?'{}':'{decodeAbi:()=>({}),encodeAbi:()=>new Uint8Array(),decodeValue:()=>({}),encodeValue:()=>new Uint8Array()}')+
                 ',createShipSession(){throw new Error("not invoked during selection")},normalizeDelta(){throw new Error("not invoked during selection")}};'+
@@ -82,12 +87,18 @@ test('protocol activation verifies complete inert artifacts before importing exe
             await assert.rejects(loadChainProtocol(fixture({badCodec:true})),/does not implement/);
             assert.equal(globalThis.fixtureProviderImports,3);
             globalThis.fixtureNativeCalls=0;globalThis.fixtureNativeGetters=0;
-            for(const exposure of ['value','inherited','getter','inheritedGetter','methodGetter','undefined','null']) {
+            for(const exposure of ['undefined','inheritedUndefined','undefinedOverGetter','undefinedOverValue']) {
+                const ordinary=await loadChainProtocol(fixture({native:exposure}));
+                assert.equal(ordinary.provider.profileId,'fixture-v1');
+                assert.equal(globalThis.fixtureNativeCalls,0,'ordinary admission invoked a shadowed native method');
+                assert.equal(globalThis.fixtureNativeGetters,0,'ordinary admission invoked a shadowed native accessor');
+            }
+            for(const exposure of ['value','inherited','getter','inheritedGetter','methodGetter','getterOverUndefined','null']) {
                 await assert.rejects(loadChainProtocol(fixture({native:exposure})),/native actions.*selected profile/i);
                 assert.equal(globalThis.fixtureNativeCalls,0,'selection invoked undeclared native methods');
                 assert.equal(globalThis.fixtureNativeGetters,0,'selection invoked a native accessor');
             }
-            assert.equal(globalThis.fixtureProviderImports,10);
+            assert.equal(globalThis.fixtureProviderImports,14);
             console.log('protocol-selection-boundaries-passed');
         } finally {
             for(const directory of owned){assert.equal(dirname(resolve(directory)),scope);rmSync(directory,{recursive:true,force:true});}

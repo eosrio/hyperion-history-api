@@ -34,8 +34,10 @@ pins SDK `d3ca7e41373da6301797e38cdc90c2b4d17af191` and Wire
 These packages contain the native-action interfaces, but the current Wire descriptor/provider
 keep that capability inactive. This host advertises no native-action interface support, so a
 profile requiring native actions is rejected before provider import. A provider selected through
-an ordinary profile must not expose a `nativeActions` property; admission rejects that property,
-including inherited properties and accessors, without reading it or invoking native methods.
+an ordinary profile may omit `nativeActions` or leave its visible data property undefined.
+Admission rejects a non-undefined value or an accessor, including inherited properties, without
+reading the accessor or invoking native methods. An undefined data property shadows deeper
+prototype properties in the same way as an ordinary property lookup.
 Required-profile runtime admission belongs to later coordinated activation, after the durable
 native-observation and authorization work in [#256](https://github.com/eosrio/hyperion-history-api/issues/256).
 Installing these pins does not qualify native processing or the Wire testnet.

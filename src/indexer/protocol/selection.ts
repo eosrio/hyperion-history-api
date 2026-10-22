@@ -71,9 +71,16 @@ export async function loadChainProtocol(configuration?: ChainProtocolConfigurati
         || !['decodeAbi', 'encodeAbi', 'decodeValue', 'encodeValue'].every(method => typeof provider.contractCodec[method] === 'function')) {
         throw new Error('Protocol provider does not implement the selected interface');
     }
-    // This host does not advertise native action support. Presence checks also reject inherited
-    // accessors without reading them; an ordinary profile cannot activate executable capabilities.
-    if ('nativeActions' in provider) throw new Error('Native actions are not supported by the selected profile');
+    // The first visible data property may be undefined for an absent optional capability.
+    // This host does not advertise native actions; reject values/accessors without reading them.
+    for (let owner: object | null = provider; owner; owner = Object.getPrototypeOf(owner)) {
+        const property = Object.getOwnPropertyDescriptor(owner, 'nativeActions');
+        if (!property) continue;
+        if (!Object.hasOwn(property, 'value') || property.value !== undefined) {
+            throw new Error('Native actions are not supported by the selected profile');
+        }
+        break;
+    }
     return {provider, decoder: createContractDecoder(provider.contractCodec), id: selection.descriptor.manifest.package,
         components: selection.profile.components};
 }
