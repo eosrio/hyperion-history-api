@@ -409,11 +409,36 @@ export default class MainDSWorker extends HyperionWorker {
         if (admission.incomplete) hLog('Action membership remains incomplete for block', capture.source.blockNum, admission.incomplete);
     }
 
-    ackAdmittedSourceDelivery(message: Message): void {
-        const scope = this.activeActionSource;
-        if (!scope || scope.message !== message || !scope.owner.current() || !scope.admission
-            || currentActionConfiguration(this) !== scope.configuration) throw new Error('Action source cannot acknowledge unfinished/stale admission');
-        scope.owner.consumer.ack(message);
+    async ackAdmittedSourceDelivery(message: Message): Promise<void> {
+        const scope = this.activeActionSource, admission = scope?.admission, configuration = scope?.configuration,
+            selection = this.activeSourceSelectionId, binding = this.activeSourceBinding, delivery = this.activeSourceDelivery, proof = this.activeProtocolAbiProofView;
+        const assertCurrent = () => {
+            if (!scope || scope !== this.activeActionSource || scope.message !== message || !scope.owner.current() || !admission
+                || scope.admission !== admission || scope.configuration !== configuration || currentActionConfiguration(this) !== configuration || selection !== this.activeSourceSelectionId
+                || binding !== this.activeSourceBinding || delivery !== this.activeSourceDelivery)
+                throw new Error('Action source cannot acknowledge unfinished/stale admission');
+        };
+        const revalidate = async () => {
+            assertCurrent();
+            const target = await this.actionTarget(admission!.source.inventoryInput.source.blockNum);
+            assertCurrent();
+            if (actionHistoryImmutableJson(target) !== actionHistoryImmutableJson(admission!.target)) throw new Error('Action source target changed before ACK');
+            if (selection) {
+                const fresh = await this.protocolSourceBindingStore!.readSelection(selection); assertCurrent();
+                if (actionHistoryImmutableJson(fresh) !== actionHistoryImmutableJson(binding)) throw new Error('Action source selection changed before ACK');
+            }
+            if (proof) await this.getProtocolAbiProofReader().revalidate(proof);
+            assertCurrent();
+        };
+        await revalidate();
+        const store = this.getActionAdmissionStore();
+        const observations = await store.prepareSourceAttemptDispositions({admissionId: admission!.id,
+            configuration: configuration!, owner: scope!.owner});
+        await revalidate();
+        for (const evidence of observations) {
+            await store.recordAttemptDisposition({owner: scope!.owner, evidence}); await revalidate();
+        }
+        assertCurrent(); scope!.owner.consumer.ack(message);
     }
 
     /** Resolve only durable per-frame context; initialize_abi remains a legacy startup signal. */

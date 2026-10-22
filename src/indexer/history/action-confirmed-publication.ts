@@ -90,10 +90,12 @@ export async function publishAdmittedActionWithEvidence(owner: ActionPublication
 }
 
 /** Private admission consumer: validate the entire issued vector before copying/parsing any retained bytes. */
-export function readConfirmedActionPublications(owner: ActionPublicationOwner, tickets: readonly ConfirmedActionPublication[]) {
+function retainedPublicationRecords(owner: ActionPublicationOwner, tickets: readonly ConfirmedActionPublication[], reservedBytes = 0) {
     if (!Array.isArray(tickets) || tickets.length < 1 || tickets.length > actionPublicationEvidenceBounds.maximumPublications)
         throw new Error('Action handoff confirmation vector exceeds its bounds');
-    let bytes = 0;
+    if (!Number.isSafeInteger(reservedBytes) || reservedBytes < 0 || reservedBytes > actionPublicationEvidenceBounds.maximumBytes)
+        throw new Error('Action handoff aggregate reserved bytes exceed their bounds');
+    let bytes = reservedBytes;
     const records: PublicationEvidence[] = [];
     for (let index = 0; index < tickets.length; index++) {
         const descriptor = Object.getOwnPropertyDescriptor(tickets, String(index));
@@ -103,6 +105,14 @@ export function readConfirmedActionPublications(owner: ActionPublicationOwner, t
         if (bytes > actionPublicationEvidenceBounds.maximumBytes) throw new Error('Action handoff aggregate confirmation bytes exceed their bounds');
         records.push(record);
     }
-    return records.map(record => ({queue: record.queue, payload: Buffer.from(record.payload),
-        headers: JSON.parse(record.headersJson), headersJson: record.headersJson}));
+    return {records, bytes};
+}
+
+/** Private budget admission only: no byte copies/parsing and no publication/source capability is returned. */
+export function confirmedActionPublicationBytes(owner: ActionPublicationOwner, tickets: readonly ConfirmedActionPublication[]): number {
+    return retainedPublicationRecords(owner, tickets).bytes;
+}
+export function readConfirmedActionPublications(owner: ActionPublicationOwner, tickets: readonly ConfirmedActionPublication[], reservedBytes = 0) {
+    return retainedPublicationRecords(owner, tickets, reservedBytes).records.map(record => ({queue: record.queue,
+        payload: Buffer.from(record.payload), headers: JSON.parse(record.headersJson), headersJson: record.headersJson}));
 }
