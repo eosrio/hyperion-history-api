@@ -364,19 +364,30 @@ function expectedGroups(source: ActionSourceInventoryPosition, transactionId: st
     });
 }
 
-/** Original committed inputs only; no filter policy, ABI state or canonical authority. */
-export function deriveProtocolActionInputs(traces: unknown): readonly ProtocolAbiActionInput[] {
+export interface ProtocolOriginalActionOccurrence {
+    readonly input: ProtocolAbiActionInput;
+    readonly creatorActionOrdinal: number;
+    readonly authorization: readonly Readonly<Record<string, unknown>>[];
+    readonly actDigest: string;
+    readonly receipt: Readonly<Record<string, unknown>>;
+}
+
+/** Original committed fields only; no filter policy, ABI state or canonical authority. */
+export function deriveProtocolActionOccurrences(traces: unknown): readonly ProtocolOriginalActionOccurrence[] {
     try {
         const parsed = parseSourceTransactions(copy(traces), true);
-        const inputs: ProtocolAbiActionInput[] = [];
+        const inputs: ProtocolOriginalActionOccurrence[] = [];
         for (const transaction of parsed) {
             const origins = inputOrigins(transaction.occurrences, 'Protocol');
             for (const occurrence of transaction.occurrences) {
                 const {action, receipt: sourceReceipt} = occurrence;
-                inputs.push({transactionId: transaction.id, actionOrdinal: occurrence.ordinal,
+                const input: ProtocolAbiActionInput = {transactionId: transaction.id, actionOrdinal: occurrence.ordinal,
                     receiver: action.receiver, account: action.act.account, name: action.act.name,
                     rawHex: action.act.data.toLowerCase(), globalSequence: sourceReceipt!.global_sequence,
-                    receiptAbiSequence: String(sourceReceipt!.abi_sequence), inputActionOrdinal: origins.get(occurrence.ordinal)!});
+                    receiptAbiSequence: String(sourceReceipt!.abi_sequence), inputActionOrdinal: origins.get(occurrence.ordinal)!};
+                const {act_digest, ...finalReceipt} = sourceReceipt!;
+                inputs.push({input, creatorActionOrdinal: occurrence.creator, authorization: authorization(action.act.authorization),
+                    actDigest: act_digest, receipt: finalReceipt});
             }
         }
         return freeze(inputs);
@@ -384,6 +395,11 @@ export function deriveProtocolActionInputs(traces: unknown): readonly ProtocolAb
         if (error instanceof ActionSourceInventoryError) throw error;
         return fail('Invalid original protocol inputs: ' + (error instanceof Error ? error.message : String(error)));
     }
+}
+
+/** Compatibility projection of the same complete independent source derivation. */
+export function deriveProtocolActionInputs(traces: unknown): readonly ProtocolAbiActionInput[] {
+    return freeze(deriveProtocolActionOccurrences(traces).map(value => value.input));
 }
 
 /** Rehydration re-runs this derivation from verified retained inputs. Serialized inventory alone is never issued. */

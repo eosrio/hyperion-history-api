@@ -60,6 +60,7 @@ export interface HostFixtureOptions {
     mutateRecord?: (value: ProtocolNativeObservationRecord) => void;
     mutateBlock?: (value: any) => void;
     maxAncestryBlocks?: number;
+    nativeActionInterfaceVersion?: 1;
 }
 
 /** Synthetic protocol/source and ES transport only. All canonical commits/certificates come from the actual coordinator. */
@@ -68,7 +69,8 @@ export async function nativeAuthorizationFixture(options: HostFixtureOptions = {
     const bindings = new ProtocolSourceBindingStore(client, chain), observations = new ProtocolAbiObservationStore(client, chain);
     const frontier = new ProtocolAbiFrontierStore(client, chain), nativeStore = new ProtocolNativeObservationStore(client, chain);
     const contextId = (await bindings.prepareContext({schemaVersion: 1, chainId, protocol: profile, schemaJson})).id;
-    const makeCoordinator = (ownerId: string) => new ProtocolAbiCoordinator({chainId, profile, ownerId, bindings, observations, store: frontier});
+    const makeCoordinator = (ownerId: string) => new ProtocolAbiCoordinator({chainId, profile, ownerId, bindings, observations, store: frontier,
+        nativeActionInterfaceVersion: options.nativeActionInterfaceVersion});
     let coordinator = makeCoordinator('host-owner-one'), sessionId = 'host-reader-one';
     await coordinator.start(); let generation = (await coordinator.openSource(contextId, sessionId)).generation;
     const calls = {observe: 0, decode: 0, encode: 0, contract: 0, closed: 0, handshakes: [] as unknown[]};

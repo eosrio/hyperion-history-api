@@ -26,7 +26,7 @@ describe('versioned native consumer locators and retained values', () => {
         const fixture = await nativeAuthorizationFixture(), {reader, grant} = await authorized(fixture);
         const retained = await fixture.nativeStore.readSelection(fixture.selected.selectionId);
         const metadata = await reader.metadata(grant);
-        expect(metadata).toEqual({schemaVersion: 2, kind: 'native', source: fixture.selected.source,
+        expect(metadata).toEqual({schemaVersion: 2, kind: 'native', source: {chainId, blockNum: 2, blockId: blockId(2)},
             selectionId: fixture.selected.selectionId, input: fixture.selected.inputs[0], native: {
                 nativeKind: 'opaque.host-native.v1', contextId: fixture.contextId,
                 linkId: retained.linkId, observationId: retained.link.observationId,
@@ -77,6 +77,63 @@ describe('versioned native consumer locators and retained values', () => {
             controller.abort(reason); held.release(); await expect(pending).rejects.toBe(reason); held.restore();
             expect(await reader.verifyValue(grant, {rawHex: '0102'})).toEqual({rawHex: '0102'});
         }
+    });
+
+    it('preserves an additive canonical classification requirement without changing legacy commits', async () => {
+        const legacy = await nativeAuthorizationFixture(), native = await nativeAuthorizationFixture({nativeActionInterfaceVersion: 1});
+        const oldReader = legacy.proofs(), newReader = native.proofs();
+        expect((await oldReader.open(legacy.selected.source, legacy.selected.selectionId)).nativeActionInterfaceVersion).toBeUndefined();
+        const view = await newReader.open(native.selected.source, native.selected.selectionId);
+        expect(view.nativeActionInterfaceVersion).toBe(1);
+        await native.append(3);
+        expect((await newReader.open(native.selected.source, native.selected.selectionId)).nativeActionInterfaceVersion).toBe(1);
+        expect(view.bindings).toEqual((await oldReader.open(legacy.selected.source, legacy.selected.selectionId)).bindings);
+    });
+
+    it('issues certified raw incomplete locators only for the original incomplete decision and ancestry', async () => {
+        const fixture = await nativeAuthorizationFixture(), {reader, view} = await authorized(fixture);
+        const input = clone(fixture.selected.inputs[5]), held = holdRead(fixture.client, call => call.index === fixture.frontier.controlIndex);
+        const pending = reader.incompleteMetadata(view, input); await held.entered;
+        input.actionOrdinal = 99; held.release(); const metadata = await pending; held.restore();
+        expect(metadata).toMatchObject({schemaVersion: 2, kind: 'incomplete', status: 'incomplete',
+            input: fixture.selected.inputs[5], error: {code: 'unsupported_origin', message: 'Only this origin is unsupported'}});
+        expect(metadata.native).not.toHaveProperty('nativeKind');
+        expect(metadata.native.observationId).toBe(fixture.selected.retained.link.observationId);
+        await unavailable(reader.incompleteMetadata(view, fixture.selected.inputs[0]), 'native_decision_mismatch');
+        await unavailable(reader.incompleteMetadata(view, fixture.selected.inputs[3]), 'native_decision_mismatch');
+        await fixture.replaceOwner(); await unavailable(reader.incompleteMetadata(view, fixture.selected.inputs[4]));
+    });
+
+    it('checks the complete original receipt and authorization envelope without merging identical inline inputs', async () => {
+        const fixture = await nativeAuthorizationFixture(), {reader, grant} = await authorized(fixture);
+        const input = fixture.selected.inputs[0];
+        const receipt = (index: number) => ({receiver: fixture.selected.inputs[index].receiver,
+            global_sequence: fixture.selected.inputs[index].globalSequence, recv_sequence: '18446744073709551615',
+            auth_sequence: [], code_sequence: 0, abi_sequence: 4294967295});
+        const action = {block_num: 2, block_id: blockId(2), trx_id: input.transactionId, action_ordinal: 1,
+            creator_action_ordinal: 0, global_sequence: input.globalSequence, act_digest: 'f'.repeat(64),
+            code_sequence: 0, abi_sequence: 4294967295, act: {account: input.account, name: input.name, authorization: [], data: {rawHex: input.rawHex}},
+            receipts: [receipt(0), receipt(1)], protocol: await reader.metadata(grant)};
+        expect(await reader.verifyEnvelope(grant, action)).toEqual(action);
+        for (const change of [
+            (v: any) => {v.receipts[1].recv_sequence = '0';},
+            (v: any) => {v.receipts[1].auth_sequence = [{account: 'fake', sequence: '1'}];},
+            (v: any) => {v.receipts[1] = receipt(2);},
+            (v: any) => {v.receipts.push(receipt(1));},
+            (v: any) => {v.receipts = [receipt(1)];},
+            (v: any) => {v.act.authorization = [{actor: 'fake', permission: 'active'}];},
+            (v: any) => {v.creator_action_ordinal = 99;},
+            (v: any) => {v.global_sequence = '9007199254740992';},
+            (v: any) => {v.protocol.native.observationDigest = '0'.repeat(64);},
+        ]) {
+            const changed = clone(action); change(changed); await unavailable(reader.verifyEnvelope(grant, changed));
+        }
+        const filtered = clone(action); filtered.receipts = [receipt(0)];
+        expect(await reader.verifyEnvelope(grant, filtered)).toEqual(filtered);
+        const held = holdRead(fixture.client, call => call.index === fixture.frontier.controlIndex);
+        const checking = reader.verifyEnvelope(grant, action); await held.entered;
+        action.receipts[0].recv_sequence = '0'; held.release(); const owned: any = await checking; held.restore();
+        expect(owned.receipts[0].recv_sequence).toBe('18446744073709551615');
     });
 });
 

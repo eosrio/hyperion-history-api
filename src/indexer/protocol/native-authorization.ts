@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {serialize, deserialize} from 'node:v8';
 import {validateProtocolNativeActions, type ProtocolAbiActionInput, type ProtocolNativeActions,
     type ProtocolNativeActionDecision, type ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
-import {deriveProtocolActionInputs} from '../history/action-source-inventory.js';
+import {deriveProtocolActionOccurrences, type ProtocolOriginalActionOccurrence} from '../history/action-source-inventory.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofSource,
     type ProtocolAbiProofView, type ProtocolAbiProofReadOptions} from './abi-proof.js';
 import {ProtocolNativeObservationStore, NativeObservationReadError} from './native-observation-store.js';
@@ -34,6 +34,14 @@ export interface ProtocolNativeActionProofMetadata {
         readonly profile: ProtocolSourceProfile;
     };
 }
+export type ProtocolNativeActionIncompleteMetadata = Omit<ProtocolNativeActionProofMetadata, 'kind' | 'native'> & {
+    readonly kind: 'incomplete';
+    readonly native: Omit<ProtocolNativeActionProofMetadata['native'], 'nativeKind'>;
+    readonly status: 'incomplete';
+    readonly error: {readonly code: string; readonly message: string};
+};
+export type ProtocolNativeActionSourceMetadata = ProtocolNativeActionIncompleteMetadata
+    | (ProtocolNativeActionProofMetadata & {readonly status: 'incomplete'; readonly error: {readonly code: string; readonly message: string}});
 export type ProtocolNativeActionAuthorization =
     | {readonly kind: 'contract'}
     | {readonly kind: 'incomplete'; readonly error: {readonly code: string; readonly message: string}}
@@ -55,6 +63,8 @@ interface IssuedView {
     readonly inputs: ReadonlyMap<string, ProtocolAbiActionInput>;
     readonly decisions: ReadonlyMap<string, ProtocolNativeActionDecision>;
     readonly provenance: Omit<ProtocolNativeActionProofMetadata['native'], 'nativeKind'>;
+    readonly occurrences: ReadonlyMap<string, ProtocolOriginalActionOccurrence>;
+    readonly receipts: ReadonlyMap<string, ProtocolOriginalActionOccurrence>;
 }
 interface IssuedGrant {readonly view: IssuedView; readonly input: ProtocolAbiActionInput; readonly nativeKind: string}
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -146,7 +156,7 @@ export class ProtocolNativeActionReader {
             const retained = await this.read(() => this.store.readSelection(selectionId, signal), signal);
             const {record, context, selection, abiObservation} = retained;
             if (record.inventory === null) unavailable('native_source_incomplete', 'Native source inventory is incomplete');
-            const current = {proof, inputs: new Map(), decisions: new Map(), provenance: snapshot({
+            const current = {proof, inputs: new Map(), decisions: new Map(), occurrences: new Map(), receipts: new Map(), provenance: snapshot({
                 contextId: record.contextId, linkId: retained.linkId, observationId: retained.link.observationId,
                 observationDigest: retained.link.observationDigest, captureRef: record.captureRef,
                 inventorySha256: record.inventory.sha256, profile: this.profile,
@@ -169,7 +179,13 @@ export class ProtocolNativeActionReader {
                 try {
                     const traceBytes = Buffer.from(capture.tracesHex, 'hex');
                     const traceDigest = hash(traceBytes);
-                    inputs = deriveProtocolActionInputs(session.decodeTraces(traceBytes));
+                    const occurrences = deriveProtocolActionOccurrences(session.decodeTraces(traceBytes));
+                    inputs = occurrences.map(value => value.input);
+                    for (const occurrence of occurrences) {
+                        requireNative(!current.receipts.has(occurrence.input.globalSequence), 'Original source has duplicate receipt sequences');
+                        current.occurrences.set(key(occurrence.input), occurrence);
+                        current.receipts.set(occurrence.input.globalSequence, occurrence);
+                    }
                     if (hash(traceBytes) !== traceDigest) throw new Error('Trace decoder mutated its source');
                 } finally {session.close?.();}
                 requireNative(json(protocolNativeInputInventory(inputs)) === json(record.inventory),
@@ -276,9 +292,29 @@ export class ProtocolNativeActionReader {
         const issued = this.grants.get(grant);
         if (!issued) unavailable('native_invalid_grant', 'Native metadata grant was not issued by this reader');
         const metadata: ProtocolNativeActionProofMetadata = snapshot({schemaVersion: 2, kind: 'native',
-            source: issued.view.proof.source, selectionId: issued.view.proof.selectionId, input: issued.input,
+            source: {chainId: issued.view.proof.source.chainId, blockNum: issued.view.proof.source.blockNum, blockId: issued.view.proof.source.blockId},
+            selectionId: issued.view.proof.selectionId, input: issued.input,
             native: {...issued.view.provenance, nativeKind: issued.nativeKind}});
         await this.revalidateIssued(issued.view, {signal});
+        return Object.freeze(metadata);
+    }
+
+    /** Certified occurrence and observer failure remain usable as raw history, never value authority. */
+    async incompleteMetadata(view: ProtocolNativeActionView, input: ProtocolAbiActionInput,
+                             {signal}: ProtocolAbiProofReadOptions = {}): Promise<ProtocolNativeActionIncompleteMetadata> {
+        signal?.throwIfAborted();
+        let requested: ProtocolAbiActionInput;
+        try {requested = snapshot(input);}
+        catch {signal?.throwIfAborted(); unavailable('native_input_mismatch', 'Original native input is not portable');}
+        const decision = await this.authorize(view, requested, {signal});
+        if (decision.kind !== 'incomplete') unavailable('native_decision_mismatch', 'Original native decision is not incomplete');
+        const issued = this.views.get(view)!;
+        const original = issued.inputs.get(key(requested))!;
+        const metadata: ProtocolNativeActionIncompleteMetadata = snapshot({schemaVersion: 2, kind: 'incomplete',
+            source: {chainId: issued.proof.source.chainId, blockNum: issued.proof.source.blockNum, blockId: issued.proof.source.blockId},
+            selectionId: issued.proof.selectionId, input: original, native: issued.provenance,
+            status: 'incomplete', error: decision.error});
+        await this.revalidateIssued(issued, {signal});
         return Object.freeze(metadata);
     }
 
@@ -288,6 +324,45 @@ export class ProtocolNativeActionReader {
         const issued = this.views.get(view);
         if (!issued) unavailable('native_invalid_view', 'Native source view was not issued by this reader');
         await this.revalidateIssued(issued, {signal});
+    }
+
+    /** Authenticate grouped public source fields; filtered notifications may be a subset of this origin only. */
+    async verifyEnvelope(grant: ProtocolNativeActionGrant, action: unknown,
+                         {signal}: ProtocolAbiProofReadOptions = {}): Promise<Readonly<Record<string, unknown>>> {
+        signal?.throwIfAborted();
+        const issued = this.grants.get(grant);
+        if (!issued) unavailable('native_invalid_grant', 'Native envelope grant was not issued by this reader');
+        let candidate: any;
+        try {candidate = snapshot(action);}
+        catch {signal?.throwIfAborted(); unavailable('native_envelope_mismatch', 'Native action envelope is not portable');}
+        const input = issued.input, original = issued.view.occurrences.get(key(input))!;
+        const source = issued.view.proof.source;
+        requireNative(candidate && candidate.block_num === source.blockNum && candidate.block_id === source.blockId
+            && candidate.trx_id === input.transactionId && candidate.action_ordinal === input.actionOrdinal
+            && candidate.creator_action_ordinal === original.creatorActionOrdinal
+            && candidate.global_sequence === input.globalSequence && candidate.act_digest === original.actDigest
+            && candidate.code_sequence === original.receipt.code_sequence && candidate.abi_sequence === original.receipt.abi_sequence
+            && candidate.act?.account === input.account && candidate.act?.name === input.name
+            && json(candidate.act.authorization) === json(original.authorization)
+            && Array.isArray(candidate.receipts) && candidate.receipts.length > 0 && candidate.receipts.length <= issued.view.inputs.size,
+        'Native action envelope differs from its original occurrence');
+        const seen = new Set<string>();
+        for (const receipt of candidate.receipts) {
+            const member = issued.view.receipts.get(receipt?.global_sequence);
+            requireNative(member && member.input.transactionId === input.transactionId
+                && member.input.inputActionOrdinal === input.inputActionOrdinal && member.input.account === input.account
+                && member.input.name === input.name && member.input.rawHex === input.rawHex
+                && member.actDigest === original.actDigest && json(member.authorization) === json(original.authorization)
+                && !seen.has(member.input.globalSequence) && json(receipt) === json(member.receipt),
+            'Native grouped receipt is not an original member of this input');
+            seen.add(member.input.globalSequence);
+        }
+        requireNative(seen.has(input.globalSequence), 'Native grouped receipts omit the representative occurrence');
+        const metadata = await this.metadata(grant, {signal});
+        requireNative(candidate.protocol !== undefined && json(candidate.protocol) === json(metadata),
+            'Native envelope metadata differs from its authorized original decision');
+        await this.revalidateIssued(issued.view, {signal});
+        return candidate;
     }
 
     /** Check a retained value using the authorized kind and return an independently owned snapshot. */

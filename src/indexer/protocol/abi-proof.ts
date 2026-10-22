@@ -9,13 +9,15 @@ import {isProtocolHex} from './hex.js';
 import type {ProtocolAbiCoordinatorControl} from './abi-coordinator.js';
 import {validNativeGenesisCoverage, type ProtocolNativeGenesisCoverage} from './native-genesis.js';
 import type {ProjectionFrame} from '../projection/runtime.js';
-import type {ProtocolNativeActionProofMetadata} from './native-authorization.js';
+import type {ProtocolNativeActionProofMetadata, ProtocolNativeActionSourceMetadata} from './native-authorization.js';
 
 export interface ProtocolAbiProofSource {readonly chainId:string;readonly blockNum:number;readonly blockId:string}
 export type ProtocolAbiProofBinding=Omit<ProtocolAbiActionInput,'rawHex'> & {readonly rawSha256:string;readonly stateId:string|null};
 export interface ProtocolAbiProofView {
     readonly certificateId:string;readonly commitId:string;readonly selectionId:string;
     readonly source:ProtocolSourcePosition;readonly bindings:readonly ProtocolAbiProofBinding[];
+    /** New epochs require native classification before any decoded v1 contract serving. */
+    readonly nativeActionInterfaceVersion?:1;
 }
 /** Kept outside act.data, before grouping, numeric conversion or contract enrichment. */
 export interface ProtocolActionProofMetadata {
@@ -27,7 +29,7 @@ export interface ProtocolActionSourceMetadata {
     readonly input:Omit<ProtocolAbiActionInput,'inputActionOrdinal'>;readonly status:'incomplete';
     readonly error:{readonly code:string;readonly message:string};
 }
-export type ProtocolActionMetadata=ProtocolActionProofMetadata|ProtocolActionSourceMetadata|ProtocolNativeActionProofMetadata;
+export type ProtocolActionMetadata=ProtocolActionProofMetadata|ProtocolActionSourceMetadata|ProtocolNativeActionProofMetadata|ProtocolNativeActionSourceMetadata;
 /** Exact canonical input membership only; stateId does not grant ABI or native decoding authority. */
 export interface ProtocolAbiActionOccurrence {readonly binding:ProtocolAbiProofBinding}
 export interface ProtocolAbiResolvedAction {readonly binding:ProtocolAbiProofBinding;readonly state:ProtocolAbiAccountState}
@@ -51,6 +53,7 @@ interface CanonicalCommit {
     status:'complete'|'incomplete';stateRootId:string|null;bindings:ProtocolAbiProofBinding[];
     coverageStart:number|null;lastGlobalSequence:string|null;
     nativeGenesis?:ProtocolNativeGenesisCoverage;
+    nativeActionInterfaceVersion?:1;
 }
 interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit}
 type OriginalActionInput=Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number};
@@ -153,6 +156,8 @@ export class ProtocolAbiProofReader {
             &&value.source.blockNum===1&&value.source.previousBlockId===null&&value.previousCommitId===null
             &&value.bindings.length===0&&value.lastGlobalSequence===null&&value.coverageStart===1,
             'Invalid native genesis coverage');
+        if(value.nativeActionInterfaceVersion!==undefined)requireProof(value.nativeActionInterfaceVersion===1,
+            'Unsupported native action interface marker');
         const seen=new Set<string>();
         for(const binding of value.bindings){
             const key=binding.transactionId+':'+binding.actionOrdinal;
@@ -194,7 +199,8 @@ export class ProtocolAbiProofReader {
         if(commit.source.blockId!==source.blockId||(selectionId!==undefined&&selectionId!==commit.selectionId))
             unavailable('source_not_canonical','Requested ABI source selection is not canonical');
         if(commit.status!=='complete')unavailable('source_incomplete','Requested ABI source has incomplete knowledge');
-        const view=freeze(copy({certificateId,commitId,selectionId:commit.selectionId,source:commit.source,bindings:commit.bindings}));
+        const view=freeze(copy({certificateId,commitId,selectionId:commit.selectionId,source:commit.source,bindings:commit.bindings,
+            ...(commit.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})}));
         this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit))});
         await this.revalidate(view,{signal});return view;
     }
