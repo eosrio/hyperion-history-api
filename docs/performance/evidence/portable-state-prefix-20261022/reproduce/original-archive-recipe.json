@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "case": "pilot24-reversible",
+      "archive": "pilot24-reversible-full.tar.gz",
+      "receipt": "pilot24-reversible-archive.json",
+      "sha256": "71ce96e7a46272e425b1172dba48dfa3615e9eec7452dcd19b0b7e5a911b82ac"
+    },
+    {
+      "case": "native24-reversible",
+      "archive": "native24-reversible-full.tar.gz",
+      "receipt": "native24-reversible-archive.json",
+      "sha256": "a3c14eaf957c8c5060fedaa922c1536cb4af9c64c90ef2f7f848ffbc36d716c9"
+    },
+    {
+      "case": "native24-reversible-v2",
+      "archive": "native24-reversible-v2-full.tar.gz",
+      "receipt": "native24-reversible-v2-archive.json",
+      "sha256": "1d9e0a17c17d1024a5d72fe624d33d5c87c1c628a6da463108086d150ba0d1a6"
+    },
+    {
+      "case": "native24-reversible-v3",
+      "archive": "native24-reversible-v3-full.tar.gz",
+      "receipt": "native24-reversible-v3-archive.json",
+      "sha256": "c3d6cd1e9d7ded0d226e97420a486312426ac6c145d12ff3a54bd4a055b3a473"
+    },
+    {
+      "case": "profile24-prefix288-cpu-on",
+      "archive": "profile24-prefix288-cpu-on-full.tar.gz",
+      "receipt": "profile24-prefix288-cpu-on-archive.json",
+      "sha256": "aac8bcb2a5f3f46bc33eec4359caabfa12b61cfed528b9d9c46b25f041f166dc"
+    },
+    {
+      "case": "profile24-prefix288-cpu-off",
+      "archive": "profile24-prefix288-cpu-off-full.tar.gz",
+      "receipt": "profile24-prefix288-cpu-off-archive.json",
+      "sha256": "ce2337166d56a1e2a089a7d1760e11a7406ce1ebdc41c03c6ef84b0048889450"
+    }
+  ]
+}

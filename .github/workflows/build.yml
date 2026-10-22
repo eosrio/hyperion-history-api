@@ -77,6 +77,9 @@ jobs:
       - name: Verify projection rollback evidence checksums
         working-directory: docs/performance/evidence/projection-rollback-20261021
         run: sha256sum -c SHA256SUMS
+      - name: Verify portable state prefix profiling evidence checksums
+        working-directory: docs/performance/evidence/portable-state-prefix-20261022
+        run: sha256sum -c SHA256SUMS
       - run: bun test tests/unit
       - name: Check ABI journal, source bindings and canonical frontier against disposable Elasticsearch 9.5.5
         if: matrix.node-version == '24.x'

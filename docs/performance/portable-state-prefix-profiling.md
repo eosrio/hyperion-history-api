@@ -4,8 +4,11 @@
 actual projection worker before selecting a performance change. The experiment is
 part of [#198](https://github.com/eosrio/hyperion-history-api/issues/198) and follows
 the [component profiling program](https://github.com/eosrio/hyperion-tools/blob/main/docs/performance/hyperion-4.5-profiling.md).
-This document defines a reproducible experiment; no native profiling result is
-claimed here. Busy-chain ancestry memory remains a separate [#248](https://github.com/eosrio/hyperion-history-api/issues/248) concern.
+This document defines the reproducible experiment. The
+[2026-10-22 native result and evidence](evidence/portable-state-prefix-20261022/README.md)
+record one successful diagnostic/control pair and the preceding failed attempts;
+complete recovery qualification remains open. Busy-chain ancestry memory remains
+a separate [#248](https://github.com/eosrio/hyperion-history-api/issues/248) concern.
 
 ## Workload and correctness boundary
 

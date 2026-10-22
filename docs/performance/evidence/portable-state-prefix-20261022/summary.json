@@ -1,0 +1,841 @@
+{
+  "cases": [
+    {
+      "archiveStatus": "failed",
+      "bounds": {
+        "engineering": {
+          "boundedHistoricalSourceGapQualified": false,
+          "fixture": "synthetic-engineering-fork",
+          "legacyRoutesQualified": false,
+          "nodeAuthenticatedFork": false,
+          "originalCorpusChanged": false,
+          "unavailableUndoAncestorQualified": false,
+          "wireTestnetReleaseQualified": false
+        },
+        "invocation": {
+          "deadlineSeconds": 1000,
+          "nativeCpuQuota": "600%",
+          "nativeMemoryMax": "8G",
+          "tasksMax": 512
+        }
+      },
+      "case": "native24-reversible",
+      "claims": {
+        "authenticWire": false,
+        "legacy": false,
+        "release": false,
+        "rust": false
+      },
+      "cleanup": [
+        {
+          "name": "master-0",
+          "ok": true
+        },
+        {
+          "name": "api-0",
+          "ok": true
+        },
+        {
+          "name": "source",
+          "ok": true
+        },
+        {
+          "name": "rpc",
+          "ok": true
+        },
+        {
+          "name": "bulk",
+          "ok": true
+        },
+        {
+          "name": "redis",
+          "ok": true
+        },
+        {
+          "name": "mongo-client",
+          "ok": true
+        },
+        {
+          "name": "elasticsearch",
+          "ok": true
+        },
+        {
+          "name": "owned-mongodb",
+          "ok": true
+        }
+      ],
+      "completedAt": "2026-10-21T23:43:05.978Z",
+      "diagnosticSuccess": false,
+      "failure": {
+        "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n+ [\n+   'AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\\n' +\n+     '\\n' +\n+     \"  assert.ok(report.rpcRequests.length < 512 && ['POST', 'GET'].includes(incoming.method!)\\n\" +\n+     '\\n' +\n+     '    at Server.<anonymous> (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:210:20)\\n' +\n+     '    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)'\n+ ]\n- []\n\n    at wait (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:136:49)\n    at async runPortableStateRecovery (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:268:13)\n    at async <anonymous> (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:370:20)",
+        "errors": [
+          "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert.ok(report.rpcRequests.length < 512 && ['POST', 'GET'].includes(incoming.method!)\n\n    at Server.<anonymous> (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:210:20)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+          "Error: qualification ledger closed"
+        ]
+      },
+      "finality": "reversible",
+      "fullRecoveryPassed": false,
+      "head": "478844ef7c3887e7c6cfc1f14e58638167240c34",
+      "headSource": "invocation.head",
+      "mongoCleanupVerified": true,
+      "originalInvocation": {
+        "archive": "native24-reversible-full.tar.gz",
+        "archiveSha256": "a3c14eaf957c8c5060fedaa922c1536cb4af9c64c90ef2f7f848ffbc36d716c9",
+        "bytes": 1527,
+        "case": "native24-reversible",
+        "member": "native24-reversible-invocation.json",
+        "sha256": "791beeb47664ef175fad9953e7ffb0b52ce5f562eec650854fcf2527c7c7cb26"
+      },
+      "originalReport": {
+        "archive": "native24-reversible-full.tar.gz",
+        "archiveSha256": "a3c14eaf957c8c5060fedaa922c1536cb4af9c64c90ef2f7f848ffbc36d716c9",
+        "bytes": 245188,
+        "case": "native24-reversible",
+        "member": "native24-reversible/report.json",
+        "sha256": "1f1620b7fa0fb42ba96aa2418b651bd7bed084836f45f2aaed047ce813ea0c98"
+      },
+      "passedConsistencyChecks": {
+        "allDriverCleanupOk": true,
+        "archiveHasNoOwnedContainers": true,
+        "archiveMongoCleanupVerified": true,
+        "driverExitZero": false,
+        "driverPassed": false,
+        "errorsEmpty": false,
+        "mongoCleanupVerified": true,
+        "noPrimaryError": false,
+        "serviceCleanupVerified": true,
+        "sourceEmissionPinsPresent": true
+      },
+      "profileOnly": null,
+      "runtime": {
+        "sha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+        "version": "v24.19.0"
+      },
+      "serviceCleanupVerified": true,
+      "source": {
+        "branchRanges": {
+          "A": [
+            1244,
+            1247
+          ],
+          "B": [
+            1244,
+            1249
+          ]
+        },
+        "common": {
+          "blockId": "000004db125e7699dd83225a0d167fe47d1b292fbf0a685232d50e7ae8b4c7bb",
+          "blockNum": 1243
+        },
+        "kind": "synthetic-engineering-fork",
+        "nodeAuthenticated": false,
+        "recordsSha256": "78b6838d44ebcee1f8f4abd41e741d0e8e7a48d545eb76a012c0c128442d5088"
+      },
+      "sourceEmission": {
+        "actualCodeBytesBundled": false,
+        "capturedHashCount": 594,
+        "present": true
+      },
+      "startedAt": "2026-10-21T23:42:32.559Z",
+      "status": "failed"
+    },
+    {
+      "archiveStatus": "failed",
+      "bounds": {
+        "engineering": {
+          "boundedHistoricalSourceGapQualified": false,
+          "fixture": "synthetic-engineering-fork",
+          "legacyRoutesQualified": false,
+          "nodeAuthenticatedFork": false,
+          "originalCorpusChanged": false,
+          "unavailableUndoAncestorQualified": false,
+          "wireTestnetReleaseQualified": false
+        },
+        "invocation": {
+          "deadlineSeconds": 1000,
+          "nativeCpuQuota": "600%",
+          "nativeMemoryMax": "8G",
+          "tasksMax": 512
+        }
+      },
+      "case": "native24-reversible-v2",
+      "claims": {
+        "authenticWire": false,
+        "legacy": false,
+        "release": false,
+        "rust": false
+      },
+      "cleanup": [
+        {
+          "name": "master-0",
+          "ok": true
+        },
+        {
+          "name": "api-0",
+          "ok": true
+        },
+        {
+          "name": "source",
+          "ok": true
+        },
+        {
+          "name": "rpc",
+          "ok": true
+        },
+        {
+          "name": "bulk",
+          "ok": true
+        },
+        {
+          "name": "redis",
+          "ok": true
+        },
+        {
+          "name": "mongo-client",
+          "ok": true
+        },
+        {
+          "name": "elasticsearch",
+          "ok": true
+        },
+        {
+          "name": "owned-mongodb",
+          "ok": true
+        }
+      ],
+      "completedAt": "2026-10-21T23:52:36.225Z",
+      "diagnosticSuccess": false,
+      "failure": {
+        "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n+ [\n+   'AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\\n' +\n+     '\\n' +\n+     \"  assert.ok(report.rpcRequests.length < 512 && ['POST', 'GET'].includes(incoming.method!)\\n\" +\n+     '\\n' +\n+     '    at Server.<anonymous> (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:217:20)\\n' +\n+     '    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)'\n+ ]\n- []\n\n    at wait (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:137:49)\n    at async runPortableStateRecovery (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:284:13)\n    at async <anonymous> (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:392:20)",
+        "errors": [
+          "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert.ok(report.rpcRequests.length < 512 && ['POST', 'GET'].includes(incoming.method!)\n\n    at Server.<anonymous> (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:217:20)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+        ]
+      },
+      "finality": "reversible",
+      "fullRecoveryPassed": false,
+      "head": "fde6917f15e6eff1574ee4ae9a36bb634d498cb7",
+      "headSource": "invocation.head",
+      "mongoCleanupVerified": true,
+      "originalInvocation": {
+        "archive": "native24-reversible-v2-full.tar.gz",
+        "archiveSha256": "1d9e0a17c17d1024a5d72fe624d33d5c87c1c628a6da463108086d150ba0d1a6",
+        "bytes": 1543,
+        "case": "native24-reversible-v2",
+        "member": "native24-reversible-v2-invocation.json",
+        "sha256": "01f9862f2eeba3422a5d489b9929dabe2f4a9dadf7c4574ece51e3cc44832275"
+      },
+      "originalReport": {
+        "archive": "native24-reversible-v2-full.tar.gz",
+        "archiveSha256": "1d9e0a17c17d1024a5d72fe624d33d5c87c1c628a6da463108086d150ba0d1a6",
+        "bytes": 291578,
+        "case": "native24-reversible-v2",
+        "member": "native24-reversible-v2/report.json",
+        "sha256": "e9a961e3a01e31e5818498827106f4593fd67d719fe8dc6e106b5829b1a71aff"
+      },
+      "passedConsistencyChecks": {
+        "allDriverCleanupOk": true,
+        "archiveHasNoOwnedContainers": true,
+        "archiveMongoCleanupVerified": true,
+        "driverExitZero": false,
+        "driverPassed": false,
+        "errorsEmpty": false,
+        "mongoCleanupVerified": true,
+        "noPrimaryError": false,
+        "serviceCleanupVerified": true,
+        "sourceEmissionPinsPresent": true
+      },
+      "profileOnly": null,
+      "runtime": {
+        "sha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+        "version": "v24.19.0"
+      },
+      "serviceCleanupVerified": true,
+      "source": {
+        "branchRanges": {
+          "A": [
+            1244,
+            1247
+          ],
+          "B": [
+            1244,
+            1249
+          ]
+        },
+        "common": {
+          "blockId": "000004db125e7699dd83225a0d167fe47d1b292fbf0a685232d50e7ae8b4c7bb",
+          "blockNum": 1243
+        },
+        "kind": "synthetic-engineering-fork",
+        "nodeAuthenticated": false,
+        "recordsSha256": "78b6838d44ebcee1f8f4abd41e741d0e8e7a48d545eb76a012c0c128442d5088"
+      },
+      "sourceEmission": {
+        "actualCodeBytesBundled": false,
+        "capturedHashCount": 594,
+        "present": true
+      },
+      "startedAt": "2026-10-21T23:52:07.995Z",
+      "status": "failed"
+    },
+    {
+      "archiveStatus": "failed",
+      "bounds": {
+        "engineering": {
+          "boundedHistoricalSourceGapQualified": false,
+          "fixture": "synthetic-engineering-fork",
+          "legacyRoutesQualified": false,
+          "nodeAuthenticatedFork": false,
+          "originalCorpusChanged": false,
+          "unavailableUndoAncestorQualified": false,
+          "wireTestnetReleaseQualified": false
+        },
+        "invocation": {
+          "deadlineSeconds": 1000,
+          "nativeCpuQuota": "600%",
+          "nativeMemoryMax": "8G",
+          "tasksMax": 512
+        }
+      },
+      "case": "native24-reversible-v3",
+      "claims": {
+        "authenticWire": false,
+        "legacy": false,
+        "release": false,
+        "rust": false
+      },
+      "cleanup": [
+        {
+          "name": "master-0",
+          "ok": true
+        },
+        {
+          "name": "api-0",
+          "ok": true
+        },
+        {
+          "name": "source",
+          "ok": true
+        },
+        {
+          "name": "rpc",
+          "ok": true
+        },
+        {
+          "name": "bulk",
+          "ok": true
+        },
+        {
+          "name": "redis",
+          "ok": true
+        },
+        {
+          "name": "mongo-client",
+          "ok": true
+        },
+        {
+          "name": "elasticsearch",
+          "ok": true
+        },
+        {
+          "name": "owned-mongodb",
+          "ok": true
+        }
+      ],
+      "completedAt": "2026-10-22T00:10:40.802Z",
+      "diagnosticSuccess": false,
+      "failure": {
+        "error": "Error: paced common prefix 672 did not complete: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n651 !== 672\n\n    at assertRecoveryPhysical (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery-oracle.ts:92:12)\n    at physicalAt (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:272:17)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async <anonymous> (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:290:71)\n    at async wait (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:139:18)\n    at async runPortableStateRecovery (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:290:13)\n    at async <anonymous> (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:398:20)\n    at wait (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:140:15)\n    at async runPortableStateRecovery (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:290:13)\n    at async <anonymous> (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:398:20)",
+        "errors": []
+      },
+      "finality": "reversible",
+      "fullRecoveryPassed": false,
+      "head": "4ae348583fd9cb9b900313591650c1a3b62004f9",
+      "headSource": "invocation.head",
+      "mongoCleanupVerified": true,
+      "originalInvocation": {
+        "archive": "native24-reversible-v3-full.tar.gz",
+        "archiveSha256": "c3d6cd1e9d7ded0d226e97420a486312426ac6c145d12ff3a54bd4a055b3a473",
+        "bytes": 1543,
+        "case": "native24-reversible-v3",
+        "member": "native24-reversible-v3-invocation.json",
+        "sha256": "c98255256760392de314955dbf11012f20c76c035474893f3443526e72e0d5b0"
+      },
+      "originalReport": {
+        "archive": "native24-reversible-v3-full.tar.gz",
+        "archiveSha256": "c3d6cd1e9d7ded0d226e97420a486312426ac6c145d12ff3a54bd4a055b3a473",
+        "bytes": 1381420,
+        "case": "native24-reversible-v3",
+        "member": "native24-reversible-v3/report.json",
+        "sha256": "8460fb39cde9347e6ea5a54dc9fae599a8008e652f20609145e890e90f0d7ac7"
+      },
+      "passedConsistencyChecks": {
+        "allDriverCleanupOk": true,
+        "archiveHasNoOwnedContainers": true,
+        "archiveMongoCleanupVerified": true,
+        "driverExitZero": false,
+        "driverPassed": false,
+        "errorsEmpty": true,
+        "mongoCleanupVerified": true,
+        "noPrimaryError": false,
+        "serviceCleanupVerified": true,
+        "sourceEmissionPinsPresent": true
+      },
+      "profileOnly": null,
+      "runtime": {
+        "sha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+        "version": "v24.19.0"
+      },
+      "serviceCleanupVerified": true,
+      "source": {
+        "branchRanges": {
+          "A": [
+            1244,
+            1247
+          ],
+          "B": [
+            1244,
+            1249
+          ]
+        },
+        "common": {
+          "blockId": "000004db125e7699dd83225a0d167fe47d1b292fbf0a685232d50e7ae8b4c7bb",
+          "blockNum": 1243
+        },
+        "kind": "synthetic-engineering-fork",
+        "nodeAuthenticated": false,
+        "recordsSha256": "78b6838d44ebcee1f8f4abd41e741d0e8e7a48d545eb76a012c0c128442d5088"
+      },
+      "sourceEmission": {
+        "actualCodeBytesBundled": false,
+        "capturedHashCount": 594,
+        "present": true
+      },
+      "startedAt": "2026-10-21T23:55:58.088Z",
+      "status": "failed"
+    },
+    {
+      "archiveStatus": "failed-before-worker-start",
+      "bounds": {
+        "engineering": {
+          "boundedHistoricalSourceGapQualified": false,
+          "fixture": "synthetic-engineering-fork",
+          "legacyRoutesQualified": false,
+          "nodeAuthenticatedFork": false,
+          "originalCorpusChanged": false,
+          "unavailableUndoAncestorQualified": false,
+          "wireTestnetReleaseQualified": false
+        },
+        "invocation": {
+          "deadlineSeconds": 1000,
+          "nativeCpuQuota": "600%",
+          "nativeMemoryMax": "8G",
+          "tasksMax": 512
+        }
+      },
+      "case": "pilot24-reversible",
+      "claims": {
+        "authenticWire": false,
+        "legacy": false,
+        "release": false,
+        "rust": false
+      },
+      "cleanup": [
+        {
+          "name": "master-0",
+          "ok": false
+        },
+        {
+          "name": "api-0",
+          "ok": true
+        },
+        {
+          "name": "source",
+          "ok": true
+        },
+        {
+          "name": "rpc",
+          "ok": true
+        },
+        {
+          "name": "bulk",
+          "ok": true
+        },
+        {
+          "name": "redis",
+          "ok": true
+        },
+        {
+          "name": "mongo-client",
+          "ok": true
+        },
+        {
+          "name": "elasticsearch",
+          "ok": true
+        },
+        {
+          "name": "owned-mongodb",
+          "ok": true
+        }
+      ],
+      "completedAt": "2026-10-21T23:33:20.870Z",
+      "diagnosticSuccess": false,
+      "failure": {
+        "error": "AssertionError [ERR_ASSERTION]: paced common prefix 32: production child exited\n    at wait (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:103:66)\n    at async runPortableStateRecovery (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:231:13)\n    at async <anonymous> (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:332:20)",
+        "errors": [
+          "Error [ERR_IPC_CHANNEL_CLOSED]: Channel closed\n    at target.send (node:internal/child_process:794:16)\n    at stopMaster (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:139:21)\n    at runPortableStateRecovery (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:316:70)\n    at async <anonymous> (/tmp/hyp45-p246-20261021/hyperion-history-api/scripts/qualification/portable-state-recovery.ts:332:20)"
+        ]
+      },
+      "finality": "reversible",
+      "fullRecoveryPassed": false,
+      "head": "732d6b16f833b8aa5bb5cd59111b9751f889458b",
+      "headSource": "invocation.head",
+      "mongoCleanupVerified": true,
+      "originalInvocation": {
+        "archive": "pilot24-reversible-full.tar.gz",
+        "archiveSha256": "71ce96e7a46272e425b1172dba48dfa3615e9eec7452dcd19b0b7e5a911b82ac",
+        "bytes": 1358,
+        "case": "pilot24-reversible",
+        "member": "pilot24-reversible-invocation.json",
+        "sha256": "a49db9c1deb531e21d01eb319087efc962b4e911e9a3e300a59bf199c40de22f"
+      },
+      "originalReport": {
+        "archive": "pilot24-reversible-full.tar.gz",
+        "archiveSha256": "71ce96e7a46272e425b1172dba48dfa3615e9eec7452dcd19b0b7e5a911b82ac",
+        "bytes": 229967,
+        "case": "pilot24-reversible",
+        "member": "pilot24-reversible/report.json",
+        "sha256": "72c6f52de5c4f0e090c8237ed995a1a2da1f2018a05754b990ecfbd2a8a2079a"
+      },
+      "passedConsistencyChecks": {
+        "allDriverCleanupOk": false,
+        "archiveHasNoOwnedContainers": true,
+        "archiveMongoCleanupVerified": true,
+        "driverExitZero": false,
+        "driverPassed": false,
+        "errorsEmpty": false,
+        "mongoCleanupVerified": true,
+        "noPrimaryError": false,
+        "serviceCleanupVerified": true,
+        "sourceEmissionPinsPresent": false
+      },
+      "profileOnly": null,
+      "runtime": {
+        "sha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+        "version": "v24.19.0"
+      },
+      "serviceCleanupVerified": true,
+      "source": {
+        "branchRanges": {
+          "A": [
+            1244,
+            1247
+          ],
+          "B": [
+            1244,
+            1249
+          ]
+        },
+        "common": {
+          "blockId": "000004db125e7699dd83225a0d167fe47d1b292fbf0a685232d50e7ae8b4c7bb",
+          "blockNum": 1243
+        },
+        "kind": "synthetic-engineering-fork",
+        "nodeAuthenticated": false,
+        "recordsSha256": "78b6838d44ebcee1f8f4abd41e741d0e8e7a48d545eb76a012c0c128442d5088"
+      },
+      "sourceEmission": {
+        "actualCodeBytesBundled": false,
+        "capturedHashCount": 0,
+        "present": false
+      },
+      "startedAt": "2026-10-21T23:32:29.653Z",
+      "status": "failed"
+    },
+    {
+      "archiveStatus": "profiled-prefix",
+      "bounds": {
+        "engineering": {
+          "boundedHistoricalSourceGapQualified": false,
+          "fixture": "synthetic-engineering-fork",
+          "legacyRoutesQualified": false,
+          "nodeAuthenticatedFork": false,
+          "originalCorpusChanged": false,
+          "unavailableUndoAncestorQualified": false,
+          "wireTestnetReleaseQualified": false
+        },
+        "invocation": {
+          "deadlineSeconds": 1000,
+          "nativeCpuQuota": "600%",
+          "nativeMemoryMax": "8G",
+          "tasksMax": 512
+        }
+      },
+      "case": "profile24-prefix288-cpu-off",
+      "claims": {
+        "authenticWire": false,
+        "legacy": false,
+        "release": false,
+        "rust": false
+      },
+      "cleanup": [
+        {
+          "name": "master-0",
+          "ok": true
+        },
+        {
+          "name": "api-0",
+          "ok": true
+        },
+        {
+          "name": "source",
+          "ok": true
+        },
+        {
+          "name": "rpc",
+          "ok": true
+        },
+        {
+          "name": "bulk",
+          "ok": true
+        },
+        {
+          "name": "redis",
+          "ok": true
+        },
+        {
+          "name": "mongo-client",
+          "ok": true
+        },
+        {
+          "name": "elasticsearch",
+          "ok": true
+        },
+        {
+          "name": "owned-mongodb",
+          "ok": true
+        }
+      ],
+      "completedAt": "2026-10-22T00:44:11.959Z",
+      "diagnosticSuccess": true,
+      "failure": {
+        "error": null,
+        "errors": []
+      },
+      "finality": "reversible",
+      "fullRecoveryPassed": false,
+      "head": "03dd3e9758473bc563bf8d7cbbbc0557232f17dc",
+      "headSource": "invocation.head",
+      "mongoCleanupVerified": true,
+      "originalInvocation": {
+        "archive": "profile24-prefix288-cpu-off-full.tar.gz",
+        "archiveSha256": "ce2337166d56a1e2a089a7d1760e11a7406ce1ebdc41c03c6ef84b0048889450",
+        "bytes": 1682,
+        "case": "profile24-prefix288-cpu-off",
+        "member": "profile24-prefix288-cpu-off-invocation.json",
+        "sha256": "e8e9152a6d988cb60594cced91b7c37ad2d5795329d56fd349e1e389412c79b1"
+      },
+      "originalReport": {
+        "archive": "profile24-prefix288-cpu-off-full.tar.gz",
+        "archiveSha256": "ce2337166d56a1e2a089a7d1760e11a7406ce1ebdc41c03c6ef84b0048889450",
+        "bytes": 847939,
+        "case": "profile24-prefix288-cpu-off",
+        "member": "profile24-prefix288-cpu-off/report.json",
+        "sha256": "af2bb171084179317140241b4b4375a1aea860f470e7eb90179490121a6a1761"
+      },
+      "passedConsistencyChecks": {
+        "allDriverCleanupOk": true,
+        "archiveHasNoOwnedContainers": true,
+        "archiveMongoCleanupVerified": true,
+        "driverExitZero": true,
+        "driverPassed": false,
+        "errorsEmpty": true,
+        "mongoCleanupVerified": true,
+        "noPrimaryError": true,
+        "serviceCleanupVerified": true,
+        "sourceEmissionPinsPresent": true
+      },
+      "profileOnly": true,
+      "runtime": {
+        "sha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+        "version": "v24.19.0"
+      },
+      "serviceCleanupVerified": true,
+      "source": {
+        "branchRanges": {
+          "A": [
+            1244,
+            1247
+          ],
+          "B": [
+            1244,
+            1249
+          ]
+        },
+        "common": {
+          "blockId": "000004db125e7699dd83225a0d167fe47d1b292fbf0a685232d50e7ae8b4c7bb",
+          "blockNum": 1243
+        },
+        "kind": "synthetic-engineering-fork",
+        "nodeAuthenticated": false,
+        "recordsSha256": "78b6838d44ebcee1f8f4abd41e741d0e8e7a48d545eb76a012c0c128442d5088"
+      },
+      "sourceEmission": {
+        "actualCodeBytesBundled": false,
+        "capturedHashCount": 602,
+        "present": true
+      },
+      "startedAt": "2026-10-22T00:37:47.924Z",
+      "status": "profiled-prefix"
+    },
+    {
+      "archiveStatus": "profiled-prefix",
+      "bounds": {
+        "engineering": {
+          "boundedHistoricalSourceGapQualified": false,
+          "fixture": "synthetic-engineering-fork",
+          "legacyRoutesQualified": false,
+          "nodeAuthenticatedFork": false,
+          "originalCorpusChanged": false,
+          "unavailableUndoAncestorQualified": false,
+          "wireTestnetReleaseQualified": false
+        },
+        "invocation": {
+          "deadlineSeconds": 1000,
+          "nativeCpuQuota": "600%",
+          "nativeMemoryMax": "8G",
+          "tasksMax": 512
+        }
+      },
+      "case": "profile24-prefix288-cpu-on",
+      "claims": {
+        "authenticWire": false,
+        "legacy": false,
+        "release": false,
+        "rust": false
+      },
+      "cleanup": [
+        {
+          "name": "master-0",
+          "ok": true
+        },
+        {
+          "name": "api-0",
+          "ok": true
+        },
+        {
+          "name": "source",
+          "ok": true
+        },
+        {
+          "name": "rpc",
+          "ok": true
+        },
+        {
+          "name": "bulk",
+          "ok": true
+        },
+        {
+          "name": "redis",
+          "ok": true
+        },
+        {
+          "name": "mongo-client",
+          "ok": true
+        },
+        {
+          "name": "elasticsearch",
+          "ok": true
+        },
+        {
+          "name": "owned-mongodb",
+          "ok": true
+        }
+      ],
+      "completedAt": "2026-10-22T00:33:58.537Z",
+      "diagnosticSuccess": true,
+      "failure": {
+        "error": null,
+        "errors": []
+      },
+      "finality": "reversible",
+      "fullRecoveryPassed": false,
+      "head": "03dd3e9758473bc563bf8d7cbbbc0557232f17dc",
+      "headSource": "invocation.head",
+      "mongoCleanupVerified": true,
+      "originalInvocation": {
+        "archive": "profile24-prefix288-cpu-on-full.tar.gz",
+        "archiveSha256": "aac8bcb2a5f3f46bc33eec4359caabfa12b61cfed528b9d9c46b25f041f166dc",
+        "bytes": 1675,
+        "case": "profile24-prefix288-cpu-on",
+        "member": "profile24-prefix288-cpu-on-invocation.json",
+        "sha256": "1a1fcc6686e8d6be65c1d9545a297e9bfbd0bf60bdb91b8f6efe4326f2dc6361"
+      },
+      "originalReport": {
+        "archive": "profile24-prefix288-cpu-on-full.tar.gz",
+        "archiveSha256": "aac8bcb2a5f3f46bc33eec4359caabfa12b61cfed528b9d9c46b25f041f166dc",
+        "bytes": 823868,
+        "case": "profile24-prefix288-cpu-on",
+        "member": "profile24-prefix288-cpu-on/report.json",
+        "sha256": "67bd1870f463256d137596d145a21b624e1286e19dd5491aec1309ac7b0f4a69"
+      },
+      "passedConsistencyChecks": {
+        "allDriverCleanupOk": true,
+        "archiveHasNoOwnedContainers": true,
+        "archiveMongoCleanupVerified": true,
+        "driverExitZero": true,
+        "driverPassed": false,
+        "errorsEmpty": true,
+        "mongoCleanupVerified": true,
+        "noPrimaryError": true,
+        "serviceCleanupVerified": true,
+        "sourceEmissionPinsPresent": true
+      },
+      "profileOnly": true,
+      "runtime": {
+        "sha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+        "version": "v24.19.0"
+      },
+      "serviceCleanupVerified": true,
+      "source": {
+        "branchRanges": {
+          "A": [
+            1244,
+            1247
+          ],
+          "B": [
+            1244,
+            1249
+          ]
+        },
+        "common": {
+          "blockId": "000004db125e7699dd83225a0d167fe47d1b292fbf0a685232d50e7ae8b4c7bb",
+          "blockNum": 1243
+        },
+        "kind": "synthetic-engineering-fork",
+        "nodeAuthenticated": false,
+        "recordsSha256": "78b6838d44ebcee1f8f4abd41e741d0e8e7a48d545eb76a012c0c128442d5088"
+      },
+      "sourceEmission": {
+        "actualCodeBytesBundled": false,
+        "capturedHashCount": 602,
+        "present": true
+      },
+      "startedAt": "2026-10-22T00:27:33.085Z",
+      "status": "profiled-prefix"
+    }
+  ],
+  "claims": {
+    "authenticWire": false,
+    "legacy": false,
+    "release": false,
+    "rust": false
+  },
+  "failedAttemptsPreserved": [
+    "native24-reversible",
+    "native24-reversible-v2",
+    "native24-reversible-v3",
+    "pilot24-reversible"
+  ],
+  "schemaVersion": 1,
+  "scope": "Synthetic engineering fork/recovery evidence; packaging is not publication or release acceptance."
+}
