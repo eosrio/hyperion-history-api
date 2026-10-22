@@ -74,6 +74,11 @@ export class ProtocolAbiFrontierStore {
         this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-abi-frontier-records','protocol-abi-frontier-records-v1',undefined,options);
     }
 
+    /** Preserve the physical namespace while refusing provisioning and writes. */
+    asReadOnly():ProtocolAbiFrontierStore {
+        return new ProtocolAbiFrontierStore(this.client,this.chain,this.replicas,{readOnly:true});
+    }
+
     private async initialize(control:boolean,signal?:AbortSignal) {
         signal?.throwIfAborted();
         const index=control?this.controlIndex:this.recordsIndex,kind=control?'protocol-abi-frontier':'protocol-abi-frontier-records';

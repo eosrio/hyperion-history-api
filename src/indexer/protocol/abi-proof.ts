@@ -99,6 +99,11 @@ export class ProtocolAbiProofReader {
         this.maximumAncestry=options.maxAncestryBlocks??256;
         if(!uint(this.maximumAncestry,1)||this.maximumAncestry>4096)throw new Error('Invalid ABI proof ancestry bound');
     }
+    /** Independent issuance/cancellation state over storage that cannot initialize or write indices. */
+    asReadOnly():ProtocolAbiProofReader {
+        return new ProtocolAbiProofReader({chainId:this.options.chainId,profile:this.profile,
+            store:this.options.store.asReadOnly(),maxAncestryBlocks:this.maximumAncestry});
+    }
     private sameProfile(value:unknown):boolean {try{return json(value)===json(this.profile);}catch{return false;}}
     private assertActive(signal?:AbortSignal):void {
         if(signal?.aborted)unavailable('proof_cancelled','ABI proof request was cancelled');

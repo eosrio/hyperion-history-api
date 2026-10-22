@@ -113,7 +113,7 @@ export class ProtocolNativeObservationStore {
     private readonly abis:ProtocolAbiObservationStore;
     private readonly bounds:ImmutableProtocolBundleBounds;
     private readonly readOnly:boolean;
-    constructor(client:Client,chain:string,replicas=0,bounds:ImmutableProtocolBundleBounds=protocolNativeObservationBounds,options:{readOnly?:boolean}={}) {
+    constructor(private readonly client:Client,private readonly chain:string,private readonly replicas=0,bounds:ImmutableProtocolBundleBounds=protocolNativeObservationBounds,options:{readOnly?:boolean}={}) {
         if(bounds.maximumBytes>protocolNativeObservationBounds.maximumBytes||bounds.maximumChunks>protocolNativeObservationBounds.maximumChunks) {
             throw new Error('Invalid native observation storage bounds');
         }
@@ -122,6 +122,10 @@ export class ProtocolNativeObservationStore {
         this.sources=new ProtocolSourceBindingStore(client,chain,replicas,{readOnly:true});
         this.abis=new ProtocolAbiObservationStore(client,chain,replicas,undefined,{readOnly:true});
         this.index=this.bundles.index;
+    }
+    /** A detached read handle cannot provision indices or prepare observations. */
+    asReadOnly():ProtocolNativeObservationStore {
+        return new ProtocolNativeObservationStore(this.client,this.chain,this.replicas,this.bounds,{readOnly:true});
     }
     private async references(selectionId:string,signal?:AbortSignal):Promise<References> {
         signal?.throwIfAborted();

@@ -33,5 +33,6 @@ ABI extraction may independently remain incomplete.
 The host derives inventory, matches every origin/raw digest and supplies source-vector decision
 order. This store preserves that order; its schema/count checks cannot prove source completeness.
 Neither PREPARE nor readback establishes canonical membership, authorizes decoding, activates a
-profile or qualifies the Wire testnet. Native authorization and worker/API/cache/stream acceptance,
-including #231, remain separate work.
+profile or qualifies the Wire testnet. The internal [native authorization reader](protocol-native-authorization.md)
+separately verifies original source and canonical occurrence authority. Worker/API/cache/stream
+acceptance, including #231, remains separate work.
