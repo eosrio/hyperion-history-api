@@ -9,5 +9,6 @@ test('emitted native API, cache and current stream consumers use original Wire a
     expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual({passed: true, originalNative: [33, 122, 397],
         schema1Compatibility: 'separate existing API runners', nativeActivation: false, fullWorkerQualification: false,
         transportQualification: false, nativeValues: true, exactEnvelopes: true, cacheCapsules: true, ambiguousDowngrade: true,
-        currentStreams: true, streamCancellation: true, sourceRevocation: true, rawHistory: true, unmarkedNativeRefused: true});
+        currentStreams: true, streamCancellation: true, sourceRevocation: true, rawHistory: true, unmarkedNativeRefused: true,
+        responseFences: true, streamResponseFences: true});
 }, 70000);

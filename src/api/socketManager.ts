@@ -15,7 +15,7 @@ import {
     StreamTypeMap
 } from "../interfaces/stream-requests.js";
 import {mergeActionMeta, streamPastCommon} from "./helpers/functions.js";
-import {protectProtocolAction, revalidateProtocolActionScope} from './helpers/protocol-abi.js';
+import {protectProtocolAction, protocolActionsForStream} from './helpers/protocol-abi.js';
 import {createProtocolStreamScope} from './helpers/protocol-proof-request.js';
 import {assertProtocolProjectionReady} from './helpers/protocol-state-readiness.js';
 import {assertProtocolActionStreamReady} from './helpers/protocol-action-query.js';
@@ -523,8 +523,8 @@ export class SocketManager {
                         mergeActionMeta(action, false, true);
                         await protectProtocolAction(this.server, proofScope, action);
                         delete action.protocol;
-                        message = JSON.stringify(action);
-                        await revalidateProtocolActionScope(this.server, proofScope);
+                        const [checked] = await protocolActionsForStream(this.server, proofScope, [action]);
+                        message = JSON.stringify(checked);
                     }
                     pending.targets.forEach((requests, clientId) => this.io.sockets.sockets.get(clientId)?.emit('message', {
                         type: 'action_trace', mode: 'live', targets: requests, message

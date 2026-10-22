@@ -25,7 +25,7 @@ const complete = rows => ({took: 1, timed_out: false, _shards: {total: 1, succes
     hits: {total: {value: rows.length, relation: 'eq'}, hits: rows.map(_source => ({_source: structuredClone(_source)}))}});
 async function api(source, selected = source.selected) {
     const app = Fastify({logger: false}), cache = new Map();
-    let rows = [], interceptor, searches = 0; const clearCalls = [], signals = [], errors = [];
+    let rows = [], searchedRows = [], interceptor, searches = 0; const clearCalls = [], signals = [], errors = [];
     app.addHook('onError', async (_request, _reply, error) => {errors.push(error);});
     const proxy = {...source.client, async get(query, options) {
         if (query.index === source.nativeStore.index) signals.push(options?.signal);
@@ -38,7 +38,8 @@ async function api(source, selected = source.selected) {
                 '@timestamp': row['@timestamp'], producer: row.producer}]);
         }
         assert.equal(query.index, source.chain + '-action-*');
-        const result = complete(rows); if (query.scroll) result._scroll_id = 'native-api-owned-scroll'; return result;
+        const result = complete(rows); searchedRows = result.hits.hits.map(hit => hit._source);
+        if (query.scroll) result._scroll_id = 'native-api-owned-scroll'; return result;
     }, async clearScroll(query) {clearCalls.push(query.scroll_id); return {succeeded: true};}};
     app.decorate('manager', {chain: source.chain, conn: {chains: {[source.chain]: {chain_id: source.chainId}}},
         readIndexset: () => source.chain + '-action-*', config: {settings: {protocol: {provider: 'extension',
@@ -60,13 +61,15 @@ async function api(source, selected = source.selected) {
     await app.ready();
     return {app, cache, clearCalls, signals, errors, setRows(value) {rows = structuredClone(value); cache.clear();},
         setInterceptor(value) {interceptor = value;}, get searches() {return searches;},
+        get searchedRows() {return searchedRows;},
         async request(kind = 'v2') {
             const row = rows[0];
             const request = kind === 'v1' ? {method: 'POST', url: '/v1/history/get_actions', payload: {account_name: row.act.account, hex_data: true}}
                 : kind === 'trx1' ? {method: 'POST', url: '/v1/history/get_transaction', payload: {id: row.trx_id}}
                     : kind === 'trx2' ? {method: 'GET', url: '/v2/history/get_transaction?id=' + row.trx_id + '&hydrate=false'}
                         : kind === 'trace' ? {method: 'POST', url: '/v1/trace/get_block', payload: {block_num: row.block_num}}
-                            : {method: 'GET', url: '/v2/history/get_actions?hydrate=false'};
+                            : {method: 'GET', url: '/v2/history/get_actions?hydrate=false'
+                                + (kind === 'simple' ? '&simple=true' : kind === 'noBinary' ? '&noBinary=true' : '')};
             return app.inject(request);
         }};
 }
@@ -91,8 +94,8 @@ function liveManager(app, row, sockets) {
 const relay = (manager, row) => manager.routeActionTraceToClients({account: row.act.account, name: row.act.name,
     notified: [...new Set([...row.receipts.map(receipt => receipt.receiver), ...row.act.authorization.map(auth => auth.actor)])].join(','),
     message: JSON.stringify(row)});
-const history = (app, socket, row) => streamPastCommon(app, socket, 'native-history-request', {
-    contract: row.act.account, action: row.act.name, start_from: row.block_num, read_until: row.block_num}, 'action');
+const history = (app, socket, row, readUntil = row.block_num) => streamPastCommon(app, socket, 'native-history-request', {
+    contract: row.act.account, action: row.act.name, start_from: row.block_num, read_until: readUntil}, 'action');
 const source = await nativeApiWireSource(); let consumer;
 const result = {passed: true, originalNative: [], schema1Compatibility: 'separate existing API runners', nativeActivation: false,
     fullWorkerQualification: false, transportQualification: false};
@@ -102,11 +105,11 @@ try {
         await source.appendUntil(number); const row = await source.action(number); consumer.setRows([row]);
         const expected = source.expected.get(number).expectedValue;
         const writes = source.memory.calls.filter(call => ['create', 'createIndex', 'index'].includes(call.method)).length;
-        for (const kind of ['v1', 'v2', 'trx1', 'trx2', 'trace']) {
+        for (const kind of ['v1', 'v2', 'trx1', 'trx2', 'trace', 'simple', 'noBinary']) {
             const response = await consumer.request(kind); assert.equal(response.statusCode, 200, kind + ': ' + response.body);
             const body = response.json();
             const data = kind === 'v1' ? body.actions[0].action_trace.act.data : kind === 'trx1' ? body.traces[0].act.data
-                : kind === 'trace' ? body.transactions[0].actions[0].data : body.actions[0].act.data;
+                : kind === 'trace' ? body.transactions[0].actions[0].data : kind === 'simple' ? body.simple_actions[0].data : body.actions[0].act.data;
             assert.deepEqual(data, expected);
             if (kind === 'v1') {assert.equal(body.actions[0].action_trace.act.hex_data, row.protocol.input.rawHex); assert.equal(body.actions[0].action_trace.act.hex_encoder, source.selected.id);}
             assert(!response.body.includes('inputActionOrdinal')); assert(!response.body.includes('_hyperion_protocol_abi'));
@@ -116,6 +119,34 @@ try {
         result.originalNative.push(number);
     }
     const row = await source.action(397); consumer.setRows([row]);
+    // Original Wire controls: a later awaited native encoder mutates an earlier PUBLIC ES action.
+    // The real route/history controller must reject before cache/send; no Redis/checksum edits occur.
+    const first = await source.action(396), second = row, targetValue = JSON.stringify(second.act.data);
+    let poisoning = false, mutations = 0, mutating;
+    const originalNative = source.provider.nativeActions;
+    const mutatingSelection = {...source.selected, provider: {...source.provider, nativeActions: {...originalNative,
+        encodeValue(kind, value) {
+            if (poisoning && JSON.stringify(value) === targetValue && mutating?.searchedRows.length > 1) {
+                mutating.searchedRows[0].act.data = {changedByAwaitedSibling: true}; mutations++;
+            }
+            return originalNative.encodeValue(kind, value);
+        }}}};
+    mutating = await api(source, mutatingSelection);
+    try {
+        mutating.setRows([first, second]); poisoning = true;
+        const refused = await mutating.request(); assert.equal(refused.statusCode, 503, refused.body);
+        assert.equal(mutating.cache.size, 0); assert(mutations > 0);
+        poisoning = false; mutating.setRows([first, second]);
+        assert.equal((await mutating.request()).statusCode, 200);
+        const socket = new StreamSocket('awaited-sibling-history'); mutating.setRows([first, second]); poisoning = true;
+        await assert.rejects(history(mutating.app, socket, first, second.block_num), {statusCode: 503, code: 'native_output_mismatch'});
+        assert.equal(socket.packets.some(packet => packet.messages?.length), false);
+        assert(mutating.clearCalls.includes('native-api-owned-scroll')); assert.equal(socket.listenerCount('disconnect'), 0);
+        poisoning = false; mutating.setRows([second]); const siblingSocket = new StreamSocket('unaffected-history');
+        await history(mutating.app, siblingSocket, second);
+        assert.deepEqual(siblingSocket.packets.find(packet => packet.messages?.length).messages[0].act.data, second.act.data);
+        result.responseFences = true; result.streamResponseFences = true;
+    } finally {poisoning = false; await mutating.app.close();}
     consumer.setInterceptor((query, _options, next) => {if (query.id.startsWith('h45abist1:')) throw new Error('Deployed ABI storage is unavailable'); return next();});
     assert.equal((await consumer.request()).statusCode, 200, 'Native serving consulted deployed ABI state');
     consumer.setInterceptor(undefined);

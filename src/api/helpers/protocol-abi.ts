@@ -11,6 +11,7 @@ import {protocolImmutableJson} from '../../indexer/protocol/immutable-bundle-sto
 import {parseProtocolNativeActionMetadata} from '../../indexer/protocol/native-action-metadata.js';
 import {isProtocolHex} from '../../indexer/protocol/hex.js';
 import {assertProtocolProofRequestActive, withProtocolProofRequest} from './protocol-proof-request.js';
+import {assertNativeDerivedOutput, nativeResponseOutputs, nativeSourceOutput, type NativeOutputEvidence} from './protocol-action-output.js';
 
 type ActionMetadata = ProtocolActionProofMetadata | ProtocolNativeActionProofMetadata;
 interface NativeAuthority {
@@ -20,7 +21,9 @@ interface NativeAuthority {
     readonly value: unknown;
     readonly membership: ProtocolAbiProofView;
 }
-interface NativeProof extends NativeAuthority {readonly envelope: Readonly<Record<string, unknown>>}
+interface NativeProof extends NativeAuthority, NativeOutputEvidence {
+    readonly sourceAction?: any;
+}
 type SelectedProtocol = Awaited<ReturnType<typeof loadChainProtocol>>;
 const contexts = new WeakMap<FastifyInstance, Promise<ProtocolActionConsumer>>();
 const requests = new WeakMap<object, {actions: ActionMetadata[]; views: ProtocolAbiProofView[];
@@ -200,7 +203,7 @@ async function resolveNative(fastify: FastifyInstance, scope: object, metadata: 
 
 /** Call before grouping/shaping drops original anchors. Raw history remains available without ABI authority. */
 export async function protectProtocolAction(fastify: FastifyInstance, request: object, action: any,
-    options: {encoding?: boolean; decode?: boolean} = {}): Promise<string | undefined> {
+    options: {encoding?: boolean; decode?: boolean; noBinary?: boolean} = {}): Promise<string | undefined> {
     if (fastify.manager.config.settings?.protocol?.provider !== 'extension') return;
     assertProtocolProofRequestActive(request);
     const data = action.act?.data;
@@ -236,7 +239,9 @@ export async function protectProtocolAction(fastify: FastifyInstance, request: o
             await withProtocolProofRequest(request, readOptions => nativeReader.revalidate(proof.view, readOptions));
             if (action.act.hex_data !== undefined && action.act.hex_data !== input.rawHex)
                 throw unavailable('changes the native raw hex value');
-            proofs.actions.push(copyMetadata(proof.metadata)); proofs.native.push({...proof, envelope: copyMetadata(envelope)});
+            proofs.actions.push(copyMetadata(proof.metadata)); proofs.native.push({...proof, envelope: copyMetadata(envelope),
+                sourceAction: action, ...(options.noBinary ? {presentation: 'noBinary' as const} : {}),
+                ...(retainedRaw && !options.decode ? {dataMode: 'raw' as const} : {})});
             // Existing v1 renderers retain the act object before awaiting this helper.
             const act = action.act;
             for (const key of Object.keys(act)) delete act[key];
@@ -340,12 +345,13 @@ export async function protocolResponseForCache(fastify: FastifyInstance, request
     const proofs = requestProofs(request);
     // Render once before awaiting final authority. Neither cache nor returned JSON retains source/provider objects.
     const detached = JSON.parse(JSON.stringify(response));
-    await revalidateProtocolActionScope(fastify, request);
+    await revalidateProtocolActionScope(fastify, request, {body: detached, route});
     const capsule = {schemaVersion: 2, bodySha256: bodyDigest(detached), actions: proofs.actions.map(metadata =>
         metadata.schemaVersion === 1 ? {metadata} : (() => {
             const proof = proofs.native.find(proof => metadataJson(proof.metadata) === metadataJson(metadata));
             if (!proof) throw unavailable('lacks its checked native response');
-            return {metadata, value: proof.value, envelope: proof.envelope};
+            return {metadata, value: proof.value, envelope: proof.envelope,
+                ...(proof.presentation ? {presentation: proof.presentation} : {}), ...(proof.dataMode ? {dataMode: proof.dataMode} : {})};
         })()),
         ...(proofs.nodeResponse ? {nodeResponse: true} : {})};
     return {...detached, [cacheProofKey]: {...capsule, proofSha256: capsuleDigest(capsule)}};
@@ -359,10 +365,24 @@ export function protocolResponseForReturn(fastify: FastifyInstance, route: strin
 }
 
 /** HTTP requests and individual stream batches own separate bounded proof scopes. */
-export async function revalidateProtocolActionScope(fastify: FastifyInstance, scope: object): Promise<void> {
+export async function revalidateProtocolActionScope(fastify: FastifyInstance, scope: object,
+    output?: {readonly body: any; readonly route: string}): Promise<void> {
     assertProtocolProofRequestActive(scope);
     const proofs = requests.get(scope);
     if (!proofs) return;
+    // Capture all actual source/output obligations before the first await. Provider callbacks can still
+    // hold earlier public actions, but no callback receives these detached outgoing snapshots.
+    const obligations = proofs.native.filter(proof => proof.sourceAction !== undefined)
+        .map(proof => nativeSourceOutput(proof, JSON.parse(JSON.stringify(proof.sourceAction))));
+    const renderedProofs = proofs.native.map(proof => {
+        const source = obligations.find(obligation => obligation.proof === proof);
+        return source ? {...proof, envelope: source.envelope} : proof;
+    });
+    if (output) {
+        assertCachedActionCoverage(output.body, proofs);
+        obligations.push(...nativeResponseOutputs(output.body, renderedProofs));
+        assertNativeDerivedOutput(output.route, output.body, renderedProofs, proofs.actions.some(metadata => metadata.schemaVersion === 1));
+    }
     if (proofs.views.length) {
         await withProtocolProofRequest(scope, async options => {
             const {reader} = await context(fastify);
@@ -378,6 +398,12 @@ export async function revalidateProtocolActionScope(fastify: FastifyInstance, sc
                 await nativeReader.verifyValue(proof.grant, proof.value, options);
                 await nativeReader.revalidate(proof.view, options);
             }
+            for (const obligation of obligations) {
+                const proof = obligation.proof as NativeProof;
+                await nativeReader.verifyEnvelope(proof.grant, obligation.envelope, options);
+                await nativeReader.verifyValue(proof.grant, obligation.value, options);
+                await nativeReader.revalidate(proof.view, options);
+            }
         });
     }
     if (proofs.classifications.length) {
@@ -388,6 +414,14 @@ export async function revalidateProtocolActionScope(fastify: FastifyInstance, sc
         });
     }
     assertProtocolProofRequestActive(scope);
+    proofs.native = renderedProofs;
+}
+
+/** Current stream controllers send only this checked, privately detached action snapshot. */
+export async function protocolActionsForStream(fastify: FastifyInstance, scope: object, actions: any[]): Promise<any[]> {
+    const snapshot = JSON.parse(JSON.stringify(actions));
+    await revalidateProtocolActionScope(fastify, scope, {body: {actions: snapshot}, route: 'stream_actions'});
+    return snapshot;
 }
 
 /** Unversioned response-cache entries miss; cached derived values reopen the exact proof before serving. */
@@ -413,11 +447,16 @@ export async function validateProtocolCachedResponse(fastify: FastifyInstance, r
             proofs.actions.push(metadata);
             if (metadata.schemaVersion === 2) {
                 if (!Object.hasOwn(entry, 'value') || !Object.hasOwn(entry, 'envelope')) throw unavailable('lacks its checked native value or envelope');
+                if (entry.presentation !== undefined && (entry.presentation !== 'noBinary' || route !== 'get_actions'
+                    || (request.query as any)?.noBinary !== true)) throw unavailable('has an unsupported native renderer');
+                if (entry.dataMode !== undefined && (entry.dataMode !== 'raw' || entry.envelope?.act?.data !== metadata.input.rawHex))
+                    throw unavailable('has an unsupported native data presentation');
                 const proof = await resolveNative(fastify, request, metadata), {nativeReader} = await context(fastify);
                 if (!nativeReader) throw unavailable('has no installed native provider');
                 await withProtocolProofRequest(request, options => nativeReader.verifyValue(proof.grant, entry.value, options));
                 const envelope = await withProtocolProofRequest(request, options => nativeReader.verifyEnvelope(proof.grant, entry.envelope, options));
-                proofs.native.push({...proof, envelope});
+                proofs.native.push({...proof, envelope, ...(entry.presentation ? {presentation: entry.presentation} : {}),
+                    ...(entry.dataMode ? {dataMode: entry.dataMode} : {})});
             } else {
                 const {reader, view, classification} = await resolve(fastify, request, metadata);
                 await withProtocolProofRequest(request, options => reader.revalidate(view, options));
@@ -427,7 +466,7 @@ export async function validateProtocolCachedResponse(fastify: FastifyInstance, r
         }
         assertCachedActionCoverage(detached, proofs);
         // Recheck earlier views after later asynchronous lookups, immediately before return.
-        await revalidateProtocolActionScope(fastify, request);
+        await revalidateProtocolActionScope(fastify, request, {body: detached, route});
         delete detached[cacheProofKey];
         for (const key of Object.keys(response)) delete response[key];
         Object.defineProperties(response, Object.getOwnPropertyDescriptors(detached));

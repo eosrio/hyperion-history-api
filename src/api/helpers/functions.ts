@@ -5,7 +5,7 @@ import _ from "lodash";
 import {Socket} from "socket.io";
 import {checkMetaFilter, hLog} from "../../indexer/helpers/common_functions.js";
 import {StreamActionsRequest, StreamDeltasRequest, StreamTypeMap} from "../../interfaces/stream-requests.js";
-import {protectProtocolAction, protocolResponseForCache, protocolResponseForReturn, revalidateProtocolActionScope, validateProtocolCachedResponse} from './protocol-abi.js';
+import {protectProtocolAction, protocolActionsForStream, protocolResponseForCache, protocolResponseForReturn, validateProtocolCachedResponse} from './protocol-abi.js';
 import {createProtocolStreamScope} from './protocol-proof-request.js';
 import {assertCompleteActionSearch, normalizeActionSearchSources} from './action-search.js';
 import {assertProtocolProjectionReady, assertProtocolRouteReady} from './protocol-state-readiness.js';
@@ -282,9 +282,8 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
                 if (socket.connected) {
                     if (enqueuedMessages.length > 0) {
-                        const messages = dataKind === 'action' && fastify.manager.config.settings?.protocol?.provider === 'extension'
-                            ? JSON.parse(JSON.stringify(enqueuedMessages)) : enqueuedMessages;
-                        if (dataKind === 'action') await revalidateProtocolActionScope(fastify, proofScope);
+                        const messages = dataKind === 'action'
+                            ? await protocolActionsForStream(fastify, proofScope, enqueuedMessages) : enqueuedMessages;
                         try {
 
                             // Wait for 120 s
