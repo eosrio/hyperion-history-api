@@ -178,6 +178,64 @@ test('extension selection seals declared native capability or absence with origi
     expect(await runNativeLoader(script)).toBe('native-method-snapshots-passed\n');
 },25000);
 
+test('installed provider snapshots bypass callable-owned bind accessors and replacement binders',async()=>{
+    const script=`
+        import assert from 'node:assert/strict'; import {fileURLToPath} from 'node:url';
+        import {installedProtocolFixtures} from ${JSON.stringify(new URL('./protocol-selection-fixture.mjs',import.meta.url).href)};
+        import {loadChainProtocol} from ${JSON.stringify(loader)};
+        const {fixture,cleanup}=installedProtocolFixtures(fileURLToPath(${JSON.stringify(new URL('../../',import.meta.url).href)}));
+        try {
+            for(const nativeEnabled of [true,false])for(const mode of ['getter','value']){
+                globalThis.bindAccessors=0;globalThis.callableMetadataAccessors=0;globalThis.customBinders=0;globalThis.nativeOriginalCalls=0;globalThis.providerOriginalCalls=0;
+                const implementation=\`
+                    const override=method=>{
+                        const binder=function(){globalThis.customBinders++;return ()=>{throw Error('replacement method ran')};};
+                        Object.defineProperty(method,'bind',\${JSON.stringify(mode)}==='getter'
+                            ?{get(){globalThis.bindAccessors++;return binder;}}:{value:binder});
+                        for(const property of ['name','length'])Object.defineProperty(method,property,
+                            {get(){globalThis.callableMetadataAccessors++;throw Error('callable metadata accessor ran');}});
+                    };
+                    export function createProtocolProvider(profileId){
+                        const native={interfaceVersion:1,tag:'native',
+                            observe(){globalThis.nativeOriginalCalls++;return {schemaVersion:1,decisions:[],tag:this.tag};},
+                            decodeValue(){globalThis.nativeOriginalCalls++;return {tag:this.tag};},
+                            encodeValue(){globalThis.nativeOriginalCalls++;return Uint8Array.of(this.tag.length);}};
+                        const provider={profileId,tag:'provider',contractCodec:{decodeAbi:()=>({}),encodeAbi:()=>new Uint8Array(),
+                            decodeValue:()=>({}),encodeValue:()=>new Uint8Array()},
+                            createShipSession(){globalThis.providerOriginalCalls++;return {tag:this.tag};},
+                            normalizeDelta(){globalThis.providerOriginalCalls++;return {kind:'ignore',reason:this.tag};},
+                            observeBlockAbi(){globalThis.providerOriginalCalls++;return {tag:this.tag};},
+                            verifyNativeGenesis(){globalThis.providerOriginalCalls++;return {tag:this.tag};}};
+                        for(const key of ['observe','decodeValue','encodeValue'])override(native[key]);
+                        for(const key of ['createShipSession','normalizeDelta','observeBlockAbi','verifyNativeGenesis'])override(provider[key]);
+                        if(\${nativeEnabled})provider.nativeActions=native;
+                        return provider;
+                    }
+                \`;
+                const {provider}=await loadChainProtocol(fixture({...(nativeEnabled?{requirement:{interfaceVersion:1}}:{}),implementation}));
+                assert.equal(globalThis.bindAccessors,0,'admission evaluated a callable bind accessor');
+                assert.equal(globalThis.callableMetadataAccessors,0,'admission evaluated a callable metadata accessor');
+                assert.equal(globalThis.customBinders,0,'admission invoked a replacement binder');
+                assert.equal(globalThis.nativeOriginalCalls,0);assert.equal(globalThis.providerOriginalCalls,0);
+                assert.equal(provider.createShipSession({}).tag,'provider');
+                assert.equal(provider.normalizeDelta({},{}).reason,'provider');
+                assert.equal(provider.observeBlockAbi({},{}).tag,'provider');
+                assert.equal(provider.verifyNativeGenesis({},{}).tag,'provider');
+                assert.equal(globalThis.providerOriginalCalls,4);
+                if(nativeEnabled){
+                    assert.equal(provider.nativeActions.observe({},{}).tag,'native');
+                    assert.equal(provider.nativeActions.decodeValue('fixture',new Uint8Array()).tag,'native');
+                    assert.deepEqual(provider.nativeActions.encodeValue('fixture',{}),Uint8Array.of(6));
+                    assert.equal(globalThis.nativeOriginalCalls,3);
+                }else assert.equal('nativeActions' in provider,false);
+                assert.equal(globalThis.bindAccessors,0);assert.equal(globalThis.callableMetadataAccessors,0);assert.equal(globalThis.customBinders,0);
+            }
+            console.log('intrinsic-method-binding-passed');
+        } finally { cleanup(); }
+    `;
+    expect(await runNativeLoader(script)).toBe('intrinsic-method-binding-passed\n');
+},25000);
+
 test('installed Wire profiles keep native actions inactive and deployed contract decoding strict',async()=>{
     const script=`
         import assert from 'node:assert/strict'; import {readFileSync} from 'node:fs';

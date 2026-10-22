@@ -99,7 +99,9 @@ the selected inert profile before importing executable code, then validates runt
 without invoking native
 methods or accessors. Extension selections retain a frozen interface facade with methods bound to
 the original provider receiver and its existing contract codec. Native-required selections also
-retain a frozen native method snapshot bound to its original receiver. Later provider/capability
+retain a frozen native method snapshot bound to its original receiver. Captured methods use the
+intrinsic function application with the original receiver, so callable-owned `bind`, `name` or
+`length` properties cannot run during admission or substitute a different method. Later provider/capability
 mutation cannot change the selected native interface or add one to a profile that declared none.
 Unsupported requirements and undeclared capabilities are rejected. Host interface support is internal and cannot
 be supplied through chain configuration. Admission alone grants no canonical source authority.

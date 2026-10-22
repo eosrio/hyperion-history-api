@@ -12,6 +12,7 @@ export type ChainProtocolConfiguration =
 
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const readJson = async (path: string) => JSON.parse(await readFile(path, 'utf8'));
+const applyMethod = Reflect.apply;
 // Host support cannot be supplied through operator configuration or retained history.
 const nativeActionInterfaceVersions = Object.freeze([1]);
 
@@ -35,12 +36,15 @@ function providerSnapshot(provider: ProtocolProvider, requirement?: ProtocolNati
         if (!checked.valid) throw new Error(`Native actions do not implement the selected profile: ${checked.errors.map(error => error.message).join('; ')}`);
         nativeActions = checked.nativeActions;
     } else if (capability !== undefined) throw new Error('Native actions are not supported by the selected profile');
+    const createShipSession = provider.createShipSession, normalizeDelta = provider.normalizeDelta;
     const observeBlockAbi = provider.observeBlockAbi, verifyNativeGenesis = provider.verifyNativeGenesis;
-    return Object.freeze({profileId: provider.profileId, contractCodec: provider.contractCodec,
-        createShipSession: provider.createShipSession.bind(provider), normalizeDelta: provider.normalizeDelta.bind(provider),
-        ...(observeBlockAbi ? {observeBlockAbi: observeBlockAbi.bind(provider)} : {}),
-        ...(verifyNativeGenesis ? {verifyNativeGenesis: verifyNativeGenesis.bind(provider)} : {}),
-        ...(nativeActions ? {nativeActions} : {})});
+    const snapshot: ProtocolProvider = {profileId: provider.profileId, contractCodec: provider.contractCodec,
+        createShipSession: handshake => applyMethod(createShipSession, provider, [handshake]),
+        normalizeDelta: (input, context) => applyMethod(normalizeDelta, provider, [input, context]),
+        ...(nativeActions ? {nativeActions} : {})};
+    if (observeBlockAbi) snapshot.observeBlockAbi = (input, source) => applyMethod(observeBlockAbi, provider, [input, source]);
+    if (verifyNativeGenesis) snapshot.verifyNativeGenesis = (input, source) => applyMethod(verifyNativeGenesis, provider, [input, source]);
+    return Object.freeze(snapshot);
 }
 
 /** Verify inert artifacts before any provider module or native addon is imported. */
