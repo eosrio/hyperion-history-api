@@ -286,3 +286,14 @@ This tracer does not establish fork rollback, process-crash/restart recovery,
 recovery-window coverage, mapping reload, Bun runtime support, Rust-worker parity,
 AtomicAssets/AtomicMarket parity, WormDB, complete Wire testnet support or the full
 4.5 release. Existing Elasticsearch history remains independent and usable.
+
+## Recorded native qualification status
+
+The [2026-10-22 evidence](../performance/evidence/native-wire-worker-20261022/README.md)
+records a source-reviewed certificate handoff fix and a **failed** native Linux
+Node 24 worker qualification. Original held prefixes through 397 passed after
+the fix; later DS backlog caused genuine queued actions to expire outside the
+default 256-block verified ancestry. The full Node 22 replay and final 1480
+acceptance remain pending. Follow #277 for measured worker/proof backpressure;
+keep #270/#274 open. Do not widen ancestry or relax queue/seal guards to turn
+that failed run into a passing result.
