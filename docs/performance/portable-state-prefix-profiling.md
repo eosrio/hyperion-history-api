@@ -108,6 +108,15 @@ process must save and flush its profile after the stable prefix, with no dropped
 records/errors, and exit cleanly. Saved file
 identity, size, hash, sample/node membership and duration are checked independently.
 Missing, oversized, malformed, prematurely flushed or incomplete profiles fail.
+Signed integer sample deltas remain in their original order and are not rejected
+solely for stepping backwards. Each profile records timing quality separately:
+backward or out-of-window sample instants, and absent positive sampled coverage,
+make interval weights explicitly unavailable. The raw file, sample multiplicity
+and signed timestamps remain unchanged; no sorting, clamping or sample removal
+occurs. This does not validate a graph for attribution or turn elapsed weights
+into process CPU. See the [pinned producer/consumer research](v8-profile-timestamps.md).
+Aggregate capture receipts identify affected PIDs; disabled capture reports no
+interval-weight availability. Earlier failed attempts retain their failed labels.
 The disabled control must instead report disabled capture and clean complete
 observer shutdown. All normal asynchronous error and service/process cleanup gates
 still apply.

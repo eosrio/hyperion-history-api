@@ -44,6 +44,50 @@ export function validateRecoveryRunOptions(options: RecoveryRunOptions = {}) {
     return options.profilePrefix;
 }
 
+/** Retain signed protocol deltas; only chronological, bounded intervals can supply elapsed weights. */
+export function recoveryCpuProfileEvidence(profile: any) {
+    assert.ok(profile && typeof profile === 'object' && !Array.isArray(profile));
+    assert.ok(Array.isArray(profile.nodes) && profile.nodes.length > 0 && profile.nodes.length <= 100000);
+    assert.ok(Array.isArray(profile.samples) && profile.samples.length > 0 && profile.samples.length <= 200000);
+    assert.ok(Number.isSafeInteger(profile.startTime) && profile.startTime >= 0 &&
+        Number.isSafeInteger(profile.endTime) && profile.endTime > profile.startTime);
+    assert.ok(Array.isArray(profile.timeDeltas) && profile.timeDeltas.length === profile.samples.length);
+    const ids = new Set<number>();
+    for (const node of profile.nodes) {
+        assert.ok(node && Number.isSafeInteger(node.id) && node.id > 0 && !ids.has(node.id)); ids.add(node.id);
+    }
+    assert.ok(profile.samples.every((id: unknown) => Number.isSafeInteger(id) && ids.has(id as number)));
+    const elapsedMicros = profile.endTime - profile.startTime;
+    let total = 0, minimumOffset = 0, maximumOffset = 0, minimumDelta = Infinity;
+    let negativeCount = 0, negativeTotal = 0, outsideExtent = 0;
+    const firstNegativeDeltas: {index: number; deltaMicros: number}[] = [];
+    for (let index = 0; index < profile.timeDeltas.length; index++) {
+        const delta = profile.timeDeltas[index];
+        assert.ok(Number.isSafeInteger(delta), 'Profile deltas must be integer protocol microseconds');
+        total += delta; assert.ok(Number.isSafeInteger(total), 'Reconstructed profile timestamp exceeds exact arithmetic');
+        minimumDelta = Math.min(minimumDelta, delta);
+        minimumOffset = Math.min(minimumOffset, total); maximumOffset = Math.max(maximumOffset, total);
+        if (total < 0 || total > elapsedMicros) outsideExtent++;
+        if (delta < 0) {
+            negativeCount++; negativeTotal += delta; assert.ok(Number.isSafeInteger(negativeTotal));
+            if (firstNegativeDeltas.length < 16) firstNegativeDeltas.push({index, deltaMicros: delta});
+        }
+    }
+    const unavailableReasons: string[] = [];
+    if (negativeCount) unavailableReasons.push('out-of-order-samples');
+    if (outsideExtent) unavailableReasons.push('sample-outside-recording-extent');
+    if (total <= 0) unavailableReasons.push('no-positive-sampled-interval');
+    const intervalWeightsAvailable = unavailableReasons.length === 0;
+    const lastSampleToEnd = elapsedMicros - total; assert.ok(Number.isSafeInteger(lastSampleToEnd));
+    return {samples: profile.samples.length, startTime: profile.startTime, endTime: profile.endTime,
+        timing: {elapsedMicros, rawSignedDeltaSumMicros: total, rawLastSampleToEndMicros: lastSampleToEnd,
+            reconstructedOffsetRangeMicros: {min: minimumOffset, max: maximumOffset}, outsideExtentSampleCount: outsideExtent,
+            negativeDeltaCount: negativeCount, negativeDeltaTotalMicros: negativeTotal, minimumDeltaMicros: minimumDelta,
+            firstNegativeDeltas, intervalWeightsAvailable, unavailableReasons,
+            sampledIntervalMicros: intervalWeightsAvailable ? total : null,
+            unweightedTailMicros: intervalWeightsAvailable ? lastSampleToEnd : null, normalized: false as const}};
+}
+
 /** Profile completion is checked against observer receipts and actual bounded files after clean shutdown. */
 export async function assertRecoveryCpuProfiles(rows: any[], directory: string, stableAt: number, enabled: boolean, parent: ChildProcess) {
     assert.ok(Number.isSafeInteger(parent?.pid) && parent.pid! > 0, 'An independently owned parent PID is required');
@@ -88,15 +132,9 @@ export async function assertRecoveryCpuProfiles(rows: any[], directory: string, 
         assert.equal(began.length, 1); assert.equal(began[0].samplingIntervalMicros, 10000); assert.equal(began[0].maximumDurationMs, 900000);
         assert.ok(began[0].at <= stableAt); assert.equal(saved.length, 1); assert.equal(saved[0].profilePath, file);
         const bytes = await boundedPortableFile(file, 32 * 1024 * 1024); assert.equal(bytes.length, saved[0].bytes);
-        const profile = JSON.parse(bytes.toString());
-        assert.ok(Array.isArray(profile.nodes) && profile.nodes.length > 0 && Array.isArray(profile.samples) && profile.samples.length > 0);
-        assert.ok(Number.isFinite(profile.startTime) && Number.isFinite(profile.endTime) && profile.endTime > profile.startTime);
-        assert.ok(Array.isArray(profile.timeDeltas) && profile.timeDeltas.length === profile.samples.length);
-        const ids = new Set(profile.nodes.map((node: any) => node.id));
-        assert.ok(profile.samples.every((id: unknown) => Number.isSafeInteger(id) && ids.has(id)));
-        assert.ok(profile.timeDeltas.every((delta: unknown) => typeof delta === 'number' && Number.isFinite(delta) && delta >= 0));
+        const evidence = recoveryCpuProfileEvidence(JSON.parse(bytes.toString()));
         profiles.push({pid: start.pid, role: start.role, start, file, bytes: bytes.length, sha256: portableSourceHash(bytes),
-            samples: profile.samples.length, startTime: profile.startTime, endTime: profile.endTime, flush});
+            ...evidence, flush});
     }
     return profiles;
 }
@@ -483,7 +521,9 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
                 report.profiling.observerCompletion.push({name: entry.name, ownedParentPid: entry.child.pid,
                     events: rows.filter(row => ['start', 'worker_fork', 'worker_online', 'worker_exit', 'shutdown', 'profile_started', 'profile_saved', 'flush', 'exit'].includes(row.kind))});}
             if (cpuProfile) assert.equal(report.profiling.cpuProfiles.filter((value: any) => value.role === 'projection').length, 1);
-            Object.assign(report.profiling.cpuCapture, {verified: true, enabled: cpuProfile});
+            Object.assign(report.profiling.cpuCapture, {verified: true, enabled: cpuProfile,
+                intervalWeightsAvailable: cpuProfile ? report.profiling.cpuProfiles.every((value: any) => value.timing.intervalWeightsAvailable) : null,
+                unavailableIntervalWeightProfiles: report.profiling.cpuProfiles.filter((value: any) => !value.timing.intervalWeightsAvailable).map((value: any) => value.pid)});
             report.sourceMetrics = replay.metrics(); report.sourceRequests = replay.requests; report.status = 'profiled-prefix'; return report;
         }
         replay.release(1247); const a = await stage('branch-a', 'A', finality === 'reversible' ? 1247 : 1243);

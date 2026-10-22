@@ -12,3 +12,5 @@ tests/fixtures/projection-validation/metadata.json.gz.base64 -diff
 docs/performance/evidence/projection-validation-20261022/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 docs/performance/evidence/projection-validation-20261022/manifest.json -diff
 docs/performance/evidence/projection-validation-20261022/kernel/*-count.json -diff
+tests/fixtures/native-cpu-profile/** -text
+tests/fixtures/native-cpu-profile/*.gz.base64 -diff

@@ -1,11 +1,14 @@
 import {expect, test} from 'bun:test';
-import {mkdtemp, open, rm, writeFile} from 'node:fs/promises';
+import {mkdtemp, open, readFile, rm, writeFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {gunzipSync} from 'node:zlib';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {RecoverySourceFlow, recoverySourceLimits, serveRecoveryEngineeringSource} from '../../scripts/qualification/portable-state-recovery-source.ts';
 import {recoveryExpectedRows, assertRecoveryHttp, assertRecoveryPhysical, assertRecoveryUnavailable, assertRecoveryProbe} from '../../scripts/qualification/portable-state-recovery-oracle.ts';
 import {rollbackIntentReceipt} from '../../scripts/qualification/portable-state-recovery-observer.mjs';
-import {assertRecoveryShutdown, assertRecoveryDiskReadiness, assertRecoveryCpuProfiles, validateRecoveryRunOptions, parseRecoveryArguments} from '../../scripts/qualification/portable-state-recovery.ts';
+import {assertRecoveryShutdown, assertRecoveryDiskReadiness, assertRecoveryCpuProfiles, recoveryCpuProfileEvidence,
+    validateRecoveryRunOptions, parseRecoveryArguments} from '../../scripts/qualification/portable-state-recovery.ts';
 
 const request = (start: number, positions: any[] = [], window = 8) => ['get_blocks_request_v0', {
     start_block_num: start, end_block_num: 0xffffffff, max_messages_in_flight: window, have_positions: positions,
@@ -133,6 +136,84 @@ test('prefix CPU completion requires matching saved files, stable-stage coverage
         const oversized = await open(file, 'wx'); await oversized.truncate(32 * 1024 * 1024 + 1); await oversized.close();
         await expect(assertRecoveryCpuProfiles(rows, directory, 200, true, parent)).rejects.toThrow();
     } finally {await rm(directory, {recursive: true, force: true});}
+});
+
+test('signed CPU sample deltas retain the captured profile and make interval weights unavailable', async () => {
+    const origin = JSON.parse(await readFile(new URL('../fixtures/native-cpu-profile/origin.json', import.meta.url), 'utf8'));
+    const encoded = await readFile(new URL('../fixtures/native-cpu-profile/negative-delta.json.gz.base64', import.meta.url));
+    const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+    expect(encoded.length).toBe(origin.base64.bytes); expect(sha(encoded)).toBe(origin.base64.sha256);
+    const packed = Buffer.from(encoded.toString().trim(), 'base64');
+    expect(packed.toString('base64')).toBe(encoded.toString().trim());
+    expect(packed.length).toBe(origin.packed.bytes); expect(sha(packed)).toBe(origin.packed.sha256);
+    const bytes = gunzipSync(packed, {maxOutputLength: 1024 * 1024});
+    expect(bytes.length).toBe(origin.member.bytes); expect(sha(bytes)).toBe(origin.member.sha256);
+    const directory = await mkdtemp(join(tmpdir(), 'hapi-prefix-signed-'));
+    try {
+        const file = join(directory, 'worker-42.cpuprofile'); await writeFile(file, bytes);
+        const rows: any[] = [{kind: 'start', pid: 42, role: 'projection'},
+            {kind: 'profile_started', pid: 42, at: 100, samplingIntervalMicros: 10000, maximumDurationMs: 900000},
+            {kind: 'profile_saved', pid: 42, profilePath: file, bytes: bytes.length},
+            {kind: 'flush', pid: 42, at: 300, reason: 'qualifier_shutdown', success: true, error: null, droppedRecords: 0,
+                profileState: 'saved', profilePath: file},
+            {kind: 'exit', pid: 42, code: 0, profileState: 'saved', flushed: true, droppedRecords: 0},
+            {kind: 'shutdown', pid: 42, success: true, forced: [], unresolved: [], failedChildren: [], childExits: []}];
+        await writeFile(join(directory, 'worker-42.jsonl'), rows.map(row => JSON.stringify(row)).join('\n') + '\n');
+        const profiles = await assertRecoveryCpuProfiles(rows, directory, 200, true, {pid: 42, exitCode: 0, signalCode: null} as any);
+        expect(profiles).toHaveLength(1);
+        expect(profiles[0]).toMatchObject({samples: 40572, sha256: origin.member.sha256,
+            timing: {intervalWeightsAvailable: false, unavailableReasons: ['out-of-order-samples'], negativeDeltaCount: 1,
+                minimumDeltaMicros: -4, negativeDeltaTotalMicros: -4, rawSignedDeltaSumMicros: 409102052,
+                firstNegativeDeltas: [{index: 45, deltaMicros: -4}], normalized: false,
+                sampledIntervalMicros: null, unweightedTailMicros: null}});
+        expect(await readFile(file)).toEqual(bytes);
+        expect(origin.originalRunStatus).toBe('failed');
+    } finally {await rm(directory, {recursive: true, force: true});}
+});
+
+test('profile timing keeps recorded elapsed, sampled intervals and terminal gap distinct', () => {
+    const profile = {nodes: [{id: 1}], samples: [1, 1, 1], startTime: 10, endTime: 25, timeDeltas: [0, 5, 5]};
+    const before = JSON.stringify(profile);
+    Object.freeze(profile.nodes); Object.freeze(profile.samples); Object.freeze(profile.timeDeltas); Object.freeze(profile);
+    expect(recoveryCpuProfileEvidence(profile)).toMatchObject({samples: 3, startTime: 10, endTime: 25,
+        timing: {elapsedMicros: 15, rawSignedDeltaSumMicros: 10, rawLastSampleToEndMicros: 5,
+            negativeDeltaCount: 0, minimumDeltaMicros: 0, intervalWeightsAvailable: true,
+            unavailableReasons: [], sampledIntervalMicros: 10, unweightedTailMicros: 5, normalized: false}});
+    expect(JSON.stringify(profile)).toBe(before);
+});
+
+test('out-of-window or absent elapsed coverage remains explicitly unavailable', () => {
+    const profile = {nodes: [{id: 1}], samples: [1], startTime: 10, endTime: 30, timeDeltas: [30]};
+    expect(recoveryCpuProfileEvidence(profile).timing).toMatchObject({intervalWeightsAvailable: false,
+        unavailableReasons: ['sample-outside-recording-extent'], outsideExtentSampleCount: 1,
+        sampledIntervalMicros: null, unweightedTailMicros: null});
+    expect(recoveryCpuProfileEvidence({...profile, timeDeltas: [0]}).timing).toMatchObject({intervalWeightsAvailable: false,
+        unavailableReasons: ['no-positive-sampled-interval'], rawSignedDeltaSumMicros: 0, sampledIntervalMicros: null});
+    expect(recoveryCpuProfileEvidence({...profile, samples: [1, 1], timeDeltas: [-4, 14]}).timing).toMatchObject({
+        intervalWeightsAvailable: false, unavailableReasons: ['out-of-order-samples', 'sample-outside-recording-extent'],
+        reconstructedOffsetRangeMicros: {min: -4, max: 10}, outsideExtentSampleCount: 1});
+});
+
+test('signed timing support still rejects malformed, inexact and over-budget profile input', () => {
+    const profile = {nodes: [{id: 1}], samples: [1], startTime: 10, endTime: 30, timeDeltas: [10]};
+    for (const patch of [{nodes: []}, {nodes: [{id: 1}, {id: 1}]}, {nodes: [{id: -1}]}, {samples: []}, {samples: [2]},
+        {timeDeltas: []}, ...[null, '10', NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1].map(delta => ({timeDeltas: [delta]})),
+        {startTime: -1}, {startTime: 1.5}, {endTime: 10}, {endTime: Infinity},
+        {samples: Array(200001).fill(1)}, {nodes: Array(100001).fill({id: 1})},
+        {samples: [1, 1], timeDeltas: [Number.MAX_SAFE_INTEGER, 1]}]) {
+        expect(() => recoveryCpuProfileEvidence({...profile, ...patch})).toThrow();
+    }
+});
+
+test('bounded timing examples do not truncate the raw sample or delta inventory', () => {
+    const timeDeltas = Array.from({length: 40}, (_, index) => index % 2 ? 2 : -1);
+    const profile = {nodes: [{id: 1}], samples: timeDeltas.map(() => 1), startTime: 10, endTime: 100, timeDeltas};
+    const result = recoveryCpuProfileEvidence(profile);
+    expect(result.samples).toBe(40); expect(result.timing.negativeDeltaCount).toBe(20);
+    expect(result.timing.firstNegativeDeltas).toHaveLength(16);
+    expect(result.timing.firstNegativeDeltas.at(-1)).toEqual({index: 30, deltaMicros: -1});
+    expect(profile.timeDeltas).toEqual(timeDeltas);
+    expect(result.timing.intervalWeightsAvailable).toBe(false);
 });
 
 test('recovery source honors exact requested replay ranges and credits on each connection', () => {
