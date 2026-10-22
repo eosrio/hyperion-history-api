@@ -190,6 +190,64 @@ provider/SDK pins, original-frame/oracle digests, real copy receipts and control
 `qualification.confirmedHandoffOutcomes` describes this component only. Actual DS ACK ordering is
 covered by separate emitted-worker tests; this runner does not infer it from a constructed ACK wrapper.
 
+## Private typed attempt-disposition cases
+
+The same owned runner imports `scripts/qualification/action-attempt-dispositions.mjs` for
+[#284](https://github.com/eosrio/hyperion-history-api/issues/284). It exercises emitted admission,
+typed-disposition and opaque publication APIs against real two-copy Elasticsearch storage. New
+`qualification.actionAttemptDispositions` describes that component scope only; it does not replace
+actual MainDS/DS ACK-order, source/configuration/target or proof-fence tests. The parent implementation
+and this runner must be combined and emitted before running the existing command above.
+
+The original archive stays SHA256
+`42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7`. A bounded Python `tarfile`
+read returns only the exact named, regular block 1 and 36 members, with fixed sizes/hashes; it extracts
+no files or directories. Original block 1 is 3,711 bytes, SHA256
+`bdfdb8832cc573cca61f3e53cfa71219241e008b5c9665626295ea9342c2fb60`. The installed native-genesis
+`result.bin` is a different capture of the same block and is not substituted. Missing traces stay
+missing; the source-scoped unresolved observation invents no plan, transaction, ordinal or zero
+expected membership.
+
+Complete original inputs use the normally selected Wire `7167659` / SDK `339b5c9` provider and fresh
+inventory. A captured exclusion policy remains separate from `disable_indexing` and `fetch_traces`
+suppression. Those configuration controls produce `operator-disabled` observations retaining process
+or unresolved expected work; they never mean source-derived exclusion or no effects. The constructed
+whitelist **and** blacklist `sysio::setabi` on unchanged original block 36 routes transaction ordinal 1
+(`140abb3d398f206518e117c02ccf1f1604b37b9fb55f7abed2034cf2fb374c66`) while selecting zero groups.
+Its real `setcode/45` and `setabi/46` inputs remain present. This is a constructed operator-policy
+control of a DS dispatch, not a genuine normal-policy no-effect transaction. Main-source processing
+and the DS transaction stage retain distinct semantic identities.
+
+Empty source and empty-action transaction frames are explicitly constructed with the installed
+codec and retain different source/transaction scopes. The mixed fixture keeps the original native
+onblock root and adds a deliberately constructed inline contract sibling. The normal installed
+provider classifies them as native and contract; decisions and grants are never patched or cloned.
+The sibling's portable value and shape-valid native locators are constructed associations. These
+component cases do not obtain canonical/native/ABI grants or establish accepted chain blocks.
+
+The cases retain a known pure output-portability gap with unresolved nonempty membership, confirm
+all mixed raw/complete outputs through the actual helper, and require original drain. Schema1
+incomplete groups fail whole-transaction membership before publication. Generic exceptions,
+publicly constructed inventory errors, unavailable proof errors and async hook rejection do not
+become known contract reasons. A no-output gap can coexist with later successful handoff storage;
+neither selects a permanent/current disposition. Output is an immutable value under the semantic
+work/disposition/reason ID, so conflicting roots cannot mint an alternate record.
+
+Real returned write receipts are checked before controlled pre-manifest, lost-receipt or partial-copy
+response faults. Readable bytes after an unknown call are observations. Repair requires newly issued
+owner/store-bound evidence and fresh complete-copy acknowledgment, including immutable CAS on retry.
+Serialized/foreign/stale evidence, wrong configuration or target associations, incorrect raw headers
+and changed effects are refused. Controlled owner replacement and cancellation after a real write
+must reject despite readable records. These controls are not real broker, replica-outage or socket-
+cancellation experiments. Reads cannot be reused as issued capabilities.
+
+Source/emitted modules, both helper scripts, normal package receipts, original frames, constructed
+frames, native value oracle and actual write receipts remain hash identified in JSON evidence.
+Admission/default/proof-window/dependency settings and the runner's owned-resource checks and cleanup
+path remain unchanged. Authenticated settlement, proof-operation quiescence, prospective count/bytes,
+restart/replay/retention, physical sink/API readiness and full native worker/MongoDB release
+qualification remain open under #277 and the release gates.
+
 #225 still needs real source admission before filters/dispatch, actual DS grouping before publication,
 source-retention/replay scheduling, sink durability and set/visibility reconciliation, fork/repair/
 retention invalidation, same-PIT coverage authority and complete reader integration. Rounded-ID losses
