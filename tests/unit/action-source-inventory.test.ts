@@ -290,7 +290,8 @@ describe('source-derived action inventory', () => {
         expect(validateActionSourceTransactionOutput(one, 0, oneDoc)).toHaveLength(1);
     });
 
-    for (const profileId of ['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede884-engineering-v1'] as const) {
+    for (const profileId of ['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede884-engineering-v1',
+        'wire-sysio-6508c9e8-native-engineering-v1'] as const) {
         it(`uses complete independent Wire observations for ${profileId}`, () => {
             const value = wireInput(profileId), inventory = deriveActionSourceInventory(value), docs = emit(value, [1, 2]);
             expect(inventory.transactions[0].groups[0].inputActionOrdinal).toBe(1);
