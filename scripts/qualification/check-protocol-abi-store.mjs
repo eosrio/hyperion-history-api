@@ -43,7 +43,10 @@ try {
     const url=`http://127.0.0.1:${port}`;
     client=new Client({node:url,requestTimeout:5000,maxRetries:0});
     let info;const deadline=Date.now()+90000;
-    while(Date.now()<deadline){try{info=await client.info();break;}catch{await new Promise(resolve=>setTimeout(resolve,250));}}
+    while(Date.now()<deadline){
+        try{info=await client.info({}, {signal:AbortSignal.timeout(Math.max(1,Math.min(5000,deadline-Date.now())))});break;}
+        catch{await new Promise(resolve=>setTimeout(resolve,250));}
+    }
     assert.equal(info?.version?.number,'9.5.5');assert.equal(info.cluster_name,clusterName);assert.match(info.cluster_uuid,/^[A-Za-z0-9_-]{16,64}$/);
     report.server={version:info.version.number,clusterName,clusterUuid:info.cluster_uuid};
     const chain=`hyp-abiobs-${run}`,store=new ProtocolAbiObservationStore(client,chain,0,{chunkBytes:256,maximumBytes:32768,maximumChunks:128});
