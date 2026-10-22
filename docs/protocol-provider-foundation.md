@@ -101,6 +101,24 @@ and ABI coverage projections separately under the accepted recovery contract.
 
 ## Validation and limits
 
+The [native observation journal](protocol-native-observations.md) retains separately versioned
+labels and exact original-capture references before history filtering and source acknowledgment.
+MainDS derives complete first-receiver membership independently from retained traces, checks every
+returned origin/raw digest, and preserves per-origin incomplete decisions. Native extraction runs
+after ABI PREPARE/link durability and before ABI codec errors or canonical-proof waits. An ABI
+extraction error therefore does not prevent independent native extraction; native incompleteness
+does not reset ABI reduction. Storage/reference/readback failures escape to supervised redelivery.
+
+The native worker control exercises actual constructor-created workers, parser and cargo with
+unchanged source-pinned Wire blocks 33, 122 and 397, plus explicitly derived failure frames.
+It covers filters/truncation, missing genesis traces versus encoded-empty vectors, extraction
+isolation, omitted/invalid labels, partial/unknown receipts, write/readback crashes and obsolete
+channel fencing. The disposable Elasticsearch runner checks the new namespace and reference
+readback against the pinned 9.5.5 server and retains its cleanup report. These are bounded journal
+controls: the installed profiles remain inactive, and stored labels/readback grant no canonical
+occurrence or native-decoding authority. Authorization, versioned worker/document metadata,
+HTTP/cache/current-Socket.IO consumers and complete testnet/fork recovery remain #256/#191/#231 work.
+
 The protocol tests execute emitted Node code and actual production methods. They use the
 source-pinned captured SHiP frame plus an explicitly synthetic nonempty receipt fixture; the
 captured block has no user transactions. The synthetic block is serialization evidence with

@@ -10,6 +10,7 @@ import {ProtocolAbiCoordinator} from '../../build/indexer/protocol/abi-coordinat
 import {ProtocolAbiProofReader,ProtocolAbiProofUnavailableError} from '../../build/indexer/protocol/abi-proof.js';
 import {ensureProtocolActionMapping} from '../../build/indexer/protocol/action-proof-mapping.js';
 import {createHash} from 'node:crypto';
+import {checkProtocolNativeJournal} from './check-protocol-native-journal.mjs';
 
 // Own the exact server and namespace; this runner never accepts a borrowed cluster URL.
 const image='docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c';
@@ -304,6 +305,7 @@ try {
     assert.equal((await client.count({index:historyIndex})).count,2);
     assert.deepEqual(await ensureProtocolActionMapping(client,historyChain),{inspected:1,updated:0});
     report.checks.push('additive opaque action mapping preserves retained history and exact new proof metadata without reindex');
+    await checkProtocolNativeJournal(client, `${chain}-native`, report, pipeline);
     report.status='passed';
 } catch(error){report.status='failed';report.error=String(error.stack??error);}
 finally {
