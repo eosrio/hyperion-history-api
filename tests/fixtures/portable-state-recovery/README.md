@@ -38,11 +38,11 @@ write acknowledgments. Preserve failed allocation/startup attempts as evidence.
 ```sh
 python tests/fixtures/portable-state-worker/prepare.py out/p246-original
 python tests/fixtures/portable-state-worker/services.py create out/p246-services --disk-watermark-profile 8-4-2gb
-node scripts/qualification/portable-state-recovery-input.ts out/p246-original/plan.json out/p246-input-receipt.json
+node --experimental-transform-types scripts/qualification/portable-state-recovery-input.ts out/p246-original/plan.json out/p246-input-receipt.json
 bun check -p tsconfig.json
 bun check -p scripts/qualification/tsconfig.json
 bun test tests/unit/portable-state-recovery-harness.test.ts tests/unit/reader-progress.test.ts
-node scripts/qualification/portable-state-recovery.ts out/p246-services/worker-state.json out/p246-original/plan.json out/p246-reversible reversible
+node --experimental-transform-types scripts/qualification/portable-state-recovery.ts out/p246-services/worker-state.json out/p246-original/plan.json out/p246-reversible reversible
 ```
 
 Repeat with a fresh fixture/output and `irreversible`. Keep original failed attempts,
@@ -50,6 +50,12 @@ the source derivation receipt, process logs, API transcripts, frontier transitio
 physical Mongo observations, service ownership and cleanup reports. Revalidate the
 original source after each run. Clean services with the original ownership-checked
 helper. The driver limits itself to15minutes plus90seconds for cleanup.
+
+For the separate [prefix CPU experiment](../../../docs/performance/portable-state-prefix-profiling.md),
+append `--profile-prefix 288` to stop after stable common288 and capture the existing
+bounded native CPU profiles. `--cpu-profile off` adds a matching observer-only
+prefix control. These runs return `profiled-prefix`, never full recovery `passed`;
+the ordinary complete scenario and timeout are unchanged.
 
 The SHiP server obeys requested ranges, anchors, credits and reconnect sessions; it
 never supplies a skipped replacement prefix to conceal a faulty reader resume.

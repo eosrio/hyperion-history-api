@@ -1,14 +1,56 @@
 import {expect, test} from 'bun:test';
+import {mkdtemp, open, rm, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {RecoverySourceFlow, recoverySourceLimits, serveRecoveryEngineeringSource} from '../../scripts/qualification/portable-state-recovery-source.ts';
 import {recoveryExpectedRows, assertRecoveryHttp, assertRecoveryUnavailable, assertRecoveryProbe} from '../../scripts/qualification/portable-state-recovery-oracle.ts';
 import {rollbackIntentReceipt} from '../../scripts/qualification/portable-state-recovery-observer.mjs';
-import {assertRecoveryShutdown, assertRecoveryDiskReadiness} from '../../scripts/qualification/portable-state-recovery.ts';
+import {assertRecoveryShutdown, assertRecoveryDiskReadiness, assertRecoveryCpuProfiles, validateRecoveryRunOptions} from '../../scripts/qualification/portable-state-recovery.ts';
 
 const request = (start: number, positions: any[] = [], window = 8) => ['get_blocks_request_v0', {
     start_block_num: start, end_block_num: 0xffffffff, max_messages_in_flight: window, have_positions: positions,
     irreversible_only: false, fetch_block: true, fetch_traces: true, fetch_deltas: true,
 }];
 const ack = (count: number) => ['get_blocks_ack_request_v0', {num_messages: count}];
+
+test('prefix profiling is explicit, fixed at288 and keeps CPU controls out of ordinary qualification', () => {
+    expect(validateRecoveryRunOptions()).toBeUndefined();
+    expect(validateRecoveryRunOptions({profilePrefix: 288})).toBe(288);
+    expect(validateRecoveryRunOptions({profilePrefix: 288, cpuProfile: false})).toBe(288);
+    for (const options of [{profilePrefix: 256}, {profilePrefix: '288'}, {cpuProfile: false},
+        {profilePrefix: 288, cpuProfile: 'off'}, {profilePrefix: 288, skipTo: 221}, null]) {
+        expect(() => validateRecoveryRunOptions(options as any)).toThrow();
+    }
+});
+
+test('prefix CPU completion requires matching saved files, stable-stage coverage and complete native observer shutdown', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'hapi-prefix-profile-'));
+    try {
+        const file = join(directory, 'worker-42.cpuprofile'), bytes = Buffer.from(JSON.stringify({nodes: [{id: 1}], samples: [1],
+            startTime: 10, endTime: 20, timeDeltas: [10]}));
+        await writeFile(file, bytes);
+        const rows: any[] = [{kind: 'start', pid: 42, role: 'projection'},
+            {kind: 'profile_started', pid: 42, at: 100, samplingIntervalMicros: 10000, maximumDurationMs: 900000},
+            {kind: 'profile_saved', pid: 42, profilePath: file, bytes: bytes.length},
+            {kind: 'flush', pid: 42, at: 300, reason: 'qualifier_shutdown', success: true, error: null, droppedRecords: 0,
+                profileState: 'saved', profilePath: file},
+            {kind: 'exit', pid: 42, code: 0, profileState: 'saved', flushed: true, droppedRecords: 0}];
+        expect((await assertRecoveryCpuProfiles(rows, directory, 200))[0]).toMatchObject({pid: 42, samples: 1, bytes: bytes.length});
+        for (const mutate of [(copy: any[]) => {copy[3].reason = 'profile_time_limit';},
+            (copy: any[]) => {copy[3].at = 199;}, (copy: any[]) => {copy[3].droppedRecords = 1;},
+            (copy: any[]) => {copy[4].flushed = false;}, (copy: any[]) => {copy[2].bytes++;},
+            (copy: any[]) => {copy.splice(1, 1);}, (copy: any[]) => {copy.push({kind: 'observer_error', error: 'failed'});}]) {
+            const copy = structuredClone(rows); mutate(copy);
+            await expect(assertRecoveryCpuProfiles(copy, directory, 200)).rejects.toThrow();
+        }
+        const control = [rows[0], {...rows[3], profileState: 'disabled', profilePath: null}, {...rows[4], profileState: 'disabled'}];
+        expect(await assertRecoveryCpuProfiles(control, directory, 200, false)).toEqual([]);
+        await expect(assertRecoveryCpuProfiles(rows, directory, 200, false)).rejects.toThrow();
+        await rm(file); await expect(assertRecoveryCpuProfiles(rows, directory, 200)).rejects.toThrow();
+        const oversized = await open(file, 'wx'); await oversized.truncate(32 * 1024 * 1024 + 1); await oversized.close();
+        await expect(assertRecoveryCpuProfiles(rows, directory, 200)).rejects.toThrow();
+    } finally {await rm(directory, {recursive: true, force: true});}
+});
 
 test('recovery source honors exact requested replay ranges and credits on each connection', () => {
     const flow = new RecoverySourceFlow(() => true);
