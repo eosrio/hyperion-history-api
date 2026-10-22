@@ -209,6 +209,8 @@ try {
         if (numberFrom(bytes) === 1) {
             // Original genesis omits traces. Retain that missing-input boundary, never manufacture an empty vector.
             assert.ok(admission.incomplete); assert.equal(messages.length, 0);
+            await assert.rejects(pool.getProtocolNativeReader().waitForOpen({chainId, blockNum: 1,
+                blockId: admission.source.inventoryInput.source.blockId}, sourceSelectionId), {code: 'native_source_incomplete'});
             return {admission, messages, sourceSelectionId};
         }
         const originalTraces = codec.decode('transaction_trace[]', Buffer.from(codec.decode('result', bytes)[1].traces, 'hex'));

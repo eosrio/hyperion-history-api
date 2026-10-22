@@ -915,7 +915,7 @@ export default class DSPoolWorker extends HyperionWorker {
                         if (view.nativeActionInterfaceVersion === 1 && !this.protocol.nativeActions)
                             throw new ProtocolNativeActionUnavailableError('native_capability_unavailable', 'Canonical source requires its selected native action capability');
                         this.protocolTrace = {view};
-                        if (this.protocol.nativeActions) this.protocolTrace.nativeView = await this.getProtocolNativeReader().open({chainId: this.chainId,
+                        if (this.protocol.nativeActions) this.protocolTrace.nativeView = await this.getProtocolNativeReader().waitForOpen({chainId: this.chainId,
                             blockNum: Number(block_num), blockId: String(block_id)}, selectionId);
                     } catch (error) {
                         if (!(error instanceof ProtocolAbiProofUnavailableError) && !(error instanceof ProtocolNativeActionUnavailableError)) throw error;
