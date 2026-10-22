@@ -3,7 +3,7 @@ import {mkdtemp, open, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {RecoverySourceFlow, recoverySourceLimits, serveRecoveryEngineeringSource} from '../../scripts/qualification/portable-state-recovery-source.ts';
-import {recoveryExpectedRows, assertRecoveryHttp, assertRecoveryUnavailable, assertRecoveryProbe} from '../../scripts/qualification/portable-state-recovery-oracle.ts';
+import {recoveryExpectedRows, assertRecoveryHttp, assertRecoveryPhysical, assertRecoveryUnavailable, assertRecoveryProbe} from '../../scripts/qualification/portable-state-recovery-oracle.ts';
 import {rollbackIntentReceipt} from '../../scripts/qualification/portable-state-recovery-observer.mjs';
 import {assertRecoveryShutdown, assertRecoveryDiskReadiness, assertRecoveryCpuProfiles, validateRecoveryRunOptions} from '../../scripts/qualification/portable-state-recovery.ts';
 
@@ -23,32 +23,87 @@ test('prefix profiling is explicit, fixed at288 and keeps CPU controls out of or
     }
 });
 
+for (const enabled of [true, false]) test('prefix ' + (enabled ? 'CPU' : 'control') + ' inventory requires every independently owned child observer', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'hapi-prefix-pids-'));
+    try {
+        const parent: any = {pid: 42, exitCode: 0, signalCode: null};
+        const bytes = Buffer.from(JSON.stringify({nodes: [{id: 1}], samples: [1], startTime: 10, endTime: 20, timeDeltas: [10]}));
+        const receipt = async (pid: number) => {
+            const file = join(directory, `worker-${pid}.cpuprofile`);
+            const rows: any[] = [{kind: 'start', pid, parentPid: pid === 42 ? 1 : 42, role: pid === 44 ? 'projection' : pid === 42 ? 'master' : 'ingestor'},
+                ...(enabled ? [{kind: 'profile_started', pid, at: 100, samplingIntervalMicros: 10000, maximumDurationMs: 900000},
+                    {kind: 'profile_saved', pid, profilePath: file, bytes: bytes.length}] : []),
+                {kind: 'flush', pid, at: 300, reason: 'qualifier_shutdown', success: true, error: null, droppedRecords: 0,
+                    profileState: enabled ? 'saved' : 'disabled', profilePath: enabled ? file : null},
+                {kind: 'exit', pid, code: 0, profileState: enabled ? 'saved' : 'disabled', flushed: true, droppedRecords: 0}];
+            await writeFile(join(directory, `worker-${pid}.jsonl`), rows.map(row => JSON.stringify(row)).join('\n') + '\n');
+            if (enabled) await writeFile(file, bytes);
+            return rows;
+        };
+        const rows: any[] = [...await receipt(42), ...await receipt(44),
+            ...[43, 44].flatMap(pid => [{kind: 'worker_fork', pid: 42, childPid: pid}, {kind: 'worker_exit', pid: 42, childPid: pid, code: 0, signal: null}]),
+            {kind: 'shutdown', pid: 42, success: true, forced: [], unresolved: [], failedChildren: [],
+                childExits: [43, 44].map(pid => ({pid, code: 0, signal: null}))}];
+        expect(() => assertRecoveryShutdown(rows, parent, [])).not.toThrow();
+        await expect(assertRecoveryCpuProfiles(rows, directory, 200, enabled, parent)).rejects.toThrow();
+        const complete = [...rows, ...await receipt(43)];
+        expect((await assertRecoveryCpuProfiles(complete, directory, 200, enabled, parent)).length).toBe(enabled ? 3 : 0);
+        for (const mutate of [(copy: any[]) => {copy.push({...copy.find(row => row.kind === 'worker_fork')});},
+            (copy: any[]) => {copy.find(row => row.kind === 'shutdown').childExits[1].pid = 43;},
+            (copy: any[]) => {copy.find(row => row.kind === 'start' && row.pid === 43).parentPid = 99;},
+            (copy: any[]) => {copy.push({...copy.find(row => row.kind === 'start' && row.pid === 43)});},
+            (copy: any[]) => {copy.find(row => row.kind === 'worker_exit').code = 1;},
+            (copy: any[]) => {copy.push({kind: 'worker_online', pid: 42, childPid: 99});}]) {
+            const copy = structuredClone(complete); mutate(copy);
+            await expect(assertRecoveryCpuProfiles(copy, directory, 200, enabled, parent)).rejects.toThrow();
+        }
+        const foreign = join(directory, 'worker-99.cpuprofile'); await writeFile(foreign, bytes);
+        await expect(assertRecoveryCpuProfiles(complete, directory, 200, enabled, parent)).rejects.toThrow();
+    } finally {await rm(directory, {recursive: true, force: true});}
+});
+
+test('stable HTTP evidence must carry the independently paired physical revision', () => {
+    const binding: any = {projectionId: 'items'}, checkpoint = {blockNum: 288, blockId: 'a'.repeat(64)};
+    const revision = 'b'.repeat(64), physical = {rows: [], metadata: {initialized: true, pending: null, gap: null, rollback: null,
+        revision, checkpoint: {...checkpoint, revision}}};
+    const body = {view: {binding, checkpoint, revision: 'c'.repeat(64)}, rows: [], count: {value: 0, exact: true}};
+    const headers = new Headers({'hyperion-state-block-num': '288', 'hyperion-state-block-id': checkpoint.blockId,
+        'hyperion-state-last-valid': 'false', 'hyperion-state-finality': 'reversible', 'cache-control': 'no-store'});
+    expect(() => assertRecoveryPhysical(physical, checkpoint, [])).not.toThrow();
+    expect(() => assertRecoveryHttp(body, headers, binding, checkpoint, [], 'reversible', physical.metadata.revision)).toThrow();
+    body.view.revision = revision;
+    expect(() => assertRecoveryHttp(body, headers, binding, checkpoint, [], 'reversible', physical.metadata.revision)).not.toThrow();
+});
+
 test('prefix CPU completion requires matching saved files, stable-stage coverage and complete native observer shutdown', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'hapi-prefix-profile-'));
     try {
         const file = join(directory, 'worker-42.cpuprofile'), bytes = Buffer.from(JSON.stringify({nodes: [{id: 1}], samples: [1],
             startTime: 10, endTime: 20, timeDeltas: [10]}));
+        const parent: any = {pid: 42, exitCode: 0, signalCode: null};
         await writeFile(file, bytes);
         const rows: any[] = [{kind: 'start', pid: 42, role: 'projection'},
             {kind: 'profile_started', pid: 42, at: 100, samplingIntervalMicros: 10000, maximumDurationMs: 900000},
             {kind: 'profile_saved', pid: 42, profilePath: file, bytes: bytes.length},
             {kind: 'flush', pid: 42, at: 300, reason: 'qualifier_shutdown', success: true, error: null, droppedRecords: 0,
                 profileState: 'saved', profilePath: file},
-            {kind: 'exit', pid: 42, code: 0, profileState: 'saved', flushed: true, droppedRecords: 0}];
-        expect((await assertRecoveryCpuProfiles(rows, directory, 200))[0]).toMatchObject({pid: 42, samples: 1, bytes: bytes.length});
+            {kind: 'exit', pid: 42, code: 0, profileState: 'saved', flushed: true, droppedRecords: 0},
+            {kind: 'shutdown', pid: 42, success: true, forced: [], unresolved: [], failedChildren: [], childExits: []}];
+        await writeFile(join(directory, 'worker-42.jsonl'), rows.map(row => JSON.stringify(row)).join('\n') + '\n');
+        expect((await assertRecoveryCpuProfiles(rows, directory, 200, true, parent))[0]).toMatchObject({pid: 42, samples: 1, bytes: bytes.length});
         for (const mutate of [(copy: any[]) => {copy[3].reason = 'profile_time_limit';},
             (copy: any[]) => {copy[3].at = 199;}, (copy: any[]) => {copy[3].droppedRecords = 1;},
             (copy: any[]) => {copy[4].flushed = false;}, (copy: any[]) => {copy[2].bytes++;},
             (copy: any[]) => {copy.splice(1, 1);}, (copy: any[]) => {copy.push({kind: 'observer_error', error: 'failed'});}]) {
             const copy = structuredClone(rows); mutate(copy);
-            await expect(assertRecoveryCpuProfiles(copy, directory, 200)).rejects.toThrow();
+            await expect(assertRecoveryCpuProfiles(copy, directory, 200, true, parent)).rejects.toThrow();
         }
-        const control = [rows[0], {...rows[3], profileState: 'disabled', profilePath: null}, {...rows[4], profileState: 'disabled'}];
-        expect(await assertRecoveryCpuProfiles(control, directory, 200, false)).toEqual([]);
-        await expect(assertRecoveryCpuProfiles(rows, directory, 200, false)).rejects.toThrow();
-        await rm(file); await expect(assertRecoveryCpuProfiles(rows, directory, 200)).rejects.toThrow();
+        const control = [rows[0], {...rows[3], profileState: 'disabled', profilePath: null}, {...rows[4], profileState: 'disabled'}, rows[5]];
+        await rm(file); expect(await assertRecoveryCpuProfiles(control, directory, 200, false, parent)).toEqual([]);
+        await expect(assertRecoveryCpuProfiles(rows, directory, 200, false, parent)).rejects.toThrow();
+        await expect(assertRecoveryCpuProfiles(rows, directory, 200, true, parent)).rejects.toThrow();
         const oversized = await open(file, 'wx'); await oversized.truncate(32 * 1024 * 1024 + 1); await oversized.close();
-        await expect(assertRecoveryCpuProfiles(rows, directory, 200)).rejects.toThrow();
+        await expect(assertRecoveryCpuProfiles(rows, directory, 200, true, parent)).rejects.toThrow();
     } finally {await rm(directory, {recursive: true, force: true});}
 });
 

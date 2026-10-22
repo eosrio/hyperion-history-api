@@ -36,10 +36,34 @@ export function validateRecoveryRunOptions(options: RecoveryRunOptions = {}) {
 }
 
 /** Profile completion is checked against observer receipts and actual bounded files after clean shutdown. */
-export async function assertRecoveryCpuProfiles(rows: any[], directory: string, stableAt: number, enabled = true) {
+export async function assertRecoveryCpuProfiles(rows: any[], directory: string, stableAt: number, enabled: boolean, parent: ChildProcess) {
+    assert.ok(Number.isSafeInteger(parent?.pid) && parent.pid! > 0, 'An independently owned parent PID is required');
+    const shutdown = assertRecoveryShutdown(rows, parent, []);
+    assert.equal(rows.filter(row => row.kind === 'shutdown' && row.pid === parent.pid).length, 1);
+    const uniquePids = (values: any[]) => {assert.ok(values.every(pid => Number.isSafeInteger(pid) && pid > 0));
+        assert.equal(new Set(values).size, values.length, 'Duplicate PID in process inventory'); return [...values].sort((a, b) => a - b);};
+    const forks = rows.filter(row => row.kind === 'worker_fork'), exits = rows.filter(row => row.kind === 'worker_exit');
+    assert.ok([...forks, ...exits].every(row => row.pid === parent.pid), 'Child lifecycle receipt belongs to a foreign parent');
+    const children = uniquePids(forks.map(row => row.childPid)); assert.ok(!children.includes(parent.pid));
+    assert.deepEqual(uniquePids(shutdown.childExits.map((exit: any) => exit.pid)), children, 'Fork and shutdown child inventories differ');
+    assert.deepEqual(uniquePids(exits.map(row => row.childPid)), children, 'Fork and actual child exit inventories differ');
+    assert.ok(exits.every(row => row.code === 0 && row.signal === null), 'Actual child exit receipt was not clean');
+    const online = rows.filter(row => row.kind === 'worker_online');
+    uniquePids(online.map(row => row.childPid));
+    assert.ok(online.every(row => row.pid === parent.pid && children.includes(row.childPid)), 'Online receipt contains a foreign child');
+    const expected = uniquePids([parent.pid, ...children]);
     const starts = rows.filter(row => row.kind === 'start'); assert.ok(starts.length > 0);
-    assert.equal(new Set(starts.map(row => row.pid)).size, starts.length);
+    assert.deepEqual(uniquePids(starts.map(row => row.pid)), expected, 'An owned process observer is missing or foreign');
+    assert.ok(starts.every(row => row.pid === parent.pid || row.parentPid === parent.pid), 'Child observer has a foreign parent');
+    assert.ok(rows.every(row => expected.includes(row.pid)), 'Observer records contain a foreign process');
     assert.ok(!rows.some(row => row.kind === 'observer_error'));
+    const files = await readdir(directory, {withFileTypes: true}); assert.ok(files.length <= 4096);
+    assert.ok(files.every(file => file.isFile() && /^worker-[1-9][0-9]*\.(jsonl|cpuprofile)$/.test(file.name)), 'Unexpected observer artifact');
+    for (const extension of ['jsonl', 'cpuprofile']) {
+        const wanted = extension === 'jsonl' || enabled ? expected.map(pid => `worker-${pid}.${extension}`).sort() : [];
+        assert.deepEqual(files.filter(file => file.name.endsWith('.' + extension)).map(file => file.name).sort(), wanted,
+            'Actual observer artifact inventory differs: ' + extension);
+    }
     const profiles: any[] = [];
     for (const start of starts) {
         const selected = rows.filter(row => row.pid === start.pid), file = join(directory, `worker-${start.pid}.cpuprofile`);
@@ -352,9 +376,10 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
                 const current = await captureControl(); assert.equal(current?.phase, 'following');
                 assert.equal(current?.head?.blockId, recoveryRecord(source, branch, replay!.metrics().through).blockId);
                 physical = await physicalAt(branch, through); responses = [];
-                for (const binding of bindings) {const response = await query(binding.projectionId); assert.equal(response.status, 200);
+                for (const [index, binding] of bindings.entries()) {const response = await query(binding.projectionId); assert.equal(response.status, 200);
                     assertRecoveryHttp(response.body, response.headers, binding, checkpoint(branch, through),
-                        binding.projectionId === unaffected.id ? [] : recoveryExpectedRows(plan, branch, through)[binding.projectionId], finality); responses.push(receipt(response));}
+                        binding.projectionId === unaffected.id ? [] : recoveryExpectedRows(plan, branch, through)[binding.projectionId], finality,
+                        physical[index].metadata.revision); responses.push(receipt(response));}
             });
             const value = {name, branch, through, physical, responses, source: replay!.metrics(), control: await captureControl()};
             const bytes = Buffer.from(JSON.stringify(value, null, 2) + '\n'), file = 'stages/' + name + '.json';
@@ -381,9 +406,10 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
             report.profiling.stable = true; report.profiling.stableAt = stableAt; report.profiling.sourceReauditHashes = after.inputHashes;
             await stopMaster(owner); master = undefined; await stopApi(apiOwner); api = undefined;
             report.profiling.cpuProfiles = []; report.profiling.observerCompletion = [];
-            for (const name of [owner.name, apiOwner.name]) {const rows = await observed(name);
-                report.profiling.cpuProfiles.push(...await assertRecoveryCpuProfiles(rows, join(output, 'observer', name), stableAt, cpuProfile));
-                report.profiling.observerCompletion.push({name, events: rows.filter(row => ['start', 'profile_started', 'profile_saved', 'flush', 'exit'].includes(row.kind))});}
+            for (const entry of [owner, apiOwner]) {const rows = await observed(entry.name);
+                report.profiling.cpuProfiles.push(...await assertRecoveryCpuProfiles(rows, join(output, 'observer', entry.name), stableAt, cpuProfile, entry.child));
+                report.profiling.observerCompletion.push({name: entry.name, ownedParentPid: entry.child.pid,
+                    events: rows.filter(row => ['start', 'worker_fork', 'worker_online', 'worker_exit', 'shutdown', 'profile_started', 'profile_saved', 'flush', 'exit'].includes(row.kind))});}
             if (cpuProfile) assert.equal(report.profiling.cpuProfiles.filter((value: any) => value.role === 'projection').length, 1);
             Object.assign(report.profiling.cpuCapture, {verified: true, enabled: cpuProfile});
             report.sourceMetrics = replay.metrics(); report.sourceRequests = replay.requests; report.status = 'profiled-prefix'; return report;

@@ -19,7 +19,8 @@ deployment identifiers come from the original audited plan; they are not replace
 with head ABIs or edited for the experiment.
 
 At block 288, all three projections must independently have the expected physical
-rows, checkpoint, revision, and public HTTP rows/count/headers/finality. The default
+rows, checkpoint, revision, and public HTTP rows/count/headers/finality. The API
+view revision must equal its paired physical MongoDB metadata revision. The default
 256-block undo retention must be full, with coverage floor at original block 32.
 Source credits must be acknowledged, all owned queues drained, and source blocks
 1–288 accounted for. The complete original input inventory is audited again before
@@ -98,8 +99,10 @@ observations; `profiling.firstReleaseAt` and `stableAt` bound common-prefix catc
 
 CPU mode uses the existing native inspector observer at a 10,000 microsecond
 sampling interval, capped at 900 seconds, 32 MiB per profile and 24 MiB per observer
-log. Each actual process must report successful profile saving and flushing after
-the stable prefix, with no dropped records/errors, and exit cleanly. Saved file
+log. The owned parent, fork, actual child exit and shutdown inventories must agree
+exactly with observed process starts and actual log/profile filenames. Each actual
+process must save and flush its profile after the stable prefix, with no dropped
+records/errors, and exit cleanly. Saved file
 identity, size, hash, sample/node membership and duration are checked independently.
 Missing, oversized, malformed, prematurely flushed or incomplete profiles fail.
 The disabled control must instead report disabled capture and clean complete
