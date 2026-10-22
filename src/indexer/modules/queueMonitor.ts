@@ -25,6 +25,7 @@ export class HyperionQueueMonitor {
     private pauseReaders() {
         if (!this.readingPaused) {
             this.master.sendToRole('reader', { event: 'pause' });
+            this.master.sendToRole('continuous_reader', { event: 'pause' });
             this.readingPaused = true;
         }
     }
@@ -32,6 +33,7 @@ export class HyperionQueueMonitor {
     private resumeReaders() {
         if (this.readingPaused) {
             this.master.sendToRole('reader', { event: 'resume' });
+            this.master.sendToRole('continuous_reader', { event: 'resume' });
             this.readingPaused = false;
         }
     }
