@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
 import {compatibleUint64, canonicalUint64} from '../helpers/uint64.js';
 import {actionHistoryImmutableJson, actionHistoryManifestBounds} from './action-history-manifest.js';
+import {parseProtocolNativeActionMetadata} from '../protocol/native-action-metadata.js';
 
 export type ActionSourceInventoryProfile = 'antelope-default-v1' |
     'wire-sysio-6508c9e8-engineering-v1' | 'wire-sysio-7dede884-engineering-v1';
@@ -478,7 +479,10 @@ export function validateActionSourceTransactionOutput(inventory: ActionSourceInv
             const action = object(detached[index]), expected = transaction.groups[index].metadata;
             requireValue(!Object.hasOwn(action, 'receipt') && !Object.hasOwn(action, 'receiver') && !Object.hasOwn(action, 'except') &&
                 !Object.hasOwn(action, 'h45_sequences_v1'), 'Expected final normalized grouped action');
-            if (wire) requireValue(!Object.hasOwn(action, 'ds_error'), 'Incomplete Wire decoding cannot certify a source batch');
+            const native = wire && action.protocol?.schemaVersion === 2 ? parseProtocolNativeActionMetadata(action.protocol) : undefined;
+            const nativeIncomplete = native && 'status' in native;
+            if (wire && Object.hasOwn(action, 'ds_error')) requireValue(nativeIncomplete && action.ds_error === true,
+                'Incomplete Wire decoding cannot certify a source batch');
             requireValue(Array.isArray(action.receipts) && action.receipts.length > 0, 'Missing final receipt membership');
             const act = object(action.act);
             const actual: ObjectValue = {};
@@ -491,6 +495,18 @@ export function validateActionSourceTransactionOutput(inventory: ActionSourceInv
             actual.code_sequence = uint32(action.code_sequence); actual.abi_sequence = uint32(action.abi_sequence);
             actual.act = {account: text(act.account), name: text(act.name, true), authorization: authorization(act.authorization)};
             actual.receipts = action.receipts.map(value => receipt(value, wire, true));
+            if (native) {
+                requireValue(native.native.profile.profileId === inventory.profileId,
+                    'Native source metadata selects a different protocol profile');
+                if (nativeIncomplete) requireValue(act.data === native.input.rawHex && action.ds_error === true
+                    && Object.keys(act).every(field => ['account', 'name', 'authorization', 'data'].includes(field))
+                    && Object.keys(action).every(field => !field.startsWith('@') || field === '@timestamp'),
+                    'Incomplete native output must retain the exact original raw action');
+                // Only normalize the checked representation. Every source/selection/input field is still
+                // compared against independent original membership below. Native decoding authority is
+                // established separately by fresh worker/serving grants, never by this locator parser.
+                actual.protocol = {schemaVersion: 1, source: native.source, selectionId: native.selectionId, input: native.input};
+            }
             requireValue(json(actual) === json(expected), 'Final grouped action metadata differs from independent source membership');
         }
         return freeze(detached as Record<string, unknown>[]);

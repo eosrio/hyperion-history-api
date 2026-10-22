@@ -6,7 +6,8 @@ import {deriveProtocolActionOccurrences, type ProtocolOriginalActionOccurrence} 
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofSource,
     type ProtocolAbiProofView, type ProtocolAbiProofReadOptions} from './abi-proof.js';
 import {ProtocolNativeObservationStore, NativeObservationReadError} from './native-observation-store.js';
-import type {ProtocolNativeObservationReadback} from './native-observation-store.js';
+import type {ProtocolNativeActionProofMetadata, ProtocolNativeActionIncompleteMetadata} from './native-action-metadata.js';
+export type {ProtocolNativeActionProofMetadata, ProtocolNativeActionIncompleteMetadata, ProtocolNativeActionSourceMetadata} from './native-action-metadata.js';
 import {protocolNativeInputInventory, snapshotProtocolNativeDecisions} from './native-observation-facts.js';
 import {protocolImmutableJson, ImmutableProtocolBundleReadError} from './immutable-bundle-store.js';
 import {protocolSourceContextId, ProtocolSourceBindingReadError, type ProtocolSourceProfile} from './source-bindings.js';
@@ -16,32 +17,6 @@ declare const viewBrand: unique symbol;
 declare const grantBrand: unique symbol;
 export interface ProtocolNativeActionView {readonly [viewBrand]: true}
 export interface ProtocolNativeActionGrant {readonly [grantBrand]: true}
-/** A versioned locator, never executable selection or decoding authority on its own. */
-export interface ProtocolNativeActionProofMetadata {
-    readonly schemaVersion: 2;
-    readonly kind: 'native';
-    readonly source: ProtocolAbiProofSource;
-    readonly selectionId: string;
-    readonly input: ProtocolAbiActionInput;
-    readonly native: {
-        readonly nativeKind: string;
-        readonly contextId: string;
-        readonly linkId: string;
-        readonly observationId: string;
-        readonly observationDigest: string;
-        readonly captureRef: ProtocolNativeObservationReadback['record']['captureRef'];
-        readonly inventorySha256: string;
-        readonly profile: ProtocolSourceProfile;
-    };
-}
-export type ProtocolNativeActionIncompleteMetadata = Omit<ProtocolNativeActionProofMetadata, 'kind' | 'native'> & {
-    readonly kind: 'incomplete';
-    readonly native: Omit<ProtocolNativeActionProofMetadata['native'], 'nativeKind'>;
-    readonly status: 'incomplete';
-    readonly error: {readonly code: string; readonly message: string};
-};
-export type ProtocolNativeActionSourceMetadata = ProtocolNativeActionIncompleteMetadata
-    | (ProtocolNativeActionProofMetadata & {readonly status: 'incomplete'; readonly error: {readonly code: string; readonly message: string}});
 export type ProtocolNativeActionAuthorization =
     | {readonly kind: 'contract'}
     | {readonly kind: 'incomplete'; readonly error: {readonly code: string; readonly message: string}}
