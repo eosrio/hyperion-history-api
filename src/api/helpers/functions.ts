@@ -5,7 +5,8 @@ import _ from "lodash";
 import {Socket} from "socket.io";
 import {checkMetaFilter, hLog} from "../../indexer/helpers/common_functions.js";
 import {StreamActionsRequest, StreamDeltasRequest, StreamTypeMap} from "../../interfaces/stream-requests.js";
-import {protectProtocolAction, protocolResponseForCache, revalidateProtocolActionScope, validateProtocolCachedResponse} from './protocol-abi.js';
+import {protectProtocolAction, protocolActionsForStream, protocolResponseForCache, protocolResponseForReturn, validateProtocolCachedResponse} from './protocol-abi.js';
+import {createProtocolStreamScope} from './protocol-proof-request.js';
 import {assertCompleteActionSearch, normalizeActionSearchSources} from './action-search.js';
 import {assertProtocolProjectionReady, assertProtocolRouteReady} from './protocol-state-readiness.js';
 import {assertProtocolActionRequestReady, assertProtocolActionStreamReady} from './protocol-action-query.js';
@@ -184,6 +185,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
     const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
     let pendingScrollId: estypes.ScrollId | undefined = init_response._scroll_id;
+    let activeProofScope: ReturnType<typeof createProtocolStreamScope> | undefined;
     try {
         if (dataKind === 'action') {
             assertCompleteActionSearch(init_response);
@@ -227,7 +229,9 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
                 if (rp._scroll_id) pendingScrollId = rp._scroll_id;
                 const enqueuedMessages: any[] = [];
-                const proofScope = {};
+                activeProofScope?.dispose();
+                activeProofScope = createProtocolStreamScope([socket]);
+                const proofScope = activeProofScope.scope;
                 if (dataKind === 'action') {
                     assertCompleteActionSearch(rp);
                     normalizeActionSearchSources(rp);
@@ -278,7 +282,8 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
                 if (socket.connected) {
                     if (enqueuedMessages.length > 0) {
-                        if (dataKind === 'action') await revalidateProtocolActionScope(fastify, proofScope);
+                        const messages = dataKind === 'action'
+                            ? await protocolActionsForStream(fastify, proofScope, enqueuedMessages) : enqueuedMessages;
                         try {
 
                             // Wait for 120 s
@@ -288,7 +293,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                                     reqUUID: requestUUID,
                                     type: `${dataKind}_trace`,
                                     mode: 'history',
-                                    messages: enqueuedMessages,
+                                    messages,
                                     filtered: filterCount
                                 });
 
@@ -336,6 +341,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
         return {status: true, lastTransmittedBlock, counter};
     } finally {
+        activeProofScope?.dispose();
         if (pendingScrollId) await fastify.elastic.clearScroll({scroll_id: pendingScrollId});
     }
 }
@@ -1028,8 +1034,9 @@ export async function timedQuery(
     }
 
     // call query function
-    const response = await queryFunction(fastify, request);
+    let response = await queryFunction(fastify, request);
     const cacheResponse = await protocolResponseForCache(fastify, request, route, response);
+    response = protocolResponseForReturn(fastify, route, cacheResponse);
 
     // save response to cache
     if (hash) {

@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
 import {compatibleUint64, canonicalUint64} from '../helpers/uint64.js';
 import {actionHistoryImmutableJson, actionHistoryManifestBounds} from './action-history-manifest.js';
+import {parseProtocolNativeActionMetadata} from '../protocol/native-action-metadata.js';
 
 export type ActionSourceInventoryProfile = 'antelope-default-v1' |
     'wire-sysio-6508c9e8-engineering-v1' | 'wire-sysio-7dede884-engineering-v1';
@@ -221,6 +222,61 @@ function signatures(trace: ObjectValue): unknown[] {
         return result;
     } catch {return [];}
 }
+function parseSourceTransactions(traces: unknown, wire: boolean) {
+    requireValue(Array.isArray(traces) && traces.length <= actionHistoryManifestBounds.maximumTransactions,
+        'Complete bounded original trace vector is required');
+    const seenTransactions = new Set<string>(), seenSequences = new Set<string>();
+    let actionCount = 0;
+    return (traces as unknown[]).map((raw, traceOrdinal) => {
+        const trace = variant(raw, ['transaction_trace_v0']);
+        const id = digest(trace.id).toLowerCase();
+        requireValue(!seenTransactions.has(id), 'Repeated original source transaction'); seenTransactions.add(id);
+        requireValue(trace.status === 0 && (trace.scheduled === false || trace.scheduled === 0) && trace.failed_dtrx_trace === null &&
+            trace.except === null && trace.error_code === null, 'Unsupported source transaction/failure/deferred semantics');
+        requireValue(Array.isArray(trace.action_traces), 'Missing complete source action vector');
+        actionCount += trace.action_traces.length;
+        requireValue(actionCount <= actionHistoryManifestBounds.maximumEffects, 'Original action membership exceeds bounded count');
+        const seenOrdinals = new Set<number>();
+        const occurrences: Occurrence[] = trace.action_traces.map((value: unknown) => {
+            const occurrence = rawOccurrence(value, wire);
+            requireValue(!seenOrdinals.has(occurrence.ordinal), 'Repeated original action ordinal'); seenOrdinals.add(occurrence.ordinal);
+            if (occurrence.receipt) {
+                const sequence = occurrence.receipt.global_sequence;
+                requireValue(!seenSequences.has(sequence), 'Repeated original source global sequence'); seenSequences.add(sequence);
+            }
+            return occurrence;
+        });
+        uint32(trace.cpu_usage_us); uint32(trace.net_usage_words);
+        return {id, trace, raw, traceOrdinal, occurrences};
+    });
+}
+function inputOrigins(occurrences: readonly Occurrence[], label: 'Wire' | 'Protocol'): Map<number, number> {
+    const byOrdinal = new Map(occurrences.map(value => [value.ordinal, value]));
+    const identity = (value: Occurrence) => json([value.action.act.account, value.action.act.name,
+        authorization(value.action.act.authorization), value.action.act.data, Boolean(value.action.context_free)]);
+    const identities = new Map(occurrences.map(value => [value.ordinal, identity(value)]));
+    const origins = new Map<number, number>();
+    for (const occurrence of occurrences) {
+        if (occurrence.creator > 0) {
+            const parent = byOrdinal.get(occurrence.creator);
+            requireValue(parent && parent.receipt && occurrence.receipt &&
+                BigInt(parent.receipt.global_sequence) < BigInt(occurrence.receipt.global_sequence), `Invalid ${label} creator ancestry`);
+        }
+        let origin = occurrence;
+        const path: number[] = [];
+        while (!origins.has(origin.ordinal) && origin.action.receiver !== origin.action.act.account) {
+            requireValue(path.length < 64, `${label} notification ancestry exceeds bounded depth`); path.push(origin.ordinal);
+            const parent = byOrdinal.get(origin.creator);
+            requireValue(parent && identities.get(parent.ordinal) === identities.get(origin.ordinal) && parent.receipt && origin.receipt &&
+                BigInt(parent.receipt.global_sequence) < BigInt(origin.receipt.global_sequence), `Invalid ${label} notification ancestry`);
+            origin = parent;
+        }
+        const inputOrdinal = origins.get(origin.ordinal) ?? origin.ordinal;
+        origins.set(origin.ordinal, inputOrdinal);
+        for (const ordinal of path) origins.set(ordinal, inputOrdinal);
+    }
+    return origins;
+}
 function wireInputs(input: ActionSourceInventoryInput, transactions: readonly {id: string; occurrences: Occurrence[]}[]): void {
     requireValue(Array.isArray(input.wireActionInputs), 'Wire inventory needs original source observation facts');
     const expected = new Map<string, Occurrence>();
@@ -244,35 +300,16 @@ function wireInputs(input: ActionSourceInventoryInput, transactions: readonly {i
         occurrence.input = fact;
         expected.delete(key);
     }
-    // Independently check the supplied origins against complete original ancestry and action identity.
+    // Independently check supplied origins against complete original ancestry and action identity.
     for (const transaction of transactions) {
-        const byOrdinal = new Map(transaction.occurrences.map(value => [value.ordinal, value]));
-        const identity = (value: Occurrence) => json([value.action.act.account, value.action.act.name,
-            authorization(value.action.act.authorization), value.action.act.data, Boolean(value.action.context_free)]);
-        const identities = new Map(transaction.occurrences.map(value => [value.ordinal, identity(value)]));
-        const origins = new Map<number, number>();
+        const origins = inputOrigins(transaction.occurrences, 'Wire');
         for (const occurrence of transaction.occurrences) {
-            if (occurrence.creator > 0) {
-                const parent = byOrdinal.get(occurrence.creator);
-                requireValue(parent && parent.receipt && occurrence.receipt &&
-                    BigInt(parent.receipt.global_sequence) < BigInt(occurrence.receipt.global_sequence), 'Invalid Wire creator ancestry');
-            }
-            let origin = occurrence;
-            const path: number[] = [];
-            while (!origins.has(origin.ordinal) && origin.action.receiver !== origin.action.act.account) {
-                requireValue(path.length < 64, 'Wire notification ancestry exceeds bounded depth'); path.push(origin.ordinal);
-                const parent = byOrdinal.get(origin.creator);
-                requireValue(parent && identities.get(parent.ordinal) === identities.get(origin.ordinal) && parent.receipt && origin.receipt &&
-                    BigInt(parent.receipt.global_sequence) < BigInt(origin.receipt.global_sequence), 'Invalid Wire notification ancestry');
-                origin = parent;
-            }
-            const inputOrdinal = origins.get(origin.ordinal) ?? origin.ordinal;
-            origins.set(origin.ordinal, inputOrdinal);
-            for (const ordinal of path) origins.set(ordinal, inputOrdinal);
-            requireValue(occurrence.input?.inputActionOrdinal === inputOrdinal, 'Wire origin does not match original source ancestry');
+            requireValue(occurrence.input?.inputActionOrdinal === origins.get(occurrence.ordinal),
+                'Wire origin does not match original source ancestry');
         }
     }
 }
+
 function expectedGroups(source: ActionSourceInventoryPosition, transactionId: string, selected: Occurrence[],
                         dispatch: ActionSourceDispatch, policy: ActionSourceInventoryPolicy, wire: boolean,
                         selectionId: string | null): ActionSourceExpectedGroup[] {
@@ -328,6 +365,44 @@ function expectedGroups(source: ActionSourceInventoryPosition, transactionId: st
     });
 }
 
+export interface ProtocolOriginalActionOccurrence {
+    readonly input: ProtocolAbiActionInput;
+    readonly creatorActionOrdinal: number;
+    readonly authorization: readonly Readonly<Record<string, unknown>>[];
+    readonly actDigest: string;
+    readonly receipt: Readonly<Record<string, unknown>>;
+}
+
+/** Original committed fields only; no filter policy, ABI state or canonical authority. */
+export function deriveProtocolActionOccurrences(traces: unknown): readonly ProtocolOriginalActionOccurrence[] {
+    try {
+        const parsed = parseSourceTransactions(copy(traces), true);
+        const inputs: ProtocolOriginalActionOccurrence[] = [];
+        for (const transaction of parsed) {
+            const origins = inputOrigins(transaction.occurrences, 'Protocol');
+            for (const occurrence of transaction.occurrences) {
+                const {action, receipt: sourceReceipt} = occurrence;
+                const input: ProtocolAbiActionInput = {transactionId: transaction.id, actionOrdinal: occurrence.ordinal,
+                    receiver: action.receiver, account: action.act.account, name: action.act.name,
+                    rawHex: action.act.data.toLowerCase(), globalSequence: sourceReceipt!.global_sequence,
+                    receiptAbiSequence: String(sourceReceipt!.abi_sequence), inputActionOrdinal: origins.get(occurrence.ordinal)!};
+                const {act_digest, ...finalReceipt} = sourceReceipt!;
+                inputs.push({input, creatorActionOrdinal: occurrence.creator, authorization: authorization(action.act.authorization),
+                    actDigest: act_digest, receipt: finalReceipt});
+            }
+        }
+        return freeze(inputs);
+    } catch (error) {
+        if (error instanceof ActionSourceInventoryError) throw error;
+        return fail('Invalid original protocol inputs: ' + (error instanceof Error ? error.message : String(error)));
+    }
+}
+
+/** Compatibility projection of the same complete independent source derivation. */
+export function deriveProtocolActionInputs(traces: unknown): readonly ProtocolAbiActionInput[] {
+    return freeze(deriveProtocolActionOccurrences(traces).map(value => value.input));
+}
+
 /** Rehydration re-runs this derivation from verified retained inputs. Serialized inventory alone is never issued. */
 export function deriveActionSourceInventory(original: ActionSourceInventoryInput): ActionSourceInventory {
     try {
@@ -348,30 +423,7 @@ export function deriveActionSourceInventory(original: ActionSourceInventoryInput
             const roots = input.rootActions.map(value => ({account: text(value.account), name: text(value.name, true)}));
             rootAllowed = roots.some(value => matches(whitelist, value));
         }
-        const seenTransactions = new Set<string>(), seenSequences = new Set<string>();
-        let actionCount = 0;
-        const parsed = (input.traces as unknown[]).map((raw, traceOrdinal) => {
-            const trace = variant(raw, ['transaction_trace_v0']);
-            const id = digest(trace.id).toLowerCase();
-            requireValue(!seenTransactions.has(id), 'Repeated original source transaction'); seenTransactions.add(id);
-            requireValue(trace.status === 0 && (trace.scheduled === false || trace.scheduled === 0) && trace.failed_dtrx_trace === null &&
-                trace.except === null && trace.error_code === null, 'Unsupported source transaction/failure/deferred semantics');
-            requireValue(Array.isArray(trace.action_traces), 'Missing complete source action vector');
-            actionCount += trace.action_traces.length;
-            requireValue(actionCount <= actionHistoryManifestBounds.maximumEffects, 'Original action membership exceeds bounded count');
-            const seenOrdinals = new Set<number>();
-            const occurrences: Occurrence[] = trace.action_traces.map((value: unknown) => {
-                const occurrence = rawOccurrence(value, wire);
-                requireValue(!seenOrdinals.has(occurrence.ordinal), 'Repeated original action ordinal'); seenOrdinals.add(occurrence.ordinal);
-                if (occurrence.receipt) {
-                    const sequence = occurrence.receipt.global_sequence;
-                    requireValue(!seenSequences.has(sequence), 'Repeated original source global sequence'); seenSequences.add(sequence);
-                }
-                return occurrence;
-            });
-            uint32(trace.cpu_usage_us); uint32(trace.net_usage_words);
-            return {id, trace, raw, traceOrdinal, occurrences};
-        });
+        const parsed = parseSourceTransactions(input.traces, wire);
         if (wire) wireInputs(input, parsed);
         const transactions: ActionSourceTransactionInventory[] = parsed.map(({id, raw, trace, traceOrdinal, occurrences}) => {
             const traceSha256 = hash(json(raw));
@@ -427,7 +479,10 @@ export function validateActionSourceTransactionOutput(inventory: ActionSourceInv
             const action = object(detached[index]), expected = transaction.groups[index].metadata;
             requireValue(!Object.hasOwn(action, 'receipt') && !Object.hasOwn(action, 'receiver') && !Object.hasOwn(action, 'except') &&
                 !Object.hasOwn(action, 'h45_sequences_v1'), 'Expected final normalized grouped action');
-            if (wire) requireValue(!Object.hasOwn(action, 'ds_error'), 'Incomplete Wire decoding cannot certify a source batch');
+            const native = wire && action.protocol?.schemaVersion === 2 ? parseProtocolNativeActionMetadata(action.protocol) : undefined;
+            const nativeIncomplete = native && 'status' in native;
+            if (wire && Object.hasOwn(action, 'ds_error')) requireValue(nativeIncomplete && action.ds_error === true,
+                'Incomplete Wire decoding cannot certify a source batch');
             requireValue(Array.isArray(action.receipts) && action.receipts.length > 0, 'Missing final receipt membership');
             const act = object(action.act);
             const actual: ObjectValue = {};
@@ -440,6 +495,18 @@ export function validateActionSourceTransactionOutput(inventory: ActionSourceInv
             actual.code_sequence = uint32(action.code_sequence); actual.abi_sequence = uint32(action.abi_sequence);
             actual.act = {account: text(act.account), name: text(act.name, true), authorization: authorization(act.authorization)};
             actual.receipts = action.receipts.map(value => receipt(value, wire, true));
+            if (native) {
+                requireValue(native.native.profile.profileId === inventory.profileId,
+                    'Native source metadata selects a different protocol profile');
+                if (nativeIncomplete) requireValue(act.data === native.input.rawHex && action.ds_error === true
+                    && Object.keys(act).every(field => ['account', 'name', 'authorization', 'data'].includes(field))
+                    && Object.keys(action).every(field => !field.startsWith('@') || field === '@timestamp'),
+                    'Incomplete native output must retain the exact original raw action');
+                // Only normalize the checked representation. Every source/selection/input field is still
+                // compared against independent original membership below. Native decoding authority is
+                // established separately by fresh worker/serving grants, never by this locator parser.
+                actual.protocol = {schemaVersion: 1, source: native.source, selectionId: native.selectionId, input: native.input};
+            }
             requireValue(json(actual) === json(expected), 'Final grouped action metadata differs from independent source membership');
         }
         return freeze(detached as Record<string, unknown>[]);

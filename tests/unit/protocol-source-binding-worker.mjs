@@ -130,9 +130,12 @@ try {
     await assert.rejects(consume(backendFailure),/Injected backend unavailable/);assert.equal(ack,backendAck);
     delete observationMemory.faults.beforeWrite;
     await consume(backendFailure);assert.equal(ack,backendAck+1);
-    const hook=main.protocol.observeBlockAbi;
-    main.protocol.observeBlockAbi=()=>{throw new Error('x'.repeat(4095)+'😀');};
-    const unicodeDelivery=await publish(frame(146)),unicodeAck=ack;await consume(unicodeDelivery);main.protocol.observeBlockAbi=hook;
+    const admittedProvider=main.protocol;assert(Object.isFrozen(admittedProvider));
+    // The mutable fault belongs to this worker fixture, never the selected provider object.
+    main.protocol={...admittedProvider,observeBlockAbi(){throw new Error('x'.repeat(4095)+'😀');}};
+    let unicodeDelivery,unicodeAck;
+    try{unicodeDelivery=await publish(frame(146));unicodeAck=ack;await consume(unicodeDelivery);}
+    finally{main.protocol=admittedProvider;}
     assert.equal(ack,unicodeAck+1);
     const unicodeLink=await sources.readObservationLink(selectedId(unicodeDelivery)),unicodeRecord=await observations.read(unicodeLink.observationId);
     assert.equal(unicodeRecord.observation.status,'incomplete');assert.equal(unicodeRecord.capture.tracesHex,template[1].traces);

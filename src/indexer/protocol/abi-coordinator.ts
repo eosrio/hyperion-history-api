@@ -22,6 +22,7 @@ interface Commit {
     source:ProtocolSourcePosition; status:'complete'|'incomplete'; reason:Gap|null;
     stateRootId:string|null; lastGlobalSequence:string|null; coverageStart:number|null;
     nativeGenesis?:ProtocolNativeGenesisCoverage;
+    nativeActionInterfaceVersion?:1;
     bindings:Array<{transactionId:string;actionOrdinal:number;inputActionOrdinal:number;receiver:string;account:string;
         name:string;globalSequence:string;receiptAbiSequence:string;rawSha256:string;stateId:string|null}>;
 }
@@ -31,6 +32,8 @@ export interface ProtocolAbiCoordinatorOptions {
     observations:ProtocolAbiObservationStore; store:ProtocolAbiFrontierStore;
     maxPendingBlocks?:number; recoveryWindowBlocks?:number;
     verifyNativeGenesis?:ProtocolNativeGenesisVerifier;
+    /** Native-aware epochs keep this requirement in immutable canonical commits, including failed extraction. */
+    nativeActionInterfaceVersion?:1;
 }
 export class ProtocolAbiCoordinatorStaleError extends Error {
     constructor(message='Protocol ABI source was superseded'){super(message);this.name='ProtocolAbiCoordinatorStaleError';}
@@ -64,6 +67,8 @@ export class ProtocolAbiCoordinator {
 
     constructor(private readonly options:ProtocolAbiCoordinatorOptions) {
         if(!hex64.test(options.chainId)||!text(options.ownerId))throw new Error('Invalid ABI coordinator identity');
+        if(options.nativeActionInterfaceVersion!==undefined&&options.nativeActionInterfaceVersion!==1)
+            throw new Error('Unsupported native action interface marker');
         protocolSourceContextId({schemaVersion:1,chainId:options.chainId,protocol:options.profile,schemaJson:'{}'});
         this.profile=copy(options.profile);
         this.profile.components=[...this.profile.components].sort((a,b)=>(a.runtime+':'+a.id)<(b.runtime+':'+b.id)?-1:1);
@@ -235,6 +240,7 @@ export class ProtocolAbiCoordinator {
             ||(value.source.previousBlockId!==null&&!hex64.test(value.source.previousBlockId))
             ||(value.previousCommitId!==null&&!id('h45abicmt1',value.previousCommitId))
             ||!['complete','incomplete'].includes(value.status)||!Array.isArray(value.bindings)
+            ||(value.nativeActionInterfaceVersion!==undefined&&value.nativeActionInterfaceVersion!==1)
             ||(value.nativeGenesis!==undefined&&(!validNativeGenesisCoverage(value.nativeGenesis)||value.status!=='complete'
                 ||value.source.blockNum!==1||value.source.previousBlockId!==null||value.previousCommitId!==null
                 ||value.bindings.length!==0||value.lastGlobalSequence!==null||value.coverageStart!==1))
@@ -271,6 +277,7 @@ export class ProtocolAbiCoordinator {
                 previousCommitId:control.head?.commitId??null,selectionId:selectedId,observationId:link.observationId,observationDigest:link.observationDigest,
                 source:selected.source,status:complete?'complete':'incomplete',reason,stateRootId,
                 lastGlobalSequence:value.lastGlobalSequence,coverageStart:complete?(control.head?.coverageStart??selected.source.blockNum):null,bindings,
+                ...(this.options.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{}),
                 ...(value.status==='complete'&&value.nativeGenesis?{nativeGenesis:value.nativeGenesis}:{})};
             const prepared=await this.options.store.prepareCommit(commit);
             if(json(await this.readCommit(prepared.id))!==json(commit))throw new Error('Prepared canonical ABI commit readback mismatch');
