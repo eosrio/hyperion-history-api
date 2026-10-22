@@ -63,3 +63,10 @@ for (const managed of [false, true]) it(`snapshots original proof inputs before 
     };
     if (managed) {await scope.run(check); await scope.closeAndDrain();} else await check();
 });
+
+it('reserves one closing promise before synchronous abort listeners can reenter it', async () => {
+    const scope = new ProofConsumerScope('reentrant-abort-close'); let inner!: Promise<unknown>;
+    scope.signal.addEventListener('abort', () => {inner = scope.closeAndDrain();}, {once: true});
+    const outer = scope.closeAndDrain(); expect(inner).toBe(outer);
+    expect(await inner).toBe(await outer);
+});

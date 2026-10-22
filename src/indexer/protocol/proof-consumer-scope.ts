@@ -61,13 +61,15 @@ export class ProofConsumerScope {
     /** Call after the whole root, including original ACK attempt and finalizers. No deadline fabricates drain. */
     closeAndDrain(): Promise<ProofConsumerEnd> {
         if (this.ending) return this.ending;
+        let resolve!: (end: ProofConsumerEnd) => void, reject!: (error: unknown) => void;
+        this.ending = new Promise<ProofConsumerEnd>((yes, no) => {resolve = yes; reject = no;});
         this.fence();
-        this.ending = (async () => {
+        void (async () => {
             if (this.root) await Promise.allSettled([this.root]);
             while (this.operations.size) await Promise.allSettled([...this.operations]);
             const end = Object.freeze({}) as ProofConsumerEnd;
-            ends.set(end, this); this.end = end; return end;
-        })();
+            ends.set(end, this); this.end = end; resolve(end);
+        })().catch(reject);
         return this.ending;
     }
     snapshot() {return Object.freeze({id: this.id, state: this.end ? 'drained' : this.fenced ? 'fenced' : 'open',
