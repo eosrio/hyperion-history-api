@@ -84,6 +84,156 @@ async function fixture(){
 }
 
 describe('source-bound canonical ABI consumers',()=>{
+    it('certifies original occurrence without consulting an unknown input ABI or a later final state',async()=>{
+        const f=await fixture(),observed=facts();observed.actionInputs=[action(1,'9007199254740993')];
+        const first=await f.append(1,observed),known=facts();
+        known.finalStates=[{account:'alpha',present:true,abiHex:'aa',deltaOrdinal:0}];await f.append(2,known);
+        const reader=f.reader(),view=await reader.open(f.source(1),first.selectionId),before=f.memory.calls.length;
+        const {rawHex,...input}=observed.actionInputs[0];
+        expect(await reader.occurrence(view,observed.actionInputs[0])).toEqual({binding:{...input,
+            rawSha256:sha256(Buffer.from(rawHex,'hex')),stateId:null}});
+        const consumption=f.memory.calls.slice(before);
+        expect(consumption.filter((call:any)=>call.method==='get').every((call:any)=>call.request.index===f.store.controlIndex)).toBe(true);
+        expect(consumption.some((call:any)=>['createIndex','create','index'].includes(call.method))).toBe(false);
+        expect((await unavailable(reader.action(view,observed.actionInputs[0]))).code).toBe('abi_state_unavailable');
+    });
+
+    it('keeps occurrence authority separate from absent, empty, malformed and unavailable ABI state',async()=>{
+        for(const kind of ['absent','empty','malformed-abi','missing-record','corrupt-record'] as const){
+            const f=await fixture();await seed(f,kind==='empty'?'':kind==='malformed-abi'?'ff':'aa',kind!=='absent');
+            const observed=facts();observed.actionInputs=[action(1,'1')];await f.append(2,observed);
+            const reader=f.reader(),view=await reader.open(f.source(2)),stateId=view.bindings[0].stateId!;
+            expect(stateId).not.toBeNull();
+            if(kind==='missing-record')f.memory.documents.delete(f.memory.key(f.store.recordsIndex,stateId));
+            if(kind==='corrupt-record'){
+                const manifest=f.memory.documents.get(f.memory.key(f.store.recordsIndex,stateId))!;
+                f.memory.documents.get(f.memory.key(f.store.recordsIndex,manifest.document.chunk_ids[0]))!.document.payload='AA==';
+            }
+            const before=f.memory.calls.length,result=await reader.occurrence(view,observed.actionInputs[0]);
+            expect(result).toEqual({binding:view.bindings[0]});expect(Object.keys(result)).toEqual(['binding']);
+            expect(f.memory.calls.slice(before).filter((call:any)=>call.method==='get')
+                .every((call:any)=>call.request.index===f.store.controlIndex)).toBe(true);
+            // The reader has always treated well-formed ABI hex as opaque; ff is not a decodable ABI.
+            if(kind==='malformed-abi')expect((await reader.action(view,observed.actionInputs[0])).state.abiHex).toBe('ff');
+            else expect((await unavailable(reader.action(view,observed.actionInputs[0]))).code)
+                .toBe(kind==='corrupt-record'?'invalid_proof':kind==='missing-record'?'retained_data_unavailable':'abi_state_unavailable');
+        }
+    });
+
+    it('rejects malformed original inputs before occurrence or ABI-state authority can be used',async()=>{
+        const f=await fixture(),observed=facts();observed.actionInputs=[action(1,'1')];await f.append(1,observed);
+        const reader=f.reader(),view=await reader.open(f.source(1)),original=observed.actionInputs[0];
+        const invalid:Record<string,unknown>[]=[{transactionId:'A'.repeat(64)},{actionOrdinal:0},{actionOrdinal:1.5},
+            {inputActionOrdinal:0},{receiver:''},{account:'\ud800'},{name:'\ud800'},
+            {rawHex:'0'},{rawHex:'gg'},{globalSequence:'00'},{globalSequence:1},{globalSequence:'0'},
+            {globalSequence:'18446744073709551616'},{receiptAbiSequence:'4294967296'},{receiptAbiSequence:'-1'}];
+        const before=f.memory.calls.length;
+        for(const change of invalid){
+            const input={...original,...change} as ProtocolAbiActionInput;
+            expect((await unavailable(reader.occurrence(view,input))).code).toBe('invalid_proof');
+            expect((await unavailable(reader.action(view,input))).code).toBe('invalid_proof');
+        }
+        expect((await unavailable(reader.occurrence(view,null as unknown as ProtocolAbiActionInput))).code).toBe('invalid_proof');
+        expect(f.memory.calls.length).toBe(before);
+    });
+
+    it('preserves action failure precedence when an unknown ABI and revoked authority coexist',async()=>{
+        const f=await fixture(),observed=facts();observed.actionInputs=[action(1,'1')];await f.append(1,observed);
+        const reader=f.reader(),view=await reader.open(f.source(1));await f.coordinator.revokeSource(f.session);
+        const before=f.memory.calls.length;
+        expect((await unavailable(reader.action(view,observed.actionInputs[0]))).code).toBe('abi_state_unavailable');
+        expect((await unavailable(reader.action(view,{...observed.actionInputs[0],rawHex:'08'}))).code).toBe('input_not_bound');
+        expect((await unavailable(reader.action({...view},observed.actionInputs[0]))).code).toBe('invalid_proof');
+        const abort=new AbortController();abort.abort();
+        expect((await unavailable(reader.action({...view},observed.actionInputs[0],{signal:abort.signal}))).code).toBe('proof_cancelled');
+        expect(f.memory.calls.length).toBe(before);
+        expect((await unavailable(reader.occurrence(view,observed.actionInputs[0]))).code).toBe('authority_unavailable');
+    });
+
+    it('requires the issuing reader and the exact source membership rather than copied or foreign views',async()=>{
+        const f=await fixture(),first=facts(),second=facts();first.actionInputs=[action(1,'1')];second.actionInputs=[action(1,'2')];
+        await f.append(1,first);await f.append(2,second);
+        const reader=f.reader(),view=await reader.open(f.source(1)),later=await reader.open(f.source(2));
+        expect((await unavailable(f.reader().occurrence(view,first.actionInputs[0]))).code).toBe('invalid_proof');
+        expect((await unavailable(reader.occurrence({...view},first.actionInputs[0]))).code).toBe('invalid_proof');
+        expect((await unavailable(reader.occurrence({...view,source:later.source},first.actionInputs[0]))).code).toBe('invalid_proof');
+        expect((await unavailable(reader.occurrence(later,first.actionInputs[0]))).code).toBe('input_not_bound');
+        expect((await reader.occurrence(view,first.actionInputs[0])).binding.globalSequence).toBe('1');
+    });
+
+    it('snapshots caller input before awaiting authority or state and returns only frozen certified fields',async()=>{
+        for(const method of ['occurrence','action'] as const){
+            const f=await fixture();await seed(f);const observed=facts();observed.actionInputs=[action(1,'9007199254740993')];await f.append(2,observed);
+            const reader=f.reader(),view=await reader.open(f.source(2)),input={...observed.actionInputs[0]},entered=gate(),release=gate();let held=false;
+            f.memory.faults.beforeRead=async(request:any)=>{
+                if(!held&&(method==='occurrence'?request.index===f.store.controlIndex:request.id===view.bindings[0].stateId)){
+                    held=true;entered.release();await release.promise;
+                }
+            };
+            const pending=reader[method](view,input);await entered.promise;
+            Object.assign(input,{transactionId:'f'.repeat(64),actionOrdinal:99,inputActionOrdinal:99,receiver:'other',account:'other',
+                name:'other',rawHex:'08',globalSequence:'99',receiptAbiSequence:'99'});release.release();
+            const result=await pending;delete f.memory.faults.beforeRead;
+            expect(result.binding).toEqual(view.bindings[0]);expect(Object.isFrozen(result)).toBe(true);expect(Object.isFrozen(result.binding)).toBe(true);
+            expect(()=>{(result.binding as any).globalSequence='99';}).toThrow();
+        }
+    });
+
+    it('refuses occurrence results when revocation or a replacement fork is admitted during consumption',async()=>{
+        for(const mode of ['revoke','fork'] as const){
+            const f=await fixture();await seed(f);const observed=facts();observed.actionInputs=[action(1,'1')];await f.append(2,observed);
+            const reader=f.reader(),view=await reader.open(f.source(2)),entered=gate(),release=gate();let held=false;
+            f.memory.faults.beforeRead=async(request:any)=>{
+                if(!held&&request.index===f.store.controlIndex){held=true;entered.release();await release.promise;}
+            };
+            const pending=reader.occurrence(view,observed.actionInputs[0]);await entered.promise;
+            if(mode==='revoke')expect(await f.coordinator.revokeSource(f.session)).toBe(true);
+            else await f.admit(await f.selected(2,facts(),20,1));
+            release.release();await unavailable(pending);delete f.memory.faults.beforeRead;
+        }
+    });
+
+    it('rechecks owner, generation, profile and head independently after the original input is bound',async()=>{
+        for(const change of ['owner','generation','profile','rewound-head','changed-head'] as const){
+            const f=await fixture();await seed(f);const observed=facts();observed.actionInputs=[action(1,'1')];await f.append(2,observed);
+            const reader=f.reader(),view=await reader.open(f.source(2)),control=(await f.store.readControl())!,entered=gate(),release=gate();let held=false;
+            f.memory.faults.beforeRead=async(request:any)=>{
+                if(!held&&request.index===f.store.controlIndex){held=true;entered.release();await release.promise;}
+            };
+            const pending=reader.occurrence(view,observed.actionInputs[0]);await entered.promise;
+            const next=structuredClone(control.value) as any;
+            if(change==='owner')next.ownerId='other-owner';
+            if(change==='generation')next.generation='other-generation';
+            if(change==='profile')next.profile.components[0].sha256='f'.repeat(64);
+            if(change==='rewound-head')next.head.blockNum=1;
+            if(change==='changed-head')next.head.blockId='f'.repeat(64);
+            await f.store.compareAndSet(control,next);release.release();
+            expect((await unavailable(pending)).code).toBe(change==='profile'?'invalid_proof':'authority_changed');
+            delete f.memory.faults.beforeRead;
+        }
+    });
+
+    it('propagates occurrence cancellation and storage failure without ABI reads, retries or consumer writes',async()=>{
+        const f=await fixture(),observed=facts();observed.actionInputs=[action(1,'1')];await f.append(1,observed);
+        const reader=f.reader(),view=await reader.open(f.source(1)),abort=new AbortController();abort.abort();
+        const before=f.memory.calls.length;
+        expect((await unavailable(reader.occurrence({...view},observed.actionInputs[0],{signal:abort.signal}))).code).toBe('proof_cancelled');
+        expect(f.memory.calls.length).toBe(before);
+        const entered=gate(),release=gate(),active=new AbortController();let held=false;
+        const signals:Array<AbortSignal|undefined>=[],get=f.memory.client.get;
+        f.memory.client.get=async(request:any,options?:{signal?:AbortSignal})=>{signals.push(options?.signal);return get(request);};
+        f.memory.faults.beforeRead=async(request:any)=>{
+            if(!held&&request.index===f.store.controlIndex){held=true;entered.release();await release.promise;}
+        };
+        const pending=reader.occurrence(view,observed.actionInputs[0],{signal:active.signal});await entered.promise;
+        const reads=f.memory.calls.length;active.abort();release.release();
+        expect((await unavailable(pending)).code).toBe('proof_cancelled');expect(f.memory.calls.length).toBe(reads);
+        expect(signals).toEqual([active.signal]);
+        const outage=new Error('Occurrence authority transport unavailable');f.memory.faults.beforeRead=()=>{throw outage;};
+        await expect(reader.occurrence(view,observed.actionInputs[0])).rejects.toBe(outage);delete f.memory.faults.beforeRead;
+        expect(f.memory.calls.slice(before).every((call:any)=>!['createIndex','create','index'].includes(call.method))).toBe(true);
+    });
+
     it('reads a settled certificate and final account state without consumer writes or control CAS',async()=>{
         const f=await fixture(),seed=facts();seed.finalStates=[{account:'alpha',present:true,abiHex:'aa',deltaOrdinal:0}];
         const first=await f.append(1,seed),reader=f.reader();
@@ -100,6 +250,8 @@ describe('source-bound canonical ABI consumers',()=>{
         const {inputActionOrdinal:_origin,...originUnknown}=observed.actionInputs[0];
         const before=await reader.action(view,originUnknown),notification=await reader.action(view,observed.actionInputs[2]);
         const later=await reader.action(view,observed.actionInputs[3]);
+        const {inputActionOrdinal:_notificationOrigin,...notificationUnknown}=observed.actionInputs[2];
+        expect((await reader.occurrence(view,notificationUnknown)).binding).toEqual(notification.binding);
         expect(before.binding.inputActionOrdinal).toBe(1);expect(before.binding.globalSequence).toBe('9007199254740993');
         expect(before.state.abiHex).toBe('aa');expect(notification.state.abiHex).toBe('aa');
         expect(before.binding.stateId).toBe(notification.binding.stateId);expect(later.state.abiHex).toBe('bb');
@@ -115,7 +267,12 @@ describe('source-bound canonical ABI consumers',()=>{
         const altered:Partial<ProtocolAbiActionInput>[]=[{transactionId:'f'.repeat(64)},{actionOrdinal:99},{inputActionOrdinal:2},
             {receiver:'elsewhere'},{account:'beta'},{name:'other'},{rawHex:'08000000'},
             {globalSequence:String(Number(original.globalSequence))},{receiptAbiSequence:'1'}];
-        for(const change of altered)await unavailable(reader.action(view,{...original,...change}));
+        for(const change of altered){
+            expect((await unavailable(reader.occurrence(view,{...original,...change}))).code).toBe('input_not_bound');
+            expect((await unavailable(reader.action(view,{...original,...change}))).code).toBe('input_not_bound');
+        }
+        const {inputActionOrdinal:_origin,...originUnknown}=original;
+        expect((await reader.occurrence(view,originUnknown)).binding.inputActionOrdinal).toBe(original.inputActionOrdinal);
         expect((await reader.action(view,original)).state.abiHex).toBe('aa');
         await unavailable(reader.open({...f.source(2),blockId:'f'.repeat(64)}));
         await unavailable(reader.open({...f.source(2),chainId:'f'.repeat(64)}));
@@ -128,6 +285,7 @@ describe('source-bound canonical ABI consumers',()=>{
         const f=await fixture();await seed(f);const observed=facts();
         observed.actionInputs=[action(1,'1','alpha',''),action(2,'2')];await f.append(2,observed);
         const reader=f.reader(),view=await reader.open(f.source(2));
+        expect((await reader.occurrence(view,observed.actionInputs[0])).binding.name).toBe('');
         expect((await reader.action(view,observed.actionInputs[0])).binding.name).toBe('');
         expect((await reader.action(view,observed.actionInputs[1])).state.abiHex).toBe('aa');
     });
@@ -168,6 +326,7 @@ describe('source-bound canonical ABI consumers',()=>{
         const third=facts();third.actionInputs=[action(1,'1')];third.finalStates=[{account:'beta',present:true,abiHex:'bb',deltaOrdinal:0}];await f.append(3,third);
         const reader=f.reader();await unavailable(reader.open(f.source(2)));
         const view=await reader.open(f.source(3));await unavailable(reader.action(view,third.actionInputs[0]));
+        expect((await reader.occurrence(view,third.actionInputs[0])).binding.stateId).toBeNull();
         await unavailable(reader.finalState(view,'alpha'));expect((await reader.finalState(view,'beta')).abiHex).toBe('bb');
         expect((await reader.finalState(await reader.open(f.source(1),first.selectionId),'alpha')).abiHex).toBe('aa');
     });

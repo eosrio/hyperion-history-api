@@ -27,6 +27,8 @@ export interface ProtocolActionSourceMetadata {
     readonly error:{readonly code:string;readonly message:string};
 }
 export type ProtocolActionMetadata=ProtocolActionProofMetadata|ProtocolActionSourceMetadata;
+/** Exact canonical input membership only; stateId does not grant ABI or native decoding authority. */
+export interface ProtocolAbiActionOccurrence {readonly binding:ProtocolAbiProofBinding}
 export interface ProtocolAbiResolvedAction {readonly binding:ProtocolAbiProofBinding;readonly state:ProtocolAbiAccountState}
 export interface ProtocolAbiProofReadOptions {readonly signal?:AbortSignal}
 export interface ProtocolAbiProofReaderOptions {
@@ -50,6 +52,7 @@ interface CanonicalCommit {
     nativeGenesis?:ProtocolNativeGenesisCoverage;
 }
 interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit}
+type OriginalActionInput=Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number};
 const hex64=/^[0-9a-f]{64}$/;
 const text=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=256&&value.isWellFormed();
 const actionName=(value:unknown):value is string=>typeof value==='string'&&value.length<=256&&value.isWellFormed();
@@ -240,8 +243,7 @@ export class ProtocolAbiProofReader {
         return freeze({chainId:issued.commit.source.chainId,block:{blockNum:1,blockId:issued.commit.source.blockId,
             previousBlockId:facts.previousBlockId},changes:[]});
     }
-    async action(view:ProtocolAbiProofView,input:Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number},
-                 {signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiResolvedAction> {
+    private actionBinding(view:ProtocolAbiProofView,input:OriginalActionInput,signal?:AbortSignal):ProtocolAbiProofBinding {
         this.assertActive(signal);
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
         requireProof(input&&hex64.test(input.transactionId)&&ordinal(input.actionOrdinal,1)&&[input.receiver,input.account].every(text)&&actionName(input.name)
@@ -254,8 +256,19 @@ export class ProtocolAbiProofReader {
             ||(input.inputActionOrdinal!==undefined&&binding.inputActionOrdinal!==input.inputActionOrdinal)
             ||binding.rawSha256!==hash(Buffer.from(input.rawHex,'hex')))
             unavailable('input_not_bound','Original action does not match its certified ABI input binding');
+        return binding;
+    }
+    /** Proves the original occurrence without reading, resolving or validating any account ABI state. */
+    async occurrence(view:ProtocolAbiProofView,input:OriginalActionInput,
+                     {signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiActionOccurrence> {
+        const binding=this.actionBinding(view,input,signal);
+        await this.revalidate(view,{signal});return freeze({binding});
+    }
+    async action(view:ProtocolAbiProofView,input:OriginalActionInput,
+                 {signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiResolvedAction> {
+        const binding=this.actionBinding(view,input,signal);
         if(!binding.stateId)unavailable('abi_state_unavailable','Action input ABI state is unknown');
-        const state=this.state(await this.retained(()=>this.options.store.readAccountState(binding.stateId!,signal),undefined,signal),view,input.account);
+        const state=this.state(await this.retained(()=>this.options.store.readAccountState(binding.stateId!,signal),undefined,signal),view,binding.account);
         await this.revalidate(view,{signal});return freeze({binding,state});
     }
     async finalState(view:ProtocolAbiProofView,account:string,{signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiAccountState> {
