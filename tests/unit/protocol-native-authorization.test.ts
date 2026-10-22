@@ -21,6 +21,65 @@ async function authorized(fixture: Awaited<ReturnType<typeof nativeAuthorization
 }
 const writes = (calls: any[]) => calls.filter(call => ['createIndex', 'create', 'index'].includes(call.method));
 
+describe('versioned native consumer locators and retained values', () => {
+    it('derives exact source and journal provenance from its opaque grant with no deployed ABI', async () => {
+        const fixture = await nativeAuthorizationFixture(), {reader, grant} = await authorized(fixture);
+        const retained = await fixture.nativeStore.readSelection(fixture.selected.selectionId);
+        const metadata = await reader.metadata(grant);
+        expect(metadata).toEqual({schemaVersion: 2, kind: 'native', source: fixture.selected.source,
+            selectionId: fixture.selected.selectionId, input: fixture.selected.inputs[0], native: {
+                nativeKind: 'opaque.host-native.v1', contextId: fixture.contextId,
+                linkId: retained.linkId, observationId: retained.link.observationId,
+                observationDigest: retained.link.observationDigest, captureRef: fixture.selected.record.captureRef,
+                inventorySha256: fixture.selected.record.inventory!.sha256, profile,
+            }});
+        const changed = clone(metadata); (changed.native as any).nativeKind = 'caller-selected';
+        expect((await reader.metadata(grant)).native.nativeKind).toBe('opaque.host-native.v1');
+        expect(fixture.calls.contract).toBe(0);
+        await unavailable(reader.metadata(clone(grant)), 'native_invalid_grant');
+        await unavailable(fixture.reader().metadata(grant), 'native_invalid_grant');
+    });
+
+    it('checks retained native values against original bytes and detaches caller and encoder references', async () => {
+        const fixture = await nativeAuthorizationFixture(), {reader, grant} = await authorized(fixture);
+        const original = {rawHex: '0102'};
+        const held = holdRead(fixture.client, call => call.index === fixture.frontier.controlIndex);
+        let encoderValue: any;
+        fixture.faults.onEncode = value => {encoderValue = value;};
+        const checking = reader.verifyValue(grant, original); await held.entered;
+        original.rawHex = '99'; held.release(); const checked = await checking; held.restore();
+        expect(checked).toEqual({rawHex: '0102'}); expect(checked).not.toBe(original);
+        encoderValue.rawHex = '88'; expect(checked).toEqual({rawHex: '0102'});
+        await unavailable(reader.verifyValue(grant, {rawHex: '0103'}), 'native_value_mismatch');
+        await unavailable(reader.verifyValue(clone(grant), {rawHex: '0102'}), 'native_invalid_grant');
+        expect(fixture.calls.contract).toBe(0);
+    });
+
+    it('revokes metadata, retained values and final consumer views when canonical ownership changes', async () => {
+        const fixture = await nativeAuthorizationFixture(), {reader, grant, view} = await authorized(fixture);
+        await reader.revalidate(view); await fixture.replaceOwner();
+        await unavailable(reader.metadata(grant));
+        await unavailable(reader.verifyValue(grant, {rawHex: '0102'}));
+        await unavailable(reader.revalidate(view));
+        await unavailable(reader.revalidate(clone(view)), 'native_invalid_view');
+    });
+
+    it('preserves exact cancellation through consumer metadata/value/view reads without cancelling siblings', async () => {
+        const fixture = await nativeAuthorizationFixture(), {reader, grant, view} = await authorized(fixture);
+        for (const operation of [
+            (signal: AbortSignal) => reader.metadata(grant, {signal}),
+            (signal: AbortSignal) => reader.verifyValue(grant, {rawHex: '0102'}, {signal}),
+            (signal: AbortSignal) => reader.revalidate(view, {signal}),
+        ]) {
+            const controller = new AbortController(), reason = {consumer: 'exact-abort'};
+            const held = holdRead(fixture.client, call => call.index === fixture.frontier.controlIndex);
+            const pending = operation(controller.signal); await held.entered;
+            controller.abort(reason); held.release(); await expect(pending).rejects.toBe(reason); held.restore();
+            expect(await reader.verifyValue(grant, {rawHex: '0102'})).toEqual({rawHex: '0102'});
+        }
+    });
+});
+
 describe('native authorization host-contract controls (synthetic protocol, actual coordinator/proof/journal)', () => {
     it('uses certified occurrence with unknown ABI, inherits notifications and keeps identical inline bytes independent', async () => {
         const fixture = await nativeAuthorizationFixture(), reader = fixture.reader(), before = fixture.memory.calls.length;

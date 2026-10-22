@@ -6,6 +6,7 @@ import {deriveProtocolActionInputs} from '../history/action-source-inventory.js'
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofSource,
     type ProtocolAbiProofView, type ProtocolAbiProofReadOptions} from './abi-proof.js';
 import {ProtocolNativeObservationStore, NativeObservationReadError} from './native-observation-store.js';
+import type {ProtocolNativeObservationReadback} from './native-observation-store.js';
 import {protocolNativeInputInventory, snapshotProtocolNativeDecisions} from './native-observation-facts.js';
 import {protocolImmutableJson, ImmutableProtocolBundleReadError} from './immutable-bundle-store.js';
 import {protocolSourceContextId, ProtocolSourceBindingReadError, type ProtocolSourceProfile} from './source-bindings.js';
@@ -15,6 +16,24 @@ declare const viewBrand: unique symbol;
 declare const grantBrand: unique symbol;
 export interface ProtocolNativeActionView {readonly [viewBrand]: true}
 export interface ProtocolNativeActionGrant {readonly [grantBrand]: true}
+/** A versioned locator, never executable selection or decoding authority on its own. */
+export interface ProtocolNativeActionProofMetadata {
+    readonly schemaVersion: 2;
+    readonly kind: 'native';
+    readonly source: ProtocolAbiProofSource;
+    readonly selectionId: string;
+    readonly input: ProtocolAbiActionInput;
+    readonly native: {
+        readonly nativeKind: string;
+        readonly contextId: string;
+        readonly linkId: string;
+        readonly observationId: string;
+        readonly observationDigest: string;
+        readonly captureRef: ProtocolNativeObservationReadback['record']['captureRef'];
+        readonly inventorySha256: string;
+        readonly profile: ProtocolSourceProfile;
+    };
+}
 export type ProtocolNativeActionAuthorization =
     | {readonly kind: 'contract'}
     | {readonly kind: 'incomplete'; readonly error: {readonly code: string; readonly message: string}}
@@ -35,6 +54,7 @@ interface IssuedView {
     readonly proof: ProtocolAbiProofView;
     readonly inputs: ReadonlyMap<string, ProtocolAbiActionInput>;
     readonly decisions: ReadonlyMap<string, ProtocolNativeActionDecision>;
+    readonly provenance: Omit<ProtocolNativeActionProofMetadata['native'], 'nativeKind'>;
 }
 interface IssuedGrant {readonly view: IssuedView; readonly input: ProtocolAbiActionInput; readonly nativeKind: string}
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -107,7 +127,7 @@ export class ProtocolNativeActionReader {
             unavailable('native_read_unavailable', 'Native authority or retained evidence cannot be read');
         }
     }
-    private async revalidate(view: IssuedView, options: ProtocolAbiProofReadOptions): Promise<void> {
+    private async revalidateIssued(view: IssuedView, options: ProtocolAbiProofReadOptions): Promise<void> {
         await this.read(() => this.proofs.revalidate(view.proof, options), options.signal);
     }
 
@@ -125,8 +145,13 @@ export class ProtocolNativeActionReader {
             const proof = await this.read(() => this.proofs.open(source, selectionId, {signal}), signal);
             const retained = await this.read(() => this.store.readSelection(selectionId, signal), signal);
             const {record, context, selection, abiObservation} = retained;
-            const current = {proof, inputs: new Map(), decisions: new Map()} satisfies IssuedView;
-            await this.revalidate(current, {signal});
+            if (record.inventory === null) unavailable('native_source_incomplete', 'Native source inventory is incomplete');
+            const current = {proof, inputs: new Map(), decisions: new Map(), provenance: snapshot({
+                contextId: record.contextId, linkId: retained.linkId, observationId: retained.link.observationId,
+                observationDigest: retained.link.observationDigest, captureRef: record.captureRef,
+                inventorySha256: record.inventory.sha256, profile: this.profile,
+            })} satisfies IssuedView;
+            await this.revalidateIssued(current, {signal});
             requireNative(json(record.source) === json(proof.source) && json(selection.source) === json(proof.source)
                 && proof.selectionId === selectionId && record.contextId === selection.contextId
                 && record.contextId === protocolSourceContextId(context)
@@ -175,7 +200,7 @@ export class ProtocolNativeActionReader {
                 current.inputs.set(key(input), Object.freeze({...input}));
             }
             for (const decision of decisions) current.decisions.set(key(decision.origin), decision);
-            await this.revalidate(current, {signal});
+            await this.revalidateIssued(current, {signal});
             const handle = Object.freeze({}) as ProtocolNativeActionView;
             this.views.set(handle, current); return handle;
         } finally {this.activeOpens--; signal?.throwIfAborted();}
@@ -203,7 +228,7 @@ export class ProtocolNativeActionReader {
         const decision = issued.decisions.get(key(origin));
         requireNative(decision && decision.origin.rawSha256 === occurrence.binding.rawSha256,
             'Native first-receiver decision does not match the certified raw bytes');
-        await this.revalidate(issued, {signal});
+        await this.revalidateIssued(issued, {signal});
         if (decision.kind === 'contract') return Object.freeze({kind: 'contract'});
         if (decision.kind === 'incomplete') return Object.freeze({kind: 'incomplete', error: Object.freeze({...decision.error})});
         const grant = Object.freeze({}) as ProtocolNativeActionGrant;
@@ -215,7 +240,7 @@ export class ProtocolNativeActionReader {
         signal?.throwIfAborted();
         const issued = this.grants.get(grant);
         if (!issued) unavailable('native_invalid_grant', 'Native value grant was not issued by this reader');
-        await this.revalidate(issued.view, {signal});
+        await this.revalidateIssued(issued.view, {signal});
         const original = Buffer.from(issued.input.rawHex, 'hex'), raw = Buffer.from(original);
         let value: unknown;
         try {
@@ -239,9 +264,64 @@ export class ProtocolNativeActionReader {
             if (error instanceof ProtocolNativeActionUnavailableError) throw error;
             unavailable('native_value_unavailable', 'Pinned native provider cannot decode and reproduce the authorized value');
         }
-        await this.revalidate(issued.view, {signal});
+        await this.revalidateIssued(issued.view, {signal});
         try {requireSynchronousValue(value);}
         catch {signal?.throwIfAborted(); unavailable('native_value_unavailable', 'Native value decoding must remain synchronous');}
+        return value;
+    }
+
+    /** Metadata is derived only from an issued grant; stored labels cannot choose a native kind. */
+    async metadata(grant: ProtocolNativeActionGrant, {signal}: ProtocolAbiProofReadOptions = {}): Promise<ProtocolNativeActionProofMetadata> {
+        signal?.throwIfAborted();
+        const issued = this.grants.get(grant);
+        if (!issued) unavailable('native_invalid_grant', 'Native metadata grant was not issued by this reader');
+        const metadata: ProtocolNativeActionProofMetadata = snapshot({schemaVersion: 2, kind: 'native',
+            source: issued.view.proof.source, selectionId: issued.view.proof.selectionId, input: issued.input,
+            native: {...issued.view.provenance, nativeKind: issued.nativeKind}});
+        await this.revalidateIssued(issued.view, {signal});
+        return Object.freeze(metadata);
+    }
+
+    /** Revalidate only this reader's opaque view, for final worker/response/cache/send fences. */
+    async revalidate(view: ProtocolNativeActionView, {signal}: ProtocolAbiProofReadOptions = {}): Promise<void> {
+        signal?.throwIfAborted();
+        const issued = this.views.get(view);
+        if (!issued) unavailable('native_invalid_view', 'Native source view was not issued by this reader');
+        await this.revalidateIssued(issued, {signal});
+    }
+
+    /** Check a retained value using the authorized kind and return an independently owned snapshot. */
+    async verifyValue(grant: ProtocolNativeActionGrant, candidate: unknown,
+                      {signal}: ProtocolAbiProofReadOptions = {}): Promise<unknown> {
+        signal?.throwIfAborted();
+        const issued = this.grants.get(grant);
+        if (!issued) unavailable('native_invalid_grant', 'Native value grant was not issued by this reader');
+        let value: unknown, encodingValue: unknown;
+        try {
+            requireSynchronousValue(candidate);
+            const bytes = serialize(candidate);
+            if (bytes.byteLength > 64 * 1024 * 1024) unavailable('native_value_unavailable', 'Native value exceeds its detached snapshot budget');
+            value = deserialize(Uint8Array.from(bytes));
+            encodingValue = deserialize(Uint8Array.from(bytes));
+        } catch (error) {
+            signal?.throwIfAborted();
+            if (error instanceof ProtocolNativeActionUnavailableError) throw error;
+            unavailable('native_value_unavailable', 'Retained native value cannot be detached');
+        }
+        await this.revalidateIssued(issued.view, {signal});
+        try {
+            const encoded = this.native.encodeValue(issued.nativeKind, encodingValue);
+            requireSynchronousValue(encodingValue);
+            if (!(encoded instanceof Uint8Array) || !Buffer.from(encoded).equals(Buffer.from(issued.input.rawHex, 'hex'))) {
+                unavailable('native_value_mismatch', 'Retained native value does not reproduce its authorized original bytes');
+            }
+        } catch (error) {
+            signal?.throwIfAborted();
+            if (error instanceof ProtocolNativeActionUnavailableError) throw error;
+            unavailable('native_value_unavailable', 'Pinned native provider cannot reproduce the retained value');
+        }
+        await this.revalidateIssued(issued.view, {signal});
+        requireSynchronousValue(value);
         return value;
     }
 }

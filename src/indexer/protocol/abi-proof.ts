@@ -9,6 +9,7 @@ import {isProtocolHex} from './hex.js';
 import type {ProtocolAbiCoordinatorControl} from './abi-coordinator.js';
 import {validNativeGenesisCoverage, type ProtocolNativeGenesisCoverage} from './native-genesis.js';
 import type {ProjectionFrame} from '../projection/runtime.js';
+import type {ProtocolNativeActionProofMetadata} from './native-authorization.js';
 
 export interface ProtocolAbiProofSource {readonly chainId:string;readonly blockNum:number;readonly blockId:string}
 export type ProtocolAbiProofBinding=Omit<ProtocolAbiActionInput,'rawHex'> & {readonly rawSha256:string;readonly stateId:string|null};
@@ -26,7 +27,7 @@ export interface ProtocolActionSourceMetadata {
     readonly input:Omit<ProtocolAbiActionInput,'inputActionOrdinal'>;readonly status:'incomplete';
     readonly error:{readonly code:string;readonly message:string};
 }
-export type ProtocolActionMetadata=ProtocolActionProofMetadata|ProtocolActionSourceMetadata;
+export type ProtocolActionMetadata=ProtocolActionProofMetadata|ProtocolActionSourceMetadata|ProtocolNativeActionProofMetadata;
 /** Exact canonical input membership only; stateId does not grant ABI or native decoding authority. */
 export interface ProtocolAbiActionOccurrence {readonly binding:ProtocolAbiProofBinding}
 export interface ProtocolAbiResolvedAction {readonly binding:ProtocolAbiProofBinding;readonly state:ProtocolAbiAccountState}
