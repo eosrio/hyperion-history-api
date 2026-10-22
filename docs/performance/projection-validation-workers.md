@@ -33,10 +33,23 @@ phases. Cross-phase work remains identifiable. A failed seal, incomplete measure
 missing processes or exhausted measurement budgets fail measurement acceptance. Application results and
 errors still follow their original path, and fixture cleanup runs after a measurement failure.
 
+The first API 503 establishes only the API's unavailable response. The driver separately waits up to ten
+seconds for the owned projection process's start receipt. A valid first prefix request then waits up to five
+seconds for its actual adapter attachment before changing phase or acknowledging. Block 1 stays held until
+both process acknowledgments arrive. Delayed startup is accepted within these bounds; a missing attachment
+fails the measurement without releasing the source.
+
 The preload decorates real instances only in the owned fixture. Production source and emitted modules are
 unchanged. It preserves receivers, argument objects, results, thrown errors and original promises. Added
 settlement handlers and async context tracking have overhead and affect rejection bookkeeping; this is
 measurement instrumentation, not a claim of universal JavaScript transparency.
+
+Session restoration uses weak references and a hard ceiling of 50,000 slots. Original method descriptors
+live in a WeakMap keyed by the session; the observer does not keep completed sessions alive. Suppressed
+session-creation calls install no new hooks. The `sessionHooks` receipt reports the slot ceiling, allocated
+weak-reference slots and limit failures; slot count is not a count of live sessions. Exceeding that budget
+fails measurement acceptance. Native GC controls cover both suppressed calls and hooked sessions whose
+original methods refer back to themselves; those service-free checks do not establish worker leak freedom.
 
 | Observation | Interpretation |
 | --- | --- |

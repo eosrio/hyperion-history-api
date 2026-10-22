@@ -10,7 +10,7 @@ import {projectionMeasurementPhases} from './projection-validation-phase.mjs';
 const OPERATIONS = ['initialize', 'open', 'recovery', 'retainedCheckpoints', 'markIncomplete', 'apply', 'rollback', 'query'];
 const nativeThen = Promise.prototype.then;
 export const projectionObserverLimits = Object.freeze({maxSpans: 50000, maxCounters: 512, maxErrors: 32,
-    maxAttachments: 4, maxReportBytes: 24 * 1024 * 1024, sealTimeoutMS: 5000});
+    maxAttachments: 4, maxSessionHooks: 50000, maxReportBytes: 24 * 1024 * 1024, sealTimeoutMS: 5000, readinessTimeoutMS: 5000});
 
 function method(object, name) {
     for (let selected = object, depth = 0; selected && depth < 12; selected = Object.getPrototypeOf(selected), depth++) {
@@ -43,8 +43,11 @@ export function createProjectionValidationObserver(options) {
     const spans = [], active = new Map(), counters = new Map(), attachments = [], attached = new WeakMap();
     const errors = [], errorCodes = new Set(), phases = [], requests = new Map(), restores = [];
     const clients = new WeakSet(), collections = new WeakSet(), sessions = new WeakSet(), attempted = new WeakSet();
+    // Original session methods can close over their session. Keep them only in an ephemeron value,
+    // never in the strong restoration closures used for the long-lived adapter and client.
+    const sessionRestores = new WeakMap(), sessionReferences = [];
     let sequence = 0, currentPhase = 'startup', sealing = false, sealed = false, sealTimedOut = false;
-    let droppedSpans = 0, suppressedRootSpans = 0;
+    let droppedSpans = 0, suppressedRootSpans = 0, sessionHookLimitExceeded = 0, pendingPrefix = null, wakeAttachment;
     const fail = (code, message) => {
         if (!errorCodes.has(code)) {errorCodes.add(code); if (errors.length < limits.maxErrors) errors.push({code, message});}
     };
@@ -54,7 +57,7 @@ export function createProjectionValidationObserver(options) {
         Object.defineProperty(object, name, before ? {...before, value} : {value, configurable: true, writable: true});
         restores.push(() => before ? Object.defineProperty(object, name, before) : Reflect.deleteProperty(object, name));
     };
-    function observe(kind, name, original, receiver, args, attachmentId) {
+    function observe(kind, name, original, receiver, args, attachmentId, after) {
         const preceding = context.getStore();
         if (preceding?.suppressed) return Reflect.apply(original, receiver, args);
         const parent = preceding && (active.has(preceding.id) || active.has(preceding.rootId)) ? preceding : undefined;
@@ -105,17 +108,44 @@ export function createProjectionValidationObserver(options) {
             // Observe settlement, returning the exact original Promise. Neither handler throws or creates an unhandled rejection.
             nativeThen.call(result, value => {finish('fulfilled', value);}, () => {finish('rejected');});
         } else finish('returned', result);
+        // Suppressed calls return above and must not install new session hooks.
+        if (after) safe(() => after(result));
         return result;
     }
     const wrap = (object, name, kind, attachmentId, after) => {
         const original = method(object, name);
         if (!original) throw new Error('Expected ordinary qualification method: ' + name);
         patch(object, name, function (...args) {
-            const result = observe(kind, name, original, this, args, attachmentId);
-            if (after) safe(() => after(result));
-            return result;
+            return observe(kind, name, original, this, args, attachmentId, after);
         });
     };
+    function restoreSession(session, rows) {
+        for (const {name, before} of rows.toReversed()) {
+            if (before) Object.defineProperty(session, name, before);
+            else if (!Reflect.deleteProperty(session, name)) throw new Error('Session method restoration failed');
+        }
+    }
+    function instrumentSession(session, attachmentId) {
+        if (!session || typeof session !== 'object' || isPromise(session) || sessions.has(session)) return;
+        if (sessionReferences.length >= limits.maxSessionHooks) {
+            sessionHookLimitExceeded++; fail('session-hook-budget', 'Session hook restoration budget exceeded'); return;
+        }
+        const rows = [];
+        try {
+            for (const name of ['startTransaction', 'commitTransaction', 'abortTransaction']) {
+                const original = method(session, name), before = Object.getOwnPropertyDescriptor(session, name);
+                if (!original) throw new Error('Expected ordinary session method: ' + name);
+                const kind = name === 'startTransaction' ? 'transaction-start' : name === 'commitTransaction' ? 'commit' : 'abort';
+                Object.defineProperty(session, name, {...(before ?? {configurable: true, writable: true}),
+                    value: function (...args) {return observe(kind, name, original, this, args, attachmentId);}});
+                rows.push({name, before});
+            }
+            sessionRestores.set(session, rows); sessionReferences.push(new WeakRef(session)); sessions.add(session);
+        } catch {
+            try {restoreSession(session, rows);} catch {fail('restore-failed', 'A failed session hook could not be fully restored');}
+            fail('session-hook-failed', 'The actual session could not be completely instrumented');
+        }
+    }
     function attachAdapter(adapter, mode) {
         if (attached.has(adapter)) return true;
         if (!adapter || typeof adapter !== 'object' || attempted.has(adapter)) return false;
@@ -135,15 +165,11 @@ export function createProjectionValidationObserver(options) {
             if (!collections.has(metadata)) {collections.add(metadata); wrap(metadata, 'findOne', 'metadata-read', attachmentId);}
             if (!clients.has(client)) {
                 clients.add(client);
-                wrap(client, 'startSession', 'session-create', attachmentId, session => {
-                    if (!session || isPromise(session) || sessions.has(session)) return;
-                    sessions.add(session);
-                    for (const name of ['startTransaction', 'commitTransaction', 'abortTransaction'])
-                        wrap(session, name, name === 'startTransaction' ? 'transaction-start' : name === 'commitTransaction' ? 'commit' : 'abort', attachmentId);
-                });
+                wrap(client, 'startSession', 'session-create', attachmentId, session => instrumentSession(session, attachmentId));
             }
             attached.set(adapter, attachmentId);
             attachments.push({id: attachmentId, mode, atNs: at().toString(), initialPublicOperationUnobserved: mode === 'api-discovery'});
+            wakeAttachment?.();
             return true;
         } catch {
             while (restores.length > checkpoint) {try {restores.pop()();} catch {fail('restore-failed', 'A failed attachment could not be fully restored');}}
@@ -166,6 +192,7 @@ export function createProjectionValidationObserver(options) {
             counters: [...counters.values()].map(row => ({...row, totalDurationNs: row.totalDurationNs.toString(),
                 minimumDurationNs: row.minimumDurationNs?.toString() ?? null, maximumDurationNs: row.maximumDurationNs.toString()})),
             sealed, sealTimedOut, suppressedRootSpans,
+            sessionHooks: {maximum: limits.maxSessionHooks, weakReferenceSlots: sessionReferences.length, limitExceeded: sessionHookLimitExceeded},
             coverage: {logicalMethods: OPERATIONS, loadValidation: 'The storage instance validate callback only; includes its complete synchronous subtree.',
                 directMetadataReads: 'The actual metadata collection findOne, including initialization reads.',
                 undoCardinality: 'Successful ordinary validated result own-data undo.length only. Null means failed/unavailable. Load and validation visits are nested scopes; never add them.',
@@ -182,12 +209,25 @@ export function createProjectionValidationObserver(options) {
             ...(error ? {error} : {})});
         if (message?.event === 'qualifier_projection_phase' && cached && cached.phase === name) return cached.promise;
         const expected = projectionMeasurementPhases[phases.length];
-        if (message?.event !== 'qualifier_projection_phase' || !requestId || cached || name !== expected || !attachments.length) {
+        if (message?.event !== 'qualifier_projection_phase' || !requestId || cached || name !== expected || pendingPrefix
+            || !attachments.length && name !== 'prefix') {
             fail('phase-invalid', 'Phase order, request identity or real adapter attachment was invalid');
             return Promise.resolve(acknowledgment('Invalid phase or adapter attachment'));
         }
-        currentPhase = name; phases.push({requestId, phase: name, sequence: phases.length + 1, atNs: at().toString()});
         const promise = (async () => {
+            if (!attachments.length) {
+                pendingPrefix = requestId;
+                const ready = await new Promise(resolve => {
+                    const timer = setTimeout(() => {wakeAttachment = undefined; resolve(false);}, limits.readinessTimeoutMS);
+                    wakeAttachment = () => {clearTimeout(timer); wakeAttachment = undefined; resolve(true);};
+                });
+                if (!ready) {
+                    fail('readiness-timeout', 'The actual adapter did not attach within the bounded prefix readiness window');
+                    return acknowledgment('Adapter readiness timed out');
+                }
+                pendingPrefix = null;
+            }
+            currentPhase = name; phases.push({requestId, phase: name, sequence: phases.length + 1, atNs: at().toString()});
             if (name === 'shutdown') {
                 sealing = true;
                 const deadline = Date.now() + limits.sealTimeoutMS;
@@ -201,7 +241,14 @@ export function createProjectionValidationObserver(options) {
         requests.set(requestId, {phase: name, promise}); return promise;
     }
     return {attachAdapter, observeLoad, handlePhase, report, fail,
-        restore() {for (const restore of restores.reverse()) restore(); restores.length = 0;}};
+        restore() {
+            for (const reference of sessionReferences) {
+                const session = reference.deref(), rows = session && sessionRestores.get(session);
+                if (rows) {restoreSession(session, rows); sessionRestores.delete(session);}
+            }
+            sessionReferences.length = 0;
+            for (const restore of restores.reverse()) restore(); restores.length = 0;
+        }};
 }
 
 /** Relay only ACKs actually emitted by the owned child for a phase sent by this parent. */

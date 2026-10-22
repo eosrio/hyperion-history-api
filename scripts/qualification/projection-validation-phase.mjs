@@ -26,6 +26,10 @@ export function assertProjectionMeasurementReport(value, identity, phaseReceipts
     assert.equal(value.sealed, true); assert.equal(value.sealTimedOut, false);
     assert.deepEqual(value.errors, []); assert.equal(value.droppedSpans, 0); assert.deepEqual(value.inFlight, []);
     assert.ok(Number.isSafeInteger(value.suppressedRootSpans) && value.suppressedRootSpans >= 0);
+    assert.ok(Number.isSafeInteger(value.sessionHooks?.maximum) && value.sessionHooks.maximum >= 1 && value.sessionHooks.maximum <= 50000);
+    assert.ok(Number.isSafeInteger(value.sessionHooks.weakReferenceSlots) && value.sessionHooks.weakReferenceSlots >= 0
+        && value.sessionHooks.weakReferenceSlots <= value.sessionHooks.maximum);
+    assert.equal(value.sessionHooks.limitExceeded, 0);
     assert.ok(Array.isArray(value.attachments) && value.attachments.length === 1);
     assert.equal(value.attachments[0].initialPublicOperationUnobserved, identity.role === 'api');
     assert.ok(Array.isArray(value.modules) && value.modules.some(module =>
@@ -62,7 +66,7 @@ export function assertProjectionMeasurementReport(value, identity, phaseReceipts
     assert.ok(Array.isArray(value.counters) && value.counters.length > 0 && value.counters.length <= 512);
     return {pid: value.pid, parentPid: value.parentPid, role: value.role, node: value.node,
         spans: value.spans.length, counters: value.counters, phases: value.phases, attachments: value.attachments,
-        suppressedRootSpans: value.suppressedRootSpans, sealed: true, coverage: value.coverage};
+        suppressedRootSpans: value.suppressedRootSpans, sessionHooks: value.sessionHooks, sealed: true, coverage: value.coverage};
 }
 
 /** Keep this barrier separate from measured operation spans. False send results mean backpressure. */

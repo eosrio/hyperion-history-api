@@ -143,6 +143,59 @@ async function codeReceipt(root,path) {
     return {file,path:relative(root,file).replaceAll('\\','/'),url:pathToFileURL(file).href,bytes:bytes.length,sha256:hash(bytes)};
 }
 
+export const bsonOptions=Object.freeze({
+    serialize:Object.freeze({checkKeys:false,serializeFunctions:false,ignoreUndefined:true}),
+    calculateObjectSize:Object.freeze({serializeFunctions:false,ignoreUndefined:true}),
+    deserialize:Object.freeze({promoteValues:true,promoteLongs:true,promoteBuffers:false,useBigInt64:false,
+        bsonRegExp:false,allowObjectSmallerThanBufferSize:false,validation:Object.freeze({utf8:true})}),
+});
+
+/** Match the backend's `import { BSON } from 'mongodb'`, including a driver-nested BSON. */
+export async function resolveBackendBson(root,backendFile) {
+    const backendRequest=nodeModule.createRequire(pathToFileURL(backendFile));
+    const mongodbFile=await realpath(backendRequest.resolve('mongodb'));
+    const driverRequest=nodeModule.createRequire(pathToFileURL(mongodbFile));
+    const bsonFile=await realpath(driverRequest.resolve('bson'));
+    const BSON=backendRequest('mongodb').BSON;
+    assert.equal(BSON,driverRequest('bson').BSON,'MongoDB BSON export differs from driver-resolved BSON');
+    for(const name of ['serialize','deserialize','calculateObjectSize'])assert.equal(typeof BSON?.[name],'function','Required BSON API unavailable: '+name);
+    async function dependency(name,anchor,file) {
+        const packageFile=nodeModule.findPackageJSON(name,pathToFileURL(anchor));
+        assert.ok(packageFile,'Actual dependency package was not resolved');
+        const entry=await codeReceipt(root,file),pkgReceipt=await codeReceipt(root,packageFile);
+        const packageBytes=await bounded(pkgReceipt.file,64*1024);
+        assert.equal(hash(packageBytes),pkgReceipt.sha256,'Dependency package changed during receipt construction');
+        const pkg=JSON.parse(packageBytes);
+        assert.equal(pkg.name,name);assert.ok(typeof pkg.version==='string'&&pkg.version.length<=128);
+        const part=relative(dirname(pkgReceipt.file),entry.file);
+        assert.ok(part&&!part.startsWith('..')&&!isAbsolute(part),'Dependency entry escaped its package');
+        return {entry,package:{...pkgReceipt,name:pkg.name,version:pkg.version}};
+    }
+    const mongodb=await dependency('mongodb',backendFile,mongodbFile),bson=await dependency('bson',mongodbFile,bsonFile);
+    return {BSON,files:[mongodb.entry,mongodb.package,bson.entry,bson.package],
+        receipt:{available:true,backendAnchor:relative(root,backendFile).replaceAll('\\','/'),
+            resolution:'backend require(mongodb) -> MongoDB require(bson); mongodb.BSON export identity verified',
+            mongodb,bson,options:bsonOptions,phase:'setup before either count or timing capture',
+            scope:'Serialized validator input documents; excludes database commands, wire framing, compression, indexes and before images. Unspecified library options retain the pinned installed defaults.'}};
+}
+
+/** Static input bookkeeping only; callers run this before either measurement mode. */
+export function bsonInputReceipt(input,BSON,backendDefaultSize) {
+    const before=json(input),calculatedBytes=BSON.calculateObjectSize(input,bsonOptions.calculateObjectSize);
+    assert.ok(Number.isSafeInteger(calculatedBytes)&&calculatedBytes>=5&&calculatedBytes<=limits.metadataBytes,'BSON input size outside bound');
+    const bytes=BSON.serialize(input,bsonOptions.serialize);
+    assert.ok(Buffer.isBuffer(bytes),'BSON serializer did not return native bytes');
+    assert.equal(bytes.length,calculatedBytes,'BSON serialization differs from calculated size');
+    assert.equal(bytes.readInt32LE(0),bytes.length,'BSON length prefix differs');assert.equal(bytes.at(-1),0);
+    const defaultCalculatedBytes=backendDefaultSize(input);
+    assert.equal(defaultCalculatedBytes,bytes.length,'Explicit BSON options differ from backend default size for this input');
+    const decoded=BSON.deserialize(bytes,bsonOptions.deserialize);assert.deepEqual(decoded,input,'BSON round-trip changed input');
+    assert.deepEqual(BSON.serialize(decoded,bsonOptions.serialize),bytes,'BSON round-trip changed serialized bytes');
+    assert.deepEqual(json(input),before,'BSON bookkeeping mutated input');
+    return {available:true,bytes:bytes.length,sha256:hash(bytes),calculatedBytes,defaultCalculatedBytes,
+        roundTripInputEqual:true,roundTripBytesEqual:true};
+}
+
 export async function loadKernel(root=repository) {
     root=await realpath(root);const fixtureDirectory=join(root,'tests/fixtures/projection-validation');
     const originBytes=await bounded(join(fixtureDirectory,'origin.json'),64*1024),origin=JSON.parse(originBytes);
@@ -167,21 +220,23 @@ export async function loadKernel(root=repository) {
         const bytes=await bounded(join(root,name),limits.codeBytes);files.push({path:name,bytes:bytes.length,sha256:hash(bytes)});
     }
     let gitHead=null;try{gitHead=execFileSync('git',['-C',root,'rev-parse','HEAD'],{timeout:5000,maxBuffer:4096,encoding:'utf8',windowsHide:true}).trim();}catch{}
-    const dependencies=[];const request=nodeModule.createRequire(pathToFileURL(backendFile));
-    for(const name of ['mongodb','bson'])dependencies.push({name,...await codeReceipt(root,request.resolve(name))});
-    return {root,backend,sdk,fixtures,code,sdkResolution,fixtureFiles:[{file:join(fixtureDirectory,'origin.json'),sha256:hash(originBytes)},
+    const bson=await resolveBackendBson(root,backendFile);
+    const dependencies=[{name:'mongodb',...bson.receipt.mongodb.entry},{name:'bson',...bson.receipt.bson.entry}];
+    const fixtureReceipts=fixtures.map(row=>({descriptors:row.descriptors,checkpoint:row.state.checkpoint,coverageFloor:row.state.coverageFloor,floorReceipt:row.state.floorReceipt,
+        replayReceipts:row.state.receipts.length,policy:row.state.policy,stateSha256:hash(json(row.state)),metadataSha256:hash(json(row.metadata)),
+        stateJsonBytes:json(row.state).length,metadataJsonBytes:json(row.metadata).length,
+        stateBson:bsonInputReceipt(row.state,bson.BSON,backend.bsonBytes),metadataBson:bsonInputReceipt(row.metadata,bson.BSON,backend.bsonBytes)}));
+    return {root,backend,sdk,fixtures,code,sdkResolution,bsonFiles:bson.files,fixtureFiles:[{file:join(fixtureDirectory,'origin.json'),sha256:hash(originBytes)},
         {file:join(fixtureDirectory,'metadata.json.gz.base64'),sha256:hash(packed)}],
         receipt:{gitHead,gitHeadAvailability:gitHead?'observed':'unavailable',origin,originArchiveVerification:'Committed origin pins retained; original archives are not reread by each harness run.',
-            fixtureSha256:hash(packed),originSha256:hash(originBytes),code,files,dependencies,sdkResolution,
+            fixtureSha256:hash(packed),originSha256:hash(originBytes),code,files,dependencies,sdkResolution,bson:bson.receipt,
             originCodeMatches:code.map(entry=>{
                 const expected=origin.code.find(row=>basename(row.path)===basename(entry.file));
                 assert.ok(expected,'Measured module has no original code pin');
                 return {path:entry.path,originPath:expected.path,sha256:entry.sha256,matches:entry.sha256===expected.sha256};
             }),
             validity:{positiveCases:12,negativeCases:negatives.length,negatives},
-            fixtures:fixtures.map(row=>({descriptors:row.descriptors,checkpoint:row.state.checkpoint,coverageFloor:row.state.coverageFloor,floorReceipt:row.state.floorReceipt,
-                replayReceipts:row.state.receipts.length,policy:row.state.policy,stateSha256:hash(json(row.state)),metadataSha256:hash(json(row.metadata)),
-                stateJsonBytes:json(row.state).length,metadataJsonBytes:json(row.metadata).length}))}};
+            fixtures:fixtureReceipts}};
 }
 
 export function selectCounter(scripts,selector,sources) {
@@ -340,7 +395,7 @@ export async function main(args=process.argv.slice(2)) {
     const runtime={version:process.version,v8:process.versions.v8,platform:process.platform,arch:process.arch,executable:process.execPath,
         binarySha256:await fileHash(process.execPath),execArgv:process.execArgv,nodeOptionsPresent:Boolean(process.env.NODE_OPTIONS)};
     const measured=options.mode==='count'?await countKernel(context):await timeKernel(context,options);
-    for(const entry of [...context.code,...context.fixtureFiles])assert.equal(hash(await bounded(entry.file,limits.codeBytes)),entry.sha256,'Measured code/fixture changed');
+    for(const entry of [...context.code,...context.fixtureFiles,...context.bsonFiles])assert.equal(hash(await bounded(entry.file,limits.codeBytes)),entry.sha256,'Measured code/fixture/dependency changed');
     const report={schemaVersion:1,status:'measured',issue:252,mode:options.mode,limits,runtime,
         harnessSha256:hash(await bounded(fileURLToPath(import.meta.url),limits.codeBytes)),provenance:context.receipt,
         measured,limitations:['Engineering empty-row metadata at fixed checkpoint/replay-receipt count; no full recovery, consensus or busy-chain qualification.',

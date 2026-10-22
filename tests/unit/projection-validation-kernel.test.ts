@@ -55,6 +55,31 @@ function run(args: string[], env: NodeJS.ProcessEnv = process.env) {
     return result;
 }
 
+function assertBsonReceipts(report: any) {
+    const provenance = report.provenance.bson;
+    assert.equal(provenance.available, true); assert.equal(provenance.phase, 'setup before either count or timing capture');
+    assert.equal(provenance.mongodb.package.name, 'mongodb'); assert.equal(provenance.bson.package.name, 'bson');
+    assert.deepEqual(provenance.options.serialize, {checkKeys: false, serializeFunctions: false, ignoreUndefined: true});
+    for (const dependency of [provenance.mongodb, provenance.bson]) {
+        assert.match(dependency.entry.sha256, /^[a-f0-9]{64}$/); assert.match(dependency.package.sha256, /^[a-f0-9]{64}$/);
+        assert.ok(dependency.package.version.length > 0);
+    }
+    assert.equal(report.provenance.dependencies.find((row: any) => row.name === 'bson').sha256, provenance.bson.entry.sha256);
+    assert.deepEqual(report.provenance.fixtures.map((row: any) => row.descriptors), cardinalities);
+    let previous = 0;
+    for (const row of report.provenance.fixtures) {
+        for (const entry of ['state', 'metadata']) {
+            const receipt = row[entry + 'Bson'];
+            assert.equal(receipt.available, true); assert.ok(receipt.bytes >= 5 && receipt.bytes <= limits.metadataBytes);
+            assert.equal(receipt.bytes, receipt.calculatedBytes); assert.equal(receipt.bytes, receipt.defaultCalculatedBytes);
+            assert.equal(receipt.roundTripInputEqual, true); assert.equal(receipt.roundTripBytesEqual, true);
+            assert.match(receipt.sha256, /^[a-f0-9]{64}$/); assert.ok(row[entry + 'JsonBytes'] > 0);
+        }
+        assert.ok(row.stateBson.bytes > previous); previous = row.stateBson.bytes;
+        assert.ok(row.metadataBson.bytes > row.stateBson.bytes);
+    }
+}
+
 test('only explicit native Node 22/24 measurement runtimes are accepted', () => {
     for (const version of ['v22.0.0', 'v22.23.3', 'v24.19.0', 'v24.99.1']) {
         assert.doesNotThrow(() => assertNativeRuntime({version, release: {name: 'node'}, versions: {}}));
@@ -207,10 +232,63 @@ test('backend-anchored SDK resolution chooses a nested import-only package over 
     });
 });
 
+test('BSON resolution follows the actual backend driver past root and backend shadow packages', nativeOnly, async () => {
+    await temporary(async directory => {
+        const backend = join(directory, 'packages/backend/dist/rollback-contract.js');
+        const driver = join(directory, 'packages/backend/node_modules/mongodb');
+        await mkdir(dirname(backend), {recursive: true}); await writeFile(backend, 'export {};');
+        await mkdir(driver, {recursive: true});
+        await writeFile(join(driver, 'package.json'), JSON.stringify({name: 'mongodb', version: 'driver-test', main: './index.cjs'}));
+        await writeFile(join(driver, 'index.cjs'), "module.exports={BSON:require('bson').BSON};");
+        for (const [prefix, version] of [[directory, 'root-shadow'], [join(directory, 'packages/backend'), 'backend-shadow'], [driver, 'driver-nested']]) {
+            const bson = join(prefix, 'node_modules/bson'); await mkdir(bson, {recursive: true});
+            await writeFile(join(bson, 'package.json'), JSON.stringify({name: 'bson', version, main: './index.cjs'}));
+            await writeFile(join(bson, 'index.cjs'), 'exports.BSON={serialize(){throw Error("resolution test only")},deserialize(){throw Error("resolution test only")},calculateObjectSize(){throw Error("resolution test only")}};');
+        }
+        const body = `import {resolveBackendBson} from ${JSON.stringify(pathToFileURL(script).href)};
+            const result=await resolveBackendBson(${JSON.stringify(directory)},${JSON.stringify(backend)});
+            process.stdout.write(JSON.stringify(result.receipt));`;
+        const result = run(['--input-type=module', '-e', body]); assert.equal(result.status, 0, result.stderr);
+        const receipt = JSON.parse(result.stdout);
+        assert.equal(receipt.bson.package.version, 'driver-nested'); assert.equal(receipt.mongodb.package.version, 'driver-test');
+        assert.equal(receipt.available, true); assert.match(receipt.bson.entry.sha256, /^[a-f0-9]{64}$/);
+    });
+});
+
+test('all six real BSON shapes agree with serialization, round-trip and backend default size', nativeOnly, () => {
+    const body = `
+        import assert from 'node:assert/strict'; import {createHash} from 'node:crypto';
+        import {loadKernel,resolveBackendBson,bsonInputReceipt,bsonOptions} from ${JSON.stringify(pathToFileURL(script).href)};
+        const context=await loadKernel(),resolved=await resolveBackendBson(context.root,context.code[0].file),BSON=resolved.BSON;
+        const hash=bytes=>createHash('sha256').update(bytes).digest('hex'),rows=[];
+        for(const fixture of context.fixtures) {
+            const receipt=context.receipt.fixtures.find(row=>row.descriptors===fixture.descriptors);
+            for(const entry of ['state','metadata']) {
+                const input=fixture[entry],bytes=BSON.serialize(input,bsonOptions.serialize),expected=receipt[entry+'Bson'];
+                assert.equal(expected.bytes,bytes.length);assert.equal(expected.sha256,hash(bytes));
+                assert.equal(expected.bytes,BSON.calculateObjectSize(input));assert.equal(expected.bytes,context.backend.bsonBytes(input));
+                assert.equal(receipt[entry+'JsonBytes'],Buffer.byteLength(JSON.stringify(input),'utf8'));
+                assert.deepEqual(BSON.deserialize(bytes,bsonOptions.deserialize),input);
+                assert.deepEqual(BSON.serialize(BSON.deserialize(bytes,bsonOptions.deserialize),bsonOptions.serialize),bytes);
+            }
+            const revisionBytes=BSON.serialize({revision:fixture.metadata.checkpoint.revision},bsonOptions.serialize).length-BSON.serialize({},bsonOptions.serialize).length;
+            assert.equal(receipt.metadataBson.bytes-receipt.stateBson.bytes,revisionBytes);
+            rows.push({descriptors:fixture.descriptors,stateBytes:receipt.stateBson.bytes,metadataBytes:receipt.metadataBson.bytes});
+        }
+        const input=context.fixtures[0].state,defaultSize=context.backend.bsonBytes;
+        assert.throws(()=>bsonInputReceipt(input,{...BSON,calculateObjectSize:()=>BSON.calculateObjectSize(input)+1},defaultSize));
+        assert.throws(()=>bsonInputReceipt(input,{...BSON,deserialize:()=>({...input,unexpected:true})},defaultSize));
+        assert.throws(()=>bsonInputReceipt(input,BSON,()=>defaultSize(input)+1));
+        process.stdout.write(JSON.stringify(rows));`;
+    const result = run(['--input-type=module', '-e', body]); assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).map((row: any) => row.descriptors), cardinalities);
+});
+
 test('real count CLI validates inputs, calibrates reset/recursion and pins actual SDK source', nativeOnly, async () => {
     await temporary(async directory => {
         const path = join(directory, 'counts.json'), result = run([script, '--mode', 'count', '--out', path]);
         assert.equal(result.status, 0, result.stderr); const report = JSON.parse(await readFile(path, 'utf8'));
+        assertBsonReceipts(report);
         assert.equal(report.status, 'measured'); assert.equal(report.mode, 'count'); assert.equal(report.provenance.validity.positiveCases, 12);
         assert.equal(report.provenance.validity.negativeCases, 13);
         assert.ok(report.provenance.validity.negatives.every((row: any) => row.code === 'projection.invalid-contract'));
@@ -220,6 +298,11 @@ test('real count CLI validates inputs, calibrates reset/recursion and pins actua
         for (const row of report.measured.captures.filter((row: any) => row.phase === 'valid-count-only')) {
             assert.equal(row.metrics.state.range.count, row.repetitions); assert.ok(row.metrics.snapshot.range.count > 0);
             if (row.entry === 'metadata') assert.equal(row.metrics.metadata.range.count, row.repetitions);
+        }
+        for (const capture of report.measured.captures) for (const source of capture.scripts) {
+            if (source.url.endsWith('/projection-validation-kernel.mjs')) for (const fn of source.functions) {
+                if (fn.functionName === 'bsonInputReceipt') assert.ok(fn.ranges.every((range: any) => range.count === 0));
+            }
         }
         assert.match(report.runtime.binarySha256, /^[a-f0-9]{64}$/); assert.equal(report.runtime.version, execFileSync(native, ['--version'], {encoding: 'utf8'}).trim());
         const before = await readFile(path), repeated = run([script, '--mode', 'count', '--out', path]);
@@ -231,6 +314,7 @@ test('real timing CLI emits bounded per-call spans and distinct CPU/RSS/GC witho
     await temporary(async directory => {
         const path = join(directory, 'timing.json'), result = run([script, '--mode', 'timing', '--out', path, '--warmup', '0', '--iterations', '1', '--order', 'both']);
         assert.equal(result.status, 0, result.stderr); const report = JSON.parse(await readFile(path, 'utf8')), measured = report.measured;
+        assertBsonReceipts(report);
         assert.equal(report.mode, 'timing'); assert.equal(measured.preciseCoverageRequested, false);
         assert.equal(measured.rows.length, 24); assert.equal(measured.order, 'both'); assert.equal(measured.warmupPerStateAndEntryPerPass, 0);
         assert.equal(Object.hasOwn(measured, 'captures'), false); assert.ok(measured.processLifetimeMaxRSSKiB > 0);

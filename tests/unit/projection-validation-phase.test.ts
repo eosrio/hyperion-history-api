@@ -1,6 +1,7 @@
 import {expect, test} from 'bun:test';
 import {EventEmitter} from 'node:events';
 import {advanceProjectionMeasurementPhase, assertProjectionPhaseAck, assertProjectionMeasurementReport} from '../../scripts/qualification/projection-validation-phase.mjs';
+import {createProjectionValidationObserver} from '../../scripts/qualification/projection-validation-observer.mjs';
 
 const identity = {pid: 44, parentPid: 42, role: 'projection', viaParentPid: 42};
 const ack = {event: 'qualifier_projection_phase_ack', ...identity, phase: 'prefix', requestId: 'request', attached: true};
@@ -49,6 +50,28 @@ test('phase failures retain their cause and release listeners', async () => {
     }
 });
 
+test('a delayed actual adapter keeps the prefix barrier and source release pending', async () => {
+    const observer = createProjectionValidationObserver({identity: {pid: 44, parentPid: 42, role: 'projection', node: 'v24.19.0'},
+        limits: {readinessTimeoutMS: 1000}});
+    const child = new Child((value, message, callback) => {
+        void observer.handlePhase(message).then(reply => value.emit('message', {...reply, viaParentPid: 42})); callback();
+    });
+    let releases = 0;
+    const barrier = advanceProjectionMeasurementPhase(child, identity, 'prefix', 2000).then(result => {releases++; return result;});
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(releases).toBe(0); expect(observer.report().phases).toEqual([]);
+    const adapter = {validate: (value: unknown) => value, metadata: {async findOne() {}},
+        client: {startSession() {}}, async transaction() {}, async initialize() {}, async open() {}, async recovery() {},
+        async retainedCheckpoints() {}, async markIncomplete() {}, async apply() {}, async rollback() {}, async query() {}};
+    expect(observer.attachAdapter(adapter, 'owner')).toBe(true);
+    const result: any = await barrier;
+    expect(releases).toBe(1); expect(result.acknowledgment.attached).toBe(true);
+    expect(observer.report().phases.map((phase: any) => phase.phase)).toEqual(['prefix']);
+    expect(observer.report().errors).toEqual([]);
+    for (const event of ['message', 'exit', 'error']) expect(child.listenerCount(event)).toBe(0);
+    observer.restore();
+});
+
 test('phase barriers reject foreign ownership, invalid phases and excessive waits before sending', () => {
     const child = new Child(() => {throw new Error('must not send');});
     for (const selected of [{...identity, parentPid: 99}, {...identity, viaParentPid: undefined},
@@ -66,6 +89,7 @@ test('sealed receipts must match the independent process, emission and phase inv
     const hash = 'a'.repeat(64);
     const report = {schemaVersion: 1, qualificationOnly: true, enabled: true, pid: 44, parentPid: 42, role: 'projection', node: 'v24.19.0',
         sealed: true, sealTimedOut: false, errors: [], droppedSpans: 0, inFlight: [], suppressedRootSpans: 0,
+        sessionHooks: {maximum: 50000, weakReferenceSlots: 2, limitExceeded: 0},
         attachments: [{id: 1, initialPublicOperationUnobserved: false}], modules: [{path: '/owned/dist/storage.js', sha256: hash}],
         phases: phases.map((phase, index) => ({phase, requestId: phase, sequence: index + 1, atNs: String(index + 1)})),
         spans: [{id: 1, parentId: null, rootId: 1, attachmentId: 1, outcome: 'fulfilled', startNs: '1', endNs: '3', durationNs: '2',
@@ -79,7 +103,9 @@ test('sealed receipts must match the independent process, emission and phase inv
         (copy: any) => {copy.phases[0].requestId = 'unrelated';}, (copy: any) => {copy.phases[1].sequence = 1;},
         (copy: any) => {copy.spans[1].durationNs = '3';}, (copy: any) => {copy.spans[1].rootId = 99;},
         (copy: any) => {copy.spans[1].id = 1;}, (copy: any) => {copy.spans[1].attachmentId = 99;},
-        (copy: any) => {copy.spans[1].startPhase = 'verification';}, (copy: any) => {copy.attachments[0].initialPublicOperationUnobserved = true;}]) {
+        (copy: any) => {copy.spans[1].startPhase = 'verification';}, (copy: any) => {copy.attachments[0].initialPublicOperationUnobserved = true;},
+        (copy: any) => {delete copy.sessionHooks;}, (copy: any) => {copy.sessionHooks.maximum = 50001;},
+        (copy: any) => {copy.sessionHooks.weakReferenceSlots = 50001;}, (copy: any) => {copy.sessionHooks.limitExceeded = 1;}]) {
         const copy = structuredClone(report); mutate(copy);
         expect(() => assertProjectionMeasurementReport(copy, identity, barriers, hash)).toThrow();
     }

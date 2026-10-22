@@ -86,6 +86,34 @@ zero-image byte mismatch, malformed image hash and stored revision mismatch.
 These checks are validation evidence for this bounded fixture, not a claim that
 all malformed inputs or recovery paths have been covered.
 
+Each fixture receipt retains its minified UTF-8 JSON byte sizes and adds
+`stateBson` and `metadataBson` receipts. These contain the actual `BSON.serialize`
+byte length and SHA-256, `calculateObjectSize` agreement, the real backend's
+default `bsonBytes` agreement, and checks that deserialization preserves the
+input and reserialization preserves the bytes. The stored checkpoint's revision
+field accounts for the difference between logical and stored BSON input sizes.
+Both formats describe validator inputs; neither is a database command, network
+frame, compressed payload, index footprint or independently varied before image.
+
+The serializer is the actual backend's `mongodb.BSON` export. Resolution follows
+the backend to MongoDB, then MongoDB to its BSON package, including a driver-nested
+installation. Export identity is checked; a root or backend peer BSON package
+cannot silently substitute for the driver's codec. `provenance.bson` records
+availability, module and package file hashes/versions, resolution and options.
+Serialization uses `checkKeys: false`, `serializeFunctions: false` and
+`ignoreUndefined: true`; size calculation uses the latter two. Deserialization
+explicitly promotes ordinary values/longs, leaves buffers and bigints unpromoted,
+rejects trailing bytes, and enables UTF-8 validation. Remaining codec options use
+the pinned installed defaults. A missing API, inconsistent size or failed
+round-trip fails setup instead of inventing an unavailable size as zero.
+
+This input-size bookkeeping runs in `loadKernel` before either coverage or timing
+capture. It is not part of the measured validator invocation. Its allocations can
+affect subsequent heap history, as can other setup and warmups; moving it outside
+the spans does not establish zero observation overhead. Compare size/hash receipts
+across modes only when the input, codec and options match. BSON bytes are not UTF-8
+JSON bytes or a native encoding throughput/call metric.
+
 ## What the counters mean
 
 Count mode uses V8 precise coverage with `callCount: true, detailed: false` after
@@ -102,9 +130,10 @@ zero-call calibration window may omit its function; unknown absence is never
 coerced to zero. SDK call counts are observations; historical count formulas are
 not regression assertions that would forbid a future approved implementation.
 The native `encodeUtf8String` counter is not inferred from a JavaScript wrapper,
-and the harness reports no native call count, allocation count or encoded byte
-count. Coverage changes optimization behavior. Counts are neither CPU nor timing
-observations.
+and the harness reports no native call count, allocation count or per-invocation
+native encoding byte count. Static BSON input lengths remain separate setup
+receipts. Coverage changes optimization behavior. Counts are neither CPU nor
+timing observations.
 
 Timing mode opens no inspector session and requests no precise coverage. It
 records each call's monotonic elapsed span, a surrounding `process.cpuUsage`

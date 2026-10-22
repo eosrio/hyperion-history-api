@@ -136,7 +136,7 @@ describe('qualification projection observation', () => {
     });
 
     test('phase order and attachment are required, and identical requests are idempotent', async () => {
-        const observer = createProjectionValidationObserver({identity});
+        const observer = createProjectionValidationObserver({identity, limits: {readinessTimeoutMS: 5}});
         expect((await observer.handlePhase(phase('prefix'))).error).toBeDefined();
         const valid = createProjectionValidationObserver({identity}); valid.attachAdapter(target(), 'owner');
         const first = valid.handlePhase(phase('prefix')); expect(valid.handlePhase(phase('prefix'))).toBe(first);
@@ -224,6 +224,85 @@ describe('qualification projection observation', () => {
         expect(report.errors).toEqual([]);
     });
 
+    test('session restoration has a hard limit and restores reachable own and inherited methods exactly', () => {
+        const observer = createProjectionValidationObserver({identity, limits: {maxSessionHooks: 2}}), adapter = target();
+        const prototype = {async commitTransaction() {}, async abortTransaction() {}};
+        adapter.client.startSession = () => {
+            const session = Object.create(prototype);
+            Object.defineProperty(session, 'startTransaction', {value: () => session, writable: true, configurable: true, enumerable: true});
+            session.original = Object.getOwnPropertyDescriptor(session, 'startTransaction');
+            return session;
+        };
+        observer.attachAdapter(adapter, 'owner');
+        const first = adapter.client.startSession(), second = adapter.client.startSession(), third = adapter.client.startSession();
+        expect(first.startTransaction).not.toBe(first.original.value);
+        expect(third.startTransaction).toBe(third.original.value);
+        expect(Object.hasOwn(third, 'commitTransaction')).toBe(false);
+        expect(observer.report().sessionHooks.weakReferenceSlots).toBe(2);
+        expect(observer.report().sessionHooks.limitExceeded).toBe(1);
+        expect(observer.report().errors.map((row: any) => row.code)).toContain('session-hook-budget');
+        observer.restore();
+        for (const session of [first, second]) {
+            expect(Object.getOwnPropertyDescriptor(session, 'startTransaction')).toEqual(session.original);
+            expect(Object.hasOwn(session, 'commitTransaction')).toBe(false);
+            expect(session.commitTransaction).toBe(prototype.commitTransaction);
+        }
+    });
+
+    test('suppressed starts create no new hooks but an existing tracked shutdown descendant remains observed', async () => {
+        const bounded = createProjectionValidationObserver({identity, limits: {maxSpans: 1}}), ordinary = target();
+        ordinary.client.startSession = () => {const session: any = {async commitTransaction() {}, async abortTransaction() {}};
+            session.startTransaction = () => session; session.original = session.startTransaction; return session;};
+        bounded.attachAdapter(ordinary, 'owner'); ordinary.client.startSession();
+        const dropped: any = ordinary.client.startSession();
+        expect(dropped.startTransaction).toBe(dropped.original);
+        expect(bounded.report().sessionHooks.weakReferenceSlots).toBe(1);
+        const observer = createProjectionValidationObserver({identity}), adapter = target();
+        adapter.client.startSession = () => {const session: any = {async commitTransaction() {}, async abortTransaction() {}};
+            session.startTransaction = () => session; session.original = session.startTransaction; return session;};
+        let resume!: () => void; const waiting = new Promise<void>(resolve => {resume = resolve;});
+        adapter.apply = async () => {await waiting; const session = adapter.client.startSession(); session.startTransaction();};
+        observer.attachAdapter(adapter, 'owner'); await observer.handlePhase(phase('prefix'));
+        const pending = adapter.apply(); await observer.handlePhase(phase('held-head')); await observer.handlePhase(phase('verification'));
+        const shutdown = observer.handlePhase(phase('shutdown'));
+        const untracked: any = adapter.client.startSession(); expect(untracked.startTransaction).toBe(untracked.original);
+        resume(); await pending; await shutdown;
+        expect(observer.report().sessionHooks.weakReferenceSlots).toBe(1);
+        expect(observer.report().spans.filter((row: any) => row.kind === 'transaction-start')).toHaveLength(1);
+        expect(observer.report().errors).toEqual([]);
+    });
+
+    test('a pending first prefix waits for actual attachment and duplicate requests share that wait', async () => {
+        const observer = createProjectionValidationObserver({identity, limits: {readinessTimeoutMS: 100}});
+        const pending = observer.handlePhase(phase('prefix'));
+        expect(observer.handlePhase(phase('prefix'))).toBe(pending);
+        await new Promise(resolve => setTimeout(resolve, 5));
+        expect(observer.report().phases).toEqual([]); expect(observer.report().errors).toEqual([]);
+        const adapter = target(); observer.attachAdapter(adapter, 'owner'); await adapter.open();
+        expect((await pending).error).toBeUndefined(); expect(observer.report().phases).toHaveLength(1);
+        expect(observer.report().spans[0].startPhase).toBe('startup');
+    });
+
+    test('pending prefix conflicts and bounded unattached timeout are explicit without advancing a phase', async () => {
+        const timeout = createProjectionValidationObserver({identity, limits: {readinessTimeoutMS: 3}});
+        expect((await timeout.handlePhase(phase('prefix'))).error).toBeDefined();
+        expect(timeout.report().errors.map((row: any) => row.code)).toContain('readiness-timeout');
+        expect(timeout.report().phases).toEqual([]);
+        timeout.attachAdapter(target(), 'owner');
+        expect((await timeout.handlePhase(phase('prefix'))).error).toBeDefined();
+        expect(timeout.report().phases).toEqual([]);
+        const conflict = createProjectionValidationObserver({identity, limits: {readinessTimeoutMS: 100}});
+        const pending = conflict.handlePhase(phase('prefix'));
+        expect((await conflict.handlePhase(phase('prefix', 'different-request'))).error).toBeDefined();
+        expect(conflict.handlePhase(phase('prefix'))).toBe(pending);
+        expect((await conflict.handlePhase(phase('held-head', 'prefix'))).error).toBeDefined();
+        expect((await conflict.handlePhase(phase('held-head'))).error).toBeDefined();
+        expect(conflict.report().phases).toEqual([]);
+        conflict.attachAdapter(target(), 'owner'); await pending;
+        expect(conflict.report().phases).toHaveLength(1);
+        expect(() => createProjectionValidationObserver({identity, limits: {readinessTimeoutMS: 5001}})).toThrow();
+    });
+
     test('master relays the actual sender identity and rejects forged or unsent phase ACKs', () => {
         const sent: unknown[] = [], delivered: unknown[] = [];
         const parent = Object.assign(new EventEmitter(), {pid: 100, send(message: unknown) {delivered.push(message); return false;}});
@@ -249,6 +328,35 @@ describe('qualification projection observation', () => {
     let nativeVersion = '';
     try {nativeVersion = execFileSync(nativeNode, ['--version'], {encoding: 'utf8', timeout: 5000}).trim();} catch {}
     const helper = new URL('../../scripts/qualification/projection-validation-observer.mjs', import.meta.url).href;
+    test.skipIf(!/^v(?:22|24)\./.test(nativeVersion))('native forced GC releases both hooked and suppressed self-referencing sessions before restoration', () => {
+        const script = `
+            import assert from 'node:assert/strict';
+            import {createProjectionValidationObserver} from ${JSON.stringify(helper)};
+            const cases=[];
+            for(const suppressed of [true,false]) {
+                const observer=createProjectionValidationObserver({identity:{pid:process.pid,parentPid:process.ppid,role:'projection',node:process.version},
+                    ...(suppressed?{limits:{maxSpans:1}}:{})});
+                const adapter={validate:value=>value,metadata:{findOne(){}},transaction(){},client:{startSession(){
+                    const session={}; session.startTransaction=()=>session; session.commitTransaction=async()=>session; session.abortTransaction=async()=>session;
+                    return session;}}};
+                for(const name of ['initialize','open','recovery','retainedCheckpoints','markIncomplete','apply','rollback','query']) adapter[name]=()=>{};
+                observer.attachAdapter(adapter,'owner'); const references=[];
+                for(let index=0;index<1000;index++) references.push(new WeakRef(adapter.client.startSession()));
+                const before=observer.report();
+                assert.equal(before.sessionHooks.weakReferenceSlots,suppressed?1:1000);
+                assert.equal(before.spans.length,suppressed?1:1000);assert.equal(before.droppedSpans,suppressed?999:0);
+                for(let cycle=0;cycle<12;cycle++) {await new Promise(setImmediate); global.gc(); await new Promise(setImmediate);}
+                const alive=references.filter(reference=>reference.deref()).length;
+                assert.equal(alive,0,'Ended sessions remain alive before restore');
+                cases.push({suppressed,aliveBeforeRestore:alive,weakReferenceSlots:before.sessionHooks.weakReferenceSlots}); observer.restore();
+            }
+            console.log(JSON.stringify({node:process.version,cases}));`;
+        const result = JSON.parse(execFileSync(nativeNode, ['--expose-gc', '--input-type=module', '-e', script], {
+            encoding: 'utf8', timeout: 10000, env: {...process.env, NODE_OPTIONS: '', HYP252_OBSERVER_DIR: ''},
+        }).trim());
+        expect(result.cases).toEqual([{suppressed: true, aliveBeforeRestore: 0, weakReferenceSlots: 1},
+            {suppressed: false, aliveBeforeRestore: 0, weakReferenceSlots: 1000}]);
+    });
     test.skipIf(!/^v(?:22|24)\./.test(nativeVersion))('native preload observes actual controller/adapter modules and produces the independently accepted sealed receipt', () => {
         const directory = mkdtempSync(join(tmpdir(), 'hyperion-projection-observer-'));
         const fixture = new URL('../../packages/backend-mongodb/tests/fixture.mjs', import.meta.url).href;

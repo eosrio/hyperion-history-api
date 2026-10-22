@@ -413,13 +413,15 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
         const measurementPhase = async (phase: 'prefix' | 'held-head' | 'verification' | 'shutdown') => {
             if (!measurementsEnabled) return;
             if (!projectionIdentity) {
-                const starts = (await observed(owner.name)).filter(row => row.kind === 'start' && row.role === 'projection');
-                assert.equal(starts.length, 1); const start = starts[0];
-                assert.ok(Number.isSafeInteger(start.pid) && start.pid > 0); assert.equal(start.parentPid, owner.child.pid);
-                projectionIdentity = {pid: start.pid, parentPid: owner.child.pid!, role: 'projection', viaParentPid: owner.child.pid!};
+                await wait('actual projection measurement process start', async () => {
+                    const starts = (await observed(owner.name)).filter(row => row.kind === 'start' && row.role === 'projection');
+                    assert.equal(starts.length, 1); const start = starts[0];
+                    assert.ok(Number.isSafeInteger(start.pid) && start.pid > 0); assert.equal(start.parentPid, owner.child.pid);
+                    projectionIdentity = {pid: start.pid, parentPid: owner.child.pid!, role: 'projection', viaParentPid: owner.child.pid!};
+                }, 10000);
             }
             const receipts = await Promise.all([
-                advanceProjectionMeasurementPhase(owner.child, projectionIdentity, phase),
+                advanceProjectionMeasurementPhase(owner.child, projectionIdentity!, phase),
                 advanceProjectionMeasurementPhase(apiOwner.child, {pid: apiOwner.child.pid!, parentPid: process.pid, role: 'api'}, phase),
             ]);
             report.profiling.projectionMeasurements.phases.push({phase, receipts});
