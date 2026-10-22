@@ -26,6 +26,9 @@ const checkOwner=value=>{
 const output=process.argv[2];if(process.argv.length>3)throw new Error('Usage: node check-protocol-abi-store.mjs [output.json]');
 let containerId,networkCreated=false,client;
 const report={schemaVersion:1,status:'running',createdAt:new Date().toISOString(),run,image,checks:[],cleanup:{container:false,network:false},qualification:false};
+// Some client connection/timeout handles are unreferenced during startup. Keep
+// this owned lifecycle alive until its bounded operations and cleanup complete.
+const lifecycle=setInterval(()=>{},1000);
 try {
     docker(['network','create','--label',label,'--label',runLabel,network]);networkCreated=true;
     containerId=docker(['run','-d','--name',name,'--network',network,'--label',label,'--label',runLabel,
@@ -323,6 +326,7 @@ finally {
         report.cleanup.network=true;
     } catch(error){report.cleanup.error=String(error.stack??error);report.status='failed';}
     report.completedAt=new Date().toISOString();
+    clearInterval(lifecycle);
     const text=JSON.stringify(report,null,2)+'\n';if(output)writeFileSync(output,text);process.stdout.write(text);
     if(report.status!=='passed')process.exitCode=1;
 }
