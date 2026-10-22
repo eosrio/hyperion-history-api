@@ -147,6 +147,17 @@ try {
     assert.equal(getters, 0);
     const thrown = await incomplete('provider_throw', () => {throw new Error('Native schema unsupported');});
     assert.match(thrown.record.observation.error.message, /Native schema unsupported/);
+    const opaqueError = await incomplete('opaque_error', () => {throw Object.create(null);});
+    assert.equal(opaqueError.record.observation.error.code, 'protocol_native_observation_incomplete');
+    let messageGetters = 0, coercions = 0;
+    const errorGetter = Object.defineProperty({}, 'message', {get() {messageGetters++; throw new Error('Error message getter executed');}});
+    await incomplete('error_message_getter', () => {throw errorGetter;}); assert.equal(messageGetters, 0);
+    const coercionError = {message: {[Symbol.toPrimitive]() {coercions++; throw new Error('Error coercion executed');}}};
+    await incomplete('error_message_coercion', () => {throw coercionError;}); assert.equal(coercions, 0);
+    const revokedError = Proxy.revocable({}, {}); revokedError.revoke();
+    await incomplete('revoked_error', () => {throw revokedError.proxy;});
+    const textError = await incomplete('text_error', () => {throw 'Native text failure';});
+    assert.equal(textError.record.observation.error.message, 'Native text failure');
     const mutation = await incomplete('mutation', (input, source) => {const facts = realNative.nativeActions.observe(input, source); input.traces[0] ^= 1; return facts;});
     assert.match(mutation.record.observation.error.message, /mutated its source bytes/);
 

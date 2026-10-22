@@ -635,9 +635,18 @@ export default class MainDSWorker extends HyperionWorker {
             // Deterministic extraction/budget errors become small explicit evidence;
             // storage/configuration/reference errors below must escape to redelivery.
             protocolImmutableJson(record, protocolNativeObservationBounds.maximumBytes);
-        } catch (error: any) {
-            record.observation = {status: 'incomplete', error: {code,
-                message: String(error?.message ?? error).slice(0, 4096).toWellFormed() || code}};
+        } catch (error: unknown) {
+            // Hooks can throw any JavaScript value. Error retention must not
+            // invoke accessors or coercion hooks and fail before PREPARE itself.
+            let message = code;
+            if (typeof error === 'string') message = error;
+            else if (error !== null && (typeof error === 'object' || typeof error === 'function')) {
+                try {
+                    const property = Object.getOwnPropertyDescriptor(error, 'message');
+                    if (property && Object.hasOwn(property, 'value') && typeof property.value === 'string') message = property.value;
+                } catch { /* An opaque or revoked proxy still produces incomplete evidence. */ }
+            }
+            record.observation = {status: 'incomplete', error: {code, message: message.slice(0, 4096).toWellFormed() || code}};
         } finally { stopExtract(); }
         if (!current()) throw new Error('Native observation source channel changed during extraction');
         this.protocolNativeObservationStore ??= new ProtocolNativeObservationStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
