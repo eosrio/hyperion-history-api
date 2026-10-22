@@ -224,6 +224,22 @@ remain required. Inspect `prefixes/native-*.json` and `report.native` alongside
 the ordinary prefix, raw bulk and process/resource evidence. A passing source-only
 preflight or typecheck does not establish this runtime result.
 
+At the original 1244/1480 source holds, `prefixes/block-*.json` additionally retains
+`physicalMongo`: direct read-only MongoDB storage inspection independent of the
+HTTP and adapter recovery results. The audit verifies the owned loopback database,
+replica identity/version, exact metadata plus all three projection collections,
+simple collation, immutable bindings/generations, original-source checkpoints and
+receipts, and every physical key/value against the unchanged independent plan rows.
+The invalid mapping must remain empty at checkpoint 1243 with source 1244 pending.
+At 1480 this requires deleted envelope keys 1/2 to be absent, keys 3/4 present, and
+the attseq next value to have changed from 5 to 9. No extra physical fields, rows,
+bindings or collections are accepted. A read-only snapshot session and matching
+majority metadata, namespace and server-identity reads before/after bind the audit
+to the held source. The receipt includes actual documents, counts, hashes, storage
+version and budgets: at most nine projections, 256 rows per projection, 1 MiB per
+document and 4 MiB cumulative inspection bytes. Native storage queries remain in
+this qualification helper; no product query or adapter interface is changed.
+
 This mode does not close #191/#256/#225 or qualify full fork/restart/finality
 recovery, bulk ownership, a Rust deployment, client streaming #231, launch pins or
 release readiness. Preserve the incumbent Wire node/binary/listeners before and

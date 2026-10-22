@@ -24,6 +24,7 @@ import {auditPortableWorkerSource, boundedPortableFile, ordinaryPortablePath, po
 import {assertPortableWorkerOracle, portableWorkerAbiAvailability} from './portable-state-worker-oracle.ts';
 import {auditPortableNativeOracle, createPortableNativeQualification, nativePortableHolds, portableLegacyProfile,
     portableNativeProfile} from './portable-state-worker-native.ts';
+import {auditPortablePhysicalMongo} from './portable-state-worker-mongo.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
@@ -512,11 +513,24 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             }
             await wait(`owned Rabbit queues drained at${through}`, async () => {const rows = await queues(); assert.ok(rows.length > 0);
                 assert.ok(rows.every((row: any) => row.ready === 0 && row.unacked === 0 && row.messages === 0));});
+            let physicalMongo;
+            if (plan.barriers.some(value => value.through === through)) {
+                replay.assertThrough(through); mongoFixture.ownedContainer('replica');
+                physicalMongo = await auditPortablePhysicalMongo({client: mongo, database, backendId: config.features.portable_state.backend.id,
+                    chainId: source.chainId, replicaSet: mongoFixture.replicaSet, version: MONGODB_VERSION, through, source: source.records,
+                    expectations: [...plan.definitions.map((definition, index) => ({definition, binding: bindings[index],
+                        checkpoint: {blockNum: through, blockId: block.blockId}, rows: barrier.rows[definition.id]})),
+                    {definition: invalidDefinition, binding: invalidBinding, rows: [],
+                        checkpoint: {blockNum: faultThrough - 1, blockId: source.records[faultThrough - 2].blockId},
+                        failedBlock: {blockNum: faultThrough, blockId: source.records[faultThrough - 1].blockId,
+                            previousBlockId: source.records[faultThrough - 2].blockId}}]});
+                replay.assertThrough(through); mongoFixture.ownedContainer('replica');
+            }
             if (native) {await es.indices.refresh({index: chain + '-action-*'}); const observed = await native.hold(through);
                 const file = `prefixes/native-${through}.json`, bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n');
                 await writeFile(join(output, file), bytes, {flag: 'wx'}); report.native.holds.push({through, file, sha256: portableSourceHash(bytes)});}
             const observed = {through, blockId: block.blockId, responses, history: await history(through),
-                stateAbiAvailability, queues: await queues(), recovery: report.lastRecovery, source: replay.metrics(), isolation};
+                stateAbiAvailability, queues: await queues(), recovery: report.lastRecovery, source: replay.metrics(), isolation, physicalMongo};
             const bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n'); const file = `prefixes/block-${through}.json`;
             await writeFile(join(output, file), bytes, {flag: 'wx'}); report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
         }
