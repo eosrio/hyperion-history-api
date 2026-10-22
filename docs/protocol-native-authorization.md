@@ -40,7 +40,8 @@ At most eight source openings run concurrently per reader. Existing retained-rec
 the proof reader's default 256-block ancestry bound (maximum 4096) remain unchanged. Sources outside
 qualified coverage remain unavailable; enlarging a test window is not historical qualification.
 
-The installed loader still refuses native-required profiles. Worker decoded-value publication,
-versioned document metadata, HTTP/cache/current-Socket.IO consumers, historical and full-worker
-recovery, fork/testnet acceptance and coordinated activation remain separate #256/#191/#231 work.
+The [coordinated native consumers](protocol-native-consumers.md) use versioned locators, fresh grants
+and detached original-envelope/value checks through workers and HTTP/cache/current-Socket.IO paths.
+The installed loader still refuses native-required profiles. Historical and full-worker recovery,
+live fork/testnet acceptance and coordinated activation remain separate #256/#191/#231 gates.
 Existing Elasticsearch history remains usable without a mandatory full reindex.

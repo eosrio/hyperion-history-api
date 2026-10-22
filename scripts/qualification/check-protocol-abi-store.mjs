@@ -234,6 +234,7 @@ try {
     const readStore=new ProtocolAbiFrontierStore(readClient,frontierChain,0,{readOnly:true});
     const proofReader=new ProtocolAbiProofReader({chainId:context.chainId,profile:context.protocol,store:readStore,maxAncestryBlocks:2});
     const secondProof=await proofReader.open(frontierSecond.input.source,frontierSecond.selected);
+    assert.equal(secondProof.nativeActionInterfaceVersion,undefined);
     assert.equal((await proofReader.action(secondProof,frontierSecond.input.observation.facts.actionInputs[0])).state.abiHex,'aa');
     const hiddenCertificate=await client.search({index:frontierStore.recordsIndex,query:{ids:{values:[secondProof.certificateId]}},size:1});
     assert.equal(hiddenCertificate.timed_out,false);assert.equal(hiddenCertificate._shards.failed,0);
@@ -254,7 +255,7 @@ try {
     report.checks.push('fork revokes existing consumer views before replacement activation and certifies the restored input ABI');
 
     const reopenedFrontier=new ProtocolAbiFrontierStore(frontierClient,frontierChain),previousControl=await reopenedFrontier.readControl();
-    const restarted=new ProtocolAbiCoordinator({...coordinatorOptions,store:reopenedFrontier,ownerId:'disposable-master-b'});
+    const restarted=new ProtocolAbiCoordinator({...coordinatorOptions,store:reopenedFrontier,ownerId:'disposable-master-b',nativeActionInterfaceVersion:1});
     await restarted.start();assert.equal((await restarted.inspect()).head.blockId,positionId(20));
     assert.equal((await restarted.openSource(frontierContextId,'frontier-session-b')).resumeFromBlock,3);
     await assert.rejects(reopenedFrontier.compareAndSet(previousControl,previousControl.value),error=>error instanceof ProtocolAbiFrontierConflictError);
@@ -268,6 +269,13 @@ try {
     const firstProof=await proofReader.open(frontierFirst.input.source,frontierFirst.selected);
     assert.equal((await proofReader.finalState(firstProof,'alpha')).abiHex,'aa');
     const thirdProof=await proofReader.open(third.input.source,third.selected);
+    assert.equal(firstProof.nativeActionInterfaceVersion,undefined);
+    assert.equal(thirdProof.nativeActionInterfaceVersion,1);
+    const coldProofReader=new ProtocolAbiProofReader({chainId:context.chainId,profile:context.protocol,
+        store:new ProtocolAbiFrontierStore(readClient,frontierChain,0,{readOnly:true}),maxAncestryBlocks:2});
+    assert.equal((await coldProofReader.open(third.input.source,third.selected)).nativeActionInterfaceVersion,1);
+    assert.equal((await coldProofReader.open(frontierFirst.input.source,frontierFirst.selected)).nativeActionInterfaceVersion,undefined);
+    report.checks.push('native-aware classification epochs survive real immutable commit/certificate storage and cold reads while legacy ancestry remains unchanged');
     const fourth=await selectedBlock(4,4,3,'frontier-session-b');await prepareBlock(fourth);
     assert.equal((await restarted.admit(fourth.selected,restartGeneration)).status,'accepted');incompleteHeadReceipt=true;
     await assert.rejects(restarted.drain(),/receipt/);
