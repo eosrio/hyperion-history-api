@@ -16,6 +16,9 @@ import {assertCompleteProtocolSearch} from '../protocol/search.js';
 import {protocolBytes} from '../protocol/contract-cache.js';
 import {protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
+import {ProtocolNativeObservationStore} from '../protocol/native-observation-store.js';
+import {ProtocolNativeActionReader, ProtocolNativeActionUnavailableError,
+    type ProtocolNativeActionView, type ProtocolNativeActionGrant} from '../protocol/native-authorization.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView,
     type ProtocolActionMetadata, type ProtocolActionSourceMetadata} from '../protocol/abi-proof.js';
 import type {TrxMetadata} from '../../interfaces/trx-metadata.js';
@@ -28,11 +31,14 @@ import {actionHistoryImmutableJson} from '../history/action-history-manifest.js'
 import {ActionSourceInventoryError} from '../history/action-source-inventory.js';
 import type {ActionPublicationOwner} from '../history/action-confirmed-publication.js';
 import {createHash} from 'node:crypto';
+import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
 
 interface ProtocolActionWork {
     original: ActionTrace;
     metadata: ProtocolActionMetadata;
     view?: ProtocolAbiProofView;
+    native?: {view: ProtocolNativeActionView; grant: ProtocolNativeActionGrant};
+    nativeIncomplete?: {view: ProtocolNativeActionView; input: ProtocolAbiActionInput};
 }
 
 type ActionAbiIdentity =
@@ -125,9 +131,13 @@ export default class DSPoolWorker extends HyperionWorker {
     customAbiMap: Map<string, CustomAbiDef[]> = new Map();
     private noActionCounter = 0;
     private protocolProofReader?: ProtocolAbiProofReader;
-    private protocolTrace?: {view?: ProtocolAbiProofView; error?: ProtocolAbiProofUnavailableError};
+    private protocolNativeReader?: ProtocolNativeActionReader;
+    private protocolTrace?: {view?: ProtocolAbiProofView; nativeView?: ProtocolNativeActionView;
+        error?: ProtocolAbiProofUnavailableError | ProtocolNativeActionUnavailableError};
     private protocolActions = new WeakMap<ActionTrace, ProtocolActionWork>();
     private protocolCacheViews = new Set<ProtocolAbiProofView>();
+    private protocolNativeCacheEntries = new Set<{work: ProtocolActionWork; payload: Buffer}>();
+    private protocolDeliveryNativeEntries?: Set<{work: ProtocolActionWork; payload: Buffer}>;
     private readonly protocolDeliveryOwners = new WeakMap<Message, Channel>();
     private activeProtocolDelivery?: {message: Message; channel: Channel};
 
@@ -506,6 +516,14 @@ export default class DSPoolWorker extends HyperionWorker {
             maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
     }
 
+    private getProtocolNativeReader(): ProtocolNativeActionReader {
+        return this.protocolNativeReader ??= new ProtocolNativeActionReader({chainId: this.chainId,
+            profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
+            provider: this.protocol, proofReader: this.getProtocolProofReader(),
+            store: new ProtocolNativeObservationStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0,
+                undefined, {readOnly: true})});
+    }
+
     /** Called before parser mutation; only the certified occurrence can select an ABI. */
     async deserializeProtocolAction(action: ActionTrace, transaction: TrxMetadata): Promise<void> {
         const receipt = Array.isArray(action.receipt) ? action.receipt[1] : action.receipt;
@@ -521,12 +539,44 @@ export default class DSPoolWorker extends HyperionWorker {
             error: {code: 'proof_unavailable', message: 'Canonical action ABI proof is unavailable'}};
         const work: ProtocolActionWork = {original: structuredClone(action), metadata, view: this.protocolTrace?.view};
         this.protocolActions ??= new WeakMap(); this.protocolActions.set(action, work);
-        if (!work.view) { this.restoreProtocolAction(action, this.protocolTrace?.error ?? new ProtocolAbiProofUnavailableError('source_unbound', metadata.error.message)); return; }
+        if (!work.view || this.protocolTrace?.error) {
+            this.restoreProtocolAction(action, this.protocolTrace?.error ?? new ProtocolAbiProofUnavailableError('source_unbound', metadata.error.message)); return;
+        }
         let selected;
         const stopProof = this.profiler.start('protocol_abi_action_proof');
-        try { selected = await this.getProtocolProofReader().action(work.view, input); }
+        try {
+            if (this.protocol.nativeActions) {
+                const nativeView = this.protocolTrace?.nativeView;
+                if (!nativeView) throw new ProtocolNativeActionUnavailableError('native_source_unavailable', 'Original native source is unavailable');
+                const occurrence = await this.getProtocolProofReader().occurrence(work.view, input);
+                const native = this.getProtocolNativeReader();
+                const originalInput = {...input, inputActionOrdinal: occurrence.binding.inputActionOrdinal};
+                const decision = await native.authorize(nativeView, originalInput);
+                if (decision.kind === 'incomplete') {
+                    work.nativeIncomplete = {view: nativeView, input: originalInput};
+                    work.metadata = await native.incompleteMetadata(nativeView, originalInput);
+                    this.restoreProtocolAction(action, new ProtocolNativeActionUnavailableError(decision.error.code, decision.error.message));
+                    return;
+                }
+                if (decision.kind === 'native') {
+                    work.native = {view: nativeView, grant: decision.grant};
+                    work.metadata = await native.metadata(decision.grant);
+                    action.act.data = await native.decodeValue(decision.grant);
+                    action.protocol = structuredClone(work.metadata); delete action['ds_error'];
+                    try {await this.common.attachActionExtras(this, action);} catch {
+                        throw new ProtocolNativeActionUnavailableError('native_output_incomplete', 'Native action enrichment failed');
+                    }
+                    return;
+                }
+            }
+            selected = await this.getProtocolProofReader().action(work.view, input);
+        }
         catch (error) {
-            if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;
+            if (!(error instanceof ProtocolAbiProofUnavailableError) && !(error instanceof ProtocolNativeActionUnavailableError)) {
+                if (!work.native) throw error;
+                this.restoreProtocolAction(action, new ProtocolNativeActionUnavailableError('native_output_incomplete', 'Native output is not portable or valid'));
+                return;
+            }
             this.restoreProtocolAction(action, error); return;
         } finally { stopProof(); }
         work.metadata = Object.freeze({schemaVersion: 1, source: Object.freeze({...metadata.source}), selectionId: metadata.selectionId,
@@ -543,7 +593,7 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    private restoreProtocolAction(action: ActionTrace, error: ProtocolAbiProofUnavailableError): void {
+    private restoreProtocolAction(action: ActionTrace, error: ProtocolAbiProofUnavailableError | ProtocolNativeActionUnavailableError): void {
         const work = this.protocolActions.get(action);
         if (!work) throw error;
         const hadExcept = Object.hasOwn(action, 'except'), hadErrorCode = Object.hasOwn(action, 'error_code');
@@ -559,9 +609,13 @@ export default class DSPoolWorker extends HyperionWorker {
         if (!hadExcept) delete action.except;
         if (!hadErrorCode) delete action.error_code;
         const {inputActionOrdinal: _origin, ...input} = work.metadata.input as any;
-        work.metadata = {schemaVersion: 1, source: work.metadata.source, selectionId: work.metadata.selectionId,
+        if (work.metadata.schemaVersion === 2) {
+            if (work.metadata.kind === 'native') work.metadata = {...work.metadata, status: 'incomplete',
+                error: {code: error.code, message: error.message.slice(0, 4096).toWellFormed()}};
+        } else work.metadata = {schemaVersion: 1, source: work.metadata.source, selectionId: work.metadata.selectionId,
             input, status: 'incomplete', error: {code: error.code, message: error.message.slice(0, 4096).toWellFormed()}};
-        action.protocol = work.metadata; action['ds_error'] = true;
+        action.protocol = work.metadata.schemaVersion === 2 ? structuredClone(work.metadata) : work.metadata;
+        action['ds_error'] = true;
         process.send?.({event: 'ds_error', data: {type: 'protocol_action_incomplete', ...work.metadata.source,
             account: action.act.account, action: action.act.name, globalSequence: input.globalSequence, message: work.metadata.error.message}});
     }
@@ -570,11 +624,71 @@ export default class DSPoolWorker extends HyperionWorker {
         const work = this.protocolActions.get(action);
         if (!work?.view || 'status' in work.metadata) return;
         const stop = this.profiler.start('protocol_abi_action_revalidate');
-        try { await this.getProtocolProofReader().revalidate(work.view); action.protocol = work.metadata; }
+        try {
+            if (work.native) {
+                const before = actionHistoryImmutableJson(action);
+                const checked = await this.verifyNativePublication(JSON.parse(before), work);
+                if (actionHistoryImmutableJson(action) !== before)
+                    throw new ProtocolNativeActionUnavailableError('native_output_changed', 'Native action changed during final verification');
+                action.act.data = checked.value; action.protocol = structuredClone(checked.metadata);
+            } else {
+                await this.getProtocolProofReader().revalidate(work.view); action.protocol = work.metadata;
+            }
+        }
         catch (error) {
-            if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;
+            if (!(error instanceof ProtocolAbiProofUnavailableError) && !(error instanceof ProtocolNativeActionUnavailableError)) {
+                if (!work.native) throw error;
+                this.restoreProtocolAction(action, new ProtocolNativeActionUnavailableError('native_output_incomplete', 'Native output is not portable or valid'));
+                return;
+            }
             this.restoreProtocolAction(action, error);
         } finally { stop(); }
+    }
+
+    /** The source inventory grants membership; a fresh issued native grant separately checks decoding. */
+    private async verifyNativePublication(action: any, work: ProtocolActionWork, finalEnvelope = false) {
+        if (!work.native) throw new ProtocolNativeActionUnavailableError('native_invalid_grant', 'Native output lacks its original grant');
+        const native = this.getProtocolNativeReader(), metadata = await native.metadata(work.native.grant), input = metadata.input;
+        if (actionHistoryImmutableJson(action.protocol) !== actionHistoryImmutableJson(metadata)
+            || action.block_num !== metadata.source.blockNum || action.block_id !== metadata.source.blockId
+            || action.trx_id !== input.transactionId || action.action_ordinal !== input.actionOrdinal
+            || action.act?.account !== input.account || action.act?.name !== input.name) {
+            throw new ProtocolNativeActionUnavailableError('native_output_mismatch', 'Native output differs from its original occurrence or journal locator');
+        }
+        if (finalEnvelope) await native.verifyEnvelope(work.native.grant, action);
+        const value = await native.verifyValue(work.native.grant, action.act.data);
+        await native.revalidate(work.native.view);
+        return {metadata, value};
+    }
+
+    private async revalidateProtocolPublication(action: any, work?: ProtocolActionWork): Promise<void> {
+        if (!work || work.metadata.schemaVersion !== 2) return;
+        const native = this.getProtocolNativeReader();
+        if (work.nativeIncomplete) {
+            const metadata = await native.incompleteMetadata(work.nativeIncomplete.view, work.nativeIncomplete.input);
+            if (actionHistoryImmutableJson(action.protocol) !== actionHistoryImmutableJson(metadata) || action.act?.data !== metadata.input.rawHex)
+                throw new ProtocolNativeActionUnavailableError('native_output_mismatch', 'Incomplete native output differs from its source decision');
+            await native.revalidate(work.nativeIncomplete.view);
+        } else if (work.native && 'status' in work.metadata) {
+            const metadata = await native.metadata(work.native.grant);
+            const expected = {...metadata, status: 'incomplete', error: work.metadata.error};
+            if (actionHistoryImmutableJson(action.protocol) !== actionHistoryImmutableJson(expected) || action.act?.data !== metadata.input.rawHex)
+                throw new ProtocolNativeActionUnavailableError('native_output_mismatch', 'Raw native output differs from its original decision');
+            await native.verifyEnvelope(work.native.grant, {...action, protocol: metadata});
+            await native.revalidate(work.native.view);
+        } else await this.verifyNativePublication(action, work, true);
+        this.assertProtocolDelivery();
+    }
+
+    private async revalidateProtocolDeliveryNativeOutputs(): Promise<void> {
+        for (const entry of this.protocolDeliveryNativeEntries ?? [])
+            await this.revalidateProtocolPublication(JSON.parse(entry.payload.toString()), entry.work);
+        // Earlier values remain current after later async source checks and sealing/cache work.
+        for (const entry of this.protocolDeliveryNativeEntries ?? []) {
+            const view = entry.work.native?.view ?? entry.work.nativeIncomplete?.view;
+            if (view) await this.getProtocolNativeReader().revalidate(view);
+        }
+        if (this.protocolDeliveryNativeEntries?.size) this.assertProtocolDelivery();
     }
 
     private assertProtocolDelivery(): void {
@@ -618,6 +732,7 @@ export default class DSPoolWorker extends HyperionWorker {
         this.poolAbiCache.clear();   // per-cargo ABI-lookup memo
         this.poolTypeCache.clear();  // per-cargo type-resolution memo
         this.protocolCacheViews?.clear();
+        this.protocolNativeCacheEntries?.clear();
         try {
             this.redisBatchPipeline = this.ioRedisClient
                 ? this.ioRedisClient.pipeline()
@@ -631,6 +746,7 @@ export default class DSPoolWorker extends HyperionWorker {
                         const owner = this.protocolDeliveryOwners.get(data);
                         if (!owner || owner !== this.ch || !this.ch_ready) throw new Error('Protocol action delivery lacks its original broker channel');
                         this.activeProtocolDelivery = {message: data, channel: owner};
+                        this.protocolDeliveryNativeEntries = new Set();
                     }
                     const parsedData = JSON.parse((this.activeActionAdmission?.payload ?? data.content).toString());
                     try {await this.processTraces(parsedData, this.activeActionAdmission?.headers ?? data.properties.headers);} catch (error) {
@@ -642,21 +758,26 @@ export default class DSPoolWorker extends HyperionWorker {
                     }
                     if (this.actionSourceAdmissionEnabled) {
                         await this.flushRedisBatch();
+                        await this.revalidateProtocolDeliveryNativeOutputs();
                         const scope = this.activeActionAdmission!;
                         if (!scope.owner.current()) throw new Error('Action admission consumer changed before ACK');
                         await this.getActionAdmissionStore().trySeal(scope.admission);
+                        await this.revalidateProtocolDeliveryNativeOutputs();
                         if (!scope.owner.current()) throw new Error('Action admission consumer changed during seal');
                         scope.owner.consumer.ack(data);
                         this.activeActionAdmission = undefined;
                         this.activeProtocolDelivery = undefined;
+                        this.protocolDeliveryNativeEntries = undefined;
                         this.redisBatchPipeline = this.ioRedisClient ? this.ioRedisClient.pipeline() : null;
                         continue;
                     }
                     if (this.usesExtensionProtocol) {
                         await this.flushRedisBatch();
+                        await this.revalidateProtocolDeliveryNativeOutputs();
                         this.assertProtocolDelivery();
                         this.activeProtocolDelivery!.channel.ack(data);
                         this.activeProtocolDelivery = undefined;
+                        this.protocolDeliveryNativeEntries = undefined;
                         this.redisBatchPipeline = this.ioRedisClient ? this.ioRedisClient.pipeline() : null;
                         continue;
                     }
@@ -685,6 +806,7 @@ export default class DSPoolWorker extends HyperionWorker {
             }
         } finally {
             this.activeActionAdmission = undefined;
+            this.protocolDeliveryNativeEntries = undefined;
             stop();
         }
     }
@@ -741,12 +863,19 @@ export default class DSPoolWorker extends HyperionWorker {
     private async protocolCacheIsCurrent(): Promise<boolean> {
         const stop = this.profiler.start('protocol_abi_cache_revalidate');
         try {
+            for (const entry of this.protocolNativeCacheEntries ?? []) {
+                await this.revalidateProtocolPublication(JSON.parse(entry.payload.toString()), entry.work);
+            }
             for (const view of this.protocolCacheViews ?? []) await this.getProtocolProofReader().revalidate(view);
+            for (const entry of this.protocolNativeCacheEntries ?? []) {
+                const view = entry.work.native?.view ?? entry.work.nativeIncomplete?.view;
+                if (view) await this.getProtocolNativeReader().revalidate(view);
+            }
             this.assertProtocolDelivery(); return true;
         } catch (error) {
-            if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;
+            if (!(error instanceof ProtocolAbiProofUnavailableError) && !(error instanceof ProtocolNativeActionUnavailableError)) throw error;
             return false;
-        } finally { this.protocolCacheViews?.clear(); stop(); }
+        } finally { this.protocolCacheViews?.clear(); this.protocolNativeCacheEntries?.clear(); stop(); }
     }
 
     /**
@@ -775,6 +904,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 if (this.usesExtensionProtocol) {
                     this.protocolActions = new WeakMap();
                     this.protocolCacheViews ??= new Set();
+                    this.protocolNativeCacheEntries ??= new Set();
                     this.protocolTrace = undefined;
                     const stop = this.profiler.start('protocol_abi_trace_wait');
                     try {
@@ -782,9 +912,13 @@ export default class DSPoolWorker extends HyperionWorker {
                             throw new ProtocolAbiProofUnavailableError('source_unbound', 'Action trace lacks its source selection');
                         const view = await this.getProtocolProofReader().waitForOpen({chainId: this.chainId,
                             blockNum: Number(block_num), blockId: String(block_id)}, selectionId);
+                        if (view.nativeActionInterfaceVersion === 1 && !this.protocol.nativeActions)
+                            throw new ProtocolNativeActionUnavailableError('native_capability_unavailable', 'Canonical source requires its selected native action capability');
                         this.protocolTrace = {view};
+                        if (this.protocol.nativeActions) this.protocolTrace.nativeView = await this.getProtocolNativeReader().open({chainId: this.chainId,
+                            blockNum: Number(block_num), blockId: String(block_id)}, selectionId);
                     } catch (error) {
-                        if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;
+                        if (!(error instanceof ProtocolAbiProofUnavailableError) && !(error instanceof ProtocolNativeActionUnavailableError)) throw error;
                         this.protocolTrace = {error};
                     } finally { stop(); }
                 }
@@ -865,7 +999,8 @@ export default class DSPoolWorker extends HyperionWorker {
                         await this.revalidateProtocolAction(uniqueAction);
                         this.assertProtocolDelivery();
                         const work = this.protocolActions.get(uniqueAction);
-                        if (this.redisBatchPipeline && !this.conf.api.disable_tx_cache && work?.view && !('status' in work.metadata))
+                        if (this.redisBatchPipeline && !this.conf.api.disable_tx_cache && work?.view
+                            && (!('status' in work.metadata) || work.metadata.schemaVersion === 2))
                             this.protocolCacheViews.add(work.view);
                     }
 
@@ -894,6 +1029,9 @@ export default class DSPoolWorker extends HyperionWorker {
                     // Detach every finalized document before target/proof/journal awaits; hooks may retain their input.
                     finalBatch = detachAdmittedActionBatch(finalized);
                     await this.assertActionAdmissionCurrent();
+                    for (let index = 0; index < finalBatch.length; index++) {
+                        await this.revalidateProtocolPublication(finalBatch[index], this.protocolActions?.get(finalized[index]));
+                    }
                     const prepared = await this.getActionAdmissionStore().prepareTransaction(admissionScope.admission,
                         admissionScope.traceOrdinal, admissionScope.payload, finalBatch);
                     admissionScope.fragmentId = prepared.fragmentId; finalBatch = prepared.actions;
@@ -901,18 +1039,30 @@ export default class DSPoolWorker extends HyperionWorker {
                 } else if (admissionScope) {
                     // Explicitly incomplete source output grants no membership certificate.
                     finalBatch = detachAdmittedActionBatch(finalized);
+                } else if (this.usesExtensionProtocol) {
+                    // Hooks may retain parsed objects; queued bytes and routing metadata own detached snapshots.
+                    finalBatch = JSON.parse(JSON.stringify(finalized));
                 }
-                const staged = finalBatch.map(action => ({action, payload: Buffer.from(admissionScope ? actionHistoryImmutableJson(action) : JSON.stringify(action))}));
-                if (admissionScope) for (const {payload} of staged) {
+                const staged = finalBatch.map((action, index) => ({action, work: this.protocolActions?.get(finalized[index]),
+                    payload: Buffer.from(admissionScope ? actionHistoryImmutableJson(action) : JSON.stringify(action))}));
+                for (const {work, payload} of staged) if (work?.metadata.schemaVersion === 2)
+                    this.protocolDeliveryNativeEntries?.add({work, payload: Buffer.from(payload)});
+                if (admissionScope) for (const {action, work, payload} of staged) {
                     await this.assertActionAdmissionCurrent();
+                    await this.revalidateProtocolPublication(action, work);
                     const q = `${this.chain}:index_actions:${this.act_emit_idx}`;
                     this.act_emit_idx = this.act_emit_idx % this.conf.scaling.ad_idx_queues + 1;
                     if (!this.conf.indexer.disable_indexing) await this.publishAdmitted(admissionScope.owner, q, payload,
                         {block_num, [actionSourceAdmissionHeader]: admissionScope.admission.id,
                             ...(admissionScope.fragmentId ? {action_fragment_id: admissionScope.fragmentId} : {})});
+                    await this.revalidateProtocolPublication(action, work);
                 }
-                for (const {action: uniqueAction, payload} of staged) {
+                for (const {action: uniqueAction, work, payload} of staged) {
+                    await this.revalidateProtocolPublication(uniqueAction, work);
                     redisPayload.set(uniqueAction.global_sequence, payload);
+                    if (this.redisBatchPipeline && !this.conf.api.disable_tx_cache && work?.metadata.schemaVersion === 2) {
+                        this.protocolNativeCacheEntries.add({work, payload: Buffer.from(payload)});
+                    }
                     this.actionDsCounter++;
                     if (!admissionScope) this.pushToActionsQueue(payload, block_num);
                     if (live === 'true') {
