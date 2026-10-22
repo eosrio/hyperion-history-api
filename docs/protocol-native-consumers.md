@@ -106,8 +106,9 @@ mutation cannot change the selected native interface or add one to a profile tha
 Unsupported requirements and undeclared capabilities are rejected. Host interface support is internal and cannot
 be supplied through chain configuration. Admission alone grants no canonical source authority.
 
-The currently pinned Wire profiles still declare and expose no native capability. Their behavior
-and dependency pins remain unchanged. Synthetic installed-package loader checks prove admission;
+The currently pinned Wire profiles still declare and expose no native capability. Their codec
+behavior is unchanged. The host and Wire package use refreshed exact SDK and component pins for
+the method snapshot correction; this does not activate a native profile. Synthetic installed-package loader checks prove admission;
 the earlier provider-injected consumer fixtures do not prove installed Wire acceptance.
 Original Wire inputs remain unchanged, with synthetic notification/incomplete controls labelled
 separately. Controlled broker, storage and socket transports are consumer integration evidence.
