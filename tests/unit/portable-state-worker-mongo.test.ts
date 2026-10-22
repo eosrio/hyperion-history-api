@@ -9,12 +9,15 @@ const canonical = (value: any): string => Array.isArray(value) ? '[' + value.map
     : value && typeof value === 'object' ? '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}' : JSON.stringify(value);
 const hash = (value: unknown) => createHash('sha256').update(canonical(value)).digest('hex');
 const plan = JSON.parse(readFileSync(new URL('../fixtures/portable-state-worker/plan.template.json', import.meta.url), 'utf8'));
-const source = Array.from({length: 1480}, (_, index) => ({blockNum: index + 1, blockId: (index + 1).toString(16).padStart(64, '0')}));
+// Match the actual source audit shape, including retained evidence outside checkpoint identity.
+const source = Array.from({length: 1480}, (_, index) => ({blockNum: index + 1, blockId: (index + 1).toString(16).padStart(64, '0'),
+    previousBlockId: index ? index.toString(16).padStart(64, '0') : null, headerPreviousBlockId: index.toString(16).padStart(64, '0'),
+    frameSha256: 'a'.repeat(64), frameBytes: 100, timestamp: '2026-10-20T00:00:00.000', producer: 'sysio', applicationRows: []}));
 
 function fixture(through = 1480) {
     const calls: any[] = [], database = 'h45_p191_012345abcdef', backendId = 'p191-012345abcdef', chainId = 'c'.repeat(64);
     const failed = portableWorkerFaultDefinition(plan), definitions = [...plan.definitions, failed];
-    const checkpoint = (height: number) => source[height - 1];
+    const checkpoint = (height: number) => ({blockNum: source[height - 1].blockNum, blockId: source[height - 1].blockId});
     const expectations = definitions.map((definition, index) => ({definition,
         binding: {chainId, backendId, projectionId: definition.id, mappingRevision: definition.mappingRevision,
             abiDeployment: definition.source.abiDeployment, abiSha256: definition.source.abiSha256, generation: String(index + 1).repeat(64)},
@@ -60,7 +63,8 @@ function fixture(through = 1480) {
 
 test('physical audit reads exact stored documents against original plan rows and retains independent insert/update/delete expectations', async () => {
     for (const through of [1244, 1480]) {
-        const value = fixture(through), report = await auditPortablePhysicalMongo(value.input);
+        const value = fixture(through), originalSource = structuredClone(value.input.source), report = await auditPortablePhysicalMongo(value.input);
+        expect(value.input.source).toEqual(originalSource); expect(value.input.source[0]).toHaveProperty('frameSha256');
         expect(report.readOnly).toBe(true); expect(report.projections.map(projection => projection.count)).toEqual([1, 2, 0]);
         expect(report.projections[0].documents[0].value.next).toBe(through === 1244 ? '5' : '9');
         expect(report.projections[1].documents.map((row: any) => row.value.id)).toEqual(through === 1244 ? ['1', '2'] : ['3', '4']);

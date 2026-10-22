@@ -36,7 +36,11 @@ export async function auditPortablePhysicalMongo(input: PortableMongoAuditInput)
     assert.ok(source.length >= through && source.length <= 4096);
     assert.ok(expectations.length > 0 && expectations.length <= portableMongoAuditLimits.projections);
     assert.equal(new Set(expectations.map(value => value.binding.projectionId)).size, expectations.length);
-    const checkpoint = (height: number) => height === 0 ? {blockNum: 0, blockId: '0'.repeat(64)} : source[height - 1];
+    const checkpoint = (height: number) => {
+        if (height === 0) return {blockNum: 0, blockId: '0'.repeat(64)};
+        const original = source[height - 1];
+        return {blockNum: original?.blockNum, blockId: original?.blockId};
+    };
     for (const [index, value] of source.entries()) {assert.equal(value.blockNum, index + 1); assert.match(value.blockId, /^[0-9a-f]{64}$/);}
     for (const expected of expectations) {
         assert.equal(validateProjectionDefinition(expected.definition).valid, true);
