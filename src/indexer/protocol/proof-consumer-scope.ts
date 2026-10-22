@@ -34,20 +34,24 @@ export class ProofConsumerScope {
         this.assertActive();
         if (this.started) throw new Error('Worker attempt root may only run once');
         this.started = true;
-        const root = contexts.run(this, async () => operation());
+        let resolve!: (value: T | PromiseLike<T>) => void, reject!: (error: unknown) => void;
+        const root = new Promise<T>((yes, no) => {resolve = yes; reject = no;});
         this.root = root;
         // A supervised caller may stop awaiting before the owned operation physically settles.
         void root.catch(() => {});
+        // Record before synchronous invocation, preserving caller snapshot-before-first-await semantics.
+        try {resolve(contexts.run(this, operation));} catch (error) {reject(error);}
         return root;
     }
     operation<T>(operation: () => T | Promise<T>): Promise<T> {
         this.assertActive();
         if (this.operations.size >= this.maximumOperations) throw new Error('Worker attempt operation budget exhausted');
         // Invoke only after ownership/budget admission; retain the real promise, not a cancellation race.
-        const underlying = contexts.run(this, async () => operation());
-        const tracked = underlying.finally(() => this.operations.delete(tracked));
+        let resolve!: (value: T | PromiseLike<T>) => void, reject!: (error: unknown) => void;
+        const tracked = new Promise<T>((yes, no) => {resolve = yes; reject = no;});
         this.operations.add(tracked);
-        void tracked.catch(() => {});
+        void tracked.then(() => this.operations.delete(tracked), () => this.operations.delete(tracked));
+        try {resolve(contexts.run(this, operation));} catch (error) {reject(error);}
         return tracked;
     }
     fence(): void {
@@ -80,7 +84,8 @@ export function proofConsumerSignal(signal?: AbortSignal): AbortSignal | undefin
     return scope ? signal ? AbortSignal.any([signal, scope.signal]) : scope.signal : signal;
 }
 export function trackProofConsumerOperation<T>(operation: () => T | Promise<T>, scope = currentProofConsumerScope()): Promise<T> {
-    return scope ? scope.operation(operation) : Promise.resolve().then(operation);
+    if (scope) return scope.operation(operation);
+    try {return Promise.resolve(operation());} catch (error) {return Promise.reject(error);}
 }
 export function assertProofConsumerEnd(scope: ProofConsumerScope, end: ProofConsumerEnd): void {
     if (ends.get(end) !== scope || scope.snapshot().state !== 'drained') throw new Error('Unissued or foreign worker attempt end');
