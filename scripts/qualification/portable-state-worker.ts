@@ -20,8 +20,10 @@ import {startBulkLedger, summarizeBulkLedger} from './replay-bulk-ledger.ts';
 import {OwnedMongoFixture, MONGODB_VERSION, waitForMongo} from './projection-fixture.mjs';
 import {auditPortableWorkerSource, boundedPortableFile, ordinaryPortablePath, portableSourceHash,
     portableSourceLimits, servePortableWorkerSource, type PortableSourceInput, type PortableSourceFile,
-    type PortableWorkerSource} from './portable-state-worker-source.ts';
+    type PortableWorkerSource, type PortableSourceProfile} from './portable-state-worker-source.ts';
 import {assertPortableWorkerOracle} from './portable-state-worker-oracle.ts';
+import {auditPortableNativeOracle, createPortableNativeQualification, nativePortableHolds, portableLegacyProfile,
+    portableNativeProfile} from './portable-state-worker-native.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
@@ -111,15 +113,17 @@ export function validatePortableWorkerPlan(value: unknown): PortableWorkerPlan {
 
 export function portableWorkerEnvironment(environment: NodeJS.ProcessEnv, output: string, config: string, chain: string) {
     const selected = {...environment};
-    for (const name of Object.keys(selected)) if (name.startsWith('ES198_') || name.startsWith('worker_') ||
+    for (const name of Object.keys(selected)) if (name.startsWith('ES198_') || name.startsWith('worker_') || name.startsWith('HYPERION_PORTABLE_') ||
         ['NODE_OPTIONS', 'NODE_PATH', 'CONFIG_JSON', 'CHAIN_NAME', 'first_block', 'last_block', 'live_mode'].includes(name)) delete selected[name];
     return {...selected, NODE_OPTIONS: '', CONFIG_JSON: config, CHAIN_NAME: chain,
         ES198_OBSERVER_DIR: join(output, 'observer'), ES198_CPU_PROFILE: '0'};
 }
 
-export function portableWorkerConfig(chain: string, database: string, definitions: readonly ProjectionDefinition[], port: number, rpc: string) {
+export function portableWorkerConfig(chain: string, database: string, definitions: readonly ProjectionDefinition[], port: number, rpc: string,
+    profileId: PortableSourceProfile = portableLegacyProfile) {
     assert.match(chain, /^hyp-p191-[0-9a-f]{12}$/); assert.match(database, /^h45_p191_[0-9a-f]{12}$/);
     assert.ok(Number.isSafeInteger(port) && port > 1024 && port < 65536);
+    assert.ok([portableLegacyProfile, portableNativeProfile].includes(profileId));
     return {
         api: {enabled: true, chain_name: 'Owned portable qualification', server_addr: '127.0.0.1', server_port: port,
             server_name: `http://127.0.0.1:${port}`, chain_api: rpc, push_api: '', access_log: false,
@@ -129,7 +133,7 @@ export function portableWorkerConfig(chain: string, database: string, definition
             live_only_mode: true, abi_scan_mode: false, fetch_block: true, fetch_traces: true, fetch_deltas: true,
             process_deltas: true, disable_reading: false, disable_indexing: false},
         settings: {chain, parser: '3.2', eosio_alias: 'sysio', system_contract: 'sysio',
-            protocol: {provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId: 'wire-sysio-6508c9e8-engineering-v1'},
+            protocol: {provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId},
             index_version: 'v1', index_partition_size: 10000000, es_replicas: 1, auto_stop: 300,
             auto_mode_switch: false, ds_profiling: true, rate_monitoring: true, bp_monitoring: false,
             max_ws_payload_mb: 16, use_global_agent: false, debug: false},
@@ -214,7 +218,9 @@ async function sourceRpc(source: PortableWorkerSource, errors: string[]) {
         close: () => new Promise<void>(done => {server.closeAllConnections(); server.close(() => done());})};
 }
 
-export async function runPortableStateWorker(stateFile: string, planFile: string, outputDirectory: string) {
+export async function runPortableStateWorker(stateFile: string, planFile: string, outputDirectory: string, options: {native?: boolean} = {}) {
+    assert.ok(options && typeof options === 'object' && !Array.isArray(options) && Object.keys(options).every(key => key === 'native'));
+    if (Object.hasOwn(options, 'native')) assert.equal(typeof options.native, 'boolean');
     assert.equal(process.release.name, 'node'); assert.ok(!process.versions.bun && /^(22|24)\./.test(process.versions.node));
     const deadline = performance.now() + portableSourceLimits.runMs;
     const remaining = () => {const value = Math.floor(deadline - performance.now()); assert.ok(value > 0, 'portable worker deadline exceeded'); return value;};
@@ -226,7 +232,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     };
     const output = await newOutput(outputDirectory);
     const planBytes = await boundedPortableFile(resolve(planFile), 8 * 1024 * 1024), plan = validatePortableWorkerPlan(JSON.parse(planBytes.toString()));
-    const source = await auditPortableWorkerSource(plan.source); // before output or service writes
+    const source = await auditPortableWorkerSource(plan.source, options.native ? portableNativeProfile : portableLegacyProfile); // before service writes
+    const nativeOracle = options.native ? await auditPortableNativeOracle(source) : undefined;
     const oracleHashes: Record<string, string> = {}, officialOracles: any[] = [];
     for (const item of plan.oracleFiles) {
         const bytes = await boundedPortableFile(resolve(dirname(planFile), item.path), 16 * 1024 * 1024);
@@ -256,6 +263,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         chainId: source.chainId, profileId: source.profileId, revision: source.sourceRevision, components: source.components,
         range: {first: 1, last: source.endBlock}, inputHashes: source.inputHashes, originalStatus: source.originalStatus},
         planSha256: portableSourceHash(planBytes), oracleHashes, expectationOrigin: plan.expectationOrigin,
+        mode: options.native ? 'installed-native-wire-engineering' : 'legacy-wire-state',
+        preloads: options.native ? ['action-source-admission-preload.mjs', 'portable-state-worker-native-observer.mjs', 'es955-worker-observer.mjs'] : ['es955-worker-observer.mjs'],
         runtime: {node: process.version, executable: process.execPath}, inspections, network, volumes: volumeEvidence,
         prefixes: [], cleanup: [], errors: [], limits: {releaseQualified: false, forkRecoveryQualified: false, rustQualified: false,
             processCrashRecoveryQualified: false, writeFailureIsolationQualified: false,
@@ -300,8 +309,11 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     const spawnOwned = async (entry: string, config: string) => {
         const name = entry.includes('/api/') ? 'api' : 'master';
         const stdout = await open(join(output, name + '.stdout.log'), 'wx'), stderr = await open(join(output, name + '.stderr.log'), 'wx');
-        try {const child = spawn(process.execPath, ['--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href, join(repo, entry)],
-            {cwd: output, env: {...portableWorkerEnvironment(process.env, output, config, chain), ES198_OBSERVER_DIR: join(output, 'observer', name)},
+        const nativePreloads = options.native ? ['action-source-admission-preload.mjs', 'portable-state-worker-native-observer.mjs']
+            .flatMap(file => ['--import', pathToFileURL(join(repo, 'scripts/qualification', file)).href]) : [];
+        try {const child = spawn(process.execPath, [...nativePreloads, '--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href, join(repo, entry)],
+            {cwd: output, env: {...portableWorkerEnvironment(process.env, output, config, chain), ES198_OBSERVER_DIR: join(output, 'observer', name),
+                ...(options.native ? {HYPERION_PORTABLE_NATIVE_QUALIFICATION: '1'} : {})},
                 detached: process.platform !== 'win32', stdio: ['ignore', stdout.fd, stderr.fd, 'ipc']});
             child.on('error', error => report.errors.push(describeError(error))); return child;
         } finally {await stdout.close(); await stderr.close();}
@@ -329,7 +341,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         ledger = await startBulkLedger(state.core.nodes[0].url, join(output, 'bulk'), report.errors, 20000);
         report.bulkCapture = {...ledger.limits, recordedRequests: 0};
         const apiPort = await freePort(), controlPort = await freePort(), config = portableWorkerConfig(chain, database,
-            [...plan.definitions, invalidDefinition], apiPort, rpc.url);
+            [...plan.definitions, invalidDefinition], apiPort, rpc.url, source.profileId as PortableSourceProfile);
         const configFile = join(output, 'chain.json');
         const configModule = await import(new URL('../../build/indexer/projection/config.js', import.meta.url).href);
         const selectedConfig = configModule.resolvePortableStateConfiguration(config.features.portable_state, source.chainId);
@@ -385,9 +397,27 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         };
         await wait('API unavailable before actual block1', async () => {const response = await query(plan.definitions[0].id);
             assertPortableUnavailable(response); report.beforeSource = responseReceipt(response);});
+        const http = async (path: string) => {const response = await fetch(`http://127.0.0.1:${apiPort}` + path,
+            {signal: AbortSignal.timeout(Math.min(10000, remaining()))});
+            return {status: response.status, headers: response.headers, body: await boundedResponse(response)};};
+        const unrelated = async (height: number) => {
+            const block = source.records[height - 1], states: any[] = [];
+            // Older history remains usable while state queries report the current covered head.
+            for (const [index, definition] of plan.definitions.entries()) {const response = await query(definition.id);
+                assert.equal(response.status, 200); assert.equal(response.body.view.binding.projectionId, bindings[index].projectionId);
+                assert.equal(response.headers.get('hyperion-state-last-valid'), 'false'); states.push(responseReceipt(response));}
+            return {history: await history(block.blockNum), states};
+        };
+        const native = nativeOracle ? await createPortableNativeQualification({source, oracle: nativeOracle, client: es, chain, apiPort,
+            events: () => observedRows(), http, unrelated, wait, bulk: {directory: join(output, 'bulk'), receipts: ledger.receipts}}) : undefined;
+        if (native) report.native = {profile: native.profile, oracleHashes: native.oracleHashes, holds: [],
+            activation: 'Existing admission engineering preload only; ordinary installed native provider; public/default operator activation remains disabled.',
+            constructedControls: native.controls, notificationInventory: native.originalNotifications};
         let writeFailureObserved = false;
         let through = 0;
-        for (const barrier of plan.barriers) {
+        const schedule = native ? nativePortableHolds(plan.barriers.map(barrier => barrier.through)).map(through =>
+            plan.barriers.find(barrier => barrier.through === through) ?? {through, rows: Object.fromEntries(plan.definitions.map(definition => [definition.id, [] as Row[]]))}) : plan.barriers;
+        for (const barrier of schedule) {
             while (through < barrier.through) {
                 if (!writeFailureObserved && through === faultThrough - 1) {
                     const previous = {blockNum: through, blockId: source.records[through - 1].blockId};
@@ -443,7 +473,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 });
             }
             let isolation: any;
-            await wait(`invalid mapping remains durably isolated at${through}`, async () => {
+            if (through >= faultThrough) await wait(`invalid mapping remains durably isolated at${through}`, async () => {
                 const recovery = await invalidAdapter.recovery(invalidBinding);
                 assertPortablePending(recovery, invalidBinding,
                     {blockNum: faultThrough - 1, blockId: source.records[faultThrough - 2].blockId},
@@ -451,7 +481,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 const response = await query(invalidDefinition.id); assertPortableUnavailable(response);
                 isolation = {through, recovery, api: responseReceipt(response), history: await history(through)};
             });
-            report.contractFailure.observations.push(isolation);
+            if (isolation) report.contractFailure.observations.push(isolation);
             const block = source.records[through - 1], responses: any[] = [];
             for (const [index, definition] of plan.definitions.entries()) {
                 await wait(`actual HTTP ${definition.id} prefix${through}`, async () => {const response = await query(definition.id);
@@ -473,6 +503,9 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             }
             await wait(`owned Rabbit queues drained at${through}`, async () => {const rows = await queues(); assert.ok(rows.length > 0);
                 assert.ok(rows.every((row: any) => row.ready === 0 && row.unacked === 0 && row.messages === 0));});
+            if (native) {await es.indices.refresh({index: chain + '-action-*'}); const observed = await native.hold(through);
+                const file = `prefixes/native-${through}.json`, bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n');
+                await writeFile(join(output, file), bytes, {flag: 'wx'}); report.native.holds.push({through, file, sha256: portableSourceHash(bytes)});}
             const observed = {through, blockId: block.blockId, responses, queues: await queues(), recovery: report.lastRecovery, source: replay.metrics(), isolation};
             const bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n'); const file = `prefixes/block-${through}.json`;
             await writeFile(join(output, file), bytes, {flag: 'wx'}); report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
@@ -490,10 +523,11 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         for (const direction of ['ipc_send', 'ipc_receive']) assert.deepEqual(observer.filter(row => row.kind === direction && row.event === 'read_block' && row.role === 'continuous_reader')
             .map(row => row.message.block_num), expected, 'publisher-confirmed source interval differs');
         report.replay = replay.metrics(); report.bulk = summarizeBulkLedger(ledger.receipts);
+        if (native) report.native.final = await native.final();
         report.productionProgressKey = await redis.get(chain + '::last_indexed_block');
         const invalid = await query(plan.definitions[0].id, {filter: [], limit: 1, native: {$where: 'invalid'}} as any); assert.equal(invalid.status, 400);
         assert.equal((await query('unconfigured-projection')).status, 404);
-        const afterSource = await auditPortableWorkerSource(plan.source);
+        const afterSource = await auditPortableWorkerSource(plan.source, source.profileId as PortableSourceProfile);
         assert.deepEqual(afterSource.inputHashes, source.inputHashes); assert.deepEqual(afterSource.components, source.components);
         assert.equal(writeFailureObserved, true); assert.ok(report.contractFailure.observations.length >= 2);
         report.limits.writeFailureIsolationQualified = true;
@@ -530,8 +564,9 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    assert.equal(process.argv.length, 5, 'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY');
-    const result = await runPortableStateWorker(process.argv[2], process.argv[3], process.argv[4]);
+    assert.ok(process.argv.length === 5 || (process.argv.length === 6 && process.argv[5] === '--native'),
+        'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native]');
+    const result = await runPortableStateWorker(process.argv[2], process.argv[3], process.argv[4], {native: process.argv[5] === '--native'});
     console.log(JSON.stringify({status: result.status, error: result.error, prefixes: result.prefixes}));
     if (result.status !== 'passed') process.exitCode = 1;
 }

@@ -100,9 +100,16 @@ describe('portable actual-source harness guards', () => {
         const config = portableWorkerConfig('hyp-p191-123456abcdef', 'h45_p191_123456abcdef', [definition], 43210, 'http://127.0.0.1:43211');
         expect(config.features.contract_state).toEqual({enabled: false, contracts: {}}); expect(config.indexer.start_on).toBe(1);
         expect(config.features.portable_state.projections).toEqual([definition]); expect(config.api.server_addr).toBe('127.0.0.1');
+        expect(config.settings.protocol.profileId).toBe('wire-sysio-6508c9e8-engineering-v1');
+        const native = portableWorkerConfig('hyp-p191-123456abcdef', 'h45_p191_123456abcdef', [definition], 43210,
+            'http://127.0.0.1:43211', 'wire-sysio-6508c9e8-native-engineering-v1');
+        expect(native.settings.protocol.profileId).toBe('wire-sysio-6508c9e8-native-engineering-v1');
+        expect(native.settings).not.toHaveProperty('protocol_abi_coordination');
         expect(() => portableWorkerConfig('production', 'prod', [definition], 43210, 'http://127.0.0.1:1')).toThrow();
-        const environment = portableWorkerEnvironment({NODE_OPTIONS: '--import unsafe', worker_role: 'foreign', ES198_FAULT: '1', PATH: 'kept'}, '/output', '/config', 'chain');
+        const environment = portableWorkerEnvironment({NODE_OPTIONS: '--import unsafe', worker_role: 'foreign', ES198_FAULT: '1',
+            HYPERION_PORTABLE_NATIVE_QUALIFICATION: 'foreign', PATH: 'kept'}, '/output', '/config', 'chain');
         expect(environment.NODE_OPTIONS).toBe(''); expect(environment.worker_role).toBeUndefined(); expect(environment.ES198_FAULT).toBeUndefined(); expect(environment.PATH).toBe('kept');
+        expect(environment.HYPERION_PORTABLE_NATIVE_QUALIFICATION).toBeUndefined();
     });
     it('requires exact HTTP checkpoint, binding, rows/count and shared completeness headers', () => {
         // SDK validation uses null-prototype records; HTTP JSON and adapter snapshots use ordinary records.
