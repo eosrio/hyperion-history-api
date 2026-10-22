@@ -81,6 +81,13 @@ Proof capsules never enter public response bodies.
 HTTP requests and individual stream batches own cancellation scopes. A disconnected request stops
 its outstanding proof reads; one stream recipient disconnecting does not cancel remaining recipients.
 Final response, cache and send checks operate on detached snapshots and revalidate source authority.
+They verify the actual outgoing native values and envelopes as well as saved proof values. Captured
+source obligations survive derived rendering that removes original anchors. Existing raw and
+`noBinary` presentations require an explicitly captured producer mode and an exact rendering of the
+checked value; a hex-looking decoded string does not become raw merely because it looks like hex.
+Simplified rows match all exposed value, actor, notification and receiver fields across applicable
+grants, preserving independent inline inputs. A runtime-generated response checksum cannot make an
+altered public value authoritative.
 The internal consumer service can bind an already selected provider to its host. Normal production
 construction still uses the unchanged installed-provider loader.
 
