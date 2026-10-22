@@ -62,6 +62,28 @@ does not claim decoded predicate completeness, state readiness or full Wire qual
 projection/query-readiness gates remain separate. Unavailable inputs outside configured verified
 ancestry remain unavailable; increasing the window is not historical qualification.
 
+## HTTP, Redis and current streams
+
+The shared action consumer resolves native and contract documents through disjoint metadata paths.
+Native-aware sources must classify even schema-v1 documents before deployed ABI decoding. Native
+responses reopen the original native journal decision, verify their complete source envelope and
+encode retained values back to the original bytes. Existing action, transaction, hex and derived
+response handlers use that shared boundary before shaping removes source fields. Raw history stays
+available when decoded authority is unavailable.
+
+Redis response capsules use their own version, independently of document metadata. The current
+capsule binds its rendered body, proof entries and node-response marker; older capsules miss and
+are recomputed. Integrity digests detect changes to a retained capsule but do not authenticate a
+fully forged Redis record. Every accepted proof entry still reopens canonical authority. Native
+capsules retain private checked envelopes and values where public renderers discard those fields.
+Proof capsules never enter public response bodies.
+
+HTTP requests and individual stream batches own cancellation scopes. A disconnected request stops
+its outstanding proof reads; one stream recipient disconnecting does not cancel remaining recipients.
+Final response, cache and send checks operate on detached snapshots and revalidate source authority.
+The internal consumer service can bind an already selected provider to its host. Normal production
+construction still uses the unchanged installed-provider loader.
+
 ## Qualification boundary
 
 Positive native consumer fixtures use explicitly labelled engineering orchestration of an already
