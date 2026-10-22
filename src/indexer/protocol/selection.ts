@@ -2,7 +2,8 @@ import {createHash} from 'node:crypto';
 import {readFile, realpath} from 'node:fs/promises';
 import {dirname, isAbsolute, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {validateProtocolSelection, type ProtocolComponent, type ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
+import {validateProtocolSelection, validateProtocolNativeActions, type ProtocolComponent,
+    type ProtocolNativeActionRequirement, type ProtocolNativeActions, type ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
 import {createContractDecoder, type ContractDecoder} from './contract-cache.js';
 
 export type ChainProtocolConfiguration =
@@ -11,6 +12,36 @@ export type ChainProtocolConfiguration =
 
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const readJson = async (path: string) => JSON.parse(await readFile(path, 'utf8'));
+// Host support cannot be supplied through operator configuration or retained history.
+const nativeActionInterfaceVersions = Object.freeze([1]);
+
+/** Inspect the first visible property without evaluating an optional capability accessor. */
+function nativeCapability(provider: ProtocolProvider): unknown {
+    for (let owner: object | null = provider; owner; owner = Object.getPrototypeOf(owner)) {
+        const property = Object.getOwnPropertyDescriptor(owner, 'nativeActions');
+        if (!property) continue;
+        if (!Object.hasOwn(property, 'value')) throw new Error('Native actions must be a data property of the selected profile');
+        return property.value;
+    }
+    return undefined;
+}
+
+/** Seal declared capability or absence, retaining original method receivers and contract codec. */
+function providerSnapshot(provider: ProtocolProvider, requirement?: ProtocolNativeActionRequirement): ProtocolProvider {
+    const capability = nativeCapability(provider);
+    let nativeActions: ProtocolNativeActions | undefined;
+    if (requirement) {
+        const checked = validateProtocolNativeActions(capability, requirement);
+        if (!checked.valid) throw new Error(`Native actions do not implement the selected profile: ${checked.errors.map(error => error.message).join('; ')}`);
+        nativeActions = checked.nativeActions;
+    } else if (capability !== undefined) throw new Error('Native actions are not supported by the selected profile');
+    const observeBlockAbi = provider.observeBlockAbi, verifyNativeGenesis = provider.verifyNativeGenesis;
+    return Object.freeze({profileId: provider.profileId, contractCodec: provider.contractCodec,
+        createShipSession: provider.createShipSession.bind(provider), normalizeDelta: provider.normalizeDelta.bind(provider),
+        ...(observeBlockAbi ? {observeBlockAbi: observeBlockAbi.bind(provider)} : {}),
+        ...(verifyNativeGenesis ? {verifyNativeGenesis: verifyNativeGenesis.bind(provider)} : {}),
+        ...(nativeActions ? {nativeActions} : {})});
+}
 
 /** Verify inert artifacts before any provider module or native addon is imported. */
 async function installedComponent(packageRoot: string, module: string, runtime: 'node' | 'rust', version: string,
@@ -61,7 +92,7 @@ export async function loadChainProtocol(configuration?: ChainProtocolConfigurati
     const host = await readJson(fileURLToPath(new URL('../../../package.json', import.meta.url)));
     const sdk = await readJson(fileURLToPath(new URL('../package.json', import.meta.resolve('@eosrio/hyperion-sdk'))));
     const selection = validateProtocolSelection(descriptor, {profileId: configuration.profileId,
-        environment: {hyperion: host.version, sdk: sdk.version}, components});
+        environment: {hyperion: host.version, sdk: sdk.version}, components, nativeActionInterfaceVersions});
     if (!selection.valid) throw new Error(`Protocol selection rejected: ${selection.errors.map(error => `${error.path}: ${error.message}`).join('; ')}`);
     // All profiles, source pins and Node/Rust source artifacts are validated first.
     const executable = await import(`${module}/provider`);
@@ -71,16 +102,7 @@ export async function loadChainProtocol(configuration?: ChainProtocolConfigurati
         || !['decodeAbi', 'encodeAbi', 'decodeValue', 'encodeValue'].every(method => typeof provider.contractCodec[method] === 'function')) {
         throw new Error('Protocol provider does not implement the selected interface');
     }
-    // The first visible data property may be undefined for an absent optional capability.
-    // This host does not advertise native actions; reject values/accessors without reading them.
-    for (let owner: object | null = provider; owner; owner = Object.getPrototypeOf(owner)) {
-        const property = Object.getOwnPropertyDescriptor(owner, 'nativeActions');
-        if (!property) continue;
-        if (!Object.hasOwn(property, 'value') || property.value !== undefined) {
-            throw new Error('Native actions are not supported by the selected profile');
-        }
-        break;
-    }
-    return {provider, decoder: createContractDecoder(provider.contractCodec), id: selection.descriptor.manifest.package,
+    const selectedProvider = providerSnapshot(provider, selection.profile.nativeActions);
+    return {provider: selectedProvider, decoder: createContractDecoder(selectedProvider.contractCodec), id: selection.descriptor.manifest.package,
         components: selection.profile.components};
 }

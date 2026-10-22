@@ -89,13 +89,24 @@ Simplified rows match all exposed value, actor, notification and receiver fields
 grants, preserving independent inline inputs. A runtime-generated response checksum cannot make an
 altered public value authoritative.
 The internal consumer service can bind an already selected provider to its host. Normal production
-construction still uses the unchanged installed-provider loader.
+construction uses the installed-provider loader described below.
 
 ## Qualification boundary
 
 Positive native consumer fixtures use explicitly labelled engineering orchestration of an already
-selected pinned provider. Normal production selection retains loader negotiation and refuses the
-currently inactive native capability; fixture injection is not installed-package acceptance.
+selected pinned provider. Normal production selection negotiates supported native interface 1 from
+the selected inert profile before importing executable code, then validates runtime agreement
+without invoking native
+methods or accessors. Extension selections retain a frozen interface facade with methods bound to
+the original provider receiver and its existing contract codec. Native-required selections also
+retain a frozen native method snapshot bound to its original receiver. Later provider/capability
+mutation cannot change the selected native interface or add one to a profile that declared none.
+Unsupported requirements and undeclared capabilities are rejected. Host interface support is internal and cannot
+be supplied through chain configuration. Admission alone grants no canonical source authority.
+
+The currently pinned Wire profiles still declare and expose no native capability. Their behavior
+and dependency pins remain unchanged. Synthetic installed-package loader checks prove admission;
+the earlier provider-injected consumer fixtures do not prove installed Wire acceptance.
 Original Wire inputs remain unchanged, with synthetic notification/incomplete controls labelled
 separately. Controlled broker, storage and socket transports are consumer integration evidence.
 They do not establish live service, client/proxy reconnect, fork/LIB soak or release acceptance.

@@ -11,69 +11,21 @@ async function runNativeLoader(script:string){
 
 test('protocol activation verifies complete inert artifacts before importing executable providers',async()=>{
     const script = `
-        import assert from 'node:assert/strict'; import {createHash,randomUUID} from 'node:crypto';
-        import {mkdirSync,mkdtempSync,writeFileSync,rmSync} from 'node:fs';
-        import {fileURLToPath} from 'node:url'; import {join,dirname,basename,resolve} from 'node:path';
+        import assert from 'node:assert/strict'; import {fileURLToPath} from 'node:url';
+        import {installedProtocolFixtures} from ${JSON.stringify(new URL('./protocol-selection-fixture.mjs',import.meta.url).href)};
         import {loadChainProtocol} from ${JSON.stringify(loader)};
         const root = fileURLToPath(${JSON.stringify(new URL('../../',import.meta.url).href)});
-        const scope = resolve(root,'node_modules','@hyperion-fixtures'); mkdirSync(scope,{recursive:true});
-        const owned = [];
-        const hash = value => createHash('sha256').update(value).digest('hex');
-        const json = value => JSON.stringify(value)+'\\n';
-        function fixture(options={}) {
-            const directory=join(scope,'protocol-'+randomUUID());mkdirSync(directory);owned.push(directory);
-            const name='@hyperion-fixtures/'+basename(directory);mkdirSync(join(directory,'dist'));mkdirSync(join(directory,'crates'));
-            const source='a'.repeat(40), version='0.0.0-dev.1', id='fixture-v1';
-            const pkg={name,version,type:'module',exports:{'./provider':'./dist/provider.js',
-                './protocol-provider.json':'./dist/protocol-provider.json','./protocol-node-artifact.json':'./dist/protocol-node-artifact.json',
-                './protocol-rust-artifact.json':'./dist/protocol-rust-artifact.json'}};
-            const nativeValue='{interfaceVersion:1,observe(){globalThis.fixtureNativeCalls++;throw new Error("native observe invoked")},decodeValue(){globalThis.fixtureNativeCalls++;throw new Error("native decode invoked")},encodeValue(){globalThis.fixtureNativeCalls++;throw new Error("native encode invoked")}}';
-            const getter='{get(){globalThis.fixtureNativeGetters++;throw new Error("native getter invoked")}}';
-            const native={value:'provider.nativeActions='+nativeValue+';',
-                inherited:'Object.setPrototypeOf(provider,{nativeActions:'+nativeValue+'});',
-                getter:'Object.defineProperty(provider,"nativeActions",'+getter+');',
-                inheritedGetter:'Object.setPrototypeOf(provider,Object.defineProperty({},"nativeActions",'+getter+'));',
-                methodGetter:'provider.nativeActions=Object.defineProperty('+nativeValue+',"observe",'+getter+');',
-                undefined:'provider.nativeActions=undefined;',
-                inheritedUndefined:'Object.setPrototypeOf(provider,{nativeActions:undefined});',
-                undefinedOverGetter:'Object.setPrototypeOf(provider,Object.defineProperty({},"nativeActions",'+getter+'));Object.defineProperty(provider,"nativeActions",{value:undefined});',
-                undefinedOverValue:'Object.setPrototypeOf(provider,{nativeActions:'+nativeValue+'});Object.defineProperty(provider,"nativeActions",{value:undefined});',
-                getterOverUndefined:'Object.setPrototypeOf(provider,{nativeActions:undefined});Object.defineProperty(provider,"nativeActions",'+getter+');',
-                null:'provider.nativeActions=null;'};
-            const executable='globalThis.fixtureProviderImports=(globalThis.fixtureProviderImports??0)+1; export function createProtocolProvider(profileId){const provider={profileId,contractCodec:'+
-                (options.badCodec?'{}':'{decodeAbi:()=>({}),encodeAbi:()=>new Uint8Array(),decodeValue:()=>({}),encodeValue:()=>new Uint8Array()}')+
-                ',createShipSession(){throw new Error("not invoked during selection")},normalizeDelta(){throw new Error("not invoked during selection")}};'+
-                (options.native?native[options.native]:'')+'return provider;}';
-            const members={'package.json':json(pkg),'dist/provider.js':executable,'crates/fixture.rs':'// source-only fixture\\n'};
-            for(const [path,value] of Object.entries(members))writeFileSync(join(directory,path),value);
-            const component=runtime=>{
-                const paths=runtime==='node'?(options.uncovered?['package.json']:['package.json','dist/provider.js']):['crates/fixture.rs'];
-                const manifest={schemaVersion:1,id:'fixture-'+runtime,sourceRevision:source,sourceModified:options.dirty??false,
-                    files:paths.map(path=>({path,sha256:hash(members[path])}))};
-                const bytes=json(manifest);writeFileSync(join(directory,'dist/protocol-'+runtime+'-artifact.json'),bytes);
-                return {id:manifest.id,runtime,version,sourceRevision:source,sha256:hash(bytes)};
-            };
-            const components=[component('node'),component('rust')];
-            if(options.wrongSource)components[options.wrongSource==='node'?0:1].sourceRevision='b'.repeat(40);
-            if(options.wrongDigest)components[options.wrongDigest==='node'?0:1].sha256='b'.repeat(64);
-            const descriptor={interfaceVersion:1,manifest:{schemaVersion:1,package:name,version,kind:'protocol',
-                compatibility:{hyperion:'4.0.7',sdk:'0.0.0-dev.1'}},profiles:[{id,components}]};
-            if(Object.hasOwn(options,'requirement'))descriptor.profiles[0].nativeActions=options.requirement;
-            if(options.unselectedNative)descriptor.profiles.push({id:'native-not-selected',components,nativeActions:{interfaceVersion:1}});
-            writeFileSync(join(directory,'dist/protocol-provider.json'),json(descriptor));
-            if(options.tamper)writeFileSync(join(directory,'dist/provider.js'),executable+';throw new Error("tampered executable ran")');
-            if(options.tamperRust)writeFileSync(join(directory,'crates/fixture.rs'),'// tampered Rust source\\n');
-            if(options.missingRust)rmSync(join(directory,'dist/protocol-rust-artifact.json'));
-            return {provider:'extension',package:name,profileId:options.unknown?'not-declared':id};
-        }
+        const {fixture,cleanup}=installedProtocolFixtures(root);
         try {
             globalThis.fixtureProviderImports=0;
             for(const options of [{tamper:true},{tamperRust:true},{missingRust:true},{dirty:true},{uncovered:true},
                 {wrongSource:'node'},{wrongSource:'rust'},{wrongDigest:'node'},{wrongDigest:'rust'},{unknown:true}]) {
-                await assert.rejects(loadChainProtocol(fixture(options)));
-                assert.equal(globalThis.fixtureProviderImports,0,'provider imported before a complete compatible component set');
+                for(const requirement of [undefined,{interfaceVersion:1}]){
+                    await assert.rejects(loadChainProtocol(fixture({...options,...(requirement?{requirement}:{})})));
+                    assert.equal(globalThis.fixtureProviderImports,0,'provider imported before a complete compatible component set');
+                }
             }
-            for(const requirement of [{interfaceVersion:1},{interfaceVersion:2},{interfaceVersion:'1'},null,[],{},
+            for(const requirement of [{interfaceVersion:2},{interfaceVersion:'1'},null,[],{},
                 {interfaceVersion:1,unknown:true}]) {
                 await assert.rejects(loadChainProtocol(fixture({requirement})),/Protocol selection rejected:.*native/i);
                 assert.equal(globalThis.fixtureProviderImports,0,'native-required provider imported without host support');
@@ -101,10 +53,129 @@ test('protocol activation verifies complete inert artifacts before importing exe
             assert.equal(globalThis.fixtureProviderImports,14);
             console.log('protocol-selection-boundaries-passed');
         } finally {
-            for(const directory of owned){assert.equal(dirname(resolve(directory)),scope);rmSync(directory,{recursive:true,force:true});}
+            cleanup();
         }
     `;
     expect(await runNativeLoader(script)).toBe('protocol-selection-boundaries-passed\n');
+},25000);
+
+test('installed native requirements agree with runtime shape without invoking capabilities',async()=>{
+    const script=`
+        import assert from 'node:assert/strict'; import {fileURLToPath} from 'node:url';
+        import {installedProtocolFixtures} from ${JSON.stringify(new URL('./protocol-selection-fixture.mjs',import.meta.url).href)};
+        import {loadChainProtocol} from ${JSON.stringify(loader)};
+        const {fixture,cleanup}=installedProtocolFixtures(fileURLToPath(${JSON.stringify(new URL('../../',import.meta.url).href)}));
+        try {
+            globalThis.fixtureProviderImports=0;globalThis.fixtureNativeCalls=0;globalThis.fixtureNativeGetters=0;
+            const requirement={interfaceVersion:1};
+            for(const native of ['value','inherited']){
+                const {provider}=await loadChainProtocol(fixture({requirement,native}));
+                assert.equal(provider.nativeActions.interfaceVersion,1);
+                assert(Object.isFrozen(provider));assert(Object.isFrozen(provider.nativeActions));
+            }
+            for(const native of [undefined,'undefined','inheritedUndefined','undefinedOverGetter','undefinedOverValue',
+                'getter','inheritedGetter','methodGetter','getterOverUndefined','null']) {
+                await assert.rejects(loadChainProtocol(fixture({requirement,native})),/native actions.*selected profile/i);
+            }
+            const invalidValues=[
+                '{interfaceVersion:2,observe(){},decodeValue(){},encodeValue(){}}',
+                '{interfaceVersion:1,observe(){},decodeValue(){}}',
+                'Object.create({interfaceVersion:1,observe(){},decodeValue(){},encodeValue(){}})',
+                'Object.defineProperty({observe(){},decodeValue(){},encodeValue(){}},"interfaceVersion",{get(){globalThis.fixtureNativeGetters++;throw Error("version getter ran")}})',
+                '{interfaceVersion:1,observe:null,decodeValue(){},encodeValue(){}}',
+            ];
+            for(const nativeValue of invalidValues) await assert.rejects(
+                loadChainProtocol(fixture({requirement,native:'value',nativeValue})),/native actions.*selected profile/i);
+            assert.equal(globalThis.fixtureNativeCalls,0);assert.equal(globalThis.fixtureNativeGetters,0);
+            assert.equal(globalThis.fixtureProviderImports,17);
+            console.log('native-runtime-agreement-passed');
+        } finally { cleanup(); }
+    `;
+    expect(await runNativeLoader(script)).toBe('native-runtime-agreement-passed\n');
+},25000);
+
+test('extension selection seals declared native capability or absence with original method receivers',async()=>{
+    const script=`
+        import assert from 'node:assert/strict'; import {fileURLToPath} from 'node:url';
+        import {installedProtocolFixtures} from ${JSON.stringify(new URL('./protocol-selection-fixture.mjs',import.meta.url).href)};
+        import {loadChainProtocol} from ${JSON.stringify(loader)};
+        const {fixture,cleanup}=installedProtocolFixtures(fileURLToPath(${JSON.stringify(new URL('../../',import.meta.url).href)}));
+        const implementation=(frozen,nativeEnabled)=>\`
+            globalThis.fixtureProviderImports=(globalThis.fixtureProviderImports??0)+1;
+            export function createProtocolProvider(profileId){
+                class Native {
+                    #tag='original';
+                    constructor(){this.interfaceVersion=1;this.observe=this.observe;this.decodeValue=this.decodeValue;this.encodeValue=this.encodeValue;}
+                    observe(){globalThis.fixtureNativeCalls++;return {schemaVersion:1,decisions:[],tag:this.#tag};}
+                    decodeValue(kind,bytes){globalThis.fixtureNativeCalls++;return {kind,value:bytes[0],tag:this.#tag};}
+                    encodeValue(kind,value){globalThis.fixtureNativeCalls++;if(this.#tag!==value.tag)throw Error('wrong native receiver');return Uint8Array.of(value.value);}
+                }
+                class Codec {
+                    #tag='codec';
+                    decodeAbi(bytes){return {tag:this.#tag};} encodeAbi(abi){if(this.#tag!==abi.tag)throw Error('wrong codec receiver');return Uint8Array.of(1);}
+                    decodeValue(abi,type,bytes){return {tag:this.#tag};} encodeValue(abi,type,value){return Uint8Array.of(this.#tag.length);}
+                }
+                class Provider {
+                    #tag='provider';
+                    constructor(){this.profileId=profileId;this.contractCodec=new Codec();this.nativeActions=new Native();}
+                    createShipSession(){globalThis.fixtureProviderCalls++;return {tag:this.#tag};}
+                    normalizeDelta(){globalThis.fixtureProviderCalls++;return {kind:'ignore',reason:this.#tag};}
+                    observeBlockAbi(){globalThis.fixtureProviderCalls++;return {tag:this.#tag};}
+                    verifyNativeGenesis(){globalThis.fixtureProviderCalls++;return {tag:this.#tag};}
+                }
+                globalThis.fixtureOriginalProvider=new Provider();
+                globalThis.fixtureOriginalNative=globalThis.fixtureOriginalProvider.nativeActions;
+                if(!\${nativeEnabled})delete globalThis.fixtureOriginalProvider.nativeActions;
+                if(\${frozen}){Object.freeze(globalThis.fixtureOriginalNative);Object.freeze(globalThis.fixtureOriginalProvider);}
+                return globalThis.fixtureOriginalProvider;
+            }
+        \`;
+        try {
+            for(const nativeEnabled of [true,false])for(const frozen of [false,true]){
+                globalThis.fixtureNativeCalls=0;globalThis.fixtureProviderCalls=0;globalThis.fixtureNativeGetters=0;
+                const {provider,decoder}=await loadChainProtocol(fixture({...(nativeEnabled?{requirement:{interfaceVersion:1}}:{}),implementation:implementation(frozen,nativeEnabled)}));
+                const native=provider.nativeActions, originalCodec=provider.contractCodec;
+                assert.equal(globalThis.fixtureNativeCalls,0);assert.equal(globalThis.fixtureProviderCalls,0);
+                assert(Object.isFrozen(provider));
+                assert.notEqual(provider,globalThis.fixtureOriginalProvider);
+                if(nativeEnabled){assert(Object.isFrozen(native));assert.notEqual(native,globalThis.fixtureOriginalNative);}
+                else assert.equal('nativeActions' in provider,false);
+                if(!frozen){
+                    globalThis.fixtureOriginalProvider.nativeActions=globalThis.fixtureOriginalNative;
+                    Object.defineProperty(globalThis.fixtureOriginalProvider,'nativeActions',{get(){globalThis.fixtureNativeGetters++;throw Error('late native accessor ran')}});
+                    globalThis.fixtureOriginalProvider.profileId='replaced-profile';globalThis.fixtureOriginalProvider.contractCodec={};
+                    globalThis.fixtureOriginalProvider.createShipSession=()=>{throw Error('replaced provider method')};
+                    globalThis.fixtureOriginalProvider.normalizeDelta=()=>{throw Error('replaced provider method')};
+                    globalThis.fixtureOriginalProvider.observeBlockAbi=()=>{throw Error('replaced provider hook')};
+                    globalThis.fixtureOriginalProvider.verifyNativeGenesis=()=>{throw Error('replaced provider hook')};
+                    for(const key of ['observe','decodeValue','encodeValue'])globalThis.fixtureOriginalNative[key]=()=>{throw Error('replaced native method')};
+                    globalThis.fixtureOriginalNative.interfaceVersion=2;
+                }
+                assert.throws(()=>{provider.nativeActions=undefined},TypeError);
+                if(nativeEnabled)assert.throws(()=>{native.decodeValue=()=>null},TypeError);
+                assert.equal(provider.createShipSession({}).tag,'provider');
+                assert.equal(provider.normalizeDelta({},{}).reason,'provider');
+                assert.equal(provider.observeBlockAbi({},{}).tag,'provider');
+                assert.equal(provider.verifyNativeGenesis({},{}).tag,'provider');
+                assert.equal(globalThis.fixtureProviderCalls,4);
+                if(nativeEnabled){
+                    assert.equal(native.interfaceVersion,1);assert.equal(native.observe({},{}).tag,'original');
+                    const value=native.decodeValue('fixture',Uint8Array.of(7));
+                    assert.deepEqual(value,{kind:'fixture',value:7,tag:'original'});
+                    assert.deepEqual(native.encodeValue('fixture',value),Uint8Array.of(7));assert.equal(globalThis.fixtureNativeCalls,3);
+                }else{
+                    assert.equal(provider.nativeActions,undefined);assert.equal('nativeActions' in provider,false);assert.equal(globalThis.fixtureNativeCalls,0);
+                }
+                assert.equal(globalThis.fixtureNativeGetters,0);
+                assert.equal(provider.profileId,'fixture-v1');assert.equal(provider.contractCodec,originalCodec);
+                assert.deepEqual(provider.contractCodec.decodeAbi(Uint8Array.of(1)),{tag:'codec'});
+                assert.deepEqual(provider.contractCodec.encodeAbi({tag:'codec'}),Uint8Array.of(1));
+                assert(decoder.loadAbi('fixture',{tag:'codec'}));assert.deepEqual(decoder.binToJson('fixture','row',Uint8Array.of(1)),{tag:'codec'});
+            }
+            console.log('native-method-snapshots-passed');
+        } finally { cleanup(); }
+    `;
+    expect(await runNativeLoader(script)).toBe('native-method-snapshots-passed\n');
 },25000);
 
 test('installed Wire profiles keep native actions inactive and deployed contract decoding strict',async()=>{
