@@ -1,0 +1,1495 @@
+{
+  "schemaVersion": 1,
+  "status": "measured",
+  "issue": 252,
+  "mode": "timing",
+  "limits": {
+    "fixtureBytes": 262144,
+    "metadataBytes": 262144,
+    "codeBytes": 16777216,
+    "outputBytes": 8388608,
+    "warmup": 10,
+    "iterations": 30,
+    "gcEntries": 10000,
+    "durationMs": 120000
+  },
+  "runtime": {
+    "version": "v24.19.0",
+    "v8": "13.6.233.17-node.51",
+    "platform": "linux",
+    "arch": "x64",
+    "executable": "/tmp/hyp45-p246-20261021/runtimes/node-v24.19.0-linux-x64/bin/node",
+    "binarySha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+    "execArgv": [],
+    "nodeOptionsPresent": false
+  },
+  "harnessSha256": "080301c3739d83d98c0f14f32bf8c5a0821f4c03bdd77b008f0df314e8c15caa",
+  "provenance": {
+    "gitHead": "d95d797fc3de8c695e2817a2952eedebeb4b3241",
+    "gitHeadAvailability": "observed",
+    "origin": {
+      "schemaVersion": 1,
+      "kind": "exact-public-engineering-metadata",
+      "source": {
+        "hapiCommit": "03dd3e9758473bc563bf8d7cbbbc0557232f17dc",
+        "hapiDocumentedAt": "2fbbf4a475d9e45df7eebb9611d7466c72f08809",
+        "sdkCommit": "ae1f670016d6f4a63b42eb08563ee9d544867915"
+      },
+      "publicArchive": {
+        "file": "raw-evidence.tar.gz",
+        "bytes": 24543244,
+        "sha256": "1e272c1f9c9bd10db3be5bcd11c67b98dbcef1f0f5fec53ef328d56720cef6b3"
+      },
+      "originalArchive": {
+        "file": "profile24-prefix288-cpu-on-full.tar.gz",
+        "bytes": 6807971,
+        "sha256": "aac8bcb2a5f3f46bc33eec4359caabfa12b61cfed528b9d9c46b25f041f166dc"
+      },
+      "stage": {
+        "path": "cases/profile24-prefix288-cpu-on/stages/profile-prefix-288.json",
+        "bytes": 644465,
+        "sha256": "1cc987491552f7467cf11b0d6bd67e4329bb81edcce91ee1ad51da1c5ec53325",
+        "selection": "/physical/0/metadata"
+      },
+      "metadata": {
+        "file": "metadata.json.gz.base64",
+        "encoding": "gzip+base64",
+        "serialization": "UTF-8 JSON.stringify of selected metadata, no final newline",
+        "bytes": 140154,
+        "sha256": "d80a496e6121157a98f85b1fa6c5a3416a7c282f79b85806bd4a2407fc0c2272",
+        "gzipBytes": 44986,
+        "gzipSha256": "68ed8a3fee3a2906a097c18d5cd36d722c455837e515b6066c30d56b76a83915"
+      },
+      "emissionArchive": {
+        "file": "verified-emission-03dd3e9758473bc563bf8d7cbbbc0557232f17dc.tar.gz",
+        "bytes": 890259,
+        "sha256": "25aad00b3766db8918259a6907b99ab26d765b96e4c4d6fec2e958605e29a093",
+        "pinReceiptSha256": "007c0e22cc0ada543972ecce0619bf19a966135afa0611937323a430bd95d3af",
+        "members": 602
+      },
+      "code": [
+        {
+          "path": "packages/backend-mongodb/dist/contract.js",
+          "bytes": 7247,
+          "sha256": "a550fa7e3e0237192c871c8aa53cee871762e13c0a1386aa1971fd463b4e6e6c"
+        },
+        {
+          "path": "packages/backend-mongodb/dist/rollback-contract.js",
+          "bytes": 9011,
+          "sha256": "06d97fe507a3dc68cb3b11c4d2382f078ca6e184f3123985d9e170d62a447baf"
+        },
+        {
+          "path": "node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+          "bytes": 34734,
+          "sha256": "8eb0e934f7762f3d4849eb58fe83fa01c828e9d22c10def4fa09975b034f0591"
+        }
+      ],
+      "limits": {
+        "nodeAuthenticatedFork": false,
+        "emptyTargetRows": true,
+        "fullRecoveryScenario": false,
+        "case": "profile24-prefix288-cpu-on"
+      }
+    },
+    "originArchiveVerification": "Committed origin pins retained; original archives are not reread by each harness run.",
+    "fixtureSha256": "9e222f65e2ec9e6e3724c5147fb91a2cbaaee556fd707279c1bc7609e9a1e269",
+    "originSha256": "b55332ee9b86aee69c0b3c04bb113a42495f594f649f5da6288df884dab50bfb",
+    "code": [
+      {
+        "file": "/tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/dist/rollback-contract.js",
+        "path": "packages/backend-mongodb/dist/rollback-contract.js",
+        "url": "file:///tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/dist/rollback-contract.js",
+        "bytes": 9011,
+        "sha256": "06d97fe507a3dc68cb3b11c4d2382f078ca6e184f3123985d9e170d62a447baf"
+      },
+      {
+        "file": "/tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/dist/contract.js",
+        "path": "packages/backend-mongodb/dist/contract.js",
+        "url": "file:///tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/dist/contract.js",
+        "bytes": 7247,
+        "sha256": "a550fa7e3e0237192c871c8aa53cee871762e13c0a1386aa1971fd463b4e6e6c"
+      },
+      {
+        "file": "/tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+        "path": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+        "url": "file:///tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+        "bytes": 34734,
+        "sha256": "8eb0e934f7762f3d4849eb58fe83fa01c828e9d22c10def4fa09975b034f0591"
+      }
+    ],
+    "files": [
+      {
+        "path": "package-lock.json",
+        "bytes": 125777,
+        "sha256": "b12e42e338a0ef0d9c743a2eb41cb11164957ea61fc9d030b9a2f205a18fda0a"
+      },
+      {
+        "path": "packages/backend-mongodb/package-lock.json",
+        "bytes": 22117,
+        "sha256": "fdf1141b87a2cc146dc9e1f1deda38cca38b40086f5566be1d2c8921b0dfe528"
+      },
+      {
+        "path": "packages/backend-mongodb/src/contract.ts",
+        "bytes": 8853,
+        "sha256": "72e6e9ce92e55547a1c5d123bb9f03cc1d6f7bee9af585bc69591a72800e5b2b"
+      },
+      {
+        "path": "packages/backend-mongodb/src/rollback-contract.ts",
+        "bytes": 11003,
+        "sha256": "600fee8e7928bd822bf5689e8f63fd0eefb34efd0599675796813f5e97c5bb1b"
+      }
+    ],
+    "dependencies": [
+      {
+        "name": "mongodb",
+        "file": "/tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/mongodb/lib/index.js",
+        "path": "packages/backend-mongodb/node_modules/mongodb/lib/index.js",
+        "url": "file:///tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/mongodb/lib/index.js",
+        "bytes": 25594,
+        "sha256": "00b930052010d0198209f4768c01d3a87815ded0937e6a095327892e2155161b"
+      },
+      {
+        "name": "bson",
+        "file": "/tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/bson/lib/bson.cjs",
+        "path": "packages/backend-mongodb/node_modules/bson/lib/bson.cjs",
+        "url": "file:///tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/bson/lib/bson.cjs",
+        "bytes": 183533,
+        "sha256": "0a8d8e4f922c1a458595e4ad72913816f1176d08042b42ea359c8dea757e417d"
+      }
+    ],
+    "sdkResolution": {
+      "file": "/tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "packageFile": "/tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/package.json",
+      "packageSha256": "71e9cebcb0ed976271cb40bbd826b8ce998ad31311c67d3765e1ba1f69747f26",
+      "version": "0.0.0-dev.1",
+      "importTarget": "./dist/projection.js"
+    },
+    "bson": {
+      "available": true,
+      "backendAnchor": "packages/backend-mongodb/dist/rollback-contract.js",
+      "resolution": "backend require(mongodb) -> MongoDB require(bson); mongodb.BSON export identity verified",
+      "mongodb": {
+        "entry": {
+          "file": "/tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/mongodb/lib/index.js",
+          "path": "packages/backend-mongodb/node_modules/mongodb/lib/index.js",
+          "url": "file:///tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/mongodb/lib/index.js",
+          "bytes": 25594,
+          "sha256": "00b930052010d0198209f4768c01d3a87815ded0937e6a095327892e2155161b"
+        },
+        "package": {
+          "file": "/tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/mongodb/package.json",
+          "path": "packages/backend-mongodb/node_modules/mongodb/package.json",
+          "url": "file:///tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/mongodb/package.json",
+          "bytes": 7754,
+          "sha256": "d4217328703c0b0c73af27c82b1dce5db71d9fd5f019e2e0b5cab074ab69cc6a",
+          "name": "mongodb",
+          "version": "7.2.0"
+        }
+      },
+      "bson": {
+        "entry": {
+          "file": "/tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/bson/lib/bson.cjs",
+          "path": "packages/backend-mongodb/node_modules/bson/lib/bson.cjs",
+          "url": "file:///tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/bson/lib/bson.cjs",
+          "bytes": 183533,
+          "sha256": "0a8d8e4f922c1a458595e4ad72913816f1176d08042b42ea359c8dea757e417d"
+        },
+        "package": {
+          "file": "/tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/bson/package.json",
+          "path": "packages/backend-mongodb/node_modules/bson/package.json",
+          "url": "file:///tmp/hyp45-p246-20261021/hyperion-history-api/packages/backend-mongodb/node_modules/bson/package.json",
+          "bytes": 3856,
+          "sha256": "96e4335f4f2810e6afcc9e5535926b4b91c95ebec19582a3f740c60e1b970ad6",
+          "name": "bson",
+          "version": "7.3.3"
+        }
+      },
+      "options": {
+        "serialize": {
+          "checkKeys": false,
+          "serializeFunctions": false,
+          "ignoreUndefined": true
+        },
+        "calculateObjectSize": {
+          "serializeFunctions": false,
+          "ignoreUndefined": true
+        },
+        "deserialize": {
+          "promoteValues": true,
+          "promoteLongs": true,
+          "promoteBuffers": false,
+          "useBigInt64": false,
+          "bsonRegExp": false,
+          "allowObjectSmallerThanBufferSize": false,
+          "validation": {
+            "utf8": true
+          }
+        }
+      },
+      "phase": "setup before either count or timing capture",
+      "scope": "Serialized validator input documents; excludes database commands, wire framing, compression, indexes and before images. Unspecified library options retain the pinned installed defaults."
+    },
+    "originCodeMatches": [
+      {
+        "path": "packages/backend-mongodb/dist/rollback-contract.js",
+        "originPath": "packages/backend-mongodb/dist/rollback-contract.js",
+        "sha256": "06d97fe507a3dc68cb3b11c4d2382f078ca6e184f3123985d9e170d62a447baf",
+        "matches": true
+      },
+      {
+        "path": "packages/backend-mongodb/dist/contract.js",
+        "originPath": "packages/backend-mongodb/dist/contract.js",
+        "sha256": "a550fa7e3e0237192c871c8aa53cee871762e13c0a1386aa1971fd463b4e6e6c",
+        "matches": true
+      },
+      {
+        "path": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+        "originPath": "node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+        "sha256": "8eb0e934f7762f3d4849eb58fe83fa01c828e9d22c10def4fa09975b034f0591",
+        "matches": true
+      }
+    ],
+    "validity": {
+      "positiveCases": 12,
+      "negativeCases": 13,
+      "negatives": [
+        {
+          "name": "non-positive policy",
+          "descriptors": 0,
+          "entry": "state",
+          "inputSha256": "609c7e7a176b2522fe2a330759f03aa3c508d51cd74bf8559e8893d399a5788d",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "undo exceeds positive policy",
+          "descriptors": 32,
+          "entry": "state",
+          "inputSha256": "de164e50fe5b4951df4cf0274bfdbf277994f33ae47110f0a9a78ad40999c230",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "empty undo without floor advance",
+          "descriptors": 0,
+          "entry": "state",
+          "inputSha256": "3cf2b83f2b13de78116fa2767084346fd597cdf8d07a2d7fbc304f3390db5545",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "wrong floor receipt identity",
+          "descriptors": 32,
+          "entry": "state",
+          "inputSha256": "c25c9c3414f168f7334b96b3f4551a3842eca1e177384e8535777e7b3d4b7c27",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "matching receipt around broken floor link",
+          "descriptors": 32,
+          "entry": "state",
+          "inputSha256": "fa156d55e8c3794c3c2faebd2eee9888988cba50357da6eb8b4010fbdb6665ef",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "broken first descriptor predecessor",
+          "descriptors": 32,
+          "entry": "state",
+          "inputSha256": "5d06b0ae4f95efb8692158ff5675fd53c75f50c65ce12485407617f5f96d871c",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "suffix does not reach checkpoint",
+          "descriptors": 32,
+          "entry": "state",
+          "inputSha256": "75961ace6df08b0bc77b8e55cc8b8d4570135aab4ed711bbecd683772a47ea3c",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "missing replay receipts",
+          "descriptors": 0,
+          "entry": "state",
+          "inputSha256": "4b6aa5821b7b9fe4f535ef71e4b12ca17edec2c868dfaf009731cf28ec73d1a3",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "unordered replay receipts",
+          "descriptors": 32,
+          "entry": "state",
+          "inputSha256": "88e71c860a7c4da95ad95b2245d3d9e3cc8c3aa76fab741114d30b9c410dac76",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "final replay receipt differs",
+          "descriptors": 32,
+          "entry": "state",
+          "inputSha256": "ab4d41da9ff6fe8826c76b6de63658b1481ed75b8c80da0db4431b73b7ca2404",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "zero-image byte mismatch",
+          "descriptors": 32,
+          "entry": "state",
+          "inputSha256": "c82eb06a6ae14dde0be34b1b6ba8dc26b4ee0a1a8fc27c69e25627ba60722f96",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "malformed image hash",
+          "descriptors": 32,
+          "entry": "state",
+          "inputSha256": "70b238f3b22c1919676bfd22f3f98bf69058942971eb5803ef26e068dce2878a",
+          "code": "projection.invalid-contract"
+        },
+        {
+          "name": "stored revision fence mismatch",
+          "descriptors": 32,
+          "entry": "metadata",
+          "inputSha256": "e855fc7ce46554de37430f442ca27e868169c9ecbc0a40da1b3a23ee8fac383b",
+          "code": "projection.invalid-contract"
+        }
+      ]
+    },
+    "fixtures": [
+      {
+        "descriptors": 0,
+        "checkpoint": {
+          "blockNum": 288,
+          "blockId": "0000012031c10959618b967b737582f1c1d93bcaaf5cff5c4b47c68c6723d1e7"
+        },
+        "coverageFloor": {
+          "blockNum": 288,
+          "blockId": "0000012031c10959618b967b737582f1c1d93bcaaf5cff5c4b47c68c6723d1e7"
+        },
+        "floorReceipt": {
+          "blockNum": 288,
+          "blockId": "0000012031c10959618b967b737582f1c1d93bcaaf5cff5c4b47c68c6723d1e7",
+          "digest": "66ca6be502e416349c1e882bfaa15fdf2f7dfb590b35111d2af852c9db27cd20"
+        },
+        "replayReceipts": 256,
+        "policy": {
+          "maxBlocks": 256,
+          "maxBytes": 67108864,
+          "maxBlockBytes": 16777216
+        },
+        "stateSha256": "442e704a23f3b5ccb1cc6fab744604d906afbd200ea8891e1473d3dcdad6031a",
+        "metadataSha256": "7444bbebc38bb26302c81f2bcc3fe96a1b839ab659f85e7bff51a0ba78cfca12",
+        "stateJsonBytes": 45426,
+        "metadataJsonBytes": 45504,
+        "stateBson": {
+          "available": true,
+          "bytes": 47726,
+          "sha256": "7102e3101881613c3d31d0cd41f4facd732d19d862c71a5812e2fd4d243c449a",
+          "calculatedBytes": 47726,
+          "defaultCalculatedBytes": 47726,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        },
+        "metadataBson": {
+          "available": true,
+          "bytes": 47805,
+          "sha256": "ad9f87ea2142450af08e07856f71667672641f7f56930f85a94e68261a862138",
+          "calculatedBytes": 47805,
+          "defaultCalculatedBytes": 47805,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        }
+      },
+      {
+        "descriptors": 1,
+        "checkpoint": {
+          "blockNum": 288,
+          "blockId": "0000012031c10959618b967b737582f1c1d93bcaaf5cff5c4b47c68c6723d1e7"
+        },
+        "coverageFloor": {
+          "blockNum": 287,
+          "blockId": "0000011fd02b4e7c9ce7eaa7f5676edad050814490b8958e701013b18bcfedb2"
+        },
+        "floorReceipt": {
+          "blockNum": 287,
+          "blockId": "0000011fd02b4e7c9ce7eaa7f5676edad050814490b8958e701013b18bcfedb2",
+          "digest": "faef4c9b0a17a0bd2f398c39b74cbb585446be2d22684d22fc32ecaeb005aa6d"
+        },
+        "replayReceipts": 256,
+        "policy": {
+          "maxBlocks": 256,
+          "maxBytes": 67108864,
+          "maxBlockBytes": 16777216
+        },
+        "stateSha256": "0c1867f5de448bcc896c2a4bc189807a179c759a275769a9804f77a93a64160d",
+        "metadataSha256": "64a6823d22a42898568c09fc95ab189324fb76d0ad194fab2d87268a359a9d40",
+        "stateJsonBytes": 45795,
+        "metadataJsonBytes": 45873,
+        "stateBson": {
+          "available": true,
+          "bytes": 48109,
+          "sha256": "21cdeb822c73d871e594ae3dd68d2e75dce29b8b98959cbbac4f6c01cb873808",
+          "calculatedBytes": 48109,
+          "defaultCalculatedBytes": 48109,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        },
+        "metadataBson": {
+          "available": true,
+          "bytes": 48188,
+          "sha256": "e8585745622055903841fe56a5db6b01037227e6bb1d818a11f0f6250518325d",
+          "calculatedBytes": 48188,
+          "defaultCalculatedBytes": 48188,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        }
+      },
+      {
+        "descriptors": 32,
+        "checkpoint": {
+          "blockNum": 288,
+          "blockId": "0000012031c10959618b967b737582f1c1d93bcaaf5cff5c4b47c68c6723d1e7"
+        },
+        "coverageFloor": {
+          "blockNum": 256,
+          "blockId": "000001005bc2c6ac3f3247bd9259fe8a9623413527e2f7ae1d8a1a61ec5889b9"
+        },
+        "floorReceipt": {
+          "blockNum": 256,
+          "blockId": "000001005bc2c6ac3f3247bd9259fe8a9623413527e2f7ae1d8a1a61ec5889b9",
+          "digest": "68bb8da019ad88b8e496c6e705f7b7103964562b810cc44c0ec475b3e160a5b7"
+        },
+        "replayReceipts": 256,
+        "policy": {
+          "maxBlocks": 256,
+          "maxBytes": 67108864,
+          "maxBlockBytes": 16777216
+        },
+        "stateSha256": "23daad82f802d02367d6b0880dd39e8e0331edb4e9b14d7c5803101a40721aef",
+        "metadataSha256": "9f3a73dccdde9fc706f0c520c4fdc2a847bb38400668582f2cc1e221611b9ea4",
+        "stateJsonBytes": 57265,
+        "metadataJsonBytes": 57343,
+        "stateBson": {
+          "available": true,
+          "bytes": 60004,
+          "sha256": "3fa38befd60f3b11beba3407914fd38f180fd55536e2551f7fec10fdffc57b63",
+          "calculatedBytes": 60004,
+          "defaultCalculatedBytes": 60004,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        },
+        "metadataBson": {
+          "available": true,
+          "bytes": 60083,
+          "sha256": "a61422412f0e24af58aaea332b354cfcb3716ee4014ff4cd684813f14a6cefdf",
+          "calculatedBytes": 60083,
+          "defaultCalculatedBytes": 60083,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        }
+      },
+      {
+        "descriptors": 64,
+        "checkpoint": {
+          "blockNum": 288,
+          "blockId": "0000012031c10959618b967b737582f1c1d93bcaaf5cff5c4b47c68c6723d1e7"
+        },
+        "coverageFloor": {
+          "blockNum": 224,
+          "blockId": "000000e021b6549019737699ed9d6c672f37687f47443ad951d90126c09be659"
+        },
+        "floorReceipt": {
+          "blockNum": 224,
+          "blockId": "000000e021b6549019737699ed9d6c672f37687f47443ad951d90126c09be659",
+          "digest": "52e329035bea2bf08906984e6e91d06a804730848ea804e153ff9d64b380dd28"
+        },
+        "replayReceipts": 256,
+        "policy": {
+          "maxBlocks": 256,
+          "maxBytes": 67108864,
+          "maxBlockBytes": 16777216
+        },
+        "stateSha256": "898829e066f72ccc5c902e6ec910c3f987048bb5cfc2ff7dd2db2578ed28c0fe",
+        "metadataSha256": "62aa30938322785a7103f6295ef6e2486985968365684c71643ea1fcf2990849",
+        "stateJsonBytes": 69105,
+        "metadataJsonBytes": 69183,
+        "stateBson": {
+          "available": true,
+          "bytes": 72292,
+          "sha256": "51ea7441e945aafa8de6ee3d6f12666c13d0f8c05800dd40de67ec0d42175c5f",
+          "calculatedBytes": 72292,
+          "defaultCalculatedBytes": 72292,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        },
+        "metadataBson": {
+          "available": true,
+          "bytes": 72371,
+          "sha256": "517af29aa44fd65d1735ffc44ed6947aa55dc9fd3273f36d7922497ba9ef3e48",
+          "calculatedBytes": 72371,
+          "defaultCalculatedBytes": 72371,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        }
+      },
+      {
+        "descriptors": 128,
+        "checkpoint": {
+          "blockNum": 288,
+          "blockId": "0000012031c10959618b967b737582f1c1d93bcaaf5cff5c4b47c68c6723d1e7"
+        },
+        "coverageFloor": {
+          "blockNum": 160,
+          "blockId": "000000a09bd5ae9b1601333b50b8d72e3e6620955022bf293d808717b894db9e"
+        },
+        "floorReceipt": {
+          "blockNum": 160,
+          "blockId": "000000a09bd5ae9b1601333b50b8d72e3e6620955022bf293d808717b894db9e",
+          "digest": "40d5650acc03f8b9f18aee57ec8f089d23f7ac1e194d9ea2c2a429c4f50a5d9f"
+        },
+        "replayReceipts": 256,
+        "policy": {
+          "maxBlocks": 256,
+          "maxBytes": 67108864,
+          "maxBlockBytes": 16777216
+        },
+        "stateSha256": "0483cedd2a02fe130630fef5f0a63354b7aa5a68d2e7947c562f1efbc851d89e",
+        "metadataSha256": "aedcc26dfc8f925d28a68c84ded028c02ad5ddaa6eb12cc03f0973789b377d22",
+        "stateJsonBytes": 92785,
+        "metadataJsonBytes": 92863,
+        "stateBson": {
+          "available": true,
+          "bytes": 96896,
+          "sha256": "772da9c06e457882bc4db22f52b5d26d9e2269aa07a8c3ebfb749dc0f1de1809",
+          "calculatedBytes": 96896,
+          "defaultCalculatedBytes": 96896,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        },
+        "metadataBson": {
+          "available": true,
+          "bytes": 96975,
+          "sha256": "f6903740ed70f69c2802547047b5af6cf15e3d882775e7237a2921f2753eb919",
+          "calculatedBytes": 96975,
+          "defaultCalculatedBytes": 96975,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        }
+      },
+      {
+        "descriptors": 256,
+        "checkpoint": {
+          "blockNum": 288,
+          "blockId": "0000012031c10959618b967b737582f1c1d93bcaaf5cff5c4b47c68c6723d1e7"
+        },
+        "coverageFloor": {
+          "blockNum": 32,
+          "blockId": "00000020e9099dd5340b7533da31d92e988303b76869a085633d1fec0a6177e6"
+        },
+        "floorReceipt": {
+          "blockNum": 32,
+          "blockId": "00000020e9099dd5340b7533da31d92e988303b76869a085633d1fec0a6177e6",
+          "digest": "011d6102a2b33afe282c90f24c4a51d0906207837ee713bb57b92412b2eac3b5"
+        },
+        "replayReceipts": 256,
+        "policy": {
+          "maxBlocks": 256,
+          "maxBytes": 67108864,
+          "maxBlockBytes": 16777216
+        },
+        "stateSha256": "1f626c0c139cad342c2974dab86524d37da2bb7e7583f30eb2569315dd42f7b7",
+        "metadataSha256": "d80a496e6121157a98f85b1fa6c5a3416a7c282f79b85806bd4a2407fc0c2272",
+        "stateJsonBytes": 140076,
+        "metadataJsonBytes": 140154,
+        "stateBson": {
+          "available": true,
+          "bytes": 146176,
+          "sha256": "b6bbeefe089df7447c228cc02a210836c1e27c2d740faf727ea60295fa6059c8",
+          "calculatedBytes": 146176,
+          "defaultCalculatedBytes": 146176,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        },
+        "metadataBson": {
+          "available": true,
+          "bytes": 146255,
+          "sha256": "8b1e88de6e235e1c857a78e032a52742530f4e1fa2fecc362349ea2302a2b22a",
+          "calculatedBytes": 146255,
+          "defaultCalculatedBytes": 146255,
+          "roundTripInputEqual": true,
+          "roundTripBytesEqual": true
+        }
+      }
+    ]
+  },
+  "measured": {
+    "warmupPerStateAndEntryPerPass": 1,
+    "iterations": 1,
+    "order": "both",
+    "rows": [
+      {
+        "direction": "forward",
+        "descriptors": 0,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 482.836651,
+        "endMs": 483.437297,
+        "elapsedMs": 0.6006459999999834,
+        "processCpuMicros": {
+          "user": 532,
+          "system": 97,
+          "total": 629
+        },
+        "rssBytes": {
+          "before": 159592448,
+          "after": 159592448
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      },
+      {
+        "direction": "forward",
+        "descriptors": 0,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 484.319059,
+        "endMs": 484.959725,
+        "elapsedMs": 0.6406660000000102,
+        "processCpuMicros": {
+          "user": 769,
+          "system": 0,
+          "total": 769
+        },
+        "rssBytes": {
+          "before": 159592448,
+          "after": 159592448
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      },
+      {
+        "direction": "forward",
+        "descriptors": 1,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 485.937032,
+        "endMs": 486.680086,
+        "elapsedMs": 0.7430540000000292,
+        "processCpuMicros": {
+          "user": 751,
+          "system": 0,
+          "total": 751
+        },
+        "rssBytes": {
+          "before": 159592448,
+          "after": 159592448
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      },
+      {
+        "direction": "forward",
+        "descriptors": 1,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 487.66326,
+        "endMs": 488.388295,
+        "elapsedMs": 0.7250350000000481,
+        "processCpuMicros": {
+          "user": 705,
+          "system": 28,
+          "total": 733
+        },
+        "rssBytes": {
+          "before": 159186944,
+          "after": 159186944
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      },
+      {
+        "direction": "forward",
+        "descriptors": 32,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 492.913324,
+        "endMs": 497.309283,
+        "elapsedMs": 4.395959000000005,
+        "processCpuMicros": {
+          "user": 4873,
+          "system": 135,
+          "total": 5008
+        },
+        "rssBytes": {
+          "before": 159186944,
+          "after": 159186944
+        },
+        "gc": {
+          "available": true,
+          "events": 1,
+          "overlapMs": 0.1954193115234375
+        }
+      },
+      {
+        "direction": "forward",
+        "descriptors": 32,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 501.634003,
+        "endMs": 506.065722,
+        "elapsedMs": 4.431718999999987,
+        "processCpuMicros": {
+          "user": 6368,
+          "system": 0,
+          "total": 6368
+        },
+        "rssBytes": {
+          "before": 159186944,
+          "after": 159186944
+        },
+        "gc": {
+          "available": true,
+          "events": 1,
+          "overlapMs": 0.20394039154052734
+        }
+      },
+      {
+        "direction": "forward",
+        "descriptors": 64,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 513.977485,
+        "endMs": 521.428218,
+        "elapsedMs": 7.450733000000014,
+        "processCpuMicros": {
+          "user": 8031,
+          "system": 0,
+          "total": 8031
+        },
+        "rssBytes": {
+          "before": 159186944,
+          "after": 159186944
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      },
+      {
+        "direction": "forward",
+        "descriptors": 64,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 529.487628,
+        "endMs": 536.835413,
+        "elapsedMs": 7.347785000000044,
+        "processCpuMicros": {
+          "user": 8084,
+          "system": 0,
+          "total": 8084
+        },
+        "rssBytes": {
+          "before": 159186944,
+          "after": 159186944
+        },
+        "gc": {
+          "available": true,
+          "events": 1,
+          "overlapMs": 0.1593799591064453
+        }
+      },
+      {
+        "direction": "forward",
+        "descriptors": 128,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 551.961771,
+        "endMs": 566.331455,
+        "elapsedMs": 14.369684000000007,
+        "processCpuMicros": {
+          "user": 15517,
+          "system": 0,
+          "total": 15517
+        },
+        "rssBytes": {
+          "before": 159186944,
+          "after": 159186944
+        },
+        "gc": {
+          "available": true,
+          "events": 1,
+          "overlapMs": 0.1389169692993164
+        }
+      },
+      {
+        "direction": "forward",
+        "descriptors": 128,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 581.990991,
+        "endMs": 596.306896,
+        "elapsedMs": 14.315905000000043,
+        "processCpuMicros": {
+          "user": 14922,
+          "system": 162,
+          "total": 15084
+        },
+        "rssBytes": {
+          "before": 159449088,
+          "after": 159449088
+        },
+        "gc": {
+          "available": true,
+          "events": 1,
+          "overlapMs": 0.14827632904052734
+        }
+      },
+      {
+        "direction": "forward",
+        "descriptors": 256,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 626.18365,
+        "endMs": 653.452553,
+        "elapsedMs": 27.268903000000023,
+        "processCpuMicros": {
+          "user": 28823,
+          "system": 941,
+          "total": 29764
+        },
+        "rssBytes": {
+          "before": 159449088,
+          "after": 159449088
+        },
+        "gc": {
+          "available": true,
+          "events": 3,
+          "overlapMs": 0.5268926620483398
+        }
+      },
+      {
+        "direction": "forward",
+        "descriptors": 256,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 682.972552,
+        "endMs": 710.175244,
+        "elapsedMs": 27.20269200000007,
+        "processCpuMicros": {
+          "user": 28365,
+          "system": 2050,
+          "total": 30415
+        },
+        "rssBytes": {
+          "before": 159457280,
+          "after": 159457280
+        },
+        "gc": {
+          "available": true,
+          "events": 3,
+          "overlapMs": 0.4353294372558594
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 256,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 739.304543,
+        "endMs": 767.574988,
+        "elapsedMs": 28.270444999999995,
+        "processCpuMicros": {
+          "user": 30722,
+          "system": 0,
+          "total": 30722
+        },
+        "rssBytes": {
+          "before": 159457280,
+          "after": 159457280
+        },
+        "gc": {
+          "available": true,
+          "events": 3,
+          "overlapMs": 0.5356931686401367
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 256,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 796.409971,
+        "endMs": 824.36382,
+        "elapsedMs": 27.95384899999999,
+        "processCpuMicros": {
+          "user": 28833,
+          "system": 1965,
+          "total": 30798
+        },
+        "rssBytes": {
+          "before": 159981568,
+          "after": 159981568
+        },
+        "gc": {
+          "available": true,
+          "events": 3,
+          "overlapMs": 0.4698305130004883
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 128,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 839.83946,
+        "endMs": 854.019592,
+        "elapsedMs": 14.180131999999958,
+        "processCpuMicros": {
+          "user": 15519,
+          "system": 0,
+          "total": 15519
+        },
+        "rssBytes": {
+          "before": 160243712,
+          "after": 160243712
+        },
+        "gc": {
+          "available": true,
+          "events": 1,
+          "overlapMs": 0.2122507095336914
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 128,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 869.190719,
+        "endMs": 883.829367,
+        "elapsedMs": 14.638648000000103,
+        "processCpuMicros": {
+          "user": 20561,
+          "system": 1061,
+          "total": 21622
+        },
+        "rssBytes": {
+          "before": 161292288,
+          "after": 160690176
+        },
+        "gc": {
+          "available": true,
+          "events": 1,
+          "overlapMs": 0.6686029434204102
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 64,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 892.667521,
+        "endMs": 900.34161,
+        "elapsedMs": 7.674088999999981,
+        "processCpuMicros": {
+          "user": 14560,
+          "system": 0,
+          "total": 14560
+        },
+        "rssBytes": {
+          "before": 160952320,
+          "after": 161890304
+        },
+        "gc": {
+          "available": true,
+          "events": 1,
+          "overlapMs": 0.5753631591796875
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 64,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 909.641424,
+        "endMs": 916.451561,
+        "elapsedMs": 6.810136999999941,
+        "processCpuMicros": {
+          "user": 5715,
+          "system": 1102,
+          "total": 6817
+        },
+        "rssBytes": {
+          "before": 160919552,
+          "after": 160919552
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 32,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 921.700158,
+        "endMs": 925.365006,
+        "elapsedMs": 3.6648480000000063,
+        "processCpuMicros": {
+          "user": 3623,
+          "system": 47,
+          "total": 3670
+        },
+        "rssBytes": {
+          "before": 160919552,
+          "after": 160919552
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 32,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 930.395834,
+        "endMs": 934.133737,
+        "elapsedMs": 3.7379029999999602,
+        "processCpuMicros": {
+          "user": 3743,
+          "system": 0,
+          "total": 3743
+        },
+        "rssBytes": {
+          "before": 160919552,
+          "after": 160919552
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 1,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 935.083945,
+        "endMs": 935.839362,
+        "elapsedMs": 0.7554170000000795,
+        "processCpuMicros": {
+          "user": 1210,
+          "system": 0,
+          "total": 1210
+        },
+        "rssBytes": {
+          "before": 160919552,
+          "after": 160919552
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 1,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 936.728597,
+        "endMs": 937.364863,
+        "elapsedMs": 0.6362659999999778,
+        "processCpuMicros": {
+          "user": 641,
+          "system": 0,
+          "total": 641
+        },
+        "rssBytes": {
+          "before": 160919552,
+          "after": 160919552
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 0,
+        "entry": "state",
+        "iteration": 0,
+        "startMs": 938.174198,
+        "endMs": 938.715198,
+        "elapsedMs": 0.54099999999994,
+        "processCpuMicros": {
+          "user": 545,
+          "system": 0,
+          "total": 545
+        },
+        "rssBytes": {
+          "before": 160919552,
+          "after": 160919552
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      },
+      {
+        "direction": "reverse",
+        "descriptors": 0,
+        "entry": "metadata",
+        "iteration": 0,
+        "startMs": 940.000511,
+        "endMs": 940.891632,
+        "elapsedMs": 0.8911209999999983,
+        "processCpuMicros": {
+          "user": 1482,
+          "system": 0,
+          "total": 1482
+        },
+        "rssBytes": {
+          "before": 160919552,
+          "after": 160919552
+        },
+        "gc": {
+          "available": true,
+          "events": 0,
+          "overlapMs": 0
+        }
+      }
+    ],
+    "gc": {
+      "available": true,
+      "entries": [
+        {
+          "startTime": 494.266174,
+          "duration": 0.1954193115234375,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 504.118093,
+          "duration": 0.20394039154052734,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 513.724725,
+          "duration": 0.18068313598632812,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 523.457842,
+          "duration": 0.20554733276367188,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 532.847404,
+          "duration": 0.1593799591064453,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 542.397743,
+          "duration": 0.1442251205444336,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 551.399818,
+          "duration": 0.14974212646484375,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 561.070356,
+          "duration": 0.1389169692993164,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 570.585564,
+          "duration": 0.17453670501708984,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 579.886077,
+          "duration": 0.18920326232910156,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 589.691271,
+          "duration": 0.14827632904052734,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 599.504498,
+          "duration": 0.2061748504638672,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 608.905513,
+          "duration": 0.15470123291015625,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 618.023876,
+          "duration": 0.1362628936767578,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 627.838709,
+          "duration": 0.17404747009277344,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 636.475717,
+          "duration": 0.1610574722290039,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 645.111328,
+          "duration": 0.1917877197265625,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 654.950676,
+          "duration": 0.22524166107177734,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 664.461554,
+          "duration": 0.5485429763793945,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 673.42773,
+          "duration": 0.17258071899414062,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 682.406268,
+          "duration": 0.13912677764892578,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 691.586791,
+          "duration": 0.15498065948486328,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 700.173582,
+          "duration": 0.14638996124267578,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 708.780977,
+          "duration": 0.1339588165283203,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 719.374974,
+          "duration": 0.5710325241088867,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 728.425659,
+          "duration": 0.15141868591308594,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 737.032286,
+          "duration": 0.21204185485839844,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 747.09478,
+          "duration": 0.24444866180419922,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 756.21901,
+          "duration": 0.13766002655029297,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 764.727508,
+          "duration": 0.15358448028564453,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 775.182936,
+          "duration": 0.2436809539794922,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 784.249197,
+          "duration": 0.14031314849853516,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 792.830052,
+          "duration": 0.1898326873779297,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 802.579302,
+          "duration": 0.18508338928222656,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 811.321144,
+          "duration": 0.13367843627929688,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 820.195966,
+          "duration": 0.15106868743896484,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 830.309515,
+          "duration": 0.1778888702392578,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 839.386182,
+          "duration": 0.1542825698852539,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 848.941271,
+          "duration": 0.2122507095336914,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 858.295492,
+          "duration": 0.2715473175048828,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 867.312513,
+          "duration": 0.23334407806396484,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 877.118336,
+          "duration": 0.6686029434204102,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 886.854387,
+          "duration": 0.5794143676757812,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 896.777196,
+          "duration": 0.5753631591796875,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 906.814757,
+          "duration": 0.5659341812133789,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 917.458341,
+          "duration": 0.4326047897338867,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 927.581808,
+          "duration": 0.4796791076660156,
+          "kind": 1,
+          "flags": 0
+        },
+        {
+          "startTime": 939.398189,
+          "duration": 0.4960908889770508,
+          "kind": 1,
+          "flags": 0
+        }
+      ],
+      "convention": "Observed GC intervals overlapping a call are clipped and unioned within its clock span; absence of observed events is not a proof of no GC."
+    },
+    "envelope": {
+      "elapsedMs": 461.19300599999997,
+      "processCpuMicros": {
+        "user": 520421,
+        "system": 14071,
+        "total": 534492
+      },
+      "scope": "Includes warmups, measurements, checks, clocks/counters and observer drain. Do not equate with summed kernel spans."
+    },
+    "processLifetimeMaxRSSKiB": 160400,
+    "preciseCoverageRequested": false,
+    "perCallCpuScope": "Process counter envelope includes clocks/counter overhead and any native/helper-thread work; it is separate from elapsed call spans. Counter resolution can yield zero deltas for short calls.",
+    "rssScope": "Discrete before/after samples; maxRSS is a distinct process-lifetime high-water counter.",
+    "unavailable": {
+      "allocations": "No allocation profiler",
+      "nativeEncodingBytes": "No native encoding byte counter",
+      "nativeEncodingCalls": "No native call counter",
+      "eventLoopDelay": "No event-loop histogram",
+      "actualWorkerFrequency": "Service-free kernel only"
+    }
+  },
+  "limitations": [
+    "Engineering empty-row metadata at fixed checkpoint/replay-receipt count; no full recovery, consensus or busy-chain qualification.",
+    "Counts and timing are separate modes and processes. Precise coverage changes optimization behavior; count captures are not timing observations.",
+    "Timing includes observation overhead and heap/order history; forward/reverse passes are not independent repetitions or quantified profiler overhead.",
+    "No optimization, cache, runtime ranking or performance benefit is selected by this harness."
+  ]
+}

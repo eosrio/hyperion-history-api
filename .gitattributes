@@ -8,3 +8,4 @@ docs/performance/evidence/portable-state-prefix-20261022/** -text
 docs/performance/evidence/portable-state-prefix-20261022/manifest.json -diff
 tests/fixtures/projection-validation/** -text
 tests/fixtures/projection-validation/metadata.json.gz.base64 -diff
+docs/performance/evidence/projection-validation-20261022/** -text

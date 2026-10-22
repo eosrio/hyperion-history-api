@@ -7,6 +7,12 @@ a change. This service-free harness calls the real emitted
 SDK dependency. It does not replace validation, cache results, or contact MongoDB,
 Elasticsearch, RabbitMQ, a chain node or any worker.
 
+The [audited native Linux observations](evidence/projection-validation-20261022/README.md)
+retain separate Node 22/24 count and timing reports. Count availability and values
+agree across those two runtimes for these inputs. The single-iteration timing
+captures verify measurement plumbing; they do not rank runtimes or estimate
+instrumentation overhead.
+
 ## Run count capture and timing in separate native processes
 
 Install and build with the committed npm lockfile and pinned TypeScript toolchain,

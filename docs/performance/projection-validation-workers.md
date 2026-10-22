@@ -2,8 +2,10 @@
 
 This is the actual-worker measurement slice of [#252](https://github.com/eosrio/hyperion-history-api/issues/252).
 It extends the [owned prefix fixture](portable-state-prefix-profiling.md) with optional operation/load counters,
-synchronous loaded-metadata validation spans and a fixed-head observation. Native worker results and repeated
-instrumentation controls are pending. The separate [kernel harness](projection-validation-kernel.md) measures
+synchronous loaded-metadata validation spans and a fixed-head observation. The
+[audited native Linux pilots](evidence/projection-validation-20261022/README.md) retain a measurement-on/off
+pair with CPU sampling disabled. Repeated instrumentation comparisons remain pending; one pair does not
+estimate overhead or capacity. The separate [kernel harness](projection-validation-kernel.md) measures
 validator calls without services.
 
 Use the existing fixture preparation, ownership checks, exact source plan, disposable services and cleanup.

@@ -1,0 +1,2435 @@
+{
+  "allAvailableCountersOneVsThreeLinear": true,
+  "allMetricAvailabilityAndPerCallCountsAgreeAcrossRuntimes": true,
+  "checkpointBlock": 288,
+  "counterDefinitions": {
+    "apply": {
+      "functionName": "validateProjectionApply",
+      "moduleRole": "sdk"
+    },
+    "canonical": {
+      "functionName": "canonical",
+      "moduleRole": "sdk"
+    },
+    "definition": {
+      "functionName": "validateProjectionDefinition",
+      "moduleRole": "sdk"
+    },
+    "encoding": {
+      "functionName": "encode",
+      "moduleRole": "encoding"
+    },
+    "freeze": {
+      "functionName": "freeze",
+      "moduleRole": "sdk"
+    },
+    "known": {
+      "functionName": "knownCounter",
+      "moduleRole": "harness"
+    },
+    "metadata": {
+      "functionName": "validateRollbackMetadata",
+      "moduleRole": "rollback"
+    },
+    "recursive": {
+      "functionName": "recursiveCounter",
+      "moduleRole": "harness"
+    },
+    "snapshot": {
+      "functionName": "snapshot",
+      "moduleRole": "sdk"
+    },
+    "state": {
+      "functionName": "validateRollbackState",
+      "moduleRole": "rollback"
+    },
+    "string": {
+      "functionName": "string",
+      "moduleRole": "sdk"
+    },
+    "validateMetadata": {
+      "functionName": "validateMetadata",
+      "moduleRole": "contract"
+    },
+    "validating": {
+      "functionName": "validating",
+      "moduleRole": "sdk"
+    }
+  },
+  "counterKind": "Observed V8 function entry counts; not CPU weights, timing or worker call frequency.",
+  "fixedReplayReceiptCount": 256,
+  "issue": 252,
+  "missingConvention": "Unavailable entries remain null/absent, including apply at N=0 and the stored wrapper for logical-state calls.",
+  "nativeEncodingCalls": {
+    "available": false,
+    "count": null,
+    "reason": "No native call counter; zero named encodeUtf8String entries is not a zero-call measurement."
+  },
+  "reportSha256": {
+    "node22-count.json": "d513341457a858ca4025a5e0cefaab330a6f7190d54e1627d90516525dbe185a",
+    "node22-timing.json": "4308b3f23ca731ebf5e5f60b76b6f3928ac4a68f1d56bded0106b48675978fa7",
+    "node24-count.json": "462d0688c3924dc0e8c1d0c2b9dab51e90bd18b5e939282fa5e43ace9de8bd87",
+    "node24-timing.json": "4fea13b786db6f7ab5f4d364a425eef5cc1e69f95ec0b323539533f9b5668ba6"
+  },
+  "rows": [
+    {
+      "descriptors": 0,
+      "entry": "logical-state",
+      "metrics": {
+        "apply": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 89,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 89,
+              "threeCalls": 267
+            },
+            "node24": {
+              "oneCall": 89,
+              "threeCalls": 267
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 2,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 2,
+              "threeCalls": 6
+            },
+            "node24": {
+              "oneCall": 2,
+              "threeCalls": 6
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 299,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 299,
+              "threeCalls": 897
+            },
+            "node24": {
+              "oneCall": 299,
+              "threeCalls": 897
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 89,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 89,
+              "threeCalls": 267
+            },
+            "node24": {
+              "oneCall": 89,
+              "threeCalls": 267
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 89,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 89,
+              "threeCalls": 267
+            },
+            "node24": {
+              "oneCall": 89,
+              "threeCalls": 267
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 159,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 159,
+              "threeCalls": 477
+            },
+            "node24": {
+              "oneCall": 159,
+              "threeCalls": 477
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 5,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 5,
+              "threeCalls": 15
+            },
+            "node24": {
+              "oneCall": 5,
+              "threeCalls": 15
+            }
+          }
+        }
+      }
+    },
+    {
+      "descriptors": 0,
+      "entry": "stored-metadata",
+      "metrics": {
+        "apply": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 89,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 89,
+              "threeCalls": 267
+            },
+            "node24": {
+              "oneCall": 89,
+              "threeCalls": 267
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 2,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 2,
+              "threeCalls": 6
+            },
+            "node24": {
+              "oneCall": 2,
+              "threeCalls": 6
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 299,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 299,
+              "threeCalls": 897
+            },
+            "node24": {
+              "oneCall": 299,
+              "threeCalls": 897
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 89,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 89,
+              "threeCalls": 267
+            },
+            "node24": {
+              "oneCall": 89,
+              "threeCalls": 267
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 89,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 89,
+              "threeCalls": 267
+            },
+            "node24": {
+              "oneCall": 89,
+              "threeCalls": 267
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 159,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 159,
+              "threeCalls": 477
+            },
+            "node24": {
+              "oneCall": 159,
+              "threeCalls": 477
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 5,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 5,
+              "threeCalls": 15
+            },
+            "node24": {
+              "oneCall": 5,
+              "threeCalls": 15
+            }
+          }
+        }
+      }
+    },
+    {
+      "descriptors": 1,
+      "entry": "logical-state",
+      "metrics": {
+        "apply": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 128,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 128,
+              "threeCalls": 384
+            },
+            "node24": {
+              "oneCall": 128,
+              "threeCalls": 384
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 3,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 3,
+              "threeCalls": 9
+            },
+            "node24": {
+              "oneCall": 3,
+              "threeCalls": 9
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 431,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 431,
+              "threeCalls": 1293
+            },
+            "node24": {
+              "oneCall": 431,
+              "threeCalls": 1293
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 128,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 128,
+              "threeCalls": 384
+            },
+            "node24": {
+              "oneCall": 128,
+              "threeCalls": 384
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 128,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 128,
+              "threeCalls": 384
+            },
+            "node24": {
+              "oneCall": 128,
+              "threeCalls": 384
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 229,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 229,
+              "threeCalls": 687
+            },
+            "node24": {
+              "oneCall": 229,
+              "threeCalls": 687
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 7,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 7,
+              "threeCalls": 21
+            },
+            "node24": {
+              "oneCall": 7,
+              "threeCalls": 21
+            }
+          }
+        }
+      }
+    },
+    {
+      "descriptors": 1,
+      "entry": "stored-metadata",
+      "metrics": {
+        "apply": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 128,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 128,
+              "threeCalls": 384
+            },
+            "node24": {
+              "oneCall": 128,
+              "threeCalls": 384
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 3,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 3,
+              "threeCalls": 9
+            },
+            "node24": {
+              "oneCall": 3,
+              "threeCalls": 9
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 431,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 431,
+              "threeCalls": 1293
+            },
+            "node24": {
+              "oneCall": 431,
+              "threeCalls": 1293
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 128,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 128,
+              "threeCalls": 384
+            },
+            "node24": {
+              "oneCall": 128,
+              "threeCalls": 384
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 128,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 128,
+              "threeCalls": 384
+            },
+            "node24": {
+              "oneCall": 128,
+              "threeCalls": 384
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 229,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 229,
+              "threeCalls": 687
+            },
+            "node24": {
+              "oneCall": 229,
+              "threeCalls": 687
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 7,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 7,
+              "threeCalls": 21
+            },
+            "node24": {
+              "oneCall": 7,
+              "threeCalls": 21
+            }
+          }
+        }
+      }
+    },
+    {
+      "descriptors": 32,
+      "entry": "logical-state",
+      "metrics": {
+        "apply": {
+          "available": true,
+          "entriesPerCall": 32,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 32,
+              "threeCalls": 96
+            },
+            "node24": {
+              "oneCall": 32,
+              "threeCalls": 96
+            }
+          }
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 1337,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            },
+            "node24": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 34,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 34,
+              "threeCalls": 102
+            },
+            "node24": {
+              "oneCall": 34,
+              "threeCalls": 102
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 4523,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 4523,
+              "threeCalls": 13569
+            },
+            "node24": {
+              "oneCall": 4523,
+              "threeCalls": 13569
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 1337,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            },
+            "node24": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 1337,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            },
+            "node24": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 2399,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 2399,
+              "threeCalls": 7197
+            },
+            "node24": {
+              "oneCall": 2399,
+              "threeCalls": 7197
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 69,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 69,
+              "threeCalls": 207
+            },
+            "node24": {
+              "oneCall": 69,
+              "threeCalls": 207
+            }
+          }
+        }
+      }
+    },
+    {
+      "descriptors": 32,
+      "entry": "stored-metadata",
+      "metrics": {
+        "apply": {
+          "available": true,
+          "entriesPerCall": 32,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 32,
+              "threeCalls": 96
+            },
+            "node24": {
+              "oneCall": 32,
+              "threeCalls": 96
+            }
+          }
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 1337,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            },
+            "node24": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 34,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 34,
+              "threeCalls": 102
+            },
+            "node24": {
+              "oneCall": 34,
+              "threeCalls": 102
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 4523,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 4523,
+              "threeCalls": 13569
+            },
+            "node24": {
+              "oneCall": 4523,
+              "threeCalls": 13569
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 1337,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            },
+            "node24": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 1337,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            },
+            "node24": {
+              "oneCall": 1337,
+              "threeCalls": 4011
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 2399,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 2399,
+              "threeCalls": 7197
+            },
+            "node24": {
+              "oneCall": 2399,
+              "threeCalls": 7197
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 69,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 69,
+              "threeCalls": 207
+            },
+            "node24": {
+              "oneCall": 69,
+              "threeCalls": 207
+            }
+          }
+        }
+      }
+    },
+    {
+      "descriptors": 64,
+      "entry": "logical-state",
+      "metrics": {
+        "apply": {
+          "available": true,
+          "entriesPerCall": 64,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 64,
+              "threeCalls": 192
+            },
+            "node24": {
+              "oneCall": 64,
+              "threeCalls": 192
+            }
+          }
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 2585,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            },
+            "node24": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 66,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 66,
+              "threeCalls": 198
+            },
+            "node24": {
+              "oneCall": 66,
+              "threeCalls": 198
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 8747,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 8747,
+              "threeCalls": 26241
+            },
+            "node24": {
+              "oneCall": 8747,
+              "threeCalls": 26241
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 2585,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            },
+            "node24": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 2585,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            },
+            "node24": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 4639,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 4639,
+              "threeCalls": 13917
+            },
+            "node24": {
+              "oneCall": 4639,
+              "threeCalls": 13917
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 133,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 133,
+              "threeCalls": 399
+            },
+            "node24": {
+              "oneCall": 133,
+              "threeCalls": 399
+            }
+          }
+        }
+      }
+    },
+    {
+      "descriptors": 64,
+      "entry": "stored-metadata",
+      "metrics": {
+        "apply": {
+          "available": true,
+          "entriesPerCall": 64,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 64,
+              "threeCalls": 192
+            },
+            "node24": {
+              "oneCall": 64,
+              "threeCalls": 192
+            }
+          }
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 2585,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            },
+            "node24": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 66,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 66,
+              "threeCalls": 198
+            },
+            "node24": {
+              "oneCall": 66,
+              "threeCalls": 198
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 8747,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 8747,
+              "threeCalls": 26241
+            },
+            "node24": {
+              "oneCall": 8747,
+              "threeCalls": 26241
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 2585,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            },
+            "node24": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 2585,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            },
+            "node24": {
+              "oneCall": 2585,
+              "threeCalls": 7755
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 4639,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 4639,
+              "threeCalls": 13917
+            },
+            "node24": {
+              "oneCall": 4639,
+              "threeCalls": 13917
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 133,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 133,
+              "threeCalls": 399
+            },
+            "node24": {
+              "oneCall": 133,
+              "threeCalls": 399
+            }
+          }
+        }
+      }
+    },
+    {
+      "descriptors": 128,
+      "entry": "logical-state",
+      "metrics": {
+        "apply": {
+          "available": true,
+          "entriesPerCall": 128,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 128,
+              "threeCalls": 384
+            },
+            "node24": {
+              "oneCall": 128,
+              "threeCalls": 384
+            }
+          }
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 5081,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            },
+            "node24": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 130,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 130,
+              "threeCalls": 390
+            },
+            "node24": {
+              "oneCall": 130,
+              "threeCalls": 390
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 17195,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 17195,
+              "threeCalls": 51585
+            },
+            "node24": {
+              "oneCall": 17195,
+              "threeCalls": 51585
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 5081,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            },
+            "node24": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 5081,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            },
+            "node24": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 9119,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 9119,
+              "threeCalls": 27357
+            },
+            "node24": {
+              "oneCall": 9119,
+              "threeCalls": 27357
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 261,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 261,
+              "threeCalls": 783
+            },
+            "node24": {
+              "oneCall": 261,
+              "threeCalls": 783
+            }
+          }
+        }
+      }
+    },
+    {
+      "descriptors": 128,
+      "entry": "stored-metadata",
+      "metrics": {
+        "apply": {
+          "available": true,
+          "entriesPerCall": 128,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 128,
+              "threeCalls": 384
+            },
+            "node24": {
+              "oneCall": 128,
+              "threeCalls": 384
+            }
+          }
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 5081,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            },
+            "node24": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 130,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 130,
+              "threeCalls": 390
+            },
+            "node24": {
+              "oneCall": 130,
+              "threeCalls": 390
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 17195,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 17195,
+              "threeCalls": 51585
+            },
+            "node24": {
+              "oneCall": 17195,
+              "threeCalls": 51585
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 5081,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            },
+            "node24": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 5081,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            },
+            "node24": {
+              "oneCall": 5081,
+              "threeCalls": 15243
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 9119,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 9119,
+              "threeCalls": 27357
+            },
+            "node24": {
+              "oneCall": 9119,
+              "threeCalls": 27357
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 261,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 261,
+              "threeCalls": 783
+            },
+            "node24": {
+              "oneCall": 261,
+              "threeCalls": 783
+            }
+          }
+        }
+      }
+    },
+    {
+      "descriptors": 256,
+      "entry": "logical-state",
+      "metrics": {
+        "apply": {
+          "available": true,
+          "entriesPerCall": 256,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 256,
+              "threeCalls": 768
+            },
+            "node24": {
+              "oneCall": 256,
+              "threeCalls": 768
+            }
+          }
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 10073,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            },
+            "node24": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 258,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 258,
+              "threeCalls": 774
+            },
+            "node24": {
+              "oneCall": 258,
+              "threeCalls": 774
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 34091,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 34091,
+              "threeCalls": 102273
+            },
+            "node24": {
+              "oneCall": 34091,
+              "threeCalls": 102273
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 10073,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            },
+            "node24": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 10073,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            },
+            "node24": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 18079,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 18079,
+              "threeCalls": 54237
+            },
+            "node24": {
+              "oneCall": 18079,
+              "threeCalls": 54237
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 517,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 517,
+              "threeCalls": 1551
+            },
+            "node24": {
+              "oneCall": 517,
+              "threeCalls": 1551
+            }
+          }
+        }
+      }
+    },
+    {
+      "descriptors": 256,
+      "entry": "stored-metadata",
+      "metrics": {
+        "apply": {
+          "available": true,
+          "entriesPerCall": 256,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 256,
+              "threeCalls": 768
+            },
+            "node24": {
+              "oneCall": 256,
+              "threeCalls": 768
+            }
+          }
+        },
+        "canonical": {
+          "available": true,
+          "entriesPerCall": 10073,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            },
+            "node24": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            }
+          }
+        },
+        "definition": {
+          "available": true,
+          "entriesPerCall": 258,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 258,
+              "threeCalls": 774
+            },
+            "node24": {
+              "oneCall": 258,
+              "threeCalls": 774
+            }
+          }
+        },
+        "encoding": {
+          "available": true,
+          "entriesPerCall": 34091,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 34091,
+              "threeCalls": 102273
+            },
+            "node24": {
+              "oneCall": 34091,
+              "threeCalls": 102273
+            }
+          }
+        },
+        "freeze": {
+          "available": true,
+          "entriesPerCall": 10073,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            },
+            "node24": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            }
+          }
+        },
+        "known": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "metadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "recursive": {
+          "available": false,
+          "entriesPerCall": null,
+          "rawAvailability": {
+            "node22": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            },
+            "node24": {
+              "available": false,
+              "matches": 0,
+              "reason": "no named entry returned"
+            }
+          },
+          "reason": "no named entry returned"
+        },
+        "snapshot": {
+          "available": true,
+          "entriesPerCall": 10073,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            },
+            "node24": {
+              "oneCall": 10073,
+              "threeCalls": 30219
+            }
+          }
+        },
+        "state": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "string": {
+          "available": true,
+          "entriesPerCall": 18079,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 18079,
+              "threeCalls": 54237
+            },
+            "node24": {
+              "oneCall": 18079,
+              "threeCalls": 54237
+            }
+          }
+        },
+        "validateMetadata": {
+          "available": true,
+          "entriesPerCall": 1,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 1,
+              "threeCalls": 3
+            },
+            "node24": {
+              "oneCall": 1,
+              "threeCalls": 3
+            }
+          }
+        },
+        "validating": {
+          "available": true,
+          "entriesPerCall": 517,
+          "rawCounts": {
+            "node22": {
+              "oneCall": 517,
+              "threeCalls": 1551
+            },
+            "node24": {
+              "oneCall": 517,
+              "threeCalls": 1551
+            }
+          }
+        }
+      }
+    }
+  ],
+  "runtimes": [
+    "native Node 22.23.3 Linux x64",
+    "native Node 24.19.0 Linux x64"
+  ],
+  "schemaVersion": 1,
+  "scope": "One fixed empty-row engineering metadata object, suffix cardinalities only; no actual worker-frequency or optimization conclusion.",
+  "sourceHead": "d95d797fc3de8c695e2817a2952eedebeb4b3241"
+}
