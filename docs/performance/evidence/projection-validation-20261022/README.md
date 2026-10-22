@@ -24,7 +24,9 @@ python reproduce/verify-public.py . /existing/parent/new-252-audit
 
 This checks the complete `SHA256SUMS`, regular-only archive inventories, retained
 source-member hashes, declared report omissions, and byte-identical deterministic
-raw-archive reconstruction. Three independent audit adaptations then check:
+raw-archive reconstruction. Nested fixture bytes are authenticated before decoding
+or expansion, and gzip output is bounded to the expected size plus one under a
+256 KiB ceiling. Eight regression controls run before the three audit adaptations:
 
 - Kernel fixture/negative-input hashes, independent JSON-subset BSON reconstruction,
   all raw named coverage counters and calibrations, one/three-call scaling, missing

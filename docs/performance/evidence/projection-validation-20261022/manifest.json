@@ -4,7 +4,7 @@
       "edits": [
         {
           "originalBlockSha256": "a8cee5174dfbc0a5a55e911af453ebb50e96f4c175aa3e3703c4433bfd7c834c",
-          "publicBlockSha256": "4aeab54ff7a80eee2ce6f412acb643fea065833baf8a02021e254fafe4bef996",
+          "publicBlockSha256": "d1c9c3d608f18a8c91fa3cf8b1e84ef325b64830d2e024d38d4757d8c51c73b5",
           "reason": "Replace private paths with explicit public package/fresh output arguments"
         },
         {
@@ -49,13 +49,18 @@
         },
         {
           "originalBlockSha256": "a6eb6b0b0f397d9fc63603c8a839e148c95c36541d095c890fe0c0e79e14560a",
-          "publicBlockSha256": "8c2b9b87c770c6f99be57b1b39e766806834899be4326c9685f9387c229314e9",
-          "reason": "Read committed origin witness from retained emission"
+          "publicBlockSha256": "8e7a6586bee0e789d425701fe72608c938ab9330cdd570c9fecec1867412af66",
+          "reason": "Read raw origin witness; defer parsing until fixed-hash authentication"
         },
         {
           "originalBlockSha256": "28763605194a95816df104c397bd05a02ede1724783be58161dccd374f68d7db",
           "publicBlockSha256": "78f7021cb8cc44df294320481ce6145b8bf3f20fa45d1496e7ad63d1609aca92",
           "reason": "Read exact compact metadata witness"
+        },
+        {
+          "originalBlockSha256": "b714f6bd1df9ca892aef95445bc88bb0871202bd773777c1ca19eb46e22e9e55",
+          "publicBlockSha256": "4d1b0b56c6453fd5d5b52fcb1a0ee3492c4fd3f2981053e642c982bc2d7f89be",
+          "reason": "Authenticate fixed origin/packed/compressed bytes before bounded expected-size-plus-one gzip expansion and JSON decode"
         },
         {
           "originalBlockSha256": "9e814024ea08d8d7c5c663c50abc6eed0beec2bb7c6d95dec92c648c8aec2ff3",
@@ -81,9 +86,9 @@
       "originalBytes": 28549,
       "originalFile": "native-kernel-audit.py",
       "originalSha256": "9983b09dbaed96f97d2dab28fd78d02c876b2abb959b182a80bfee5c6bacc62e",
-      "publicBytes": 28079,
+      "publicBytes": 27630,
       "publicPath": "reproduce/verify-kernel.py",
-      "publicSha256": "1a5d9e71db94b9ed2607914449cf1bf45b0de73cb79d60ec876a202de7827606"
+      "publicSha256": "679fd1c207e5afee5011c27ef785fa02fd1691709439931cb803c7c8b5febcc5"
     },
     {
       "edits": [
@@ -331,24 +336,31 @@
       "transformation": "exact"
     },
     {
-      "bytes": 7306,
+      "bytes": 9377,
       "originalFile": "common.py",
       "path": "reproduce/common.py",
-      "sha256": "591cbac659533279fcce9411e202e2ee359489381e576de2ffdc31de95f43501",
+      "sha256": "c84d42023a4fee059959c6f79817130ea9dfb4e1444ac4b675cc11304a190a68",
       "transformation": "exact"
     },
     {
-      "bytes": 5469,
+      "bytes": 5635,
       "originalFile": "verify-public.py",
       "path": "reproduce/verify-public.py",
-      "sha256": "562842b0d88a34c0f0c765389d473e6dce40a2aa325b5530076678a3cdc30cf6",
+      "sha256": "410ea27a52198e6f340e6ab9153fc854284cd0a2db4d5f54862f8c52fb100245",
       "transformation": "exact"
     },
     {
-      "bytes": 25369,
+      "bytes": 3993,
+      "originalFile": "test-metadata-reader.py",
+      "path": "reproduce/test-metadata-reader.py",
+      "sha256": "53b8c5c8af599b8489d5d6a193345c8de23e92a1e22853e8e53869a4c1e9a9f3",
+      "transformation": "exact"
+    },
+    {
+      "bytes": 26082,
       "originalFile": "build-public-evidence.py",
       "path": "reproduce/build-public-evidence.py",
-      "sha256": "ef093c068410080b9491a708da8f71c0c07e78c6e4b011a2e5141facfac977da",
+      "sha256": "0f98f6c4793aa67fecaa435bea00d57bcbebf96e35b285e7f9f6f2b462fcca43",
       "transformation": "exact"
     }
   ],

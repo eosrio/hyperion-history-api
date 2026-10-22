@@ -14,7 +14,7 @@ import tarfile
 
 import sys
 sys.dont_write_bytecode = True
-from common import archive_files, bounded_file, parsed, require, safe_name, sha, verifier_arguments
+from common import archive_files, bounded_file, decode_kernel_metadata, parsed, require, safe_name, sha, verifier_arguments
 PACKAGE_ROOT, HERE = verifier_arguments('Independently verify four frozen native kernel reports; no services or validators')
 INPUT = PACKAGE_ROOT/'kernel'
 ROOT = PACKAGE_ROOT/'receipts'
@@ -103,16 +103,11 @@ def bson_decode(raw,array=False):
         return list(result.values())
     return result
 
-origin_bytes=EMISSION['tests/fixtures/projection-validation/origin.json'];origin=json.loads(origin_bytes)
+origin_bytes=EMISSION['tests/fixtures/projection-validation/origin.json']
 packed_bytes=EMISSION['tests/fixtures/projection-validation/metadata.json.gz.base64']
-compressed=base64.b64decode(packed_bytes.strip(),validate=True)
-metadata_bytes=gzip.decompress(compressed)
+origin,metadata_bytes=decode_kernel_metadata(origin_bytes,packed_bytes)
 assert origin_bytes==git_bytes('tests/fixtures/projection-validation/origin.json')
 assert packed_bytes==git_bytes('tests/fixtures/projection-validation/metadata.json.gz.base64')
-assert sha(origin_bytes)=='b55332ee9b86aee69c0b3c04bb113a42495f594f649f5da6288df884dab50bfb'
-assert sha(packed_bytes)=='9e222f65e2ec9e6e3724c5147fb91a2cbaaee556fd707279c1bc7609e9a1e269'
-assert len(compressed)==origin['metadata']['gzipBytes'] and sha(compressed)==origin['metadata']['gzipSha256']
-assert len(metadata_bytes)==origin['metadata']['bytes'] and sha(metadata_bytes)==origin['metadata']['sha256']
 original=json.loads(metadata_bytes)
 assert metadata_bytes==jsjson(original)
 code_bytes={}

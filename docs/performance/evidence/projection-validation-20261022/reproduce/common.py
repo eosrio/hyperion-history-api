@@ -5,6 +5,7 @@ invokes Git/native validators, or follows archive links.
 """
 from __future__ import annotations
 import argparse
+import base64
 import fnmatch
 import gzip
 import hashlib
@@ -23,6 +24,9 @@ CASES = ("h252-n24-mon-coff-pilot1", "h252-n24-moff-coff-pilot1")
 MAX_FILE = 30 * 1024**2
 MAX_EXPANDED = 192 * 1024**2
 MAX_MEMBERS = 16000
+MAX_KERNEL_METADATA = 256 * 1024
+KERNEL_ORIGIN_SHA256 = "b55332ee9b86aee69c0b3c04bb113a42495f594f649f5da6288df884dab50bfb"
+KERNEL_PACKED_SHA256 = "9e222f65e2ec9e6e3724c5147fb91a2cbaaee556fd707279c1bc7609e9a1e269"
 COMPONENT = re.compile(r"[A-Za-z0-9._@+=,-]+\Z")
 DEVICES = {"con", "prn", "aux", "nul"} | {a+str(b) for a in ("com", "lpt") for b in range(1,10)}
 
@@ -46,6 +50,35 @@ def parsed(data):
     def constant(value):
         raise ValueError("Non-finite JSON constant: "+value)
     return json.loads(data, object_pairs_hook=unique, parse_constant=constant)
+
+def bounded_gzip_metadata(compressed, expected_bytes):
+    """Read at most the authenticated expected size plus one; reject overruns."""
+    require(type(expected_bytes) is int and 0 < expected_bytes <= MAX_KERNEL_METADATA,
+            "Kernel metadata size exceeds the hard bound")
+    with gzip.GzipFile(fileobj=io.BytesIO(compressed), mode="rb") as reader:
+        data = reader.read(expected_bytes + 1)
+    require(len(data) == expected_bytes, "Kernel metadata expanded size differs")
+    return data
+
+def decode_kernel_metadata(origin_bytes, packed_bytes):
+    """Authenticate fixed raw pins before JSON/base64/gzip processing."""
+    require(type(origin_bytes) is bytes and 0 < len(origin_bytes) <= 64*1024, "Invalid bounded origin bytes")
+    require(type(packed_bytes) is bytes and 0 < len(packed_bytes) <= 256*1024, "Invalid bounded packed bytes")
+    require(sha(origin_bytes) == KERNEL_ORIGIN_SHA256, "Kernel origin fixed hash differs")
+    require(sha(packed_bytes) == KERNEL_PACKED_SHA256, "Kernel packed fixed hash differs")
+    origin = parsed(origin_bytes)
+    metadata = origin["metadata"]
+    require(metadata["encoding"] == "gzip+base64", "Unexpected kernel metadata encoding")
+    expected_bytes = metadata["bytes"]
+    require(type(expected_bytes) is int and 0 < expected_bytes <= MAX_KERNEL_METADATA, "Invalid expected metadata size")
+    text = packed_bytes.strip()
+    compressed = base64.b64decode(text, validate=True)
+    require(base64.b64encode(compressed) == text, "Noncanonical packed metadata")
+    require(len(compressed) == metadata["gzipBytes"] and sha(compressed) == metadata["gzipSha256"],
+            "Kernel compressed bytes differ")
+    data = bounded_gzip_metadata(compressed, expected_bytes)
+    require(sha(data) == metadata["sha256"], "Kernel expanded metadata hash differs")
+    return origin, data
 
 def safe_name(name):
     require(isinstance(name,str) and 0 < len(name) <= 512, "Invalid member name length")

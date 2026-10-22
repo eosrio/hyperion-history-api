@@ -122,6 +122,12 @@ def kernel_verifier(native):
     original = source.decode()
     start = original.index("public_path=BASE/")
     end = original.index("harness_bytes=",start)
+    expansion_start = original.index("compressed=base64.b64decode(packed_bytes.strip(),validate=True)")
+    expansion_end = original.index("original=json.loads(metadata_bytes)",expansion_start)
+    authenticated_expansion = """origin,metadata_bytes=decode_kernel_metadata(origin_bytes,packed_bytes)
+assert origin_bytes==git_bytes('tests/fixtures/projection-validation/origin.json')
+assert packed_bytes==git_bytes('tests/fixtures/projection-validation/metadata.json.gz.base64')
+"""
     replacement = """code_bytes={}
 for code in origin['code']:
     data=EMISSION[code['path']]
@@ -133,7 +139,7 @@ emission_path=PACKAGE_ROOT/'retained-emission.tar.gz'
     header_end = original.index("HEAD = ",header_start)
     header = """import sys
 sys.dont_write_bytecode = True
-from common import archive_files, bounded_file, parsed, require, safe_name, sha, verifier_arguments
+from common import archive_files, bounded_file, decode_kernel_metadata, parsed, require, safe_name, sha, verifier_arguments
 PACKAGE_ROOT, HERE = verifier_arguments('Independently verify four frozen native kernel reports; no services or validators')
 INPUT = PACKAGE_ROOT/'kernel'
 ROOT = PACKAGE_ROOT/'receipts'
@@ -153,8 +159,9 @@ for row in WITNESSES['files']:
         ("sha((INPUT/'invocations.json').read_bytes())","sha(bounded_file(INPUT/'invocations.json'))","Bound invocation checksum read"),
         ("sha((ROOT/'h1-preparation-receipt.json').read_bytes())","sha(bounded_file(ROOT/'h1-preparation-receipt.json'))","Bound preparation checksum read"),
         ("return subprocess.check_output(['git','-C',str(REPO),'show',HEAD+':'+name])","return EMISSION[name] if name in EMISSION else SOURCE[name]","Read retained exact bytes; no Git invocation"),
-        ("origin_bytes=(HERE/'origin.json').read_bytes();origin=json.loads(origin_bytes)","origin_bytes=EMISSION['tests/fixtures/projection-validation/origin.json'];origin=json.loads(origin_bytes)","Read committed origin witness from retained emission"),
+        ("origin_bytes=(HERE/'origin.json').read_bytes();origin=json.loads(origin_bytes)","origin_bytes=EMISSION['tests/fixtures/projection-validation/origin.json']","Read raw origin witness; defer parsing until fixed-hash authentication"),
         ("packed_bytes=(HERE/'metadata.json.gz.base64').read_bytes()","packed_bytes=EMISSION['tests/fixtures/projection-validation/metadata.json.gz.base64']","Read exact compact metadata witness"),
+        (original[expansion_start:expansion_end],authenticated_expansion,"Authenticate fixed origin/packed/compressed bytes before bounded expected-size-plus-one gzip expansion and JSON decode"),
         (original[start:end],replacement,"Use retained metadata/code bytes; old private/public origin archive identities remain receipts, not freshly rehashed archives"),
         ("harness_bytes=(HERE/'projection-validation-kernel.mjs').read_bytes()","harness_bytes=EMISSION['scripts/qualification/projection-validation-kernel.mjs']","Read measured harness bytes"),
         ("'originArchivesIndependentlyRehashed':True","'originArchivesIndependentlyRehashed':False, 'originArchiveVerification':'Captured origin pins only; original historical archives are outside this publication'","Expose external origin archive omission"),
@@ -296,7 +303,7 @@ def main():
         (inputs/"pilot-pair-root-audit.json","pilot-pair-root-original.json")]:
         copy_file(source,"audits/"+destination)
     template_source = TEMPLATES if TEMPLATES.is_dir() else Path(__file__).resolve().parent
-    for name in ("common.py","verify-public.py"):
+    for name in ("common.py","verify-public.py","test-metadata-reader.py"):
         copy_file(template_source/name,"reproduce/"+name)
     adaptations = []
     for name,generated in [("verify-kernel.py",kernel_verifier(native)),("verify-workers.py",worker_verifier(inputs)),("verify-emission-control.py",emission_verifier(inputs))]:

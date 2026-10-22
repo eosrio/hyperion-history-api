@@ -70,10 +70,12 @@ for source in manifest["sourceArchives"]:
 repacked = output/"raw-evidence.repacked.tar.gz"
 write_tar(repacked,payload)
 require(bounded_file(repacked)==bounded_file(root/"raw-evidence.tar.gz"), "Deterministic archive replay differs")
+subprocess.run([sys.executable,str(root/"reproduce/test-metadata-reader.py"),str(root)],check=True,timeout=30)
 for script, destination in [("verify-kernel.py","kernel"),("verify-workers.py","worker"),("verify-emission-control.py","emission-control")]:
     subprocess.run([sys.executable,str(root/"reproduce"/script),str(root),str(output/destination)],check=True,timeout=120)
 result = {"schemaVersion":1,"status":"verified-public-package","publicFiles":len(records)+1,
           "rawMembers":len(payload),"deterministicRawArchive":True,"independentAudits":3,
+          "authenticatedBoundedMetadataControls":True,
           "limitations":["Original private archives and omitted values are not present; their identities/omissions are captured provenance receipts, not rehashed original archive bytes.",
              "No services, validators, native runtime binaries or performance experiments are executed.",
              "One pilot pair and four kernel plumbing reports; 20 fresh comparison cases and full #246 remain outside this package."]}
