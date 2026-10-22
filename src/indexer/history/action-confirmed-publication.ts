@@ -1,10 +1,11 @@
 import type {Channel, ConfirmChannel, Options} from 'amqplib';
 import {randomUUID} from 'node:crypto';
+import {actionHistoryImmutableJson} from './action-history-manifest.js';
 
 export interface ActionPublicationOwner {consumer: Channel; publisher: ConfirmChannel; current: () => boolean}
 /** One in-flight publication per caller. False is accepted buffering; wait for drain and confirm, never resend it. */
-export async function publishAdmittedAction(owner: ActionPublicationOwner, queue: string, payload: Buffer,
-                                            options: Options.Publish, signal?: AbortSignal): Promise<void> {
+async function confirmAdmittedAction(owner: ActionPublicationOwner, queue: string, payload: Buffer,
+                                     options: Options.Publish, signal?: AbortSignal): Promise<string> {
     signal?.throwIfAborted();
     if (!owner.current()) throw new Error('Action publication lost its original channels');
     const publisher = owner.publisher, messageId = randomUUID();
@@ -37,4 +38,71 @@ export async function publishAdmittedAction(owner: ActionPublicationOwner, queue
     });
     signal?.throwIfAborted();
     if (!owner.current()) throw new Error('Action publication lost its original channels after confirmation');
+    return messageId;
+}
+
+/** Ordinary callers retain their void contract; a confirm alone issues no source-work authority. */
+export async function publishAdmittedAction(owner: ActionPublicationOwner, queue: string, payload: Buffer,
+                                            options: Options.Publish, signal?: AbortSignal): Promise<void> {
+    await confirmAdmittedAction(owner, queue, payload, options, signal);
+}
+
+export const actionPublicationEvidenceBounds = Object.freeze({maximumPublications: 100_000,
+    maximumBytes: 128 * 1024 * 1024, maximumHeaderBytes: 64 * 1024});
+declare const confirmedPublicationBrand: unique symbol;
+export interface ConfirmedActionPublication {readonly [confirmedPublicationBrand]: true}
+interface PublicationEvidence {
+    owner: ActionPublicationOwner; current: () => boolean; queue: string; payload: Buffer; headersJson: string; messageId: string;
+}
+const confirmed = new WeakMap<object, PublicationEvidence>();
+
+/** Validate aggregate bytes before ticket snapshots or any output is sent. No memory-budget qualification. */
+export function assertActionPublicationBatchBudget(publications: readonly {payload: Uint8Array; headers: unknown}[]): void {
+    if (!Array.isArray(publications) || publications.length < 1 || publications.length > actionPublicationEvidenceBounds.maximumPublications)
+        throw new Error('Action handoff publication vector exceeds its bounds');
+    let bytes = 0;
+    for (const entry of publications) {
+        if (!(entry.payload instanceof Uint8Array)) throw new Error('Action handoff payload is not bytes');
+        const headers = actionHistoryImmutableJson(entry.headers, actionPublicationEvidenceBounds.maximumHeaderBytes);
+        bytes += entry.payload.byteLength + Buffer.byteLength(headers);
+        if (bytes > actionPublicationEvidenceBounds.maximumBytes) throw new Error('Action handoff aggregate publication bytes exceed their bounds');
+    }
+}
+
+/** Opaque same-process evidence is issued only after the owned mandatory/persistent confirm AND drain. */
+export async function publishAdmittedActionWithEvidence(owner: ActionPublicationOwner, queue: string, payload: Buffer,
+                                                       options: Options.Publish, signal?: AbortSignal): Promise<ConfirmedActionPublication> {
+    signal?.throwIfAborted();
+    const consumer = owner.consumer, publisher = owner.publisher, predicate = owner.current;
+    const current = () => owner.consumer === consumer && owner.publisher === publisher && owner.current === predicate && predicate();
+    if (!current()) throw new Error('Action evidence lost its original publication owner');
+    if (typeof queue !== 'string' || queue.length < 1 || queue.length > 255) throw new Error('Invalid action evidence route');
+    assertActionPublicationBatchBudget([{payload, headers: options.headers ?? {}}]);
+    // Both sent data and retained evidence detach before the first await. Caller hooks cannot rewrite them later.
+    const headersJson = actionHistoryImmutableJson(options.headers ?? {}, actionPublicationEvidenceBounds.maximumHeaderBytes);
+    const sent = Buffer.from(payload), retained = Buffer.from(sent);
+    const messageId = await confirmAdmittedAction(owner, queue, sent, {...options, headers: JSON.parse(headersJson)}, signal);
+    signal?.throwIfAborted();
+    if (!current()) throw new Error('Action evidence publication owner changed before issuance');
+    const ticket = Object.freeze({}) as ConfirmedActionPublication;
+    confirmed.set(ticket, {owner, current, queue, payload: retained, headersJson, messageId});
+    return ticket;
+}
+
+/** Private admission consumer: validate the entire issued vector before copying/parsing any retained bytes. */
+export function readConfirmedActionPublications(owner: ActionPublicationOwner, tickets: readonly ConfirmedActionPublication[]) {
+    if (!Array.isArray(tickets) || tickets.length < 1 || tickets.length > actionPublicationEvidenceBounds.maximumPublications)
+        throw new Error('Action handoff confirmation vector exceeds its bounds');
+    let bytes = 0;
+    const records: PublicationEvidence[] = [];
+    for (let index = 0; index < tickets.length; index++) {
+        const descriptor = Object.getOwnPropertyDescriptor(tickets, String(index));
+        const record = descriptor && 'value' in descriptor ? confirmed.get(descriptor.value) : undefined;
+        if (!record || record.owner !== owner || !record.current()) throw new Error('Unissued, wrong-owner or stale action confirmation evidence');
+        bytes += record.payload.length + Buffer.byteLength(record.headersJson);
+        if (bytes > actionPublicationEvidenceBounds.maximumBytes) throw new Error('Action handoff aggregate confirmation bytes exceed their bounds');
+        records.push(record);
+    }
+    return records.map(record => ({queue: record.queue, payload: Buffer.from(record.payload),
+        headers: JSON.parse(record.headersJson), headersJson: record.headersJson}));
 }

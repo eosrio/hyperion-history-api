@@ -1,6 +1,7 @@
 import {afterEach, describe, expect, it} from 'bun:test';
 import {EventEmitter} from 'node:events';
-import {publishAdmittedAction, type ActionPublicationOwner} from '../../src/indexer/history/action-confirmed-publication.js';
+import {publishAdmittedAction, publishAdmittedActionWithEvidence, readConfirmedActionPublications,
+    assertActionPublicationBatchBudget, actionPublicationEvidenceBounds, type ConfirmedActionPublication, type ActionPublicationOwner} from '../../src/indexer/history/action-confirmed-publication.js';
 
 class Publisher extends EventEmitter {
     writable = true;
@@ -151,4 +152,51 @@ describe('confirmed admitted action publication', () => {
             expect(value.publisher.calls).toHaveLength(1);
         });
     }
+});
+
+describe('opaque action confirmation evidence', () => {
+    it('retains the exact sent bytes and canonical headers when caller objects mutate during confirm', async () => {
+        const value = fixture(), payload = Buffer.from('original-action'), headers = {block_num: 33, fragment: {id: 'original'}};
+        const options = {headers, persistent: false, mandatory: false, messageId: 'caller-message'};
+        const pending = publishAdmittedActionWithEvidence(value.owner, 'owned:index_actions:1', payload, options);
+        const call = value.publisher.calls[0];
+        payload.fill(0); headers.block_num = 99; headers.fragment.id = 'changed';
+        options.headers = {block_num: 100, fragment: {id: 'replacement'}}; options.messageId = 'changed-message';
+        expect(call.payload.toString()).toBe('original-action');
+        expect(call.options.headers).toEqual({block_num: 33, fragment: {id: 'original'}});
+        expect(call.options.persistent).toBe(true); expect(call.options.mandatory).toBe(true);
+        call.confirm(null); const ticket = await pending;
+        expect(Object.isFrozen(ticket)).toBe(true); expect(Object.keys(ticket)).toHaveLength(0);
+        const [retained] = readConfirmedActionPublications(value.owner, [ticket]);
+        expect(retained.payload.equals(call.payload)).toBe(true); expect(retained.headers).toEqual(call.options.headers);
+        retained.payload.fill(0); retained.headers.fragment.id = 'detached-read';
+        expect(readConfirmedActionPublications(value.owner, [ticket])[0].payload.toString()).toBe('original-action');
+        expect(readConfirmedActionPublications(value.owner, [ticket])[0].headers.fragment.id).toBe('original'); clean(value.publisher);
+    });
+    it('refuses replacement owner predicates while confirm is held even if the replacement returns true', async () => {
+        const value = fixture(), pending = publishAdmittedActionWithEvidence(value.owner, 'owned:index_actions:1', Buffer.from('action'), {headers: {block_num: 33}});
+        value.owner.current = () => true; value.publisher.calls[0].confirm(null);
+        await expect(pending).rejects.toThrow('owner changed'); clean(value.publisher);
+    });
+    it('refuses forged, serialized, wrong-owner, stale and sparse tickets before reading payload data', async () => {
+        const value = fixture(), pending = publishAdmittedActionWithEvidence(value.owner, 'owned:index_actions:1', Buffer.from('action'), {headers: {block_num: 33}});
+        value.publisher.calls[0].confirm(null); const ticket = await pending;
+        for (const forged of [{}, structuredClone(ticket), JSON.parse(JSON.stringify(ticket))])
+            expect(() => readConfirmedActionPublications(value.owner, [forged as ConfirmedActionPublication])).toThrow('Unissued');
+        expect(() => readConfirmedActionPublications({...value.owner}, [ticket])).toThrow('wrong-owner');
+        expect(() => readConfirmedActionPublications(value.owner, new Array(1))).toThrow('Unissued');
+        let accessed = false; const accessor: ConfirmedActionPublication[] = [];
+        Object.defineProperty(accessor, 0, {get() {accessed = true; return ticket;}});
+        expect(() => readConfirmedActionPublications(value.owner, accessor)).toThrow('Unissued'); expect(accessed).toBe(false);
+        value.replaceConsumer(); expect(() => readConfirmedActionPublications(value.owner, [ticket])).toThrow('stale'); clean(value.publisher);
+    });
+    it('bounds count, header bytes and SUM payload bytes before sending or retaining a vector', async () => {
+        expect(() => assertActionPublicationBatchBudget(new Array(actionPublicationEvidenceBounds.maximumPublications + 1))).toThrow('vector');
+        expect(() => assertActionPublicationBatchBudget([{payload: Buffer.from('x'), headers: {large: 'x'.repeat(65536)}}])).toThrow();
+        const shared = Buffer.alloc(64 * 1024 * 1024);
+        expect(() => assertActionPublicationBatchBudget([{payload: shared, headers: {}}, {payload: shared, headers: {}}])).toThrow('aggregate');
+        const value = fixture();
+        await expect(publishAdmittedActionWithEvidence(value.owner, 'owned:index_actions:1', Buffer.from('x'), {headers: {large: 'x'.repeat(65536)}})).rejects.toThrow();
+        expect(value.publisher.calls).toHaveLength(0); clean(value.publisher);
+    });
 });

@@ -2,6 +2,9 @@
 
 Tracking: [History API #228](https://github.com/eosrio/hyperion-history-api/issues/228), under
 [exact action-history integration #225](https://github.com/eosrio/hyperion-history-api/issues/225).
+The same owned runner also exercises the private post-confirm outcome storage component in
+[#282](https://github.com/eosrio/hyperion-history-api/issues/282), under pending-input work
+[#277](https://github.com/eosrio/hyperion-history-api/issues/277).
 
 `ActionHistorySourceJournal` stores expected source membership. It prepares immutable block plans,
 records one immutable fragment for every declared transaction, and seals an immutable manifest only
@@ -140,6 +143,52 @@ to an owned action index through the production template/read alias. It processe
 effects and does not certify that index as an action sink or as the plans' declared target.
 Native success demonstrates this journal's expected-membership and storage behavior for these cases.
 It does not enable ordinary live fanout or physical field omissions and does not authorize queries.
+
+## Private confirmed-handoff outcome cases
+
+`scripts/qualification/action-handoff-outcomes.mjs` runs through the same owned two-copy client and
+cleanup path. It imports emitted `ActionSourceAdmissionStore` and
+`publishAdmittedActionWithEvidence`; it does not serialize a fake confirmation ticket. The actual
+publication helper obtains its opaque evidence from a controlled confirm-channel transport, with
+mandatory persistent output and original-owner checks. Original block 122, its schema and independent
+native value oracle come from the normal installed Wire `7167659` package, using the native profile
+and shared SDK `339b5c9`. Package/source receipts and fixture members are hash checked. The installed
+provider observes and decodes the original bytes; no capability is added to a legacy provider.
+
+This is a storage component fixture. The original trace inventory is retained and rederived through
+the admission API, and the target UUID is observed from the runner's existing owned action index.
+Producer/executable pins and native metadata locator IDs are constructed associations. They grant no
+canonical or native decoding authority; the component does not execute DS or acknowledge its input.
+Output confirmation is controlled broker behavior, not an actual RabbitMQ or sink experiment. The
+only ordinary action row remains the inert isolation sentinel; these cases do not write action effects
+to that index or certify it as a complete sink.
+
+The cases exercise:
+
+- Actual helper evidence, exact original source membership and real complete-copy outcome writes,
+  followed by validated reads from a fresh admission store.
+- Buffered publication requiring both confirmation and its original drain, without resending.
+- Controlled NACK or publisher close refusing confirmation evidence and a retained success outcome.
+- Same-work/same-effect retries with new message IDs and round-robin queue position, requiring fresh
+  all-copy CAS receipts while preserving the stable semantic outcome.
+- A controlled pre-manifest failure, lost receipt and altered partial-copy response after real writes.
+  Readable bytes remain observations; identical repair must obtain fresh complete-copy receipts.
+- Serialized tickets, cross-source/target evidence, an index-action route outside the pinned
+  configuration and changed effect bytes, preserving existing immutable output.
+- Controlled owner replacement or cancellation immediately after a real outcome write; the call must
+  reject even when the record is subsequently readable. This is not actual network cancellation.
+
+`readConfirmedHandoff` reports validated observed bytes. It supplies no fresh durability receipt,
+capacity grant, physical Elasticsearch/MongoDB acceptance or query readiness. Existing journal seals
+remain expected-membership evidence; they cannot mint publication confirmation. These cases do not
+qualify successful handoffs for empty/excluded work, absent-trace genesis or incomplete contracts.
+Typed terminal handling, authenticated capacity consumption, bounded grants/bytes, restart/replay and
+full native worker/MongoDB qualification remain separate work under #277 and the release gates.
+
+JSON evidence records the new case's canonical Git hash, relevant source/emitted module hashes, exact
+provider/SDK pins, original-frame/oracle digests, real copy receipts and controlled fault boundaries.
+`qualification.confirmedHandoffOutcomes` describes this component only. Actual DS ACK ordering is
+covered by separate emitted-worker tests; this runner does not infer it from a constructed ACK wrapper.
 
 #225 still needs real source admission before filters/dispatch, actual DS grouping before publication,
 source-retention/replay scheduling, sink durability and set/visibility reconciliation, fork/repair/
