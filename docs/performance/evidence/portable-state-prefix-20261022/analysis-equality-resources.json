@@ -1,0 +1,543 @@
+{
+  "publicPrivateEquality": [
+    {
+      "mode": "on",
+      "privateAnalysisSha256": "19407758365bd2e9c714add3761f668e7cda29a88c398e55c90b08aaee22ecf3",
+      "publicAnalysisSha256": "7d64eba2d9a64f91009a243b53e36878ce8fe29623f5714b555ffec5f589a310",
+      "sameAll14ProcessesIncludingEveryProfileNodeFunctionStackCpu": true,
+      "sameGroupsAndExactPhysicalPhase": true,
+      "phaseEvidencePaths": [
+        "profile24-prefix288-cpu-on/stages/profile-prefix-288.json",
+        "cases/profile24-prefix288-cpu-on/stages/profile-prefix-288.json"
+      ]
+    },
+    {
+      "mode": "off",
+      "privateAnalysisSha256": "c4381db521f991ea5a13db31c5d8837dd513f7b87d004aebd5ae29ddf28bd057",
+      "publicAnalysisSha256": "ee8b86753cb17387d10ce6e217f76f251ddaa00678909f45d19630531ef501d6",
+      "sameAll14ProcessesIncludingEveryProfileNodeFunctionStackCpu": true,
+      "sameGroupsAndExactPhysicalPhase": true,
+      "phaseEvidencePaths": [
+        "profile24-prefix288-cpu-off/stages/profile-prefix-288.json",
+        "cases/profile24-prefix288-cpu-off/stages/profile-prefix-288.json"
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "mode": "on",
+      "pid": 1993056,
+      "role": "master",
+      "workerId": null,
+      "samples": 380,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993056.jsonl",
+        "sha256": "9bb558d14fd35fc13c6eefdb71ea4b9b956bbabcca8e1cad6a1a17a84412ebdb",
+        "bytes": 2929741
+      },
+      "sampledRssBytes": {
+        "min": 168931328,
+        "max": 324550656
+      },
+      "resourceUsageMaxRSSRawKiB": 356372,
+      "resourceUsageMaxRSSMiB": 348.01953125
+    },
+    {
+      "mode": "on",
+      "pid": 1993141,
+      "role": "continuous_reader",
+      "workerId": "1",
+      "samples": 378,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993141.jsonl",
+        "sha256": "1e97ba367ade6c7f3b00709b1205dacda86d4d7c876043449b896d42f2bb0d72",
+        "bytes": 451789
+      },
+      "sampledRssBytes": {
+        "min": 134881280,
+        "max": 210616320
+      },
+      "resourceUsageMaxRSSRawKiB": 231712,
+      "resourceUsageMaxRSSMiB": 226.28125
+    },
+    {
+      "mode": "on",
+      "pid": 1993142,
+      "role": "deserializer",
+      "workerId": "2",
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993142.jsonl",
+        "sha256": "b522af1422129161b53893ec79d9092680641346c03afe295eb10207e21a4b3e",
+        "bytes": 554589
+      },
+      "sampledRssBytes": {
+        "min": 128438272,
+        "max": 344719360
+      },
+      "resourceUsageMaxRSSRawKiB": 372680,
+      "resourceUsageMaxRSSMiB": 363.9453125
+    },
+    {
+      "mode": "on",
+      "pid": 1993143,
+      "role": "deserializer",
+      "workerId": "3",
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993143.jsonl",
+        "sha256": "98d415f89a79aefe8710bb4d362da2039e5b572520fe70c6b053b264c5b3c0ab",
+        "bytes": 334186
+      },
+      "sampledRssBytes": {
+        "min": 110329856,
+        "max": 146059264
+      },
+      "resourceUsageMaxRSSRawKiB": 146220,
+      "resourceUsageMaxRSSMiB": 142.79296875
+    },
+    {
+      "mode": "on",
+      "pid": 1993149,
+      "role": "ingestor",
+      "workerId": "4",
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993149.jsonl",
+        "sha256": "c0fd4118431f4c7a1260e1e3e2e78a8a9b8e83b457068124f1f5ad57dfe297cd",
+        "bytes": 394750
+      },
+      "sampledRssBytes": {
+        "min": 125792256,
+        "max": 164974592
+      },
+      "resourceUsageMaxRSSRawKiB": 163936,
+      "resourceUsageMaxRSSMiB": 160.09375
+    },
+    {
+      "mode": "on",
+      "pid": 1993155,
+      "role": "ingestor",
+      "workerId": "5",
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993155.jsonl",
+        "sha256": "d3c94de6144d6f0a35521e7cc56e5e543c706c818d412d9a561dd2cebf538058",
+        "bytes": 393940
+      },
+      "sampledRssBytes": {
+        "min": 125341696,
+        "max": 156069888
+      },
+      "resourceUsageMaxRSSRawKiB": 158632,
+      "resourceUsageMaxRSSMiB": 154.9140625
+    },
+    {
+      "mode": "on",
+      "pid": 1993161,
+      "role": "ingestor",
+      "workerId": "6",
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993161.jsonl",
+        "sha256": "738cb45f1b794a46324a234dae8014cb92b4b32b57aaea22cccc58c6b9668747",
+        "bytes": 388444
+      },
+      "sampledRssBytes": {
+        "min": 126160896,
+        "max": 157810688
+      },
+      "resourceUsageMaxRSSRawKiB": 157948,
+      "resourceUsageMaxRSSMiB": 154.24609375
+    },
+    {
+      "mode": "on",
+      "pid": 1993167,
+      "role": "ingestor",
+      "workerId": "7",
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993167.jsonl",
+        "sha256": "01c58ee9377dc61a3f25ecd6afa2e5d7c46f395bcfdd04c3a6abbb77c318f0ea",
+        "bytes": 394148
+      },
+      "sampledRssBytes": {
+        "min": 127119360,
+        "max": 186699776
+      },
+      "resourceUsageMaxRSSRawKiB": 182580,
+      "resourceUsageMaxRSSMiB": 178.30078125
+    },
+    {
+      "mode": "on",
+      "pid": 1993173,
+      "role": "ingestor",
+      "workerId": "8",
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993173.jsonl",
+        "sha256": "4d78ed64be8e3c1496a81fba85a8d4ac16fdd5a765fe1d57dfad519bc10eb63f",
+        "bytes": 332535
+      },
+      "sampledRssBytes": {
+        "min": 112480256,
+        "max": 142143488
+      },
+      "resourceUsageMaxRSSRawKiB": 139836,
+      "resourceUsageMaxRSSMiB": 136.55859375
+    },
+    {
+      "mode": "on",
+      "pid": 1993179,
+      "role": "ingestor",
+      "workerId": "9",
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993179.jsonl",
+        "sha256": "530832eb1c36f300f7c5784d58ca5be1b3048d7a6778883e560bf9c84388d35e",
+        "bytes": 352510
+      },
+      "sampledRssBytes": {
+        "min": 115269632,
+        "max": 144584704
+      },
+      "resourceUsageMaxRSSRawKiB": 141452,
+      "resourceUsageMaxRSSMiB": 138.13671875
+    },
+    {
+      "mode": "on",
+      "pid": 1993186,
+      "role": "ingestor",
+      "workerId": "10",
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993186.jsonl",
+        "sha256": "29e4dcd125a9692e6f144b65c619e94fd62c509256b3c6ad8c15d991cea18c0b",
+        "bytes": 333079
+      },
+      "sampledRssBytes": {
+        "min": 111411200,
+        "max": 141582336
+      },
+      "resourceUsageMaxRSSRawKiB": 138520,
+      "resourceUsageMaxRSSMiB": 135.2734375
+    },
+    {
+      "mode": "on",
+      "pid": 1993194,
+      "role": "ds_pool_worker",
+      "workerId": "11",
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993194.jsonl",
+        "sha256": "4a71ebad10a2056f743c3242d40b8d53da668a653413eefc68feef9134878ba1",
+        "bytes": 406099
+      },
+      "sampledRssBytes": {
+        "min": 134619136,
+        "max": 217804800
+      },
+      "resourceUsageMaxRSSRawKiB": 222300,
+      "resourceUsageMaxRSSMiB": 217.08984375
+    },
+    {
+      "mode": "on",
+      "pid": 1993201,
+      "role": "projection",
+      "workerId": "12",
+      "samples": 376,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/master-0/worker-1993201.jsonl",
+        "sha256": "ee98b239799098b71dc559f6c06f43fb079facfc054946d4b67eed2e3ee2ee5e",
+        "bytes": 335981
+      },
+      "sampledRssBytes": {
+        "min": 136265728,
+        "max": 529428480
+      },
+      "resourceUsageMaxRSSRawKiB": 558492,
+      "resourceUsageMaxRSSMiB": 545.40234375
+    },
+    {
+      "mode": "on",
+      "pid": 1993062,
+      "role": "master",
+      "workerId": null,
+      "samples": 380,
+      "source": {
+        "file": "profile24-prefix288-cpu-on/observer/api-0/worker-1993062.jsonl",
+        "sha256": "13a8f918027837cdf53b63722a2f4623415eb60a0e5518c61b93882bb072b7e5",
+        "bytes": 333570
+      },
+      "sampledRssBytes": {
+        "min": 169390080,
+        "max": 241090560
+      },
+      "resourceUsageMaxRSSRawKiB": 246124,
+      "resourceUsageMaxRSSMiB": 240.35546875
+    },
+    {
+      "mode": "off",
+      "pid": 2010020,
+      "role": "master",
+      "workerId": null,
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010020.jsonl",
+        "sha256": "1dcc014e1322190458dbfd06ed598ef8b969e44255321765b4134afc7420f530",
+        "bytes": 2906970
+      },
+      "sampledRssBytes": {
+        "min": 159576064,
+        "max": 308731904
+      },
+      "resourceUsageMaxRSSRawKiB": 344420,
+      "resourceUsageMaxRSSMiB": 336.34765625
+    },
+    {
+      "mode": "off",
+      "pid": 2010105,
+      "role": "continuous_reader",
+      "workerId": "1",
+      "samples": 377,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010105.jsonl",
+        "sha256": "f618883918d321ff8f5db5eccc2431f53d48a5b7587ab5249e242f06d7059eef",
+        "bytes": 451174
+      },
+      "sampledRssBytes": {
+        "min": 127254528,
+        "max": 215298048
+      },
+      "resourceUsageMaxRSSRawKiB": 230368,
+      "resourceUsageMaxRSSMiB": 224.96875
+    },
+    {
+      "mode": "off",
+      "pid": 2010106,
+      "role": "deserializer",
+      "workerId": "2",
+      "samples": 378,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010106.jsonl",
+        "sha256": "455f5c2320cd425611908ee9f6a324894e9410308e6a27e5bc6dcd6964c51fae",
+        "bytes": 549679
+      },
+      "sampledRssBytes": {
+        "min": 127557632,
+        "max": 369770496
+      },
+      "resourceUsageMaxRSSRawKiB": 391296,
+      "resourceUsageMaxRSSMiB": 382.125
+    },
+    {
+      "mode": "off",
+      "pid": 2010112,
+      "role": "deserializer",
+      "workerId": "3",
+      "samples": 378,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010112.jsonl",
+        "sha256": "a74491bdfe5df11a352d701eff89d6e263190e4010a316ea4ff904d2dfcca2a9",
+        "bytes": 331116
+      },
+      "sampledRssBytes": {
+        "min": 104165376,
+        "max": 137134080
+      },
+      "resourceUsageMaxRSSRawKiB": 137760,
+      "resourceUsageMaxRSSMiB": 134.53125
+    },
+    {
+      "mode": "off",
+      "pid": 2010113,
+      "role": "ingestor",
+      "workerId": "4",
+      "samples": 378,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010113.jsonl",
+        "sha256": "2c6607c2cfd741375249b62b006fca0994727db97185b0ffd7fc1d31c4067782",
+        "bytes": 389032
+      },
+      "sampledRssBytes": {
+        "min": 117919744,
+        "max": 155226112
+      },
+      "resourceUsageMaxRSSRawKiB": 154788,
+      "resourceUsageMaxRSSMiB": 151.16015625
+    },
+    {
+      "mode": "off",
+      "pid": 2010119,
+      "role": "ingestor",
+      "workerId": "5",
+      "samples": 378,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010119.jsonl",
+        "sha256": "573f79b82ab40762260abf7f0794049d5c52f7ebfbae139dd1a3e02ac35fd1f4",
+        "bytes": 389675
+      },
+      "sampledRssBytes": {
+        "min": 114806784,
+        "max": 146247680
+      },
+      "resourceUsageMaxRSSRawKiB": 148412,
+      "resourceUsageMaxRSSMiB": 144.93359375
+    },
+    {
+      "mode": "off",
+      "pid": 2010125,
+      "role": "ingestor",
+      "workerId": "6",
+      "samples": 378,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010125.jsonl",
+        "sha256": "50c5e8a15537a2a35561a106f5eee9dca9f56b42cf198d5432fcd520b8df19d9",
+        "bytes": 383236
+      },
+      "sampledRssBytes": {
+        "min": 116555776,
+        "max": 150540288
+      },
+      "resourceUsageMaxRSSRawKiB": 147368,
+      "resourceUsageMaxRSSMiB": 143.9140625
+    },
+    {
+      "mode": "off",
+      "pid": 2010131,
+      "role": "ingestor",
+      "workerId": "7",
+      "samples": 378,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010131.jsonl",
+        "sha256": "afcfc959f736163470d8d9bad34f1e66e147c2b924b42267dac8177a9b9d6219",
+        "bytes": 390197
+      },
+      "sampledRssBytes": {
+        "min": 118231040,
+        "max": 177496064
+      },
+      "resourceUsageMaxRSSRawKiB": 173592,
+      "resourceUsageMaxRSSMiB": 169.5234375
+    },
+    {
+      "mode": "off",
+      "pid": 2010138,
+      "role": "ingestor",
+      "workerId": "8",
+      "samples": 378,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010138.jsonl",
+        "sha256": "2972991b1af6a4c79a8f301844ab9541d5f156c9c4ce4a0ef4f27c15cce88c98",
+        "bytes": 329492
+      },
+      "sampledRssBytes": {
+        "min": 102092800,
+        "max": 133234688
+      },
+      "resourceUsageMaxRSSRawKiB": 130112,
+      "resourceUsageMaxRSSMiB": 127.0625
+    },
+    {
+      "mode": "off",
+      "pid": 2010144,
+      "role": "ingestor",
+      "workerId": "9",
+      "samples": 378,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010144.jsonl",
+        "sha256": "5bdd19b1291db177a45236e6484fd83bf0cbd515ee18f2087cad9d61f9950be9",
+        "bytes": 349025
+      },
+      "sampledRssBytes": {
+        "min": 104853504,
+        "max": 135761920
+      },
+      "resourceUsageMaxRSSRawKiB": 132580,
+      "resourceUsageMaxRSSMiB": 129.47265625
+    },
+    {
+      "mode": "off",
+      "pid": 2010150,
+      "role": "ingestor",
+      "workerId": "10",
+      "samples": 378,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010150.jsonl",
+        "sha256": "1420ab743658bff6ad286d2760312409bc1310ca39982cf7391e5e434d30d764",
+        "bytes": 329918
+      },
+      "sampledRssBytes": {
+        "min": 101449728,
+        "max": 132100096
+      },
+      "resourceUsageMaxRSSRawKiB": 129260,
+      "resourceUsageMaxRSSMiB": 126.23046875
+    },
+    {
+      "mode": "off",
+      "pid": 2010157,
+      "role": "ds_pool_worker",
+      "workerId": "11",
+      "samples": 378,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010157.jsonl",
+        "sha256": "834454cbfdb1c30bd6f59a643755a472131895d4154d512234b2eaad37649996",
+        "bytes": 401415
+      },
+      "sampledRssBytes": {
+        "min": 126980096,
+        "max": 212586496
+      },
+      "resourceUsageMaxRSSRawKiB": 211336,
+      "resourceUsageMaxRSSMiB": 206.3828125
+    },
+    {
+      "mode": "off",
+      "pid": 2010163,
+      "role": "projection",
+      "workerId": "12",
+      "samples": 375,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/master-0/worker-2010163.jsonl",
+        "sha256": "5215286215fc15a238bd0cd62c66b08aa9b4420b7ca11d3ddf850ec437161b7d",
+        "bytes": 334417
+      },
+      "sampledRssBytes": {
+        "min": 124911616,
+        "max": 539451392
+      },
+      "resourceUsageMaxRSSRawKiB": 553872,
+      "resourceUsageMaxRSSMiB": 540.890625
+    },
+    {
+      "mode": "off",
+      "pid": 2010026,
+      "role": "master",
+      "workerId": null,
+      "samples": 379,
+      "source": {
+        "file": "profile24-prefix288-cpu-off/observer/api-0/worker-2010026.jsonl",
+        "sha256": "12afb4465bc26e5713556e1cd811223d98de216b20878cdde13e3fa4473a4162",
+        "bytes": 331154
+      },
+      "sampledRssBytes": {
+        "min": 157229056,
+        "max": 246738944
+      },
+      "resourceUsageMaxRSSRawKiB": 251072,
+      "resourceUsageMaxRSSMiB": 245.1875
+    }
+  ],
+  "resourceUnits": {
+    "sampledRss": "memory.rss bytes, discrete observed samples",
+    "resourceUsageMaxRSS": "Raw Node/Linux getrusage maxRSS KiB counter; process lifetime high-water mark, not sampled RSS",
+    "cpu": "Actual user+system process CPU microseconds, independently from V8 elapsed weights"
+  },
+  "independentRootCrosscheck": {
+    "projectionOffObservedCpuMicros": 307510643,
+    "projectionOffPrefixCpuMicros": 297214400,
+    "projectionOffMaxRSSMiB": 540.890625,
+    "passed": true
+  }
+}

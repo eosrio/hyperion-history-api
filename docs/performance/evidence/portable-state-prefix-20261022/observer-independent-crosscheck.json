@@ -1,0 +1,582 @@
+{
+  "schemaVersion": 1,
+  "scope": "Independent raw observer arithmetic. CPU cumulative user+system deltas use each PID own monotonic clock; no V8 tick alignment or overhead estimate.",
+  "cases": [
+    {
+      "case": "profile24-prefix288-cpu-on",
+      "firstReleaseAt": 1792628858277,
+      "stableAt": 1792629223830,
+      "commonPrefixWallSeconds": 365.553,
+      "processes": [
+        {
+          "pid": 1993062,
+          "role": "master",
+          "workerId": null,
+          "observerSha256": "13a8f918027837cdf53b63722a2f4623415eb60a0e5518c61b93882bb072b7e5",
+          "samples": 380,
+          "observedCpuSeconds": 5.17893,
+          "observedMonotonicSeconds": 377.99487859,
+          "maxRssMiB": 240.35546875,
+          "sampledRssMiBRange": [
+            161.54296875,
+            229.921875
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 4.8979349999999995,
+            "monotonicSeconds": 365.07607626199996,
+            "startMarginMs": 297,
+            "endMarginMs": 180
+          }
+        },
+        {
+          "pid": 1993056,
+          "role": "master",
+          "workerId": null,
+          "observerSha256": "9bb558d14fd35fc13c6eefdb71ea4b9b956bbabcca8e1cad6a1a17a84412ebdb",
+          "samples": 380,
+          "observedCpuSeconds": 28.825068,
+          "observedMonotonicSeconds": 377.895800248,
+          "maxRssMiB": 348.01953125,
+          "sampledRssMiBRange": [
+            161.10546875,
+            309.515625
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 28.466710000000003,
+            "monotonicSeconds": 365.07404074000004,
+            "startMarginMs": 302,
+            "endMarginMs": 177
+          }
+        },
+        {
+          "pid": 1993141,
+          "role": "continuous_reader",
+          "workerId": "1",
+          "observerSha256": "1e97ba367ade6c7f3b00709b1205dacda86d4d7c876043449b896d42f2bb0d72",
+          "samples": 378,
+          "observedCpuSeconds": 6.080316,
+          "observedMonotonicSeconds": 375.61451711,
+          "maxRssMiB": 226.28125,
+          "sampledRssMiBRange": [
+            128.6328125,
+            200.859375
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 5.92147,
+            "monotonicSeconds": 363.058722776,
+            "startMarginMs": 2459,
+            "endMarginMs": 35
+          }
+        },
+        {
+          "pid": 1993142,
+          "role": "deserializer",
+          "workerId": "2",
+          "observerSha256": "b522af1422129161b53893ec79d9092680641346c03afe295eb10207e21a4b3e",
+          "samples": 379,
+          "observedCpuSeconds": 27.595391,
+          "observedMonotonicSeconds": 376.77169186799995,
+          "maxRssMiB": 363.9453125,
+          "sampledRssMiBRange": [
+            122.48828125,
+            328.75
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 27.472741999999997,
+            "monotonicSeconds": 364.092766197,
+            "startMarginMs": 1332,
+            "endMarginMs": 129
+          }
+        },
+        {
+          "pid": 1993143,
+          "role": "deserializer",
+          "workerId": "3",
+          "observerSha256": "98d415f89a79aefe8710bb4d362da2039e5b572520fe70c6b053b264c5b3c0ab",
+          "samples": 379,
+          "observedCpuSeconds": 2.948538,
+          "observedMonotonicSeconds": 376.639232043,
+          "maxRssMiB": 142.79296875,
+          "sampledRssMiBRange": [
+            105.21875,
+            139.29296875
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 2.8529920000000004,
+            "monotonicSeconds": 364.029583414,
+            "startMarginMs": 1437,
+            "endMarginMs": 86
+          }
+        },
+        {
+          "pid": 1993149,
+          "role": "ingestor",
+          "workerId": "4",
+          "observerSha256": "c0fd4118431f4c7a1260e1e3e2e78a8a9b8e83b457068124f1f5ad57dfe297cd",
+          "samples": 379,
+          "observedCpuSeconds": 3.6477540000000004,
+          "observedMonotonicSeconds": 376.714209404,
+          "maxRssMiB": 160.09375,
+          "sampledRssMiBRange": [
+            119.96484375,
+            157.33203125
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 3.540733,
+            "monotonicSeconds": 364.026373537,
+            "startMarginMs": 1367,
+            "endMarginMs": 160
+          }
+        },
+        {
+          "pid": 1993155,
+          "role": "ingestor",
+          "workerId": "5",
+          "observerSha256": "d3c94de6144d6f0a35521e7cc56e5e543c706c818d412d9a561dd2cebf538058",
+          "samples": 379,
+          "observedCpuSeconds": 3.316894,
+          "observedMonotonicSeconds": 376.627099094,
+          "maxRssMiB": 154.9140625,
+          "sampledRssMiBRange": [
+            119.53515625,
+            148.83984375
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 3.208402,
+            "monotonicSeconds": 364.029310329,
+            "startMarginMs": 1463,
+            "endMarginMs": 60
+          }
+        },
+        {
+          "pid": 1993161,
+          "role": "ingestor",
+          "workerId": "6",
+          "observerSha256": "738cb45f1b794a46324a234dae8014cb92b4b32b57aaea22cccc58c6b9668747",
+          "samples": 379,
+          "observedCpuSeconds": 3.817444,
+          "observedMonotonicSeconds": 376.744894797,
+          "maxRssMiB": 154.24609375,
+          "sampledRssMiBRange": [
+            120.31640625,
+            150.5
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 3.7197069999999997,
+            "monotonicSeconds": 364.04160607700004,
+            "startMarginMs": 1333,
+            "endMarginMs": 178
+          }
+        },
+        {
+          "pid": 1993167,
+          "role": "ingestor",
+          "workerId": "7",
+          "observerSha256": "01c58ee9377dc61a3f25ecd6afa2e5d7c46f395bcfdd04c3a6abbb77c318f0ea",
+          "samples": 379,
+          "observedCpuSeconds": 3.583736,
+          "observedMonotonicSeconds": 376.731634425,
+          "maxRssMiB": 178.30078125,
+          "sampledRssMiBRange": [
+            121.23046875,
+            178.05078125
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 3.482946,
+            "monotonicSeconds": 364.054957268,
+            "startMarginMs": 1351,
+            "endMarginMs": 147
+          }
+        },
+        {
+          "pid": 1993173,
+          "role": "ingestor",
+          "workerId": "8",
+          "observerSha256": "4d78ed64be8e3c1496a81fba85a8d4ac16fdd5a765fe1d57dfad519bc10eb63f",
+          "samples": 379,
+          "observedCpuSeconds": 2.824222,
+          "observedMonotonicSeconds": 376.632374217,
+          "maxRssMiB": 136.55859375,
+          "sampledRssMiBRange": [
+            107.26953125,
+            135.55859375
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 2.7313479999999997,
+            "monotonicSeconds": 364.032381073,
+            "startMarginMs": 1444,
+            "endMarginMs": 77
+          }
+        },
+        {
+          "pid": 1993179,
+          "role": "ingestor",
+          "workerId": "9",
+          "observerSha256": "530832eb1c36f300f7c5784d58ca5be1b3048d7a6778883e560bf9c84388d35e",
+          "samples": 379,
+          "observedCpuSeconds": 3.1656639999999996,
+          "observedMonotonicSeconds": 376.644494531,
+          "maxRssMiB": 138.13671875,
+          "sampledRssMiBRange": [
+            109.9296875,
+            137.88671875
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 3.052677,
+            "monotonicSeconds": 364.021945245,
+            "startMarginMs": 1442,
+            "endMarginMs": 89
+          }
+        },
+        {
+          "pid": 1993186,
+          "role": "ingestor",
+          "workerId": "10",
+          "observerSha256": "29e4dcd125a9692e6f144b65c619e94fd62c509256b3c6ad8c15d991cea18c0b",
+          "samples": 379,
+          "observedCpuSeconds": 2.851881,
+          "observedMonotonicSeconds": 376.72555326900005,
+          "maxRssMiB": 135.2734375,
+          "sampledRssMiBRange": [
+            106.25,
+            135.0234375
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 2.751007,
+            "monotonicSeconds": 364.02971286100006,
+            "startMarginMs": 1354,
+            "endMarginMs": 170
+          }
+        },
+        {
+          "pid": 1993194,
+          "role": "ds_pool_worker",
+          "workerId": "11",
+          "observerSha256": "4a71ebad10a2056f743c3242d40b8d53da668a653413eefc68feef9134878ba1",
+          "samples": 379,
+          "observedCpuSeconds": 9.526756,
+          "observedMonotonicSeconds": 376.75798401,
+          "maxRssMiB": 217.08984375,
+          "sampledRssMiBRange": [
+            128.3828125,
+            207.71484375
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 9.410422,
+            "monotonicSeconds": 364.02427841499997,
+            "startMarginMs": 1337,
+            "endMarginMs": 192
+          }
+        },
+        {
+          "pid": 1993201,
+          "role": "projection",
+          "workerId": "12",
+          "observerSha256": "ee98b239799098b71dc559f6c06f43fb079facfc054946d4b67eed2e3ee2ee5e",
+          "samples": 376,
+          "observedCpuSeconds": 319.981016,
+          "observedMonotonicSeconds": 376.529395635,
+          "maxRssMiB": 545.40234375,
+          "sampledRssMiBRange": [
+            129.953125,
+            504.90234375
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 309.41625,
+            "monotonicSeconds": 363.91010319500003,
+            "startMarginMs": 1616,
+            "endMarginMs": 27
+          }
+        }
+      ]
+    },
+    {
+      "case": "profile24-prefix288-cpu-off",
+      "firstReleaseAt": 1792629473218,
+      "stableAt": 1792629837723,
+      "commonPrefixWallSeconds": 364.505,
+      "processes": [
+        {
+          "pid": 2010026,
+          "role": "master",
+          "workerId": null,
+          "observerSha256": "12afb4465bc26e5713556e1cd811223d98de216b20878cdde13e3fa4473a4162",
+          "samples": 379,
+          "observedCpuSeconds": 4.319749,
+          "observedMonotonicSeconds": 376.48703142,
+          "maxRssMiB": 245.1875,
+          "sampledRssMiBRange": [
+            149.9453125,
+            235.30859375
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 4.104801,
+            "monotonicSeconds": 364.083705618,
+            "startMarginMs": 359,
+            "endMarginMs": 62
+          }
+        },
+        {
+          "pid": 2010020,
+          "role": "master",
+          "workerId": null,
+          "observerSha256": "1dcc014e1322190458dbfd06ed598ef8b969e44255321765b4134afc7420f530",
+          "samples": 379,
+          "observedCpuSeconds": 26.466427,
+          "observedMonotonicSeconds": 376.425358032,
+          "maxRssMiB": 336.34765625,
+          "sampledRssMiBRange": [
+            152.18359375,
+            294.4296875
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 26.234643,
+            "monotonicSeconds": 364.042720141,
+            "startMarginMs": 360,
+            "endMarginMs": 103
+          }
+        },
+        {
+          "pid": 2010105,
+          "role": "continuous_reader",
+          "workerId": "1",
+          "observerSha256": "f618883918d321ff8f5db5eccc2431f53d48a5b7587ab5249e242f06d7059eef",
+          "samples": 377,
+          "observedCpuSeconds": 3.952887,
+          "observedMonotonicSeconds": 374.428733719,
+          "maxRssMiB": 224.96875,
+          "sampledRssMiBRange": [
+            121.359375,
+            205.32421875
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 3.8624959999999997,
+            "monotonicSeconds": 362.04156206899995,
+            "startMarginMs": 2306,
+            "endMarginMs": 157
+          }
+        },
+        {
+          "pid": 2010106,
+          "role": "deserializer",
+          "workerId": "2",
+          "observerSha256": "455f5c2320cd425611908ee9f6a324894e9410308e6a27e5bc6dcd6964c51fae",
+          "samples": 378,
+          "observedCpuSeconds": 24.997968,
+          "observedMonotonicSeconds": 375.346301788,
+          "maxRssMiB": 382.125,
+          "sampledRssMiBRange": [
+            121.6484375,
+            352.640625
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 24.973806,
+            "monotonicSeconds": 362.16978525699994,
+            "startMarginMs": 1388,
+            "endMarginMs": 947
+          }
+        },
+        {
+          "pid": 2010112,
+          "role": "deserializer",
+          "workerId": "3",
+          "observerSha256": "a74491bdfe5df11a352d701eff89d6e263190e4010a316ea4ff904d2dfcca2a9",
+          "samples": 378,
+          "observedCpuSeconds": 0.971688,
+          "observedMonotonicSeconds": 375.34705357300004,
+          "maxRssMiB": 134.53125,
+          "sampledRssMiBRange": [
+            99.33984375,
+            130.78125
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 0.948702,
+            "monotonicSeconds": 363.02670019400006,
+            "startMarginMs": 1388,
+            "endMarginMs": 90
+          }
+        },
+        {
+          "pid": 2010113,
+          "role": "ingestor",
+          "workerId": "4",
+          "observerSha256": "2c6607c2cfd741375249b62b006fca0994727db97185b0ffd7fc1d31c4067782",
+          "samples": 378,
+          "observedCpuSeconds": 1.6505859999999997,
+          "observedMonotonicSeconds": 375.325568165,
+          "maxRssMiB": 151.16015625,
+          "sampledRssMiBRange": [
+            112.45703125,
+            148.03515625
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 1.62628,
+            "monotonicSeconds": 363.032104575,
+            "startMarginMs": 1409,
+            "endMarginMs": 64
+          }
+        },
+        {
+          "pid": 2010119,
+          "role": "ingestor",
+          "workerId": "5",
+          "observerSha256": "573f79b82ab40762260abf7f0794049d5c52f7ebfbae139dd1a3e02ac35fd1f4",
+          "samples": 378,
+          "observedCpuSeconds": 1.378762,
+          "observedMonotonicSeconds": 375.340411191,
+          "maxRssMiB": 144.93359375,
+          "sampledRssMiBRange": [
+            109.48828125,
+            139.47265625
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 1.3550940000000002,
+            "monotonicSeconds": 363.033480706,
+            "startMarginMs": 1394,
+            "endMarginMs": 78
+          }
+        },
+        {
+          "pid": 2010125,
+          "role": "ingestor",
+          "workerId": "6",
+          "observerSha256": "50c5e8a15537a2a35561a106f5eee9dca9f56b42cf198d5432fcd520b8df19d9",
+          "samples": 378,
+          "observedCpuSeconds": 1.80379,
+          "observedMonotonicSeconds": 375.348713245,
+          "maxRssMiB": 143.9140625,
+          "sampledRssMiBRange": [
+            111.15625,
+            143.56640625
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 1.778637,
+            "monotonicSeconds": 363.027073226,
+            "startMarginMs": 1386,
+            "endMarginMs": 92
+          }
+        },
+        {
+          "pid": 2010131,
+          "role": "ingestor",
+          "workerId": "7",
+          "observerSha256": "afcfc959f736163470d8d9bad34f1e66e147c2b924b42267dac8177a9b9d6219",
+          "samples": 378,
+          "observedCpuSeconds": 1.649171,
+          "observedMonotonicSeconds": 375.340459103,
+          "maxRssMiB": 169.5234375,
+          "sampledRssMiBRange": [
+            112.75390625,
+            169.2734375
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 1.624669,
+            "monotonicSeconds": 363.042213117,
+            "startMarginMs": 1394,
+            "endMarginMs": 69
+          }
+        },
+        {
+          "pid": 2010138,
+          "role": "ingestor",
+          "workerId": "8",
+          "observerSha256": "2972991b1af6a4c79a8f301844ab9541d5f156c9c4ce4a0ef4f27c15cce88c98",
+          "samples": 378,
+          "observedCpuSeconds": 0.7844429999999999,
+          "observedMonotonicSeconds": 375.326375336,
+          "maxRssMiB": 127.0625,
+          "sampledRssMiBRange": [
+            97.36328125,
+            127.0625
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 0.76144,
+            "monotonicSeconds": 363.037054944,
+            "startMarginMs": 1408,
+            "endMarginMs": 60
+          }
+        },
+        {
+          "pid": 2010144,
+          "role": "ingestor",
+          "workerId": "9",
+          "observerSha256": "5bdd19b1291db177a45236e6484fd83bf0cbd515ee18f2087cad9d61f9950be9",
+          "samples": 378,
+          "observedCpuSeconds": 1.3105760000000002,
+          "observedMonotonicSeconds": 375.332741981,
+          "maxRssMiB": 129.47265625,
+          "sampledRssMiBRange": [
+            99.99609375,
+            129.47265625
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 1.2762510000000002,
+            "monotonicSeconds": 363.030808728,
+            "startMarginMs": 1402,
+            "endMarginMs": 72
+          }
+        },
+        {
+          "pid": 2010150,
+          "role": "ingestor",
+          "workerId": "10",
+          "observerSha256": "1420ab743658bff6ad286d2760312409bc1310ca39982cf7391e5e434d30d764",
+          "samples": 378,
+          "observedCpuSeconds": 0.794569,
+          "observedMonotonicSeconds": 375.348036609,
+          "maxRssMiB": 126.23046875,
+          "sampledRssMiBRange": [
+            96.75,
+            125.98046875
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 0.769683,
+            "monotonicSeconds": 363.03165252,
+            "startMarginMs": 1387,
+            "endMarginMs": 86
+          }
+        },
+        {
+          "pid": 2010157,
+          "role": "ds_pool_worker",
+          "workerId": "11",
+          "observerSha256": "834454cbfdb1c30bd6f59a643755a472131895d4154d512234b2eaad37649996",
+          "samples": 378,
+          "observedCpuSeconds": 7.413771,
+          "observedMonotonicSeconds": 375.318267514,
+          "maxRssMiB": 206.3828125,
+          "sampledRssMiBRange": [
+            121.09765625,
+            202.73828125
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 7.38993,
+            "monotonicSeconds": 363.034643828,
+            "startMarginMs": 1416,
+            "endMarginMs": 54
+          }
+        },
+        {
+          "pid": 2010163,
+          "role": "projection",
+          "workerId": "12",
+          "observerSha256": "5215286215fc15a238bd0cd62c66b08aa9b4420b7ca11d3ddf850ec437161b7d",
+          "samples": 375,
+          "observedCpuSeconds": 307.510643,
+          "observedMonotonicSeconds": 375.212510122,
+          "maxRssMiB": 540.890625,
+          "sampledRssMiBRange": [
+            119.125,
+            514.4609375
+          ],
+          "prefixBracket": {
+            "cpuSeconds": 297.2144,
+            "monotonicSeconds": 362.276805297,
+            "startMarginMs": 1522,
+            "endMarginMs": 706
+          }
+        }
+      ]
+    }
+  ]
+}

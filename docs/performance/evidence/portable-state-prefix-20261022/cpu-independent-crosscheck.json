@@ -1,0 +1,370 @@
+{
+  "schemaVersion": 1,
+  "profileSha256": "333ea38acc136aceeb11944e1f6b8ab3326dc4c25bc9cbc8977a6027c0afbe33",
+  "samples": 37254,
+  "method": "Independent function aggregation; raw sampled self and recursive-function-deduplicated inclusive stacks; elapsed interval weights are not process CPU seconds",
+  "topSelf": [
+    {
+      "function": "(idle)",
+      "file": "",
+      "line": 0,
+      "column": 0,
+      "samples": 10447,
+      "allSamplePercent": 28.0426,
+      "intervalWeightSeconds": 106.146061
+    },
+    {
+      "function": "encode",
+      "file": "node:internal/encoding",
+      "line": 355,
+      "column": 9,
+      "samples": 4438,
+      "allSamplePercent": 11.9128,
+      "intervalWeightSeconds": 44.987931
+    },
+    {
+      "function": "snapshot",
+      "file": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "line": 86,
+      "column": 18,
+      "samples": 2549,
+      "allSamplePercent": 6.8422,
+      "intervalWeightSeconds": 25.878761
+    },
+    {
+      "function": "visit",
+      "file": "build/indexer/helpers/bounded-json.js",
+      "line": 33,
+      "column": 19,
+      "samples": 2089,
+      "allSamplePercent": 5.6075,
+      "intervalWeightSeconds": 21.220405
+    },
+    {
+      "function": "_parse",
+      "file": "node_modules/@elastic/transport/node_modules/secure-json-parse/index.js",
+      "line": 7,
+      "column": 17,
+      "samples": 1472,
+      "allSamplePercent": 3.9513,
+      "intervalWeightSeconds": 15.025204
+    },
+    {
+      "function": "writeLatin1String",
+      "file": "",
+      "line": 0,
+      "column": 0,
+      "samples": 1353,
+      "allSamplePercent": 3.6318,
+      "intervalWeightSeconds": 13.813894
+    },
+    {
+      "function": "encodeUtf8String",
+      "file": "",
+      "line": 0,
+      "column": 0,
+      "samples": 1012,
+      "allSamplePercent": 2.7165,
+      "intervalWeightSeconds": 10.250078
+    },
+    {
+      "function": "(program)",
+      "file": "",
+      "line": 0,
+      "column": 0,
+      "samples": 933,
+      "allSamplePercent": 2.5044,
+      "intervalWeightSeconds": 9.486851
+    },
+    {
+      "function": "pointer",
+      "file": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "line": 37,
+      "column": 17,
+      "samples": 820,
+      "allSamplePercent": 2.2011,
+      "intervalWeightSeconds": 8.32972
+    },
+    {
+      "function": "string",
+      "file": "build/indexer/helpers/bounded-json.js",
+      "line": 10,
+      "column": 20,
+      "samples": 812,
+      "allSamplePercent": 2.1796,
+      "intervalWeightSeconds": 8.245795
+    },
+    {
+      "function": "canonical",
+      "file": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "line": 142,
+      "column": 19,
+      "samples": 665,
+      "allSamplePercent": 1.785,
+      "intervalWeightSeconds": 6.696493
+    },
+    {
+      "function": "freeze",
+      "file": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "line": 134,
+      "column": 16,
+      "samples": 650,
+      "allSamplePercent": 1.7448,
+      "intervalWeightSeconds": 6.581021
+    },
+    {
+      "function": "(garbage collector)",
+      "file": "",
+      "line": 0,
+      "column": 0,
+      "samples": 439,
+      "allSamplePercent": 1.1784,
+      "intervalWeightSeconds": 4.472598
+    },
+    {
+      "function": "deserializeObject",
+      "file": "node_modules/bson/lib/bson.cjs",
+      "line": 3175,
+      "column": 27,
+      "samples": 389,
+      "allSamplePercent": 1.0442,
+      "intervalWeightSeconds": 3.927652
+    },
+    {
+      "function": "",
+      "file": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "line": 147,
+      "column": 18,
+      "samples": 276,
+      "allSamplePercent": 0.7409,
+      "intervalWeightSeconds": 2.799516
+    },
+    {
+      "function": "string",
+      "file": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "line": 75,
+      "column": 16,
+      "samples": 263,
+      "allSamplePercent": 0.706,
+      "intervalWeightSeconds": 2.680557
+    },
+    {
+      "function": "update",
+      "file": "node:internal/crypto/hash",
+      "line": 145,
+      "column": 40,
+      "samples": 251,
+      "allSamplePercent": 0.6738,
+      "intervalWeightSeconds": 2.533964
+    },
+    {
+      "function": "keys",
+      "file": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "line": 56,
+      "column": 14,
+      "samples": 246,
+      "allSamplePercent": 0.6603,
+      "intervalWeightSeconds": 2.499274
+    },
+    {
+      "function": "internalCalculateObjectSize",
+      "file": "packages/backend-mongodb/node_modules/bson/lib/bson.cjs",
+      "line": 2923,
+      "column": 37,
+      "samples": 233,
+      "allSamplePercent": 0.6254,
+      "intervalWeightSeconds": 2.358173
+    },
+    {
+      "function": "runMicrotasks",
+      "file": "",
+      "line": 0,
+      "column": 0,
+      "samples": 215,
+      "allSamplePercent": 0.5771,
+      "intervalWeightSeconds": 2.206365
+    }
+  ],
+  "topInclusive": [
+    {
+      "function": "(root)",
+      "file": "",
+      "line": 0,
+      "column": 0,
+      "samples": 37254,
+      "allSamplePercent": 100.0,
+      "intervalWeightSeconds": 377.725508
+    },
+    {
+      "function": "processTicksAndRejections",
+      "file": "node:internal/process/task_queues",
+      "line": 72,
+      "column": 35,
+      "samples": 25155,
+      "allSamplePercent": 67.523,
+      "intervalWeightSeconds": 254.874485
+    },
+    {
+      "function": "runMicrotasks",
+      "file": "",
+      "line": 0,
+      "column": 0,
+      "samples": 23959,
+      "allSamplePercent": 64.3126,
+      "intervalWeightSeconds": 242.470872
+    },
+    {
+      "function": "validateRollbackState",
+      "file": "packages/backend-mongodb/dist/rollback-contract.js",
+      "line": 101,
+      "column": 38,
+      "samples": 11988,
+      "allSamplePercent": 32.1791,
+      "intervalWeightSeconds": 121.645149
+    },
+    {
+      "function": "validating",
+      "file": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "line": 150,
+      "column": 20,
+      "samples": 11440,
+      "allSamplePercent": 30.7081,
+      "intervalWeightSeconds": 116.022786
+    },
+    {
+      "function": "(idle)",
+      "file": "",
+      "line": 0,
+      "column": 0,
+      "samples": 10447,
+      "allSamplePercent": 28.0426,
+      "intervalWeightSeconds": 106.146061
+    },
+    {
+      "function": "load",
+      "file": "packages/backend-mongodb/dist/storage.js",
+      "line": 52,
+      "column": 15,
+      "samples": 10424,
+      "allSamplePercent": 27.9809,
+      "intervalWeightSeconds": 105.799777
+    },
+    {
+      "function": "",
+      "file": "packages/backend-mongodb/dist/rollback.js",
+      "line": 18,
+      "column": 24,
+      "samples": 10369,
+      "allSamplePercent": 27.8333,
+      "intervalWeightSeconds": 105.245307
+    },
+    {
+      "function": "validateRollbackMetadata",
+      "file": "packages/backend-mongodb/dist/rollback-contract.js",
+      "line": 88,
+      "column": 41,
+      "samples": 10368,
+      "allSamplePercent": 27.8306,
+      "intervalWeightSeconds": 105.235227
+    },
+    {
+      "function": "snapshot",
+      "file": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "line": 86,
+      "column": 18,
+      "samples": 7802,
+      "allSamplePercent": 20.9427,
+      "intervalWeightSeconds": 79.084878
+    },
+    {
+      "function": "encode",
+      "file": "node:internal/encoding",
+      "line": 355,
+      "column": 9,
+      "samples": 5448,
+      "allSamplePercent": 14.6239,
+      "intervalWeightSeconds": 55.217825
+    },
+    {
+      "function": "_request",
+      "file": "node_modules/@elastic/transport/lib/Transport.js",
+      "line": 297,
+      "column": 19,
+      "samples": 3886,
+      "allSamplePercent": 10.4311,
+      "intervalWeightSeconds": 39.547464
+    },
+    {
+      "function": "validateProjectionApply",
+      "file": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "line": 296,
+      "column": 40,
+      "samples": 3234,
+      "allSamplePercent": 8.6809,
+      "intervalWeightSeconds": 32.829422
+    },
+    {
+      "function": "boundedCanonicalJson",
+      "file": "build/indexer/helpers/bounded-json.js",
+      "line": 2,
+      "column": 37,
+      "samples": 3168,
+      "allSamplePercent": 8.5038,
+      "intervalWeightSeconds": 32.157759
+    },
+    {
+      "function": "visit",
+      "file": "build/indexer/helpers/bounded-json.js",
+      "line": 33,
+      "column": 19,
+      "samples": 3150,
+      "allSamplePercent": 8.4555,
+      "intervalWeightSeconds": 31.982362
+    },
+    {
+      "function": "string",
+      "file": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "line": 75,
+      "column": 16,
+      "samples": 3109,
+      "allSamplePercent": 8.3454,
+      "intervalWeightSeconds": 31.539023
+    },
+    {
+      "function": "",
+      "file": "build/indexer/helpers/bounded-json.js",
+      "line": 63,
+      "column": 22,
+      "samples": 2770,
+      "allSamplePercent": 7.4354,
+      "intervalWeightSeconds": 28.15052
+    },
+    {
+      "function": "protocolImmutableJson",
+      "file": "build/indexer/protocol/immutable-bundle-store.js",
+      "line": 8,
+      "column": 38,
+      "samples": 2678,
+      "allSamplePercent": 7.1885,
+      "intervalWeightSeconds": 27.164979
+    },
+    {
+      "function": "request",
+      "file": "node_modules/@elastic/transport/lib/Transport.js",
+      "line": 623,
+      "column": 18,
+      "samples": 2542,
+      "allSamplePercent": 6.8234,
+      "intervalWeightSeconds": 25.829819
+    },
+    {
+      "function": "request",
+      "file": "node_modules/@elastic/transport/lib/connection/UndiciConnection.js",
+      "line": 91,
+      "column": 18,
+      "samples": 2520,
+      "allSamplePercent": 6.7644,
+      "intervalWeightSeconds": 25.599262
+    }
+  ]
+}
