@@ -247,7 +247,7 @@ export async function createPortableNativeQualification(options: NativeRunOption
                 const served = response.body.actions.find((value: any) => value.trx_id === target.transactionId);
                 assert.ok(served); assert.deepEqual(served.act.data, target.expectedValue); assert.equal(served.global_sequence, target.globalSequence);
                 result.native = {raw, physical, membership: await admission(events, through, physical), response: receipt(response)};
-                if (through === 33) {
+                if (through === 397) {
                     // Constructed stored-output controls are separate from the unchanged genuine replay source.
                     for (const kind of ['exact-raw-fallback', 'corrupt-raw-value', 'incomplete-native-metadata']) {
                         const changed = structuredClone(row.physical);

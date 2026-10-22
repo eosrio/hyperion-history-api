@@ -21,7 +21,7 @@ import {OwnedMongoFixture, MONGODB_VERSION, waitForMongo} from './projection-fix
 import {auditPortableWorkerSource, boundedPortableFile, ordinaryPortablePath, portableSourceHash,
     portableSourceLimits, servePortableWorkerSource, type PortableSourceInput, type PortableSourceFile,
     type PortableWorkerSource, type PortableSourceProfile} from './portable-state-worker-source.ts';
-import {assertPortableWorkerOracle} from './portable-state-worker-oracle.ts';
+import {assertPortableWorkerOracle, portableWorkerAbiAvailability} from './portable-state-worker-oracle.ts';
 import {auditPortableNativeOracle, createPortableNativeQualification, nativePortableHolds, portableLegacyProfile,
     portableNativeProfile} from './portable-state-worker-native.ts';
 
@@ -63,6 +63,10 @@ export function assertPortableUnavailable(response: {status: number; headers: He
     assert.equal(response.status, 503); assert.equal(response.body.retryable, true); assert.equal(response.headers.get('retry-after'), '1');
     for (const name of ['hyperion-state-block-num', 'hyperion-state-block-id', 'hyperion-state-last-valid']) assert.equal(response.headers.get(name), null);
     assert.equal(response.body.view, undefined); assert.equal(response.body.rows, undefined);
+}
+
+export function assertPortablePredeployment(response: {status: number; headers: Headers; body: any}) {
+    assertPortableUnavailable(response); assert.equal(response.body.code, 'projection.incomplete');
 }
 
 export function assertPortablePending(recovery: ProjectionRecoveryView, binding: ProjectionBinding,
@@ -242,6 +246,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     }
     assert.equal(officialOracles.length, 1, 'exactly one independent physical-row/clio oracle must bind the expected prefixes');
     assertPortableWorkerOracle(source, plan, officialOracles[0]);
+    const stateAbiAvailability = portableWorkerAbiAvailability(plan, officialOracles[0]);
     const state = JSON.parse((await boundedPortableFile(resolve(stateFile), 1024 * 1024)).toString());
     const services = [...state.core.nodes, state.core.broker, state.redis, ...['spring', 'mongo'].filter(key => state[key]).map(key => state[key])];
     const inspected = JSON.parse(docker(['inspect', ...services.map(service => service.containerId)]));
@@ -262,7 +267,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     const report: any = {schemaVersion: 1, status: 'running', startedAt: new Date().toISOString(), source: {
         chainId: source.chainId, profileId: source.profileId, revision: source.sourceRevision, components: source.components,
         range: {first: 1, last: source.endBlock}, inputHashes: source.inputHashes, originalStatus: source.originalStatus},
-        planSha256: portableSourceHash(planBytes), oracleHashes, expectationOrigin: plan.expectationOrigin,
+        planSha256: portableSourceHash(planBytes), oracleHashes, expectationOrigin: plan.expectationOrigin, stateAbiAvailability,
         mode: options.native ? 'installed-native-wire-engineering' : 'legacy-wire-state',
         preloads: options.native ? ['action-source-admission-preload.mjs', 'portable-state-worker-native-observer.mjs', 'es955-worker-observer.mjs'] : ['es955-worker-observer.mjs'],
         runtime: {node: process.version, executable: process.execPath}, inspections, network, volumes: volumeEvidence,
@@ -386,13 +391,13 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 assert.ok(result._shards.total > 0); assert.equal(result._shards.successful, result._shards.total);
                 assert.deepEqual(result.hits.total, {value: 1, relation: 'eq'}); const hit = result.hits.hits[0];
                 assert.equal(hit._id, String(through)); assert.equal(hit._source.block_num, through);
-                assert.equal(hit._source.block_id, block.blockId); assert.equal(hit._source.prev_id, block.previousBlockId);
+                assert.equal(hit._source.block_id, block.blockId); assert.equal(hit._source.prev_id, block.headerPreviousBlockId);
                 physical.push({nodeId, nodeName: node.name, response: result});
             }
             const response = await fetch(`http://127.0.0.1:${apiPort}/v2/history/get_block?block_num=${through}`,
                 {signal: AbortSignal.timeout(Math.min(5000, remaining()))});
             const body = await boundedResponse(response); assert.equal(response.status, 200);
-            assert.equal(body.block_num, through); assert.equal(body.block_id, block.blockId); assert.equal(body.prev_id, block.previousBlockId);
+            assert.equal(body.block_num, through); assert.equal(body.block_id, block.blockId); assert.equal(body.prev_id, block.headerPreviousBlockId);
             return {through, blockId: block.blockId, physical, api: {status: response.status, headers: Object.fromEntries(response.headers), body}};
         };
         await wait('API unavailable before actual block1', async () => {const response = await query(plan.definitions[0].id);
@@ -485,8 +490,11 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             const block = source.records[through - 1], responses: any[] = [];
             for (const [index, definition] of plan.definitions.entries()) {
                 await wait(`actual HTTP ${definition.id} prefix${through}`, async () => {const response = await query(definition.id);
-                    assert.equal(response.status, 200); assertPortableApiResult(response.body, response.headers, bindings[index], {blockNum: through, blockId: block.blockId}, barrier.rows[definition.id]);
+                    if (through < stateAbiAvailability.fromBlock) assertPortablePredeployment(response);
+                    else {assert.equal(response.status, 200); assertPortableApiResult(response.body, response.headers, bindings[index],
+                        {blockNum: through, blockId: block.blockId}, barrier.rows[definition.id]);}
                     responses[index] = {status: response.status, headers: Object.fromEntries(response.headers), body: response.body};});
+                if (through < stateAbiAvailability.fromBlock) continue;
                 const expectedRows = barrier.rows[definition.id];
                 if (expectedRows.length > 1) {
                     const first = await query(definition.id, {filter: [], limit: 1}); assert.equal(first.status, 200);
@@ -506,7 +514,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             if (native) {await es.indices.refresh({index: chain + '-action-*'}); const observed = await native.hold(through);
                 const file = `prefixes/native-${through}.json`, bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n');
                 await writeFile(join(output, file), bytes, {flag: 'wx'}); report.native.holds.push({through, file, sha256: portableSourceHash(bytes)});}
-            const observed = {through, blockId: block.blockId, responses, queues: await queues(), recovery: report.lastRecovery, source: replay.metrics(), isolation};
+            const observed = {through, blockId: block.blockId, responses, history: await history(through),
+                stateAbiAvailability, queues: await queues(), recovery: report.lastRecovery, source: replay.metrics(), isolation};
             const bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n'); const file = `prefixes/block-${through}.json`;
             await writeFile(join(output, file), bytes, {flag: 'wx'}); report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
         }

@@ -184,6 +184,19 @@ capture, context, profile, canonical native epoch and occurrence. Complete actio
 membership seals must fingerprint the real physical outputs. Confirmed RabbitMQ
 publication and successful captured Elasticsearch bulk items are separate checks.
 
+The fixed state definitions bind the original `sysio.msgch` ABI deployment at
+block 222. Their durable empty checkpoints at 1/33/122 are successful indexing
+progress, while public state queries must still return retryable HTTP 503 with
+code `projection.incomplete`, no rows and no served-state completeness headers.
+The serving boundary is derived from the independently authenticated original
+source/official ABI oracle, never inferred from Mongo progress. Prefixes
+256/397/1244/1480 require the full existing HTTP 200 row/count/header assertions.
+Raw block history must remain HTTP 200 at every held prefix. Genesis history uses
+the independently verified header-zero predecessor; raw SHiP `prev_block:null`
+remains unchanged in source/native evidence. The first Linux native pilot
+correctly reached durable checkpoint 1 and failed a harness expectation of HTTP
+200 before deployment; it does not demonstrate a product or codec failure.
+
 Original contract notifications are authenticated from the original 1..397 source:
 **25 occurrences across 17 blocks**, with each first-receiver origin, certified
 input ordinal, exact receipt and grouped physical output checked. This dataset
@@ -191,8 +204,8 @@ has no genuine native notifications. Constructed native notification fixtures
 remain separate codec/unit controls and are not relabelled as captured traffic.
 
 Three explicitly labelled controls change one owned native output row after the
-genuine prefix 33 has passed. Exact raw fallback must remain HTTP 200 with the
-original hex string and no decoded value. Corrupt raw data and a decoded value
+genuine prefix 397 has passed and the state ABI is deployed. Exact raw fallback
+must remain HTTP 200 with the original hex string and no decoded value. Corrupt raw data and a decoded value
 with incomplete metadata must return HTTP 503 with the existing named retryable
 proof-error code while unrelated state queries and raw block history continue.
 Each control restores and rereads the exact original row before continuing.

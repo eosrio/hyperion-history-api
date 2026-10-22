@@ -26,6 +26,8 @@ export interface PortableSourceInput {
 }
 export interface PortableSourceBlock {
     readonly blockNum: number; readonly blockId: string; readonly previousBlockId: string | null;
+    /** Original decoded header predecessor; genesis header-zero is distinct from absent SHiP prev_block. */
+    readonly headerPreviousBlockId: string;
     readonly frameSha256: string; readonly frameBytes: number; readonly timestamp: string;
     readonly producer: string; readonly applicationRows: readonly {ordinal: number; stream: string; present: number; rawHex: string; value: unknown}[];
 }
@@ -117,7 +119,7 @@ export async function auditPortableWorkerSource(input: PortableSourceInput,
         } else {assert.ok(result.traces !== null && Array.isArray(bundle.traces), 'later traces must be present even with no header transactions'); assert.equal(bundle.block.previous, parent);}
         const applicationRows = bundle.deltaRows.flatMap((row: any, ordinal: number) =>
             ['contract_row', 'contract_row_kv', 'contract_index_kv'].includes(row.stream) ? [{ordinal, ...jsonCopy(row)}] : []);
-        records.push(Object.freeze({blockNum: index + 1, blockId: entry.blockId, previousBlockId: parent,
+        records.push(Object.freeze({blockNum: index + 1, blockId: entry.blockId, previousBlockId: parent, headerPreviousBlockId: bundle.block.previous,
             frameSha256: entry.sha256, frameBytes: frame.length, timestamp: bundle.block.timestamp, producer: bundle.block.producer,
             applicationRows: Object.freeze(applicationRows)}));
         frames.push(frame); inputHashes[entry.file] = entry.sha256; parent = entry.blockId;
