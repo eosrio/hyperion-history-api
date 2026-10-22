@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "codex/portable-state-canonical-recovery" ]
+    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "codex/portable-state-canonical-recovery", "codex/portable-state-cpu-profile" ]
 
 jobs:
   build:
@@ -26,6 +26,18 @@ jobs:
           bun-version-file: .bun-version
       - run: npm run typecheck
       - run: npm run build
+      - name: Probe bounded projection validation counts and timing separately on native Node
+        run: |
+          mkdir -p out/projection-validation
+          node scripts/qualification/projection-validation-kernel.mjs --mode count --out out/projection-validation/counts.json
+          node scripts/qualification/projection-validation-kernel.mjs --mode timing --out out/projection-validation/timing.json --warmup 1 --iterations 1 --order both
+      - name: Retain native projection validation smoke receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: projection-validation-${{ matrix.node-version }}
+          path: out/projection-validation/*.json
+          if-no-files-found: error
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check portable state source and fixture ownership guards
@@ -111,6 +123,8 @@ jobs:
         run: |
           bun check -p packages/backend-mongodb/tsconfig.json
           npm test --prefix packages/backend-mongodb
+      - name: Probe the actual independently installed backend SDK resolution
+        run: node scripts/qualification/projection-validation-kernel.mjs --mode count --out projection-nested-sdk-counts.json
       - name: Exercise the portable runtime and adapter against owned MongoDB 8.0.34
         run: node scripts/qualification/check-projection-mongodb.mjs projection-report.json
       - name: Retain portable MongoDB conformance report
@@ -118,7 +132,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: projection-mongodb-${{ matrix.node-version }}
-          path: projection-report.json
+          path: |
+            projection-report.json
+            projection-nested-sdk-counts.json
           if-no-files-found: warn
 
   action-sequences-design:

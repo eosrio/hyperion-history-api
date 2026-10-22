@@ -8,6 +8,7 @@ import {once} from 'node:events';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {performance} from 'node:perf_hooks';
+import {advanceProjectionMeasurementPhase, assertProjectionMeasurementReport} from './projection-validation-phase.mjs';
 import {Client} from '@elastic/elasticsearch';
 import {MongoClient} from 'mongodb';
 import {Redis} from 'ioredis';
@@ -25,13 +26,21 @@ const repo = fileURLToPath(new URL('../../', import.meta.url));
 const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
 const point = (value: {blockNum: number; blockId: string}) => ({blockNum: value.blockNum, blockId: value.blockId});
 const describe = describePortableWorkerError;
-export interface RecoveryRunOptions {readonly profilePrefix?: 288; readonly cpuProfile?: boolean;}
+export interface RecoveryRunOptions {
+    readonly profilePrefix?: 288; readonly cpuProfile?: boolean;
+    readonly projectionMeasurements?: boolean; readonly heldHeadMs?: 10000;
+}
 export function validateRecoveryRunOptions(options: RecoveryRunOptions = {}) {
     assert.ok(options && typeof options === 'object' && !Array.isArray(options));
-    assert.ok(Object.keys(options).every(key => key === 'profilePrefix' || key === 'cpuProfile'), 'Unknown recovery run option');
+    assert.ok(Object.keys(options).every(key => ['profilePrefix', 'cpuProfile', 'projectionMeasurements', 'heldHeadMs'].includes(key)), 'Unknown recovery run option');
     assert.ok(options.profilePrefix === undefined || options.profilePrefix === 288, 'Only the audited profiling prefix288 is supported');
     assert.ok(options.cpuProfile === undefined || typeof options.cpuProfile === 'boolean' && options.profilePrefix === 288,
         'CPU capture can only be selected explicitly with profiling prefix288');
+    assert.ok(options.projectionMeasurements === undefined || typeof options.projectionMeasurements === 'boolean' && options.profilePrefix === 288,
+        'Projection measurements require an explicit prefix288 diagnostic');
+    assert.equal(options.heldHeadMs === undefined, options.projectionMeasurements === undefined,
+        'Both projection measurement controls and the held-head duration must be explicit');
+    assert.ok(options.heldHeadMs === undefined || options.heldHeadMs === 10000, 'The initial held-head comparison uses exactly10000ms');
     return options.profilePrefix;
 }
 
@@ -92,7 +101,7 @@ export async function assertRecoveryCpuProfiles(rows: any[], directory: string, 
     return profiles;
 }
 
-async function recoveryProfilePins() {
+async function recoveryProfilePins(projectionMeasurements: boolean) {
     const files: {path: string; bytes: number; sha256: string}[] = []; let totalBytes = 0;
     const record = async (path: string) => {assert.ok(files.length < 4096);
         const bytes = await boundedPortableFile(join(repo, path), 16 * 1024 * 1024); totalBytes += bytes.length;
@@ -106,6 +115,8 @@ async function recoveryProfilePins() {
     for (const path of ['package-lock.json', 'packages/backend-mongodb/package-lock.json', 'tsconfig.json',
         'packages/backend-mongodb/tsconfig.json', '.bun-version', 'scripts/qualification/portable-state-recovery.ts',
         'scripts/qualification/es955-worker-observer.mjs', 'scripts/qualification/portable-state-recovery-observer.mjs']) await record(path);
+    if (projectionMeasurements) for (const path of ['scripts/qualification/projection-validation-phase.mjs',
+        'scripts/qualification/projection-validation-observer.mjs']) await record(path);
     for (const path of ['build/indexer/launcher.js', 'build/indexer/workers/projection.js', 'build/api/server.js', 'packages/backend-mongodb/dist/index.js'])
         assert.ok(files.some(file => file.path === path), 'Required profile emission missing: ' + path);
     const dirty = execFileSync('git', ['diff', '--binary', 'HEAD', '--'], {cwd: repo, timeout: 5000, maxBuffer: 16 * 1024 * 1024});
@@ -172,6 +183,7 @@ export function assertRecoveryShutdown(rows: any[], parent: ChildProcess, intent
 export async function runPortableStateRecovery(stateFile: string, planFile: string, outputDirectory: string,
     finality: 'reversible' | 'irreversible', options: RecoveryRunOptions = {}) {
     const profilePrefix = validateRecoveryRunOptions(options), profileOnly = profilePrefix !== undefined, cpuProfile = profileOnly && options.cpuProfile !== false;
+    const measurementComparison = options.projectionMeasurements !== undefined, measurementsEnabled = options.projectionMeasurements === true;
     assert.equal(process.release.name, 'node'); assert.ok(!process.versions.bun && /^(22|24)\./.test(process.versions.node));
     assert.equal(process.platform, 'linux', 'Actual stop/kill recovery qualification requires Linux');
     assert.ok(['reversible', 'irreversible'].includes(finality));
@@ -203,6 +215,7 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
         assert.equal(volume.Labels?.['io.eosrio.run'], state.run);
         assert.deepEqual(docker(['ps', '-a', '--no-trunc', '--filter', 'volume=' + service.volume, '--format', '{{.ID}}']).split(/\r?\n/).filter(Boolean), [service.containerId]); volumes.push(volume);}
     await mkdir(output); for (const directory of ['observer', 'barrier', 'bulk', 'stages', 'config/chains']) await mkdir(join(output, directory), {recursive: true});
+    if (measurementComparison) await mkdir(join(output, 'projection-observer'));
     const reportFile = await open(join(output, 'report.json'), 'wx');
     const report: any = {schemaVersion: 1, status: 'running', startedAt: new Date().toISOString(), finality, source: source.manifest,
         inputHashes: source.inputHashes, oracleHashes, planSha256: portableSourceHash(planBytes),
@@ -219,6 +232,14 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
         emptyTargetTablePrefix: true, overhead: cpuProfile ? 'CPU profiling overhead is not quantified; compare with a separately pinned observer-only control.'
             : 'CPU capture is disabled; existing observer/proxy overhead is not quantified.',
         fullRecoveryScenarioExecuted: false, stable: false};}
+    if (measurementComparison) report.profiling.projectionMeasurements = {
+        enabled: measurementsEnabled, heldHeadMs: options.heldHeadMs, phases: [], reports: [], completed: false,
+        mode: 'qualification-wrappers', preciseV8Coverage: false,
+        limitations: ['Inclusive asynchronous spans overlap synchronous loaded-metadata validation and must not be added.',
+            'Lexical candidate-state and direct initialization validation, SDK function entries and native allocation costs are not observed by these wrappers.',
+            'The API first public startup operation precedes attachment; it is outside the prefix phase and is not reconstructed.',
+            'This diagnostic uses empty selected tables, not populated-row or full recovery qualification.'],
+    };
     const chain = 'hyp-p191-' + state.run, database = 'h45_p191_' + state.run;
     const es = new Client({node: state.core.nodes[0].url, requestTimeout: 10000, maxRetries: 0});
     const mongoFixture = new OwnedMongoFixture({command: docker});
@@ -244,11 +265,13 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
     const spawnOwned = async (entry: string, name: string) => {const directory = join(output, 'observer', name); await mkdir(directory);
         const stdout = await open(join(output, name + '.stdout.log'), 'wx'), stderr = await open(join(output, name + '.stderr.log'), 'wx');
         const environment = portableWorkerEnvironment(process.env, output, configFile, chain);
-        for (const key of Object.keys(environment)) if (key.startsWith('HYP246_')) delete environment[key];
+        for (const key of Object.keys(environment)) if (key.startsWith('HYP246_') || key.startsWith('HYP252_')) delete environment[key];
         try {const child = spawn(process.execPath, ['--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href,
-            '--import', pathToFileURL(join(repo, 'scripts/qualification/portable-state-recovery-observer.mjs')).href, join(repo, entry)],
+            '--import', pathToFileURL(join(repo, 'scripts/qualification/portable-state-recovery-observer.mjs')).href,
+            ...(measurementComparison ? ['--import', pathToFileURL(join(repo, 'scripts/qualification/projection-validation-observer.mjs')).href] : []), join(repo, entry)],
             {cwd: output, detached: true, stdio: ['ignore', stdout.fd, stderr.fd, 'ipc'], env: {...environment,
                 ES198_OBSERVER_DIR: directory, HYP246_RECOVERY_OBSERVER: join(output, 'barrier'),
+                ...(measurementsEnabled ? {HYP252_OBSERVER_DIR: join(output, 'projection-observer')} : {}),
                 ...(profileOnly ? {ES198_CPU_PROFILE: cpuProfile ? '1' : '0', ES198_PROFILE_MAX_MS: '900000'} : {})}});
             child.on('error', error => report.errors.push(describe(error))); return child;
         } finally {await stdout.close(); await stderr.close();}};
@@ -283,7 +306,7 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
     try {
         report.gitHead = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: repo, encoding: 'utf8', timeout: 5000}).trim();
         report.runtime.sha256 = portableSourceHash(await boundedPortableFile(process.execPath, 256 * 1024 * 1024));
-        if (profileOnly) {report.profiling.pins = await recoveryProfilePins(); report.runtime.execArgv = process.execArgv;}
+        if (profileOnly) {report.profiling.pins = await recoveryProfilePins(measurementComparison); report.runtime.execArgv = process.execArgv;}
         const identity = await es.info(); assert.equal(identity.version.number, '9.5.5'); assert.equal(identity.cluster_uuid, state.core.clusterUuid);
         const kernel = docker(['info', '--format', '{{.KernelVersion}}']); const version = /^(\d+)\.(\d+)\.(\d+)/.exec(kernel);
         assert.ok(!version || !(Number(version[1]) === 6 && Number(version[2]) >= 19
@@ -386,7 +409,23 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
             await writeFile(join(output, file), bytes, {flag: 'wx'}); report.stages.push({name, file, sha256: portableSourceHash(bytes)}); return value;
         };
         await wait('HTTP unavailable before source', async () => assertRecoveryUnavailable(await query(bindings[0].projectionId)));
+        let projectionIdentity: {pid: number; parentPid: number; role: string; viaParentPid: number} | undefined;
+        const measurementPhase = async (phase: 'prefix' | 'held-head' | 'verification' | 'shutdown') => {
+            if (!measurementsEnabled) return;
+            if (!projectionIdentity) {
+                const starts = (await observed(owner.name)).filter(row => row.kind === 'start' && row.role === 'projection');
+                assert.equal(starts.length, 1); const start = starts[0];
+                assert.ok(Number.isSafeInteger(start.pid) && start.pid > 0); assert.equal(start.parentPid, owner.child.pid);
+                projectionIdentity = {pid: start.pid, parentPid: owner.child.pid!, role: 'projection', viaParentPid: owner.child.pid!};
+            }
+            const receipts = await Promise.all([
+                advanceProjectionMeasurementPhase(owner.child, projectionIdentity, phase),
+                advanceProjectionMeasurementPhase(apiOwner.child, {pid: apiOwner.child.pid!, parentPid: process.pid, role: 'api'}, phase),
+            ]);
+            report.profiling.projectionMeasurements.phases.push({phase, receipts});
+        };
         const commonThrough = profilePrefix ?? 1243;
+        if (measurementsEnabled) await measurementPhase('prefix');
         if (profileOnly) report.profiling.firstReleaseAt = Date.now();
         for (let through = 32; through < commonThrough; through += 32) {replay.release(through);
             await wait('paced common prefix ' + through, async () => {await physicalAt('A', through);});}
@@ -404,7 +443,38 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
                 assert.ok(raw[0].ack >= profilePrefix && raw[0].delivered >= raw[0].ack);});
             const after = await auditPortableWorkerSource(plan.source); assert.deepEqual(after.inputHashes, original.inputHashes);
             report.profiling.stable = true; report.profiling.stableAt = stableAt; report.profiling.sourceReauditHashes = after.inputHashes;
+            if (measurementComparison) {
+                await measurementPhase('held-head');
+                const heldHeadStartedAt = Date.now(), heldHeadStartedMonotonicMs = performance.now();
+                await pause(options.heldHeadMs!);
+                await measurementPhase('verification');
+                report.profiling.projectionMeasurements.heldHead = {startedAt: heldHeadStartedAt, endedAt: Date.now(),
+                    elapsedMonotonicMs: performance.now() - heldHeadStartedMonotonicMs,
+                    note: 'No HTTP queries or new source releases during the fixed-head wait; phase barriers add separately recorded time.'};
+                const held = await stage('profile-held-head-288', 'A', profilePrefix);
+                assert.deepEqual(held.source.sessions.flatMap((session: any) => session.sent), sent);
+                for (const value of held.physical) {assert.equal(value.metadata.undo.length, 256);
+                    assert.deepEqual(value.metadata.coverageFloor, checkpoint('A', 32));}
+                const heldAudit = await auditPortableWorkerSource(plan.source); assert.deepEqual(heldAudit.inputHashes, original.inputHashes);
+                await wait('held-head source and broker drained', async () => {replay!.assertDrained(); report.brokerAcks = await drained();});
+                await measurementPhase('shutdown');
+            }
             await stopMaster(owner); master = undefined; await stopApi(apiOwner); api = undefined;
+            if (measurementComparison) {
+                const directory = join(output, 'projection-observer'), files = await readdir(directory, {withFileTypes: true});
+                const identities = measurementsEnabled ? [projectionIdentity!, {pid: apiOwner.child.pid!, parentPid: process.pid, role: 'api'}] : [];
+                assert.deepEqual(files.map(file => file.name).sort(), identities.map(identity => `projection-${identity.pid}.json`).sort());
+                assert.ok(files.every(file => file.isFile()));
+                const storage = report.profiling.pins.files.find((file: any) => file.path === 'packages/backend-mongodb/dist/storage.js');
+                assert.ok(storage);
+                for (const identity of identities) {
+                    const file = `projection-observer/projection-${identity.pid}.json`, bytes = await boundedPortableFile(join(output, file), 24 * 1024 * 1024);
+                    const summary = assertProjectionMeasurementReport(JSON.parse(bytes.toString()), identity,
+                        report.profiling.projectionMeasurements.phases, storage.sha256);
+                    report.profiling.projectionMeasurements.reports.push({file, bytes: bytes.length, sha256: portableSourceHash(bytes), summary});
+                }
+                report.profiling.projectionMeasurements.completed = true;
+            }
             report.profiling.cpuProfiles = []; report.profiling.observerCompletion = [];
             for (const entry of [owner, apiOwner]) {const rows = await observed(entry.name);
                 report.profiling.cpuProfiles.push(...await assertRecoveryCpuProfiles(rows, join(output, 'observer', entry.name), stableAt, cpuProfile, entry.child));
@@ -522,13 +592,22 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
     return report;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    const args = process.argv.slice(2);
-    assert.ok(args.length === 4 || [6, 8].includes(args.length) && args[4] === '--profile-prefix' && args[5] === '288'
-        && (args.length === 6 || args[6] === '--cpu-profile' && ['on', 'off'].includes(args[7])),
-        'usage: node portable-state-recovery.ts STATE_FILE ORIGINAL_PLAN NEW_OUTPUT reversible|irreversible [--profile-prefix 288 [--cpu-profile on|off]]');
+export function parseRecoveryArguments(args: string[]) {
+    assert.ok(args.length === 4 || [6, 8, 12].includes(args.length) && args[4] === '--profile-prefix' && args[5] === '288'
+        && (args.length === 6 || args[6] === '--cpu-profile' && ['on', 'off'].includes(args[7]))
+        && (args.length !== 12 || args[8] === '--projection-measurements' && ['on', 'off'].includes(args[9])
+            && args[10] === '--held-head-ms' && args[11] === '10000'),
+        'usage: node portable-state-recovery.ts STATE_FILE ORIGINAL_PLAN NEW_OUTPUT reversible|irreversible [--profile-prefix 288 [--cpu-profile on|off [--projection-measurements on|off --held-head-ms 10000]]]');
+    assert.ok(['reversible', 'irreversible'].includes(args[3]));
     const options: RecoveryRunOptions = args.length > 4 ? {profilePrefix: 288, cpuProfile: args.length === 6 || args[7] === 'on'} : {};
-    const result = await runPortableStateRecovery(args[0], args[1], args[2], args[3] as any, options);
+    const selected = args.length === 12 ? {...options, projectionMeasurements: args[9] === 'on', heldHeadMs: 10000 as const} : options;
+    validateRecoveryRunOptions(selected);
+    return {stateFile: args[0], planFile: args[1], outputDirectory: args[2], finality: args[3] as 'reversible' | 'irreversible', options: selected};
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    const {stateFile, planFile, outputDirectory, finality, options} = parseRecoveryArguments(process.argv.slice(2));
+    const result = await runPortableStateRecovery(stateFile, planFile, outputDirectory, finality, options);
     console.log(JSON.stringify({status: result.status, error: result.error, finality: result.finality, stages: result.stages}));
     if (result.status !== (options.profilePrefix ? 'profiled-prefix' : 'passed')) process.exitCode = 1;
 }

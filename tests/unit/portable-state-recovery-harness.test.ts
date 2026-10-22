@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {RecoverySourceFlow, recoverySourceLimits, serveRecoveryEngineeringSource} from '../../scripts/qualification/portable-state-recovery-source.ts';
 import {recoveryExpectedRows, assertRecoveryHttp, assertRecoveryPhysical, assertRecoveryUnavailable, assertRecoveryProbe} from '../../scripts/qualification/portable-state-recovery-oracle.ts';
 import {rollbackIntentReceipt} from '../../scripts/qualification/portable-state-recovery-observer.mjs';
-import {assertRecoveryShutdown, assertRecoveryDiskReadiness, assertRecoveryCpuProfiles, validateRecoveryRunOptions} from '../../scripts/qualification/portable-state-recovery.ts';
+import {assertRecoveryShutdown, assertRecoveryDiskReadiness, assertRecoveryCpuProfiles, validateRecoveryRunOptions, parseRecoveryArguments} from '../../scripts/qualification/portable-state-recovery.ts';
 
 const request = (start: number, positions: any[] = [], window = 8) => ['get_blocks_request_v0', {
     start_block_num: start, end_block_num: 0xffffffff, max_messages_in_flight: window, have_positions: positions,
@@ -21,6 +21,34 @@ test('prefix profiling is explicit, fixed at288 and keeps CPU controls out of or
         {profilePrefix: 288, cpuProfile: 'off'}, {profilePrefix: 288, skipTo: 221}, null]) {
         expect(() => validateRecoveryRunOptions(options as any)).toThrow();
     }
+});
+
+test('metadata measurement comparisons require matched explicit held-head controls', () => {
+    for (const enabled of [true, false]) {
+        expect(validateRecoveryRunOptions({profilePrefix: 288, cpuProfile: false, projectionMeasurements: enabled, heldHeadMs: 10000})).toBe(288);
+    }
+    for (const options of [{projectionMeasurements: true, heldHeadMs: 10000},
+        {profilePrefix: 288, projectionMeasurements: true}, {profilePrefix: 288, heldHeadMs: 10000},
+        {profilePrefix: 288, projectionMeasurements: false, heldHeadMs: 1},
+        {profilePrefix: 288, projectionMeasurements: 'off', heldHeadMs: 10000}]) {
+        expect(() => validateRecoveryRunOptions(options as any)).toThrow();
+    }
+});
+
+test('recovery CLI preserves ordinary qualification and makes every diagnostic control explicit', () => {
+    const base = ['state.json', 'plan.json', 'new-output', 'reversible'];
+    expect(parseRecoveryArguments(base).options).toEqual({});
+    expect(parseRecoveryArguments([...base, '--profile-prefix', '288']).options).toEqual({profilePrefix: 288, cpuProfile: true});
+    for (const cpu of ['on', 'off']) for (const counters of ['on', 'off']) {
+        const selected = [...base, '--profile-prefix', '288', '--cpu-profile', cpu, '--projection-measurements', counters, '--held-head-ms', '10000'];
+        expect(parseRecoveryArguments(selected).options).toEqual({profilePrefix: 288, cpuProfile: cpu === 'on', projectionMeasurements: counters === 'on', heldHeadMs: 10000});
+        for (const patch of [(copy: string[]) => {copy[5] = '256';}, (copy: string[]) => {copy[9] = 'automatic';},
+            (copy: string[]) => {copy[11] = '30000';}, (copy: string[]) => {copy.splice(6, 2);},
+            (copy: string[]) => {copy.push('--skip-validation');}]) {
+            const copy = [...selected]; patch(copy); expect(() => parseRecoveryArguments(copy)).toThrow();
+        }
+    }
+    expect(() => parseRecoveryArguments([...base.slice(0, 3), 'unknown'])).toThrow();
 });
 
 for (const enabled of [true, false]) test('prefix ' + (enabled ? 'CPU' : 'control') + ' inventory requires every independently owned child observer', async () => {
