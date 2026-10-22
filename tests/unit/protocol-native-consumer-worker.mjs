@@ -104,7 +104,7 @@ try {
         import('../../build/indexer/history/action-producer-epoch.js')]);
     const installed = await loadChainProtocol(config.settings.protocol);
     assert.equal(installed.provider.nativeActions, undefined);
-    assert(installed.components.every(component => component.sourceRevision === '332534cb9fb2c64599bce1bb3f9f33e7a6147315'));
+    assert(installed.components.every(component => component.sourceRevision === '7167659e9c043cb3351074fcacb40200cc57f3a3'));
     const descriptor = JSON.parse(readFileSync(join(wireRoot, 'dist/protocol-provider.json')));
     assert(descriptor.profiles.every(profile => !Object.hasOwn(profile, 'nativeActions')));
     const selected = {...installed, provider: {...installed.provider, nativeActions: createWireNativeActions(resolveCodecProfile(profileId))}};
