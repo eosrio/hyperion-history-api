@@ -1,0 +1,566 @@
+{
+  "schemaVersion": 1,
+  "createdBy": "windows:codex:hyperion-tools",
+  "issue": 277,
+  "diagnosticSourceHead": "fedc4bd4de8c23c83468df3c3ff034b6227ebc26",
+  "productBase": "c914dd8ca6d27f235c2c343d0c5ad1f45916998c",
+  "diagnosticPatchSha256": "6ea9e90379970542253081e69b98f4e25f0c21169804008d4419f3dea11b5952",
+  "sourceArchiveSha256": "42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7",
+  "profile": "wire-sysio-6508c9e8-native-engineering-v1",
+  "wireRevision": "7167659e9c043cb3351074fcacb40200cc57f3a3",
+  "sdkRevision": "339b5c93d1338968c18ed14254961439dcab16a0",
+  "server": "9.5.5",
+  "client": "8.19.1",
+  "transport": "8.10.1",
+  "undici": "8.3.0",
+  "toolchain": "TypeScript 7.0.2 / Bun 1.4.4",
+  "rawArchive": {
+    "bytes": 5602619,
+    "sha256": "5b929c0c6e80f626290d4723905e0afb0ea06b03e9493a653d9af53f7ae66909",
+    "members": 37,
+    "payloadBytesExcludingManifest": 75420681
+  },
+  "runs": [
+    {
+      "node": "v24.19.0",
+      "case": "proof-node24-b",
+      "seconds": 135.149,
+      "logSha256": "6bc4e84cd09d72d21a1a713d47d4b3e41241738314b70680640700e8ca0c9e9d",
+      "measurements": [
+        {
+          "distance": 1,
+          "stages": {
+            "abi.waitForOpen": {
+              "samples": 5,
+              "documentGets": 8,
+              "metadataGets": 16,
+              "clientGets": 24,
+              "responseObjectJsonBytes": 93375,
+              "elapsedMs": {
+                "min": 14.065398,
+                "median": 14.82829,
+                "max": 19.769517
+              },
+              "processCpuMedianMs": 5.878,
+              "measurementSerializationMedianMs": 0.42764700000000005
+            },
+            "native.waitForOpen": {
+              "samples": 5,
+              "documentGets": 26,
+              "metadataGets": 36,
+              "clientGets": 62,
+              "responseObjectJsonBytes": 423818,
+              "elapsedMs": {
+                "min": 45.562191,
+                "median": 48.251413,
+                "max": 54.898615
+              },
+              "processCpuMedianMs": 23.444,
+              "measurementSerializationMedianMs": 1.3888199999999997
+            },
+            "native.authorize": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23560,
+              "elapsedMs": {
+                "min": 3.988363,
+                "median": 4.39366,
+                "max": 4.570013
+              },
+              "processCpuMedianMs": 1.561,
+              "measurementSerializationMedianMs": 0.10644
+            },
+            "native.decodeValue": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23560,
+              "elapsedMs": {
+                "min": 4.086283,
+                "median": 4.243568,
+                "max": 4.425369
+              },
+              "processCpuMedianMs": 1.782,
+              "measurementSerializationMedianMs": 0.105533
+            }
+          }
+        },
+        {
+          "distance": 32,
+          "stages": {
+            "abi.waitForOpen": {
+              "samples": 5,
+              "documentGets": 70,
+              "metadataGets": 140,
+              "clientGets": 210,
+              "responseObjectJsonBytes": 836281,
+              "elapsedMs": {
+                "min": 111.524579,
+                "median": 112.665248,
+                "max": 115.637471
+              },
+              "processCpuMedianMs": 45.276,
+              "measurementSerializationMedianMs": 3.4064429999999972
+            },
+            "native.waitForOpen": {
+              "samples": 5,
+              "documentGets": 88,
+              "metadataGets": 160,
+              "clientGets": 248,
+              "responseObjectJsonBytes": 1166728,
+              "elapsedMs": {
+                "min": 139.193925,
+                "median": 143.188366,
+                "max": 150.480006
+              },
+              "processCpuMedianMs": 65.317,
+              "measurementSerializationMedianMs": 4.357131999999998
+            },
+            "native.authorize": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23564,
+              "elapsedMs": {
+                "min": 3.639988,
+                "median": 3.652979,
+                "max": 3.890165
+              },
+              "processCpuMedianMs": 1.439,
+              "measurementSerializationMedianMs": 0.104763
+            },
+            "native.decodeValue": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23564,
+              "elapsedMs": {
+                "min": 3.549193,
+                "median": 3.763401,
+                "max": 4.047101
+              },
+              "processCpuMedianMs": 1.444,
+              "measurementSerializationMedianMs": 0.10224799999999999
+            }
+          }
+        },
+        {
+          "distance": 232,
+          "stages": {
+            "abi.waitForOpen": {
+              "samples": 5,
+              "documentGets": 470,
+              "metadataGets": 940,
+              "clientGets": 1410,
+              "responseObjectJsonBytes": 5650535,
+              "elapsedMs": {
+                "min": 817.298926,
+                "median": 872.956102,
+                "max": 972.260804
+              },
+              "processCpuMedianMs": 332.419,
+              "measurementSerializationMedianMs": 24.419823999999977
+            },
+            "native.waitForOpen": {
+              "samples": 5,
+              "documentGets": 488,
+              "metadataGets": 960,
+              "clientGets": 1448,
+              "responseObjectJsonBytes": 5980990,
+              "elapsedMs": {
+                "min": 905.480559,
+                "median": 949.59659,
+                "max": 1070.85332
+              },
+              "processCpuMedianMs": 354.727,
+              "measurementSerializationMedianMs": 29.184571000000062
+            },
+            "native.authorize": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23572,
+              "elapsedMs": {
+                "min": 3.640826,
+                "median": 4.421807,
+                "max": 5.083845
+              },
+              "processCpuMedianMs": 1.546,
+              "measurementSerializationMedianMs": 0.11286700000000001
+            },
+            "native.decodeValue": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23572,
+              "elapsedMs": {
+                "min": 3.545981,
+                "median": 4.346167,
+                "max": 5.438507
+              },
+              "processCpuMedianMs": 1.598,
+              "measurementSerializationMedianMs": 0.102878
+            }
+          }
+        },
+        {
+          "distance": 256,
+          "stages": {
+            "abi.waitForOpen": {
+              "samples": 5,
+              "documentGets": 518,
+              "metadataGets": 1036,
+              "clientGets": 1554,
+              "responseObjectJsonBytes": 6223767,
+              "elapsedMs": {
+                "min": 791.79931,
+                "median": 834.180169,
+                "max": 948.96619
+              },
+              "processCpuMedianMs": 332.404,
+              "measurementSerializationMedianMs": 25.114785999999963
+            },
+            "native.waitForOpen": {
+              "samples": 5,
+              "documentGets": 536,
+              "metadataGets": 1056,
+              "clientGets": 1592,
+              "responseObjectJsonBytes": 6554222,
+              "elapsedMs": {
+                "min": 808.255422,
+                "median": 898.51201,
+                "max": 1074.738526
+              },
+              "processCpuMedianMs": 343.713,
+              "measurementSerializationMedianMs": 26.08962799999995
+            },
+            "native.authorize": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23572,
+              "elapsedMs": {
+                "min": 3.684618,
+                "median": 3.87487,
+                "max": 4.658294
+              },
+              "processCpuMedianMs": 1.416,
+              "measurementSerializationMedianMs": 0.100993
+            },
+            "native.decodeValue": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23572,
+              "elapsedMs": {
+                "min": 3.599899,
+                "median": 3.789173,
+                "max": 4.311316
+              },
+              "processCpuMedianMs": 1.392,
+              "measurementSerializationMedianMs": 0.100714
+            }
+          }
+        }
+      ],
+      "cpuProfiles": 4,
+      "outcome": "Known input expiry reproduced; diagnostic controls passed; full worker qualification pending",
+      "sourcePreparationMs": 110619.210298
+    },
+    {
+      "node": "v22.23.3",
+      "case": "proof-node22-b",
+      "seconds": 141.093,
+      "logSha256": "e4573edf8f16354ca3cfa27e2ca0643804ba92033f5ca81416b396b0232af6c1",
+      "measurements": [
+        {
+          "distance": 1,
+          "stages": {
+            "abi.waitForOpen": {
+              "samples": 5,
+              "documentGets": 8,
+              "metadataGets": 16,
+              "clientGets": 24,
+              "responseObjectJsonBytes": 93375,
+              "elapsedMs": {
+                "min": 13.769056,
+                "median": 16.315519,
+                "max": 17.609354
+              },
+              "processCpuMedianMs": 7.192,
+              "measurementSerializationMedianMs": 0.43476900000000007
+            },
+            "native.waitForOpen": {
+              "samples": 5,
+              "documentGets": 26,
+              "metadataGets": 36,
+              "clientGets": 62,
+              "responseObjectJsonBytes": 423818,
+              "elapsedMs": {
+                "min": 46.487188,
+                "median": 50.854866,
+                "max": 55.374663
+              },
+              "processCpuMedianMs": 33.981,
+              "measurementSerializationMedianMs": 1.9636939999999998
+            },
+            "native.authorize": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23560,
+              "elapsedMs": {
+                "min": 3.897359,
+                "median": 4.471116,
+                "max": 5.723255
+              },
+              "processCpuMedianMs": 1.748,
+              "measurementSerializationMedianMs": 0.114263
+            },
+            "native.decodeValue": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23560,
+              "elapsedMs": {
+                "min": 3.779325,
+                "median": 4.350497,
+                "max": 4.64684
+              },
+              "processCpuMedianMs": 1.683,
+              "measurementSerializationMedianMs": 0.105322
+            }
+          }
+        },
+        {
+          "distance": 32,
+          "stages": {
+            "abi.waitForOpen": {
+              "samples": 5,
+              "documentGets": 70,
+              "metadataGets": 140,
+              "clientGets": 210,
+              "responseObjectJsonBytes": 836281,
+              "elapsedMs": {
+                "min": 111.694226,
+                "median": 115.395537,
+                "max": 115.559737
+              },
+              "processCpuMedianMs": 46.287,
+              "measurementSerializationMedianMs": 3.4563019999999987
+            },
+            "native.waitForOpen": {
+              "samples": 5,
+              "documentGets": 88,
+              "metadataGets": 160,
+              "clientGets": 248,
+              "responseObjectJsonBytes": 1166728,
+              "elapsedMs": {
+                "min": 141.445722,
+                "median": 150.361902,
+                "max": 151.899488
+              },
+              "processCpuMedianMs": 63.166,
+              "measurementSerializationMedianMs": 4.932428000000002
+            },
+            "native.authorize": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23564,
+              "elapsedMs": {
+                "min": 3.561556,
+                "median": 3.698796,
+                "max": 3.964128
+              },
+              "processCpuMedianMs": 1.414,
+              "measurementSerializationMedianMs": 0.09896700000000001
+            },
+            "native.decodeValue": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23564,
+              "elapsedMs": {
+                "min": 3.598153,
+                "median": 3.69272,
+                "max": 3.900712
+              },
+              "processCpuMedianMs": 1.446,
+              "measurementSerializationMedianMs": 0.1012
+            }
+          }
+        },
+        {
+          "distance": 232,
+          "stages": {
+            "abi.waitForOpen": {
+              "samples": 5,
+              "documentGets": 470,
+              "metadataGets": 940,
+              "clientGets": 1410,
+              "responseObjectJsonBytes": 5650535,
+              "elapsedMs": {
+                "min": 759.087255,
+                "median": 912.103108,
+                "max": 1044.856495
+              },
+              "processCpuMedianMs": 366.549,
+              "measurementSerializationMedianMs": 26.813278999999945
+            },
+            "native.waitForOpen": {
+              "samples": 5,
+              "documentGets": 488,
+              "metadataGets": 960,
+              "clientGets": 1448,
+              "responseObjectJsonBytes": 5980990,
+              "elapsedMs": {
+                "min": 892.587121,
+                "median": 1016.32082,
+                "max": 1098.524553
+              },
+              "processCpuMedianMs": 473.192,
+              "measurementSerializationMedianMs": 35.79039200000005
+            },
+            "native.authorize": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23572,
+              "elapsedMs": {
+                "min": 3.527821,
+                "median": 4.179732,
+                "max": 4.810272
+              },
+              "processCpuMedianMs": 1.536,
+              "measurementSerializationMedianMs": 0.099946
+            },
+            "native.decodeValue": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23572,
+              "elapsedMs": {
+                "min": 3.548565,
+                "median": 4.170933,
+                "max": 4.425369
+              },
+              "processCpuMedianMs": 1.522,
+              "measurementSerializationMedianMs": 0.10015500000000001
+            }
+          }
+        },
+        {
+          "distance": 256,
+          "stages": {
+            "abi.waitForOpen": {
+              "samples": 5,
+              "documentGets": 518,
+              "metadataGets": 1036,
+              "clientGets": 1554,
+              "responseObjectJsonBytes": 6223767,
+              "elapsedMs": {
+                "min": 833.102917,
+                "median": 1030.430778,
+                "max": 1207.438414
+              },
+              "processCpuMedianMs": 495.427,
+              "measurementSerializationMedianMs": 38.162579000000065
+            },
+            "native.waitForOpen": {
+              "samples": 5,
+              "documentGets": 536,
+              "metadataGets": 1056,
+              "clientGets": 1592,
+              "responseObjectJsonBytes": 6554222,
+              "elapsedMs": {
+                "min": 987.894309,
+                "median": 1047.422653,
+                "max": 1103.939453
+              },
+              "processCpuMedianMs": 494.37,
+              "measurementSerializationMedianMs": 37.83471900000005
+            },
+            "native.authorize": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23572,
+              "elapsedMs": {
+                "min": 3.501631,
+                "median": 3.648999,
+                "max": 4.913918
+              },
+              "processCpuMedianMs": 1.514,
+              "measurementSerializationMedianMs": 0.10776699999999999
+            },
+            "native.decodeValue": {
+              "samples": 5,
+              "documentGets": 2,
+              "metadataGets": 4,
+              "clientGets": 6,
+              "responseObjectJsonBytes": 23572,
+              "elapsedMs": {
+                "min": 3.423267,
+                "median": 4.804894,
+                "max": 5.488513
+              },
+              "processCpuMedianMs": 1.759,
+              "measurementSerializationMedianMs": 0.11028199999999999
+            }
+          }
+        }
+      ],
+      "cpuProfiles": 4,
+      "outcome": "Known input expiry reproduced; diagnostic controls passed; full worker qualification pending",
+      "sourcePreparationMs": 114140.512972
+    }
+  ],
+  "excludedLaunches": {
+    "count": 2,
+    "beforeProofMeasurement": true,
+    "cause": "Installer token substitution SyntaxError, followed by probe preflight missing install receipt. No Node measurement ran.",
+    "rawFiles": {
+      "install-diagnostics.instance.stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "install-diagnostics.instance.stderr": {
+        "bytes": 681,
+        "sha256": "140c7cd35721b4c3b1966b9ca64f04218da12021fe41fbabe95db2f543e61876"
+      },
+      "run-proof-node24.instance.stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "run-proof-node24.instance.stderr": {
+        "bytes": 901,
+        "sha256": "f0d1cc2a3209f58b216cb460ac1e91d8c358102f84c7f825093af63d2002bf86"
+      }
+    }
+  },
+  "limits": [
+    "Actual ES component measurement; controlled broker; no physical action sink/Mongo/full-worker acceptance.",
+    "One sequential process per native Node version with five samples per depth; not a paired runtime/optimization comparison.",
+    "Response/request JSON object bytes exclude HTTP framing/compression and network bytes.",
+    "Inspector/measurement/service observer costs retained; no exclusive CPU or production capacity claim.",
+    "In-flight cancellation and size controls are injected response/transport controls; recovery replays original selection, not a captured network fork.",
+    "Original valid block33 still expires at head290/distance257/default256. Strict #277 protection and full #270 gates remain open."
+  ]
+}
