@@ -250,7 +250,7 @@ test('installed Wire profiles keep native actions inactive and deployed contract
             const selected=await loadChainProtocol({provider:'extension',package:'@eosrio/hyperion-wire-plugin',profileId:profile.id});
             assert.equal('nativeActions' in selected.provider,false,'Wire runtime unexpectedly exposes native actions');
             assert.deepEqual(selected.components.map(component=>component.sourceRevision),
-                ['cffef8f3ec12f662bac98e17cb9433b9fac4ab79','cffef8f3ec12f662bac98e17cb9433b9fac4ab79']);
+                ['332534cb9fb2c64599bce1bb3f9f33e7a6147315','332534cb9fb2c64599bce1bb3f9f33e7a6147315']);
             const codec=selected.provider.contractCodec;
             const abi=codec.decodeAbi(codec.encodeAbi({version:'sysio::abi/1.3',structs:[
                 {name:'record',base:'',fields:[{name:'value',type:'uint32'}]}]}));

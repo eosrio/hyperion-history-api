@@ -48,7 +48,7 @@ export async function nativeApiWireSource({nativeMarker = true} = {}) {
     assert.equal(receipt.chainId, chainId); assert.equal(receipt.complete, true);
     const installed = await loadChainProtocol({provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId: manifest.profileId});
     assert.equal(installed.provider.nativeActions, undefined);
-    assert(installed.components.every(component => component.sourceRevision === 'cffef8f3ec12f662bac98e17cb9433b9fac4ab79'));
+    assert(installed.components.every(component => component.sourceRevision === '332534cb9fb2c64599bce1bb3f9f33e7a6147315'));
     const capability = validateProtocolNativeActions(createWireNativeActions(resolveCodecProfile(manifest.profileId)), {interfaceVersion: 1});
     assert.equal(capability.valid, true);
     const provider = {...installed.provider, nativeActions: capability.nativeActions}, selected = {...installed, provider};

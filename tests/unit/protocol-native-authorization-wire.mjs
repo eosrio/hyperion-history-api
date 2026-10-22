@@ -46,7 +46,7 @@ try {
     assert.equal(receipt.complete,true);assert.equal(receipt.chainId,chainId);assert.equal(receipt.start,1);assert.equal(receipt.endExclusive,2401);
     const selected=await loadChainProtocol({provider:'extension',package:'@eosrio/hyperion-wire-plugin',profileId:originalManifest.profileId});
     assert.equal(selected.provider.nativeActions,undefined);
-    assert(selected.components.every(component=>component.sourceRevision==='cffef8f3ec12f662bac98e17cb9433b9fac4ab79'));
+    assert(selected.components.every(component=>component.sourceRevision==='332534cb9fb2c64599bce1bb3f9f33e7a6147315'));
     const descriptor=JSON.parse(readFileSync(join(wireRoot,'dist/protocol-provider.json')));
     assert(descriptor.profiles.every(profile=>!Object.hasOwn(profile,'nativeActions')));
     const native=validateProtocolNativeActions(createWireNativeActions(resolveCodecProfile(originalManifest.profileId)),{interfaceVersion:1});
