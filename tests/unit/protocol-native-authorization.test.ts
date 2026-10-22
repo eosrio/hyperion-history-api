@@ -250,6 +250,33 @@ describe('native authorization host-contract controls (synthetic protocol, actua
         await expect(issued.reader.decodeValue(issued.grant, {signal: abort.signal})).rejects.toBe(reason);
     });
 
+    for (const retainedBy of ['decoder', 'encoder']) it(`detaches the returned value from ${retainedBy} references across final authority reads`, async () => {
+        const fixture = await nativeAuthorizationFixture(), issued = await authorized(fixture);
+        const decoded = {rawHex: fixture.selected.inputs[0].rawHex}; fixture.faults.decodedValue = decoded;
+        const entered = gate(); let held: ReturnType<typeof holdRead>, encodedValue: any;
+        fixture.faults.onDecode = () => {
+            held = holdRead(fixture.client, call => call.index === fixture.frontier.controlIndex); entered.release();
+        };
+        fixture.faults.onEncode = (value: any) => {encodedValue = value;};
+        const pending = issued.reader.decodeValue(issued.grant); await entered.promise; await held!.entered;
+        (retainedBy === 'decoder' ? decoded : encodedValue).rawHex = '99'; held!.release();
+        const result: any = await pending; held!.restore();
+        expect(result).toEqual({rawHex: '0102'}); expect(result).not.toBe(decoded); expect(result).not.toBe(encodedValue);
+        expect(Buffer.from(fixture.native.encodeValue('opaque.host-native.v1', result)).toString('hex')).toBe('0102');
+    });
+
+    it('preserves detached native bigint, binary, map and cyclic values without a JSON-only restriction', async () => {
+        const fixture = await nativeAuthorizationFixture(), issued = await authorized(fixture);
+        const decoded: any = {rawHex: '0102', exact: 18446744073709551615n, bytes: new Uint8Array([1, 2]), map: new Map([['a', 1]])};
+        decoded.self = decoded; fixture.faults.decodedValue = decoded;
+        let encoderValue: any; fixture.faults.onEncode = (value: any) => {encoderValue = value;};
+        const result: any = await issued.reader.decodeValue(issued.grant);
+        expect(result).toEqual(decoded); expect(result.self).toBe(result); expect(result).not.toBe(decoded);
+        expect(result.bytes.buffer).not.toBe(decoded.bytes.buffer); expect(result.bytes.buffer).not.toBe(encoderValue.bytes.buffer);
+        decoded.bytes[0] = 99; encoderValue.bytes[0] = 88; encoderValue.rawHex = '99';
+        expect([...result.bytes]).toEqual([1, 2]); expect(result.rawHex).toBe('0102');
+    });
+
     it('never assimilates async native values or invokes then accessors, including properties inserted by the encoder', async () => {
         for (const phase of ['promise', 'thenable', 'accessor', 'encoder-accessor']) {
             const fixture = await nativeAuthorizationFixture(), issued = await authorized(fixture); let getters = 0;

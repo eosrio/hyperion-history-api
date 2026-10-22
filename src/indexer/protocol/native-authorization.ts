@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {serialize, deserialize} from 'node:v8';
 import {validateProtocolNativeActions, type ProtocolAbiActionInput, type ProtocolNativeActions,
     type ProtocolNativeActionDecision, type ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
 import {deriveProtocolActionInputs} from '../history/action-source-inventory.js';
@@ -218,9 +219,18 @@ export class ProtocolNativeActionReader {
         const original = Buffer.from(issued.input.rawHex, 'hex'), raw = Buffer.from(original);
         let value: unknown;
         try {
-            value = this.native.decodeValue(issued.nativeKind, raw);
-            requireSynchronousValue(value);
-            const encoded = this.native.encodeValue(issued.nativeKind, value);
+            const decoded = this.native.decodeValue(issued.nativeKind, raw);
+            requireSynchronousValue(decoded);
+            const snapshot = serialize(decoded);
+            if (snapshot.byteLength > 64 * 1024 * 1024) {
+                unavailable('native_value_unavailable', 'Native value exceeds its detached snapshot budget');
+            }
+            // Each deserializer gets distinct owned bytes: typed-array results may alias its input.
+            // The returned value is never passed to provider code, including its encoder.
+            value = deserialize(Uint8Array.from(snapshot));
+            const encodingValue = deserialize(Uint8Array.from(snapshot));
+            const encoded = this.native.encodeValue(issued.nativeKind, encodingValue);
+            requireSynchronousValue(encodingValue);
             if (!raw.equals(original) || !(encoded instanceof Uint8Array) || !Buffer.from(encoded).equals(original)) {
                 unavailable('native_value_mismatch', 'Native value does not reproduce its authorized original bytes');
             }

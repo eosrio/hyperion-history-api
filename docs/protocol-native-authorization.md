@@ -24,6 +24,13 @@ opaque grant owned by this reader and view; copied, serialized or rebound handle
 It decodes with the pinned provider and requires strict encoding back to the authorized original
 bytes, including rejection of source mutation. Unsupported kinds and codec errors return retryable
 unavailable; they never fall back to a deployed contract ABI.
+The returned value and encoder input are separate detached snapshots, each with owned serialization
+bytes, so provider-retained objects or binary views cannot mutate a checked result during the final
+authority read. The per-value snapshot is bounded to 64 MiB and preserves supported structured data
+such as bigint, binary views, maps and cycles; unsupported values remain unavailable. Snapshot bytes
+are transient local data and are never a persisted protocol or API format. The host uses
+[Node's serialization API](https://github.com/nodejs/node/blob/main/doc/api/v8.md#serialization-api)
+with a separate owned input buffer for each deserialization.
 
 Canonical authority is revalidated around awaited reads and before successful consumption. Owner
 replacement, recovery and fork generation changes invalidate old views and grants. The caller's
