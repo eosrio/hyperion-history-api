@@ -8,4 +8,7 @@ docs/performance/evidence/portable-state-prefix-20261022/** -text
 docs/performance/evidence/portable-state-prefix-20261022/manifest.json -diff
 tests/fixtures/projection-validation/** -text
 tests/fixtures/projection-validation/metadata.json.gz.base64 -diff
-docs/performance/evidence/projection-validation-20261022/** -text
+# Preserve captured CRLF bytes while keeping ordinary whitespace checks active.
+docs/performance/evidence/projection-validation-20261022/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+docs/performance/evidence/projection-validation-20261022/manifest.json -diff
+docs/performance/evidence/projection-validation-20261022/kernel/*-count.json -diff
