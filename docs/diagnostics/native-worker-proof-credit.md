@@ -181,6 +181,114 @@ publication checks. Reuse inside one request might avoid duplicate opens after
 an explicit interface review; it cannot by itself protect queued work that has
 never obtained a proof, repair crash recovery, or prove the grant invariant.
 
-The separate proof-read measurement lane evaluates actual read counts, bytes and
-cost. Faster reads can reduce observed lag, but they do not establish the safety
-property exercised here.
+## Reproducible proof-read measurement
+
+The measurement entry point is `tests/unit/protocol-native-lag-replay.mjs`.
+The historical baseline is diagnostic commit
+`fedc4bd4de8c23c83468df3c3ff034b6227ebc26`, with unchanged production code from
+`c914dd8ca6d27f235c2c343d0c5ad1f45916998c`. Use a dedicated checkout of that
+commit when reproducing these observations. Later changes such as #279 intentionally
+change reader-credit behavior; do not weaken the frozen diagnostic's assertions
+to make a different product revision appear equivalent.
+
+Install its committed npm tree with preparation scripts enabled and emit the
+TypeScript artifacts before either entry point:
+
+```sh
+npm ci --allow-git=all
+npm run build
+node tests/unit/protocol-native-lag-replay.mjs --measure > proof-measurement.log
+node tests/unit/protocol-native-lag-replay.mjs --assert-pending-native-preserved
+```
+
+Select an explicit native Node 22 or 24 executable; `node` above denotes that
+executable. The measurement command exits zero when it has confirmed the known
+expiry defect and its controls. The final command deliberately exits one because
+the genuine pending native action produces no complete output at distance 257.
+Neither exit status qualifies full-worker correctness. These `.mjs` diagnostics
+are outside ordinary `.test.ts` discovery. No measurement flag means the causal
+reproduction without the read-count windows. The separate worker-credit command
+documented above also remains deliberately RED at this baseline.
+
+Controlled mode uses in-memory ES and broker transports while retaining the
+actual emitted workers, stores, coordinator and normal installed native provider.
+For real storage, create a disposable, exclusively owned ES 9.5.5 fixture using
+`scripts/qualification/es955-replica-fixture.ps1`. It requires PowerShell 7 and
+Docker. Set `STATE_FILE` to a new absolute state-file path in an owned directory:
+
+```sh
+pwsh -NoProfile -File scripts/qualification/es955-replica-fixture.ps1 \
+  -Action create -StateFile "$STATE_FILE" -ExposeRabbitManagement \
+  -IndexingPressureLimitMb 64
+```
+
+From that saved state, set `OWNED_ES_URL` to `nodes[0].url` and `RUN_ID` to `run`.
+Set `CASE` to a new absolute owned case directory and `NODE24` to the selected
+native executable. Create its `cpu` directory before starting:
+
+```sh
+mkdir -p "$CASE/cpu"
+HYPERION_PROOF_ES_URL="$OWNED_ES_URL" \
+HYPERION_PROOF_ES_CHAIN="h45proof277-${RUN_ID}-n24" \
+HYPERION_PROOF_MEASURE_REPETITIONS=5 \
+HYPERION_PROOF_CPU_PROFILE_DIR="$CASE/cpu" \
+"$NODE24" tests/unit/protocol-native-lag-replay.mjs --measure > "$CASE/probe.log"
+```
+
+Repeat with the explicit Node 22 executable, another new case directory and a
+distinct `h45proof277-${RUN_ID}-n22` prefix. No existing index may match the complete
+selected prefix before a run. The adapter requires an unauthenticated URL without
+embedded credentials/query parameters, verifies server version 9.5.5 and restricts
+its writes to that fresh namespace. Use the disposable fixture rather than an
+existing history cluster. The fixture also provisions RabbitMQ; this diagnostic
+still uses a controlled confirmed broker channel and does not qualify RabbitMQ.
+
+`HYPERION_PROOF_MEASURE_REPETITIONS` accepts integers 1–20; the default is three in
+controlled mode and five with real ES. Omitting `HYPERION_PROOF_CPU_PROFILE_DIR`
+disables the optional inspector captures. When supplied, it must name an existing
+absolute owned directory. Four profiles cover quiescent read windows at canonical
+heads 34, 65, 265 and 289, for the same original block-33 action at distances
+1, 32, 232 and 256. Source advancement and fault controls are outside those
+profiles. Source preparation and successful original block-122 DS processing,
+membership sealing and confirmed-before-ACK observations have separate spans.
+The production ancestry bound remains 256 and proof waits retain their normal
+five-second default.
+
+Stdout contains worker logs interspersed with JSON records; it is not one JSON
+document. The final record has a `scenario` discriminator and includes
+`measurements`, `duplicateCommitReads`, `controls`, `stageTimings`, `cpuProfiles`,
+runtime and transport identity, and explicit limits. Profile records identify
+their filenames, SHA256, byte counts and process-local/UTC window bounds.
+GET counts separate document reads from mapping/settings reads. Byte counts are
+UTF-8 serializations of request/response **objects**, excluding HTTP framing,
+compression and network bytes. Wall and process CPU include client work and
+measurement serialization; the latter is recorded separately. Profiles retain
+idle, collector and instrumentation samples. These are descriptive observations,
+not exclusive JSON/hash CPU or host-capacity estimates.
+
+Real mode forwards decision-bearing storage reads and writes to the pinned client
+and actual ES server. Its mirror supports fixture inventory/reporting only. The
+oversized-manifest control changes a copy of a returned real response; it is not
+a server mutation. The in-flight cancellation control holds a real read after
+its response; it does not demonstrate cancellation of an HTTP request. Recovery
+rewinds/replays an original selection through the coordinator; it is not a
+captured network fork. Membership sealing is checked independently of controlled
+publication confirmation and does not prove a physical action sink receipt.
+
+The diagnostic deliberately retains its exact created indices and reports them
+in the final transport record. The caller owns evidence capture and cleanup.
+Save and hash the complete log, profiles, source/runtime/dependency identities
+and fixture state before removing the exclusively owned fixture:
+
+```sh
+pwsh -NoProfile -File scripts/qualification/es955-replica-fixture.ps1 \
+  -Action cleanup -StateFile "$STATE_FILE"
+```
+
+That helper verifies the saved resource labels/identities. Do not reuse a state
+file from another run or delete by a broad index/container wildcard. A process
+failure still leaves caller-owned resources and evidence to account for.
+
+Faster reads can reduce observed lag, but they do not establish the pending-input
+safety property. The strict bounded coordination or older-input recovery work in
+#277 and the full #270 Linux worker/MongoDB acceptance remain open.
