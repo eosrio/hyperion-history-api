@@ -2,12 +2,13 @@
  * Normal installed native engineering profile; controlled broker/storage transport, no live-service qualification. */
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
-import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {basename, dirname, join, resolve} from 'node:path';
+import {basename, dirname, join, resolve, isAbsolute} from 'node:path';
+import {Session} from 'node:inspector';
 import {EventEmitter} from 'node:events';
 import {createHash} from 'node:crypto';
-import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {proofMeasurementTransport} from './protocol-native-lag-transport.mjs';
 
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -18,12 +19,19 @@ const hooks = registerHooks({resolve(specifier, context, next) {
 }});
 const previousDirectory = process.cwd(), previousSend = process.send;
 const directory = mkdtempSync(join(tmpdir(), 'hyperion-native-worker-original-'));
-const chain = 'native-worker-original';
+const elasticsearchUrl = process.env.HYPERION_PROOF_ES_URL;
+const chain = elasticsearchUrl ? process.env.HYPERION_PROOF_ES_CHAIN : 'native-worker-original';
+assert.equal(typeof chain, 'string');
 const chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d', blockId = number => number.toString(16).padStart(64, '0');
+const repetitions = Number(process.env.HYPERION_PROOF_MEASURE_REPETITIONS ?? (elasticsearchUrl ? 5 : 3));
+assert(Number.isSafeInteger(repetitions) && repetitions >= 1 && repetitions <= 20);
+const cpuDirectory = process.env.HYPERION_PROOF_CPU_PROFILE_DIR;
+if (cpuDirectory) {assert(isAbsolute(cpuDirectory)); assert(statSync(cpuDirectory).isDirectory());}
 const hash = value => createHash('sha256').update(value).digest('hex');
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
+const cpuProfiles = [];
 const setupBegan = process.hrtime.bigint(), setupCpu = process.cpuUsage();
-let reader, coordinator, draining = Promise.resolve();
+let reader, coordinator, transport, draining = Promise.resolve();
 process.send = (event, callback) => {
     events.push(event);
     if (event.event === 'protocol_abi_prepared') draining = coordinator.drain();
@@ -40,14 +48,36 @@ class ControlledPublisher extends EventEmitter {
     sent = [];
     held;
     entered;
+    observer;
     sendToQueue(queue, payload, options, confirm) {
         this.sent.push({queue, payload: Buffer.from(payload), options: structuredClone(options)});
-        if (this.held) {this.entered?.(); this.held.then(() => confirm());}
-        else queueMicrotask(() => confirm()); return true;
+        this.observer?.('publication-start', queue, payload.length);
+        const confirmed = () => {this.observer?.('publication-confirmed', queue, payload.length); confirm();};
+        if (this.held) {this.entered?.(); this.held.then(confirmed);}
+        else queueMicrotask(confirmed); return true;
     }
 }
 function message(sent) {return {content: Buffer.from(sent.payload), properties: {headers: structuredClone(sent.options.headers)}, fields: {deliveryTag: 1}};}
 async function ticks() {for (let index = 0; index < 5; index++) await new Promise(resolve => setImmediate(resolve));}
+async function readCpuProfile(sourceHead) {
+    if (!cpuDirectory) return async () => {};
+    const session = new Session(); session.connect();
+    const post = (method, params = {}) => new Promise((resolve, reject) => session.post(method, params, (error, result) => error ? reject(error) : resolve(result)));
+    await post('Profiler.enable'); await post('Profiler.setSamplingInterval', {interval: 1000});
+    await post('Profiler.start');
+    const startedMonotonicNs = process.hrtime.bigint().toString(), startedAtUtc = new Date().toISOString();
+    return async () => {
+        try {
+            const {profile} = await post('Profiler.stop');
+            const data = JSON.stringify(profile), path = join(cpuDirectory, `proof-read-head-${sourceHead}-pid-${process.pid}.cpuprofile`);
+            writeFileSync(path, data, {flag: 'wx'});
+            const record = {sourceHead, path, bytes: Buffer.byteLength(data), sha256: hash(data), startedMonotonicNs,
+                endedMonotonicNs: process.hrtime.bigint().toString(), startedAtUtc, endedAtUtc: new Date().toISOString(),
+                scope: 'stable-head public read/authorize/decode window only; excludes source preparation and fault controls; includes measurement overhead'};
+            cpuProfiles.push(record); console.log(JSON.stringify({cpuProfile: record}));
+        } finally {session.disconnect();}
+    };
+}
 function ids(memory, prefix) {
     return [...memory.documents.values()].map(value => value.document)
         .filter(value => value.kind === 'manifest' && value.bundle_id.startsWith(prefix)).map(value => value.bundle_id);
@@ -119,7 +149,7 @@ try {
     const template = originalCodec.decode('result', Buffer.from(fixture.frameHex, 'hex'));
     const originalTrace = originalCodec.decode('transaction_trace[]', Buffer.from(template[1].traces, 'hex'))[0][1];
     const originalBlock = originalCodec.decode('signed_block', Buffer.from(template[1].block, 'hex'));
-    const memory = frontierMemoryClient();
+    const memory = transport = await proofMeasurementTransport({chain, url: elasticsearchUrl});
     const bindings = new ProtocolSourceBindingStore(memory.client, chain);
     const measurements = [], measurementEnabled = process.argv.includes('--measure');
     let measurement;
@@ -134,7 +164,8 @@ try {
             const elapsedMs = Number(process.hrtime.bigint() - began) / 1e6;
             const serializeBegan = process.hrtime.bigint();
             const source = response?._source;
-            active.reads.push({method, index: args[0].index, id: args[0].id ?? null,
+            const rows = ['create', 'index'].includes(method) ? active.writes : active.reads;
+            rows.push({method, index: args[0].index, id: args[0].id ?? null,
                 bundleId: source?.bundle_id ?? null, kind: source?.kind ?? null,
                 found: response?.found === true, failed: error !== undefined,
                 requestJsonBytes: Buffer.byteLength(JSON.stringify(args[0])),
@@ -146,9 +177,12 @@ try {
     memory.client.get = instrument('get', memory.client.get.bind(memory.client));
     memory.client.indices.getMapping = instrument('getMapping', memory.client.indices.getMapping.bind(memory.client.indices));
     memory.client.indices.getSettings = instrument('getSettings', memory.client.indices.getSettings.bind(memory.client.indices));
+    memory.client.create = instrument('create', memory.client.create.bind(memory.client));
+    memory.client.index = instrument('index', memory.client.index.bind(memory.client));
     const measured = async (metadata, work) => {
         assert.equal(measurement, undefined, 'public calls must be measured sequentially at a quiescent source head');
-        const active = {...metadata, reads: [], measurementSerializationMs: 0};
+        const active = {...metadata, reads: [], writes: [], measurementSerializationMs: 0,
+            startedAtUtc: new Date().toISOString(), startedMonotonicNs: process.hrtime.bigint().toString()};
         const began = process.hrtime.bigint(), cpu = process.cpuUsage(), memoryBefore = process.memoryUsage();
         measurement = active;
         try {return await work();}
@@ -156,6 +190,7 @@ try {
         finally {
             measurement = undefined;
             active.elapsedMs = Number(process.hrtime.bigint() - began) / 1e6;
+            active.endedAtUtc = new Date().toISOString(); active.endedMonotonicNs = process.hrtime.bigint().toString();
             active.cpu = process.cpuUsage(cpu); active.memoryBefore = memoryBefore; active.memoryAfter = process.memoryUsage();
             active.getCount = active.reads.filter(value => value.method === 'get').length;
             active.metadataGetCount = active.reads.filter(value => value.method !== 'get').length;
@@ -164,16 +199,23 @@ try {
             active.responseJsonBytes = active.reads.reduce((total, value) => total + value.responseJsonBytes, 0);
             active.documentResponseJsonBytes = active.reads.filter(value => value.method === 'get').reduce((total, value) => total + value.responseJsonBytes, 0);
             active.metadataResponseJsonBytes = active.responseJsonBytes - active.documentResponseJsonBytes;
+            active.writeCount = active.writes.length;
+            active.writeRequestJsonBytes = active.writes.reduce((total, value) => total + value.requestJsonBytes, 0);
+            active.writeResponseJsonBytes = active.writes.reduce((total, value) => total + value.responseJsonBytes, 0);
             const commits = active.reads.filter(value => value.bundleId?.startsWith('h45abicmt1:'));
             active.commitGetCount = commits.length;
             active.uniqueCommitBundleCount = new Set(commits.map(value => value.bundleId)).size;
             measurements.push(active);
+            if (elasticsearchUrl) console.log(JSON.stringify({phaseMeasurement: active}));
         }
     };
     const observations = new ProtocolAbiObservationStore(memory.client, chain), frontier = new ProtocolAbiFrontierStore(memory.client, chain);
     const admissionStore = new ActionSourceAdmissionStore(memory.client, chain), targetName = `${chain}-action-v1-000001`;
-    memory.settings.set(targetName, {'index.uuid': 'owned-wire-admission-target'});
-    memory.client.indices.exists = async ({index}) => memory.settings.has(index);
+    if (elasticsearchUrl) await memory.initializeTarget(targetName);
+    else {
+        memory.settings.set(targetName, {'index.uuid': 'owned-wire-admission-target'});
+        memory.client.indices.exists = async ({index}) => memory.settings.has(index);
+    }
     const filters = {action_blacklist: new Set(), action_whitelist: new Set(), delta_blacklist: new Set(), delta_whitelist: new Set()};
     const cm = {config, filters}, parser = new Parser(cm), loader = Object.create(HyperionModuleLoader.prototype);
     Object.assign(loader, {handledActions: new Map(), handledDeltas: new Map(), parser, plugins: []});
@@ -306,9 +348,33 @@ try {
             assert.deepEqual(await nativeReader.decodeValue(decision.grant), original.expectedValue);
             control = {head: number, distance: 1, exactOriginalNativeDecoded: true, proofSelectionId: proof.selectionId};
         }
+        if (measurementEnabled && number === 122) {
+            const before = poolPublisher.sent.length, ackBefore = poolConsumer.acked.length, broker = [];
+            poolPublisher.observer = (event, queue, bytes) => broker.push({event, queue, bytes, monotonicNs: process.hrtime.bigint().toString()});
+            poolConsumer.onAck = () => broker.push({event: 'consumer-ack', monotonicNs: process.hrtime.bigint().toString()});
+            try {
+                await measured({stage: 'control.dsProcessOriginal122', sourceHead: number}, () => pool.processMessages(prepared.messages));
+            } finally {poolPublisher.observer = undefined; poolConsumer.onAck = undefined;}
+            const published = poolPublisher.sent.slice(before); assert.equal(published.length, 1);
+            const document = JSON.parse(published[0].payload);
+            assert.deepEqual(document.act.data, expected.get(122).expectedValue);
+            assert.equal(document.protocol.kind, 'native'); assert.equal(document.ds_error, undefined);
+            assert.equal(published[0].options.persistent, true); assert.equal(published[0].options.mandatory, true);
+            assert.equal(published[0].payload.toString(), actionHistoryImmutableJson(document));
+            assert.equal(poolConsumer.acked.length - ackBefore, 1);
+            assert.equal(await measured({stage: 'control.membershipSealOriginal122', sourceHead: number}, () => admissionStore.trySeal(prepared.admission)), true);
+            const manifest = await admissionStore.journal.readManifest(prepared.admission.planId);
+            assert.deepEqual(manifest.manifest.fragments.flatMap(fragment => fragment.effects), [fingerprintActionHistoryEffect(document)]);
+            const confirmed = broker.find(row => row.event === 'publication-confirmed'), ack = broker.find(row => row.event === 'consumer-ack');
+            assert(confirmed && ack && BigInt(confirmed.monotonicNs) <= BigInt(ack.monotonicNs));
+            controls.push({kind: 'successful-original-native122-ds-publication-and-membership', publishedActions: 1,
+                exactOracleValue: true, sealed: true, acknowledged: 1, brokerTransport: 'controlled-confirmed-channel', broker});
+        }
         if (measurementEnabled && [34, 65, 265, 289].includes(number)) {
             const distance = number - point.blockNum;
-            for (let repetition = 0; repetition < 3; repetition++) {
+            const stopProfile = await readCpuProfile(number);
+            try {
+            for (let repetition = 0; repetition < repetitions; repetition++) {
                 const count = measurements.length;
                 await measured({stage: 'abi.waitForOpen', sourceHead: number, distance, repetition}, () =>
                     pool.getProtocolProofReader().waitForOpen(point, pending.sourceSelectionId));
@@ -332,6 +398,7 @@ try {
                 duplicateCommitReads.push({sourceHead: number, distance, repetition, repeatedExactCommitDocuments: duplicate.length,
                     totalCommitGets: abi.commitGetCount + native.commitGetCount});
             }
+            } finally {await stopProfile();}
             if (number === 34) {
                 const nativeReader = pool.getProtocolNativeReader(), cancelled = new AbortController(), reason = {request: 'measurement-cancelled'};
                 cancelled.abort(reason);
@@ -341,9 +408,11 @@ try {
                 let enter, release;
                 const entered = new Promise(resolve => {enter = resolve;}), held = new Promise(resolve => {release = resolve;});
                 let claimed = false;
-                memory.faults.beforeRead = async request => {
+                const holdRead = async request => {
                     if (!claimed && request.id.startsWith('h45abicmt1:')) {claimed = true; enter(); await held;}
                 };
+                if (elasticsearchUrl) memory.faults.afterRead = (_response, request) => holdRead(request);
+                else memory.faults.beforeRead = holdRead;
                 const controller = new AbortController(), exactReason = {request: 'native-cancelled-during-real-proof-read'};
                 const waiting = measured({stage: 'guard.cancelInFlightNative', sourceHead: number, distance}, async () => {
                     try {return await nativeReader.waitForOpen(point, pending.sourceSelectionId, {signal: controller.signal});}
@@ -351,8 +420,9 @@ try {
                 }).catch(error => error);
                 await entered; controller.abort(exactReason);
                 assert.equal(await waiting, exactReason);
-                delete memory.faults.beforeRead;
-                controls.push({kind: 'real-native-wait-cancellation', sourceHead: number, exactReason: true, preCancelledGets: 0});
+                delete memory.faults.beforeRead; delete memory.faults.afterRead;
+                controls.push({kind: 'real-native-wait-cancellation', sourceHead: number, exactReason: true, preCancelledGets: 0,
+                    fault: elasticsearchUrl ? 'hold an actual Elasticsearch response before consumption; no socket-cancellation claim' : 'hold the controlled immutable transport read'});
                 let corruptReads = 0;
                 memory.faults.read = (response, request) => {
                     if (request.id.startsWith('h45natobs1:') && response._source.kind === 'manifest') {
@@ -371,21 +441,21 @@ try {
         }
     }
     const current = await frontier.readControl(); assert.equal(current.value.head.blockNum, 290);
-    assert.equal(poolConsumer.acked.length, 0, 'the genuine original action must still be queued');
+    assert(pending.messages.every(message => !poolConsumer.acked.includes(message)), 'the genuine original action must still be queued');
     const nativeReader = pool.getProtocolNativeReader();
     await assert.rejects(nativeReader.waitForOpen(point, pending.sourceSelectionId), {code: 'ancestry_unavailable'});
     assert.deepEqual(await selected.provider.nativeActions.decodeValue(original.nativeKind, Buffer.from(original.rawHex, 'hex')), original.expectedValue,
         'the source/value codec remains correct while canonical membership expires');
-    const before = poolPublisher.sent.length;
+    const before = poolPublisher.sent.length, ackBefore = poolConsumer.acked.length;
     const consumeBegan = process.hrtime.bigint(), consumeCpu = process.cpuUsage();
-    await pool.processMessages(pending.messages);
+    await measured({stage: 'control.dsExpiredOriginal33', sourceHead: 290, distance: 257}, () => pool.processMessages(pending.messages));
     stageTimings.consumerExpiry = {elapsedMs: Number(process.hrtime.bigint() - consumeBegan) / 1e6, cpu: process.cpuUsage(consumeCpu)};
     const output = poolPublisher.sent.slice(before);
     const incompleteIds = ids(memory, 'h45actionincomplete1:');
     const incomplete = incompleteIds.map(id => JSON.parse(retained(memory, admissionStore.index, id).payloadJson));
     const matchingIncomplete = incomplete.filter(value => value.admissionId === pending.admission.id);
     const failures = events.filter(value => value.event === 'ds_error' && value.data?.type === 'protocol_action_incomplete');
-    const sealed = await admissionStore.trySeal(pending.admission);
+    const sealed = await measured({stage: 'control.membershipSealExpired33', sourceHead: 290, distance: 257}, () => admissionStore.trySeal(pending.admission));
     for (const metric of measurements) {
         assert.equal(metric.getCount, metric.reads.filter(value => value.method === 'get').length);
         assert.equal(metric.allClientGetCount, metric.reads.length);
@@ -415,14 +485,17 @@ try {
         originalPendingFrameSha256: frameIndex.get(33).sha256, profileId, components: selected.components,
         normalInstalledNativeSelection: true, syntheticSourceFrames: false, control,
         codecStillDecodesExactOriginal: true, publishedActions: output.length,
-        consumerAcknowledgments: poolConsumer.acked.length, sealed, incomplete: matchingIncomplete, failures,
-        measurements, duplicateCommitReads, controls, stageTimings,
-        measurementLimits: {storageTransport: 'in-memory immutable/CAS transport, not Elasticsearch HTTP',
+        consumerAcknowledgments: poolConsumer.acked.length - ackBefore, sealed, incomplete: matchingIncomplete, failures,
+        measurements, duplicateCommitReads, controls, stageTimings, repetitions, cpuProfiles,
+        transport: {kind: memory.kind, serverVersion: memory.serverVersion ?? null, serverBuildHash: memory.serverBuildHash ?? null,
+            clusterUuid: memory.clusterUuid ?? null, ownedIndices: memory.ownedIndices ?? [], cleanup: 'real ES indices retained for root-owned evidence and cleanup'},
+        measurementLimits: {storageTransport: elasticsearchUrl ? 'actual pinned Elasticsearch client and 9.5.5 server' : 'in-memory immutable/CAS transport, not Elasticsearch HTTP',
             byteCounts: 'JSON UTF-8 request/response objects, excluding HTTP framing, compression and network',
             elapsedCpu: 'includes measurement serialization overhead; not production or per-function CPU attribution',
             syntheticSourceFrames: false, faultControls: 'explicitly injected transport faults, not captured chain behavior'},
         elapsedMs: Number(process.hrtime.bigint() - began) / 1e6,
-        controlledBrokerStorage: true, fullWorkerQualification: false, productionPerformanceQualified: false};
+        controlledBrokerStorage: !elasticsearchUrl, controlledBrokerTransport: true, realElasticsearchStore: Boolean(elasticsearchUrl),
+        fullWorkerQualification: false, productionPerformanceQualified: false};
     console.log(JSON.stringify(report));
     if (process.argv.includes('--assert-pending-native-preserved')) {
         assert.equal(output.length, 1, 'Genuine pending native action must survive ordinary canonical-source progress without becoming permanently incomplete');
@@ -430,10 +503,11 @@ try {
     } else {
         assert.equal(output.length, 0); assert.equal(sealed, false);
         assert.equal(matchingIncomplete.length, 1); assert(failures.some(value => value.data.message.includes('outside verified ancestry')));
-        assert.equal(poolConsumer.acked.length, 1);
+        assert.equal(poolConsumer.acked.length - ackBefore, 1);
     }
 } finally {
     reader?.coordinatorRpc?.cancel(); reader?.shipSession?.close?.();
+    await transport?.close();
     process.send = previousSend; process.chdir(previousDirectory); hooks.deregister();
     const ownedDirectory = resolve(directory); assert.equal(dirname(ownedDirectory), resolve(tmpdir()));
     assert.match(basename(ownedDirectory), /^hyperion-native-worker-original-/); rmSync(ownedDirectory, {recursive: true, force: true});
