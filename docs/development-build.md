@@ -40,9 +40,10 @@ the same invocation-scoped policy as the Node 22/24 CI jobs:
 npm ci --allow-git=all
 ```
 
-The portable runtime pins a newer SDK at the root while the Wire plugin retains
-its own exact SDK revision. That locked transitive Git dependency is rejected by
-`--allow-git=root` on npm 11.19.0, before any qualification test runs. Keep all Git
+The root and Wire plugin now share an exact SDK revision; the MongoDB adapter retains
+its separately pinned development SDK under its own package. Transitive Git dependencies
+require the invocation-scoped policy above; `--allow-git=root` previously rejected the
+separate Wire SDK on npm 11.19.0 before any qualification test ran. Keep all Git
 revisions pinned in the committed lockfile and preparation scripts enabled. Do
 not change a global Git-dependency policy to run these checks.
 

@@ -28,6 +28,18 @@ dependency preparation must run so the SDK and protocol package emit their artif
 versions that disable Git dependencies by default, `--allow-git=all` is a command-scoped development
 override for these explicit immutable pins. It is not an executable update mechanism.
 
+The dependency foundation for [#260](https://github.com/eosrio/hyperion-history-api/issues/260)
+pins SDK `d3ca7e41373da6301797e38cdc90c2b4d17af191` and Wire
+`cffef8f3ec12f662bac98e17cb9433b9fac4ab79`; Wire declares the same exact SDK pin.
+These packages contain the native-action interfaces, but the current Wire descriptor/provider
+keep that capability inactive. This host advertises no native-action interface support, so a
+profile requiring native actions is rejected before provider import. A provider selected through
+an ordinary profile must not expose a `nativeActions` property; admission rejects that property,
+including inherited properties and accessors, without reading it or invoking native methods.
+Required-profile runtime admission belongs to later coordinated activation, after the durable
+native-observation and authorization work in [#256](https://github.com/eosrio/hyperion-history-api/issues/256).
+Installing these pins does not qualify native processing or the Wire testnet.
+
 The host reads the inert SDK descriptor and verifies both Node/Rust artifact manifests, every
 listed file, executable entry coverage, exact profile/component pins and host/SDK compatibility
 before importing the provider factory or native addon. Modified-source artifacts fail activation.
