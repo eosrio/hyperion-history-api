@@ -48,7 +48,10 @@ try {
     assert.equal(selected.provider.nativeActions,undefined);
     assert(selected.components.every(component=>component.sourceRevision==='7167659e9c043cb3351074fcacb40200cc57f3a3'));
     const descriptor=JSON.parse(readFileSync(join(wireRoot,'dist/protocol-provider.json')));
-    assert(descriptor.profiles.every(profile=>!Object.hasOwn(profile,'nativeActions')));
+    const legacyProfiles=['wire-sysio-6508c9e8-engineering-v1','wire-sysio-7dede884-engineering-v1'].map(id=>{
+        const profile=descriptor.profiles.find(profile=>profile.id===id);assert(profile);return profile;
+    });
+    assert(legacyProfiles.every(profile=>!Object.hasOwn(profile,'nativeActions')));
     const native=validateProtocolNativeActions(createWireNativeActions(resolveCodecProfile(originalManifest.profileId)),{interfaceVersion:1});
     assert.equal(native.valid,true);
     const provider={...selected.provider,nativeActions:native.nativeActions};
@@ -173,7 +176,7 @@ try {
     assert.deepEqual(await other.decodeValue(healthyGrant.grant),targets.get(397).expectedValue);
     await assert.rejects(other.decodeValue(grants.get(397)),{code:'native_invalid_grant'});
     await coordinator.revokeSource('wire-original-prefix');await assert.rejects(reader.decodeValue(grants.get(397)),{code:'authority_unavailable'});
-    assert.equal(selected.provider.nativeActions,undefined);assert(descriptor.profiles.every(profile=>!Object.hasOwn(profile,'nativeActions')));
+    assert.equal(selected.provider.nativeActions,undefined);assert(legacyProfiles.every(profile=>!Object.hasOwn(profile,'nativeActions')));
     console.log(JSON.stringify({passed:true,originalBlocks:397,originalNative:results,notifications,nativeNotifications,archiveMembers:1488,
         defaultAncestry:256,exactAncestryBoundary:{accepted:141,rejected:140},agedProofsUnavailable:[33,122],genesisZeroToOne:true,
         independentCancellation:true,changedJournalUnavailable:true,nativeActivation:false,fullWorkerQualification:false}));
