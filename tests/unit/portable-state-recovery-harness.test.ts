@@ -8,7 +8,7 @@ import {RecoverySourceFlow, recoverySourceLimits, serveRecoveryEngineeringSource
 import {recoveryExpectedRows, assertRecoveryHttp, assertRecoveryPhysical, assertRecoveryUnavailable, assertRecoveryProbe} from '../../scripts/qualification/portable-state-recovery-oracle.ts';
 import {rollbackIntentReceipt} from '../../scripts/qualification/portable-state-recovery-observer.mjs';
 import {assertRecoveryShutdown, assertRecoveryDiskReadiness, assertRecoveryCpuProfiles, recoveryCpuProfileEvidence,
-    validateRecoveryRunOptions, parseRecoveryArguments} from '../../scripts/qualification/portable-state-recovery.ts';
+    validateRecoveryRunOptions, parseRecoveryArguments, waitForRecoveryHeldHead} from '../../scripts/qualification/portable-state-recovery.ts';
 
 const request = (start: number, positions: any[] = [], window = 8) => ['get_blocks_request_v0', {
     start_block_num: start, end_block_num: 0xffffffff, max_messages_in_flight: window, have_positions: positions,
@@ -36,6 +36,27 @@ test('metadata measurement comparisons require matched explicit held-head contro
         {profilePrefix: 288, projectionMeasurements: 'off', heldHeadMs: 10000}]) {
         expect(() => validateRecoveryRunOptions(options as any)).toThrow();
     }
+});
+
+test('held-head wait reaches its monotonic target after early timer wakeups', async () => {
+    let now = 23;
+    const wakeups = [10022.385583, 10022.9, 10023.2], delays: number[] = [];
+    await waitForRecoveryHeldHead(10000, {now: () => now, pause: async delay => {
+        delays.push(delay); now = wakeups.shift()!;
+    }});
+    expect(now - 23).toBeGreaterThanOrEqual(10000);
+    expect(delays).toEqual([10000, 1, 1]);
+});
+
+test('held-head wait returns after an already late wakeup and propagates timer failure', async () => {
+    let now = 23;
+    const delays: number[] = [];
+    await waitForRecoveryHeldHead(10000, {now: () => now, pause: async delay => {
+        delays.push(delay); now = 10024;
+    }});
+    expect(now - 23).toBe(10001); expect(delays).toEqual([10000]);
+    const failure = new Error('timer failed');
+    await expect(waitForRecoveryHeldHead(10000, {now: () => 23, pause: async () => {throw failure;}})).rejects.toBe(failure);
 });
 
 test('recovery CLI preserves ordinary qualification and makes every diagnostic control explicit', () => {

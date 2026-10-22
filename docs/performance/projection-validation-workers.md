@@ -22,6 +22,16 @@ Both measurement and held-head controls are explicit. The initial comparison acc
 1–288 prefix and a ten-second wait. Ordinary recovery qualification retains its original source ranges,
 faults, deadlines and acceptance requirements.
 
+The wait rechecks its monotonic deadline after every timer wakeup and requests the rounded-up
+remaining delay when needed. Node's [pinned timer contract](https://github.com/nodejs/node/blob/cdc1b38d40cb567b7ad0b39c86addf830a0af0ae/doc/api/timers.md#scheduling-timers)
+does not promise exact callback timing. At `1d367222716495976046cee778ed359d85c17d2c`, the
+native Node 24 case `h252v2-n24-moff-coff-r1` completed the prefix and cleanup but recorded
+`heldHead.elapsedMonotonicMs=9999.385583000025`. The unchanged ten-second acceptance check
+rejected it and stopped the campaign with zero accepted cases. Its retained full archive is
+5,919,104 bytes, SHA-256 `f365327aa19808195d611177ff9ecdd5e3fe2fb9b2e14390092e54f1a8906e25`.
+That attempt remains failed and excluded. The deadline correction requires a fresh comparison
+with the same ten-second gate; it does not relax timing or promote the earlier attempt.
+
 | Phase | Work and evidence |
 | --- | --- |
 | Startup | Attach to the owner's actual adapter before initialization. Discover the API's separate adapter during its first metadata load. Its already running first public operation is explicitly unobserved. |

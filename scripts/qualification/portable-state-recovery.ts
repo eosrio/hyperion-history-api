@@ -24,6 +24,14 @@ import type {ProjectionBinding, ProjectionQuery} from '@eosrio/hyperion-sdk/proj
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
+export async function waitForRecoveryHeldHead(milliseconds: 10000,
+    clock: {now: () => number; pause: (ms: number) => Promise<unknown>} = {now: () => performance.now(), pause}) {
+    // A timer wakeup alone does not prove that the required monotonic interval elapsed.
+    const deadline = clock.now() + milliseconds;
+    for (let remaining = milliseconds; remaining > 0; remaining = deadline - clock.now()) {
+        await clock.pause(Math.ceil(remaining));
+    }
+}
 const point = (value: {blockNum: number; blockId: string}) => ({blockNum: value.blockNum, blockId: value.blockId});
 const describe = describePortableWorkerError;
 export interface RecoveryRunOptions {
@@ -486,7 +494,7 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
             if (measurementComparison) {
                 await measurementPhase('held-head');
                 const heldHeadStartedAt = Date.now(), heldHeadStartedMonotonicMs = performance.now();
-                await pause(options.heldHeadMs!);
+                await waitForRecoveryHeldHead(options.heldHeadMs!);
                 await measurementPhase('verification');
                 report.profiling.projectionMeasurements.heldHead = {startedAt: heldHeadStartedAt, endedAt: Date.now(),
                     elapsedMonotonicMs: performance.now() - heldHeadStartedMonotonicMs,
