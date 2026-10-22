@@ -1,0 +1,113 @@
+{
+  "head": "d95d797fc3de8c695e2817a2952eedebeb4b3241",
+  "runs": [
+    {
+      "runtime": "node22",
+      "mode": "count",
+      "argv": [
+        "systemd-run",
+        "--scope",
+        "--quiet",
+        "--unit=hyp45-p246-k252-node22-count-d95d797",
+        "--property=CPUQuota=600%",
+        "--property=MemoryMax=2G",
+        "--property=TasksMax=128",
+        "timeout",
+        "130",
+        "/tmp/hyp45-p246-20261021/runtimes/node-v22.23.3-linux-x64/bin/node",
+        "scripts/qualification/projection-validation-kernel.mjs",
+        "--mode",
+        "count",
+        "--out",
+        "/tmp/hyp45-p246-20261021/kernel252-d95d797-native/node22-count.json"
+      ],
+      "exitCode": 0,
+      "startedAt": 1792637511.1700747,
+      "endedAt": 1792637512.9391265
+    },
+    {
+      "runtime": "node22",
+      "mode": "timing",
+      "argv": [
+        "systemd-run",
+        "--scope",
+        "--quiet",
+        "--unit=hyp45-p246-k252-node22-timing-d95d797",
+        "--property=CPUQuota=600%",
+        "--property=MemoryMax=2G",
+        "--property=TasksMax=128",
+        "timeout",
+        "130",
+        "/tmp/hyp45-p246-20261021/runtimes/node-v22.23.3-linux-x64/bin/node",
+        "scripts/qualification/projection-validation-kernel.mjs",
+        "--mode",
+        "timing",
+        "--out",
+        "/tmp/hyp45-p246-20261021/kernel252-d95d797-native/node22-timing.json",
+        "--warmup",
+        "1",
+        "--iterations",
+        "1",
+        "--order",
+        "both"
+      ],
+      "exitCode": 0,
+      "startedAt": 1792637512.946315,
+      "endedAt": 1792637514.1628854
+    },
+    {
+      "runtime": "node24",
+      "mode": "count",
+      "argv": [
+        "systemd-run",
+        "--scope",
+        "--quiet",
+        "--unit=hyp45-p246-k252-node24-count-d95d797",
+        "--property=CPUQuota=600%",
+        "--property=MemoryMax=2G",
+        "--property=TasksMax=128",
+        "timeout",
+        "130",
+        "/tmp/hyp45-p246-20261021/runtimes/node-v24.19.0-linux-x64/bin/node",
+        "scripts/qualification/projection-validation-kernel.mjs",
+        "--mode",
+        "count",
+        "--out",
+        "/tmp/hyp45-p246-20261021/kernel252-d95d797-native/node24-count.json"
+      ],
+      "exitCode": 0,
+      "startedAt": 1792637514.164322,
+      "endedAt": 1792637515.8323638
+    },
+    {
+      "runtime": "node24",
+      "mode": "timing",
+      "argv": [
+        "systemd-run",
+        "--scope",
+        "--quiet",
+        "--unit=hyp45-p246-k252-node24-timing-d95d797",
+        "--property=CPUQuota=600%",
+        "--property=MemoryMax=2G",
+        "--property=TasksMax=128",
+        "timeout",
+        "130",
+        "/tmp/hyp45-p246-20261021/runtimes/node-v24.19.0-linux-x64/bin/node",
+        "scripts/qualification/projection-validation-kernel.mjs",
+        "--mode",
+        "timing",
+        "--out",
+        "/tmp/hyp45-p246-20261021/kernel252-d95d797-native/node24-timing.json",
+        "--warmup",
+        "1",
+        "--iterations",
+        "1",
+        "--order",
+        "both"
+      ],
+      "exitCode": 0,
+      "startedAt": 1792637515.8377006,
+      "endedAt": 1792637516.8537524
+    }
+  ]
+}

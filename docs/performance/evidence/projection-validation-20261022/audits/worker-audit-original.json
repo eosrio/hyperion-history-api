@@ -1,0 +1,481 @@
+{
+  "status": "independently-verified-captured-pilot",
+  "head": "d95d797fc3de8c695e2817a2952eedebeb4b3241",
+  "archiveSha256": "f71f1ca0040cd9b4e874b06146a92c73c9396855c8bfde6b84fa4288c942ee8b",
+  "archive": {
+    "members": 3396,
+    "regularFiles": 3381,
+    "bytes": 46044813,
+    "skippedLinks": [
+      {
+        "path": "h252-n24-mon-coff-pilot1/logs/hyp-p191-2d7e3d604c9a/deserialization_errors.log",
+        "target": "2026-10-22T02-54-13.214Z_ds_err_1_1.log"
+      }
+    ],
+    "regularManifestSha256": "db6cc6a527a95f19408c843df23aa14d72c5f9b23435120057e24a44206164a5"
+  },
+  "emissionInventory": {
+    "preRunMembers": 607,
+    "runProfileMembers": 513,
+    "matchingOverlap": 510,
+    "limitation": "607-file emitted payload not present in pilot archive; payload byte verification is pending separately."
+  },
+  "sourceReauditReceiptCount": 1484,
+  "phaseStartTables": [
+    {
+      "role": "projection",
+      "phase": "startup",
+      "kind": "operation",
+      "entries": 1,
+      "failed": 0,
+      "inclusiveElapsedNs": 42683347
+    },
+    {
+      "role": "projection",
+      "phase": "prefix",
+      "kind": "operation",
+      "entries": 4682,
+      "failed": 0,
+      "inclusiveElapsedNs": 201205885238
+    },
+    {
+      "role": "projection",
+      "phase": "prefix",
+      "kind": "load",
+      "entries": 5547,
+      "failed": 0,
+      "inclusiveElapsedNs": 157663517221,
+      "undoDescriptorVisits": 758609,
+      "unavailableCardinality": 0
+    },
+    {
+      "role": "projection",
+      "phase": "prefix",
+      "kind": "validation",
+      "entries": 5547,
+      "failed": 0,
+      "inclusiveElapsedNs": 100469078921,
+      "undoDescriptorVisits": 758609,
+      "unavailableCardinality": 0
+    },
+    {
+      "role": "projection",
+      "phase": "prefix",
+      "kind": "metadata-read",
+      "entries": 5553,
+      "failed": 0,
+      "inclusiveElapsedNs": 57021769916
+    },
+    {
+      "role": "projection",
+      "phase": "prefix",
+      "kind": "transaction",
+      "entries": 864,
+      "failed": 0,
+      "inclusiveElapsedNs": 47225027045
+    },
+    {
+      "role": "projection",
+      "phase": "prefix",
+      "kind": "transaction-start",
+      "entries": 864,
+      "failed": 0,
+      "inclusiveElapsedNs": 9601808
+    },
+    {
+      "role": "projection",
+      "phase": "prefix",
+      "kind": "commit",
+      "entries": 864,
+      "failed": 0,
+      "inclusiveElapsedNs": 5583236747
+    },
+    {
+      "role": "projection",
+      "phase": "held-head",
+      "kind": "operation",
+      "entries": 144,
+      "failed": 0,
+      "inclusiveElapsedNs": 14140632576
+    },
+    {
+      "role": "projection",
+      "phase": "held-head",
+      "kind": "load",
+      "entries": 144,
+      "failed": 0,
+      "inclusiveElapsedNs": 13919562990,
+      "undoDescriptorVisits": 36864,
+      "unavailableCardinality": 0
+    },
+    {
+      "role": "projection",
+      "phase": "held-head",
+      "kind": "validation",
+      "entries": 144,
+      "failed": 0,
+      "inclusiveElapsedNs": 4964218925,
+      "undoDescriptorVisits": 36864,
+      "unavailableCardinality": 0
+    },
+    {
+      "role": "projection",
+      "phase": "held-head",
+      "kind": "metadata-read",
+      "entries": 144,
+      "failed": 0,
+      "inclusiveElapsedNs": 8950282786
+    },
+    {
+      "role": "projection",
+      "phase": "verification",
+      "kind": "operation",
+      "entries": 186,
+      "failed": 0,
+      "inclusiveElapsedNs": 20450501491
+    },
+    {
+      "role": "projection",
+      "phase": "verification",
+      "kind": "load",
+      "entries": 186,
+      "failed": 0,
+      "inclusiveElapsedNs": 20082397413,
+      "undoDescriptorVisits": 47616,
+      "unavailableCardinality": 0
+    },
+    {
+      "role": "projection",
+      "phase": "verification",
+      "kind": "validation",
+      "entries": 186,
+      "failed": 0,
+      "inclusiveElapsedNs": 7235484366,
+      "undoDescriptorVisits": 47616,
+      "unavailableCardinality": 0
+    },
+    {
+      "role": "projection",
+      "phase": "verification",
+      "kind": "metadata-read",
+      "entries": 186,
+      "failed": 0,
+      "inclusiveElapsedNs": 12839347509
+    },
+    {
+      "role": "api",
+      "phase": "startup",
+      "kind": "load",
+      "entries": 1,
+      "failed": 1,
+      "inclusiveElapsedNs": 3388829,
+      "undoDescriptorVisits": 0,
+      "unavailableCardinality": 1
+    },
+    {
+      "role": "api",
+      "phase": "startup",
+      "kind": "metadata-read",
+      "entries": 1,
+      "failed": 0,
+      "inclusiveElapsedNs": 3129573
+    },
+    {
+      "role": "api",
+      "phase": "prefix",
+      "kind": "operation",
+      "entries": 15,
+      "failed": 0,
+      "inclusiveElapsedNs": 1008300354
+    },
+    {
+      "role": "api",
+      "phase": "prefix",
+      "kind": "load",
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 987658058,
+      "undoDescriptorVisits": 5376,
+      "unavailableCardinality": 0
+    },
+    {
+      "role": "api",
+      "phase": "prefix",
+      "kind": "validation",
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 929202835,
+      "undoDescriptorVisits": 5376,
+      "unavailableCardinality": 0
+    },
+    {
+      "role": "api",
+      "phase": "prefix",
+      "kind": "metadata-read",
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 57214118
+    },
+    {
+      "role": "api",
+      "phase": "prefix",
+      "kind": "transaction",
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 168452234
+    },
+    {
+      "role": "api",
+      "phase": "prefix",
+      "kind": "transaction-start",
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 229154
+    },
+    {
+      "role": "api",
+      "phase": "prefix",
+      "kind": "commit",
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 6391425
+    },
+    {
+      "role": "api",
+      "phase": "verification",
+      "kind": "operation",
+      "entries": 15,
+      "failed": 0,
+      "inclusiveElapsedNs": 939910219
+    },
+    {
+      "role": "api",
+      "phase": "verification",
+      "kind": "load",
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 922284843,
+      "undoDescriptorVisits": 5376,
+      "unavailableCardinality": 0
+    },
+    {
+      "role": "api",
+      "phase": "verification",
+      "kind": "validation",
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 865695746,
+      "undoDescriptorVisits": 5376,
+      "unavailableCardinality": 0
+    },
+    {
+      "role": "api",
+      "phase": "verification",
+      "kind": "metadata-read",
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 55598032
+    },
+    {
+      "role": "api",
+      "phase": "verification",
+      "kind": "transaction",
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 136630811
+    },
+    {
+      "role": "api",
+      "phase": "verification",
+      "kind": "transaction-start",
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 137591
+    },
+    {
+      "role": "api",
+      "phase": "verification",
+      "kind": "commit",
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 3417043
+    }
+  ],
+  "operationStartTables": [
+    {
+      "role": "projection",
+      "phase": "startup",
+      "operations": {
+        "initialize": 1
+      }
+    },
+    {
+      "role": "projection",
+      "phase": "prefix",
+      "operations": {
+        "apply": 864,
+        "initialize": 5,
+        "markIncomplete": 887,
+        "recovery": 1631,
+        "retainedCheckpoints": 1295
+      }
+    },
+    {
+      "role": "projection",
+      "phase": "held-head",
+      "operations": {
+        "recovery": 72,
+        "retainedCheckpoints": 72
+      }
+    },
+    {
+      "role": "projection",
+      "phase": "verification",
+      "operations": {
+        "recovery": 93,
+        "retainedCheckpoints": 93
+      }
+    },
+    {
+      "role": "api",
+      "phase": "startup",
+      "operations": {}
+    },
+    {
+      "role": "api",
+      "phase": "prefix",
+      "operations": {
+        "open": 12,
+        "query": 3
+      }
+    },
+    {
+      "role": "api",
+      "phase": "verification",
+      "operations": {
+        "open": 12,
+        "query": 3
+      }
+    }
+  ],
+  "processes": [
+    {
+      "role": "projection",
+      "pid": 2029126,
+      "parentPid": 2028999,
+      "spans": 32897,
+      "sessionHooks": {
+        "maximum": 50000,
+        "weakReferenceSlots": 7655,
+        "limitExceeded": 0
+      },
+      "clockOrigin": {
+        "monotonicOriginNs": "7283724483279790",
+        "wallBefore": 1792637653524,
+        "wallAfter": 1792637653524,
+        "units": "Span and phase ns are relative to this process.hrtime.bigint origin; wall stamps only bracket its observation.",
+        "limitation": "No V8-profiler epoch equivalence or exact cross-process clock alignment is inferred."
+      },
+      "lastResourceSample": {
+        "monotonicMs": 388686.084642,
+        "reason": "exit",
+        "cpuTotalMicros": {
+          "user": 301317269,
+          "system": 25281897
+        },
+        "memory": {
+          "rss": 503218176,
+          "heapTotal": 259252224,
+          "heapUsed": 134509488,
+          "external": 57523216,
+          "arrayBuffers": 54140166
+        },
+        "resourceUsage": {
+          "userCPUTime": 301317294,
+          "systemCPUTime": 25281897,
+          "maxRSS": 522624,
+          "sharedMemorySize": 0,
+          "unsharedDataSize": 0,
+          "unsharedStackSize": 0,
+          "minorPageFault": 554037,
+          "majorPageFault": 0,
+          "swappedOut": 0,
+          "fsRead": 0,
+          "fsWrite": 19824,
+          "ipcSent": 0,
+          "ipcReceived": 0,
+          "signalsCount": 0,
+          "voluntaryContextSwitches": 894451,
+          "involuntaryContextSwitches": 1664
+        }
+      }
+    },
+    {
+      "role": "api",
+      "pid": 2029005,
+      "parentPid": 2026500,
+      "spans": 219,
+      "sessionHooks": {
+        "maximum": 50000,
+        "weakReferenceSlots": 43,
+        "limitExceeded": 0
+      },
+      "clockOrigin": {
+        "monotonicOriginNs": "7283723225925544",
+        "wallBefore": 1792637652267,
+        "wallAfter": 1792637652267,
+        "units": "Span and phase ns are relative to this process.hrtime.bigint origin; wall stamps only bracket its observation.",
+        "limitation": "No V8-profiler epoch equivalence or exact cross-process clock alignment is inferred."
+      },
+      "lastResourceSample": {
+        "monotonicMs": 390129.553098,
+        "reason": "exit",
+        "cpuTotalMicros": {
+          "user": 5866617,
+          "system": 884771
+        },
+        "memory": {
+          "rss": 239452160,
+          "heapTotal": 114061312,
+          "heapUsed": 83819272,
+          "external": 46333745,
+          "arrayBuffers": 42024271
+        },
+        "resourceUsage": {
+          "userCPUTime": 5866650,
+          "systemCPUTime": 884771,
+          "maxRSS": 242356,
+          "sharedMemorySize": 0,
+          "unsharedDataSize": 0,
+          "unsharedStackSize": 0,
+          "minorPageFault": 74161,
+          "majorPageFault": 0,
+          "swappedOut": 0,
+          "fsRead": 8,
+          "fsWrite": 1440,
+          "ipcSent": 0,
+          "ipcReceived": 0,
+          "signalsCount": 0,
+          "voluntaryContextSwitches": 48942,
+          "involuntaryContextSwitches": 49
+        }
+      }
+    }
+  ],
+  "stableElapsedMs": 351375,
+  "heldHead": {
+    "startedAt": 1792638018054,
+    "endedAt": 1792638028056,
+    "elapsedMonotonicMs": 10001.750445000012,
+    "note": "No HTTP queries or new source releases during the fixed-head wait; phase barriers add separately recorded time."
+  },
+  "sourceFramesAcknowledged": 288,
+  "rawBrokerAcknowledged": 288,
+  "correctness": "Both captured stages have three equal empty physical/API projections, paired revisions, checkpoint288, undo256, floor32; all captured cleanup results pass.",
+  "limitations": [
+    "One pilot, no overhead estimate or runtime/capacity comparison.",
+    "Descriptor counts/load wall spans/validation elapsed/processCPU have distinct units and overlapping scopes.",
+    "Source re-audit equality and source/emission identities are captured receipts; original1484 source files are not present in this pilot archive.",
+    "Full fork/restart/gap/finality and live Wire consensus remain unqualified."
+  ]
+}

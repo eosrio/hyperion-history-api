@@ -6,3 +6,11 @@ docs/performance/evidence/projection-rollback-20261021/** -text
 docs/performance/evidence/portable-state-prefix-20261022/** -text
 # The full generated inventory is audited by member hashes rather than a text diff.
 docs/performance/evidence/portable-state-prefix-20261022/manifest.json -diff
+tests/fixtures/projection-validation/** -text
+tests/fixtures/projection-validation/metadata.json.gz.base64 -diff
+# Preserve captured CRLF bytes while keeping ordinary whitespace checks active.
+docs/performance/evidence/projection-validation-20261022/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+docs/performance/evidence/projection-validation-20261022/manifest.json -diff
+docs/performance/evidence/projection-validation-20261022/kernel/*-count.json -diff
+tests/fixtures/native-cpu-profile/** -text
+tests/fixtures/native-cpu-profile/*.gz.base64 -diff

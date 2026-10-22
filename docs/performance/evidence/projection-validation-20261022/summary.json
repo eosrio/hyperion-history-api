@@ -1,0 +1,393 @@
+{
+  "comparisonCampaign": {
+    "conditions": 4,
+    "freshRunsPerCondition": 5,
+    "status": "pending; pilot pair excluded",
+    "total": 20
+  },
+  "head": "d95d797fc3de8c695e2817a2952eedebeb4b3241",
+  "issue": 252,
+  "kernelReports": 4,
+  "limits": [
+    "One sequential pilot pair on a shared host is not an overhead estimate, improvement or capacity result.",
+    "Native Node22/24 count/timing reports validate plumbing, not a runtime ranking.",
+    "No populated-row, original full #246 recovery/finality, live Wire consensus or release qualification.",
+    "Exact 612 measured emission/kernel witness files are retained after pilots against pre-run607 pins and five pre-pilot witnesses; two TS source witnesses were retrieved later from immutable Git blobs.",
+    "Source re-audit1484 equality receipts are retained; the original1484 source files, historical kernel-origin archives, full dependency trees and native runtime binaries are not included."
+  ],
+  "pilots": [
+    {
+      "case": "h252-n24-mon-coff-pilot1",
+      "cpuSampling": false,
+      "firstReleaseToStableMs": 351375,
+      "heldHead": {
+        "elapsedMonotonicMs": 10001.750445000012,
+        "endedAt": 1792638028056,
+        "note": "No HTTP queries or new source releases during the fixed-head wait; phase barriers add separately recorded time.",
+        "startedAt": 1792638018054
+      },
+      "measurements": true
+    },
+    {
+      "case": "h252-n24-moff-coff-pilot1",
+      "cpuSampling": false,
+      "firstReleaseToStableMs": 360694,
+      "heldHead": {
+        "elapsedMonotonicMs": 10000.536456000002,
+        "endedAt": 1792638548149,
+        "note": "No HTTP queries or new source releases during the fixed-head wait; phase barriers add separately recorded time.",
+        "startedAt": 1792638538149
+      },
+      "measurements": false
+    }
+  ],
+  "schemaVersion": 1,
+  "state": {
+    "checkpoint": 288,
+    "coverageFloor": 32,
+    "replayReceipts": 256,
+    "rowsPerProjection": 0,
+    "selectedProjections": 3,
+    "undoDescriptors": 256
+  },
+  "status": "pilot-and-kernel-plumbing-only",
+  "units": "Operation/load counts, descriptor visits, overlapping elapsed spans, sampled CPU and process CPU are distinct. Nested scopes are not additive.",
+  "workerOperationStartTables": [
+    {
+      "operations": {
+        "initialize": 1
+      },
+      "phase": "startup",
+      "role": "projection"
+    },
+    {
+      "operations": {
+        "apply": 864,
+        "initialize": 5,
+        "markIncomplete": 887,
+        "recovery": 1631,
+        "retainedCheckpoints": 1295
+      },
+      "phase": "prefix",
+      "role": "projection"
+    },
+    {
+      "operations": {
+        "recovery": 72,
+        "retainedCheckpoints": 72
+      },
+      "phase": "held-head",
+      "role": "projection"
+    },
+    {
+      "operations": {
+        "recovery": 93,
+        "retainedCheckpoints": 93
+      },
+      "phase": "verification",
+      "role": "projection"
+    },
+    {
+      "operations": {},
+      "phase": "startup",
+      "role": "api"
+    },
+    {
+      "operations": {
+        "open": 12,
+        "query": 3
+      },
+      "phase": "prefix",
+      "role": "api"
+    },
+    {
+      "operations": {
+        "open": 12,
+        "query": 3
+      },
+      "phase": "verification",
+      "role": "api"
+    }
+  ],
+  "workerPhaseStartTables": [
+    {
+      "entries": 1,
+      "failed": 0,
+      "inclusiveElapsedNs": 42683347,
+      "kind": "operation",
+      "phase": "startup",
+      "role": "projection"
+    },
+    {
+      "entries": 4682,
+      "failed": 0,
+      "inclusiveElapsedNs": 201205885238,
+      "kind": "operation",
+      "phase": "prefix",
+      "role": "projection"
+    },
+    {
+      "entries": 5547,
+      "failed": 0,
+      "inclusiveElapsedNs": 157663517221,
+      "kind": "load",
+      "phase": "prefix",
+      "role": "projection",
+      "unavailableCardinality": 0,
+      "undoDescriptorVisits": 758609
+    },
+    {
+      "entries": 5547,
+      "failed": 0,
+      "inclusiveElapsedNs": 100469078921,
+      "kind": "validation",
+      "phase": "prefix",
+      "role": "projection",
+      "unavailableCardinality": 0,
+      "undoDescriptorVisits": 758609
+    },
+    {
+      "entries": 5553,
+      "failed": 0,
+      "inclusiveElapsedNs": 57021769916,
+      "kind": "metadata-read",
+      "phase": "prefix",
+      "role": "projection"
+    },
+    {
+      "entries": 864,
+      "failed": 0,
+      "inclusiveElapsedNs": 47225027045,
+      "kind": "transaction",
+      "phase": "prefix",
+      "role": "projection"
+    },
+    {
+      "entries": 864,
+      "failed": 0,
+      "inclusiveElapsedNs": 9601808,
+      "kind": "transaction-start",
+      "phase": "prefix",
+      "role": "projection"
+    },
+    {
+      "entries": 864,
+      "failed": 0,
+      "inclusiveElapsedNs": 5583236747,
+      "kind": "commit",
+      "phase": "prefix",
+      "role": "projection"
+    },
+    {
+      "entries": 144,
+      "failed": 0,
+      "inclusiveElapsedNs": 14140632576,
+      "kind": "operation",
+      "phase": "held-head",
+      "role": "projection"
+    },
+    {
+      "entries": 144,
+      "failed": 0,
+      "inclusiveElapsedNs": 13919562990,
+      "kind": "load",
+      "phase": "held-head",
+      "role": "projection",
+      "unavailableCardinality": 0,
+      "undoDescriptorVisits": 36864
+    },
+    {
+      "entries": 144,
+      "failed": 0,
+      "inclusiveElapsedNs": 4964218925,
+      "kind": "validation",
+      "phase": "held-head",
+      "role": "projection",
+      "unavailableCardinality": 0,
+      "undoDescriptorVisits": 36864
+    },
+    {
+      "entries": 144,
+      "failed": 0,
+      "inclusiveElapsedNs": 8950282786,
+      "kind": "metadata-read",
+      "phase": "held-head",
+      "role": "projection"
+    },
+    {
+      "entries": 186,
+      "failed": 0,
+      "inclusiveElapsedNs": 20450501491,
+      "kind": "operation",
+      "phase": "verification",
+      "role": "projection"
+    },
+    {
+      "entries": 186,
+      "failed": 0,
+      "inclusiveElapsedNs": 20082397413,
+      "kind": "load",
+      "phase": "verification",
+      "role": "projection",
+      "unavailableCardinality": 0,
+      "undoDescriptorVisits": 47616
+    },
+    {
+      "entries": 186,
+      "failed": 0,
+      "inclusiveElapsedNs": 7235484366,
+      "kind": "validation",
+      "phase": "verification",
+      "role": "projection",
+      "unavailableCardinality": 0,
+      "undoDescriptorVisits": 47616
+    },
+    {
+      "entries": 186,
+      "failed": 0,
+      "inclusiveElapsedNs": 12839347509,
+      "kind": "metadata-read",
+      "phase": "verification",
+      "role": "projection"
+    },
+    {
+      "entries": 1,
+      "failed": 1,
+      "inclusiveElapsedNs": 3388829,
+      "kind": "load",
+      "phase": "startup",
+      "role": "api",
+      "unavailableCardinality": 1,
+      "undoDescriptorVisits": 0
+    },
+    {
+      "entries": 1,
+      "failed": 0,
+      "inclusiveElapsedNs": 3129573,
+      "kind": "metadata-read",
+      "phase": "startup",
+      "role": "api"
+    },
+    {
+      "entries": 15,
+      "failed": 0,
+      "inclusiveElapsedNs": 1008300354,
+      "kind": "operation",
+      "phase": "prefix",
+      "role": "api"
+    },
+    {
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 987658058,
+      "kind": "load",
+      "phase": "prefix",
+      "role": "api",
+      "unavailableCardinality": 0,
+      "undoDescriptorVisits": 5376
+    },
+    {
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 929202835,
+      "kind": "validation",
+      "phase": "prefix",
+      "role": "api",
+      "unavailableCardinality": 0,
+      "undoDescriptorVisits": 5376
+    },
+    {
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 57214118,
+      "kind": "metadata-read",
+      "phase": "prefix",
+      "role": "api"
+    },
+    {
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 168452234,
+      "kind": "transaction",
+      "phase": "prefix",
+      "role": "api"
+    },
+    {
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 229154,
+      "kind": "transaction-start",
+      "phase": "prefix",
+      "role": "api"
+    },
+    {
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 6391425,
+      "kind": "commit",
+      "phase": "prefix",
+      "role": "api"
+    },
+    {
+      "entries": 15,
+      "failed": 0,
+      "inclusiveElapsedNs": 939910219,
+      "kind": "operation",
+      "phase": "verification",
+      "role": "api"
+    },
+    {
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 922284843,
+      "kind": "load",
+      "phase": "verification",
+      "role": "api",
+      "unavailableCardinality": 0,
+      "undoDescriptorVisits": 5376
+    },
+    {
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 865695746,
+      "kind": "validation",
+      "phase": "verification",
+      "role": "api",
+      "unavailableCardinality": 0,
+      "undoDescriptorVisits": 5376
+    },
+    {
+      "entries": 21,
+      "failed": 0,
+      "inclusiveElapsedNs": 55598032,
+      "kind": "metadata-read",
+      "phase": "verification",
+      "role": "api"
+    },
+    {
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 136630811,
+      "kind": "transaction",
+      "phase": "verification",
+      "role": "api"
+    },
+    {
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 137591,
+      "kind": "transaction-start",
+      "phase": "verification",
+      "role": "api"
+    },
+    {
+      "entries": 3,
+      "failed": 0,
+      "inclusiveElapsedNs": 3417043,
+      "kind": "commit",
+      "phase": "verification",
+      "role": "api"
+    }
+  ],
+  "workerPilots": 2
+}

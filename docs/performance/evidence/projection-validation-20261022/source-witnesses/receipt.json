@@ -1,0 +1,20 @@
+{
+  "head": "d95d797fc3de8c695e2817a2952eedebeb4b3241",
+  "files": [
+    {
+      "path": "packages/backend-mongodb/src/contract.ts",
+      "bytes": 8853,
+      "sha256": "72e6e9ce92e55547a1c5d123bb9f03cc1d6f7bee9af585bc69591a72800e5b2b",
+      "source": "Exact Git blob d95d797fc3de8c695e2817a2952eedebeb4b3241:packages/backend-mongodb/src/contract.ts",
+      "attestation": "Byte-matches the actual source receipt captured before native kernel measurement."
+    },
+    {
+      "path": "packages/backend-mongodb/src/rollback-contract.ts",
+      "bytes": 11003,
+      "sha256": "600fee8e7928bd822bf5689e8f63fd0eefb34efd0599675796813f5e97c5bb1b",
+      "source": "Exact Git blob d95d797fc3de8c695e2817a2952eedebeb4b3241:packages/backend-mongodb/src/rollback-contract.ts",
+      "attestation": "Byte-matches the actual source receipt captured before native kernel measurement."
+    }
+  ],
+  "limitation": "Retrieved after pilots from immutable Git blobs; no H1 checkout/service changes."
+}

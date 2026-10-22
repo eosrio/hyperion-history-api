@@ -1,0 +1,25 @@
+{
+  "head": "d95d797fc3de8c695e2817a2952eedebeb4b3241",
+  "case": "h252-n24-mon-coff-pilot1",
+  "services": "svc252-n24-mon-coff-pilot1",
+  "steps": [
+    {
+      "name": "create",
+      "exitCode": 0,
+      "startedAt": 1792637589.4945493,
+      "endedAt": 1792637627.6201022
+    },
+    {
+      "name": "run",
+      "exitCode": 0,
+      "startedAt": 1792637627.620989,
+      "endedAt": 1792638053.714924
+    },
+    {
+      "name": "archive",
+      "exitCode": 0,
+      "startedAt": 1792638053.7156928,
+      "endedAt": 1792638064.9392831
+    }
+  ]
+}

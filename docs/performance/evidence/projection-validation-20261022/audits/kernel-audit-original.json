@@ -1,0 +1,179 @@
+{
+  "allProvenanceObjectsAgreeAcrossFourReports": true,
+  "availabilityTotals": {
+    "node22-available": 254,
+    "node22-missing": 175,
+    "node24-available": 254,
+    "node24-missing": 175
+  },
+  "calibration": [
+    {
+      "calibrationWindows": 9,
+      "captures": 33,
+      "jsEncoderCalibration": [
+        0,
+        1,
+        3
+      ],
+      "knownCallSequence": [
+        0,
+        1,
+        3,
+        0
+      ],
+      "nativeEncodingCallsAvailable": false,
+      "recursiveEntries": [
+        5,
+        15
+      ],
+      "runtime": "node22",
+      "validInputWindows": 24,
+      "zeroWindowEntriesMayBeAbsent": true
+    },
+    {
+      "calibrationWindows": 9,
+      "captures": 33,
+      "jsEncoderCalibration": [
+        0,
+        1,
+        3
+      ],
+      "knownCallSequence": [
+        0,
+        1,
+        3,
+        0
+      ],
+      "nativeEncodingCallsAvailable": false,
+      "recursiveEntries": [
+        5,
+        15
+      ],
+      "runtime": "node24",
+      "validInputWindows": 24,
+      "zeroWindowEntriesMayBeAbsent": true
+    }
+  ],
+  "countMetricsPerRow": 13,
+  "countRows": 12,
+  "countsSha256": "3e75c4e5f03164d941752d6d4ae92666c1590bb1986c3346232ac14d3120c25a",
+  "crossRuntimeMetricsChecked": 429,
+  "findings": [],
+  "fixtureSha256": "9e222f65e2ec9e6e3724c5147fb91a2cbaaee556fd707279c1bc7609e9a1e269",
+  "harnessSha256": "080301c3739d83d98c0f14f32bf8c5a0821f4c03bdd77b008f0df314e8c15caa",
+  "inputs": {
+    "node22-count.json": {
+      "bytes": 630936,
+      "invocationExitCode": 0,
+      "logSha256": "454afaeab14757bb6cdd76ffe33306c72852e79762c1b81acbf136711de15721",
+      "negativeCases": 13,
+      "positiveCases": 12,
+      "runtime": {
+        "arch": "x64",
+        "binarySha256": "fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48",
+        "execArgv": [],
+        "executable": "/tmp/hyp45-p246-20261021/runtimes/node-v22.23.3-linux-x64/bin/node",
+        "nodeOptionsPresent": false,
+        "platform": "linux",
+        "v8": "12.4.254.21-node.57",
+        "version": "v22.23.3"
+      },
+      "sha256": "d513341457a858ca4025a5e0cefaab330a6f7190d54e1627d90516525dbe185a"
+    },
+    "node22-timing.json": {
+      "bytes": 46979,
+      "invocationExitCode": 0,
+      "logSha256": "b88d30d7573ea3e7b5f296c03265ae7bff48cf461de98bba373b38558ddd4251",
+      "negativeCases": 13,
+      "positiveCases": 12,
+      "runtime": {
+        "arch": "x64",
+        "binarySha256": "fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48",
+        "execArgv": [],
+        "executable": "/tmp/hyp45-p246-20261021/runtimes/node-v22.23.3-linux-x64/bin/node",
+        "nodeOptionsPresent": false,
+        "platform": "linux",
+        "v8": "12.4.254.21-node.57",
+        "version": "v22.23.3"
+      },
+      "sha256": "4308b3f23ca731ebf5e5f60b76b6f3928ac4a68f1d56bded0106b48675978fa7"
+    },
+    "node24-count.json": {
+      "bytes": 630988,
+      "invocationExitCode": 0,
+      "logSha256": "576d69bc78b57ae5adb26abc8fc8d4286308e8421dbe63a91d46aee84fe1303c",
+      "negativeCases": 13,
+      "positiveCases": 12,
+      "runtime": {
+        "arch": "x64",
+        "binarySha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+        "execArgv": [],
+        "executable": "/tmp/hyp45-p246-20261021/runtimes/node-v24.19.0-linux-x64/bin/node",
+        "nodeOptionsPresent": false,
+        "platform": "linux",
+        "v8": "13.6.233.17-node.51",
+        "version": "v24.19.0"
+      },
+      "sha256": "462d0688c3924dc0e8c1d0c2b9dab51e90bd18b5e939282fa5e43ace9de8bd87"
+    },
+    "node24-timing.json": {
+      "bytes": 46772,
+      "invocationExitCode": 0,
+      "logSha256": "f19bc5f352f3ee84d4b9d94ac8b9963fef19f9d7256d0014eb64a8fa1f218340",
+      "negativeCases": 13,
+      "positiveCases": 12,
+      "runtime": {
+        "arch": "x64",
+        "binarySha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12",
+        "execArgv": [],
+        "executable": "/tmp/hyp45-p246-20261021/runtimes/node-v24.19.0-linux-x64/bin/node",
+        "nodeOptionsPresent": false,
+        "platform": "linux",
+        "v8": "13.6.233.17-node.51",
+        "version": "v24.19.0"
+      },
+      "sha256": "4fea13b786db6f7ab5f4d364a425eef5cc1e69f95ec0b323539533f9b5668ba6"
+    }
+  },
+  "invocationsSha256": "21ee16580849ef2b97f4a5dbf33370ca94bd2d4bd19c4f9e955e9c393aa6c226",
+  "jsonAndBsonInputsIndependentlyReconstructed": 12,
+  "limits": [
+    "No H1 or service access; actual executable pins are cross-checked against retained remote preflight/invocation records, not reexecuted by this audit.",
+    "MongoDB/BSON nested-resolution identities are retained module/package receipts and harness identity assertions; dependency library bytes are not included in the original auxiliary archive. Independent JSON-subset BSON reconstruction matches all twelve reported byte hashes.",
+    "Negative-control input hashes and rejection records are checked against exact committed code; validators are not reexecuted by this evidence audit.",
+    "Counter multiplicity is not CPU weighting, elapsed time, actual-worker call frequency or a production bottleneck conclusion.",
+    "One timing iteration per pass and direction is plumbing evidence only; forward/reverse passes are not independent repetitions, runtime rankings, benefits or quantified overhead."
+  ],
+  "negativeInputHashesIndependentlyReconstructed": 13,
+  "originArchivesIndependentlyRehashed": true,
+  "originSha256": "b55332ee9b86aee69c0b3c04bb113a42495f594f649f5da6288df884dab50bfb",
+  "originalMetadataAndThreeCodePinsIndependentlyVerified": true,
+  "preparationReceiptSha256": "892cc8508135f6fc3f898f77d9bd4c668c1149b56f9bd37f2c74846f35285b4a",
+  "schemaVersion": 1,
+  "sourceHead": "d95d797fc3de8c695e2817a2952eedebeb4b3241",
+  "status": "verified",
+  "timingChecks": [
+    {
+      "gcClippingVerified": true,
+      "gcRecords": 49,
+      "interpretation": "Plumbing only; no timing rank or benefit inference.",
+      "iterations": 1,
+      "order": "both",
+      "preciseCoverageRequested": false,
+      "rows": 24,
+      "runtime": "node22",
+      "warmup": 1
+    },
+    {
+      "gcClippingVerified": true,
+      "gcRecords": 48,
+      "interpretation": "Plumbing only; no timing rank or benefit inference.",
+      "iterations": 1,
+      "order": "both",
+      "preciseCoverageRequested": false,
+      "rows": 24,
+      "runtime": "node24",
+      "warmup": 1
+    }
+  ]
+}

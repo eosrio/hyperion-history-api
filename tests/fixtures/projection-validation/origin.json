@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "kind": "exact-public-engineering-metadata",
+  "source": {
+    "hapiCommit": "03dd3e9758473bc563bf8d7cbbbc0557232f17dc",
+    "hapiDocumentedAt": "2fbbf4a475d9e45df7eebb9611d7466c72f08809",
+    "sdkCommit": "ae1f670016d6f4a63b42eb08563ee9d544867915"
+  },
+  "publicArchive": {
+    "file": "raw-evidence.tar.gz",
+    "bytes": 24543244,
+    "sha256": "1e272c1f9c9bd10db3be5bcd11c67b98dbcef1f0f5fec53ef328d56720cef6b3"
+  },
+  "originalArchive": {
+    "file": "profile24-prefix288-cpu-on-full.tar.gz",
+    "bytes": 6807971,
+    "sha256": "aac8bcb2a5f3f46bc33eec4359caabfa12b61cfed528b9d9c46b25f041f166dc"
+  },
+  "stage": {
+    "path": "cases/profile24-prefix288-cpu-on/stages/profile-prefix-288.json",
+    "bytes": 644465,
+    "sha256": "1cc987491552f7467cf11b0d6bd67e4329bb81edcce91ee1ad51da1c5ec53325",
+    "selection": "/physical/0/metadata"
+  },
+  "metadata": {
+    "file": "metadata.json.gz.base64",
+    "encoding": "gzip+base64",
+    "serialization": "UTF-8 JSON.stringify of selected metadata, no final newline",
+    "bytes": 140154,
+    "sha256": "d80a496e6121157a98f85b1fa6c5a3416a7c282f79b85806bd4a2407fc0c2272",
+    "gzipBytes": 44986,
+    "gzipSha256": "68ed8a3fee3a2906a097c18d5cd36d722c455837e515b6066c30d56b76a83915"
+  },
+  "emissionArchive": {
+    "file": "verified-emission-03dd3e9758473bc563bf8d7cbbbc0557232f17dc.tar.gz",
+    "bytes": 890259,
+    "sha256": "25aad00b3766db8918259a6907b99ab26d765b96e4c4d6fec2e958605e29a093",
+    "pinReceiptSha256": "007c0e22cc0ada543972ecce0619bf19a966135afa0611937323a430bd95d3af",
+    "members": 602
+  },
+  "code": [
+    {
+      "path": "packages/backend-mongodb/dist/contract.js",
+      "bytes": 7247,
+      "sha256": "a550fa7e3e0237192c871c8aa53cee871762e13c0a1386aa1971fd463b4e6e6c"
+    },
+    {
+      "path": "packages/backend-mongodb/dist/rollback-contract.js",
+      "bytes": 9011,
+      "sha256": "06d97fe507a3dc68cb3b11c4d2382f078ca6e184f3123985d9e170d62a447baf"
+    },
+    {
+      "path": "node_modules/@eosrio/hyperion-sdk/dist/projection.js",
+      "bytes": 34734,
+      "sha256": "8eb0e934f7762f3d4849eb58fe83fa01c828e9d22c10def4fa09975b034f0591"
+    }
+  ],
+  "limits": {
+    "nodeAuthenticatedFork": false,
+    "emptyTargetRows": true,
+    "fullRecoveryScenario": false,
+    "case": "profile24-prefix288-cpu-on"
+  }
+}

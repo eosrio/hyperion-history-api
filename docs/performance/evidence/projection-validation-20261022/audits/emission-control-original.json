@@ -1,0 +1,59 @@
+{
+  "status": "independent-emission-and-control-subset-verified",
+  "emission": {
+    "archiveSha256": "1b5c31062319386fc981d184f7904a0a9f9b7276bb76d166e737d9c15e3275e6",
+    "preRunManifestSha256": "f151a3ba11dd9c024229733f2c07742f688ec139bf35c9f9aef2af21d5fb0763",
+    "retainedAfterPilotsAt": 1792638700.2051597,
+    "preRunPreparedAt": 1792637371.0692828,
+    "payloadFiles": 612,
+    "payloadBytes": 4563569,
+    "matchingPreRunFiles": 607,
+    "matchingAdditionalPrePilotKernelWitnesses": 5,
+    "kernelReports": [
+      {
+        "path": "node22-count.json",
+        "sha256": "d513341457a858ca4025a5e0cefaab330a6f7190d54e1627d90516525dbe185a"
+      },
+      {
+        "path": "node22-timing.json",
+        "sha256": "4308b3f23ca731ebf5e5f60b76b6f3928ac4a68f1d56bded0106b48675978fa7"
+      },
+      {
+        "path": "node24-count.json",
+        "sha256": "462d0688c3924dc0e8c1d0c2b9dab51e90bd18b5e939282fa5e43ace9de8bd87"
+      },
+      {
+        "path": "node24-timing.json",
+        "sha256": "4fea13b786db6f7ab5f4d364a425eef5cc1e69f95ec0b323539533f9b5668ba6"
+      }
+    ],
+    "limitation": "Payload was retained after both pilots and independently byte-checked against the unchanged pre-run607manifest and pre-pilot kernel witness receipts; full dependency trees/runtime binaries are not archived."
+  },
+  "control": {
+    "archiveSha256": "a5cf1466dacc3b96cb94784d63151d1da853936e38fb84aefd4c21435335cb05",
+    "archiveMembers": 3398,
+    "regularFiles": 3383,
+    "bytes": 36518923,
+    "skippedLinks": [
+      {
+        "path": "h252-n24-moff-coff-pilot1/logs/hyp-p191-b776d77e8301/deserialization_errors.log",
+        "target": "2026-10-22T03-02-45.488Z_ds_err_1_32.log"
+      }
+    ],
+    "status": "profiled-prefix",
+    "sourceFramesAcknowledged": 288,
+    "stableElapsedMs": 360694,
+    "sourceReceiptHashCount": 1484,
+    "sameRuntimePlanInputOracleAndAllProfilePins": true,
+    "emptyObserverOutputAndNoCpuProfile": true,
+    "stagesAndCleanupVerified": true
+  },
+  "pairPostflight": {
+    "sevenProtectedPidStartTicksUnchanged": true,
+    "runtimeHashesUnchanged": true,
+    "planHashUnchanged": true,
+    "containers": 0,
+    "activeScopes": 0
+  },
+  "limitation": "One measured pilot and one counter-off control, no repeated-control overhead or capacity conclusion."
+}
