@@ -89,13 +89,14 @@ export function advanceProjectionMeasurementPhase(child, identity, phase, timeou
     const requestId = randomUUID(), expected = {...identity, requestId, phase};
     const sentAt = Date.now(), sentMonotonicNs = process.hrtime.bigint().toString();
     return new Promise((resolve, reject) => {
-        let settled = false;
+        let settled = false, retryTimer, sendAttempts = 0;
         const finish = (error, acknowledgment) => {
-            if (settled) return; settled = true; clearTimeout(timer);
+            if (settled) return; settled = true; clearTimeout(timer); clearTimeout(retryTimer);
             child.off('message', onMessage); child.off('exit', onExit); child.off('error', onError);
             if (error) reject(error);
             else resolve({sentAt, sentMonotonicNs, receivedAt: Date.now(),
-                receivedMonotonicNs: process.hrtime.bigint().toString(), acknowledgment});
+                receivedMonotonicNs: process.hrtime.bigint().toString(), sendAttempts,
+                retryIntervalMS: phase === 'prefix' ? 100 : null, acknowledgment});
         };
         const onMessage = message => {
             if (message?.event !== 'qualifier_projection_phase_ack' || message.requestId !== requestId) return;
@@ -105,7 +106,15 @@ export function advanceProjectionMeasurementPhase(child, identity, phase, timeou
         const onError = error => finish(error);
         const timer = setTimeout(() => finish(new Error('Measurement phase acknowledgment timed out: ' + phase)), timeoutMS);
         child.on('message', onMessage); child.once('exit', onExit); child.once('error', onError);
-        try {child.send({event: 'qualifier_projection_phase', requestId, phase}, error => {if (error) finish(error);});}
-        catch (error) {finish(error);}
+        const transmit = () => {
+            if (settled) return;
+            sendAttempts++;
+            try {child.send({event: 'qualifier_projection_phase', requestId, phase}, error => {if (error) finish(error);});}
+            catch (error) {finish(error);}
+            // Earlier preloads already listen to IPC. They can consume a prefix before this listener exists.
+            // Exact duplicate requests are idempotent in the actual observer; the original deadline still applies.
+            if (!settled && phase === 'prefix') retryTimer = setTimeout(transmit, 100);
+        };
+        transmit();
     });
 }

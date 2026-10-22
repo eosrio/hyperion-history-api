@@ -39,6 +39,11 @@ seconds for its actual adapter attachment before changing phase or acknowledging
 both process acknowledgments arrive. Delayed startup is accepted within these bounds; a missing attachment
 fails the measurement without releasing the source.
 
+Earlier preloads already listen to IPC and can consume a prefix before the measurement listener registers.
+The parent retries that initial request every 100 ms with the same request ID within its original ten-second
+deadline. Exact duplicate requests advance the observer once. Receipts retain attempt count and retry interval;
+later phases do not retry. Native IPC controls include an existing earlier listener and delayed registration.
+
 The preload decorates real instances only in the owned fixture. Production source and emitted modules are
 unchanged. It preserves receivers, argument objects, results, thrown errors and original promises. Added
 settlement handlers and async context tracking have overhead and affect rejection bookkeeping; this is

@@ -1,5 +1,10 @@
 import {expect, test} from 'bun:test';
 import {EventEmitter} from 'node:events';
+import {execFileSync} from 'node:child_process';
+import {mkdtempSync, writeFileSync, unlinkSync, rmdirSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {advanceProjectionMeasurementPhase, assertProjectionPhaseAck, assertProjectionMeasurementReport} from '../../scripts/qualification/projection-validation-phase.mjs';
 import {createProjectionValidationObserver} from '../../scripts/qualification/projection-validation-observer.mjs';
 
@@ -70,6 +75,69 @@ test('a delayed actual adapter keeps the prefix barrier and source release pendi
     expect(observer.report().errors).toEqual([]);
     for (const event of ['message', 'exit', 'error']) expect(child.listenerCount(event)).toBe(0);
     observer.restore();
+});
+
+test('prefix retries preserve one request identity and stop after acknowledgment', async () => {
+    const messages: any[] = [];
+    const child = new Child((value, message, callback) => {
+        messages.push(message);
+        if (messages.length === 2) value.emit('message', {...ack, requestId: message.requestId});
+        callback();
+    });
+    const result: any = await advanceProjectionMeasurementPhase(child, identity, 'prefix', 1000);
+    expect(result.sendAttempts).toBe(2); expect(result.retryIntervalMS).toBe(100);
+    expect(messages[1]).toEqual(messages[0]);
+    await new Promise(resolve => setTimeout(resolve, 120)); expect(messages).toHaveLength(2);
+    for (const event of ['message', 'exit', 'error']) expect(child.listenerCount(event)).toBe(0);
+});
+
+const native = process.env.HYPERION_NATIVE_NODE ?? process.env.HYPERION_TEST_NODE ?? 'node';
+let nativeVersion = ''; try {nativeVersion = execFileSync(native, ['--version'], {encoding: 'utf8', timeout: 5000}).trim();} catch {}
+test('native IPC with an existing earlier listener recovers a consumed prefix exactly once', {skip: !/^v(?:22|24)\./.test(nativeVersion), timeout: 20000}, () => {
+    const directory = mkdtempSync(join(tmpdir(), 'hapi252-early-ipc-')), childFile = join(directory, 'late-observer.mjs');
+    const observerURL = new URL('../../scripts/qualification/projection-validation-observer.mjs', import.meta.url).href;
+    const phaseURL = new URL('../../scripts/qualification/projection-validation-phase.mjs', import.meta.url).href;
+    writeFileSync(childFile, `
+        import {setTimeout as delay} from 'node:timers/promises';
+        let early = 0, firstPhase;
+        const consumed = new Promise(resolve => {firstPhase = resolve;});
+        process.on('message', message => {if (message?.event === 'qualifier_projection_phase') {early++; firstPhase();}});
+        process.send({event: 'early-listener-ready'});
+        await consumed;
+        await delay(150);
+        const {createProjectionValidationObserver} = await import(${JSON.stringify(observerURL)});
+        const observer = createProjectionValidationObserver({identity: {pid: process.pid, parentPid: process.ppid, role: 'api', node: process.version}});
+        const adapter = {validate: x => x, metadata: {async findOne() {}}, client: {startSession() {}},
+            async transaction() {}, async initialize() {}, async open() {}, async recovery() {}, async retainedCheckpoints() {},
+            async markIncomplete() {}, async apply() {}, async rollback() {}, async query() {}};
+        observer.attachAdapter(adapter, 'api-discovery');
+        process.on('message', message => {if (message?.event === 'qualifier_projection_phase')
+            void observer.handlePhase(message).then(ack => process.send({...ack, early, phases: observer.report().phases.length}));});
+    `);
+    const code = `
+        import assert from 'node:assert/strict'; import {fork} from 'node:child_process'; import {once} from 'node:events';
+        import {advanceProjectionMeasurementPhase} from ${JSON.stringify(phaseURL)};
+        const child = fork(new URL(${JSON.stringify(pathToFileURL(childFile).href)}), [], {execArgv: [], silent: true});
+        let releases = 0;
+        try {
+            const [ready] = await Promise.race([once(child, 'message'), once(child, 'exit').then(() => {throw Error('IPC child exited before ready');})]);
+            assert.equal(ready.event, 'early-listener-ready');
+            const receipt = await advanceProjectionMeasurementPhase(child, {pid: child.pid, parentPid: process.pid, role: 'api'}, 'prefix', 5000);
+            releases++; assert.equal(receipt.acknowledgment.phases, 1); assert.ok(receipt.acknowledgment.early >= 2);
+            assert.ok(receipt.sendAttempts >= 2 && receipt.sendAttempts <= 50); assert.equal(releases, 1);
+            console.log(JSON.stringify({node: process.version, releases, phases: receipt.acknowledgment.phases, sendAttempts: receipt.sendAttempts}));
+        } finally {
+            if (child.exitCode === null && child.signalCode === null) {
+                const exited = once(child, 'exit'); if (child.connected) child.disconnect();
+                const [code, signal] = await exited; assert.equal(code, 0); assert.equal(signal, null);
+            } else {assert.equal(child.exitCode, 0); assert.equal(child.signalCode, null);}
+        }
+    `;
+    try {
+        const output = JSON.parse(execFileSync(native, ['--input-type=module', '-e', code], {encoding: 'utf8', timeout: 15000}));
+        expect(output.node).toBe(nativeVersion); expect(output.releases).toBe(1); expect(output.phases).toBe(1);
+        expect(output.sendAttempts).toBeGreaterThanOrEqual(2);
+    } finally {unlinkSync(childFile); rmdirSync(directory);}
 });
 
 test('phase barriers reject foreign ownership, invalid phases and excessive waits before sending', () => {
