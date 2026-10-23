@@ -1,6 +1,7 @@
 # These artifacts are checked by byte digest on Windows and Linux.
 tests/unit/fixtures/wire-host/receipts.json text eol=lf
 docs/performance/evidence/protocol-adapter-20261019/observation.json text eol=lf
+docs/performance/evidence/wire-worker-20261020/* -text
 docs/performance/evidence/portable-state-worker-20261021/** -text
 docs/performance/evidence/projection-rollback-20261021/** -text
 docs/performance/evidence/native-wire-worker-20261022/** -text

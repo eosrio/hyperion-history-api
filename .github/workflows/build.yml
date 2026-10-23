@@ -36,6 +36,8 @@ jobs:
         run: node --test tests/native/stream-filter-parity.test.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
+      - name: Check retained Wire source and replay credits with native Node
+        run: node --experimental-strip-types scripts/qualification/check-wire-replay-fixture.mjs
       - name: Check portable state source and fixture ownership guards
         run: python3 tests/fixtures/portable-state-worker/test_helpers.py
       - name: Verify Elasticsearch evidence checksums
@@ -78,6 +80,9 @@ jobs:
         run: sha256sum -c SHA256SUMS
       - name: Verify action source admission evidence checksums
         working-directory: docs/performance/evidence/action-source-admission-20261020
+        run: sha256sum -c SHA256SUMS
+      - name: Verify captured Wire worker evidence checksums
+        working-directory: docs/performance/evidence/wire-worker-20261020
         run: sha256sum -c SHA256SUMS
       - name: Verify protocol adapter observation checksum
         working-directory: docs/performance/evidence/protocol-adapter-20261019
