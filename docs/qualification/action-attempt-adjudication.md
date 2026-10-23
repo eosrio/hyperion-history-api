@@ -61,6 +61,15 @@ that bypassed the emitted client's drain failed this case; the original emitted 
 This joins the actual Wire callback to the existing scope/supervisor contract with controlled I/O;
 it does not qualify a live retained-proof failure, broker settlement or full fork recovery.
 
+Two further managed original MainDS cases hold or fail the end-message transport after the
+fresh durable disposition and original ACK. While the end is held, the parent retains the
+physical attempt and rejects a copied request as end authority; only release of the original
+message permits association. When all three bounded end sends fail, the durable result and
+ACK remain observable but the parent has no quiescent end. Only the actual native child exit
+produces an unresolved exit observation, with unknown root/ACK outcome and no association.
+Both cases pass with native Node 22/24. These controlled transport faults extend the same-attempt
+matrix; they do not establish live broker settlement or full source/fork qualification.
+
 The replay fixture separately bounds eight concurrent SHIP sockets and 32 retained session records.
 Normal API health checks open status sockets after their 60-second cache expires, so closed probes
 must not consume concurrent capacity for the entire 15-minute run. Native Node tests exercise the

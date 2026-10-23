@@ -28,8 +28,11 @@ const managedOriginalMainHeldWrite = mode === 'managed-original-main-held-write'
 const managedOriginalMainFailedWrite = mode === 'managed-original-main-failed-write';
 const managedOriginalMainAckThrows = mode === 'managed-original-main-ack-throws';
 const managedOriginalMainHeldOperation = mode === 'managed-original-main-held-operation';
+const managedOriginalMainHeldEnd = mode === 'managed-original-main-held-end';
+const managedOriginalMainFailedEnd = mode === 'managed-original-main-failed-end';
 const managedOriginalMain = mode === 'managed-original-main' || managedOriginalMainHeldWrite
-    || managedOriginalMainFailedWrite || managedOriginalMainAckThrows || managedOriginalMainHeldOperation,
+    || managedOriginalMainFailedWrite || managedOriginalMainAckThrows || managedOriginalMainHeldOperation
+    || managedOriginalMainHeldEnd || managedOriginalMainFailedEnd,
     managedOriginalNoEffect = mode === 'managed-original-ds',
     managedOriginalContract = mode === 'managed-original-contract',
     managedOriginalHandoffHeldConfirm = mode === 'managed-original-handoff-held-confirm',
@@ -48,16 +51,36 @@ const managedWriteReleased = new Promise(resolve => {releaseManagedWrite = resol
 const managedConfirmReleased = new Promise(resolve => {releaseManagedConfirm = resolve;});
 const managedDrainReleased = new Promise(resolve => {releaseManagedDrain = resolve;});
 const managedOperationReleased = new Promise(resolve => {releaseManagedOperation = resolve;});
+const heldManagedEnds = [];
+let managedEndReleased = false, managedEndSendFailures = 0;
 if (managedOriginal) process.on('message', message => {
     if (message?.event === 'qualification_done') finishManaged();
     if (message?.event === 'qualification_release_write') releaseManagedWrite();
     if (message?.event === 'qualification_release_confirm') releaseManagedConfirm();
     if (message?.event === 'qualification_release_drain') releaseManagedDrain();
     if (message?.event === 'qualification_release_operation') releaseManagedOperation();
+    if (message?.event === 'qualification_release_end') {
+        managedEndReleased = true;
+        for (const {event, callback} of heldManagedEnds.splice(0)) previousSend.call(process, event, callback);
+    }
 });
 process.send = (event, callback) => {
-    if (managedOriginal && event?.event === 'worker_attempt_request')
+    if (managedOriginal && event?.event === 'worker_attempt_request') {
+        if (event.payload?.operation === 'end' && managedOriginalMainHeldEnd && !managedEndReleased) {
+            assert(heldManagedEnds.length < 3, 'original end hold must retain only the bounded request attempts');
+            heldManagedEnds.push({event, callback});
+            previousSend.call(process, {event: 'qualification_end_held', request: event});
+            return true;
+        }
+        if (event.payload?.operation === 'end' && managedOriginalMainFailedEnd) {
+            managedEndSendFailures++;
+            assert(managedEndSendFailures <= 3);
+            previousSend.call(process, {event: 'qualification_end_send_failed', request: event});
+            queueMicrotask(() => callback?.(new Error('constructed original end send failure')));
+            return true;
+        }
         return previousSend.call(process, event, callback);
+    }
     events.push(event);
     if (event.event === 'protocol_abi_prepared') draining = coordinator.drain();
     callback?.(null); return true;
@@ -343,6 +366,14 @@ try {
         delete memory.faults.beforeWrite;
         previousSend.call(process, {event: 'qualification_write_failed', originalAckCount: mainConsumer.acked.length,
             failedWrites: failedManagedWrites, retainedAttemptRecords: records().length,
+            originalFrameSha256: hash(genesisFrame)});
+        await managedFinished;
+    } else if (managedOriginalMainFailedEnd) {
+        await assert.rejects(prepare(genesisFrame), /constructed original end send failure/);
+        assert.equal(sourceAckChecks.length, 1); assert.equal(mainConsumer.acked.length, 1);
+        assert.equal(records().length, 1); assert.equal(managedEndSendFailures, 3);
+        previousSend.call(process, {event: 'qualification_end_failed', originalAckCount: mainConsumer.acked.length,
+            retainedAttemptRecords: records().length, failedEndSends: managedEndSendFailures,
             originalFrameSha256: hash(genesisFrame)});
         await managedFinished;
     } else if (managedOriginalMainAckThrows) {
