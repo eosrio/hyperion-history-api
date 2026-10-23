@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {replayStreamHistory} from '../../build/api/helpers/functions.js';
+import {createProtocolStreamScope, withProtocolProofRequest} from '../../build/api/helpers/protocol-proof-request.js';
 
 const request = () => ({code: 'eosio.token', table: 'accounts', scope: 'alice', payer: '',
     start_from: 100, read_until: 101, ignore_live: true,
@@ -66,5 +67,20 @@ test('a delivery rejection ends only its history operation and clears its cursor
     const result = await replayStreamHistory(fastify, peer, 'request-a', request(), 'delta');
     assert.deepEqual(result, {status: false, error: 'bounded delivery unavailable'});
     assert.deepEqual(cleared, ['owned-scroll']);
+    assert.equal(peer.connection.listenerCount('disconnect'), 0);
+});
+
+test('a delivery connection disconnect cancels its active canonical proof operation', async () => {
+    const peer = delivery(), proof = createProtocolStreamScope([peer.connection]);
+    let proofSignal;
+    const running = withProtocolProofRequest(proof.scope, options => {
+        proofSignal = options.signal;
+        return new Promise(() => {});
+    });
+    peer.connection.connected = false;
+    peer.connection.emit('disconnect');
+    await assert.rejects(running, /ABI proof request was cancelled/);
+    assert.equal(proofSignal.aborted, true);
+    proof.dispose();
     assert.equal(peer.connection.listenerCount('disconnect'), 0);
 });

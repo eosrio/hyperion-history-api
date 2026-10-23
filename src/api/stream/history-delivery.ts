@@ -2,12 +2,13 @@
 export interface StreamConnection {
     readonly id: string;
     readonly connected: boolean;
-    once?(event: 'disconnect', listener: () => void): unknown;
-    removeListener?(event: 'disconnect', listener: () => void): unknown;
+    once(event: 'disconnect', listener: () => void): unknown;
+    removeListener(event: 'disconnect', listener: () => void): unknown;
 }
 
 export interface HistoryStart {
     readonly requestId: string;
+    /** First matching hit, not the request's resolved inclusive replay anchor. */
     readonly firstBlock: number;
     readonly totalResults: number;
 }
