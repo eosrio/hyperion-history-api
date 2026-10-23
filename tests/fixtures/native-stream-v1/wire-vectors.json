@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "exact uint64 and arbitrary contract JSON",
+      "valid": true,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "hello",
+      "valid": true,
+      "text": "{\"type\":\"hello\",\"version\":1,\"chain_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"connection_id\":\"1\",\"heartbeat_interval_ms\":15000}"
+    },
+    {
+      "name": "numeric identifier",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":1,\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "overflowing uint64",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"18446744073709551616\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "leading zero",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"01\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "negative uint64",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"-1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "numeric uint64 metadata",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":9007199254740992,\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "empty data frame",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[]}"
+    },
+    {
+      "name": "fractional block",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":1.5,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "zero block",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":0,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "invalid block hash",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"fake\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "unknown data mode",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"other\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "zero identifier",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"0\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "compound delta identity",
+      "valid": true,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"primary_key\":\"account:340282366920938463463374607431768211455\",\"data\":{\"present\":false}}}]}"
+    },
+    {
+      "name": "receipt precision",
+      "valid": true,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"receipt\":[\"receipt\",{\"global_sequence\":\"18446744073709551615\",\"recv_sequence\":\"0\",\"auth_sequence\":[{\"account\":\"eosio\",\"sequence\":\"18446744073709551615\"}]}]}}]}"
+    },
+    {
+      "name": "numeric receipt precision",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"receipts\":[{\"recv_sequence\":9007199254740992}]}}]}"
+    },
+    {
+      "name": "malformed JSON",
+      "valid": false,
+      "text": "{\"type\":"
+    },
+    {
+      "name": "unknown message",
+      "valid": false,
+      "text": "{\"type\":\"mystery\"}"
+    },
+    {
+      "name": "unpaired error scope",
+      "valid": false,
+      "text": "{\"type\":\"error\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"code\":\"X\",\"message\":\"x\",\"retryable\":true}"
+    },
+    {
+      "name": "duplicate top level identity",
+      "valid": false,
+      "text": "{\"type\":\"pong\",\"id\":\"1\",\"id\":\"2\"}"
+    },
+    {
+      "name": "duplicate scope identity",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"stream_id\":\"2\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "binary hint does not make JSON numeric IDs safe",
+      "valid": false,
+      "text": "{\"type\":\"pong\",\"id\":18446744073709551615}"
+    },
+    {
+      "name": "uint64 zero heartbeat nonce",
+      "valid": true,
+      "text": "{\"type\":\"pong\",\"id\":\"0\"}"
+    },
+    {
+      "name": "trailing JSON document",
+      "valid": false,
+      "text": "{\"type\":\"pong\",\"id\":\"1\"} {}"
+    }
+  ]
+}

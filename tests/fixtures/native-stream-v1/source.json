@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/eosrio/hyperion-stream-client",
+  "commit": "bd74a84f1110653b555c85e6a058d3777eb42d71",
+  "path": "conformance/v1/wire-vectors.json",
+  "sha256": "0edc775b4e7fdd949d34a6bff92bc36886b248f542c9dfe69811add2656c9475",
+  "bytes": 9307,
+  "license": "MIT"
+}

@@ -8,3 +8,4 @@ docs/performance/evidence/projection-rollback-20261021/** -text
 docs/performance/evidence/native-wire-worker-20261022/** -text
 docs/performance/evidence/native-proof-reads-20261022/** -text
 docs/qualification/evidence/worker-attempt-quiescence/** -text
+tests/fixtures/native-stream-v1/wire-vectors.json -text
