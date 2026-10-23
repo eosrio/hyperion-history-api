@@ -23,16 +23,20 @@ const directory = mkdtempSync(join(tmpdir(), 'hyperion-attempt-worker-original-'
 const chain = 'handoff-worker-original', chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d', blockId = number => number.toString(16).padStart(64, '0');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const mode = process.argv[2] ?? 'lifecycle';
-const managedOriginalMain = mode === 'managed-original-main', managedOriginalNoEffect = mode === 'managed-original-ds',
+const managedOriginalMainHeldWrite = mode === 'managed-original-main-held-write';
+const managedOriginalMain = mode === 'managed-original-main' || managedOriginalMainHeldWrite,
+    managedOriginalNoEffect = mode === 'managed-original-ds',
     managedOriginalContract = mode === 'managed-original-contract', managedOriginalHandoff = mode === 'managed-original-handoff';
 const managedOriginalDs = managedOriginalNoEffect || managedOriginalContract || managedOriginalHandoff;
 const managedOriginal = managedOriginalMain || managedOriginalDs;
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
 let reader, coordinator, managedClient, snapshotPath, draining = Promise.resolve();
-let finishManaged;
+let finishManaged, releaseManagedWrite;
 const managedFinished = new Promise(resolve => {finishManaged = resolve;});
+const managedWriteReleased = new Promise(resolve => {releaseManagedWrite = resolve;});
 if (managedOriginal) process.on('message', message => {
     if (message?.event === 'qualification_done') finishManaged();
+    if (message?.event === 'qualification_release_write') releaseManagedWrite();
 });
 process.send = (event, callback) => {
     if (managedOriginal && event?.event === 'worker_attempt_request')
@@ -274,7 +278,21 @@ try {
         assert.deepEqual(rows[0].value.output, {kind: 'unresolved'}); sourceAckChecks.push(rows[0]);
         if (managedOriginalMain) previousSend.call(process, {event: 'qualification_ack', recordId: rows[0].id});
     };
+    if (managedOriginalMainHeldWrite) {
+        let heldOnce = false;
+        memory.faults.beforeWrite = async request => {
+            if (heldOnce || request.index !== admissionStore.index || request.document?.kind !== 'manifest'
+                || !request.document.bundle_id.startsWith('h45actionattempt1:')) return;
+            heldOnce = true;
+            assert.equal(mainConsumer.acked.length, 0);
+            previousSend.call(process, {event: 'qualification_write_held', originalAckCount: mainConsumer.acked.length});
+            await managedWriteReleased;
+            assert.equal(mainConsumer.acked.length, 0);
+            delete memory.faults.beforeWrite;
+        };
+    }
     const genesis = await prepare(readFileSync(join(sourceDir, 'block-000001.bin')));
+    if (managedOriginalMainHeldWrite) assert.equal(memory.faults.beforeWrite, undefined);
     assert.equal(sourceAckChecks.length, 1); assert.ok(genesis.admission.incomplete);
     assert.equal(sourceAckChecks[0].value.work.source.captureSha256, genesis.admission.source.captureSha256);
     mainConsumer.onAck = undefined;
