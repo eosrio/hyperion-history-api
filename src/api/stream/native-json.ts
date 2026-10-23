@@ -191,8 +191,7 @@ function exactReceipt(value: unknown): void {
 /** Validate known chain metadata only; contract values under data remain opaque JSON. */
 function exactMetadata(value: unknown): void {
     const record = object(value);
-    exactSequenceFields(record, ['global_sequence', 'recv_sequence', 'sequence']);
-    exactAuthorizationSequences(record);
+    exactSequenceFields(record, ['global_sequence']);
     if (record.receipt !== undefined && record.receipt !== null) {
         if (Array.isArray(record.receipt)) {
             if (record.receipt.length !== 2 || typeof record.receipt[0] !== 'string')

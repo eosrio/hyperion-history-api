@@ -95,7 +95,7 @@ test('present action receipt and authorization metadata must keep their source s
         {receipt: {auth_sequence: '18446744073709551615'}}, {receipt: {auth_sequence: null}},
         {receipt: {auth_sequence: [null]}}, {receipt: {auth_sequence: [['account', '1']]}},
         {receipt: ['action_receipt_v0', {recv_sequence: 1}]},
-        {receipts: [{auth_sequence: [{sequence: 9007199254740992}]}]}, {auth_sequence: 'invalid'}
+        {receipts: [{auth_sequence: [{sequence: 9007199254740992}]}]}
     ];
     for (const metadata of invalid) {
         const packet = parseNativeJson(vectors.cases[0].text);
@@ -112,6 +112,15 @@ test('receipt variants, grouped receipts and opaque contract JSON retain exact v
     assert.deepEqual(JSON.parse(encodeNativeServerPacket(packet)), packet);
     packet.records[0].payload.receipt = null;
     assert.deepEqual(JSON.parse(encodeNativeServerPacket(packet)), packet);
+});
+
+test('sequence source rules do not change unrelated root fields or numeric counts', () => {
+    const packet = parseNativeJson(vectors.cases[0].text);
+    Object.assign(packet.records[0].payload, {sequence: 7, recv_sequence: 8, auth_sequence: 'unrelated value',
+        count: 9, code_sequence: 10, abi_sequence: 11, action_ordinal: 12});
+    assert.deepEqual(JSON.parse(encodeNativeServerPacket(packet)), packet);
+    packet.records[0].payload.global_sequence = 7;
+    assert.throws(() => encodeNativeServerPacket(packet), /canonical decimal string/);
 });
 
 test('a data frame permits equal or increasing blocks and rejects descending blocks', () => {
