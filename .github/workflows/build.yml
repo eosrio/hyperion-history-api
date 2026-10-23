@@ -26,6 +26,8 @@ jobs:
           bun-version-file: .bun-version
       - run: npm run typecheck
       - run: npm run build
+      - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
+        run: node --test tests/native/stream-request-lifecycle.test.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check portable state source and fixture ownership guards

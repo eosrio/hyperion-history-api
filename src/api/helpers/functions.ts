@@ -27,6 +27,17 @@ const actionQueryFields = ['receiver', 'act', 'account'];
 
 const MAX_SCROLL_TIME_SEC = 120;
 
+function withStreamCancellation<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return operation;
+    signal.throwIfAborted();
+    return new Promise<T>((resolve, reject) => {
+        const abort = () => reject(signal.reason);
+        signal.addEventListener('abort', abort, {once: true});
+        operation.then(value => {signal.removeEventListener('abort', abort); resolve(value);},
+            error => {signal.removeEventListener('abort', abort); reject(error);});
+    });
+}
+
 export function getTotalValue(searchResponse: estypes.SearchResponse): number {
     if (searchResponse.hits.total) {
         if (typeof searchResponse.hits.total === 'number') {
@@ -89,10 +100,12 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
     socket: Socket,
     requestUUID: string,
     data: StreamTypeMap[T]["request"],
-    dataKind: T
+    dataKind: T,
+    signal?: AbortSignal
 ) {
     if (dataKind === 'delta') assertProtocolProjectionReady(fastify, 'row-history');
     if (dataKind === 'action') assertProtocolActionStreamReady(fastify, data as StreamActionsRequest);
+    signal?.throwIfAborted();
 
     // Elasticsearch query
     const search_body: BoolQuerySearchBody = {query: {bool: {must: []}}, sort: {block_num: 'asc'}};
@@ -183,10 +196,11 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
     // console.dir(esQuery, {depth: Infinity, colors: true});
     // console.dir(onDemandFilters);
 
-    const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
+    const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery, {signal});
     let pendingScrollId: estypes.ScrollId | undefined = init_response._scroll_id;
     let activeProofScope: ReturnType<typeof createProtocolStreamScope> | undefined;
     try {
+        signal?.throwIfAborted();
         if (dataKind === 'action') {
             assertCompleteActionSearch(init_response);
             normalizeActionSearchSources(init_response);
@@ -197,13 +211,6 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
         const scrollLimit = fastify.manager.config.api.stream_scroll_limit;
         if (scrollLimit && scrollLimit !== -1 && totalHits > scrollLimit) {
             const errorMsg = `Requested ${totalHits} ${dataKind}s, limit is ${scrollLimit}.`;
-            socket.emit('message', {
-                reqUUID: requestUUID,
-                type: `${dataKind}_trace`,
-                mode: 'history',
-                messages: [],
-                error: errorMsg
-            });
             return {status: false, error: errorMsg};
         }
 
@@ -222,6 +229,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
         let lastTransmittedBlock = 0;
         while (responseQueue.length) {
+            signal?.throwIfAborted();
             let filterCount = 0;
             const rp = responseQueue.shift();
 
@@ -239,6 +247,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                 counter += rp.hits.hits.length;
 
                 for (const doc of rp.hits.hits) {
+                    signal?.throwIfAborted();
                     let allow = false;
 
                     if (dataKind === 'action') {
@@ -287,7 +296,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                         try {
 
                             // Wait for 120 s
-                            const ackResponse = await socket
+                            const ackResponse = await withStreamCancellation(socket
                                 .timeout(MAX_SCROLL_TIME_SEC * 1000)
                                 .emitWithAck('message', {
                                     reqUUID: requestUUID,
@@ -295,13 +304,14 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                                     mode: 'history',
                                     messages,
                                     filtered: filterCount
-                                });
+                                }), signal);
 
                             if (ackResponse.status !== true) {
                                 hLog(`${dataKind}_trace scroll TIMEOUT`);
                                 return {status: ackResponse.status, error: ackResponse.error};
                             }
                         } catch (e: any) {
+                            if (signal?.aborted) throw signal.reason;
                             hLog(`${dataKind}_trace scroll NACK`, e);
                             return {status: false, error: e};
                         }
@@ -320,15 +330,16 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                     break;
                 }
 
+                signal?.throwIfAborted();
                 const next_response = await fastify.elastic.scroll({
                     scroll_id: rp._scroll_id ?? "",
                     scroll: `${MAX_SCROLL_TIME_SEC}s`
-                });
+                }, {signal});
                 responseQueue.push(next_response);
             }
 
             // TODO: Apply dynamic delay for request throttling
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await withStreamCancellation(new Promise(resolve => setTimeout(resolve, 200)), signal);
         }
 
         if (counter === 0) {
