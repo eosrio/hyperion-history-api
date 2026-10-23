@@ -5,6 +5,7 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 
 registerHooks({resolve(specifier,context,next){if(specifier.includes('node-abieos'))throw new Error('Wire imported the legacy addon');return next(specifier,context);}});
 const previous=process.cwd(),directory=mkdtempSync(join(tmpdir(),'hyperion-abi-frontier-'));
@@ -100,6 +101,7 @@ try {
         const wref=Object.assign(new EventEmitter(),{id:++workerId,isConnected:()=>true,send(message,callback){result.onIpcMessage(message);callback?.(null);}});
         currentMaster.workerMap.push({worker_id:wref.id,worker_role:'deserializer',wref});const acks=[];let received;
         result.ch={prefetch(){},consume(queue,callback){received=callback;},on(){},ack(message){acks.push(message.fields.deliveryTag);},nack(){throw new Error('Unexpected fixture NACK');},sendToQueue(){return true;}};
+        controlledAttemptLifecycle(result,'deserializer');
         process.env.worker_queue=chain+':live_blocks';result.initConsumer();delete process.env.worker_queue;
         return {worker:result,wref,acks,async consume(publication){activeDsSender=wref;received({...publication,fields:{deliveryTag:++deliveryTag}});await until(()=>result.consumerQueue.idle());activeDsSender=undefined;}};
     };

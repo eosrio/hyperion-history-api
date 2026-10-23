@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs" ]
+    branches: [ "main", "dev", "release/4.5", "fix/stream-client-compatibility-45", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions" ]
 
 jobs:
   build:
@@ -30,8 +30,14 @@ jobs:
           test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
       - run: npm run typecheck
       - run: npm run build
+      - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
+        run: node --test tests/native/stream-request-lifecycle.test.mjs
+      - name: Check history/live stream filters and selectors on Node ${{ matrix.node-version }}
+        run: node --test tests/native/stream-filter-parity.test.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
+      - name: Check retained Wire source and replay credits with native Node
+        run: node --experimental-strip-types scripts/qualification/check-wire-replay-fixture.mjs
       - name: Check portable state source and fixture ownership guards
         run: python3 tests/fixtures/portable-state-worker/test_helpers.py
       - name: Verify Elasticsearch evidence checksums
@@ -74,6 +80,9 @@ jobs:
         run: sha256sum -c SHA256SUMS
       - name: Verify action source admission evidence checksums
         working-directory: docs/performance/evidence/action-source-admission-20261020
+        run: sha256sum -c SHA256SUMS
+      - name: Verify captured Wire worker evidence checksums
+        working-directory: docs/performance/evidence/wire-worker-20261020
         run: sha256sum -c SHA256SUMS
       - name: Verify protocol adapter observation checksum
         working-directory: docs/performance/evidence/protocol-adapter-20261019

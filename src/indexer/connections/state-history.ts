@@ -94,29 +94,38 @@ export class StateHistorySocket {
         onConnected: () => void
     ) {
         debugLog(`Connecting to (${this.shipNode.label}) ${this.shipNode.url}...`);
-        this.ws = new WebSocket(this.shipNode.url, {
+        const ws = new WebSocket(this.shipNode.url, {
             perMessageDeflate: false,
             maxPayload: this.max_payload_mb * 1024 * 1024
         });
-        this.ws.on('open', () => {
+        this.ws = ws;
+        this.connected = false;
+        let closed = false;
+        const currentSocket = () => this.ws === ws && !closed;
+        ws.on('open', () => {
+            if (!currentSocket()) return;
             this.connected = true;
             hLog(`Websocket connected! | Using ${this.shipNode.label}: ${this.shipNode.url}`);
             if (onConnected) {
                 onConnected();
             }
         });
-        this.ws.on('error', (event: WebSocket.ErrorEvent) => {
+        ws.on('error', (event: WebSocket.ErrorEvent) => {
+            if (!currentSocket()) return;
             onError(event);
         });
-        this.ws.on('message', (data: WebSocket.MessageEvent) => onMessage(data));
-        this.ws.on('close', () => {
+        ws.on('message', (data: WebSocket.MessageEvent) => {if (currentSocket()) onMessage(data);});
+        ws.on('close', () => {
+            if (!currentSocket()) return;
+            closed = true;
             this.connected = false;
             hLog('Websocket disconnected!');
             if (this.retryOnDisconnect) {
                 onDisconnect();
             }
         });
-        this.ws.on('error', (err) => {
+        ws.on('error', (err) => {
+            if (!currentSocket()) return;
             hLog(`${this.shipNode.url} (${this.shipNode.label} :: ${err.message}`);
         });
     }

@@ -116,7 +116,14 @@ const hex64 = /^[0-9a-f]{64}$/i;
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const json = (value: unknown) => actionHistoryImmutableJson(value);
 const copy = <T>(value: T): T => JSON.parse(json(value));
-const fail = (message: string): never => {throw new ActionSourceInventoryError(message);};
+const pureValidationFailures = new WeakSet<Error>();
+export function isActionSourceValidationFailure(error: unknown): error is ActionSourceInventoryError {
+    return error instanceof ActionSourceInventoryError && pureValidationFailures.has(error);
+}
+export function actionSourceValidationFailure(message: string): ActionSourceInventoryError {
+    const error = new ActionSourceInventoryError(message); pureValidationFailures.add(error); return error;
+}
+const fail = (message: string): never => {throw actionSourceValidationFailure(message);};
 function requireValue(value: unknown, message: string): asserts value {if (!value) fail(message);}
 function object(value: unknown, message = 'Invalid source object'): ObjectValue {
     requireValue(value && typeof value === 'object' && !Array.isArray(value), message);
@@ -396,7 +403,7 @@ export function deriveProtocolActionOccurrences(traces: unknown): readonly Proto
         return freeze(inputs);
     } catch (error) {
         if (error instanceof ActionSourceInventoryError) throw error;
-        return fail('Invalid original protocol inputs: ' + (error instanceof Error ? error.message : String(error)));
+        throw new ActionSourceInventoryError('Invalid original protocol inputs: ' + (error instanceof Error ? error.message : String(error)));
     }
 }
 
@@ -463,7 +470,7 @@ export function deriveActionSourceInventory(original: ActionSourceInventoryInput
         return inventory;
     } catch (error) {
         if (error instanceof ActionSourceInventoryError) throw error;
-        return fail('Invalid source inventory input: ' + (error instanceof Error ? error.message : String(error)));
+        throw new ActionSourceInventoryError('Invalid source inventory input: ' + (error instanceof Error ? error.message : String(error)));
     }
 }
 
@@ -514,6 +521,6 @@ export function validateActionSourceTransactionOutput(inventory: ActionSourceInv
         return freeze(detached as Record<string, unknown>[]);
     } catch (error) {
         if (error instanceof ActionSourceInventoryError) throw error;
-        return fail('Invalid final source-bound output: ' + (error instanceof Error ? error.message : String(error)));
+        throw new ActionSourceInventoryError('Invalid final source-bound output: ' + (error instanceof Error ? error.message : String(error)));
     }
 }

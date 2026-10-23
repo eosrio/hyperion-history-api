@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 /** Synthetic protocol, actual coordinator/proof/parser/worker. No installed profile or transport qualification. */
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
@@ -69,7 +70,7 @@ try {
         [protocolSourceSelectionHeader]: fixture.selected.selectionId};
     const consume = async () => {
         const message = {content: Buffer.from(JSON.stringify(transaction)), properties: {headers}};
-        pool.captureProtocolActionDelivery(message, channel); await pool.processMessages([message]);
+        (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureProtocolActionDelivery(message, channel); await pool.processMessages([message]);
         assert.equal(acks.at(-1), message); return actions.slice(-4);
     };
     const complete = await consume();
@@ -107,7 +108,7 @@ try {
     // A native-aware canonical source cannot be downgraded to contract ABI decoding by omitting its capability.
     pool.protocol = {...fixture.provider, nativeActions: undefined};
     const markerStart = actions.length, missingCapability = {content: Buffer.from(JSON.stringify(transaction)), properties: {headers}};
-    pool.captureProtocolActionDelivery(missingCapability, channel); await pool.processMessages([missingCapability]);
+    (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureProtocolActionDelivery(missingCapability, channel); await pool.processMessages([missingCapability]);
     const markedRaw = actions.slice(markerStart); assert.equal(markedRaw.length, 6);
     assert(markedRaw.every(action => action.ds_error === true && typeof action.act.data === 'string'
         && action.protocol.error.code === 'native_capability_unavailable'));
@@ -117,7 +118,7 @@ try {
     cacheWait = new Promise(resolve => {releaseCache = resolve;});
     const ackBefore = acks.length;
     const message = {content: Buffer.from(JSON.stringify(transaction)), properties: {headers}};
-    pool.captureProtocolActionDelivery(message, channel);
+    (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureProtocolActionDelivery(message, channel);
     const lateCache = pool.processMessages([message]); await entered;
     await fixture.revoke(); releaseCache();
     await assert.rejects(lateCache, error => error.statusCode === 503);

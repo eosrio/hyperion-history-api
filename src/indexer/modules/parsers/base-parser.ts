@@ -211,7 +211,7 @@ export abstract class BaseParser {
             // console.dir(action, {depth: Infinity, colors: true});
 
             try {
-                await worker.common.attachActionExtras(worker, action);
+                await worker.common.attachActionExtras(worker.scopedHookWorker(), action);
             } catch (e: any) {
                 worker.noteActionHookFailure?.(e);
                 hLog('Failed to call attachActionExtras:', e instanceof Error ? e.message : String(e));
