@@ -70,3 +70,13 @@ it('reserves one closing promise before synchronous abort listeners can reenter 
     const outer = scope.closeAndDrain(); expect(inner).toBe(outer);
     expect(await inner).toBe(await outer);
 });
+
+it('retains the original scope in saved host helpers outside context and inside another attempt', async () => {
+    const first = new ProofConsumerScope('saved-helper-original'), second = new ProofConsumerScope('saved-helper-replacement');
+    let calls = 0, helper!: () => number;
+    await first.run(() => {helper = first.bindCallback(() => ++calls); expect(helper()).toBe(1);});
+    await first.closeAndDrain();
+    expect(() => helper()).toThrow('Original worker attempt');
+    await second.run(() => {expect(() => helper()).toThrow('Original worker attempt');});
+    await second.closeAndDrain(); expect(calls).toBe(1);
+});

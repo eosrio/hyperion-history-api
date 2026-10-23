@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
@@ -66,7 +67,7 @@ try {
         prev_block:{block_num:number-1,block_id:(number-1).toString(16).padStart(64,'0')},...changes}]));
     const publish=async content=>{reader.local_block_num=Number(reader.decodeShipResult(content)[1].this_block.block_num)-1;
         const before=publications.length;await reader.onMessage(content);assert.equal(publications.length,before+1);return publications.at(-1);};
-    const consume=delivery=>{main.captureProtocolSourceDelivery(delivery,main.ch);return main.mLoader.parser.parseMessage(main,[delivery]);};
+    const consume=delivery=>{(controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(delivery,main.ch);return main.mLoader.parser.parseMessage(main,[delivery]);};
     const selectedId=delivery=>delivery.properties.headers[header];
     const first=await publish(frame(100));
     const retained=await sources.readSelection(selectedId(first));

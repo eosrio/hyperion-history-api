@@ -116,6 +116,13 @@ export class ProtocolAbiProofReader {
         assertProofConsumerCapability(scope);
         return trackProofConsumerOperation(operation,scope);
     }
+    /** Private host capability check before adjacent source reads; it grants no fresh canonical authority. */
+    assertConsumerScope(view:ProtocolAbiProofView):void {
+        const issued=this.issued.get(view);
+        if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
+        assertProofConsumerCapability(issued.scope);
+        currentProofConsumerScope(this.options.requireAttemptScope);
+    }
     private sameProfile(value:unknown):boolean {try{return json(value)===json(this.profile);}catch{return false;}}
     private assertActive(signal?:AbortSignal):void {
         if(signal?.aborted)unavailable('proof_cancelled','ABI proof request was cancelled');

@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {createHash} from 'node:crypto';
@@ -82,7 +83,7 @@ try {
         return {...publications.at(-1), fields: {deliveryTag: publications.length}};
     };
     const consume = async content => {
-        const message = await publish(content); main.captureProtocolSourceDelivery(message, main.ch);
+        const message = await publish(content); (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(message, main.ch);
         await main.mLoader.parser.parseMessage(main, [message]); return message;
     };
     const originalBytes = Buffer.from(first);
@@ -259,7 +260,7 @@ try {
     main.protocol = {...main.protocol, nativeActions: originalNative};
 
     const staleFrame = frame('replaced_channel'), staleMessage = await publish(staleFrame), staleBefore = ack;
-    const oldChannel = main.ch; main.captureProtocolSourceDelivery(staleMessage, oldChannel);
+    const oldChannel = main.ch; (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(staleMessage, oldChannel);
     let release, enter; const entered = new Promise(r => {enter = r;}), held = new Promise(r => {release = r;});
     memory.faults.beforeWrite = async request => {if (request.index === nativeIndex && request.document.bundle_id.startsWith('h45natobs1:')) {enter(); await held;}};
     const pending = main.mLoader.parser.parseMessage(main, [staleMessage]);
@@ -290,7 +291,7 @@ try {
             throw new Error('Transient native durable manifest failure');
     };
     const failedWorker = await createWorker('obsolete'), cargoA = await publish(frame('cargo_a')), cargoB = await publish(frame('cargo_b'));
-    failedWorker.captureProtocolSourceDelivery(cargoA, failedWorker.ch); failedWorker.captureProtocolSourceDelivery(cargoB, failedWorker.ch);
+    (controlledAttemptLifecycle(failedWorker, 'deserializer'), failedWorker).captureProtocolSourceDelivery(cargoA, failedWorker.ch); (controlledAttemptLifecycle(failedWorker, 'deserializer'), failedWorker).captureProtocolSourceDelivery(cargoB, failedWorker.ch);
     let requestedExit;
     process.exit = code => {requestedExit = code;};
     void failedWorker.consumerQueue.push(cargoA).catch(() => {}); void failedWorker.consumerQueue.push(cargoB).catch(() => {});
@@ -301,7 +302,7 @@ try {
     assert.equal(failedWorker.consumerQueue.length(), 0); assert.deepEqual(settlements, []);
     clearFaults(); const replacement = await createWorker('replacement');
     const newA = {...cargoA, fields: {deliveryTag: 10001}}, newB = {...cargoB, fields: {deliveryTag: 10002}};
-    replacement.captureProtocolSourceDelivery(newA, replacement.ch); replacement.captureProtocolSourceDelivery(newB, replacement.ch);
+    (controlledAttemptLifecycle(replacement, 'deserializer'), replacement).captureProtocolSourceDelivery(newA, replacement.ch); (controlledAttemptLifecycle(replacement, 'deserializer'), replacement).captureProtocolSourceDelivery(newB, replacement.ch);
     await Promise.all([replacement.consumerQueue.push(newA), replacement.consumerQueue.push(newB)]);
     assert.deepEqual(settlements, ['replacement:10001', 'replacement:10002']);
     for (const message of [newA, newB]) assert.equal((await read(message)).record.observation.status, 'observed');

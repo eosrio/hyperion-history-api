@@ -38,8 +38,7 @@ Unmodified emitted Node22/24 code returns `proof_cancelled` with that read still
 scoped path cannot issue its local end until the held read actually settles. This does not
 qualify worker IPC, RabbitMQ, canonical source, Wire/Mongo production or runtime performance.
 
-The supervisor, actual worker role adapters, native/helper/cache fencing and complete qualification
-are subsequent vertical steps within this same issue; this first tracer is not issue completion.
+That first tracer remains historical evidence; it does not establish whole-worker qualification.
 
 ## Private IPC API
 
@@ -75,3 +74,48 @@ not a plugin sandbox or a cryptographic proof of arbitrary code behavior.
 Standalone fixtures must explicitly use `createControlledLocalAttemptClient(role)`. That mode
 never contacts a master and never issues a master-accepted end; it is controlled engineering only.
 The current API component tests do not establish actual production role integration.
+
+## Actual role wiring
+
+The master attaches the supervisor at each physical `cluster.fork`, before dispatching ordinary
+worker messages. Its listeners survive logical `wref` replacement and reused numeric IDs. Source
+replacement/revocation fences existing roots without waiting inside the canonical mutation lane.
+Retirement retains unresolved owners until their exact process exit. A non-draining fence requests
+supervised retirement; neither the deadline nor SIGTERM/SIGKILL invocation issues a normal end.
+
+`HyperionWorker` installs a managed client over the existing parent IPC for MainDS, DS and projection
+roles. Source/action consumer callbacks call `captureWorkerAttemptDelivery` before cargo enqueue.
+`runWorkerAttemptDelivery` waits for parent acceptance before invoking actual parser/DS work and
+verifies the original body/header digest again. Headers use a bounded native structured snapshot,
+which preserves broker-decoded byte/timestamp/undefined values instead of treating them as action
+JSON. No source/admission/trace ordinal is inferred at receipt. Verified associations are added with
+`bindWorkerAttempt`; quarantine and unknown-ordinal paths keep their narrower known fields.
+
+MainDS parser work and DS message work run once per physical delivery. Original ACK/NACK attempts,
+contract-incomplete handling and local cleanup stay inside that root. A broker redelivery requires
+a new physical receipt even when its original semantic/source/admission identity is unchanged.
+DS proof-bearing ABI/type/view/native cache memos clear between tracked deliveries. This changes
+their earlier cargo lifetime; independent same-input read-count comparison is required, and no
+throughput improvement is claimed. Pure default component helpers still have their original return
+contracts. Saved worker/common helpers retain the issuing root, including calls outside its async
+context or while another root runs.
+
+Projection initialization and each controller frame use separate managed roots. The frame binding
+retains projection/configuration binding, actual recovery checkpoint and subsequently verified
+source position. A frame fence prohibits new recovery I/O. Worker proof readers and retained source
+reads require the accepted root; API/source-query readers retain independent request lifetimes and
+the existing ancestry expiry. This passive record does not protect demand between projection
+attempts and is not a source-capacity reservation.
+
+Confirmed publication keeps the original callback and required buffer-drain lifecycle alive after
+the outer wait aborts, or until the exact original channel closes. Ordinary non-confirm helper sends
+track observable buffer backpressure without claiming a durable broker confirmation. Queued host
+callbacks retain their original root; detached work cannot acquire a later root by saving a helper.
+Already-dispatched remote work may finish. Local quiescence does not certify its semantic result.
+
+Existing component fixtures explicitly install a controlled local-only transport using
+`tests/unit/worker-attempt-fixture.mjs`. They produce no parent-accepted end. Their immediate controlled
+channels are augmented with event registration so a missing close/drain/confirm cannot be silently
+fabricated. Actual managed worker/IPC, retained original Wire inputs, projection isolation and cache
+counts are exercised by the separate issue286 qualification lane. Full integration/review remains
+required; this note does not activate #277 capacity, #225, #191 or release support.

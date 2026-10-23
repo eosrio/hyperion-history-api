@@ -21,7 +21,21 @@ import {inflateSync} from 'node:zlib';
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
 import { WorkerProfiler } from "../helpers/profiler.js";
 import {ActionSourceAdmissionStore} from '../history/action-source-admission.js';
-import {publishAdmittedAction, type ActionPublicationOwner} from '../history/action-confirmed-publication.js';
+import {publishAdmittedAction, bindActionPublicationOwnerToScope, type ActionPublicationOwner} from '../history/action-confirmed-publication.js';
+import {createHash, randomUUID} from 'node:crypto';
+import {serialize} from 'node:v8';
+import type {Message} from 'amqplib';
+import {actionHistoryImmutableJson} from '../history/action-history-manifest.js';
+import {WorkerAttemptClient, createControlledLocalAttemptClient, type WorkerAttempt} from '../protocol/worker-attempt-client.js';
+import type {WorkerAttemptBinding, WorkerAttemptKind, WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
+import {currentProofConsumerScope, assertProofConsumerCapability, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
+
+// Broker-decoded headers may contain bytes, timestamps or undefined fields, unlike portable action JSON.
+function workerAttemptHeadersSha256(headers: unknown): string {
+    const bytes = serialize(headers);
+    if (bytes.length > 64 * 1024) throw new Error('Worker attempt original header budget exhausted');
+    return createHash('sha256').update(bytes).digest('hex');
+}
 
 /** Exact stable sections; mutable head/LIB remain in the separately bound frame. */
 export function protocolSourceCapture(chainId: string, result: any, schemaJson: string) {
@@ -80,6 +94,119 @@ export abstract class HyperionWorker {
     configModule: ConfigurationModule;
     private actionAdmissionStore?: ActionSourceAdmissionStore;
     private readonly actionAdmissionOwners = new WeakMap<object, Channel>();
+    protected workerAttemptClient?: WorkerAttemptClient;
+    private workerAttemptDeliveries?: WeakMap<object, {handle: WorkerAttempt; payloadSha256: string; headersSha256: string; consumer: Channel}>;
+    private workerAttemptChannels?: WeakMap<object, string>;
+    private workerAttemptChannelListeners?: WeakSet<object>;
+
+    get workerAttemptScopeRequired(): boolean {return this.workerAttemptClient?.mode !== 'controlled-local-only';}
+    protected get tracksWorkerAttempts(): boolean {return !!this.workerAttemptClient || this.usesExtensionProtocol || this.actionSourceAdmissionEnabled;}
+    /** Explicit test/component transport only; never a master-accepted end or an environment bypass. */
+    installControlledAttemptLifecycle(role: WorkerAttemptRole): void {
+        if (this.workerAttemptClient?.mode === 'controlled-local-only' && this.workerAttemptClient.role === role) return;
+        this.configureWorkerAttemptLifecycle(createControlledLocalAttemptClient(role));
+    }
+    configureWorkerAttemptLifecycle(client: WorkerAttemptClient): void {
+        if (this.workerAttemptDeliveries) throw new Error('Cannot replace a worker lifecycle after physical receipt');
+        this.workerAttemptClient?.dispose(); this.workerAttemptClient = client;
+    }
+    private attemptClient(): WorkerAttemptClient {
+        if (!this.workerAttemptClient) throw new Error('Managed worker attempt lifecycle is not configured; standalone fixtures require explicit local-only setup');
+        return this.workerAttemptClient;
+    }
+    private attemptChannelId(channel: object | undefined): string | null {
+        if (!channel) return null;
+        this.workerAttemptChannels ??= new WeakMap(); this.workerAttemptChannelListeners ??= new WeakSet();
+        let id = this.workerAttemptChannels.get(channel);
+        if (!id) {id = randomUUID(); this.workerAttemptChannels.set(channel, id);}
+        if (!this.workerAttemptChannelListeners.has(channel)) {
+            this.workerAttemptChannelListeners.add(channel); const captured = id;
+            (channel as Channel).once?.('close', () => this.workerAttemptClient?.fenceChannel(captured));
+        }
+        return id;
+    }
+    captureWorkerAttemptDelivery(message: Message, channel: Channel, kind: 'source-delivery' | 'ds-delivery'): void {
+        if (!this.tracksWorkerAttempts) return;
+        this.workerAttemptDeliveries ??= new WeakMap();
+        const previous = this.workerAttemptDeliveries.get(message);
+        if (previous) {if (previous.consumer !== channel) throw new Error('Cannot replace original attempt consumer'); return;}
+        const payloadSha256 = createHash('sha256').update(message.content).digest('hex');
+        const headersSha256 = workerAttemptHeadersSha256(message.properties?.headers ?? {});
+        const handle = this.attemptClient().capture({kind, receiptId: randomUUID(), payloadSha256, headersSha256,
+            consumerId: this.attemptChannelId(channel), publisherId: this.attemptChannelId(this.cch),
+            queue: typeof process.env.worker_queue === 'string' ? process.env.worker_queue : null,
+            deliveryTag: Number.isSafeInteger(message.fields?.deliveryTag) ? message.fields.deliveryTag : null});
+        this.workerAttemptDeliveries.set(message, {handle, payloadSha256, headersSha256, consumer: channel});
+    }
+    async runWorkerAttemptDelivery<T>(message: Message, operation: () => T | Promise<T>): Promise<T> {
+        if (!this.tracksWorkerAttempts) return operation();
+        const retained = this.workerAttemptDeliveries?.get(message);
+        if (!retained) throw new Error('Worker attempt lacks its original physical ingress');
+        return this.attemptClient().run(retained.handle, () => {
+            if (createHash('sha256').update(message.content).digest('hex') !== retained.payloadSha256
+                || workerAttemptHeadersSha256(message.properties?.headers ?? {}) !== retained.headersSha256)
+                throw new Error('Original queued worker attempt bytes/headers changed');
+            return operation();
+        });
+    }
+    async runProjectionAttempt<T>(kind: Extract<WorkerAttemptKind, 'projection-initialization' | 'projection-frame'>,
+                                  metadata: unknown, operation: () => T | Promise<T>): Promise<T> {
+        const bytes = actionHistoryImmutableJson(metadata), digest = createHash('sha256').update(bytes).digest('hex');
+        const client = this.attemptClient(), handle = client.capture({kind, receiptId: randomUUID(), payloadSha256: digest,
+            headersSha256: createHash('sha256').update('{}').digest('hex'), consumerId: null, publisherId: null, queue: null, deliveryTag: null});
+        return client.run(handle, operation);
+    }
+    async bindWorkerAttempt(fields: WorkerAttemptBinding): Promise<void> {await this.attemptClient().bindCurrent(fields);}
+    markWorkerAcknowledgementAttempt(): void {if (currentProofConsumerScope()) this.attemptClient().markAcknowledgementAttempt();}
+    settleOriginalWorkerDelivery(message: Message, negative = false): void {
+        if (!this.tracksWorkerAttempts) {negative ? this.ch?.nack(message) : this.ch?.ack(message); return;}
+        const retained = this.workerAttemptDeliveries?.get(message);
+        if (!retained || retained.consumer !== this.ch || !this.ch_ready) throw new Error('Original worker settlement channel is unavailable');
+        this.attemptClient().assertCurrent(retained.handle);
+        if (negative) retained.consumer.nack(message);
+        else {this.markWorkerAcknowledgementAttempt(); retained.consumer.ack(message);}
+    }
+    assertWorkerAttemptActive(): void {currentProofConsumerScope()?.assertActive();}
+    /** Ordinary non-confirm sends retain their real buffer lifetime, without claiming a durable broker acknowledgement. */
+    workerBufferedPublication(channel: Channel, send: () => boolean): boolean {
+        const scope = currentProofConsumerScope(); if (!scope) return send();
+        scope.assertActive(); let writable = false, ended = false, invoked = false, drained = false, closed = false, uncertain = false;
+        let resolve!: () => void;
+        void scope.operation(() => new Promise<void>(yes => {resolve = yes;}));
+        const cleanup = () => {channel.off('drain', onDrain); channel.off('close', onClose);};
+        const finish = () => {if (!ended && invoked && (closed || !uncertain && (writable || drained))) {ended = true; cleanup(); resolve();}};
+        const onDrain = () => {drained = true; finish();}, onClose = () => {closed = true; finish();};
+        channel.on('drain', onDrain); channel.on('close', onClose);
+        try {scope.assertActive(); writable = send();}
+        catch (error) {uncertain = true; throw error;}
+        finally {invoked = true; finish();}
+        return writable;
+    }
+    /** Methods exposed to hooks retain the issuing attempt even when saved and invoked in another context. */
+    scopedHookWorker(): this {
+        const scope = currentProofConsumerScope(); if (!scope) return this;
+        const target = this, methods = new Map<PropertyKey, {value: unknown; bound: unknown}>();
+        const helperObjects = new WeakMap<object, object>();
+        const helpers = (value: object) => {
+            let prior = helperObjects.get(value); if (prior) return prior;
+            const references = new Map<PropertyKey, {value: unknown; bound: unknown}>();
+            prior = new Proxy(value, {get(object, key) {
+                scope.assertActive(); const member = Reflect.get(object, key, object);
+                if (typeof member !== 'function') return member;
+                const cached = references.get(key); if (cached && cached.value === member) return cached.bound;
+                const bound = scope.bindCallback(member as (...args: any[]) => any, object);
+                references.set(key, {value: member, bound}); return bound;
+            }});
+            helperObjects.set(value, prior); return prior;
+        };
+        return new Proxy(this, {get(_object, key) {
+            scope.assertActive(); const value = Reflect.get(target, key, target);
+            if (key === 'common' && value && typeof value === 'object') return helpers(value);
+            if (typeof value !== 'function') return value;
+            const prior = methods.get(key); if (prior?.value === value) return prior.bound;
+            const bound = scope.bindCallback(value as (...args: any[]) => any, target); methods.set(key, {value, bound}); return bound;
+        }});
+    }
 
     /** Internal engineering seam. Public activation requires the remaining #225 qualification gates. */
     get actionSourceAdmissionEnabled(): boolean {return false;}
@@ -91,18 +218,25 @@ export abstract class HyperionWorker {
         const previous = this.actionAdmissionOwners.get(message);
         if (previous && previous !== channel) throw new Error('Cannot replace an admitted action consumer receipt');
         this.actionAdmissionOwners.set(message, channel);
+        this.captureWorkerAttemptDelivery(message as Message, channel,
+            this.attemptClient().role === 'deserializer' ? 'source-delivery' : 'ds-delivery');
     }
     actionPublicationOwner(message: object): ActionPublicationOwner {
         const consumer = this.actionAdmissionOwners.get(message), publisher = this.cch;
         if (!consumer || !publisher) throw new Error('Admitted action lacks its original consumer/publisher channels');
-        const owner = {consumer, publisher, current: () => consumer === this.ch && publisher === this.cch && this.ch_ready && this.cch_ready};
+        const scope = currentProofConsumerScope();
+        const owner = {consumer, publisher, current: () => {
+            try {assertProofConsumerCapability(scope);} catch {return false;}
+            return consumer === this.ch && publisher === this.cch && this.ch_ready && this.cch_ready;
+        }};
         if (!owner.current()) throw new Error('Admitted action channels are unavailable');
-        return owner;
+        return bindActionPublicationOwnerToScope(owner);
     }
     async publishAdmitted(owner: ActionPublicationOwner, queue: string, content: Buffer, headers: any): Promise<void> {
         await publishAdmittedAction(owner, queue, content, {headers});
     }
     async actionTarget(blockNum: number, provision = false): Promise<{name: string; uuid: string}> {
+        return trackProofConsumerOperation(async () => {
         const settings = this.conf.settings;
         if (!Number.isSafeInteger(blockNum) || blockNum < 1 || !Number.isSafeInteger(settings.index_partition_size)
             || settings.index_partition_size < 1) throw new Error('Invalid admitted action partition');
@@ -120,7 +254,8 @@ export abstract class HyperionWorker {
         const uuid = result[name]?.settings?.['index.uuid'];
         if (Object.keys(result).length !== 1 || typeof uuid !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(uuid))
             throw new Error('Action admission requires a concrete target UUID');
-        return {name, uuid};
+        this.assertWorkerAttemptActive(); return {name, uuid};
+        });
     }
 
     protected constructor() {
@@ -134,6 +269,12 @@ export abstract class HyperionWorker {
         const workerId = process.env.worker_id || 'unknown';
         this.profiler = new WorkerProfiler(workerRole, workerId, isProfilingEnabled);
         this.profiler.startReporting();
+        if (['deserializer','ds_pool_worker','projection'].includes(workerRole)) {
+            if (!process.send) throw new Error('Managed worker requires its parent lifecycle IPC');
+            this.workerAttemptClient = new WorkerAttemptClient({mode: 'managed', role: workerRole as WorkerAttemptRole, transport: {
+                on: (event, listener) => process.on(event, listener), removeListener: (event, listener) => process.removeListener(event, listener),
+                send: (message, callback) => process.send!(message, callback ?? (() => {}))}});
+        }
 
         process.on('SIGINT', () => this.profiler.stopReporting());
         process.on('SIGTERM', () => this.profiler.stopReporting());
@@ -167,6 +308,7 @@ export abstract class HyperionWorker {
 
         // handle ipc messages
         process.on('message', (msg: any) => {
+            if (msg.event === 'stop') this.workerAttemptClient?.fenceAll();
             switch (msg.event) {
                 case 'request_v8_heap_stats': {
                     const report: HeapInfo = getHeapStatistics();
@@ -281,6 +423,8 @@ export abstract class HyperionWorker {
 
     async connectAMQP() {
         const channels = await this.manager.createAMQPChannels((channels: [Channel, ConfirmChannel]) => {
+            if (this.ch) this.workerAttemptClient?.fenceChannel(this.attemptChannelId(this.ch)!);
+            if (this.cch) this.workerAttemptClient?.fenceChannel(this.attemptChannelId(this.cch)!);
             [this.ch, this.cch] = channels;
             hLog('AMQP Reconnecting...');
             this.onConnect();

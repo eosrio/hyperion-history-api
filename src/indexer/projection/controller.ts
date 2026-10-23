@@ -4,6 +4,9 @@ import {DeclarativeProjectionRuntime} from './runtime.js';
 import {portableStateBinding, type ResolvedPortableStateConfiguration} from './config.js';
 import {PortableProjectionFrameError, type PortableProjectionSource, type PortableProjectionSourceEvidence} from './source.js';
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
+import {createHash} from 'node:crypto';
+import {currentProofConsumerScope} from '../protocol/proof-consumer-scope.js';
+import type {WorkerAttemptBinding} from '../protocol/worker-attempt-supervisor.js';
 
 export interface PortableStateProgress {
     readonly projectionId: string; readonly binding: ProjectionBinding;
@@ -18,6 +21,8 @@ interface ControllerOptions {
     source: Pick<PortableProjectionSource, 'frame' | 'revalidate'>;
     onProgress?: (value: PortableStateProgress) => void;
     maximumFramesPerProjection?: number;
+    /** Private actual-worker transport. Component controllers issue no master lifecycle authority. */
+    attempts?: {run<T>(metadata: unknown, operation: () => Promise<T>): Promise<T>; bind(fields: WorkerAttemptBinding): Promise<void>};
 }
 const zero = '0'.repeat(64);
 const json = protocolImmutableJson;
@@ -59,46 +64,59 @@ export class PortableStateController {
     private async drainProjection(runtime: DeclarativeProjectionRuntime) {
         const common = {projectionId: runtime.definition.id, binding: runtime.binding};
         for (let count = 0; count < this.maximumFrames && !this.stopped; count++) {
-            let recovery: ProjectionRecoveryView | undefined;
-            try {
-                recovery = await this.recovery(runtime);
-                let admitted: ProjectionBlock | undefined;
-                const admit = async (block: ProjectionBlock) => {
-                    const target = Object.freeze(structuredClone(block));
-                    if (admitted) {
-                        if (json(target) !== json(admitted))
-                            throw new ProjectionContractError('projection.conflicting-replay', 'Interpreted frame differs from its admitted canonical target');
-                        return;
+            const operation = async (): Promise<boolean> => {
+                let recovery: ProjectionRecoveryView | undefined;
+                try {
+                    recovery = await this.recovery(runtime);
+                    await this.options.attempts?.bind({projectionId: runtime.definition.id,
+                        bindingSha256: createHash('sha256').update(json(runtime.binding)).digest('hex'),
+                        checkpointBlockNum: recovery.checkpoint.blockNum, checkpointBlockId: recovery.checkpoint.blockId});
+                    currentProofConsumerScope()?.assertActive();
+                    let admitted: ProjectionBlock | undefined;
+                    const admit = async (block: ProjectionBlock) => {
+                        const target = Object.freeze(structuredClone(block));
+                        if (admitted) {
+                            if (json(target) !== json(admitted))
+                                throw new ProjectionContractError('projection.conflicting-replay', 'Interpreted frame differs from its admitted canonical target');
+                            return;
+                        }
+                        if (this.stopped) throw new ProjectionContractError('projection.apply-unavailable', 'Projection owner stopped before source admission');
+                        await this.options.adapter.markIncomplete(runtime.binding, target,
+                            'Canonical projection source admitted; durable application is pending');
+                        admitted = target;
+                    };
+                    const selected = await this.options.source.frame(recovery.checkpoint.blockNum + 1, runtime.definition, admit);
+                    await this.options.attempts?.bind({blockNum: selected.frame.block.blockNum, blockId: selected.frame.block.blockId});
+                    currentProofConsumerScope()?.assertActive();
+                    if (this.stopped) return false;
+                    await this.options.source.revalidate(selected.proof);
+                    // Runtime repeats the admission after its immutable capture. This binds the exact target and
+                    // also reserves before mapping for compatible source fixtures that omit the early callback.
+                    const applied = await runtime.process(selected.frame, admit);
+                    await this.options.source.revalidate(selected.proof);
+                    this.report({...common, status: applied.status, checkpoint: applied.view.checkpoint, evidence: selected.evidence});
+                } catch (error) {
+                    // A revoked attempt cannot dispatch fresh recovery I/O after its capability fence.
+                    currentProofConsumerScope()?.assertActive();
+                    if (error instanceof PortableProjectionFrameError) {
+                        try {await this.options.adapter.markIncomplete(runtime.binding, error.block, reason(error));}
+                        catch (markError) {
+                            this.report({...common, status: 'incomplete', ...(recovery ? {recovery} : {}),
+                                reason: 'Durable projection failure marking requires retry: ' + reason(markError)});
+                            return false;
+                        }
                     }
-                    if (this.stopped) throw new ProjectionContractError('projection.apply-unavailable', 'Projection owner stopped before source admission');
-                    await this.options.adapter.markIncomplete(runtime.binding, target,
-                        'Canonical projection source admitted; durable application is pending');
-                    admitted = target;
-                };
-                const selected = await this.options.source.frame(recovery.checkpoint.blockNum + 1, runtime.definition, admit);
-                if (this.stopped) return;
-                await this.options.source.revalidate(selected.proof);
-                // Runtime repeats the admission after its immutable capture. This binds the exact target and
-                // also reserves before mapping for compatible source fixtures that omit the early callback.
-                const applied = await runtime.process(selected.frame, admit);
-                await this.options.source.revalidate(selected.proof);
-                this.report({...common, status: applied.status, checkpoint: applied.view.checkpoint, evidence: selected.evidence});
-            } catch (error) {
-                if (error instanceof PortableProjectionFrameError) {
-                    try {await this.options.adapter.markIncomplete(runtime.binding, error.block, reason(error));}
-                    catch (markError) {
-                        this.report({...common, status: 'incomplete', ...(recovery ? {recovery} : {}),
-                            reason: 'Durable projection failure marking requires retry: ' + reason(markError)});
-                        return;
-                    }
+                    // Runtime mapping errors already mark incomplete. Transport/apply errors retain exact source intent.
+                    // Resume always asks the adapter for checkpoint+1; no failed target is skipped or acknowledged here.
+                    try {recovery = await this.recovery(runtime);} catch {}
+                    this.report({...common, status: recovery?.pending || recovery?.gap ? 'incomplete' : 'waiting',
+                        ...(recovery ? {recovery, checkpoint: recovery.checkpoint} : {}), reason: reason(error)});
+                    return false;
                 }
-                // Runtime mapping errors already mark incomplete. Transport/apply errors retain exact source intent.
-                // Resume always asks the adapter for checkpoint+1; no failed target is skipped or acknowledged here.
-                try {recovery = await this.recovery(runtime);} catch {}
-                this.report({...common, status: recovery?.pending || recovery?.gap ? 'incomplete' : 'waiting',
-                    ...(recovery ? {recovery, checkpoint: recovery.checkpoint} : {}), reason: reason(error)});
-                return;
-            }
+                return true;
+            };
+            const keepGoing = this.options.attempts ? await this.options.attempts.run(common, operation) : await operation();
+            if (!keepGoing) return;
         }
     }
     drain(): Promise<void> {

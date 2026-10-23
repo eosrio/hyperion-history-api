@@ -1,4 +1,5 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
+import {isPromise} from 'node:util/types';
 
 const contexts = new AsyncLocalStorage<ProofConsumerScope>();
 const ends = new WeakMap<object, ProofConsumerScope>();
@@ -53,6 +54,23 @@ export class ProofConsumerScope {
         void tracked.then(() => this.operations.delete(tracked), () => this.operations.delete(tracked));
         try {resolve(contexts.run(this, operation));} catch (error) {reject(error);}
         return tracked;
+    }
+    /** A retained host helper keeps its original owner while preserving its synchronous return contract. */
+    bindCallback<F extends (...args: any[]) => any>(callback: F, receiver?: unknown): F {
+        const scope = this;
+        return function(this: unknown, ...args: Parameters<F>): ReturnType<F> {
+            scope.assertActive();
+            if (scope.operations.size >= scope.maximumOperations) throw new Error('Worker attempt operation budget exhausted');
+            let resolve!: () => void, reject!: (error: unknown) => void;
+            const tracked = new Promise<void>((yes, no) => {resolve = yes; reject = no;});
+            scope.operations.add(tracked);
+            void tracked.then(() => scope.operations.delete(tracked), () => scope.operations.delete(tracked));
+            try {
+                const value = contexts.run(scope, () => callback.apply(receiver ?? this, args));
+                if (isPromise(value)) void value.then(resolve, reject); else resolve();
+                return value;
+            } catch (error) {reject(error); throw error;}
+        } as F;
     }
     fence(): void {
         if (this.fenced) return;

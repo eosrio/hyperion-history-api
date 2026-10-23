@@ -39,6 +39,7 @@ import {snapshotNativeGenesisFacts, zeroBlockId} from '../protocol/native-genesi
 import {ProtocolNativeObservationStore, protocolNativeObservationBounds,
     type ProtocolNativeObservationRecord} from '../protocol/native-observation-store.js';
 import {protocolNativeInputInventory, snapshotProtocolNativeDecisions} from '../protocol/native-observation-facts.js';
+import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
 
 class ProtocolProofStorageError extends Error {
     constructor(cause: unknown) {super('Canonical ABI proof storage failed', {cause});}
@@ -165,8 +166,9 @@ export default class MainDSWorker extends HyperionWorker {
         }, this.conf.prefetch.block);
 
         this.preIndexingQueue = queue((data: any, cb) => {
+            if (data.publish) {try {data.publish(); cb();} catch (error) {cb(error instanceof Error ? error : new Error(String(error)));} return;}
             if (this.ch && this.ch_ready) {
-                this.ch.sendToQueue(data.queue, data.content, { headers: data.headers });
+                this.workerBufferedPublication(this.ch, () => this.ch!.sendToQueue(data.queue, data.content, { headers: data.headers }));
                 cb();
             } else {
                 hLog('Channel is not ready!');
@@ -230,6 +232,7 @@ export default class MainDSWorker extends HyperionWorker {
                         throw new Error('Changing a protocol provider or profile requires a controlled worker restart');
                     }
                     this.conf = candidate;
+                    this.workerAttemptClient?.fenceActiveAttempts();
                     // Notify the master
                     process.send?.({
                         event: 'config_reloaded',
@@ -330,7 +333,10 @@ export default class MainDSWorker extends HyperionWorker {
     async processMessages(messages: Message[]) {
         const stop = this.profiler.start('process_messages_batch');
         try {
-            await this.mLoader.parser?.parseMessage(this, messages);
+            if (this.tracksWorkerAttempts) {
+                for (const message of messages) await this.runWorkerAttemptDelivery(message,
+                    () => this.mLoader.parser?.parseMessage(this.scopedHookWorker(), [message]));
+            } else await this.mLoader.parser?.parseMessage(this, messages);
         } finally {
             stop();
         }
@@ -338,6 +344,8 @@ export default class MainDSWorker extends HyperionWorker {
 
     /** Admission binds native and extension messages to their retained reader session, never the latest IPC ABI. */
     async processAdmittedSourceDelivery(message: Message, processBound: (result: GetBlocksResultV0) => Promise<void>): Promise<void> {
+        if (this.tracksWorkerAttempts && !currentProofConsumerScope())
+            return this.runWorkerAttemptDelivery(message, () => this.processAdmittedSourceDelivery(message, processBound));
         const owner = this.actionPublicationOwner(message);
         // Keep the receipt for its original ACK; caller-owned buffers must never supply later decode/retention bytes.
         const frame = Buffer.from(message.content), frameHex = frame.toString('hex');
@@ -351,6 +359,8 @@ export default class MainDSWorker extends HyperionWorker {
         const run = async (result: GetBlocksResultV0) => {
             const capture = protocolSourceCapture(this.chainId, result, ingress.schemaJson);
             if (capture.captureSha256 !== ingress.captureSha256 || !owner.current()) throw new Error('Action source stable sections mismatch');
+            await this.bindWorkerAttempt({ingressId, blockNum: capture.source.blockNum, blockId: capture.source.blockId});
+            if (!owner.current()) throw new Error('Action source channels changed during attempt binding');
             this.activeActionSource = {message, frameHex, ingressId, schemaJson: ingress.schemaJson, owner};
             try {await processBound(result);} finally {this.activeActionSource = undefined;}
         };
@@ -406,6 +416,10 @@ export default class MainDSWorker extends HyperionWorker {
         if (!scope.owner.current() || currentActionConfiguration(this) !== epoch.configuration)
             throw new Error('Action producer epoch changed during source admission');
         scope.admission = admission; scope.configuration = epoch.configuration;
+        await this.bindWorkerAttempt({admissionId: admission.id, planId: admission.planId, configurationSha256: createHash('sha256').update(epoch.configuration).digest('hex'),
+            targetName: target.name, targetUuid: target.uuid, blockNum: capture.source.blockNum, blockId: capture.source.blockId});
+        if (!scope.owner.current() || currentActionConfiguration(this) !== epoch.configuration)
+            throw new Error('Action producer epoch changed during attempt binding');
         if (admission.incomplete) hLog('Action membership remains incomplete for block', capture.source.blockNum, admission.incomplete);
     }
 
@@ -438,12 +452,14 @@ export default class MainDSWorker extends HyperionWorker {
         for (const evidence of observations) {
             await store.recordAttemptDisposition({owner: scope!.owner, evidence}); await revalidate();
         }
-        assertCurrent(); scope!.owner.consumer.ack(message);
+        assertCurrent(); this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); scope!.owner.consumer.ack(message);
     }
 
     /** Resolve only durable per-frame context; initialize_abi remains a legacy startup signal. */
     async processProtocolSourceDelivery(message: Message, processBound: (result: GetBlocksResultV0) => Promise<void>,
                                         snapshot?: {frame: Buffer; selectionId: unknown}): Promise<void> {
+        if (this.tracksWorkerAttempts && !currentProofConsumerScope())
+            return this.runWorkerAttemptDelivery(message, () => this.processProtocolSourceDelivery(message, processBound, snapshot));
         const ownerChannel = this.protocolDeliveryOwners.get(message);
         const frame = Buffer.from(snapshot?.frame ?? message.content);
         const claimed = snapshot ? snapshot.selectionId : message.properties?.headers?.[protocolSourceSelectionHeader];
@@ -459,7 +475,9 @@ export default class MainDSWorker extends HyperionWorker {
                 frameHex: frame.toString('hex'), claimedSelectionId,
                 reason: {code, message: String((error as any)?.message ?? error).slice(0, 4096).toWellFormed() || code}});
                 process.send?.({event: 'ds_error', data: {type: 'protocol_source_incomplete', code, capsuleId: capsule.id, claimedSelectionId}});
-                if (ownerChannel && ownerChannel === this.ch && this.ch_ready) ownerChannel.ack(message);
+                if (ownerChannel && ownerChannel === this.ch && this.ch_ready) {
+                    this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); ownerChannel.ack(message);
+                }
             } finally { stop(); }
         };
         if (!ownerChannel) {
@@ -519,7 +537,13 @@ export default class MainDSWorker extends HyperionWorker {
         this.activeSourceBinding = binding;
         this.activeSourceRole = binding!.selection.readerRole;
         this.activeSourceDelivery = {message, channel: ownerChannel};
-        try { await processBound(result!); }
+        try {
+            await this.bindWorkerAttempt({selectionId: claimed, readerSessionId: binding!.selection.readerSessionId,
+                blockNum: binding!.selection.source.blockNum, blockId: binding!.selection.source.blockId});
+            this.assertWorkerAttemptActive();
+            if (ownerChannel !== this.ch || !this.ch_ready) throw new Error('Source consumer changed during attempt binding');
+            await processBound(result!);
+        }
         catch (error) {
             if (!(error instanceof ProtocolSourceCodecError)) throw error;
             await quarantine('protocol_source_codec_incomplete', error);
@@ -531,7 +555,9 @@ export default class MainDSWorker extends HyperionWorker {
 
     ackProtocolSourceDelivery(message: Message): void {
         const delivery = this.activeSourceDelivery;
-        if (delivery?.message === message && delivery.channel && delivery.channel === this.ch && this.ch_ready) delivery.channel.ack(message);
+        if (delivery?.message === message && delivery.channel && delivery.channel === this.ch && this.ch_ready) {
+            this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); delivery.channel.ack(message);
+        }
     }
 
     /** Called at receipt, before cargo can wait behind asynchronous work. */
@@ -539,6 +565,7 @@ export default class MainDSWorker extends HyperionWorker {
         const existing = this.protocolDeliveryOwners.get(message);
         if (existing && existing !== channel) throw new Error('Cannot replace a protocol delivery channel receipt');
         this.protocolDeliveryOwners.set(message, channel);
+        this.captureWorkerAttemptDelivery(message, channel, 'source-delivery');
     }
 
     /** Journal PREPARE precedes history filters and source ACK; it grants no decoding authority. */
@@ -685,6 +712,7 @@ export default class MainDSWorker extends HyperionWorker {
         return this.protocolAbiProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
             store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
+            requireAttemptScope: this.workerAttemptScopeRequired,
             maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
     }
 
@@ -694,6 +722,7 @@ export default class MainDSWorker extends HyperionWorker {
             consumer.prefetch(this.conf.prefetch.block);
             consumer.consume(process.env.worker_queue, (data) => {
                 if (!data) return;
+                this.captureWorkerAttemptDelivery(data, consumer, 'source-delivery');
                 if (this.actionSourceAdmissionEnabled) this.captureActionAdmissionDelivery(data, consumer);
                 if (this.usesExtensionProtocol) this.captureProtocolSourceDelivery(data, consumer);
                 this.consumerQueue.push(data).catch(console.log);
@@ -703,7 +732,10 @@ export default class MainDSWorker extends HyperionWorker {
                 this.waitToSend = false;
                 while (this.backpressureQueue.length > 0) {
                     const msg = this.backpressureQueue.shift();
-                    const status = this.controlledSendToQueue(msg.queue, msg.payload, msg.options);
+                    let status: boolean;
+                    try {status = msg.publish ? msg.publish() : this.controlledSendToQueue(msg.queue, msg.payload, msg.options);}
+                    catch (error) {msg.reject?.(error); continue;}
+                    msg.resolve?.();
                     if (!status) {
                         break;
                     }
@@ -1146,7 +1178,23 @@ export default class MainDSWorker extends HyperionWorker {
                 return false;
             }
         } else {
-            this.backpressureQueue.push({
+            const scope = currentProofConsumerScope();
+            if (scope) {
+                const channel = this.ch, sent = Buffer.from(payload), options = {headers: structuredClone(headers)};
+                void scope.operation(() => new Promise<void>((resolve, reject) => {
+                    const publish = scope.bindCallback(() => {
+                        if (!channel || channel !== this.ch || !this.ch_ready) throw new Error('Original queued source publisher is unavailable');
+                        return this.controlledSendToQueue(pool_queue, sent, options);
+                    });
+                    const entry = {publish, resolve: () => {scope.signal.removeEventListener('abort', abort); resolve();},
+                        reject: (error: unknown) => {scope.signal.removeEventListener('abort', abort); reject(error);}};
+                    const abort = () => {
+                        const index = this.backpressureQueue.indexOf(entry); if (index !== -1) this.backpressureQueue.splice(index, 1);
+                        entry.reject(scope.signal.reason);
+                    };
+                    scope.signal.addEventListener('abort', abort, {once: true}); this.backpressureQueue.push(entry);
+                })).catch(() => {});
+            } else this.backpressureQueue.push({
                 queue: pool_queue,
                 payload: payload,
                 options: { headers }
@@ -1156,8 +1204,9 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     controlledSendToQueue(pool_queue: string, payload: Buffer, options: Options.Publish): boolean {
+        this.assertWorkerAttemptActive();
         if (this.ch) {
-            const enqueueResult = this.ch.sendToQueue(pool_queue, payload, options);
+            const enqueueResult = this.workerBufferedPublication(this.ch, () => this.ch!.sendToQueue(pool_queue, payload, options));
             if (!enqueueResult) {
                 this.waitToSend = true;
             }
@@ -1726,6 +1775,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     /** Core helpers stage effects while a protocol row's async handlers are unresolved. */
     private stageProtocolPublication(effect: () => unknown | Promise<unknown>, bytes: number): boolean {
+        this.assertWorkerAttemptActive();
         const scope = this.protocolDerivedPublications?.getStore();
         if (!scope) return false;
         if (!scope.accepting) {
@@ -1738,19 +1788,29 @@ export default class MainDSWorker extends HyperionWorker {
             scope.failure ??= new ProtocolAbiProofUnavailableError('protocol_derived_publication_limit', 'Protocol record derived publication budget exceeded');
             return true;
         }
-        scope.bytes += bytes; scope.effects.push(effect); return true;
+        scope.bytes += bytes; scope.effects.push(currentProofConsumerScope()?.bindCallback(effect) ?? effect); return true;
     }
 
     private enqueueDerivedPublication(payload: QueuePayload): Promise<unknown> {
-        if (!this.protocolDerivedPublications?.getStore()) return this.preIndexingQueue.push(payload);
+        this.assertWorkerAttemptActive();
+        const attempt = currentProofConsumerScope(), channel = this.ch;
+        const queue = (value: QueuePayload) => {
+            const publish = attempt?.bindCallback(() => {
+                if (!channel || channel !== this.ch || !this.ch_ready) throw new Error('Original derived publisher is unavailable');
+                return this.workerBufferedPublication(channel, () => channel.sendToQueue(value.queue, value.content, {headers: value.headers}));
+            });
+            return trackProofConsumerOperation(() => this.preIndexingQueue.push({...value, ...(publish ? {publish} : {})}));
+        };
+        if (!this.protocolDerivedPublications?.getStore()) return queue(payload);
         const retained: QueuePayload = {queue: payload.queue, content: Buffer.from(payload.content),
             ...(payload.headers !== undefined ? {headers: structuredClone(payload.headers)} : {})};
-        this.stageProtocolPublication(() => this.preIndexingQueue.push(retained),
+        this.stageProtocolPublication(() => queue(retained),
             retained.content.length + Buffer.byteLength(JSON.stringify(retained.headers ?? {})));
         return Promise.resolve();
     }
 
     pushToDeltaStreamingQueue(payload, jsonRow) {
+        this.assertWorkerAttemptActive();
         if (this.allowStreaming && this.conf.features.streaming.deltas && this.ch) {
             const options = {headers: {
                     event: 'delta',
@@ -1760,11 +1820,11 @@ export default class MainDSWorker extends HyperionWorker {
                     payer: jsonRow.payer
                 }};
             if (!this.protocolDerivedPublications?.getStore()) {
-                this.ch.publish('', this.chain + ':stream', payload, options);
+                this.workerBufferedPublication(this.ch, () => this.ch!.publish('', this.chain + ':stream', payload, options));
                 return;
             }
             const bytes = Buffer.from(payload);
-            const publish = () => this.ch?.publish('', this.chain + ':stream', bytes, options);
+            const publish = () => this.ch && this.workerBufferedPublication(this.ch, () => this.ch!.publish('', this.chain + ':stream', bytes, options));
             this.stageProtocolPublication(publish, bytes.length + Buffer.byteLength(JSON.stringify(options.headers)));
         }
     }

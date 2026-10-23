@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 /** Original Wire prefix through actual emitted workers/admission with controlled transports.
  * Engineering native capability only; no installed activation, consensus or live-service qualification. */
 import assert from 'node:assert/strict';
@@ -134,6 +135,8 @@ try {
     const readerPublisher = new ControlledPublisher(), mainPublisher = new ControlledPublisher(), poolPublisher = new ControlledPublisher();
     const worker = (prototype, consumer, publisher) => {
         const value = Object.create(prototype);
+        if (prototype === Main.prototype || prototype === Pool.prototype)
+            controlledAttemptLifecycle(value, prototype === Pool.prototype ? 'ds_pool_worker' : 'deserializer');
         Object.assign(value, {chain, chainId, conf: config, configModule: cm, filters, mLoader: loader,
             protocol: selected.provider, protocolId: selected.id, protocolComponents: selected.components,
             protocolReady: Promise.resolve(), abieos: selected.decoder, client: memory.client,
@@ -188,12 +191,12 @@ try {
         assert.ok(raw.payload.equals(bytes)); assert.ok(raw.options.headers[actionSourceIngressHeader]);
         const retainedIngress = await admissionStore.resolveIngress(raw.options.headers[actionSourceIngressHeader]);
         assert.equal(retainedIngress.frameHex, bytes.toString('hex'));
-        main.captureActionAdmissionDelivery(delivery, mainConsumer); main.captureProtocolSourceDelivery(delivery, mainConsumer);
+        (controlledAttemptLifecycle(main, 'deserializer'), main).captureActionAdmissionDelivery(delivery, mainConsumer); (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(delivery, mainConsumer);
         await parser.parseMessage(main, [delivery]); await draining;
         assert.equal(mainConsumer.acked.at(-1), delivery);
         const messages = mainPublisher.sent.slice(mainBefore).map(sent => {
-            const delivery = message(sent); pool.captureActionAdmissionDelivery(delivery, poolConsumer);
-            pool.captureProtocolActionDelivery(delivery, poolConsumer); return delivery;
+            const delivery = message(sent); (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureActionAdmissionDelivery(delivery, poolConsumer);
+            (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureProtocolActionDelivery(delivery, poolConsumer); return delivery;
         });
         const admissionId = messages[0]?.properties.headers[actionSourceAdmissionHeader];
         // Empty-block links contain no source body; resolve the bounded set by actual retained source association.

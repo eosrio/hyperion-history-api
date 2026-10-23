@@ -23,6 +23,7 @@ interface Owner {
     worker: PhysicalAttemptWorker; role: WorkerAttemptRole; incarnation: string; clientId?: string;
     state: 'active' | 'retired'; sequence: number; entries: Map<string, Entry>; completed: string[];
     terminationTimer?: ReturnType<typeof setTimeout>;
+    activeFenceTimer?: ReturnType<typeof setTimeout>; fencedAttempts: Set<string>;
     listeners: {message: (message: any) => void; disconnect: () => void; exit: () => void};
 }
 interface Entry {
@@ -98,7 +99,7 @@ export class WorkerAttemptSupervisor {
         }
         const listeners = {message: (message: any) => {this.handle(worker, message);},
             disconnect: () => this.retire(worker), exit: () => this.observeExit(worker)};
-        this.owners.set(worker, {worker, role, incarnation: randomUUID(), state: 'active', sequence: 0, entries: new Map(), completed: [], listeners});
+        this.owners.set(worker, {worker, role, incarnation: randomUUID(), state: 'active', sequence: 0, entries: new Map(), completed: [], fencedAttempts: new Set(), listeners});
         worker.on('message', listeners.message); worker.on('disconnect', listeners.disconnect); worker.on('exit', listeners.exit);
     }
     private reply(worker: PhysicalAttemptWorker, requestId: string, result: any): void {
@@ -122,6 +123,12 @@ export class WorkerAttemptSupervisor {
             if (!owner) throw new Error('Unknown physical attempt owner');
             const input = message.payload;
             if (!input || !uuid.test(input.clientId)) throw new Error('Invalid worker lifecycle session');
+            // A physical worker may always ask to retire itself, including after an unknown hello/register reply.
+            // Retirement issues no end; only the exact captured process's observed exit can settle unresolved work.
+            if (input.operation === 'retire-owner') {
+                if (owner.clientId && owner.clientId !== input.clientId) throw new Error('Foreign retirement session');
+                this.retire(worker); this.reply(worker, requestId, {ok: true, retired: true}); return true;
+            }
             if (input.operation === 'hello') {
                 if (this.stopped || owner.state !== 'active' || owner.clientId && owner.clientId !== input.clientId)
                     throw new Error('Worker attempt owner was retired or replaced');
@@ -154,6 +161,9 @@ export class WorkerAttemptSupervisor {
                     attemptId: entry.id, challenge: entry.challenge, descriptorSha256: workerAttemptDigest(entry.descriptor)}); return true;
             }
             if (!entry || entry.sequence !== input.sequence || entry.challenge !== input.challenge) throw new Error('Unknown or mismatched worker attempt');
+            if (input.operation === 'retire') {
+                this.retire(worker); this.reply(worker, requestId, {ok: true, retired: true}); return true;
+            }
             if (input.operation === 'bind') {
                 validateWorkerAttemptBinding(input.binding);
                 if (entry.end) throw new Error('Worker attempt already ended');
@@ -193,6 +203,8 @@ export class WorkerAttemptSupervisor {
         const next = {...entry, ...request, end};
         if (status === 'quiescent') {entry = this.account(next); owner.entries.set(entry.id, entry);}
         this.active--; owner.completed.push(entry.id);
+        owner.fencedAttempts.delete(entry.id);
+        if (!owner.fencedAttempts.size && owner.activeFenceTimer) {clearTimeout(owner.activeFenceTimer); owner.activeFenceTimer = undefined;}
         const evidence = Object.freeze({}) as AcceptedWorkerAttemptEnd;
         accepted.set(evidence, {supervisor: this, value: end});
         try {this.options.onEnd?.(evidence);} catch {this.overflow = true;}
@@ -209,6 +221,7 @@ export class WorkerAttemptSupervisor {
     retire(worker: PhysicalAttemptWorker): void {
         const owner = this.owners.get(worker); if (!owner || owner.state === 'retired') return;
         owner.state = 'retired';
+        if (owner.activeFenceTimer) {clearTimeout(owner.activeFenceTimer); owner.activeFenceTimer = undefined;}
         try {if (worker.isConnected()) worker.send({event: 'worker_attempt_fence', epoch: this.epoch, incarnation: owner.incarnation}, () => {});} catch {}
         // A fence request or kill call never proves exit. Keep the exact owner until its actual exit event.
         owner.terminationTimer = setTimeout(() => {
@@ -219,6 +232,7 @@ export class WorkerAttemptSupervisor {
     observeExit(worker: PhysicalAttemptWorker): void {
         const owner = this.owners.get(worker); if (!owner) return;
         if (owner.terminationTimer) clearTimeout(owner.terminationTimer);
+        if (owner.activeFenceTimer) clearTimeout(owner.activeFenceTimer);
         owner.state = 'retired';
         for (const entry of owner.entries.values()) {
             this.end(owner, entry, 'process-exited-unresolved');
@@ -228,6 +242,17 @@ export class WorkerAttemptSupervisor {
         this.owners.delete(worker);
     }
     stop(): void {this.stopped = true; for (const owner of this.owners.values()) this.retire(owner.worker);}
+    fenceActive(): void {
+        for (const owner of this.owners.values()) {
+            for (const entry of owner.entries.values()) if (!entry.end) owner.fencedAttempts.add(entry.id);
+            if (owner.fencedAttempts.size && !owner.activeFenceTimer) owner.activeFenceTimer = setTimeout(() => {
+                owner.activeFenceTimer = undefined;
+                if (owner.fencedAttempts.size) this.retire(owner.worker);
+            }, this.options.fenceTimeoutMs ?? 5000).unref();
+            try {if (owner.worker.isConnected()) owner.worker.send({event: 'worker_attempt_fence_active',
+                epoch: this.epoch, incarnation: owner.incarnation}, () => {});} catch {}
+        }
+    }
     snapshot() {return Object.freeze({epoch: this.epoch, active: this.active, metadataBytes: this.metadataBytes, overflow: this.overflow,
         owners: [...this.owners.values()].map(owner => ({incarnation: owner.incarnation, role: owner.role, state: owner.state,
             attempts: [...owner.entries.values()].map(entry => ({attemptId: entry.id, descriptor: {...entry.descriptor}, binding: {...entry.binding},

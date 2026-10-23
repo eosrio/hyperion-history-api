@@ -10,6 +10,7 @@ interface Attempt {
     handle: WorkerAttempt; id: string; sequence: number; descriptor: WorkerAttemptDescriptor; scope: ProofConsumerScope;
     accepted: Promise<void>; challenge?: string; binding: WorkerAttemptBinding; bindingVersion: number;
     acknowledgementAttempted: boolean; ended?: WorkerAttemptEndDescription; running: boolean;
+    fenceTimer?: ReturnType<typeof setTimeout>;
 }
 type Managed = {mode: 'managed'; role: WorkerAttemptRole; transport: WorkerAttemptTransport};
 type Controlled = {mode: 'controlled-local-only'; role: WorkerAttemptRole};
@@ -24,13 +25,19 @@ export class WorkerAttemptClient {
     private authority?: {epoch: string; incarnation: string};
     private opening?: Promise<void>;
     private stopped = false;
+    private pendingFence?: {epoch: string; incarnation: string; sequence: number; stop: boolean};
     private readonly timeout: number;
     private readonly drainTimeout: number;
     private readonly retries: number;
     private readonly onMessage = (message: any) => {
         if (message?.event === 'worker_attempt_reply' && typeof message.requestId === 'string') this.pending.get(message.requestId)?.resolve(message.result);
-        else if (message?.event === 'worker_attempt_fence' && message.epoch === this.authority?.epoch
-            && message.incarnation === this.authority?.incarnation) this.fenceAll();
+        else if (['worker_attempt_fence','worker_attempt_fence_active'].includes(message?.event)) {
+            const stop = message.event === 'worker_attempt_fence';
+            if (message.epoch === this.authority?.epoch && message.incarnation === this.authority?.incarnation) {
+                if (stop) this.fenceAll(); else this.fenceActiveAttempts();
+            } else if (!this.authority && typeof message.epoch === 'string' && typeof message.incarnation === 'string')
+                this.pendingFence = {epoch: message.epoch, incarnation: message.incarnation, sequence: this.sequence, stop};
+        }
     };
     private readonly onDisconnect = () => {this.fenceAll(); for (const request of this.pending.values()) request.reject(new Error('Worker lifecycle IPC disconnected'));};
     constructor(private readonly options: Options) {
@@ -41,6 +48,8 @@ export class WorkerAttemptClient {
             options.transport.on('message', this.onMessage); options.transport.on('disconnect', this.onDisconnect);
         }
     }
+    get mode() {return this.options.mode;}
+    get role() {return this.options.role;}
     private async request(payload: Record<string, unknown>): Promise<any> {
         if (this.options.mode !== 'managed') throw new Error('Local-only scope has no master IPC authority');
         if (this.pending.size >= 4096) throw new Error('Worker lifecycle request budget exhausted');
@@ -71,6 +80,11 @@ export class WorkerAttemptClient {
             if (this.stopped || result.role !== this.options.role || typeof result.epoch !== 'string' || typeof result.incarnation !== 'string')
                 throw new Error('Worker lifecycle parent/role changed');
             this.authority = {epoch: result.epoch, incarnation: result.incarnation};
+            const fence = this.pendingFence; this.pendingFence = undefined;
+            if (fence && fence.epoch === result.epoch && fence.incarnation === result.incarnation) {
+                if (fence.stop) this.stopped = true;
+                for (const record of this.scopes.values()) if (record.sequence <= fence.sequence) record.scope.fence();
+            }
         })();
         void this.opening.catch(() => {}); return this.opening;
     }
@@ -82,6 +96,11 @@ export class WorkerAttemptClient {
         const record: Attempt = {handle, id, sequence, descriptor: JSON.parse(workerAttemptJson(descriptor)), scope: new ProofConsumerScope(id),
             accepted: Promise.resolve(), binding: {}, bindingVersion: 0, acknowledgementAttempted: false, running: false};
         this.attempts.set(handle, record); this.scopes.set(record.scope, record);
+        record.scope.signal.addEventListener('abort', () => {
+            record.fenceTimer = setTimeout(() => {
+                if (this.scopes.has(record.scope)) this.requestSupervisedRetirement();
+            }, this.drainTimeout).unref();
+        }, {once: true});
         record.accepted = (async () => {
             await this.open();
             if (this.stopped) throw new Error('Worker lifecycle stopped before registration');
@@ -122,6 +141,11 @@ export class WorkerAttemptClient {
         if (!record) throw new Error('Worker ACK lacks its original attempt');
         scope.assertActive(); record.acknowledgementAttempted = true;
     }
+    assertCurrent(handle: WorkerAttempt): void {
+        const record = this.record(handle), scope = currentProofConsumerScope(true);
+        if (scope !== record.scope) throw new Error('Worker receipt belongs to another attempt');
+        scope.assertActive();
+    }
     private async boundedDrain(scope: ProofConsumerScope): Promise<void> {
         let timer!: ReturnType<typeof setTimeout>;
         try {
@@ -131,16 +155,27 @@ export class WorkerAttemptClient {
             assertProofConsumerEnd(scope, end);
         } finally {clearTimeout(timer);}
     }
+    private requestSupervisedRetirement(): void {
+        this.fenceAll();
+        if (this.options.mode === 'managed') void this.request({operation: 'retire-owner', ...this.authority}).catch(() => {});
+    }
     async run<T>(handle: WorkerAttempt, operation: () => T | Promise<T>): Promise<T> {
         const record = this.record(handle);
         if (record.running || record.ended) throw new Error('Worker attempt root cannot be repeated');
         record.running = true;
         let rootResult: 'returned' | 'threw' = 'threw';
         try {
-            await record.accepted; record.scope.assertActive();
+            try {await record.accepted;} catch (error) {this.requestSupervisedRetirement(); throw error;}
+            record.scope.assertActive();
             const result = await record.scope.run(operation); rootResult = 'returned'; return result;
         } finally {
-            await this.boundedDrain(record.scope);
+            try {await this.boundedDrain(record.scope);}
+            catch (error) {
+                // A deadline proves no drainage. Ask the parent to supervise the exact physical owner;
+                // keep this unresolved local scope until actual process exit, without an end request.
+                this.requestSupervisedRetirement();
+                throw error;
+            }
             if (this.options.mode === 'managed' && record.challenge) {
                 // No successful receipt can originate from caller JSON or an un-drained local scope.
                 const result = await this.request({operation: 'end', ...this.authority, attemptId: record.id, sequence: record.sequence,
@@ -152,10 +187,12 @@ export class WorkerAttemptClient {
                 if (workerAttemptJson(result.end) !== workerAttemptJson(expected)) throw new Error('Worker end response mismatch');
                 record.ended = result.end;
             }
+            if (record.fenceTimer) clearTimeout(record.fenceTimer);
             this.scopes.delete(record.scope);
         }
     }
     fenceAll(): void {this.stopped = true; for (const record of this.scopes.values()) record.scope.fence();}
+    fenceActiveAttempts(): void {for (const record of this.scopes.values()) record.scope.fence();}
     /** Original physical channel retirement affects queued roots too, before their processing starts. */
     fenceChannel(channelId: string): void {
         for (const record of this.scopes.values()) if (record.descriptor.consumerId === channelId || record.descriptor.publisherId === channelId) record.scope.fence();
