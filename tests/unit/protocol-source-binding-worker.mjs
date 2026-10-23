@@ -1,5 +1,6 @@
 import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
 import {registerHooks} from 'node:module';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -67,7 +68,9 @@ try {
         prev_block:{block_num:number-1,block_id:(number-1).toString(16).padStart(64,'0')},...changes}]));
     const publish=async content=>{reader.local_block_num=Number(reader.decodeShipResult(content)[1].this_block.block_num)-1;
         const before=publications.length;await reader.onMessage(content);assert.equal(publications.length,before+1);return publications.at(-1);};
-    const consume=delivery=>{(controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(delivery,main.ch);return main.mLoader.parser.parseMessage(main,[delivery]);};
+    // Each invocation models a fresh physical broker receipt of these unchanged source bytes/headers.
+    const consume=original=>{const delivery={...original,content:Buffer.from(original.content),properties:structuredClone(original.properties)};
+        (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(delivery,main.ch);return main.mLoader.parser.parseMessage(main,[delivery]);};
     const selectedId=delivery=>delivery.properties.headers[header];
     const first=await publish(frame(100));
     const retained=await sources.readSelection(selectedId(first));
@@ -180,19 +183,32 @@ try {
     queued.client=frontierMemoryClient().client;
     queued.protocolSourceBindingStore=sources;queued.protocolAbiObservationStore=observations;queued.preIndexingQueue={push:async()=>{}};
     queued.ch_ready=true;const receipts=[],oldAcks=[],newAcks=[];
-    const channel=settled=>({prefetch(){},consume(queue,callback){receipts.push(callback);},on(){},
+    const channel=settled=>Object.assign(new EventEmitter(),{prefetch(){},consume(queue,callback){receipts.push(callback);},
         ack(message){settled.push(message.fields.deliveryTag);},nack(){throw new Error('Unexpected queued NACK');},sendToQueue(){return true;}});
     const oldConsumer=channel(oldAcks),newConsumer=channel(newAcks);
-    queued.ch=oldConsumer;process.env.worker_queue='source-binding-fixture:blocks';queued.initConsumer();delete process.env.worker_queue;
+    queued.ch=oldConsumer;controlledAttemptLifecycle(queued,'deserializer');process.env.worker_queue='source-binding-fixture:blocks';queued.initConsumer();delete process.env.worker_queue;
     const queuedFirst={...await publish(frame(111)),fields:{deliveryTag:1}},queuedSecond={...await publish(frame(112)),fields:{deliveryTag:2}};
     const cargoEntered=gate(),resumeCargo=gate();
     observations.prepare=async record=>{if(record.source.blockNum===111){cargoEntered.release();await resumeCargo.promise;}return prepare(record);};
-    receipts[0](queuedFirst);receipts[0](queuedSecond);await cargoEntered.promise;queued.ch=newConsumer;resumeCargo.release();
-    await until(()=>queued.consumerQueue.idle());observations.prepare=prepare;
+    // Observe the real cargo fail-stop request without terminating this component fixture. This does
+    // not report a physical exit or a normal lifecycle end for the old worker's unprocessed receipt.
+    const originalExit=process.exit,exitRequested=gate(),exitCodes=[];
+    process.exit=code=>{exitCodes.push(code);exitRequested.release();};
+    try {
+        receipts[0](queuedFirst);receipts[0](queuedSecond);await cargoEntered.promise;queued.ch=newConsumer;resumeCargo.release();
+        await exitRequested.promise;
+    } finally {process.exit=originalExit;observations.prepare=prepare;}
+    assert.deepEqual(exitCodes,[1]);assert.equal(queued.ch_ready,false);queued.workerAttemptClient.dispose();
     assert.deepEqual(oldAcks,[]);assert.deepEqual(newAcks,[],'Queued old tag was rebound when processing began on a replacement channel');
-    process.env.worker_queue='source-binding-fixture:blocks';queued.initConsumer();delete process.env.worker_queue;
-    receipts[1]({...queuedFirst,fields:{deliveryTag:101}});receipts[1]({...queuedSecond,fields:{deliveryTag:102}});
-    await until(()=>queued.consumerQueue.idle());assert.deepEqual(newAcks,[101,102]);assert.deepEqual(oldAcks,[]);
+    const replacement=new MainDS();workers.push(replacement);await replacement.protocolReady;await until(()=>replacement.mLoader.parser);
+    replacement.client=frontierMemoryClient().client;replacement.protocolSourceBindingStore=sources;
+    replacement.protocolAbiObservationStore=observations;replacement.preIndexingQueue={push:async()=>{}};
+    replacement.ch=newConsumer;replacement.ch_ready=true;controlledAttemptLifecycle(replacement,'deserializer');
+    process.env.worker_queue='source-binding-fixture:blocks';replacement.initConsumer();delete process.env.worker_queue;
+    const redelivery=(original,deliveryTag)=>({...original,content:Buffer.from(original.content),
+        properties:structuredClone(original.properties),fields:{deliveryTag}});
+    receipts[1](redelivery(queuedFirst,101));receipts[1](redelivery(queuedSecond,102));
+    await until(()=>replacement.consumerQueue.idle());assert.deepEqual(newAcks,[101,102]);assert.deepEqual(oldAcks,[]);
 
     // Exercise actual startWS callbacks and constructor-created ingress cargo.
     const ingress=await createReader(),sockets=[],commands=[];

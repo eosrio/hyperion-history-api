@@ -108,6 +108,9 @@ source position. A frame fence prohibits new recovery I/O. Worker proof readers 
 reads require the accepted root; API/source-query readers retain independent request lifetimes and
 the existing ancestry expiry. This passive record does not protect demand between projection
 attempts and is not a source-capacity reservation.
+Controller and runtime checks repeat after awaited initialization, recovery, source admission,
+proof revalidation and application. A held call may finish after a fence; its completion cannot
+start a fresh marker, apply, recovery read or subsequent projection definition.
 
 Confirmed publication keeps the original callback and required buffer-drain lifecycle alive after
 the outer wait aborts, or until the exact original channel closes. Ordinary non-confirm helper sends
@@ -121,3 +124,7 @@ channels are augmented with event registration so a missing close/drain/confirm 
 fabricated. Actual managed worker/IPC, retained original Wire inputs, projection isolation and cache
 counts are required in the separate issue286 qualification lane. Full integration/review remains
 required; this note does not activate #277 capacity, #225, #191 or release support.
+
+The source-binding component control intercepts the existing cargo exit request solely to assert
+fail-stop/no-ACK behavior, then uses a separate worker object and fresh broker receipts for replay.
+It does not report an observed physical exit or a normal end for that old worker's queued receipt.

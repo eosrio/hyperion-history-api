@@ -122,7 +122,9 @@ try {
     const until = async predicate => { const limit = Date.now()+3000; while(!predicate()) {assert(Date.now()<limit);await new Promise(resolve=>setTimeout(resolve,5));} };
     await until(()=>main.mLoader.parser && main.mLoader.chainMappings.has('*::transfer'));
     const delivery = payload => ({content:payload.content,properties:{headers:payload.headers}});
-    const consume=async message=>{(controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(message,main.ch);return main.mLoader.parser.parseMessage(main,[message]);};
+    // Policy replays below are distinct broker receipts of the unchanged source, never a repeated ended attempt.
+    const consume=async original=>{const message={...original,content:Buffer.from(original.content),properties:structuredClone(original.properties)};
+        (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(message,main.ch);return main.mLoader.parser.parseMessage(main,[message]);};
     await consume(delivery(distributed[0]));
     assert(output.some(value=>value.queue.includes('index_abis')),'captured binary account ABI did not reach the ABI output');
     const capturedBlock = output.find(value=>value.queue.includes('index_blocks'));
