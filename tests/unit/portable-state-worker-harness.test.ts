@@ -1,7 +1,8 @@
 import {describe, expect, it} from 'bun:test';
 import {PortableSourceFlow, portableSourceLimits, servePortableWorkerSource} from '../../scripts/qualification/portable-state-worker-source.ts';
-import {independentWirePrimaryRow} from '../../scripts/qualification/portable-state-worker-oracle.ts';
-import {assertPortableApiResult, assertPortablePending, assertPortableUnavailable, describePortableWorkerError, portableWorkerConfig,
+import {independentWirePrimaryRow, portableWorkerAbiAvailability} from '../../scripts/qualification/portable-state-worker-oracle.ts';
+import {createHash} from 'node:crypto';
+import {assertPortableApiResult, assertPortablePending, assertPortableUnavailable, assertPortablePredeployment, describePortableWorkerError, portableWorkerConfig,
     portableWorkerEnvironment, portableWorkerFaultDefinition, validatePortableWorkerPlan} from '../../scripts/qualification/portable-state-worker.ts';
 import {projectTableValue, validateProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
 
@@ -18,6 +19,20 @@ const plan = () => ({schemaVersion: 1, source: {directory: 'source', receiptSha2
         {through: 4, rows: {rows: [{key: 'a', value: {value: 'after'}}]}}]});
 
 describe('portable actual-source harness guards', () => {
+    it('derives the public state boundary from the original ABI deployment independently of durable progress', () => {
+        const abiHex = 'aabb', abiSha256 = createHash('sha256').update(Buffer.from(abiHex, 'hex')).digest('hex');
+        const blockId = '000000de' + 'a'.repeat(56), sourceAbi = {blockNum: 222, blockId, abiHex, abiSha256};
+        const declared = {...definition, source: {...definition.source, abiSha256, abiDeployment: `${blockId}:items:${abiSha256}`}};
+        expect(portableWorkerAbiAvailability({definitions: [declared]}, {sourceAbi})).toEqual({fromBlock: 222, blockId, abiSha256});
+        expect(() => portableWorkerAbiAvailability({definitions: [declared]}, {sourceAbi: {...sourceAbi, blockNum: 1}})).toThrow();
+        expect(() => portableWorkerAbiAvailability({definitions: [{...declared, source: {...declared.source, abiDeployment: 'worker-checkpoint-1'}}]}, {sourceAbi})).toThrow();
+        const response = {status: 503, headers: new Headers({'retry-after': '1'}), body: {statusCode: 503, code: 'projection.incomplete', retryable: true}};
+        expect(() => assertPortablePredeployment(response)).not.toThrow();
+        expect(() => assertPortablePredeployment({...response, status: 200})).toThrow();
+        expect(() => assertPortablePredeployment({...response, body: {...response.body, code: 'projection.query-unavailable'}})).toThrow();
+        expect(() => assertPortablePredeployment({...response, headers: new Headers({'retry-after': '1', 'hyperion-state-block-num': '1'})})).toThrow();
+        expect(() => assertPortablePredeployment({...response, body: {...response.body, rows: []}})).toThrow();
+    });
     it('adds only a distinct invalid mapping and preserves every healthy definition and oracle', () => {
         const input = validatePortableWorkerPlan(plan()), before = structuredClone(input), invalid = portableWorkerFaultDefinition(input);
         expect(input).toEqual(before); expect(invalid.id).not.toBe(input.definitions[0].id);
@@ -100,9 +115,16 @@ describe('portable actual-source harness guards', () => {
         const config = portableWorkerConfig('hyp-p191-123456abcdef', 'h45_p191_123456abcdef', [definition], 43210, 'http://127.0.0.1:43211');
         expect(config.features.contract_state).toEqual({enabled: false, contracts: {}}); expect(config.indexer.start_on).toBe(1);
         expect(config.features.portable_state.projections).toEqual([definition]); expect(config.api.server_addr).toBe('127.0.0.1');
+        expect(config.settings.protocol.profileId).toBe('wire-sysio-6508c9e8-engineering-v1');
+        const native = portableWorkerConfig('hyp-p191-123456abcdef', 'h45_p191_123456abcdef', [definition], 43210,
+            'http://127.0.0.1:43211', 'wire-sysio-6508c9e8-native-engineering-v1');
+        expect(native.settings.protocol.profileId).toBe('wire-sysio-6508c9e8-native-engineering-v1');
+        expect(native.settings).not.toHaveProperty('protocol_abi_coordination');
         expect(() => portableWorkerConfig('production', 'prod', [definition], 43210, 'http://127.0.0.1:1')).toThrow();
-        const environment = portableWorkerEnvironment({NODE_OPTIONS: '--import unsafe', worker_role: 'foreign', ES198_FAULT: '1', PATH: 'kept'}, '/output', '/config', 'chain');
+        const environment = portableWorkerEnvironment({NODE_OPTIONS: '--import unsafe', worker_role: 'foreign', ES198_FAULT: '1',
+            HYPERION_PORTABLE_NATIVE_QUALIFICATION: 'foreign', PATH: 'kept'}, '/output', '/config', 'chain');
         expect(environment.NODE_OPTIONS).toBe(''); expect(environment.worker_role).toBeUndefined(); expect(environment.ES198_FAULT).toBeUndefined(); expect(environment.PATH).toBe('kept');
+        expect(environment.HYPERION_PORTABLE_NATIVE_QUALIFICATION).toBeUndefined();
     });
     it('requires exact HTTP checkpoint, binding, rows/count and shared completeness headers', () => {
         // SDK validation uses null-prototype records; HTTP JSON and adapter snapshots use ordinary records.

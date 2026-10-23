@@ -5,7 +5,8 @@ import {actionHistoryImmutableJson, actionHistoryManifestBounds} from './action-
 import {parseProtocolNativeActionMetadata} from '../protocol/native-action-metadata.js';
 
 export type ActionSourceInventoryProfile = 'antelope-default-v1' |
-    'wire-sysio-6508c9e8-engineering-v1' | 'wire-sysio-7dede884-engineering-v1';
+    'wire-sysio-6508c9e8-engineering-v1' | 'wire-sysio-7dede884-engineering-v1' |
+    'wire-sysio-6508c9e8-native-engineering-v1';
 
 /** The actual effective policy, captured by the host's immutable producer epoch. */
 export interface ActionSourceInventoryPolicy {
@@ -108,7 +109,8 @@ interface Occurrence {
     input?: ProtocolAbiActionInput;
 }
 const profiles = new Set<ActionSourceInventoryProfile>(['antelope-default-v1',
-    'wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede884-engineering-v1']);
+    'wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede884-engineering-v1',
+    'wire-sysio-6508c9e8-native-engineering-v1']);
 const issued = new WeakMap<ActionSourceInventory, Map<number, ActionSourceTransactionInventory>>();
 const hex64 = /^[0-9a-f]{64}$/i;
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');

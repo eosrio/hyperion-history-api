@@ -117,7 +117,19 @@ export class ProtocolNativeActionReader {
     }
 
     async open(source: ProtocolAbiProofSource, selectionId: string,
-               {signal}: ProtocolAbiProofReadOptions = {}): Promise<ProtocolNativeActionView> {
+               options: ProtocolAbiProofReadOptions = {}): Promise<ProtocolNativeActionView> {
+        return this.openSelected(source, selectionId, options, false);
+    }
+
+    /** Worker handoff: bound canonical readiness, then verify native evidence once using that issued proof. */
+    async waitForOpen(source: ProtocolAbiProofSource, selectionId: string,
+                      options: ProtocolAbiProofReadOptions & {timeoutMs?: number} = {}): Promise<ProtocolNativeActionView> {
+        return this.openSelected(source, selectionId, options, true);
+    }
+
+    private async openSelected(source: ProtocolAbiProofSource, selectionId: string,
+                               {signal, timeoutMs}: ProtocolAbiProofReadOptions & {timeoutMs?: number},
+                               wait: boolean): Promise<ProtocolNativeActionView> {
         signal?.throwIfAborted();
         if (this.activeOpens >= 8) unavailable('native_busy', 'Native source verification read budget is exhausted');
         // A caller cannot change its request while its first storage read is pending.
@@ -127,7 +139,9 @@ export class ProtocolNativeActionReader {
             'Native source belongs to another chain');
         this.activeOpens++;
         try {
-            const proof = await this.read(() => this.proofs.open(source, selectionId, {signal}), signal);
+            const proof = await this.read(() => wait
+                ? this.proofs.waitForOpen(source, selectionId, {signal, timeoutMs})
+                : this.proofs.open(source, selectionId, {signal}), signal);
             const retained = await this.read(() => this.store.readSelection(selectionId, signal), signal);
             const {record, context, selection, abiObservation} = retained;
             if (record.inventory === null) unavailable('native_source_incomplete', 'Native source inventory is incomplete');

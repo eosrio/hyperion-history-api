@@ -144,6 +144,108 @@ The driver starts the actual indexer/API processes and requires:
 - No undeclared RPC fallback, drained owned queues, exact source hashes after the
   run, parent-observed clean worker/API shutdown and verified owned-Mongo cleanup.
 
+## Native engineering replay for #270
+
+The same tracer has an explicit native mode. Use a new owned service fixture and
+output directory for each native Node 22/24 run, with the ordinary committed npm
+lock and preparation scripts enabled:
+
+```sh
+bun test tests/unit/portable-state-worker-native.test.ts tests/unit/portable-state-worker-harness.test.ts
+node --experimental-transform-types scripts/qualification/portable-state-worker.ts out/p191-services/worker-state.json out/p191-source/plan.json out/p270-node24 --native
+```
+
+Select `wire-sysio-6508c9e8-native-engineering-v1` through the generated ordinary
+chain configuration and installed provider loader. The prepared source plan,
+1,480 original frames, archive SHA256
+`42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7`,
+legacy oracle profile IDs and original clio receipts are unchanged. The optional
+mode does not alter default profiles, operator configuration or dependencies.
+
+The launcher additionally imports the **existing**
+`action-source-admission-preload.mjs` to activate its documented engineering
+membership seam, with no crash control. Public/default operator admission
+activation remains disabled. The new `portable-state-worker-native-observer.mjs`
+only records actual method boundaries and returned results; it does not replace
+providers, native decisions, transport responses, receipts or worker services.
+This is a guarded replay of the production implementations, with that explicit
+engineering activation, rather than qualification of public/default activation.
+
+The replay holds actual source prefixes 1/33/122/256/397 before the original
+Mongo prefixes 1244/1480. Prefix 256 keeps all genuine notification occurrences
+within the **default 256-block** proof ancestry; no recovery-window override is
+allowed. At 33/122/397, independently authenticated official native-header
+conversions must equal physically persisted schema 2 values, retaining the
+original `onblock` `{header: ...}` wrapper. All receipt/authorization sequence
+fields remain exact decimal strings, and encoding must reproduce every original
+byte. The native journal's actual PREPARE/readback must precede the owning source
+ACK, and independently reopened retained records must bind the original frame,
+capture, context, profile, canonical native epoch and occurrence. Complete action
+membership seals must fingerprint the real physical outputs. Confirmed RabbitMQ
+publication and successful captured Elasticsearch bulk items are separate checks.
+
+The fixed state definitions bind the original `sysio.msgch` ABI deployment at
+block 222. Their durable empty checkpoints at 1/33/122 are successful indexing
+progress, while public state queries must still return retryable HTTP 503 with
+code `projection.incomplete`, no rows and no served-state completeness headers.
+The serving boundary is derived from the independently authenticated original
+source/official ABI oracle, never inferred from Mongo progress. Prefixes
+256/397/1244/1480 require the full existing HTTP 200 row/count/header assertions.
+Raw block history must remain HTTP 200 at every held prefix. Genesis history uses
+the independently verified header-zero predecessor; raw SHiP `prev_block:null`
+remains unchanged in source/native evidence. The first Linux native pilot
+correctly reached durable checkpoint 1 and failed a harness expectation of HTTP
+200 before deployment; it does not demonstrate a product or codec failure.
+
+Original contract notifications are authenticated from the original 1..397 source:
+**25 occurrences across 17 blocks**, with each first-receiver origin, certified
+input ordinal, exact receipt and grouped physical output checked. This dataset
+has no genuine native notifications. Constructed native notification fixtures
+remain separate codec/unit controls and are not relabelled as captured traffic.
+
+Three explicitly labelled controls change one owned native output row after the
+genuine prefix 397 has passed and the state ABI is deployed. Exact raw fallback
+must remain HTTP 200 with the original hex string and no decoded value. Corrupt raw data and a decoded value
+with incomplete metadata must return HTTP 503 with the existing named retryable
+proof-error code while unrelated state queries and raw block history continue.
+Each control restores and rereads the exact original row before continuing.
+Original replay bytes and expected values remain unchanged. Genuine
+genesis has absent traces, an incomplete native observation and incomplete
+action membership; it must never acquire an invented empty trace vector or
+whole-history certificate. Its separately verified initial application state
+still permits unrelated state/history progress.
+
+At 1480, the earlier 33/122/397 decoded API requests must return 503 outside verified
+ancestry, while their original source/ingress records and raw block history stay
+accessible. Held-prefix correctness is not broad historical serving. The
+existing physical Mongo insert/update/delete/filter/count/header, write-failpoint,
+contract-isolation, broker-credit, worker-shutdown and cleanup assertions all
+remain required. Inspect `prefixes/native-*.json` and `report.native` alongside
+the ordinary prefix, raw bulk and process/resource evidence. A passing source-only
+preflight or typecheck does not establish this runtime result.
+
+At the original 1244/1480 source holds, `prefixes/block-*.json` additionally retains
+`physicalMongo`: direct read-only MongoDB storage inspection independent of the
+HTTP and adapter recovery results. The audit verifies the owned loopback database,
+replica identity/version, exact metadata plus all three projection collections,
+simple collation, immutable bindings/generations, original-source checkpoints and
+receipts, and every physical key/value against the unchanged independent plan rows.
+The invalid mapping must remain empty at checkpoint 1243 with source 1244 pending.
+At 1480 this requires deleted envelope keys 1/2 to be absent, keys 3/4 present, and
+the attseq next value to have changed from 5 to 9. No extra physical fields, rows,
+bindings or collections are accepted. A read-only snapshot session and matching
+majority metadata, namespace and server-identity reads before/after bind the audit
+to the held source. The receipt includes actual documents, counts, hashes, storage
+version and budgets: at most nine projections, 256 rows per projection, 1 MiB per
+document and 4 MiB cumulative inspection bytes. Native storage queries remain in
+this qualification helper; no product query or adapter interface is changed.
+
+This mode does not close #191/#256/#225 or qualify full fork/restart/finality
+recovery, bulk ownership, a Rust deployment, client streaming #231, launch pins or
+release readiness. Preserve the incumbent Wire node/binary/listeners before and
+after the isolated bare-metal-hosted run and verify external fixture cleanup as
+described below.
+
 The production worker reserves the exact certified source target as non-serving
 before contract-dependent source materialization or declarative mapping. Only
 successful exact-source application clears that durable intent. Failure to persist
@@ -184,3 +286,14 @@ This tracer does not establish fork rollback, process-crash/restart recovery,
 recovery-window coverage, mapping reload, Bun runtime support, Rust-worker parity,
 AtomicAssets/AtomicMarket parity, WormDB, complete Wire testnet support or the full
 4.5 release. Existing Elasticsearch history remains independent and usable.
+
+## Recorded native qualification status
+
+The [2026-10-22 evidence](../performance/evidence/native-wire-worker-20261022/README.md)
+records a source-reviewed certificate handoff fix and a **failed** native Linux
+Node 24 worker qualification. Original held prefixes through 397 passed after
+the fix; later DS backlog caused genuine queued actions to expire outside the
+default 256-block verified ancestry. The full Node 22 replay and final 1480
+acceptance remain pending. Follow #277 for measured worker/proof backpressure;
+keep #270/#274 open. Do not widen ancestry or relax queue/seal guards to turn
+that failed run into a passing result.
