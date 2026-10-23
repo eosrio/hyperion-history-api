@@ -15,7 +15,7 @@ import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bi
 
 const mode = process.argv[2] ?? 'main';
 assert(['main','main-held-write','main-failed-write','main-ack-throws','ds','contract','handoff',
-    'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain'].includes(mode));
+    'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain','handoff-failed-drain'].includes(mode));
 const isMain = ['main','main-held-write','main-failed-write','main-ack-throws'].includes(mode);
 const role = isMain ? 'deserializer' : 'ds_pool_worker';
 cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-worker.mjs', import.meta.url)),
@@ -78,14 +78,16 @@ try {
             originalWireMainCallback: true, managedParentEnd: true, failedWriteNoAck: true,
             noFreshWriteOrAssociation: true, controlledStorageAndCanonicalAuthority: true,
             brokerSettlement: 'unknown', fullWorkerQualification: false}));
-    } else if (mode === 'handoff-failed-confirm') {
+    } else if (mode === 'handoff-failed-confirm' || mode === 'handoff-failed-drain') {
         await waitFor(() => messages.some(message => message?.event === 'qualification_publish_failed') && ends.length === 1 || exited,
             'original Wire DS failed publisher confirm and owned worker end');
         assert.equal(exited, false, JSON.stringify({exitCode, stderr: stderr.slice(-4000)}));
         const failed = messages.find(message => message.event === 'qualification_publish_failed');
         assert.deepEqual({originalAckCount: failed.originalAckCount, failedConfirms: failed.failedConfirms,
+            failedDrains: failed.failedDrains, confirmCalls: failed.confirmCalls,
             retainedHandoffs: failed.retainedHandoffs},
-        {originalAckCount: 0, failedConfirms: 1, retainedHandoffs: 0});
+        {originalAckCount: 0, failedConfirms: mode === 'handoff-failed-confirm' ? 1 : 0,
+            failedDrains: mode === 'handoff-failed-drain' ? 1 : 0, confirmCalls: 1, retainedHandoffs: 0});
         const end = describeWorkerAttemptEnd(supervisor, ends[0]);
         assert.equal(end.role, role);
         assert.equal(end.status, 'quiescent');
@@ -105,7 +107,9 @@ try {
         assert.equal(exitCode, 0, stdout.slice(-4000));
         assert.equal(stderr, '', stdout.slice(-4000));
         console.log(JSON.stringify({passed: true, native: process.version, mode,
-            originalWireDsCallback: true, managedParentEnd: true, failedConfirmNoAck: true,
+            originalWireDsCallback: true, managedParentEnd: true,
+            failedConfirmNoAck: mode === 'handoff-failed-confirm',
+            confirmedButFailedDrainNoAck: mode === 'handoff-failed-drain',
             noFreshWriteOrAssociation: true, controlledStorageAndBroker: true,
             brokerSettlement: 'unknown', fullWorkerQualification: false}));
     } else {

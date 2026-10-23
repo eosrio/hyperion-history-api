@@ -39,13 +39,15 @@ publisher drain independently. During either hold, the parent sees the registere
 physical attempt but no fresh handoff result, original ACK or end. Release yields
 the ordinary confirmed handoff and an association with broker settlement unknown.
 A failed publisher confirmation yields an authenticated thrown end, no retained
-handoff, no fresh write, no original ACK call and unresolved adjudication. These
-cases use a controlled publisher and retained in-memory storage; actual RabbitMQ
-and Elasticsearch remain part of the combined live qualification gate. All ten
-managed callback cases passed locally under Bun 1.4.4 with native Node 22.23.3
-and 24.19.0 children, and under the local Node 26.4.0 executable. The complete
-local root suite passed 1,206 tests with zero failures and 8,901 assertions
-using the Node 24.19.0 child. CI for the new cases remains pending.
+handoff, no fresh write, no original ACK call and unresolved adjudication. A
+separate case receives the publisher confirmation while the send remains buffered,
+then closes the channel before drain. The close fences the physical attempt; the
+same no-handoff/no-ACK result follows. These cases use a controlled publisher and
+retained in-memory storage; actual RabbitMQ and Elasticsearch remain part of the
+combined live qualification gate. All eleven managed callback cases passed locally
+under Bun 1.4.4 with native Node 22.23.3 and 24.19.0 children. The local root
+suite passed 1,207 tests with zero failures and 8,903 assertions using the native
+Node 24.19.0 child.
 
 Run after `npm ci --allow-git=all`:
 
@@ -56,4 +58,4 @@ bun test tests/unit/action-fresh-write.test.ts tests/unit/action-attempt-adjudic
 npm test
 ```
 
-For native Node 22/24, set `HYPERION_NATIVE_NODE` to the exact executable and rerun the emitted worker tests. The ten original Wire callback plus managed-parent cases passed locally on isolated Node 22.23.3 and 24.19.0 binaries. [Linux CI on `17eee69`](https://github.com/eosrio/hyperion-history-api/actions/runs/39905072793) passed all nine jobs, including 1,203 root tests with zero failures on each Node version. The physical-reader probe still needs original-worker live fork qualification. Live broker, Elasticsearch, and current-fork authority require combined qualification. The Linux 1–1480 Wire/Mongo replay and #277 count-and-byte capacity reservation are separate work.
+For native Node 22/24, set `HYPERION_NATIVE_NODE` to the exact executable and rerun the emitted worker tests. The physical-reader probe still needs original-worker live fork qualification. Live broker, Elasticsearch, and current-fork authority require combined qualification. The Linux 1–1480 Wire/Mongo replay and #277 count-and-byte capacity reservation are separate work.

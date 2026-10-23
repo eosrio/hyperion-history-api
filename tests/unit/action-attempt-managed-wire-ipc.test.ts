@@ -2,7 +2,7 @@ import {expect, test} from 'bun:test';
 import {fileURLToPath} from 'node:url';
 
 for (const mode of ['main','main-held-write','main-failed-write','main-ack-throws','ds','contract','handoff',
-    'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain']) test(`original Wire ${mode} callback reaches the managed native parent adjudicator`, async () => {
+    'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain','handoff-failed-drain']) test(`original Wire ${mode} callback reaches the managed native parent adjudicator`, async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
         fileURLToPath(new URL('./action-attempt-managed-wire-ipc.mjs', import.meta.url)), mode],
     {stdout: 'pipe', stderr: 'pipe', timeout: 40_000});
@@ -15,9 +15,11 @@ for (const mode of ['main','main-held-write','main-failed-write','main-ack-throw
             brokerSettlement: 'unknown', fullWorkerQualification: false});
         return;
     }
-    if (mode === 'handoff-failed-confirm') {
+    if (mode === 'handoff-failed-confirm' || mode === 'handoff-failed-drain') {
         expect(result).toMatchObject({passed: true, mode, managedParentEnd: true,
-            failedConfirmNoAck: true, noFreshWriteOrAssociation: true,
+            failedConfirmNoAck: mode === 'handoff-failed-confirm',
+            confirmedButFailedDrainNoAck: mode === 'handoff-failed-drain',
+            noFreshWriteOrAssociation: true,
             brokerSettlement: 'unknown', fullWorkerQualification: false});
         return;
     }

@@ -33,8 +33,9 @@ const managedOriginalMain = mode === 'managed-original-main' || managedOriginalM
     managedOriginalHandoffHeldConfirm = mode === 'managed-original-handoff-held-confirm',
     managedOriginalHandoffFailedConfirm = mode === 'managed-original-handoff-failed-confirm',
     managedOriginalHandoffHeldDrain = mode === 'managed-original-handoff-held-drain',
+    managedOriginalHandoffFailedDrain = mode === 'managed-original-handoff-failed-drain',
     managedOriginalHandoff = mode === 'managed-original-handoff' || managedOriginalHandoffHeldConfirm
-        || managedOriginalHandoffFailedConfirm || managedOriginalHandoffHeldDrain;
+        || managedOriginalHandoffFailedConfirm || managedOriginalHandoffHeldDrain || managedOriginalHandoffFailedDrain;
 const managedOriginalDs = managedOriginalNoEffect || managedOriginalContract || managedOriginalHandoff;
 const managedOriginal = managedOriginalMain || managedOriginalDs;
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
@@ -481,7 +482,7 @@ try {
             }
             if (managedOriginalHandoffFailedConfirm)
                 poolPublisher.confirmError = new Error('constructed original publication confirm failure');
-            if (managedOriginalHandoffHeldDrain) poolPublisher.writable = false;
+            if (managedOriginalHandoffHeldDrain || managedOriginalHandoffFailedDrain) poolPublisher.writable = false;
             const processing = pool.processMessages(prepared.messages);
             processing.catch(() => {});
             if (managedOriginalHandoffHeldDrain) {
@@ -493,13 +494,25 @@ try {
                 await managedDrainReleased;
                 poolPublisher.emit('drain');
             }
-            if (managedOriginalHandoffFailedConfirm) {
-                await assert.rejects(processing, /constructed original publication confirm failure/);
+            if (managedOriginalHandoffFailedDrain) {
+                await until(() => poolPublisher.sent.length === 1 && poolPublisher.confirmCalls === 1,
+                    'original handoff receives confirm before failed publisher drain');
+                assert.equal(poolConsumer.acked.length, 0);
+                assert.equal(ids(memory, 'h45actionhandoff1:').length, 0);
+                poolPublisher.emit('close');
+            }
+            if (managedOriginalHandoffFailedConfirm || managedOriginalHandoffFailedDrain) {
+                await assert.rejects(processing, managedOriginalHandoffFailedConfirm
+                    ? /constructed original publication confirm failure/
+                    : {code: 'worker_attempt_fenced'});
                 assert.equal(poolPublisher.sent.length, 1);
                 assert.equal(poolConsumer.acked.length, 0);
                 assert.equal(ids(memory, 'h45actionhandoff1:').length, 0);
                 previousSend.call(process, {event: 'qualification_publish_failed',
-                    originalAckCount: poolConsumer.acked.length, failedConfirms: 1,
+                    originalAckCount: poolConsumer.acked.length,
+                    failedConfirms: managedOriginalHandoffFailedConfirm ? 1 : 0,
+                    failedDrains: managedOriginalHandoffFailedDrain ? 1 : 0,
+                    confirmCalls: poolPublisher.confirmCalls,
                     retainedHandoffs: 0, originalPayloadSha256: hash(prepared.messages[0].content)});
                 await managedFinished;
                 break;
@@ -548,7 +561,7 @@ try {
             if (managedOriginalContract) break;
         }
     }
-    if (managedOriginalDs && !managedOriginalHandoffFailedConfirm) {
+    if (managedOriginalDs && !managedOriginalHandoffFailedConfirm && !managedOriginalHandoffFailedDrain) {
         const recordId = managedOriginalHandoff ? managedHandoffId : records().find(row =>
             row.value.work.admissionId === prepared.admission.id && row.value.work.stage === 'ds-transaction')?.id;
         assert(recordId); assert.equal(poolConsumer.acked.length, 1);
