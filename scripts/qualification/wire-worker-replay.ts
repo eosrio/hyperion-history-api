@@ -9,6 +9,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {performance} from 'node:perf_hooks';
 import {Client} from '@elastic/elasticsearch';
 import {Redis} from 'ioredis';
+import {MongoClient} from 'mongodb';
 import {canonical, digest} from './contract-fixture.ts';
 import {assertOwnedServices, assertResourceIsolation, assertEmptyProjection} from './contract-replay.ts';
 import {validateFixture} from './es955-replicas.ts';
@@ -16,6 +17,8 @@ import {assertSuccessfulWorkerShutdown} from './es955-workers.ts';
 import {startBulkLedger, summarizeBulkLedger} from './replay-bulk-ledger.ts';
 import {auditWireReplayFixture, createWireReplayRpc, serveWireReplay, assertWireReplayComplete,
     wireReplayPins, type AuditedWireReplayFixture} from './wire-replay-fixture.ts';
+import {assertWireStateSnapshot, readWireState, wireStateBarriers, wireStateContracts, type WireStateMode} from './wire-state-outputs.ts';
+import type {WireReplayExpectations} from './wire-replay-outputs.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 export const wireReplayLimits = Object.freeze({runMs: 600_000, completionMs: 240_000, requestMs: 5000,
@@ -25,11 +28,20 @@ const sleep = (ms: number) => new Promise(done => setTimeout(done, ms));
 const errorText = (error: unknown) => String(error instanceof Error ? error.stack ?? error.message : error).slice(0, 8192);
 
 export function parseWireWorkerReplayArguments(args: string[]) {
-    assert.ok(args.length === 2 || (args.length === 4 && args[2] === '--package-root'),
-        'usage: node wire-worker-replay.ts STATE_FILE NEW_OUTPUT_DIRECTORY [--package-root INSTALLED_PACKAGE_DIRECTORY]');
-    const values = args.length === 4 ? [args[0], args[1], args[3]] : args;
-    assert.ok(values.every(value => typeof value === 'string' && value.trim().length > 0 && !value.startsWith('--')), 'invalid Wire replay argument');
-    return {stateFile: args[0], outputDirectory: args[1], packageRoot: args.length === 4 ? args[3] : undefined};
+    assert.ok([2, 4, 6].includes(args.length),
+        'usage: node wire-worker-replay.ts STATE_FILE NEW_OUTPUT_DIRECTORY [--package-root INSTALLED_PACKAGE_DIRECTORY] [--contract-state enabled|disabled]');
+    assert.ok(args.slice(0, 2).every(value => value.trim().length > 0 && !value.startsWith('--')), 'invalid Wire replay argument');
+    let packageRoot: string | undefined, stateMode: WireStateMode | undefined;
+    const seen = new Set<string>();
+    for (let index = 2; index < args.length; index += 2) {
+        const option = args[index], value = args[index + 1];
+        assert.ok(!seen.has(option), 'duplicate Wire replay option'); seen.add(option);
+        assert.ok(value.trim().length > 0 && !value.startsWith('--'), 'invalid Wire replay option value');
+        if (option === '--package-root') packageRoot = value;
+        else {assert.equal(option, '--contract-state', 'unknown Wire replay option');
+            assert.ok(value === 'enabled' || value === 'disabled', 'invalid Wire state mode'); stateMode = value;}
+    }
+    return {stateFile: args[0], outputDirectory: args[1], packageRoot, ...(stateMode ? {stateMode} : {})};
 }
 
 async function ordinary(path: string, directory = false) {
@@ -66,8 +78,11 @@ export function wireWorkerEnvironment(environment: NodeJS.ProcessEnv, output: st
         ES198_OBSERVER_DIR: join(output, 'observer'), ES198_CPU_PROFILE: '0'};
 }
 
-export function wireWorkerConfig(chain: string) {
+export function wireWorkerConfig(chain: string, stateMode?: WireStateMode, expected?: WireReplayExpectations) {
     assert.match(chain, /^hyp-wire-[a-f0-9]{12}$/);
+    assert.ok(stateMode === undefined || stateMode === 'enabled' || stateMode === 'disabled', 'invalid Wire state mode');
+    assert.equal(expected === undefined, stateMode === undefined, 'state config requires source expectations and explicit mode together');
+    const contractState = stateMode ? {enabled: stateMode === 'enabled', contracts: wireStateContracts(expected!)} : {enabled: false, contracts: {}};
     return {api: {enabled: false, disable_tx_cache: true},
         indexer: {enabled: true, start_on: 2, stop_on: 0, rewrite: false, purge_queues: false,
             live_reader: true, live_only_mode: true, abi_scan_mode: false, fetch_block: true, fetch_traces: true,
@@ -83,7 +98,7 @@ export function wireWorkerConfig(chain: string) {
         prefetch: {read: 8, block: 8, index: 32},
         features: {streaming: {enable: false, traces: false, deltas: false},
             tables: {proposals: false, accounts: false, voters: false, permissions: false, user_resources: false},
-            contract_state: {enabled: false, contracts: {}}, index_deltas: true, index_all_deltas: true,
+            contract_state: contractState, index_deltas: true, index_all_deltas: true,
             index_deltas_deletions: true, deferred_trx: false, failed_trx: false, resource_limits: false, resource_usage: false},
         blacklists: {actions: [], deltas: []}, whitelists: {actions: wireReplayAccounts.map(account => `${account}::*`), deltas: [], max_depth: 10, root_only: false},
         plugins: {}, hub: {enabled: false}, alerts: {enabled: false}};
@@ -163,13 +178,15 @@ async function serveRpc(fixture: AuditedWireReplayFixture, errors: string[]) {
 
 const runtimeSources = ['package.json', 'package-lock.json', '.bun-version', 'AGENTS.md',
     'scripts/qualification/wire-worker-replay.ts', 'scripts/qualification/wire-replay-fixture.ts', 'scripts/qualification/wire-replay-outputs.ts',
+    'scripts/qualification/wire-state-outputs.ts',
     'scripts/qualification/contract-replay.ts', 'scripts/qualification/contract-fixture.ts', 'scripts/qualification/replay-bulk-ledger.ts',
     'scripts/qualification/es955-worker-observer.mjs', 'scripts/qualification/es955-workers.ts', 'scripts/qualification/es955-replicas.ts',
     'node_modules/@eosrio/hyperion-wire-plugin/package.json', 'node_modules/@eosrio/hyperion-sdk/package.json',
     'node_modules/@elastic/elasticsearch/package.json', 'node_modules/amqplib/package.json', 'node_modules/uWebSockets.js/package.json',
+    'node_modules/mongodb/package.json',
     ...['launcher', 'workers/hyperionWorker', 'workers/state-reader', 'workers/deserializer', 'workers/ds-pool', 'workers/indexer',
         'modules/master', 'modules/loader', 'modules/parsers/base-parser', 'modules/parsers/3.2-parser', 'helpers/reader-progress',
-        'helpers/elastic-routes', 'protocol/selection', 'protocol/source-bindings', 'protocol/abi-observation-store',
+        'helpers/elastic-routes', 'helpers/mongo-routes', 'helpers/mongo-batch', 'protocol/selection', 'protocol/source-bindings', 'protocol/abi-observation-store',
         'protocol/abi-coordinator', 'protocol/abi-frontier-store', 'protocol/abi-reducer', 'protocol/abi-proof',
         'protocol/immutable-bundle-store'].flatMap(file => [`src/indexer/${file}.ts`, `build/indexer/${file}.js`])];
 
@@ -225,7 +242,7 @@ async function sourceSnapshot(selected: readonly {runtime: string; sha256: strin
     return hashes;
 }
 
-export async function runWireWorkerReplay(stateFile: string, outputDirectory: string, packageRoot?: string) {
+export async function runWireWorkerReplay(stateFile: string, outputDirectory: string, packageRoot?: string, stateMode?: WireStateMode) {
     assert.equal(process.release.name, 'node', 'Wire worker qualification requires native Node');
     assert.ok(!process.versions.bun && /^(22|24)\./.test(process.versions.node), 'qualify Wire workers with Node22 or Node24');
     const deadline = performance.now() + wireReplayLimits.runMs;
@@ -239,6 +256,7 @@ export async function runWireWorkerReplay(stateFile: string, outputDirectory: st
     const fixture = await auditWireReplayFixture(packageRoot ? {packageRoot} : {});
     const {buildWireReplayExpectations, assertWireReplayOutputs, assertWireReplayPublications} = await import('./wire-replay-outputs.ts');
     const expectations = buildWireReplayExpectations(fixture, chain);
+    assert.ok(stateMode === undefined || stateMode === 'enabled' || stateMode === 'disabled', 'invalid Wire state mode');
     assert.equal(fixture.replayStart, 2); assert.equal(fixture.replayEnd, 120); assert.equal(fixture.records.length, 119); remaining();
     const containers = [...state.core.nodes, state.core.broker, state.spring, state.redis, state.mongo];
     const values = JSON.parse(docker(['inspect', ...containers.map(item => item.containerId)])); const inspections: Record<string, any> = {};
@@ -258,7 +276,7 @@ export async function runWireWorkerReplay(stateFile: string, outputDirectory: st
             'No225 sink/canonical/PIT/public-admission, Rust ingestion, fork/reconnect, performance, Bun runtime or selected-testnet qualification.',
             'No reset/purge or fixture service deletion; ownership-checked service cleanup is a separate root operation.']};
     const client = new Client({node: state.core.nodes[0].url, maxRetries: 0, requestTimeout: 15000});
-    let redis: Redis | undefined, master: ChildProcess | undefined;
+    let redis: Redis | undefined, mongo: MongoClient | undefined, master: ChildProcess | undefined;
     let replay: Awaited<ReturnType<typeof serveWireReplay>> | undefined, rpc: Awaited<ReturnType<typeof serveRpc>> | undefined;
     let ledger: Awaited<ReturnType<typeof startBulkLedger>> | undefined;
     const queues = async () => {
@@ -284,7 +302,19 @@ export async function runWireWorkerReplay(stateFile: string, outputDirectory: st
         redis = new Redis(state.redis.url, {lazyConnect: true, connectTimeout: 5000, commandTimeout: 5000, maxRetriesPerRequest: 1, enableOfflineQueue: false});
         redis.on('error', error => {if (report.replayErrors.length < 64) report.replayErrors.push(errorText(error));}); await redis.connect();
         assert.deepEqual(await redis.keys(chain + '::*'), [], 'refusing existing Wire progress');
-        replay = await serveWireReplay(fixture, report.replayErrors); rpc = await serveRpc(fixture, report.replayErrors);
+        if (stateMode) {
+            mongo = new MongoClient(state.mongo.url, {serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000, socketTimeoutMS: 10000});
+            await mongo.connect();
+            const database = mongo.db(chain + '_' + chain);
+            assert.deepEqual(await database.listCollections({}, {nameOnly: true}).toArray(), [], 'refusing existing Wire state collections');
+            const server = await mongo.db('admin').command({buildInfo: 1}); assert.equal(server.version, '8.0.32');
+            report.stateWrites = {mode: stateMode, database: database.databaseName, serverVersion: server.version,
+                servingReadinessQualified: false, snapshots: []};
+            report.limits[2] = 'Legacy Mongo effects are checked separately; no portable runtime initialization, canonical rollback or state API readiness is certified.';
+            await mkdir(join(output, 'state'));
+        }
+        replay = await serveWireReplay(fixture, report.replayErrors, stateMode === 'enabled' ? {initialThroughBlock: wireStateBarriers[0]} : {});
+        rpc = await serveRpc(fixture, report.replayErrors);
         report.replayRequests = replay.requests; report.replayMetrics = replay.metrics; report.rpcRequests = rpc.requests; report.rpcLineage = rpc.lineage;
         await mkdir(join(output, 'bulk')); ledger = await startBulkLedger(state.core.nodes[0].url, join(output, 'bulk'), report.replayErrors); report.bulkReceipts = ledger.receipts;
         const control = createServer(); control.listen(0, '127.0.0.1'); await once(control, 'listening'); const controlPort = (control.address() as any).port;
@@ -294,9 +324,9 @@ export async function runWireWorkerReplay(stateFile: string, outputDirectory: st
             amqp: {protocol: 'http', host: new URL(state.core.broker.url).host, api: new URL(state.core.broker.managementUrl).host,
                 user: 'qualifier', pass: 'qualifier-test-only', vhost: '/', frameMax: '0x10000'},
             redis: {host: redisUrl.hostname, port: Number(redisUrl.port)},
-            mongodb: {enabled: false, host: mongoUrl.hostname, port: Number(mongoUrl.port), database_prefix: chain, user: '', pass: ''},
+            mongodb: {enabled: stateMode !== undefined, host: mongoUrl.hostname, port: Number(mongoUrl.port), database_prefix: chain, user: '', pass: ''},
             chains: {[chain]: {chain_id: fixture.chainId, http: rpc.url, ship: [{label: 'verified-retained-wire', url: replay.url}], control_port: controlPort}}, alerts: {enabled: false}};
-        const config = wireWorkerConfig(chain); const configFile = join(output, 'config/chain.json');
+        const config = wireWorkerConfig(chain, stateMode, stateMode ? expectations : undefined); const configFile = join(output, 'config/chain.json');
         await mkdir(join(output, 'config/chains'), {recursive: true}); await writeFile(join(output, 'package.json'), await boundedFile(join(repo, 'package.json')), {flag: 'wx'});
         await writeFile(configFile, JSON.stringify(config, null, 2) + '\n', {flag: 'wx'});
         await writeFile(join(output, 'config/connections.json'), JSON.stringify(connections, null, 2) + '\n', {flag: 'wx'});
@@ -308,6 +338,35 @@ export async function runWireWorkerReplay(stateFile: string, outputDirectory: st
             master.on('error', error => report.replayErrors.push(errorText(error))); report.masterPid = master.pid;
         } finally {await stdout.close(); await stderr.close();}
         const completeAt = Math.min(deadline, performance.now() + wireReplayLimits.completionMs); let last: unknown;
+        if (stateMode === 'enabled') {
+            for (const through of wireStateBarriers) {
+                replay.releaseThrough(through);
+                let completed = false;
+                while (performance.now() < completeAt) {
+                    assert.equal(master.exitCode, null, 'Wire master exited during state barrier');
+                    assert.equal(master.signalCode, null, 'Wire master signaled during state barrier');
+                    assert.deepEqual(report.replayErrors, [], 'Wire state source/transport failed');
+                    try {
+                        await client.indices.refresh({index: chain + '-*'});
+                        const block = await client.search({index: chain + '-block-*', size: 1, track_total_hits: true,
+                            allow_partial_search_results: false, timeout: '5s', query: {term: {block_num: through}}});
+                        assert.equal(block.timed_out, false); assert.equal(block._shards.failed, 0);
+                        assert.equal((block.hits.total as any).value, 1);
+                        assert.equal((block.hits.hits[0]._source as any).block_id, expectations.blocks.find(value => value.blockNum === through)!.blockId);
+                        const observed = await readWireState(mongo!.db(chain + '_' + chain), expectations);
+                        const evidence = assertWireStateSnapshot(expectations, through, stateMode, observed);
+                        const pending = await queues();
+                        assert.ok(pending.length > 0 && pending.every(queue => queue.messages === 0 && queue.ready === 0 && queue.unacked === 0), 'state barrier queues not drained');
+                        const bytes = Buffer.from(JSON.stringify({through, observed, block, queues: pending}, null, 2) + '\n');
+                        const file = `state/block-${through}.json`; await writeFile(join(output, file), bytes, {flag: 'wx'});
+                        report.stateWrites.snapshots.push({...evidence, file, observationSha256: digest(bytes)});
+                        completed = true; break;
+                    } catch (error) {last = error;}
+                    await sleep(250);
+                }
+                assert.ok(completed, `Wire state barrier ${through} deadline exceeded: ${errorText(last)}`);
+            }
+        }
         while (performance.now() < completeAt) {
             assert.equal(master.exitCode, null, `Wire master exited prematurely: ${master.exitCode}`);
             assert.equal(master.signalCode, null, 'Wire master exited by signal'); assert.deepEqual(report.replayErrors, [], 'Wire replay input/transport failed');
@@ -321,6 +380,11 @@ export async function runWireWorkerReplay(stateFile: string, outputDirectory: st
             await sleep(250);
         }
         if (!report.finalQueues) throw new Error('Wire completion deadline exceeded: ' + errorText(last));
+        if (stateMode) {
+            const observed = await readWireState(mongo!.db(chain + '_' + chain), expectations);
+            report.stateWrites.final = assertWireStateSnapshot(expectations, 120, stateMode, observed);
+            await writeFile(join(output, 'state/final.json'), JSON.stringify(observed, null, 2) + '\n', {flag: 'wx'});
+        }
         report.durableCopies = [];
         for (const node of state.core.nodes.filter((entry: any) => entry.role === 'data')) {
             remaining(); const copy = new Client({node: node.url, maxRetries: 0, requestTimeout: 15000});
@@ -364,7 +428,7 @@ export async function runWireWorkerReplay(stateFile: string, outputDirectory: st
             }
         }
         for (const [name, close] of [['replay', () => replay?.close()], ['rpc', () => rpc?.close()], ['bulk-ledger', () => ledger?.close()],
-            ['redis', () => redis?.disconnect()], ['elasticsearch', () => client.close()]] as const) {
+            ['redis', () => redis?.disconnect()], ['mongodb-observer', () => mongo?.close()], ['elasticsearch', () => client.close()]] as const) {
             try {await close(); report.cleanup.push({name, ok: true});} catch (error) {report.status = 'failed'; report.cleanup.push({name, ok: false, error: errorText(error)});}
         }
         if (report.replayErrors.length) report.status = 'failed'; report.completedAt = new Date().toISOString();
@@ -375,7 +439,8 @@ export async function runWireWorkerReplay(stateFile: string, outputDirectory: st
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
     const args = parseWireWorkerReplayArguments(process.argv.slice(2));
-    const report = await runWireWorkerReplay(args.stateFile, args.outputDirectory, args.packageRoot);
-    console.log(JSON.stringify({status: report.status, error: report.error, chain: report.chain, blocks: report.fixture?.blocks, limits: report.limits}));
+    const report = await runWireWorkerReplay(args.stateFile, args.outputDirectory, args.packageRoot, args.stateMode);
+    console.log(JSON.stringify({status: report.status, error: report.error, chain: report.chain, blocks: report.fixture?.blocks,
+        stateMode: report.stateWrites?.mode, limits: report.limits}));
     if (report.status !== 'passed') process.exitCode = 1;
 }

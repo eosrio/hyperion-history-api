@@ -252,14 +252,28 @@ export class WireReplayFlow {
     readonly sentBlocks: number[] = []; readonly acknowledgedBlocks: number[] = [];
     readonly start: number; readonly last: number; readonly maximumWindow: number;
     private next: number; private end: number; private window = 0; private active = false;
+    private throughBlock: number;
     private inFlightBlocks: number[] = []; requests = 0; statusRequests = 0;
-    constructor(start: number, last: number, maximumWindow = wireReplayLimits.inFlight) {
+    constructor(start: number, last: number, maximumWindow = wireReplayLimits.inFlight, initialThroughBlock = last) {
         number(start, 1, 0xfffffffe, 'invalid replay start'); number(last, start, start + 511, 'invalid replay end');
         number(maximumWindow, 1, wireReplayLimits.inFlight, 'invalid replay window'); this.start = start; this.last = last; this.maximumWindow = maximumWindow;
+        this.throughBlock = number(initialThroughBlock, start - 1, last, 'invalid initial replay release');
         this.next = start; this.end = last + 1;
     }
     get inFlight() {return this.inFlightBlocks.length;}
     get idle() {return this.active && this.next >= this.end;}
+    /** Raising the source barrier grants no credits and never activates a status-only connection. */
+    releaseThrough(blockNum: number): number[] {
+        this.throughBlock = number(blockNum, this.throughBlock, this.last, 'invalid replay release');
+        return this.available();
+    }
+    private available(): number[] {
+        const blocks: number[] = [];
+        while (this.active && this.inFlight < this.window && this.next < this.end && this.next <= this.throughBlock) {
+            const block = this.next++; blocks.push(block); this.sentBlocks.push(block); this.inFlightBlocks.push(block);
+        }
+        return blocks;
+    }
     accept(request: any): {status: boolean; blocks: number[]} {
         assert.ok(++this.requests <= wireReplayLimits.requests); assert.ok(Array.isArray(request) && request.length === 2);
         const [type, value] = request; assert.ok(value && typeof value === 'object' && !Array.isArray(value));
@@ -285,32 +299,35 @@ export class WireReplayFlow {
             const count = number(value.num_messages, 1, this.inFlight, 'ACK exceeds outstanding source messages');
             this.acknowledgedBlocks.push(...this.inFlightBlocks.splice(0, count));
         }
-        const blocks: number[] = [];
-        while (this.inFlight < this.window && this.next < this.end) {
-            const block = this.next++; blocks.push(block); this.sentBlocks.push(block); this.inFlightBlocks.push(block);
-        }
-        return {status: false, blocks};
+        return {status: false, blocks: this.available()};
     }
 }
 
-export function createWireReplaySession(fixture: AuditedWireReplayFixture) {
-    const source = snapshot(fixture); const flow = new WireReplayFlow(2, 120);
+export function createWireReplaySession(fixture: AuditedWireReplayFixture, initialThroughBlock = 120) {
+    const source = snapshot(fixture); const flow = new WireReplayFlow(2, 120, wireReplayLimits.inFlight, initialThroughBlock);
+    const messages = (blocks: number[]) => blocks.map(block => Buffer.from(source.records[block - 2].frame));
     return {flow, receive(bytes: Uint8Array) {
         assert.ok(bytes.byteLength > 0 && bytes.byteLength <= wireReplayLimits.requestBytes);
         const result = flow.accept(source.decodeRequest(bytes));
         return {status: result.status, messages: result.status ? [Buffer.from(source.files.get(capturePrefix + 'status.bin')!)]
-            : result.blocks.map(block => Buffer.from(source.records[block - 2].frame)), blocks: result.blocks};
+            : messages(result.blocks), blocks: result.blocks};
+    }, releaseThrough(blockNum: number) {
+        const blocks = flow.releaseThrough(blockNum); return {status: false, messages: messages(blocks), blocks};
     }};
 }
 
-export async function serveWireReplay(fixture: AuditedWireReplayFixture, errors: string[], limits: {durationMs?: number} = {}) {
+export async function serveWireReplay(fixture: AuditedWireReplayFixture, errors: string[], limits: {durationMs?: number; initialThroughBlock?: number} = {}) {
     const source = snapshot(fixture); const durationMs = number(limits.durationMs ?? wireReplayLimits.durationMs, 1, wireReplayLimits.durationMs, 'invalid replay deadline');
+    const initialThroughBlock = number(limits.initialThroughBlock === undefined ? 120 : limits.initialThroughBlock, 1, 120, 'invalid initial replay release');
+    let releasedThroughBlock = initialThroughBlock;
     const metrics = {connections: 0, totalSentBlocks: 0, totalAcknowledgedBlocks: 0, sentBytes: 0, requestBytes: 0, rejectedRequests: 0,
+        releasedThroughBlock: initialThroughBlock,
         sessions: [] as {id: number; sentBlocks: number[]; acknowledgedBlocks: number[]; requests: number; inFlight: number; idle: boolean}[]};
+    const releases = new Map<number, (blockNum: number) => number[]>();
     const requests: any[] = []; const sent: any[] = []; const server = new WebSocketServer({host: '127.0.0.1', port: 0, maxPayload: wireReplayLimits.requestBytes});
     await new Promise<void>((done, reject) => {server.once('listening', done); server.once('error', reject);});
     let closed = false; let closing: Promise<void> | undefined;
-    const close = () => closing ??= (async () => {closed = true; clearTimeout(timer); for (const socket of server.clients) socket.terminate();
+    const close = () => closing ??= (async () => {closed = true; releases.clear(); clearTimeout(timer); for (const socket of server.clients) socket.terminate();
         await new Promise<void>((done, reject) => server.close(error => error ? reject(error) : done()));})();
     const timer = setTimeout(() => {errors.push('bounded Wire replay deadline exceeded'); void close().catch(error => errors.push(String(error)));}, durationMs); timer.unref();
     server.on('error', error => errors.push(String(error)));
@@ -319,13 +336,29 @@ export async function serveWireReplay(fixture: AuditedWireReplayFixture, errors:
         if (closed || id > wireReplayLimits.connections || server.clients.size > wireReplayLimits.activeConnections) {
             metrics.rejectedRequests++; errors.push('Wire replay connection bound exceeded'); socket.terminate(); return;
         }
-        const session = createWireReplaySession(fixture); const view = {id, sentBlocks: [] as number[], acknowledgedBlocks: [] as number[], requests: 0, inFlight: 0, idle: false};
+        const session = createWireReplaySession(fixture, releasedThroughBlock); const view = {id, sentBlocks: [] as number[], acknowledgedBlocks: [] as number[], requests: 0, inFlight: 0, idle: false};
         metrics.sessions.push(view);
         const send = (bytes: Buffer, binary: boolean) => {
             assert.ok(metrics.sentBytes + bytes.length <= wireReplayLimits.sentBytes && socket.bufferedAmount + bytes.length <= wireReplayLimits.bufferedBytes,
                 'Wire replay output byte bound exceeded'); metrics.sentBytes += bytes.length;
             socket.send(bytes, {binary}, error => {if (error && !closed) errors.push(String(error));});
         };
+        const publish = (result: ReturnType<typeof session.receive>, acknowledged = 0) => {
+            for (const [index, message] of result.messages.entries()) {
+                send(message, true);
+                if (!result.status) sent.push({connection: id, blockNum: result.blocks[index], sha256: hash(message), bytes: message.length});
+            }
+            metrics.totalSentBlocks += result.blocks.length; metrics.totalAcknowledgedBlocks += acknowledged;
+            Object.assign(view, {sentBlocks: [...session.flow.sentBlocks], acknowledgedBlocks: [...session.flow.acknowledgedBlocks],
+                requests: session.flow.requests, inFlight: session.flow.inFlight, idle: session.flow.idle});
+            return result.blocks;
+        };
+        const reject = (error: unknown) => {metrics.rejectedRequests++; errors.push(String(error)); socket.close(1008, 'audited Wire replay request rejected');};
+        releases.set(id, blockNum => {
+            if (socket.readyState !== WebSocket.OPEN) return [];
+            try {return publish(session.releaseThrough(blockNum));} catch (error) {reject(error); throw error;}
+        });
+        socket.on('close', () => releases.delete(id));
         send(Buffer.from(source.files.get(capturePrefix + 'schema.bin')!), false);
         socket.on('error', error => {if (!closed) errors.push(String(error));});
         socket.on('message', (raw, binary) => {
@@ -335,18 +368,17 @@ export async function serveWireReplay(fixture: AuditedWireReplayFixture, errors:
                 assert.ok(requests.length < wireReplayLimits.requests); const decoded = source.decodeRequest(bytes);
                 requests.push({connection: id, request: clone(decoded), sha256: hash(bytes), bytes: bytes.length, at: Date.now()});
                 const beforeAck = session.flow.acknowledgedBlocks.length; const result = session.receive(bytes);
-                for (const [index, message] of result.messages.entries()) {
-                    send(message, true);
-                    if (!result.status) sent.push({connection: id, blockNum: result.blocks[index], sha256: hash(message), bytes: message.length});
-                }
-                metrics.totalSentBlocks += result.blocks.length;
-                metrics.totalAcknowledgedBlocks += session.flow.acknowledgedBlocks.length - beforeAck;
-                Object.assign(view, {sentBlocks: [...session.flow.sentBlocks], acknowledgedBlocks: [...session.flow.acknowledgedBlocks],
-                    requests: session.flow.requests, inFlight: session.flow.inFlight, idle: session.flow.idle});
-            } catch (error) {metrics.rejectedRequests++; errors.push(String(error)); socket.close(1008, 'audited Wire replay request rejected');}
+                publish(result, session.flow.acknowledgedBlocks.length - beforeAck);
+            } catch (error) {reject(error);}
         });
     });
-    return {url: `ws://127.0.0.1:${(server.address() as any).port}`, requests, metrics, sent, errors, close};
+    return {url: `ws://127.0.0.1:${(server.address() as any).port}`, requests, metrics, sent, errors, close,
+        releaseThrough(blockNum: number) {
+            assert.ok(!closed, 'Wire replay is closed');
+            releasedThroughBlock = number(blockNum, releasedThroughBlock, 120, 'invalid replay release');
+            metrics.releasedThroughBlock = releasedThroughBlock;
+            return [...releases.values()].flatMap(release => release(blockNum));
+        }};
 }
 
 export function assertWireReplayComplete(fixture: AuditedWireReplayFixture, replay: Awaited<ReturnType<typeof serveWireReplay>>) {

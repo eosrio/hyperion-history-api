@@ -25,6 +25,71 @@ describe('pure bounded Wire replay credit controller', () => {
         expect(flow.accept(request({start_block_num: 4, end_block_num: 6, irreversible_only: true})).blocks).toEqual([4, 5]);
         expect(flow.accept(ack(2)).blocks).toEqual([]); expect(flow.idle).toBe(true);
     });
+    test('an optional release barrier preserves credits without reserving unreleased blocks', () => {
+        const flow = new WireReplayFlow(2, 8, 2, 3);
+        expect(flow.accept(request()).blocks).toEqual([2, 3]);
+        expect(flow.releaseThrough(5)).toEqual([]); expect(flow.sentBlocks).toEqual([2, 3]);
+        expect(() => flow.accept(ack(3))).toThrow('ACK exceeds outstanding');
+        expect(flow.inFlight).toBe(2); expect(flow.acknowledgedBlocks).toEqual([]);
+        expect(flow.accept(ack(1)).blocks).toEqual([4]);
+        expect(flow.accept(ack(2)).blocks).toEqual([5]);
+        expect(flow.releaseThrough(5)).toEqual([]);
+        expect(flow.releaseThrough(8)).toEqual([6]);
+        expect(flow.accept(ack(2)).blocks).toEqual([7, 8]);
+        expect(flow.accept(ack(2)).blocks).toEqual([]);
+        expect(flow.sentBlocks).toEqual([2, 3, 4, 5, 6, 7, 8]);
+        expect(flow.acknowledgedBlocks).toEqual(flow.sentBlocks); expect(flow.inFlight).toBe(0); expect(flow.idle).toBe(true);
+    });
+    test('ACKs at a barrier drain only sent blocks and a release can fill the remaining window', () => {
+        const flow = new WireReplayFlow(2, 7, 3, 2);
+        expect(flow.accept(request({max_messages_in_flight: 3})).blocks).toEqual([2]);
+        expect(flow.accept(ack(1)).blocks).toEqual([]); expect(flow.inFlight).toBe(0); expect(flow.idle).toBe(false);
+        expect(() => flow.accept(ack(1))).toThrow('ACK exceeds outstanding');
+        expect(flow.releaseThrough(4)).toEqual([3, 4]); expect(flow.inFlight).toBe(2);
+        expect(flow.releaseThrough(7)).toEqual([5]); expect(flow.inFlight).toBe(3);
+        expect(flow.accept(ack(3)).blocks).toEqual([6, 7]);
+        expect(flow.accept(ack(2)).blocks).toEqual([]); expect(flow.acknowledgedBlocks).toEqual([2, 3, 4, 5, 6, 7]);
+    });
+    test('releases before a block request update only the cap, including status-only connections', () => {
+        const flow = new WireReplayFlow(2, 7, 2, 1);
+        expect(flow.releaseThrough(3)).toEqual([]);
+        expect(flow.accept(['get_status_request_v0', {}])).toEqual({status: true, blocks: []});
+        expect(flow.releaseThrough(4)).toEqual([]); expect(flow.sentBlocks).toEqual([]); expect(flow.inFlight).toBe(0);
+        expect(() => flow.accept(ack(1))).toThrow('ACK before source selection');
+        expect(flow.accept(request({start_block_num: 4})).blocks).toEqual([4]);
+        expect(flow.accept(ack(1)).blocks).toEqual([]); expect(flow.sentBlocks).toEqual([4]);
+        expect(flow.releaseThrough(7)).toEqual([5, 6]);
+    });
+    test('initial and subsequent release bounds fail without changing the active source or credits', () => {
+        for (const invalid of [0, 6, -1, 2.5, NaN, Infinity, '3', null]) {
+            expect(() => new WireReplayFlow(2, 5, 2, invalid as any)).toThrow('invalid initial replay release');
+        }
+        const flow = new WireReplayFlow(2, 5, 2, 2);
+        expect(flow.accept(request()).blocks).toEqual([2]);
+        for (const invalid of [1, 6, -1, 2.5, NaN, Infinity, '3', null]) {
+            expect(() => flow.releaseThrough(invalid as any)).toThrow('invalid replay release');
+            expect(flow.sentBlocks).toEqual([2]); expect(flow.inFlight).toBe(1);
+        }
+        expect(flow.releaseThrough(3)).toEqual([3]); expect(flow.releaseThrough(3)).toEqual([]);
+        expect(() => flow.releaseThrough(2)).toThrow('invalid replay release');
+        expect(flow.accept(ack(2)).blocks).toEqual([]); expect(flow.releaseThrough(5)).toEqual([4, 5]);
+    });
+    test('retained state checkpoints release all 119 original block numbers exactly once', () => {
+        const flow = new WireReplayFlow(2, 120, 128, 78);
+        const first = flow.accept(request({max_messages_in_flight: 128})).blocks;
+        expect(first).toEqual(Array.from({length: 77}, (_value, index) => index + 2));
+        expect(flow.accept(ack(first.length)).blocks).toEqual([]);
+        let previous = 78;
+        for (const checkpoint of [81, 84, 87, 90, 93, 96, 99, 120]) {
+            expect(flow.idle).toBe(false);
+            const released = flow.releaseThrough(checkpoint);
+            expect(released).toEqual(Array.from({length: checkpoint - previous}, (_value, index) => previous + index + 1));
+            expect(flow.accept(ack(released.length)).blocks).toEqual([]); previous = checkpoint;
+        }
+        expect(flow.sentBlocks).toEqual(Array.from({length: 119}, (_value, index) => index + 2));
+        expect(flow.acknowledgedBlocks).toEqual(flow.sentBlocks); expect(flow.idle).toBe(true); expect(flow.inFlight).toBe(0);
+        expect(flow.releaseThrough(120)).toEqual([]); expect(() => flow.releaseThrough(121)).toThrow('invalid replay release');
+    });
     test('strict Wire uint8 bool carriers retain the same source selection', () => {
         for (const irreversible_only of [0, 1]) {
             const flow = new WireReplayFlow(2, 5);
@@ -135,6 +200,15 @@ test.skipIf(process.env.HYPERION_WIRE_FIXTURE_AUDIT_TEST !== '1')('optional one-
     expect(hash(received.messages[0])).toBe(expected); received.messages[0].fill(0);
     const second = createWireReplaySession(fixture).receive(codec.encodeRequest(request({max_messages_in_flight: 1})));
     expect(hash(second.messages[0])).toBe(expected);
+    const guarded = createWireReplaySession(fixture, 2);
+    const status = guarded.receive(codec.encodeRequest(['get_status_request_v0', {}]));
+    expect(status.messages).toEqual([fixture.read(prefix + 'status.bin')]); expect(guarded.flow.sentBlocks).toEqual([]);
+    const limited = guarded.receive(codec.encodeRequest(request()));
+    expect(limited.blocks).toEqual([2]); expect(limited.messages).toEqual([fixture.records[0].frame]);
+    expect(guarded.receive(codec.encodeRequest(ack(1))).messages).toEqual([]);
+    const released = guarded.releaseThrough(3);
+    expect(released.blocks).toEqual([3]); expect(released.messages).toEqual([fixture.records[1].frame]);
+    released.messages[0].fill(0); expect(hash(fixture.records[1].frame)).toBe(fixture.records[1].frameSha256);
     const rpc = createWireReplayRpc(fixture); const info = rpc.reply('GET', '/v1/chain/get_info', {}); info.head_block_num = 999;
     expect(rpc.reply('POST', '/v1/chain/get_info', {}).head_block_num).toBe(2);
     expect(() => rpc.reply('POST', '/v1/chain/get_abi', {})).toThrow('forbidden');

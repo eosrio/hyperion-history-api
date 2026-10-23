@@ -13,6 +13,6 @@
     "types": ["node"]
   },
   "include": ["es955.ts", "es955-failures.ts", "es955-pressure.ts", "es955-broker.ts", "es955-replicas.ts", "es955-workers.ts", "contract-fixture.ts", "contract-replay.ts", "action-source-admission-replay.ts",
-    "wire-replay-fixture.ts", "wire-replay-outputs.ts", "wire-worker-replay.ts",
+    "wire-replay-fixture.ts", "wire-replay-outputs.ts", "wire-worker-replay.ts", "wire-state-outputs.ts",
     "portable-state-worker.ts", "portable-state-worker-source.ts", "portable-state-worker-oracle.ts"]
 }
