@@ -34,6 +34,8 @@ jobs:
         run: node --test tests/native/stream-request-lifecycle.test.mjs tests/native/stream-history-delivery.test.mjs
       - name: Check history/live stream filters and selectors on Node ${{ matrix.node-version }}
         run: node --test tests/native/stream-filter-parity.test.mjs
+      - name: Check pinned native stream JSON and credit windows on Node ${{ matrix.node-version }}
+        run: node --test tests/native/native-stream-json.test.mjs tests/native/native-stream-credits.test.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check retained Wire source and replay credits with native Node
