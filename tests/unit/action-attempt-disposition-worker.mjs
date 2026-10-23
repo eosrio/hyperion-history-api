@@ -25,7 +25,9 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 const mode = process.argv[2] ?? 'lifecycle';
 const managedOriginalMainHeldWrite = mode === 'managed-original-main-held-write';
 const managedOriginalMainFailedWrite = mode === 'managed-original-main-failed-write';
-const managedOriginalMain = mode === 'managed-original-main' || managedOriginalMainHeldWrite || managedOriginalMainFailedWrite,
+const managedOriginalMainAckThrows = mode === 'managed-original-main-ack-throws';
+const managedOriginalMain = mode === 'managed-original-main' || managedOriginalMainHeldWrite
+    || managedOriginalMainFailedWrite || managedOriginalMainAckThrows,
     managedOriginalNoEffect = mode === 'managed-original-ds',
     managedOriginalContract = mode === 'managed-original-contract', managedOriginalHandoff = mode === 'managed-original-handoff';
 const managedOriginalDs = managedOriginalNoEffect || managedOriginalContract || managedOriginalHandoff;
@@ -278,6 +280,7 @@ try {
         assert.equal(rows[0].value.work.transaction, null); assert.equal(rows[0].value.work.planId, null);
         assert.deepEqual(rows[0].value.output, {kind: 'unresolved'}); sourceAckChecks.push(rows[0]);
         if (managedOriginalMain) previousSend.call(process, {event: 'qualification_ack', recordId: rows[0].id});
+        if (managedOriginalMainAckThrows) throw new Error('constructed original ACK call failure');
     };
     if (managedOriginalMainHeldWrite) {
         let heldOnce = false;
@@ -312,6 +315,11 @@ try {
             failedWrites: failedManagedWrites, retainedAttemptRecords: records().length,
             originalFrameSha256: hash(genesisFrame)});
         await managedFinished;
+    } else if (managedOriginalMainAckThrows) {
+        await assert.rejects(prepare(genesisFrame), /constructed original ACK call failure/);
+        assert.equal(sourceAckChecks.length, 1);
+        assert.equal(mainConsumer.acked.length, 0);
+        await publishManagedSnapshot('main', sourceAckChecks[0].value.work.admissionId, sourceAckChecks[0].id, 0);
     } else {
     const genesis = await prepare(genesisFrame);
     if (managedOriginalMainHeldWrite) assert.equal(memory.faults.beforeWrite, undefined);

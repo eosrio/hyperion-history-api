@@ -1,7 +1,7 @@
 import {expect, test} from 'bun:test';
 import {fileURLToPath} from 'node:url';
 
-for (const mode of ['main','main-held-write','main-failed-write','ds','contract','handoff']) test(`original Wire ${mode} callback reaches the managed native parent adjudicator`, async () => {
+for (const mode of ['main','main-held-write','main-failed-write','main-ack-throws','ds','contract','handoff']) test(`original Wire ${mode} callback reaches the managed native parent adjudicator`, async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
         fileURLToPath(new URL('./action-attempt-managed-wire-ipc.mjs', import.meta.url)), mode],
     {stdout: 'pipe', stderr: 'pipe', timeout: 40_000});
@@ -11,6 +11,13 @@ for (const mode of ['main','main-held-write','main-failed-write','ds','contract'
     if (mode === 'main-failed-write') {
         expect(result).toMatchObject({passed: true, mode, managedParentEnd: true,
             failedWriteNoAck: true, noFreshWriteOrAssociation: true,
+            brokerSettlement: 'unknown', fullWorkerQualification: false});
+        return;
+    }
+    if (mode === 'main-ack-throws') {
+        expect(result).toMatchObject({passed: true, mode, managedParentEnd: true,
+            durableResultBeforeAckAttempt: true, originalAckCount: 0,
+            acknowledgementAttempted: true, noAssociation: true,
             brokerSettlement: 'unknown', fullWorkerQualification: false});
         return;
     }

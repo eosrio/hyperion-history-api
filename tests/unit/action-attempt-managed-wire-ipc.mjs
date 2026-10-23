@@ -14,12 +14,13 @@ import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-sou
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 
 const mode = process.argv[2] ?? 'main';
-assert(['main','main-held-write','main-failed-write','ds','contract','handoff'].includes(mode));
-const isMain = mode === 'main' || mode === 'main-held-write' || mode === 'main-failed-write';
+assert(['main','main-held-write','main-failed-write','main-ack-throws','ds','contract','handoff'].includes(mode));
+const isMain = ['main','main-held-write','main-failed-write','main-ack-throws'].includes(mode);
 const role = isMain ? 'deserializer' : 'ds_pool_worker';
 cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-worker.mjs', import.meta.url)),
     args: [mode === 'main-held-write' ? 'managed-original-main-held-write'
         : mode === 'main-failed-write' ? 'managed-original-main-failed-write'
+        : mode === 'main-ack-throws' ? 'managed-original-main-ack-throws'
         : mode === 'main' ? 'managed-original-main' : mode === 'ds' ? 'managed-original-ds'
         : mode === 'contract' ? 'managed-original-contract' : 'managed-original-handoff'],
     silent: true});
@@ -105,7 +106,7 @@ try {
     const bytes = readFileSync(snapshotPath);
     assert.equal(createHash('sha256').update(bytes).digest('hex'), fixture.sha256);
     const snapshot = JSON.parse(bytes.toString());
-    assert.equal(snapshot.originalAckCount, 1);
+    assert.equal(snapshot.originalAckCount, mode === 'main-ack-throws' ? 0 : 1);
     const registration = messages.findIndex(message => message.event === 'worker_attempt_request'
         && message.payload?.operation === 'register');
     const freshWrite = messages.findIndex(message => message.event === 'worker_attempt_request'
@@ -128,7 +129,7 @@ try {
     assert.equal(source.blockNum, isMain ? 1 : mode === 'handoff' ? 33 : 36);
     assert.equal(end.role, role);
     assert.equal(end.status, 'quiescent');
-    assert.equal(end.rootResult, 'returned');
+    assert.equal(end.rootResult, mode === 'main-ack-throws' ? 'threw' : 'returned');
     assert.equal(end.acknowledgementAttempted, true);
     assert.equal(end.freshWrites.length, 1);
     assert.equal(end.freshWrites[0].id, snapshot.recordId);
@@ -148,6 +149,12 @@ try {
         if (isMain) assert.equal(recorded.observation.reason, 'source-traces-missing');
         if (mode === 'contract') assert.equal(recorded.observation.reason, 'contract-finalization-invalid');
     }
+    let observation;
+    if (mode === 'main-ack-throws') {
+        const untouched = new Proxy({}, {get() {assert.fail('failed ACK reached storage or current authority');}});
+        const adjudicator = new ActionAttemptAdjudicator(supervisor, untouched, untouched, untouched);
+        assert.deepEqual(await adjudicator.adjudicate(ends[0]), {state: 'unresolved'});
+    } else {
     const authority = {
         configurationSha256: () => admission.source.producer.configurationSha256,
         targetUuid: async name => {assert.equal(name, admission.target.name); return memory.settings.get(name)['index.uuid'];},
@@ -160,18 +167,23 @@ try {
     const adjudicator = new ActionAttemptAdjudicator(supervisor, store, selections, authority);
     const associated = await adjudicator.adjudicate(ends[0]);
     assert.equal(associated.state, 'associated');
-    const observation = (await store.readAttemptAssociation(associated.id)).observation;
+    observation = (await store.readAttemptAssociation(associated.id)).observation;
     assert.deepEqual(observation.results, [{id: snapshot.recordId,
         classification: isMain ? 'source-incomplete'
             : mode === 'ds' ? 'intentional-no-effect' : mode === 'contract' ? 'contract-incomplete' : 'confirmed-handoff'}]);
     assert.equal(observation.brokerSettlement, 'unknown');
     assert.equal(observation.sourceChecked, true);
     assert.equal(observation.end.attemptId, end.attemptId);
+    }
     child.send({event: 'qualification_done'});
     await waitFor(() => exited, `owned Wire ${mode} child exit`);
     assert.equal(exitCode, 0, stdout.slice(-4000));
     assert.equal(stderr, '', stdout.slice(-4000));
-    console.log(JSON.stringify({passed: true, native: process.version, mode,
+    console.log(JSON.stringify(mode === 'main-ack-throws' ? {passed: true, native: process.version, mode,
+        originalWireMainCallback: true, managedParentEnd: true, durableResultBeforeAckAttempt: true,
+        originalAckCount: 0, acknowledgementAttempted: true, noAssociation: true,
+        controlledStorageAndCanonicalAuthority: true, brokerSettlement: 'unknown', fullWorkerQualification: false}
+        : {passed: true, native: process.version, mode,
         originalWireMainCallback: isMain, originalWireDsCallback: !isMain,
         managedParentEnd: true, writeBeforeAckBeforeEnd: true, originalAckCount: 1,
         heldWriteBeforeObservation: mode === 'main-held-write',
