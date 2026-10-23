@@ -35,6 +35,35 @@ redacted. [SHA256SUMS](SHA256SUMS) verifies the published files. This archive
 contains both failed runs and their resource cleanup receipts, not a release
 acceptance result.
 
-The next physical run needs a Linux host that can complete the bounded full
+The next physical run needs a bare-metal Linux host that can complete the bounded full
 worker replay, followed by the live SHiP fork/ACK/hold matrix in #288 and the
 separate #277 capacity gates. Existing Elasticsearch history remains in use.
+
+## Ubuntu WSL follow-up
+
+An isolated Ubuntu 24.04.4 WSL checkout at the same PR code, Node 24.19.0 and
+Bun 1.4.4 reproduced the run on its own Linux Docker daemon. Its first fixture
+was still pulling MongoDB when two source-bound historical RPC requests hit
+the 8-second deadline; that fixture was fully cleaned. With the pinned images
+cached, the second fixture passed held prefixes **1, 33, 122 and 256**. It
+verified 486 historical `get_block` responses against original SHiP LIB
+anchors 196419–196421 and the selected current RPC. The next hold at 397
+expired after 60 seconds with the source ACK and durable projection cursor at
+392. The DS worker had confirmed actions through 370 and was still making
+progress. Its broker held 29 ready DS messages after the controlled stop.
+The driver and ownership-checked service cleanups passed with zero residue.
+
+This WSL run also failed qualification. It measures a local queue/projection
+drain limit, not a complete source replay or live fork recovery. The DS worker's
+observer showed median 159.6 ms from action broker confirmation to journal
+seal and 199.3 ms from seal to original broker ACK across 369 paired blocks.
+Those are WSL stage observations, not a production bottleneck attribution.
+
+The [WSL summary](linux-wsl-summary.json),
+[manifest](linux-wsl-manifest.json) and
+[evidence archive](linux-wsl-evidence.tar.gz) retain the failed attempts.
+The archive has 4,909 entries; original bulk request/response bytes are
+unchanged, while 17 report, resource-observer or console entries have local
+topology removed. The same [SHA256SUMS](SHA256SUMS) verifies these additions.
+Bare-metal Linux, the full 1..1480 replay and the live SHiP fork/ACK matrix
+remain required.

@@ -39,6 +39,16 @@ archive retains the raw publication, prefix and bulk observations, plus
 topology-redacted reports. This does not establish the full replay or live
 fork/ACK matrix.
 
+The same candidate later ran in isolated Ubuntu 24.04 WSL with native Node
+24.19.0, the exact provider and an independent Linux Docker fixture. Its
+cached-image run passed the physical 1/33/122/256 holds and checked 486
+historical RPC responses against original irreversible anchors. It missed
+the 60-second wait at 397 while the original source and projection cursor
+were still at 392, with no worker or RPC error. The
+[WSL evidence](evidence/action-attempt-worker-20261023/README.md#ubuntu-wsl-follow-up)
+retains exact bulk, observer and prefix records and verified zero resource
+residue. WSL throughput does not qualify the bare-metal Linux full replay.
+
 ## Evidence and remaining gates
 
 Focused tests exercise cross-attempt redelivery, copied results and ends, foreign physical owners, observation retry, conflicting effects, overflow, stale config/target/fork, failed association storage, and restart readback. A native child fixture runs the reader's ordered source probe and the parent's request/reply handler: a replacement frame queued before the probe rejects the old source, while the new branch is accepted. A coordinator test covers a newly selected replay of its committed head. The native cluster IPC fixture exercises two owned workers with identical semantic work: only the first produces a fresh result and can be associated; a replayed observation from the second physical owner is rejected. These use controlled source/target authority and do not prove a live broker ACK.
