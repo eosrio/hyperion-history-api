@@ -53,6 +53,14 @@ expired after 60 seconds with the source ACK and durable projection cursor at
 progress. Its broker held 29 ready DS messages after the controlled stop.
 The driver and ownership-checked service cleanups passed with zero residue.
 
+The worker observer records a shared-reader pause at 07:11:23.490 UTC when
+the `ds_pool:1` queue held 65 messages against this fixture's limit of 64.
+It peaked at 84 and had drained to 37 at controlled stop. The configured
+resume trigger was 8, and no resume occurred before the 60-second projection
+wait expired. The exact observer records are in the archive. This explains
+why the source stopped advancing at 392 without attributing the queue drain
+rate to a production host.
+
 This WSL run also failed qualification. It measures a local queue/projection
 drain limit, not a complete source replay or live fork recovery. The DS worker's
 observer showed median 159.6 ms from action broker confirmation to journal

@@ -44,7 +44,10 @@ The same candidate later ran in isolated Ubuntu 24.04 WSL with native Node
 cached-image run passed the physical 1/33/122/256 holds and checked 486
 historical RPC responses against original irreversible anchors. It missed
 the 60-second wait at 397 while the original source and projection cursor
-were still at 392, with no worker or RPC error. The
+were still at 392, with no worker or RPC error. The observer recorded the
+existing shared-reader backpressure pause at 65 queued DS messages (limit
+64); the queue had drained to 37 but not below its resume trigger of 8
+before the wait expired. The
 [WSL evidence](evidence/action-attempt-worker-20261023/README.md#ubuntu-wsl-follow-up)
 retains exact bulk, observer and prefix records and verified zero resource
 residue. WSL throughput does not qualify the bare-metal Linux full replay.

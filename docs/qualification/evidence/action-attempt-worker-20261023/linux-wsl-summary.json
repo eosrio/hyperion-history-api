@@ -25,6 +25,15 @@
       "brokerConfirmedActionPublications": 576,
       "dsConfirmedThrough": 370,
       "failure": "durable contiguous projection cursor stayed at block 392 during the 60-second wait for block 397",
+      "sharedReaderBackpressure": {
+        "pauseAt": "2026-10-23T07:11:23.490Z",
+        "dsPoolQueueAtPause": 65,
+        "configuredPauseLimit": 64,
+        "dsPoolQueuePeak": 84,
+        "dsPoolQueueAtControlledStop": 37,
+        "configuredResumeTrigger": 8,
+        "resumeObserved": false
+      },
       "observerStageMilliseconds": {
         "pairedBlocks": 369,
         "brokerConfirmToSealMedian": 159.6,
