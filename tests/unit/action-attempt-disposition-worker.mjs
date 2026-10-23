@@ -29,17 +29,26 @@ const managedOriginalMainAckThrows = mode === 'managed-original-main-ack-throws'
 const managedOriginalMain = mode === 'managed-original-main' || managedOriginalMainHeldWrite
     || managedOriginalMainFailedWrite || managedOriginalMainAckThrows,
     managedOriginalNoEffect = mode === 'managed-original-ds',
-    managedOriginalContract = mode === 'managed-original-contract', managedOriginalHandoff = mode === 'managed-original-handoff';
+    managedOriginalContract = mode === 'managed-original-contract',
+    managedOriginalHandoffHeldConfirm = mode === 'managed-original-handoff-held-confirm',
+    managedOriginalHandoffFailedConfirm = mode === 'managed-original-handoff-failed-confirm',
+    managedOriginalHandoffHeldDrain = mode === 'managed-original-handoff-held-drain',
+    managedOriginalHandoff = mode === 'managed-original-handoff' || managedOriginalHandoffHeldConfirm
+        || managedOriginalHandoffFailedConfirm || managedOriginalHandoffHeldDrain;
 const managedOriginalDs = managedOriginalNoEffect || managedOriginalContract || managedOriginalHandoff;
 const managedOriginal = managedOriginalMain || managedOriginalDs;
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
 let reader, coordinator, managedClient, snapshotPath, draining = Promise.resolve();
-let finishManaged, releaseManagedWrite;
+let finishManaged, releaseManagedWrite, releaseManagedConfirm, releaseManagedDrain;
 const managedFinished = new Promise(resolve => {finishManaged = resolve;});
 const managedWriteReleased = new Promise(resolve => {releaseManagedWrite = resolve;});
+const managedConfirmReleased = new Promise(resolve => {releaseManagedConfirm = resolve;});
+const managedDrainReleased = new Promise(resolve => {releaseManagedDrain = resolve;});
 if (managedOriginal) process.on('message', message => {
     if (message?.event === 'qualification_done') finishManaged();
     if (message?.event === 'qualification_release_write') releaseManagedWrite();
+    if (message?.event === 'qualification_release_confirm') releaseManagedConfirm();
+    if (message?.event === 'qualification_release_drain') releaseManagedDrain();
 });
 process.send = (event, callback) => {
     if (managedOriginal && event?.event === 'worker_attempt_request')
@@ -57,15 +66,18 @@ class ControlledConsumer extends EventEmitter {
 }
 class ControlledPublisher extends EventEmitter {
     sent = [];
+    confirmCalls = 0;
     held;
     entered;
     automatic = true;
     writable = true;
+    confirmError;
     sendToQueue(queue, payload, options, confirm) {
         this.sent.push({queue, payload: Buffer.from(payload), options: structuredClone(options), confirm});
         if (!this.automatic) return this.writable;
-        if (this.held) {this.entered?.(); this.held.then(() => confirm());}
-        else queueMicrotask(() => confirm()); return this.writable;
+        const complete = () => {this.confirmCalls++; confirm(this.confirmError);};
+        if (this.held) {this.entered?.(); this.held.then(complete);}
+        else queueMicrotask(complete); return this.writable;
     }
 }
 function message(sent) {return {content: Buffer.from(sent.payload), properties: {headers: structuredClone(sent.options.headers)}, fields: {deliveryTag: 1}};}
@@ -461,7 +473,38 @@ try {
                 managedHandoffId = handoffs[0];
                 previousSend.call(process, {event: 'qualification_ack', recordId: managedHandoffId});
             };
-            await pool.processMessages(prepared.messages);
+            if (managedOriginalHandoffHeldConfirm) {
+                poolPublisher.held = managedConfirmReleased;
+                poolPublisher.entered = () => previousSend.call(process, {event: 'qualification_confirm_held',
+                    originalAckCount: poolConsumer.acked.length, retainedHandoffs: ids(memory, 'h45actionhandoff1:').length,
+                    confirmCalls: poolPublisher.confirmCalls});
+            }
+            if (managedOriginalHandoffFailedConfirm)
+                poolPublisher.confirmError = new Error('constructed original publication confirm failure');
+            if (managedOriginalHandoffHeldDrain) poolPublisher.writable = false;
+            const processing = pool.processMessages(prepared.messages);
+            processing.catch(() => {});
+            if (managedOriginalHandoffHeldDrain) {
+                await until(() => poolPublisher.sent.length === 1 && poolPublisher.confirmCalls === 1,
+                    'original handoff receives confirm but still awaits publisher drain');
+                previousSend.call(process, {event: 'qualification_drain_held',
+                    originalAckCount: poolConsumer.acked.length, retainedHandoffs: ids(memory, 'h45actionhandoff1:').length,
+                    confirmCalls: poolPublisher.confirmCalls});
+                await managedDrainReleased;
+                poolPublisher.emit('drain');
+            }
+            if (managedOriginalHandoffFailedConfirm) {
+                await assert.rejects(processing, /constructed original publication confirm failure/);
+                assert.equal(poolPublisher.sent.length, 1);
+                assert.equal(poolConsumer.acked.length, 0);
+                assert.equal(ids(memory, 'h45actionhandoff1:').length, 0);
+                previousSend.call(process, {event: 'qualification_publish_failed',
+                    originalAckCount: poolConsumer.acked.length, failedConfirms: 1,
+                    retainedHandoffs: 0, originalPayloadSha256: hash(prepared.messages[0].content)});
+                await managedFinished;
+                break;
+            }
+            await processing;
             assert.equal(poolPublisher.sent.length, 1);
             assert.equal(poolConsumer.acked.length, 1);
             poolConsumer.onAck = undefined;
@@ -505,7 +548,7 @@ try {
             if (managedOriginalContract) break;
         }
     }
-    if (managedOriginalDs) {
+    if (managedOriginalDs && !managedOriginalHandoffFailedConfirm) {
         const recordId = managedOriginalHandoff ? managedHandoffId : records().find(row =>
             row.value.work.admissionId === prepared.admission.id && row.value.work.stage === 'ds-transaction')?.id;
         assert(recordId); assert.equal(poolConsumer.acked.length, 1);

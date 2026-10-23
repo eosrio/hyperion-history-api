@@ -1,7 +1,8 @@
 import {expect, test} from 'bun:test';
 import {fileURLToPath} from 'node:url';
 
-for (const mode of ['main','main-held-write','main-failed-write','main-ack-throws','ds','contract','handoff']) test(`original Wire ${mode} callback reaches the managed native parent adjudicator`, async () => {
+for (const mode of ['main','main-held-write','main-failed-write','main-ack-throws','ds','contract','handoff',
+    'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain']) test(`original Wire ${mode} callback reaches the managed native parent adjudicator`, async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
         fileURLToPath(new URL('./action-attempt-managed-wire-ipc.mjs', import.meta.url)), mode],
     {stdout: 'pipe', stderr: 'pipe', timeout: 40_000});
@@ -11,6 +12,12 @@ for (const mode of ['main','main-held-write','main-failed-write','main-ack-throw
     if (mode === 'main-failed-write') {
         expect(result).toMatchObject({passed: true, mode, managedParentEnd: true,
             failedWriteNoAck: true, noFreshWriteOrAssociation: true,
+            brokerSettlement: 'unknown', fullWorkerQualification: false});
+        return;
+    }
+    if (mode === 'handoff-failed-confirm') {
+        expect(result).toMatchObject({passed: true, mode, managedParentEnd: true,
+            failedConfirmNoAck: true, noFreshWriteOrAssociation: true,
             brokerSettlement: 'unknown', fullWorkerQualification: false});
         return;
     }
@@ -27,4 +34,6 @@ for (const mode of ['main','main-held-write','main-failed-write','main-ack-throw
             : mode === 'ds' ? 'intentional-no-effect' : mode === 'contract' ? 'contract-incomplete' : 'confirmed-handoff',
         brokerSettlement: 'unknown', fullWorkerQualification: false});
     if (mode === 'main-held-write') expect(result).toMatchObject({heldWriteBeforeObservation: true});
+    if (mode === 'handoff-held-confirm' || mode === 'handoff-held-drain')
+        expect(result).toMatchObject({heldPublishBeforeObservation: true});
 }, 45_000);

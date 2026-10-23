@@ -14,7 +14,8 @@ import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-sou
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 
 const mode = process.argv[2] ?? 'main';
-assert(['main','main-held-write','main-failed-write','main-ack-throws','ds','contract','handoff'].includes(mode));
+assert(['main','main-held-write','main-failed-write','main-ack-throws','ds','contract','handoff',
+    'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain'].includes(mode));
 const isMain = ['main','main-held-write','main-failed-write','main-ack-throws'].includes(mode);
 const role = isMain ? 'deserializer' : 'ds_pool_worker';
 cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-worker.mjs', import.meta.url)),
@@ -22,7 +23,7 @@ cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-
         : mode === 'main-failed-write' ? 'managed-original-main-failed-write'
         : mode === 'main-ack-throws' ? 'managed-original-main-ack-throws'
         : mode === 'main' ? 'managed-original-main' : mode === 'ds' ? 'managed-original-ds'
-        : mode === 'contract' ? 'managed-original-contract' : 'managed-original-handoff'],
+        : mode === 'contract' ? 'managed-original-contract' : 'managed-original-' + mode],
     silent: true});
 const ends = [], supervisor = new WorkerAttemptSupervisor({onEnd: end => ends.push(end)});
 const child = cluster.fork(), messages = [];
@@ -77,6 +78,36 @@ try {
             originalWireMainCallback: true, managedParentEnd: true, failedWriteNoAck: true,
             noFreshWriteOrAssociation: true, controlledStorageAndCanonicalAuthority: true,
             brokerSettlement: 'unknown', fullWorkerQualification: false}));
+    } else if (mode === 'handoff-failed-confirm') {
+        await waitFor(() => messages.some(message => message?.event === 'qualification_publish_failed') && ends.length === 1 || exited,
+            'original Wire DS failed publisher confirm and owned worker end');
+        assert.equal(exited, false, JSON.stringify({exitCode, stderr: stderr.slice(-4000)}));
+        const failed = messages.find(message => message.event === 'qualification_publish_failed');
+        assert.deepEqual({originalAckCount: failed.originalAckCount, failedConfirms: failed.failedConfirms,
+            retainedHandoffs: failed.retainedHandoffs},
+        {originalAckCount: 0, failedConfirms: 1, retainedHandoffs: 0});
+        const end = describeWorkerAttemptEnd(supervisor, ends[0]);
+        assert.equal(end.role, role);
+        assert.equal(end.status, 'quiescent');
+        assert.equal(end.rootResult, 'threw');
+        assert.equal(end.acknowledgementAttempted, false);
+        assert.equal(end.freshWrites.length, 0);
+        assert.equal(end.binding.blockNum, 33);
+        assert.equal(end.descriptor.payloadSha256, failed.originalPayloadSha256);
+        assert.equal(messages.some(message => message.event === 'worker_attempt_request'
+            && message.payload?.operation === 'observe'), false);
+        assert.equal(messages.some(message => message.event === 'qualification_ack'), false);
+        const untouched = new Proxy({}, {get() {assert.fail('failed confirm reached storage or current authority');}});
+        const adjudicator = new ActionAttemptAdjudicator(supervisor, untouched, untouched, untouched);
+        assert.deepEqual(await adjudicator.adjudicate(ends[0]), {state: 'unresolved'});
+        child.send({event: 'qualification_done'});
+        await waitFor(() => exited, 'owned Wire failed-confirm child exit');
+        assert.equal(exitCode, 0, stdout.slice(-4000));
+        assert.equal(stderr, '', stdout.slice(-4000));
+        console.log(JSON.stringify({passed: true, native: process.version, mode,
+            originalWireDsCallback: true, managedParentEnd: true, failedConfirmNoAck: true,
+            noFreshWriteOrAssociation: true, controlledStorageAndBroker: true,
+            brokerSettlement: 'unknown', fullWorkerQualification: false}));
     } else {
     if (mode === 'main-held-write') {
         await waitFor(() => messages.some(message => message?.event === 'qualification_write_held') || exited,
@@ -91,6 +122,23 @@ try {
         assert.equal(messages.some(message => message.event === 'qualification_ack'), false);
         assert.equal(ends.length, 0);
         child.send({event: 'qualification_release_write'});
+    }
+    if (mode === 'handoff-held-confirm' || mode === 'handoff-held-drain') {
+        const event = mode === 'handoff-held-confirm' ? 'qualification_confirm_held' : 'qualification_drain_held';
+        await waitFor(() => messages.some(message => message?.event === event) || exited,
+            `original Wire DS ${mode} publisher hold`);
+        assert.equal(exited, false, JSON.stringify({exitCode, stderr: stderr.slice(-4000)}));
+        const held = messages.find(message => message.event === event);
+        assert.equal(held.originalAckCount, 0);
+        assert.equal(held.retainedHandoffs, 0);
+        assert.equal(held.confirmCalls, mode === 'handoff-held-confirm' ? 0 : 1);
+        assert(messages.some(message => message.event === 'worker_attempt_request'
+            && message.payload?.operation === 'register'));
+        assert.equal(messages.some(message => message.event === 'worker_attempt_request'
+            && ['observe','end'].includes(message.payload?.operation)), false);
+        assert.equal(messages.some(message => message.event === 'qualification_ack'), false);
+        assert.equal(ends.length, 0);
+        child.send({event: mode === 'handoff-held-confirm' ? 'qualification_release_confirm' : 'qualification_release_drain'});
     }
     await waitFor(() => messages.some(message => message?.event === 'qualification_fixture') && ends.length === 1 || exited,
         `original Wire ${mode} fresh result and owned worker end`);
@@ -126,7 +174,7 @@ try {
         selections = new ProtocolSourceBindingStore(memory.client, chain);
     const admission = await store.resolve(snapshot.admissionId);
     const source = admission.source.inventoryInput.source, end = describeWorkerAttemptEnd(supervisor, ends[0]);
-    assert.equal(source.blockNum, isMain ? 1 : mode === 'handoff' ? 33 : 36);
+    assert.equal(source.blockNum, isMain ? 1 : mode.startsWith('handoff') ? 33 : 36);
     assert.equal(end.role, role);
     assert.equal(end.status, 'quiescent');
     assert.equal(end.rootResult, mode === 'main-ack-throws' ? 'threw' : 'returned');
@@ -137,7 +185,7 @@ try {
         : Buffer.from(admission.inventory.transactions.find(value => value.traceOrdinal === end.binding.traceOrdinal)
             .dispatch.canonicalJson);
     assert.equal(end.descriptor.payloadSha256, createHash('sha256').update(originalPayload).digest('hex'));
-    if (mode === 'handoff') {
+    if (mode.startsWith('handoff')) {
         const recorded = await store.readConfirmedHandoff(admission.id, end.binding.traceOrdinal, originalPayload);
         assert.equal(recorded.id, snapshot.recordId);
         assert.equal(recorded.outcome.kind, 'confirmed-action-handoff');
@@ -187,6 +235,7 @@ try {
         originalWireMainCallback: isMain, originalWireDsCallback: !isMain,
         managedParentEnd: true, writeBeforeAckBeforeEnd: true, originalAckCount: 1,
         heldWriteBeforeObservation: mode === 'main-held-write',
+        heldPublishBeforeObservation: mode === 'handoff-held-confirm' || mode === 'handoff-held-drain',
         classification: observation.results[0].classification,
         controlledStorageAndCanonicalAuthority: true, brokerSettlement: observation.brokerSettlement,
         fullWorkerQualification: false}));

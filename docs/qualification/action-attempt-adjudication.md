@@ -34,6 +34,19 @@ Focused tests exercise cross-attempt redelivery, copied results and ends, foreig
 
 Separate Node 22/24 cases run the original Wire genesis frame through the Reader and MainDS callback, and original block 33 native handoff plus block 36 no-effect and constructed contract-finalization-failure inputs through the DS callback, in managed children. The parent receives their authentic ends, reads test-only retained storage snapshots, and associates source-incomplete, confirmed-handoff, intentional-no-effect, and contract-incomplete results. Each successful case asserts fresh-write observation precedes the original ACK, which precedes the end. Additional managed MainDS cases hold and fail its attempt-manifest write. While held, the parent sees neither a fresh-write observation, original ACK, nor an end. On write failure, the original callback produces an authenticated thrown end for the original frame, no fresh write or ACK call, and an unresolved adjudication. A separate case throws from the original ACK call after the durable result and fresh-write observation: the end records the ACK attempt and thrown root, the local call does not return, and adjudication remains unresolved with broker settlement unknown. Storage, broker, and canonical authority remain controlled. Existing original Wire36 MainDS/DS fixtures exercise configured-copy failures and held confirm/drain before original ACK in controlled-local mode. The combined live broker/storage/fork path and complete hold/fail matrix remain open.
 
+The managed original block-33 DS callback now also holds publisher confirmation and
+publisher drain independently. During either hold, the parent sees the registered
+physical attempt but no fresh handoff result, original ACK or end. Release yields
+the ordinary confirmed handoff and an association with broker settlement unknown.
+A failed publisher confirmation yields an authenticated thrown end, no retained
+handoff, no fresh write, no original ACK call and unresolved adjudication. These
+cases use a controlled publisher and retained in-memory storage; actual RabbitMQ
+and Elasticsearch remain part of the combined live qualification gate. All ten
+managed callback cases passed locally under Bun 1.4.4 with native Node 22.23.3
+and 24.19.0 children, and under the local Node 26.4.0 executable. The complete
+local root suite passed 1,206 tests with zero failures and 8,901 assertions
+using the Node 24.19.0 child. CI for the new cases remains pending.
+
 Run after `npm ci --allow-git=all`:
 
 ```sh
@@ -43,4 +56,4 @@ bun test tests/unit/action-fresh-write.test.ts tests/unit/action-attempt-adjudic
 npm test
 ```
 
-For native Node 22/24, set `HYPERION_NATIVE_NODE` to the exact executable and rerun the emitted worker tests. The seven original Wire callback plus managed-parent cases passed locally on isolated Node 22.23.3 and 24.19.0 binaries. [Linux CI on `17eee69`](https://github.com/eosrio/hyperion-history-api/actions/runs/39905072793) passed all nine jobs, including 1,203 root tests with zero failures on each Node version. The physical-reader probe still needs original-worker live fork qualification. Live broker, Elasticsearch, and current-fork authority require combined qualification. The Linux 1–1480 Wire/Mongo replay and #277 count-and-byte capacity reservation are separate work.
+For native Node 22/24, set `HYPERION_NATIVE_NODE` to the exact executable and rerun the emitted worker tests. The ten original Wire callback plus managed-parent cases passed locally on isolated Node 22.23.3 and 24.19.0 binaries. [Linux CI on `17eee69`](https://github.com/eosrio/hyperion-history-api/actions/runs/39905072793) passed all nine jobs, including 1,203 root tests with zero failures on each Node version. The physical-reader probe still needs original-worker live fork qualification. Live broker, Elasticsearch, and current-fork authority require combined qualification. The Linux 1–1480 Wire/Mongo replay and #277 count-and-byte capacity reservation are separate work.
