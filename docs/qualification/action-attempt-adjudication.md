@@ -25,4 +25,4 @@ bun test tests/unit/action-fresh-write.test.ts tests/unit/action-attempt-adjudic
 npm test
 ```
 
-For native Node 22/24, set `HYPERION_NATIVE_NODE` to the exact executable and rerun the emitted worker tests. The new owned-child association case passed on isolated Node 22.23.3 and 24.19.0 binaries. Node 22/24 CI and the combined original Wire output plus managed parent IPC acceptance remain release gates. The Linux 1–1480 Wire/Mongo replay and #277 count-and-byte capacity reservation are separate work.
+For native Node 22/24, set `HYPERION_NATIVE_NODE` to the exact executable and rerun the emitted worker tests. The four original Wire callback plus managed-parent cases passed locally on isolated Node 22.23.3 and 24.19.0 binaries; Linux Node 22/24 CI for this composition remains a release gate. Live broker, Elasticsearch, and current-fork authority still require combined qualification. The Linux 1–1480 Wire/Mongo replay and #277 count-and-byte capacity reservation are separate work.
