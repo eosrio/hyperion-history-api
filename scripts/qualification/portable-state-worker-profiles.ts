@@ -19,18 +19,40 @@ export interface PortableWorkerProfileReceipt {
     readonly sha256?: string; readonly bytes?: number; readonly samples?: number; readonly durationMicros?: number;
 }
 
-/** Match real start/flush events to ordinary bounded files in that exact component directory. */
-export async function auditPortableWorkerProfiles(output: string, component: 'master' | 'api', rows: readonly any[], enabled: boolean)
+/** Match the launched primary and its physical forks to observer starts, flushes and bounded files. */
+export async function auditPortableWorkerProfiles(output: string, component: 'master' | 'api', rows: readonly any[], primaryPid: number, enabled: boolean)
     : Promise<PortableWorkerProfileReceipt[]> {
     assert.ok(component === 'master' || component === 'api'); assert.equal(typeof enabled, 'boolean');
+    assert.ok(Number.isSafeInteger(primaryPid) && primaryPid > 0, 'invalid profile primary PID');
     const root = await realpath(await ordinaryPortablePath(output, true));
     const directory = await realpath(await ordinaryPortablePath(join(root, 'observer', component), true));
+    const expectedPids = new Set([primaryPid]), parents = new Map<number, number>();
+    for (const fork of rows.filter(row => row.kind === 'worker_fork')) {
+        assert.ok(Number.isSafeInteger(fork.childPid) && fork.childPid > 0 && !expectedPids.has(fork.childPid),
+            'invalid or duplicated profile worker fork');
+        assert.ok(Number.isSafeInteger(fork.pid) && fork.pid > 0, 'invalid profile worker parent');
+        expectedPids.add(fork.childPid); parents.set(fork.childPid, fork.pid);
+    }
+    assert.ok(expectedPids.size <= portableWorkerProfileLimits.maximumProcesses, 'profile process census excessive');
+    const connected = new Set([primaryPid]);
+    for (let previous = -1; previous !== connected.size;) {
+        previous = connected.size;
+        for (const [pid, parent] of parents) if (connected.has(parent)) connected.add(pid);
+    }
+    assert.equal(connected.size, expectedPids.size, 'profile process census has an orphan or cyclic fork');
     const starts = rows.filter(row => row.kind === 'start');
     assert.ok(starts.length > 0 && starts.length <= portableWorkerProfileLimits.maximumProcesses, 'profile process census missing or excessive');
     const expected = new Set<string>(), pids = new Set<number>(); const receipts: PortableWorkerProfileReceipt[] = [];
     for (const start of starts) {
         assert.ok(Number.isSafeInteger(start.pid) && start.pid > 0 && !pids.has(start.pid), 'invalid or duplicated profile process');
+        assert.ok(expectedPids.has(start.pid), 'profile process census contains an untracked start');
+        if (start.pid !== primaryPid) assert.equal(start.parentPid, parents.get(start.pid), 'profile process parent differs from its physical fork');
         pids.add(start.pid); assert.ok(typeof start.role === 'string' && start.role.length > 0 && start.role.length <= 80);
+    }
+    assert.equal(pids.size, expectedPids.size, 'profile process census is missing a primary or forked worker start');
+    const lifecycle = new Set(['profile_started', 'profile_saved', 'flush', 'exit', 'observer_error']);
+    for (const row of rows) if (lifecycle.has(row.kind)) assert.ok(pids.has(row.pid), `orphan profile evidence: ${row.kind}`);
+    for (const start of starts) {
         const flushes = rows.filter(row => row.kind === 'flush' && row.pid === start.pid);
         assert.equal(flushes.length, 1, `profile flush missing or duplicated: ${start.pid}`);
         const flush = flushes[0]; assert.equal(flush.success, true); assert.equal(flush.droppedRecords, 0);

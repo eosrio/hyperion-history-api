@@ -45,26 +45,43 @@ async function fixture(run: (value: {output: string; directory: string; file: st
 }
 
 test('profile receipts bind each start to one saved ordinary file and exact bytes', async () => fixture(async ({output, rows, bytes, flush}) => {
-    expect(await auditPortableWorkerProfiles(output, 'master', rows, true)).toEqual([{component: 'master', pid: 123, role: 'deserializer',
+    expect(await auditPortableWorkerProfiles(output, 'master', rows, 123, true)).toEqual([{component: 'master', pid: 123, role: 'deserializer',
         state: 'saved', file: 'observer/master/worker-123.cpuprofile', bytes: bytes.length,
         sha256: createHash('sha256').update(bytes).digest('hex'), samples: 1, durationMicros: 1}]);
-    await expect(auditPortableWorkerProfiles(output, 'master', [], true)).rejects.toThrow('census');
-    await expect(auditPortableWorkerProfiles(output, 'master', [rows[0]], true)).rejects.toThrow('flush');
-    await expect(auditPortableWorkerProfiles(output, 'master', [rows[0], ...rows], true)).rejects.toThrow('duplicated');
-    await expect(auditPortableWorkerProfiles(output, 'master', [...rows, flush], true)).rejects.toThrow('flush');
+    await expect(auditPortableWorkerProfiles(output, 'master', [], 123, true)).rejects.toThrow('census');
+    await expect(auditPortableWorkerProfiles(output, 'master', [rows[0]], 123, true)).rejects.toThrow('flush');
+    await expect(auditPortableWorkerProfiles(output, 'master', [rows[0], ...rows], 123, true)).rejects.toThrow('duplicated');
+    await expect(auditPortableWorkerProfiles(output, 'master', [...rows, flush], 123, true)).rejects.toThrow('flush');
     for (const kind of ['profile_started', 'profile_saved'])
-        await expect(auditPortableWorkerProfiles(output, 'master', rows.filter(row => row.kind !== kind), true)).rejects.toThrow('evidence');
+        await expect(auditPortableWorkerProfiles(output, 'master', rows.filter(row => row.kind !== kind), 123, true)).rejects.toThrow('evidence');
     await expect(auditPortableWorkerProfiles(output, 'master', rows.map(row => row.kind === 'profile_started'
-        ? {...row, maximumDurationMs: 1000} : row), true)).rejects.toThrow();
+        ? {...row, maximumDurationMs: 1000} : row), 123, true)).rejects.toThrow();
 }));
 
 test('missing, foreign, failed and excess profile evidence cannot satisfy capture', async () => fixture(async ({output, directory, file, rows, flush}) => {
     for (const patch of [{profileState: 'failed'}, {droppedRecords: 1}, {success: false},
         {profilePath: join(output, 'foreign.cpuprofile')}, {profilePath: join(directory, 'worker-124.cpuprofile')}])
-        await expect(auditPortableWorkerProfiles(output, 'master', [...rows.filter(row => row.kind !== 'flush'), {...flush, ...patch}], true)).rejects.toThrow();
+        await expect(auditPortableWorkerProfiles(output, 'master', [...rows.filter(row => row.kind !== 'flush'), {...flush, ...patch}], 123, true)).rejects.toThrow();
     const excess = join(directory, 'worker-999.cpuprofile'); writeFileSync(excess, '{}');
-    await expect(auditPortableWorkerProfiles(output, 'master', rows, true)).rejects.toThrow('unexpected'); unlinkSync(excess);
-    unlinkSync(file); await expect(auditPortableWorkerProfiles(output, 'master', rows, true)).rejects.toThrow();
+    await expect(auditPortableWorkerProfiles(output, 'master', rows, 123, true)).rejects.toThrow('unexpected'); unlinkSync(excess);
+    unlinkSync(file); await expect(auditPortableWorkerProfiles(output, 'master', rows, 123, true)).rejects.toThrow();
+}));
+
+test('capture census cannot omit a parent-observed worker or accept orphan profile events', async () => fixture(async ({output, rows}) => {
+    const fork = {kind: 'worker_fork', pid: 123, childPid: 456};
+    const exit = {kind: 'worker_exit', pid: 123, childPid: 456, code: 0, signal: null};
+    await expect(auditPortableWorkerProfiles(output, 'master', [...rows, fork, exit], 123, true)).rejects.toThrow('census');
+    for (const kind of ['flush', 'profile_started', 'profile_saved', 'exit', 'observer_error'])
+        await expect(auditPortableWorkerProfiles(output, 'master', [...rows, {kind, pid: 456}], 123, true)).rejects.toThrow('orphan');
+    await expect(auditPortableWorkerProfiles(output, 'master', [...rows, fork], 123, false)).rejects.toThrow('census');
+    await expect(auditPortableWorkerProfiles(output, 'master', rows, 456, true)).rejects.toThrow('untracked');
+    await expect(auditPortableWorkerProfiles(output, 'master', rows, 0, true)).rejects.toThrow('primary PID');
+    await expect(auditPortableWorkerProfiles(output, 'master', [...rows, {...rows[0], pid: 456}], 123, true)).rejects.toThrow('untracked');
+    await expect(auditPortableWorkerProfiles(output, 'master', [...rows, fork, {...rows[0], pid: 456, parentPid: 789}], 123, true))
+        .rejects.toThrow('parent differs');
+    for (const forks of [[fork, fork], [{...fork, childPid: 123}], [{...fork, pid: 789}],
+        [{...fork, pid: 789}, {kind: 'worker_fork', pid: 456, childPid: 789}]])
+        await expect(auditPortableWorkerProfiles(output, 'master', [...rows, ...forks], 123, true)).rejects.toThrow();
 }));
 
 test('malformed, unsampled, mismatched and excessive CPU files fail the artifact gate', async () => fixture(async ({output, file, rows}) => {
@@ -77,18 +94,18 @@ test('malformed, unsampled, mismatched and excessive CPU files fail the artifact
         JSON.stringify({...base, samples: []}), JSON.stringify({...base, samples: [2]}), JSON.stringify({...base, timeDeltas: []}),
         JSON.stringify({...base, timeDeltas: [-1]}), JSON.stringify({...base, endTime: 0})]) {
         writeFileSync(file, value); rows.find(row => row.kind === 'profile_saved')!.bytes = Buffer.byteLength(value);
-        await expect(auditPortableWorkerProfiles(output, 'master', rows, true)).rejects.toThrow();
+        await expect(auditPortableWorkerProfiles(output, 'master', rows, 123, true)).rejects.toThrow();
     }
     writeFileSync(file, '{}'); truncateSync(file, portableWorkerProfileLimits.maximumBytes + 1);
-    await expect(auditPortableWorkerProfiles(output, 'master', rows, true)).rejects.toThrow('bound');
+    await expect(auditPortableWorkerProfiles(output, 'master', rows, 123, true)).rejects.toThrow('bound');
 }));
 
 test('disabled CPU capture requires disabled flushes and no residual profile files', async () => fixture(async ({output, file, rows, flush}) => {
     const disabled = [rows[0], {...flush, profileState: 'disabled', profilePath: null}];
-    await expect(auditPortableWorkerProfiles(output, 'master', disabled, false)).rejects.toThrow('unexpected');
-    unlinkSync(file); expect(await auditPortableWorkerProfiles(output, 'master', disabled, false)).toEqual([
+    await expect(auditPortableWorkerProfiles(output, 'master', disabled, 123, false)).rejects.toThrow('unexpected');
+    unlinkSync(file); expect(await auditPortableWorkerProfiles(output, 'master', disabled, 123, false)).toEqual([
         {component: 'master', pid: 123, role: 'deserializer', state: 'disabled', file: null}]);
-    await expect(auditPortableWorkerProfiles(output, 'master', rows, false)).rejects.toThrow();
+    await expect(auditPortableWorkerProfiles(output, 'master', rows, 123, false)).rejects.toThrow();
 }));
 
 for (const mode of ['control', 'profile']) test(`actual native observer ${mode} validates profile capture and original shutdown`, async () => {

@@ -21,7 +21,9 @@ HTTP, history replicas, native seals, broker accounting and teardown checks rema
 command adds no prefix-success mode or automatic retry. A failure still exits unsuccessfully.
 
 The existing observer samples CPU every 10 ms, with the existing 900-second upper bound and
-32 MiB per-file cap. Each API/master/worker start must match one successful flush and an ordinary
+32 MiB per-file cap. The launched primary PID and every parent-observed physical worker fork must
+match exactly one observer start with the correct parent. Orphan starts or lifecycle evidence fail
+the census. Each API/master/worker start must match one successful flush and an ordinary
 `worker-PID.cpuprofile` file in that component's owned observer directory. Receipts record component,
 raw observer role, PID, relative filename, SHA-256, bytes, sample count and recorded interval. API
 primaries can report raw role `master`; the component keeps them distinct. Missing, duplicated,

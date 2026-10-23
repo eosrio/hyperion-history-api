@@ -705,7 +705,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 }} catch (cleanupError: any) {if (cleanupError.code !== 'ESRCH') report.cleanup.push({name: name + '-forced', ok: false, error: describeError(cleanupError)});}}
             try {
                 report.profiling.components.push({component: name, processes: await auditPortableWorkerProfiles(output, name,
-                    await observedRows(name, true), options.profile === true)});
+                    await observedRows(name, true), child.pid!, options.profile === true)});
             } catch (error) {
                 report.status = 'failed'; report.profiling.failures.push({component: name, error: describeError(error)});
             }
