@@ -14,10 +14,12 @@ import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-sou
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 
 const mode = process.argv[2] ?? 'main';
-assert(['main','ds'].includes(mode));
+assert(['main','ds','contract','handoff'].includes(mode));
 const role = mode === 'main' ? 'deserializer' : 'ds_pool_worker';
 cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-worker.mjs', import.meta.url)),
-    args: [mode === 'main' ? 'managed-original-main' : 'managed-original-ds'], silent: true});
+    args: [mode === 'main' ? 'managed-original-main' : mode === 'ds' ? 'managed-original-ds'
+        : mode === 'contract' ? 'managed-original-contract' : 'managed-original-handoff'],
+    silent: true});
 const ends = [], supervisor = new WorkerAttemptSupervisor({onEnd: end => ends.push(end)});
 const child = cluster.fork(), messages = [];
 let stderr = '', stdout = '', exited = false, exitCode, snapshotPath;
@@ -56,7 +58,7 @@ try {
     const freshWrite = messages.findIndex(message => message.event === 'worker_attempt_request'
         && message.payload?.operation === 'observe');
     const ack = messages.findIndex(message => message.event === 'qualification_ack'
-        && message.dispositionId === snapshot.dispositionId);
+        && message.recordId === snapshot.recordId);
     const endRequest = messages.findIndex(message => message.event === 'worker_attempt_request'
         && message.payload?.operation === 'end');
     assert(registration >= 0 && freshWrite > registration && ack > freshWrite && endRequest > ack,
@@ -69,21 +71,30 @@ try {
     const chain = 'handoff-worker-original', store = new ActionSourceAdmissionStore(memory.client, chain),
         selections = new ProtocolSourceBindingStore(memory.client, chain);
     const admission = await store.resolve(snapshot.admissionId);
-    const recorded = await store.readAttemptDisposition(snapshot.dispositionId);
-    assert.equal(recorded.observation.disposition, mode === 'main' ? 'source-unprocessable' : 'no-effects');
-    if (mode === 'main') assert.equal(recorded.observation.reason, 'source-traces-missing');
     const source = admission.source.inventoryInput.source, end = describeWorkerAttemptEnd(supervisor, ends[0]);
-    assert.equal(source.blockNum, mode === 'main' ? 1 : 36);
+    assert.equal(source.blockNum, mode === 'main' ? 1 : mode === 'handoff' ? 33 : 36);
     assert.equal(end.role, role);
     assert.equal(end.status, 'quiescent');
     assert.equal(end.rootResult, 'returned');
     assert.equal(end.acknowledgementAttempted, true);
     assert.equal(end.freshWrites.length, 1);
-    assert.equal(end.freshWrites[0].id, snapshot.dispositionId);
+    assert.equal(end.freshWrites[0].id, snapshot.recordId);
     const originalPayload = mode === 'main' ? Buffer.from(admission.source.frameHex, 'hex')
         : Buffer.from(admission.inventory.transactions.find(value => value.traceOrdinal === end.binding.traceOrdinal)
             .dispatch.canonicalJson);
     assert.equal(end.descriptor.payloadSha256, createHash('sha256').update(originalPayload).digest('hex'));
+    if (mode === 'handoff') {
+        const recorded = await store.readConfirmedHandoff(admission.id, end.binding.traceOrdinal, originalPayload);
+        assert.equal(recorded.id, snapshot.recordId);
+        assert.equal(recorded.outcome.kind, 'confirmed-action-handoff');
+        assert.equal(recorded.outcome.effects.length, 1);
+    } else {
+        const recorded = await store.readAttemptDisposition(snapshot.recordId);
+        assert.equal(recorded.observation.disposition, mode === 'main' ? 'source-unprocessable'
+            : mode === 'ds' ? 'no-effects' : 'contract-output-incomplete');
+        if (mode === 'main') assert.equal(recorded.observation.reason, 'source-traces-missing');
+        if (mode === 'contract') assert.equal(recorded.observation.reason, 'contract-finalization-invalid');
+    }
     const authority = {
         configurationSha256: () => admission.source.producer.configurationSha256,
         targetUuid: async name => {assert.equal(name, admission.target.name); return memory.settings.get(name)['index.uuid'];},
@@ -97,8 +108,9 @@ try {
     const associated = await adjudicator.adjudicate(ends[0]);
     assert.equal(associated.state, 'associated');
     const observation = (await store.readAttemptAssociation(associated.id)).observation;
-    assert.deepEqual(observation.results, [{id: snapshot.dispositionId,
-        classification: mode === 'main' ? 'source-incomplete' : 'intentional-no-effect'}]);
+    assert.deepEqual(observation.results, [{id: snapshot.recordId,
+        classification: mode === 'main' ? 'source-incomplete'
+            : mode === 'ds' ? 'intentional-no-effect' : mode === 'contract' ? 'contract-incomplete' : 'confirmed-handoff'}]);
     assert.equal(observation.brokerSettlement, 'unknown');
     assert.equal(observation.sourceChecked, true);
     assert.equal(observation.end.attemptId, end.attemptId);
@@ -107,7 +119,7 @@ try {
     assert.equal(exitCode, 0, stdout.slice(-4000));
     assert.equal(stderr, '', stdout.slice(-4000));
     console.log(JSON.stringify({passed: true, native: process.version, mode,
-        originalWireMainCallback: mode === 'main', originalWireDsCallback: mode === 'ds',
+        originalWireMainCallback: mode === 'main', originalWireDsCallback: mode !== 'main',
         managedParentEnd: true, writeBeforeAckBeforeEnd: true, originalAckCount: 1,
         classification: observation.results[0].classification,
         controlledStorageAndCanonicalAuthority: true, brokerSettlement: observation.brokerSettlement,

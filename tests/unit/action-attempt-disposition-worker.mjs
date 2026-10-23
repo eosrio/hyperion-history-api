@@ -23,7 +23,9 @@ const directory = mkdtempSync(join(tmpdir(), 'hyperion-attempt-worker-original-'
 const chain = 'handoff-worker-original', chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d', blockId = number => number.toString(16).padStart(64, '0');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const mode = process.argv[2] ?? 'lifecycle';
-const managedOriginalMain = mode === 'managed-original-main', managedOriginalDs = mode === 'managed-original-ds';
+const managedOriginalMain = mode === 'managed-original-main', managedOriginalNoEffect = mode === 'managed-original-ds',
+    managedOriginalContract = mode === 'managed-original-contract', managedOriginalHandoff = mode === 'managed-original-handoff';
+const managedOriginalDs = managedOriginalNoEffect || managedOriginalContract || managedOriginalHandoff;
 const managedOriginal = managedOriginalMain || managedOriginalDs;
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
 let reader, coordinator, managedClient, snapshotPath, draining = Promise.resolve();
@@ -210,7 +212,7 @@ try {
         assert.equal(mainConsumer.acked.at(-1), delivery);
         const messages = mainPublisher.sent.slice(mainBefore).map(sent => {
             const delivery = message(sent);
-            if (!managedOriginalDs || numberFrom(bytes) === 36) {
+            if (!managedOriginalDs || numberFrom(bytes) === (managedOriginalHandoff ? 33 : 36)) {
                 attemptLifecycle(pool, 'ds_pool_worker').captureActionAdmissionDelivery(delivery, poolConsumer);
                 attemptLifecycle(pool, 'ds_pool_worker').captureProtocolActionDelivery(delivery, poolConsumer);
             }
@@ -248,10 +250,10 @@ try {
     const numberFrom = bytes => Number(codec.decode('result', bytes)[1].this_block.block_num);
     const sourceAckChecks = [];
     const records = () => ids(memory, 'h45actionattempt1:').map(id => ({id, value: JSON.parse(retained(memory, admissionStore.index, id).payloadJson)}));
-    const publishManagedSnapshot = async (role, admissionId, dispositionId, originalAckCount) => {
+    const publishManagedSnapshot = async (role, admissionId, recordId, originalAckCount) => {
         assert(managedOriginal && (role === 'main' ? managedOriginalMain : managedOriginalDs));
         const snapshot = {documents: [...memory.documents], mappings: [...memory.mappings], settings: [...memory.settings],
-            admissionId, dispositionId, originalAckCount};
+            admissionId, recordId, originalAckCount};
         const bytes = Buffer.from(JSON.stringify(snapshot));
         snapshotPath = join(tmpdir(), `hyperion-managed-wire-${role}-${randomUUID()}.json`);
         writeFileSync(snapshotPath, bytes);
@@ -270,7 +272,7 @@ try {
         assert.equal(rows[0].value.work.source.blockNum, 1);
         assert.equal(rows[0].value.work.transaction, null); assert.equal(rows[0].value.work.planId, null);
         assert.deepEqual(rows[0].value.output, {kind: 'unresolved'}); sourceAckChecks.push(rows[0]);
-        if (managedOriginalMain) previousSend.call(process, {event: 'qualification_ack', dispositionId: rows[0].id});
+        if (managedOriginalMain) previousSend.call(process, {event: 'qualification_ack', recordId: rows[0].id});
     };
     const genesis = await prepare(readFileSync(join(sourceDir, 'block-000001.bin')));
     assert.equal(sourceAckChecks.length, 1); assert.ok(genesis.admission.incomplete);
@@ -281,6 +283,7 @@ try {
         await publishManagedSnapshot('main', genesis.admission.id, sourceAckChecks[0].id, mainConsumer.acked.length);
     } else {
     const lifecycle = ['original-genesis-no-invented-membership'];
+    let managedHandoffId;
     const originalGenesisDelivery = mainConsumer.acked[0];
     const runSource = (source = originalGenesisDelivery) => {
         const delivery = {content: Buffer.from(source.content), properties: structuredClone(source.properties), fields: {deliveryTag: 1}};
@@ -373,8 +376,9 @@ try {
     let prepared; const corruptionCalls = [], originalControls = new Map();
     const corruptContract = async action => {corruptionCalls.push(action.act.name); action.receipt[1].recv_sequence = 'not-a-sequence';};
     for (let number = 2; number <= 37; number++) {
-        if (number === 36 && mode === 'lifecycle') loader.handledActions.set('*', new Map([['setcode', corruptContract]]));
-        if (number === 36 && (mode === 'no-effects' || managedOriginalDs)) {
+        if (number === 36 && (mode === 'lifecycle' || managedOriginalContract))
+            loader.handledActions.set('*', new Map([['setcode', corruptContract]]));
+        if (number === 36 && (mode === 'no-effects' || managedOriginalNoEffect)) {
             filters.action_whitelist.add('sysio::setabi'); filters.action_blacklist.add('sysio::setabi');
         }
         if (number === 33 && mode === 'traces-disabled') {
@@ -400,12 +404,27 @@ try {
             };
         }
         prepared = await prepare(inputBytes);
+        if (number === 33 && managedOriginalHandoff) {
+            assert.equal(prepared.messages.length, 1);
+            poolConsumer.onAck = delivery => {
+                assert.equal(delivery, prepared.messages[0]);
+                const handoffs = ids(memory, 'h45actionhandoff1:');
+                assert.equal(handoffs.length, 1, 'original native publication must be durable before DS ACK');
+                managedHandoffId = handoffs[0];
+                previousSend.call(process, {event: 'qualification_ack', recordId: managedHandoffId});
+            };
+            await pool.processMessages(prepared.messages);
+            assert.equal(poolPublisher.sent.length, 1);
+            assert.equal(poolConsumer.acked.length, 1);
+            poolConsumer.onAck = undefined;
+            break;
+        }
         if (number === 2 && mode === 'empty-vector') {
             assert.equal(prepared.admission.inventory.transactions.length, 0); assert.equal(prepared.messages.length, 0); break;
         }
         originalControls.set(number, prepared);
         if (number === 33 && mode === 'traces-disabled') {assert.equal(prepared.messages.length, 0); break;}
-        if (number === 36 && (mode === 'no-effects' || managedOriginalDs)) {
+        if (number === 36 && (mode === 'no-effects' || managedOriginalNoEffect)) {
             assert.equal(prepared.messages.length, 1); assert.equal(prepared.messages[0].properties.headers.action_trace_ordinal, 1);
             const transaction = prepared.admission.inventory.transactions[1];
             assert.equal(transaction.transactionId, '140abb3d398f206518e117c02ccf1f1604b37b9fb55f7abed2034cf2fb374c66');
@@ -417,7 +436,7 @@ try {
                 const ds = rows.find(row => row.value.work.stage === 'ds-transaction');
                 assert(ds); assert.equal(ds.value.disposition, 'no-effects'); assert.equal(ds.value.work.transaction.traceOrdinal, 1);
                 assert.equal(ds.value.work.transaction.expectedGroups, 0); assert.deepEqual(ds.value.output, {kind: 'none-required'});
-                if (managedOriginalDs) previousSend.call(process, {event: 'qualification_ack', dispositionId: ds.id});
+                if (managedOriginalNoEffect) previousSend.call(process, {event: 'qualification_ack', recordId: ds.id});
             };
             await pool.processMessages(prepared.messages); assert.equal(poolPublisher.sent.length, 0);
             poolConsumer.onAck = undefined; break;
@@ -431,16 +450,18 @@ try {
                 assert.equal(rows[0].value.reason, 'contract-finalization-invalid');
                 assert.equal(rows[0].value.work.transaction.expectedGroups, 2);
                 assert.deepEqual(rows[0].value.output, {kind: 'unresolved'});
+                if (managedOriginalContract) previousSend.call(process, {event: 'qualification_ack', recordId: rows[0].id});
             };
             await pool.processMessages(prepared.messages.filter(value => value.properties.headers.action_trace_ordinal === 1));
             assert.equal(poolPublisher.sent.length, 0); loader.handledActions.clear(); poolConsumer.onAck = undefined;
+            if (managedOriginalContract) break;
         }
     }
     if (managedOriginalDs) {
-        const ds = records().find(row => row.value.work.admissionId === prepared.admission.id
-            && row.value.work.stage === 'ds-transaction');
-        assert(ds); assert.equal(poolConsumer.acked.length, 1);
-        await publishManagedSnapshot('ds', prepared.admission.id, ds.id, poolConsumer.acked.length);
+        const recordId = managedOriginalHandoff ? managedHandoffId : records().find(row =>
+            row.value.work.admissionId === prepared.admission.id && row.value.work.stage === 'ds-transaction')?.id;
+        assert(recordId); assert.equal(poolConsumer.acked.length, 1);
+        await publishManagedSnapshot('ds', prepared.admission.id, recordId, poolConsumer.acked.length);
     }
     if (mode === 'lifecycle') {
     const disabled = prepared;
