@@ -24,7 +24,8 @@ const chain = 'handoff-worker-original', chainId = '9ccd94e823fda51363bd4265ad61
 const hash = value => createHash('sha256').update(value).digest('hex');
 const mode = process.argv[2] ?? 'lifecycle';
 const managedOriginalMainHeldWrite = mode === 'managed-original-main-held-write';
-const managedOriginalMain = mode === 'managed-original-main' || managedOriginalMainHeldWrite,
+const managedOriginalMainFailedWrite = mode === 'managed-original-main-failed-write';
+const managedOriginalMain = mode === 'managed-original-main' || managedOriginalMainHeldWrite || managedOriginalMainFailedWrite,
     managedOriginalNoEffect = mode === 'managed-original-ds',
     managedOriginalContract = mode === 'managed-original-contract', managedOriginalHandoff = mode === 'managed-original-handoff';
 const managedOriginalDs = managedOriginalNoEffect || managedOriginalContract || managedOriginalHandoff;
@@ -291,7 +292,28 @@ try {
             delete memory.faults.beforeWrite;
         };
     }
-    const genesis = await prepare(readFileSync(join(sourceDir, 'block-000001.bin')));
+    let failedManagedWrites = 0;
+    if (managedOriginalMainFailedWrite) memory.faults.beforeWrite = async request => {
+        if (request.index === admissionStore.index && request.document?.kind === 'manifest'
+            && request.document.bundle_id.startsWith('h45actionattempt1:')) {
+            failedManagedWrites++;
+            throw new Error('constructed managed disposition write failure');
+        }
+    };
+    const genesisFrame = readFileSync(join(sourceDir, 'block-000001.bin'));
+    if (managedOriginalMainFailedWrite) {
+        await assert.rejects(prepare(genesisFrame),
+            /constructed managed disposition write failure/);
+        assert.equal(failedManagedWrites, 1);
+        assert.equal(mainConsumer.acked.length, 0);
+        assert.equal(records().length, 0);
+        delete memory.faults.beforeWrite;
+        previousSend.call(process, {event: 'qualification_write_failed', originalAckCount: mainConsumer.acked.length,
+            failedWrites: failedManagedWrites, retainedAttemptRecords: records().length,
+            originalFrameSha256: hash(genesisFrame)});
+        await managedFinished;
+    } else {
+    const genesis = await prepare(genesisFrame);
     if (managedOriginalMainHeldWrite) assert.equal(memory.faults.beforeWrite, undefined);
     assert.equal(sourceAckChecks.length, 1); assert.ok(genesis.admission.incomplete);
     assert.equal(sourceAckChecks[0].value.work.source.captureSha256, genesis.admission.source.captureSha256);
@@ -733,6 +755,7 @@ try {
     loader.handledActions.clear();
     }
     if (!managedOriginalDs) console.log(JSON.stringify({passed: true, originalBlocks: mode === 'no-effects' ? 36 : mode === 'traces-disabled' ? 33 : mode === 'empty-vector' ? 1 : 39, constructedBlocks: mode === 'lifecycle' ? 3 : mode === 'empty-vector' ? 1 : 0, mode, lifecycle, cases: ['original-missing-traces-write-before-ack', 'operator-disabled-write-before-ds-ack'], controlledBrokerStorage: true, fullWorkerQualification: false}));
+    }
     }
     assert.equal(nativeAddonResolutions, 0);
 } finally {

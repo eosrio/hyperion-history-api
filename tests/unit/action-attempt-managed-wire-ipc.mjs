@@ -14,11 +14,12 @@ import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-sou
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 
 const mode = process.argv[2] ?? 'main';
-assert(['main','main-held-write','ds','contract','handoff'].includes(mode));
-const isMain = mode === 'main' || mode === 'main-held-write';
+assert(['main','main-held-write','main-failed-write','ds','contract','handoff'].includes(mode));
+const isMain = mode === 'main' || mode === 'main-held-write' || mode === 'main-failed-write';
 const role = isMain ? 'deserializer' : 'ds_pool_worker';
 cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-worker.mjs', import.meta.url)),
     args: [mode === 'main-held-write' ? 'managed-original-main-held-write'
+        : mode === 'main-failed-write' ? 'managed-original-main-failed-write'
         : mode === 'main' ? 'managed-original-main' : mode === 'ds' ? 'managed-original-ds'
         : mode === 'contract' ? 'managed-original-contract' : 'managed-original-handoff'],
     silent: true});
@@ -40,6 +41,42 @@ function waitFor(predicate, label, timeout = 30_000) {
 }
 
 try {
+    if (mode === 'main-failed-write') {
+        await waitFor(() => messages.some(message => message?.event === 'qualification_write_failed') && ends.length === 1 || exited,
+            'original Wire MainDS failed disposition write and owned worker end');
+        assert.equal(exited, false, JSON.stringify({exitCode, stderr: stderr.slice(-4000)}));
+        const failed = messages.find(message => message.event === 'qualification_write_failed');
+        assert.deepEqual({originalAckCount: failed.originalAckCount, failedWrites: failed.failedWrites,
+            retainedAttemptRecords: failed.retainedAttemptRecords},
+        {originalAckCount: 0, failedWrites: 1, retainedAttemptRecords: 0});
+        const end = describeWorkerAttemptEnd(supervisor, ends[0]);
+        assert.equal(end.role, role);
+        assert.equal(end.status, 'quiescent');
+        assert.equal(end.rootResult, 'threw');
+        assert.equal(end.acknowledgementAttempted, false);
+        assert.equal(end.freshWrites.length, 0);
+        assert.equal(end.binding.blockNum, 1);
+        assert.equal(end.descriptor.payloadSha256, failed.originalFrameSha256);
+        const registration = messages.findIndex(message => message.event === 'worker_attempt_request'
+            && message.payload?.operation === 'register');
+        const endRequest = messages.findIndex(message => message.event === 'worker_attempt_request'
+            && message.payload?.operation === 'end');
+        assert(registration >= 0 && endRequest > registration);
+        assert.equal(messages.some(message => message.event === 'worker_attempt_request'
+            && message.payload?.operation === 'observe'), false);
+        assert.equal(messages.some(message => message.event === 'qualification_ack'), false);
+        const untouched = new Proxy({}, {get() {assert.fail('failed write reached storage or current authority');}});
+        const adjudicator = new ActionAttemptAdjudicator(supervisor, untouched, untouched, untouched);
+        assert.deepEqual(await adjudicator.adjudicate(ends[0]), {state: 'unresolved'});
+        child.send({event: 'qualification_done'});
+        await waitFor(() => exited, 'owned Wire failed-write child exit');
+        assert.equal(exitCode, 0, stdout.slice(-4000));
+        assert.equal(stderr, '', stdout.slice(-4000));
+        console.log(JSON.stringify({passed: true, native: process.version, mode,
+            originalWireMainCallback: true, managedParentEnd: true, failedWriteNoAck: true,
+            noFreshWriteOrAssociation: true, controlledStorageAndCanonicalAuthority: true,
+            brokerSettlement: 'unknown', fullWorkerQualification: false}));
+    } else {
     if (mode === 'main-held-write') {
         await waitFor(() => messages.some(message => message?.event === 'qualification_write_held') || exited,
             'original Wire MainDS disposition write held');
@@ -141,6 +178,7 @@ try {
         classification: observation.results[0].classification,
         controlledStorageAndCanonicalAuthority: true, brokerSettlement: observation.brokerSettlement,
         fullWorkerQualification: false}));
+    }
 } finally {
     if (!exited) {
         try {child.send({event: 'qualification_done'});} catch {}
