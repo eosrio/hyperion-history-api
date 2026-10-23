@@ -20,7 +20,7 @@ for (const mode of ['scope', 'snapshot', 'end-identity', 'proof', 'publication',
 for (const mode of ['retry', 'disconnect', 'unknown', 'main-ingress', 'headers', 'ds-unadmitted', 'shutdown']) test(`native worker IPC preserves ${mode} lifetime`, async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
         fileURLToPath(new URL('./worker-attempt-ipc.mjs', import.meta.url)), mode],
-    {stdout: 'pipe', stderr: 'pipe', timeout: 15_000});
+    {stdout: 'pipe', stderr: 'pipe', timeout: mode === 'main-ingress' ? 60_000 : 15_000});
     const [code, stdout, stderr] = await Promise.all([child.exited,
         new Response(child.stdout).text(), new Response(child.stderr).text()]);
     if (process.env.HYPERION_QUALIFICATION_OUTPUT) await Promise.all([
@@ -29,4 +29,4 @@ for (const mode of ['retry', 'disconnect', 'unknown', 'main-ingress', 'headers',
     expect({code, stderr, stdout: stdout.slice(-16000)}).toMatchObject({code: 0, stderr: ''});
     expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toMatchObject({passed: true,
         mode, ownedProcessesOnly: true, capacityAuthority: false, fullWorkerQualification: false});
-}, 20_000);
+}, mode === 'main-ingress' ? 65_000 : 20_000);

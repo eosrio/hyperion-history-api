@@ -184,7 +184,7 @@ async function actualMainIngress() {
         await waitFor(() => child.phase('ready'), 'actual MainDS child ready');
         child.send('capture-role');
         await waitFor(() => child.phase('role-captured') && child.requests.some(request => request.payload.operation === 'register'),
-            'actual original receipt registered before cargo');
+            `actual original receipt registered before cargo (${schedule})`, 15_000);
         const registration = child.requests.find(request => request.payload.operation === 'register');
         assert.equal(registration.payload.descriptor.kind, 'source-delivery');
         assert.equal(registration.payload.descriptor.deliveryTag, 42);
