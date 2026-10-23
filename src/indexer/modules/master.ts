@@ -50,6 +50,7 @@ import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js'
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
 import {resolvePortableStateConfiguration} from '../projection/config.js';
+import {WorkerAttemptSupervisor, type WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
 import {assertActionSequenceTemplateReadback, ensureActionSequenceMappings,
     ensureActionSequenceWriteTemplate} from '../history/action-sequence-storage.js';
 
@@ -57,6 +58,9 @@ import Timeout = NodeJS.Timeout;
 import { IPermission } from '../../interfaces/table-permissions.js';
 
 export class HyperionMaster {
+    // Own physical Worker objects independently of the replaceable logical workerMap entries.
+    private workerAttemptSupervisor?: WorkerAttemptSupervisor;
+    private get attemptSupervisor(): WorkerAttemptSupervisor {return this.workerAttemptSupervisor ??= new WorkerAttemptSupervisor();}
     // global configuration
     conf: HyperionConfig;
 
@@ -664,6 +668,7 @@ export class HyperionMaster {
         try {
             let result;
             if (input.operation === 'open') {
+                this.workerAttemptSupervisor?.fenceActive();
                 source = {worker, readerSessionId: input.readerSessionId};
                 this.protocolAbiSource = source; // Invalidates an older awaited continuation before any I/O.
                 result = await this.protocolAbiCoordinator!.openSource(input.contextId, input.readerSessionId);
@@ -694,6 +699,7 @@ export class HyperionMaster {
         const source = this.protocolAbiSource;
         if (!source || source.worker !== worker || (readerSessionId !== undefined && readerSessionId !== source.readerSessionId)) return;
         this.protocolAbiSource = undefined;
+        this.workerAttemptSupervisor?.fenceActive();
         // The reader may not yet have received a fork's new generation. Its authenticated session is sufficient.
         void this.protocolAbiCoordinator?.revokeSource(source.readerSessionId).catch(error => this.failProtocolAbiCoordinator(error));
     }
@@ -708,6 +714,7 @@ export class HyperionMaster {
     private failProtocolAbiCoordinator(error: unknown): void {
         if (this.protocolAbiFailed) return;
         this.protocolAbiFailed = true;
+        this.workerAttemptSupervisor?.stop();
         this.shutdownStarted = true;
         if (this.protocolAbiDrainTimer) clearInterval(this.protocolAbiDrainTimer);
         hLog('Canonical ABI coordinator failed; supervised master restart required:', error);
@@ -1291,7 +1298,11 @@ export class HyperionMaster {
                 const worker = cluster.fork(wrk);
                 wrk.wref = worker;
                 worker.id = wrk.worker_id;
+                if (wrk.worker_role && ['deserializer', 'ds_pool_worker', 'projection'].includes(wrk.worker_role))
+                    this.attemptSupervisor.attach(worker, wrk.worker_role as WorkerAttemptRole);
                 worker.on('message', (msg) => {
+                    // The supervisor owns this event, including retired physical owners.
+                    if (msg?.event === 'worker_attempt_request') return;
                     if (wrk.wref === worker) {
                         this.handleMessage(worker, msg);
                     }
@@ -2007,6 +2018,7 @@ export class HyperionMaster {
         hLog(`Killing ${this.workerMap.length} workers`);
         let disconnect_counter = 0;
         for (const w of this.workerMap) {
+            if (w.wref) this.workerAttemptSupervisor?.retire(w.wref);
             if (w.wref && w.wref.isConnected()) {
                 w.wref.on('disconnect', () => {
                     disconnect_counter++;
@@ -2070,6 +2082,7 @@ export class HyperionMaster {
 
     public gracefulStop(done: (result: any) => void) {
         try {
+            this.workerAttemptSupervisor?.stop();
             if (this.protocolAbiDrainTimer) clearInterval(this.protocolAbiDrainTimer);
             if (this.liveReader?.wref) this.revokeProtocolAbiReader(this.liveReader.wref);
             this.shutdownStarted = true;
@@ -2152,6 +2165,7 @@ export class HyperionMaster {
     }
 
     private handleWorkerDisconnect(worker: any) {
+        this.workerAttemptSupervisor?.retire(worker);
         this.revokeProtocolAbiReader(worker);
         if (!this.mode_transition && !this.shutdownStarted) {
             const workerReference = this.workerMap.find((value) => value.wref === worker);

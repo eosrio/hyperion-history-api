@@ -1,7 +1,9 @@
 import {afterEach, describe, expect, it} from 'bun:test';
 import {EventEmitter} from 'node:events';
+import {setImmediate as turn} from 'node:timers/promises';
+import {ProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
 import {publishAdmittedAction, publishAdmittedActionWithEvidence, readConfirmedActionPublications,
-    assertActionPublicationBatchBudget, actionPublicationEvidenceBounds, type ConfirmedActionPublication, type ActionPublicationOwner} from '../../src/indexer/history/action-confirmed-publication.js';
+    bindActionPublicationOwnerToScope, assertActionPublicationBatchBudget, actionPublicationEvidenceBounds, type ConfirmedActionPublication, type ActionPublicationOwner} from '../../src/indexer/history/action-confirmed-publication.js';
 
 class Publisher extends EventEmitter {
     writable = true;
@@ -150,6 +152,93 @@ describe('confirmed admitted action publication', () => {
             expect(cleared).toBe(1); expect(value.publisher.calls).toHaveLength(1); clean(value.publisher);
             value.publisher.calls[0].confirm(null); value.publisher.emit('drain');
             expect(value.publisher.calls).toHaveLength(1);
+        });
+    }
+});
+
+describe('scoped publication lifetime', () => {
+    it('keeps an issued owner attached to its original attempt outside async context and inside a replacement attempt', async () => {
+        const value = fixture(), original = new ProofConsumerScope('original-owner'), replacement = new ProofConsumerScope('replacement-owner');
+        await original.run(() => bindActionPublicationOwnerToScope(value.owner)); await original.closeAndDrain();
+        await expect(start(value)).rejects.toThrow('Original worker attempt');
+        await expect(replacement.run(() => start(value))).rejects.toThrow('Original worker attempt');
+        await replacement.closeAndDrain(); expect(value.publisher.calls).toHaveLength(0); clean(value.publisher);
+    });
+    it('rejects a detached original continuation without creating output after its attempt ends', async () => {
+        const value = fixture(), scope = new ProofConsumerScope('detached-publication');
+        let release!: () => void, detached!: Promise<void>;
+        const held = new Promise<void>(yes => {release = yes;});
+        await scope.run(async () => {
+            bindActionPublicationOwnerToScope(value.owner);
+            detached = held.then(() => start(value)); void detached.catch(() => {});
+        });
+        await scope.closeAndDrain(); release(); await expect(detached).rejects.toThrow('Original worker attempt');
+        expect(value.publisher.calls).toHaveLength(0); clean(value.publisher);
+    });
+    it('refuses an ended attempt ticket even when its original physical channels remain current', async () => {
+        const value = fixture(), scope = new ProofConsumerScope('ended-confirmation-ticket');
+        const ticket = await scope.run(async () => {
+            const publishing = publishAdmittedActionWithEvidence(value.owner, 'owned:actions', Buffer.from('action'), {});
+            value.publisher.calls[0].confirm(null); return publishing;
+        });
+        await scope.closeAndDrain();
+        expect(() => readConfirmedActionPublications(value.owner, [ticket])).toThrow('Original worker attempt');
+        expect(value.publisher.calls).toHaveLength(1); clean(value.publisher);
+    });
+    it('keeps actual broker confirmation and buffer drainage pending after the outer wait is cancelled', async () => {
+        const value = fixture(), scope = new ProofConsumerScope('held-publication'), cancellation = new AbortController();
+        value.publisher.writable = false;
+        const reason = new Error('cancel owned publication');
+        const root = scope.run(() => start(value, cancellation.signal));
+        cancellation.abort(reason); await expect(root).rejects.toBe(reason);
+        let ended = false; const ending = scope.closeAndDrain().then(() => {ended = true;});
+        try {
+            await turn(); expect(ended).toBe(false);
+            value.publisher.calls[0].confirm(null); await turn(); expect(ended).toBe(false);
+            value.publisher.emit('drain'); await ending; expect(ended).toBe(true);
+            expect(value.publisher.calls).toHaveLength(1); clean(value.publisher);
+        } finally {
+            value.publisher.calls[0]?.confirm(null); value.publisher.emit('drain'); value.publisher.emit('close'); await ending;
+        }
+    });
+    for (const failure of ['scope-fence', 'channel-error', 'send-throw'] as const) {
+        it(`keeps uncertain publication resources until the original channel closes (${failure})`, async () => {
+            const value = fixture(), scope = new ProofConsumerScope('physical-close-' + failure), reason = new Error(failure);
+            value.publisher.writable = false;
+            if (failure === 'send-throw') value.publisher.duringSend = () => {throw reason;};
+            const root = scope.run(() => start(value));
+            if (failure === 'scope-fence') scope.fence();
+            if (failure === 'channel-error') value.publisher.emit('error', reason);
+            await expect(root).rejects.toThrow(failure === 'scope-fence' ? 'Original worker attempt' : failure);
+            let ended = false; const ending = scope.closeAndDrain().then(() => {ended = true;});
+            try {
+                await turn(); expect(ended).toBe(false);
+                value.replacePublisher().emit('close'); await turn(); expect(ended).toBe(false);
+                value.publisher.emit('close'); await ending; expect(ended).toBe(true);
+                value.publisher.calls[0]?.confirm(null); value.publisher.emit('drain');
+                expect(value.publisher.calls).toHaveLength(1); clean(value.publisher);
+            } finally {value.publisher.emit('close'); await ending;}
+        });
+    }
+    for (const missing of ['confirmation', 'drain'] as const) {
+        it(`does not infer physical drainage from a caller timeout (${missing})`, async () => {
+            const value = fixture(), scope = new ProofConsumerScope('physical-timeout-' + missing);
+            value.publisher.writable = missing !== 'drain';
+            const set = globalThis.setTimeout, clear = globalThis.clearTimeout; let timeout!: () => void, root!: Promise<void>;
+            try {
+                globalThis.setTimeout = ((callback: () => void) => {timeout = callback; return 123;}) as any;
+                globalThis.clearTimeout = (() => {}) as any;
+                root = scope.run(() => start(value));
+                if (missing === 'drain') value.publisher.calls[0].confirm(null);
+                timeout();
+            } finally {globalThis.setTimeout = set; globalThis.clearTimeout = clear;}
+            await expect(root).rejects.toThrow('timed out');
+            let ended = false; const ending = scope.closeAndDrain().then(() => {ended = true;});
+            try {
+                await turn(); expect(ended).toBe(false);
+                if (missing === 'confirmation') value.publisher.calls[0].confirm(null); else value.publisher.emit('drain');
+                await ending; expect(ended).toBe(true); clean(value.publisher);
+            } finally {value.publisher.emit('close'); await ending;}
         });
     }
 });

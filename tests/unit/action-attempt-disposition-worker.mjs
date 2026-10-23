@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 /** Original Wire frames through emitted reader/MainDS/DS/admission and the normal installed native provider.
  * Public admission remains disabled. This fixture explicitly enables its existing engineering seam;
  * broker confirms, cache and ES transports are controlled. No live-service or consensus qualification. */
@@ -128,6 +129,8 @@ try {
     const readerPublisher = new ControlledPublisher(), mainPublisher = new ControlledPublisher(), poolPublisher = new ControlledPublisher();
     const worker = (prototype, consumer, publisher) => {
         const value = Object.create(prototype);
+        if (prototype === Main.prototype || prototype === Pool.prototype)
+            controlledAttemptLifecycle(value, prototype === Pool.prototype ? 'ds_pool_worker' : 'deserializer');
         Object.assign(value, {chain, chainId, conf: config, configModule: cm, filters, mLoader: loader,
             protocol: selected.provider, protocolId: selected.id, protocolComponents: selected.components,
             protocolReady: Promise.resolve(), abieos: selected.decoder, client: memory.client,
@@ -182,12 +185,12 @@ try {
         assert.ok(raw.payload.equals(bytes)); assert.ok(raw.options.headers[actionSourceIngressHeader]);
         const retainedIngress = await admissionStore.resolveIngress(raw.options.headers[actionSourceIngressHeader]);
         assert.equal(retainedIngress.frameHex, bytes.toString('hex'));
-        main.captureActionAdmissionDelivery(delivery, mainConsumer); main.captureProtocolSourceDelivery(delivery, mainConsumer);
+        (controlledAttemptLifecycle(main, 'deserializer'), main).captureActionAdmissionDelivery(delivery, mainConsumer); (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(delivery, mainConsumer);
         await parser.parseMessage(main, [delivery]); await draining;
         assert.equal(mainConsumer.acked.at(-1), delivery);
         const messages = mainPublisher.sent.slice(mainBefore).map(sent => {
-            const delivery = message(sent); pool.captureActionAdmissionDelivery(delivery, poolConsumer);
-            pool.captureProtocolActionDelivery(delivery, poolConsumer); return delivery;
+            const delivery = message(sent); (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureActionAdmissionDelivery(delivery, poolConsumer);
+            (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureProtocolActionDelivery(delivery, poolConsumer); return delivery;
         });
         const admissionId = messages[0]?.properties.headers[actionSourceAdmissionHeader];
         // Empty-block links contain no source body; resolve the bounded set by actual retained source association.
@@ -240,7 +243,7 @@ try {
         const delivery = {content: Buffer.from(source.content), properties: structuredClone(source.properties), fields: {deliveryTag: 1}};
         const consumer = new ControlledConsumer(), publisher = new ControlledPublisher();
         main.ch = consumer; main.cch = publisher; main.ch_ready = true; main.cch_ready = true;
-        main.captureActionAdmissionDelivery(delivery, consumer); main.captureProtocolSourceDelivery(delivery, consumer);
+        (controlledAttemptLifecycle(main, 'deserializer'), main).captureActionAdmissionDelivery(delivery, consumer); (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(delivery, consumer);
         const pending = parser.parseMessage(main, [delivery]); pending.catch(() => {});
         return {delivery, consumer, publisher, pending};
     };
@@ -454,7 +457,7 @@ try {
         const delivery = {content: Buffer.from(original.content), properties: structuredClone(original.properties), fields: {deliveryTag: 1}};
         const consumer = new ControlledConsumer(), publisher = new ControlledPublisher();
         pool.ch = consumer; pool.cch = publisher; pool.ch_ready = true; pool.cch_ready = true;
-        pool.captureActionAdmissionDelivery(delivery, consumer); pool.captureProtocolActionDelivery(delivery, consumer);
+        (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureActionAdmissionDelivery(delivery, consumer); (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureProtocolActionDelivery(delivery, consumer);
         const pending = pool.processMessages([delivery]); pending.catch(() => {}); return {delivery, consumer, publisher, pending};
     };
     const mixedRows = () => records().filter(row => row.value.work.admissionId === mixed.admission.id);
@@ -469,6 +472,7 @@ try {
     assert.equal(JSON.parse(partialMixed.publisher.sent[1].payload).protocol.schemaVersion, 1);
     assert.deepEqual(JSON.parse(partialMixed.publisher.sent[1].payload).act.data, setprivValue);
     partialMixed.publisher.sent[1].confirm(new Error('constructed mixed sibling NACK'));
+    partialMixed.publisher.emit('drain'); // Negative confirm settles no ticket; original buffered bytes must also finish.
     await assert.rejects(partialMixed.pending, /mixed sibling NACK/); assert.equal(partialMixed.consumer.acked.length, 0); assert.equal(mixedRows().length, 0);
     const completeMixed = runPool(mixed);
     completeMixed.consumer.onAck = () => {
@@ -614,7 +618,7 @@ try {
         pushToActionsQueue() {assert.fail('parallel owned raw worker bypassed confirmed publication');}});
     const rawOriginal = mixed.messages.find(value => value.properties.headers.action_trace_ordinal === 0);
     const rawDelivery = {content: Buffer.from(rawOriginal.content), properties: structuredClone(rawOriginal.properties), fields: {deliveryTag: 1}};
-    rawPool.captureActionAdmissionDelivery(rawDelivery, rawConsumer); rawPool.captureProtocolActionDelivery(rawDelivery, rawConsumer);
+    (controlledAttemptLifecycle(rawPool, 'ds_pool_worker'), rawPool).captureActionAdmissionDelivery(rawDelivery, rawConsumer); (controlledAttemptLifecycle(rawPool, 'ds_pool_worker'), rawPool).captureProtocolActionDelivery(rawDelivery, rawConsumer);
     const revokeGate = gate(); let revocationEntered = 0;
     memory.faults.beforeWrite = async request => {if (attemptManifest(request)) {revocationEntered++; await revokeGate.held;}};
     const revokedContract = runPool(originalControls.get(36), 1);

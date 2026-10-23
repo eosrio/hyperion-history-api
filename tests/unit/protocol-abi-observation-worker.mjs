@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
@@ -52,7 +53,7 @@ try {
         return publications.at(-1);
     };
     const consume=async(content,worker=main)=>{
-        const delivery=await publish(content);worker.captureProtocolSourceDelivery(delivery,worker.ch);
+        const delivery=await publish(content);(controlledAttemptLifecycle(worker, 'deserializer'), worker).captureProtocolSourceDelivery(delivery,worker.ch);
         return worker.mLoader.parser.parseMessage(worker,[delivery]);
     };
     let ack=0;const output=[],routed=[];
@@ -83,7 +84,7 @@ try {
     main.conf.whitelists.root_only=false;main.filters.action_whitelist=new Set();
     const first=frame(100);
     const firstDelivery=await publish(first);
-    main.captureProtocolSourceDelivery(firstDelivery,main.ch);
+    (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(firstDelivery,main.ch);
     await main.mLoader.parser.parseMessage(main,[firstDelivery]);
     assert.equal(ack,1);assert.equal(observed[0].input.traces[0][1].action_traces.length,2);
     let records=await journalRecords();assert.equal(records[0].observation.status,'observed');
@@ -96,7 +97,7 @@ try {
     for(const action of records[0].observation.facts.actionInputs)assert.equal(typeof action.globalSequence,'string');
     const drift=frame(100,{head:{block_num:9000,block_id:'9'.repeat(64)},last_irreversible:{block_num:99,block_id:'8'.repeat(64)}});
     const driftDelivery=await publish(drift);
-    main.captureProtocolSourceDelivery(driftDelivery,main.ch);
+    (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(driftDelivery,main.ch);
     await main.mLoader.parser.parseMessage(main,[driftDelivery]);
     assert.equal(ack,2);assert.equal((await journalRecords()).length,1,'Mutable head/LIB metadata changed the capture identity');
     const firstLink=await sourceStore.readObservationLink(firstDelivery.properties.headers[protocolSourceSelectionHeader]);
@@ -179,7 +180,7 @@ try {
     process.exit=code=>{requestedExit=code;};
     const delivery=async(number,tag)=>({...await publish(frame(number)),fields:{deliveryTag:tag}});
     const retry200=await delivery(200,1),retry201=await delivery(201,2);
-    failedWorker.captureProtocolSourceDelivery(retry200,failedWorker.ch);failedWorker.captureProtocolSourceDelivery(retry201,failedWorker.ch);
+    (controlledAttemptLifecycle(failedWorker, 'deserializer'), failedWorker).captureProtocolSourceDelivery(retry200,failedWorker.ch);(controlledAttemptLifecycle(failedWorker, 'deserializer'), failedWorker).captureProtocolSourceDelivery(retry201,failedWorker.ch);
     void failedWorker.consumerQueue.push(retry200).catch(()=>{});
     void failedWorker.consumerQueue.push(retry201).catch(()=>{});
     const restartDeadline=Date.now()+3000;while(requestedExit===undefined){assert(Date.now()<restartDeadline);await new Promise(resolve=>setTimeout(resolve,5));}
@@ -188,7 +189,7 @@ try {
     assert.equal(failedWorker.ch_ready,false);failManifest=false;
     const replacement=await createWorker('replacement');
     const replacement200={...retry200,fields:{deliveryTag:101}},replacement201={...retry201,fields:{deliveryTag:102}};
-    replacement.captureProtocolSourceDelivery(replacement200,replacement.ch);replacement.captureProtocolSourceDelivery(replacement201,replacement.ch);
+    (controlledAttemptLifecycle(replacement, 'deserializer'), replacement).captureProtocolSourceDelivery(replacement200,replacement.ch);(controlledAttemptLifecycle(replacement, 'deserializer'), replacement).captureProtocolSourceDelivery(replacement201,replacement.ch);
     await Promise.all([replacement.consumerQueue.push(replacement200),replacement.consumerQueue.push(replacement201)]);
     assert.deepEqual(settlements,['replacement:101','replacement:102']);assert.equal(new Set(settlements).size,settlements.length);
     assert.equal(failedWorker.consumerQueue.length(),0,'Old cargo retained already-requeued source work');

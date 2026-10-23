@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {currentProofConsumerScope, assertProofConsumerCapability, trackProofConsumerOperation, proofConsumerSignal, ProofConsumerFencedError, type ProofConsumerScope} from './proof-consumer-scope.js';
 import {serialize, deserialize} from 'node:v8';
 import {validateProtocolNativeActions, type ProtocolAbiActionInput, type ProtocolNativeActions,
     type ProtocolNativeActionDecision, type ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
@@ -34,6 +35,7 @@ export class ProtocolNativeActionUnavailableError extends Error {
     constructor(readonly code: string, message: string) {super(message); this.name = 'ProtocolNativeActionUnavailableError';}
 }
 interface IssuedView {
+    readonly scope?: ProofConsumerScope;
     readonly proof: ProtocolAbiProofView;
     readonly inputs: ReadonlyMap<string, ProtocolAbiActionInput>;
     readonly decisions: ReadonlyMap<string, ProtocolNativeActionDecision>;
@@ -99,10 +101,15 @@ export class ProtocolNativeActionReader {
         this.proofs = options.proofReader.asReadOnly();
     }
 
+    private consume<T>(issued: IssuedView | undefined, operation: () => Promise<T>): Promise<T> {
+        const scope = issued ? issued.scope : currentProofConsumerScope();
+        assertProofConsumerCapability(scope); return trackProofConsumerOperation(operation, scope);
+    }
     private async read<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         signal?.throwIfAborted();
-        try {const result = await operation(); signal?.throwIfAborted(); return result;}
+        try {const result = await trackProofConsumerOperation(operation); signal?.throwIfAborted(); return result;}
         catch (error) {
+            if (error instanceof ProofConsumerFencedError) throw error;
             signal?.throwIfAborted();
             if (error instanceof ProtocolAbiProofUnavailableError) unavailable(error.code, error.message);
             if (error instanceof NativeObservationReadError || error instanceof ProtocolSourceBindingReadError
@@ -130,6 +137,8 @@ export class ProtocolNativeActionReader {
     private async openSelected(source: ProtocolAbiProofSource, selectionId: string,
                                {signal, timeoutMs}: ProtocolAbiProofReadOptions & {timeoutMs?: number},
                                wait: boolean): Promise<ProtocolNativeActionView> {
+        return this.consume(undefined,async () => {
+        signal = proofConsumerSignal(signal);
         signal?.throwIfAborted();
         if (this.activeOpens >= 8) unavailable('native_busy', 'Native source verification read budget is exhausted');
         // A caller cannot change its request while its first storage read is pending.
@@ -145,7 +154,7 @@ export class ProtocolNativeActionReader {
             const retained = await this.read(() => this.store.readSelection(selectionId, signal), signal);
             const {record, context, selection, abiObservation} = retained;
             if (record.inventory === null) unavailable('native_source_incomplete', 'Native source inventory is incomplete');
-            const current = {proof, inputs: new Map(), decisions: new Map(), occurrences: new Map(), receipts: new Map(), provenance: snapshot({
+            const current = {proof, scope: currentProofConsumerScope(), inputs: new Map(), decisions: new Map(), occurrences: new Map(), receipts: new Map(), provenance: snapshot({
                 contextId: record.contextId, linkId: retained.linkId, observationId: retained.link.observationId,
                 observationDigest: retained.link.observationDigest, captureRef: record.captureRef,
                 inventorySha256: record.inventory.sha256, profile: this.profile,
@@ -209,10 +218,13 @@ export class ProtocolNativeActionReader {
             const handle = Object.freeze({}) as ProtocolNativeActionView;
             this.views.set(handle, current); return handle;
         } finally {this.activeOpens--; signal?.throwIfAborted();}
+        });
     }
 
     async authorize(view: ProtocolNativeActionView, input: ProtocolAbiActionInput,
                     {signal}: ProtocolAbiProofReadOptions = {}): Promise<ProtocolNativeActionAuthorization> {
+        return this.consume(this.views.get(view),async () => {
+        signal = proofConsumerSignal(signal);
         signal?.throwIfAborted();
         const issued = this.views.get(view);
         if (!issued) unavailable('native_invalid_view', 'Native source view was not issued by this reader');
@@ -239,9 +251,12 @@ export class ProtocolNativeActionReader {
         const grant = Object.freeze({}) as ProtocolNativeActionGrant;
         this.grants.set(grant, {view: issued, input: retained, nativeKind: decision.nativeKind});
         return Object.freeze({kind: 'native', grant});
+        });
     }
 
     async decodeValue(grant: ProtocolNativeActionGrant, {signal}: ProtocolAbiProofReadOptions = {}): Promise<unknown> {
+        return this.consume(this.grants.get(grant)?.view,async () => {
+        signal = proofConsumerSignal(signal);
         signal?.throwIfAborted();
         const issued = this.grants.get(grant);
         if (!issued) unavailable('native_invalid_grant', 'Native value grant was not issued by this reader');
@@ -273,10 +288,13 @@ export class ProtocolNativeActionReader {
         try {requireSynchronousValue(value);}
         catch {signal?.throwIfAborted(); unavailable('native_value_unavailable', 'Native value decoding must remain synchronous');}
         return value;
+        });
     }
 
     /** Metadata is derived only from an issued grant; stored labels cannot choose a native kind. */
     async metadata(grant: ProtocolNativeActionGrant, {signal}: ProtocolAbiProofReadOptions = {}): Promise<ProtocolNativeActionProofMetadata> {
+        return this.consume(this.grants.get(grant)?.view,async () => {
+        signal = proofConsumerSignal(signal);
         signal?.throwIfAborted();
         const issued = this.grants.get(grant);
         if (!issued) unavailable('native_invalid_grant', 'Native metadata grant was not issued by this reader');
@@ -286,11 +304,14 @@ export class ProtocolNativeActionReader {
             native: {...issued.view.provenance, nativeKind: issued.nativeKind}});
         await this.revalidateIssued(issued.view, {signal});
         return Object.freeze(metadata);
+        });
     }
 
     /** Certified occurrence and observer failure remain usable as raw history, never value authority. */
     async incompleteMetadata(view: ProtocolNativeActionView, input: ProtocolAbiActionInput,
                              {signal}: ProtocolAbiProofReadOptions = {}): Promise<ProtocolNativeActionIncompleteMetadata> {
+        return this.consume(this.views.get(view),async () => {
+        signal = proofConsumerSignal(signal);
         signal?.throwIfAborted();
         let requested: ProtocolAbiActionInput;
         try {requested = snapshot(input);}
@@ -305,19 +326,25 @@ export class ProtocolNativeActionReader {
             status: 'incomplete', error: decision.error});
         await this.revalidateIssued(issued, {signal});
         return Object.freeze(metadata);
+        });
     }
 
     /** Revalidate only this reader's opaque view, for final worker/response/cache/send fences. */
     async revalidate(view: ProtocolNativeActionView, {signal}: ProtocolAbiProofReadOptions = {}): Promise<void> {
+        return this.consume(this.views.get(view),async () => {
+        signal = proofConsumerSignal(signal);
         signal?.throwIfAborted();
         const issued = this.views.get(view);
         if (!issued) unavailable('native_invalid_view', 'Native source view was not issued by this reader');
         await this.revalidateIssued(issued, {signal});
+        });
     }
 
     /** Authenticate grouped public source fields; filtered notifications may be a subset of this origin only. */
     async verifyEnvelope(grant: ProtocolNativeActionGrant, action: unknown,
                          {signal}: ProtocolAbiProofReadOptions = {}): Promise<Readonly<Record<string, unknown>>> {
+        return this.consume(this.grants.get(grant)?.view,async () => {
+        signal = proofConsumerSignal(signal);
         signal?.throwIfAborted();
         const issued = this.grants.get(grant);
         if (!issued) unavailable('native_invalid_grant', 'Native envelope grant was not issued by this reader');
@@ -352,11 +379,14 @@ export class ProtocolNativeActionReader {
             'Native envelope metadata differs from its authorized original decision');
         await this.revalidateIssued(issued.view, {signal});
         return candidate;
+        });
     }
 
     /** Check a retained value using the authorized kind and return an independently owned snapshot. */
     async verifyValue(grant: ProtocolNativeActionGrant, candidate: unknown,
                       {signal}: ProtocolAbiProofReadOptions = {}): Promise<unknown> {
+        return this.consume(this.grants.get(grant)?.view,async () => {
+        signal = proofConsumerSignal(signal);
         signal?.throwIfAborted();
         const issued = this.grants.get(grant);
         if (!issued) unavailable('native_invalid_grant', 'Native value grant was not issued by this reader');
@@ -387,5 +417,6 @@ export class ProtocolNativeActionReader {
         await this.revalidateIssued(issued.view, {signal});
         requireSynchronousValue(value);
         return value;
+        });
     }
 }

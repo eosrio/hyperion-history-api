@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 /** Original Wire frames through emitted reader/MainDS/DS/admission and the normal installed native provider.
  * Public admission remains disabled. This fixture explicitly enables its existing engineering seam;
  * broker confirms, cache and ES transports are controlled. No live-service or consensus qualification. */
@@ -127,6 +128,8 @@ try {
     const readerPublisher = new ControlledPublisher(), mainPublisher = new ControlledPublisher(), poolPublisher = new ControlledPublisher();
     const worker = (prototype, consumer, publisher) => {
         const value = Object.create(prototype);
+        if (prototype === Main.prototype || prototype === Pool.prototype)
+            controlledAttemptLifecycle(value, prototype === Pool.prototype ? 'ds_pool_worker' : 'deserializer');
         Object.assign(value, {chain, chainId, conf: config, configModule: cm, filters, mLoader: loader,
             protocol: selected.provider, protocolId: selected.id, protocolComponents: selected.components,
             protocolReady: Promise.resolve(), abieos: selected.decoder, client: memory.client,
@@ -181,12 +184,12 @@ try {
         assert.ok(raw.payload.equals(bytes)); assert.ok(raw.options.headers[actionSourceIngressHeader]);
         const retainedIngress = await admissionStore.resolveIngress(raw.options.headers[actionSourceIngressHeader]);
         assert.equal(retainedIngress.frameHex, bytes.toString('hex'));
-        main.captureActionAdmissionDelivery(delivery, mainConsumer); main.captureProtocolSourceDelivery(delivery, mainConsumer);
+        (controlledAttemptLifecycle(main, 'deserializer'), main).captureActionAdmissionDelivery(delivery, mainConsumer); (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(delivery, mainConsumer);
         await parser.parseMessage(main, [delivery]); await draining;
         assert.equal(mainConsumer.acked.at(-1), delivery);
         const messages = mainPublisher.sent.slice(mainBefore).map(sent => {
-            const delivery = message(sent); pool.captureActionAdmissionDelivery(delivery, poolConsumer);
-            pool.captureProtocolActionDelivery(delivery, poolConsumer); return delivery;
+            const delivery = message(sent); (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureActionAdmissionDelivery(delivery, poolConsumer);
+            (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureProtocolActionDelivery(delivery, poolConsumer); return delivery;
         });
         const admissionId = messages[0]?.properties.headers[actionSourceAdmissionHeader];
         // Empty-block links contain no source body; resolve the bounded set by actual retained source association.
@@ -321,7 +324,7 @@ try {
         const delivery = {content: Buffer.from(originalMessage.content), properties: structuredClone(originalMessage.properties), fields: {deliveryTag: 1}};
         const consumer = new ControlledConsumer(), publisher = new ControlledPublisher();
         pool.ch = consumer; pool.cch = publisher; pool.ch_ready = true; pool.cch_ready = true;
-        pool.captureActionAdmissionDelivery(delivery, consumer); pool.captureProtocolActionDelivery(delivery, consumer);
+        (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureActionAdmissionDelivery(delivery, consumer); (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureProtocolActionDelivery(delivery, consumer);
         consumer.onAck = current => {assert.equal(current, delivery); onAck?.(current);};
         const pending = pool.processMessages([delivery]); pending.catch(() => {});
         return {delivery, consumer, publisher, pending};

@@ -10,6 +10,7 @@ import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import {protocolDeployment} from '../protocol/deployments.js';
 import {verifyNativeGenesisRecord} from '../protocol/native-genesis.js';
 import type {ProjectionFrame, ProjectionTableChange} from './runtime.js';
+import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
 
 const json = protocolImmutableJson;
 const digest = (value: Uint8Array | string) => createHash('sha256').update(value).digest('hex');
@@ -17,7 +18,7 @@ const zero = '0'.repeat(64);
 const unavailable = (message: string): never => {throw new ProtocolAbiProofUnavailableError('projection_source_unavailable', message);};
 export interface PortableProjectionSourceOptions {
     client: Client; chain: string; chainId: string; profile: ProtocolSourceProfile; provider: ProtocolProvider;
-    maxAncestryBlocks?: number; replicas?: number;
+    maxAncestryBlocks?: number; replicas?: number; requireAttemptScope?: boolean;
 }
 export interface PortableProjectionSourceEvidence {
     readonly certificateId: string; readonly commitId: string; readonly selectionId: string;
@@ -50,10 +51,15 @@ export class PortableProjectionSource {
         this.bindings = new ProtocolSourceBindingStore(options.client, options.chain, options.replicas ?? 0, {readOnly: true});
         this.observations = new ProtocolAbiObservationStore(options.client, options.chain, options.replicas ?? 0, undefined, {readOnly: true});
         this.reader = new ProtocolAbiProofReader({chainId: options.chainId, profile: this.options.profile,
-            store: this.store, maxAncestryBlocks: this.maximumAncestry});
+            store: this.store, maxAncestryBlocks: this.maximumAncestry, requireAttemptScope: options.requireAttemptScope});
+    }
+    private async retained<T>(operation: () => Promise<T>): Promise<T> {
+        const scope = currentProofConsumerScope(this.options.requireAttemptScope);
+        const value = await trackProofConsumerOperation(operation, scope);
+        scope?.assertActive(); return value;
     }
     private async control() {
-        const control: any = (await this.store.readControl())?.value;
+        const control: any = (await this.retained(() => this.store.readControl()))?.value;
         if (control?.chainId !== this.options.chainId || json(control.profile) !== json(this.options.profile)
             || control.phase !== 'following' || control.replayFromBlock !== null || !control.source
             || control.head?.coverageStart !== 1) unavailable('Source lacks current complete coverage from block one');
@@ -65,6 +71,7 @@ export class PortableProjectionSource {
         return this.reader.open({chainId: this.options.chainId, ...checkpoint});
     }
     async revalidate(proof: ProtocolAbiProofView): Promise<void> {
+        this.reader.assertConsumerScope(proof);
         await this.control();
         await this.reader.revalidate(proof);
     }
@@ -93,6 +100,7 @@ export class PortableProjectionSource {
     }
     /** Serving requires the fixed ABI at both the completed view and current canonical head. */
     async assertDefinition(proof: ProtocolAbiProofView, definition: ProjectionDefinition): Promise<void> {
+        this.reader.assertConsumerScope(proof);
         await this.definitionState(proof, definition, false);
         const control = await this.control();
         const current = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
@@ -120,7 +128,7 @@ export class PortableProjectionSource {
         }
         let commitId: string = control.head.commitId, commit: any, child: any;
         for (let distance = 0; distance <= this.maximumAncestry; distance++) {
-            commit = await this.store.readCommit(commitId);
+            commit = await this.retained(() => this.store.readCommit(commitId));
             if (child && (commit.source?.blockNum + 1 !== child.source?.blockNum
                 || commit.source?.blockId !== child.source?.previousBlockId)) unavailable('Projection ancestry is not contiguous');
             if (commit.source?.blockNum === blockNum) break;
@@ -134,9 +142,9 @@ export class PortableProjectionSource {
         await admitCanonicalTarget?.(Object.freeze({blockNum, blockId: proof.source.blockId,
             previousBlockId: proof.source.previousBlockId ?? zero}));
         try {
-        const {selection, context} = await this.bindings.readSelection(proof.selectionId);
-        const link = await this.bindings.readObservationLink(proof.selectionId);
-        const observation = await this.observations.read(link.observationId);
+        const {selection, context} = await this.retained(() => this.bindings.readSelection(proof.selectionId));
+        const link = await this.retained(() => this.bindings.readObservationLink(proof.selectionId));
+        const observation = await this.retained(() => this.observations.read(link.observationId));
         if (link.observationId !== commit.observationId || link.observationDigest !== commit.observationDigest
             || protocolAbiObservationId(observation) !== link.observationId || digest(json(observation)) !== link.observationDigest
             || json(selection.source) !== json(proof.source) || json(context.protocol) !== json(this.options.profile)

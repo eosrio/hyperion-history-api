@@ -114,7 +114,7 @@ export default class HyperionParser extends BaseParser {
 
             if (!ds_msg) {
                 if (worker.ch && worker.ch_ready) {
-                    worker.ch.nack(message);
+                    worker.settleOriginalWorkerDelivery(message, true);
                     throw new Error('failed to deserialize datatype=result');
                 }
             }
@@ -222,13 +222,13 @@ export default class HyperionParser extends BaseParser {
                 } else if (worker.usesExtensionProtocol) {
                     worker.ackProtocolSourceDelivery(message);
                 } else if (worker.ch && worker.ch_ready) {
-                    worker.ch.ack(message);
+                    worker.settleOriginalWorkerDelivery(message);
                 }
             } catch (e) {
                 if (worker.usesExtensionProtocol || worker.actionSourceAdmissionEnabled) throw e;
                 console.log(e);
                 if (worker.ch && worker.ch_ready) {
-                    worker.ch.nack(message);
+                    worker.settleOriginalWorkerDelivery(message, true);
                 }
                 process.exit(1);
             }
