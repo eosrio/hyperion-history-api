@@ -38,7 +38,7 @@ export interface StreamActionsRequest {
 export interface StreamDeltasRequest {
     code: string;
     table: string;
-    scope: string;
+    scope?: string;
     payer: string;
     start_from: number | string;
     read_until: number | string;
