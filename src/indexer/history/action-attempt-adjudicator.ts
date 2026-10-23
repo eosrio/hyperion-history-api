@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {actionHistoryImmutableJson} from './action-history-manifest.js';
 import {ActionSourceAdmissionStore, type ActionAttemptAssociation} from './action-source-admission.js';
-import {ProtocolSourceBindingStore} from '../protocol/source-bindings.js';
+import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {describeWorkerAttemptEnd, type AcceptedWorkerAttemptEnd, type WorkerAttemptSupervisor,
     type WorkerAttemptEndDescription} from '../protocol/worker-attempt-supervisor.js';
 import type {FreshActionWrite} from './action-fresh-write.js';
@@ -14,6 +14,8 @@ export interface CurrentAttemptAuthority {
     configurationSha256(): string;
     canonicalBlock(blockNum: number): Promise<{chainId: string; blockId: string; previousBlockId: string | null;
         irreversible: boolean}>;
+    /** Source-selected reversible input needs current physical SHIP/coordinator authority. */
+    reversibleSelection?(selectionId: string, source: ProtocolSourcePosition, readerSessionId: string): Promise<boolean>;
     targetUuid(name: string): Promise<string>;
 }
 
@@ -68,10 +70,11 @@ export class ActionAttemptAdjudicator {
         if (this.current.configurationSha256() !== admission.source.producer.configurationSha256
             || await this.current.targetUuid(admission.target.name) !== admission.target.uuid) return {state: 'unresolved'};
         const block = await this.current.canonicalBlock(source.blockNum);
-        if (!block.irreversible || block.chainId !== source.chainId || block.blockId !== source.blockId
+        if (block.chainId !== source.chainId || block.blockId !== source.blockId
             || (admission.source.previousBlockId !== null && block.previousBlockId !== admission.source.previousBlockId))
             return {state: 'unresolved'};
         const selected = admission.source.inventoryInput.sourceSelectionId;
+        let selectedReaderSessionId: string | undefined;
         if (selected) {
             if (end.binding.selectionId !== selected) return {state: 'unresolved'};
             const {selection} = await this.selections.readSelection(selected);
@@ -80,7 +83,12 @@ export class ActionAttemptAdjudicator {
                 || (admission.source.previousBlockId !== null && selection.source.previousBlockId !== admission.source.previousBlockId)
                 || selection.captureSha256 !== admission.source.captureSha256
                 || (end.binding.readerSessionId && end.binding.readerSessionId !== selection.readerSessionId)) return {state: 'unresolved'};
+            selectedReaderSessionId = selection.readerSessionId;
         } else if (end.binding.selectionId) return {state: 'unresolved'};
+        if (!block.irreversible && (!selected || !selectedReaderSessionId || !this.current.reversibleSelection
+            || !await this.current.reversibleSelection(selected, {chainId: source.chainId, blockNum: source.blockNum,
+                blockId: source.blockId, previousBlockId: admission.source.previousBlockId}, selectedReaderSessionId)))
+            return {state: 'unresolved'};
         const persisted = await this.store.recordAttemptAssociation(this.supervisor, evidence, {results, sourceChecked: true});
         return {state: 'associated', id: persisted.id};
     }

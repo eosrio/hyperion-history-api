@@ -81,10 +81,9 @@ export class HyperionMaster {
                 canonicalBlock: async blockNum => {
                     const info = await this.rpc.v1.chain.get_info();
                     if (info.head_block_num.toNumber() < blockNum) throw new Error('Canonical node is behind the original worker source');
-                    if (info.last_irreversible_block_num.toNumber() < blockNum)
-                        throw new Error('Reversible source has no current SHIP fork authority for association');
+                    const irreversible = info.last_irreversible_block_num.toNumber() >= blockNum;
                     // RPC alone can lag a SHIP fork. An authenticated live reader's LIB anchors its branch.
-                    if (this.conf.indexer.live_reader) {
+                    if (irreversible && this.conf.indexer.live_reader) {
                         const lib = this.actionCanonicalLib;
                         if (!lib || this.liveReader?.wref !== lib.worker || lib.blockNum < blockNum)
                             throw new Error('Current live SHIP irreversible anchor is unavailable');
@@ -94,7 +93,16 @@ export class HyperionMaster {
                     }
                     const block = await this.rpc.v1.chain.get_block(blockNum);
                     return {chainId: String(info.chain_id).toLowerCase(), blockId: String(block.id).toLowerCase(),
-                        previousBlockId: blockNum === 1 ? null : String(block.previous).toLowerCase(), irreversible: true};
+                        previousBlockId: blockNum === 1 ? null : String(block.previous).toLowerCase(), irreversible};
+                },
+                reversibleSelection: async (selectionId, source, readerSessionId) => {
+                    const live = this.protocolAbiSource, coordinator = this.protocolAbiCoordinator;
+                    if (!live?.generation || !coordinator || live.readerSessionId !== readerSessionId
+                        || !this.isCurrentProtocolLiveReader(live.worker)) return false;
+                    const generation = live.generation;
+                    const admitted = await coordinator.currentlyAdmittedSource(selectionId, source, readerSessionId, generation);
+                    return admitted && this.protocolAbiSource === live && live.generation === generation
+                        && this.isCurrentProtocolLiveReader(live.worker);
                 },
                 targetUuid: async name => {
                     const settings = await this.esClient.indices.getSettings({index: name, flat_settings: true});

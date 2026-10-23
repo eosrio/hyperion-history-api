@@ -95,3 +95,65 @@ test('a redelivery end cannot borrow the prior attempt fresh write for identical
     expect(associations).toHaveLength(1);
     first.client.dispose(); redelivery.client.dispose();
 });
+
+test('a reversible Wire attempt needs the current admitted source selection before private association', async () => {
+    const ends: AcceptedWorkerAttemptEnd[] = [], supervisor = new WorkerAttemptSupervisor({onEnd: value => ends.push(value)});
+    const worker = link(supervisor), chainId = 'c'.repeat(64), blockId = 'b'.repeat(64), previousBlockId = 'a'.repeat(64),
+        captureSha256 = '5'.repeat(64), selectionId = 'h45srcsel1:' + '9'.repeat(64), readerSessionId = 'reader-session',
+        admissionId = 'h45actionadmission1:' + 'a'.repeat(64), sourceId = 'h45actionsource1:' + '1'.repeat(64),
+        ingressId = 'h45actioningress1:' + '3'.repeat(64), planId = 'h45actionplan1:' + '2'.repeat(64),
+        dispositionId = 'h45actionattempt1:' + '4'.repeat(64), config = 'd'.repeat(64),
+        target = {name: 'fixture-action-v1-000001', uuid: 'target-uuid'}, frame = Buffer.from('original-Wire-frame');
+    const producer = {protocolId: '@eosrio/hyperion-wire-plugin', profileId: 'wire-fixture', codeRevision: '0'.repeat(40),
+        configurationSha256: config, pluginsSha256: '8'.repeat(64)};
+    const source = {chainId, blockNum: 33, blockId, previousBlockId};
+    const work = {stage: 'main-source', admissionId, sourceId, ingressId, planId, target, producer,
+        executableSha256: '6'.repeat(64), policySha256: '7'.repeat(64), sourceSelectionId: selectionId, transaction: null,
+        source: {...source, captureSha256}};
+    const observation = {kind: 'action-attempt-disposition', disposition: 'source-unprocessable', reason: 'source-traces-missing',
+        work, output: {kind: 'unresolved'}};
+    const admission: any = {id: admissionId, sourceId, planId, target,
+        inventory: {sourceSelectionId: selectionId, policySha256: work.policySha256, transactions: []},
+        source: {ingressId, frameHex: frame.toString('hex'), previousBlockId, captureSha256,
+            executableSha256: work.executableSha256, producer,
+            inventoryInput: {source: {chainId, blockNum: 33, blockId}, sourceSelectionId: selectionId, policy: {}}}};
+    const associations: unknown[] = [], calls: unknown[] = [];
+    const store: any = {resolve: async () => admission,
+        readAttemptDisposition: async () => ({id: dispositionId, observation}),
+        recordAttemptAssociation: async (_supervisor: unknown, _evidence: unknown, association: unknown) => {
+            associations.push(association); return {id: 'reversible-association'};
+        }};
+    const selections: any = {readSelection: async (id: string) => {
+        expect(id).toBe(selectionId);
+        return {selection: {source, captureSha256, readerSessionId}};
+    }};
+    let admitted = false;
+    const authority = {configurationSha256: () => config, targetUuid: async () => target.uuid,
+        canonicalBlock: async () => ({chainId, blockId, previousBlockId, irreversible: false}),
+        reversibleSelection: async (id: string, position: typeof source, session: string) => {
+            calls.push({id, position, session}); return admitted;
+        }};
+    const adjudicator = new ActionAttemptAdjudicator(supervisor, store, selections, authority);
+    const bundles = new ImmutableProtocolBundleStore(frontierMemoryClient().client as any, 'reversible-fixture', 0,
+        'action-source-admission', 'history-source-admission-v1');
+    const handle = worker.client.capture({kind: 'source-delivery', receiptId: randomUUID(),
+        payloadSha256: createHash('sha256').update(frame).digest('hex'), headersSha256: 'f'.repeat(64),
+        consumerId: randomUUID(), publisherId: randomUUID(), queue: 'fixture:source', deliveryTag: 1});
+    await worker.client.run(handle, async () => {
+        await worker.client.bindCurrent({selectionId, readerSessionId, admissionId, planId, ingressId,
+            blockNum: 33, blockId, configurationSha256: config, targetName: target.name, targetUuid: target.uuid});
+        const proof = await bundles.prepare(dispositionId, {schemaVersion: 1, payloadJson: actionHistoryImmutableJson(observation)});
+        const result = issueFreshActionWrite({id: dispositionId}, 'attempt-disposition', dispositionId, observation, proof, bundles);
+        expect(await worker.client.observeFreshActionWrite(result)).toBe(true);
+        worker.client.markAcknowledgementAttempt();
+    });
+    expect(ends).toHaveLength(1);
+    expect(await adjudicator.adjudicate(ends[0])).toEqual({state: 'unresolved'});
+    expect(associations).toHaveLength(0);
+    admitted = true;
+    expect(await adjudicator.adjudicate(ends[0])).toEqual({state: 'associated', id: 'reversible-association'});
+    expect(calls).toEqual([{id: selectionId, position: source, session: readerSessionId},
+        {id: selectionId, position: source, session: readerSessionId}]);
+    expect(associations).toHaveLength(1);
+    worker.client.dispose();
+});

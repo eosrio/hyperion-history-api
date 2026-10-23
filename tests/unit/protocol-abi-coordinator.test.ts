@@ -47,6 +47,61 @@ async function fixture(options:{maxPendingBlocks?:number;recoveryWindowBlocks?:n
 }
 
 describe('canonical ABI runtime coordinator',()=>{
+    it('keeps bounded live source membership through drain but revokes it on fork, reconnect and owner replacement',async()=>{
+        const f=await fixture({recoveryWindowBlocks:2});
+        const a=await f.selected(1),b=await f.selected(2),c=await f.selected(3);
+        await f.admit(a);
+        const position=(value:typeof a)=>{const {inputSha256:_inputSha256,...source}=value.record.source;return source;};
+        const current=(value:typeof a,session='session-a',generation=f.generation)=>
+            f.coordinator.currentlyAdmittedSource(value.selectionId,position(value),session,generation);
+        expect(await current(a)).toBe(true);
+        const read=f.store.readControl.bind(f.store);
+        f.store.readControl=async (...args)=>{const visible=await read(...args);return {...visible!,seqNo:visible!.seqNo+1};};
+        expect(await current(a)).toBe(false);
+        f.store.readControl=read;
+        expect(await f.coordinator.currentlyAdmittedSource(a.selectionId,
+            {...position(a),blockId:block(99)},'session-a',f.generation)).toBe(false);
+        expect(await current(a,'other-session')).toBe(false);
+        await f.admit(b);await f.prepare(a);await f.prepare(b);await f.coordinator.drain();
+        expect(await current(a)).toBe(true);expect(await current(b)).toBe(true);
+        await f.admit(c);
+        expect(await current(a)).toBe(false);expect(await current(b)).toBe(true);expect(await current(c)).toBe(true);
+        const oldGeneration=f.generation,fork=await f.selected(2,20,1);
+        await f.admit(fork);
+        expect(f.generation).not.toBe(oldGeneration);
+        expect(await current(b,'session-a',oldGeneration)).toBe(false);
+        expect(await current(c)).toBe(false);expect(await current(fork)).toBe(true);
+        await f.coordinator.revokeSource('session-a');
+        expect(await current(fork)).toBe(false);
+        const restarted=f.make('master-2');await restarted.start();
+        expect(await current(fork)).toBe(false);
+        const opened=await restarted.openSource(f.contextId,'session-b');
+        expect(await restarted.currentlyAdmittedSource(fork.selectionId,position(fork),'session-b',opened.generation)).toBe(false);
+    });
+
+    it('does not hold the coordinator mutation lane during a slow current-source control read',async()=>{
+        const f=await fixture({recoveryWindowBlocks:1}),a=await f.selected(1),b=await f.selected(2);
+        await f.admit(a);
+        const {inputSha256:_inputSha256,...position}=a.record.source;
+        const read=f.store.readControl.bind(f.store);
+        let release!:()=>void,entered!:()=>void,once=false;
+        const gate=new Promise<void>(resolve=>{release=resolve;}),waiting=new Promise<void>(resolve=>{entered=resolve;});
+        f.store.readControl=async (...args)=>{
+            if(!once){once=true;entered();await gate;}
+            return read(...args);
+        };
+        let timer:ReturnType<typeof setTimeout>|undefined;
+        try {
+            const probe=f.coordinator.currentlyAdmittedSource(a.selectionId,position,'session-a',f.generation);
+            await waiting;
+            const admitted=await Promise.race([f.admit(b),new Promise<never>((_resolve,reject)=>{
+                timer=setTimeout(()=>{release();reject(new Error('Current-source read blocked ABI admission'));},1000);
+            })]);
+            expect(admitted.status).toBe('accepted');
+            release();expect(await probe).toBe(false);
+        } finally {if(timer)clearTimeout(timer);release();f.store.readControl=read;}
+    });
+
     it('activates source order rather than parallel PREPARE completion, including refresh-independent restart reads',async()=>{
         const f=await fixture();const firstFacts=empty();firstFacts.finalStates=[{account:'alpha',present:true,abiHex:'aa',deltaOrdinal:0}];
         const a=await f.selected(1,1,0,firstFacts),b=await f.selected(2);

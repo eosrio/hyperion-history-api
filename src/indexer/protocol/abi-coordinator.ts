@@ -64,6 +64,8 @@ export class ProtocolAbiCoordinator {
     private activeSession?:string;
     private openingSession?:string;
     private certifiedId?:string;
+    /** Process-local evidence of successful live-source CAS admissions, never a restart cursor. */
+    private readonly recentSelections=new Map<string,{source:ProtocolSourcePosition;generation:string;readerSessionId:string}>();
 
     constructor(private readonly options:ProtocolAbiCoordinatorOptions) {
         if(!hex64.test(options.chainId)||!text(options.ownerId))throw new Error('Invalid ABI coordinator identity');
@@ -83,6 +85,11 @@ export class ProtocolAbiCoordinator {
     }
     private sameProfile(value:ProtocolSourceProfile):boolean {return json(value)===json(this.profile);}
     private assertEpoch(epoch:number):void {if(epoch!==this.sourceEpoch)throw new ProtocolAbiCoordinatorStaleError();}
+    private rememberSelection(id:string,source:ProtocolSourcePosition,generation:string,readerSessionId:string):void {
+        this.recentSelections.delete(id);
+        this.recentSelections.set(id,{source:copy(source),generation,readerSessionId});
+        while(this.recentSelections.size>this.recoveryWindow)this.recentSelections.delete(this.recentSelections.keys().next().value!);
+    }
     private validateControl(input:unknown):ProtocolAbiCoordinatorControl {
         const value=copy(input) as ProtocolAbiCoordinatorControl;
         // Draft frontier records before this field existed had no durable initial replay boundary.
@@ -152,6 +159,7 @@ export class ProtocolAbiCoordinator {
     async openSource(contextId:string,readerSessionId:string):Promise<{generation:string;resumeFromBlock:number|null}> {
         if(!text(readerSessionId))throw new Error('Invalid source reader session');
         const settled=this.known?.value;
+        this.recentSelections.clear();
         this.openingSession=readerSessionId;const epoch=++this.sourceEpoch;
         return this.run(async()=>{
             let version=await this.owned();const context=await this.options.bindings.readContext(contextId);this.assertEpoch(epoch);
@@ -167,7 +175,7 @@ export class ProtocolAbiCoordinator {
     async revokeSource(readerSessionId:string,generation?:string):Promise<boolean> {
         const recognized=this.activeSession===readerSessionId||this.openingSession===readerSessionId;
         const settled=recognized?this.known?.value:undefined;
-        if(recognized)this.sourceEpoch++;
+        if(recognized){this.sourceEpoch++;this.recentSelections.clear();}
         return this.run(async()=>{
             const version=await this.owned();
             if(version.value.source?.readerSessionId!==readerSessionId||(generation&&generation!==version.value.generation))return false;
@@ -191,7 +199,10 @@ export class ProtocolAbiCoordinator {
             let version=await this.owned();this.assertEpoch(epoch);
             if(generation!==version.value.generation||!version.value.source)return {status:'stale',generation:version.value.generation};
             const selection=await this.selection(selectedId,version.value);this.assertEpoch(epoch);
-            if(version.value.pending.includes(selectedId))return {status:'accepted',generation};
+            if(version.value.pending.includes(selectedId)){
+                this.rememberSelection(selectedId,selection.source,generation,selection.readerSessionId);
+                return {status:'accepted',generation};
+            }
             const source=selection.source;
             if(version.value.head?.blockNum===source.blockNum&&version.value.head.blockId===source.blockId)return {status:'accepted',generation};
             const last=version.value.pending.length?await this.selection(version.value.pending.at(-1)!,version.value):null;
@@ -205,13 +216,32 @@ export class ProtocolAbiCoordinator {
                 // This durable fence linearizes fork recovery before any rewind/replay or subsequent activation.
                 version=await this.save(version,{...before,generation:randomUUID(),pending:[],phase:'recovering',
                     gap:gap('fork_recovery_pending','Replacement branch requires ancestor reconciliation before activation',source.blockNum),
-                    replayFromBlock:Math.min(before.replayFromBlock??source.blockNum,source.blockNum)});this.assertEpoch(epoch);
+                    replayFromBlock:Math.min(before.replayFromBlock??source.blockNum,source.blockNum)});this.recentSelections.clear();this.assertEpoch(epoch);
                 const recovered=await this.recoverParent(before,source);this.assertEpoch(epoch);
                 version=await this.save(version,{...version.value,head:recovered.head,pending:[...recovered.pending,selectedId],phase:'following',gap:recovered.gap,
                     replayFromBlock:recovered.head?null:version.value.replayFromBlock});
             }
-            this.assertEpoch(epoch);return {status:'accepted',generation:version.value.generation};
+            this.assertEpoch(epoch);
+            this.rememberSelection(selectedId,source,version.value.generation,selection.readerSessionId);
+            return {status:'accepted',generation:version.value.generation};
         });} catch(error){if(error instanceof ProtocolAbiCoordinatorStaleError)return {status:'stale',generation:this.known?.value.generation??generation};throw error;}
+    }
+    /** A recent selection must still belong to this physical live session and its settled control generation. */
+    async currentlyAdmittedSource(selectionId:string,source:ProtocolSourcePosition,readerSessionId:string,generation:string):Promise<boolean> {
+        if(!id('h45srcsel1',selectionId)||!text(readerSessionId)||!text(generation))return false;
+        // The control GET is outside the serial mutation lane. It can revoke a prior complete CAS receipt,
+        // but cannot grant authority from a primary-visible write whose receipt was unknown.
+        const observed=await this.options.store.readControl();
+        return this.run(async()=>{
+            const known=this.known,control=known?.value,admitted=this.recentSelections.get(selectionId);
+            return !!observed&&!!known&&!!control&&this.started&&!this.fenced
+                &&observed.seqNo===known.seqNo&&observed.primaryTerm===known.primaryTerm
+                &&json(observed.value)===json(control)
+                &&!!admitted&&this.activeSession===readerSessionId&&control.source?.readerSessionId===readerSessionId
+                &&control.generation===generation&&['following','incomplete'].includes(control.phase)
+                &&admitted.generation===generation&&admitted.readerSessionId===readerSessionId
+                &&json(admitted.source)===json(source);
+        });
     }
     private async recoverParent(before:ProtocolAbiCoordinatorControl,source:ProtocolSourcePosition):Promise<{head:Head|null;pending:string[];gap:Gap|null}> {
         const restoredGap=before.gap?.code==='fork_recovery_pending'?null:before.gap;
