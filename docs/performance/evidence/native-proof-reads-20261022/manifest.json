@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "createdBy": "windows:codex:hyperion-tools",
+  "createdAt": "2026-10-22T18:55:51.933348+00:00",
+  "scope": "Complete actual-ES proof diagnostic cases, runtime/build/source provenance and owned-service preparation. Root host/installer pilots/cleanup captured separately.",
+  "members": {
+    "build-base.log": {
+      "bytes": 168,
+      "sha256": "1792918a4a1941a4b59c1f0119ca90e2a99b8d332fce140a25affdf6b03395d1"
+    },
+    "clone-base.log": {
+      "bytes": 59,
+      "sha256": "82eb48b916dbc31d17f483192da38f300042a75431db63ee3b94f12f918a8624"
+    },
+    "diagnostic-install.json": {
+      "bytes": 801,
+      "sha256": "baa4a2b94ae7cd84277e421946a0de7a7d4637b7cc34ab7968edbf0dba150314"
+    },
+    "npm-ci-adapter.log": {
+      "bytes": 123,
+      "sha256": "5cf685a33ce52de4b0fb18ac620824c63f90285f5314869748a41881bdb06343"
+    },
+    "npm-ci.log": {
+      "bytes": 1362,
+      "sha256": "d5804e4fa432085f59ee8e4a3f121703d9cf0291aaaacda5d34ec6175f8cd57e"
+    },
+    "proof-node22-b/cpu/proof-read-head-265-pid-10127.cpuprofile": {
+      "bytes": 311825,
+      "sha256": "5f444333db29fba592a48692d2c0bb2562f9fec9353982b6d9dfe7ef7259d057"
+    },
+    "proof-node22-b/cpu/proof-read-head-289-pid-10127.cpuprofile": {
+      "bytes": 326285,
+      "sha256": "18a7c3bfe80fe273973657b28ef8d3881cc77b6ad6f6ccb23d75ea92e15d2f2c"
+    },
+    "proof-node22-b/cpu/proof-read-head-34-pid-10127.cpuprofile": {
+      "bytes": 111377,
+      "sha256": "eb0c28f97b56d09130c3f1f2be07e2aa4e70a5e22df097e25bd32194b2d002b5"
+    },
+    "proof-node22-b/cpu/proof-read-head-65-pid-10127.cpuprofile": {
+      "bytes": 161388,
+      "sha256": "d3678df2e514f1165a71a0ac36515f3b1b41b9f3683e797dd59d33d22a33eb43"
+    },
+    "proof-node22-b/intent.json": {
+      "bytes": 2234,
+      "sha256": "9d615b540df922f49e48920ba9217a7c03de68fbf13bca5bac3e87f53fdf63a5"
+    },
+    "proof-node22-b/probe.log": {
+      "bytes": 21137863,
+      "sha256": "e4573edf8f16354ca3cfa27e2ca0643804ba92033f5ca81416b396b0232af6c1"
+    },
+    "proof-node22-b/receipt.json": {
+      "bytes": 5221,
+      "sha256": "94b8498b5c880e286197e9ee1c66ea33bcf9c8cdf2159d6b6ae97a445a07b7f7"
+    },
+    "proof-node22-b/service-resources.jsonl": {
+      "bytes": 20957690,
+      "sha256": "504b65368e593966e425908b59aacf45b79998be35169f5bad2723a0bdbfc756"
+    },
+    "proof-node22-b/summary.json": {
+      "bytes": 34236,
+      "sha256": "4949f72034948488dba163d2cc77281259dcf695476f1b277d4d0c147a6dbcff"
+    },
+    "proof-node24-b/cpu/proof-read-head-265-pid-9380.cpuprofile": {
+      "bytes": 275641,
+      "sha256": "34932214979917b445140492123a1ce2d189e431c72a61b5e44f4795723e35ce"
+    },
+    "proof-node24-b/cpu/proof-read-head-289-pid-9380.cpuprofile": {
+      "bytes": 263321,
+      "sha256": "3541e752a0d57d041835d6b8ce61b0aa5942e5cc6b7f08d78455de65b6a587e2"
+    },
+    "proof-node24-b/cpu/proof-read-head-34-pid-9380.cpuprofile": {
+      "bytes": 101302,
+      "sha256": "c5022ed74113770b73d1167a9b20680dc35cf9cbb035c46f4ef4af6a7acb9f21"
+    },
+    "proof-node24-b/cpu/proof-read-head-65-pid-9380.cpuprofile": {
+      "bytes": 158185,
+      "sha256": "77785737e968fd79617624b6949ff757d68cfc159116670dff906f688ef815db"
+    },
+    "proof-node24-b/intent.json": {
+      "bytes": 2234,
+      "sha256": "b58b9c5d094f8838cf7e83f449a4e2165f20ba54ea3afdf33cb7d8d850f75e58"
+    },
+    "proof-node24-b/probe.log": {
+      "bytes": 21137514,
+      "sha256": "6bc4e84cd09d72d21a1a713d47d4b3e41241738314b70680640700e8ca0c9e9d"
+    },
+    "proof-node24-b/receipt.json": {
+      "bytes": 5215,
+      "sha256": "e90b032bab74144077ec5a83ba8d4bdc3fd017d20d0665705cb27222c80b0ce4"
+    },
+    "proof-node24-b/service-resources.jsonl": {
+      "bytes": 9794750,
+      "sha256": "8e42a62a87d2352ee7e77c453e5e89b1307175fb41cb88a9913c99c4454372d7"
+    },
+    "proof-node24-b/summary.json": {
+      "bytes": 34692,
+      "sha256": "7487eca2049558f74a78a09fa7f351c1e5bd061505cf7b7b956a448d6f209210"
+    },
+    "proof-provenance/build-manifest.json": {
+      "bytes": 38762,
+      "sha256": "ccc40708bd8d995a6e32023738ac2ff0d710492ba705ba9a50bc5fae8e9596db"
+    },
+    "proof-provenance/diagnostic.patch": {
+      "bytes": 90623,
+      "sha256": "6ea9e90379970542253081e69b98f4e25f0c21169804008d4419f3dea11b5952"
+    },
+    "proof-provenance/hyp-es955-replicas-51f7af666326-a.log": {
+      "bytes": 86632,
+      "sha256": "d4766e541e03a1241ee59dc28386d2f0c75e75cd81859748508f3493c9c16343"
+    },
+    "proof-provenance/hyp-es955-replicas-51f7af666326-b.log": {
+      "bytes": 267115,
+      "sha256": "89b0958a12f8a20c2a49de0b26e36f4000423a23e6b5e882bdba005438c63ee9"
+    },
+    "proof-provenance/hyp-es955-replicas-51f7af666326-witness.log": {
+      "bytes": 84219,
+      "sha256": "049cecf8eced1dc016ce76e1d3b42cb4a5d281c12e03e502187b2376f030c265"
+    },
+    "proof-provenance/receipt.json": {
+      "bytes": 1492,
+      "sha256": "5558cd86ddba0c2817211600fcc0a529d10d8e4dcd026317274563c57c6f66cd"
+    },
+    "proof-provenance/service-inventory.json": {
+      "bytes": 12135,
+      "sha256": "d17e89430780614839c636601edfef585571f8b20885b4176f7a970ef85beb9b"
+    },
+    "proof-services-create.log": {
+      "bytes": 3012,
+      "sha256": "5b6155fa007599730f601e68edd30b9bfc548b25771daec821f000f2b5887c42"
+    },
+    "proof-services-create.receipt.json": {
+      "bytes": 284,
+      "sha256": "d9434081cc3ad32222e67d60c06c9f5b4de7f402cb626fc5a7939d0c3f7781cb"
+    },
+    "proof-services.json": {
+      "bytes": 8176,
+      "sha256": "20f4472b3ab93d79397e3f24b50f64b1f43d521875eed3bd0b6429dd62d53716"
+    },
+    "repository-preparation.json": {
+      "bytes": 3476,
+      "sha256": "55c80c9ea6c5e071c4848b6c1721a0db0519e85110c4bef30b9d3959728b280b"
+    },
+    "runtimes/receipt.json": {
+      "bytes": 1226,
+      "sha256": "133e66bd20aae486847c07235e6cc9a5484e43805c105d1f7a97b1904df714f5"
+    },
+    "typecheck-base.log": {
+      "bytes": 43,
+      "sha256": "f1b20a8e2b07042186658ff765d910fdc3f5fd8b289813fef1d4a295aab28e37"
+    }
+  }
+}
