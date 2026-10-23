@@ -171,18 +171,38 @@ export function parseNativeClientPacket(textValue: string, maximumBytes = native
     }
 }
 
+function exactSequenceFields(record: JsonObject, fields: readonly string[]): void {
+    for (const key of fields) if (Object.hasOwn(record, key)) nativeDecimal(record[key], false);
+}
+
+function exactAuthorizationSequences(record: JsonObject): void {
+    if (!Object.hasOwn(record, 'auth_sequence')) return;
+    if (!Array.isArray(record.auth_sequence)) fail('Invalid action authorization sequences');
+    for (const authorization of record.auth_sequence as unknown[])
+        exactSequenceFields(object(authorization), ['sequence']);
+}
+
+function exactReceipt(value: unknown): void {
+    const receipt = object(value);
+    exactSequenceFields(receipt, ['global_sequence', 'recv_sequence']);
+    exactAuthorizationSequences(receipt);
+}
+
 /** Validate known chain metadata only; contract values under data remain opaque JSON. */
-function exactMetadata(value: unknown, depth = 0): void {
-    if (depth > 64) fail('Metadata nesting limit exceeded');
+function exactMetadata(value: unknown): void {
     const record = object(value);
-    for (const key of ['global_sequence', 'recv_sequence', 'sequence'])
-        if (Object.hasOwn(record, key)) nativeDecimal(record[key], false);
-    for (const key of ['receipt', 'receipts', 'auth_sequence']) {
-        const nested = record[key];
-        if (Array.isArray(nested)) {
-            for (const child of nested) if (child !== null && typeof child === 'object' && !Array.isArray(child))
-                exactMetadata(child, depth + 1);
-        } else if (nested !== null && typeof nested === 'object') exactMetadata(nested, depth + 1);
+    exactSequenceFields(record, ['global_sequence', 'recv_sequence', 'sequence']);
+    exactAuthorizationSequences(record);
+    if (record.receipt !== undefined && record.receipt !== null) {
+        if (Array.isArray(record.receipt)) {
+            if (record.receipt.length !== 2 || typeof record.receipt[0] !== 'string')
+                fail('Invalid SHIP action receipt variant');
+            exactReceipt(record.receipt[1]);
+        } else exactReceipt(record.receipt);
+    }
+    if (Object.hasOwn(record, 'receipts')) {
+        if (!Array.isArray(record.receipts)) fail('Invalid grouped action receipts');
+        for (const receipt of record.receipts as unknown[]) exactReceipt(receipt);
     }
 }
 
@@ -195,17 +215,22 @@ export function assertNativeServerPacket(value: unknown): asserts value is JsonO
             hash(packet.chain_id); nativeDecimal(packet.connection_id); integer(packet.heartbeat_interval_ms, 0xffffffff);
             return;
         case 'accepted': nativeScope(packet); nativeDecimal(packet.request_id); nativeBlock(packet.start_from); return;
-        case 'data':
+        case 'data': {
             nativeScope(packet); nativeDecimal(packet.sequence);
             if (packet.mode !== 'history' && packet.mode !== 'live') fail('Unknown data mode');
             if (!Array.isArray(packet.records) || !packet.records.length) fail('Empty data frame');
+            let previousBlock = 0;
             for (const entry of packet.records as unknown[]) {
                 const record = object(entry);
-                nativeBlock(record.block_num); hash(record.block_id);
+                const block = nativeBlock(record.block_num);
+                if (block < previousBlock) fail('Data frame blocks must not decrease');
+                previousBlock = block;
+                hash(record.block_id);
                 if (record.cursor !== undefined && record.cursor !== null) nativeDecimal(record.cursor, false);
                 exactMetadata(record.payload);
             }
             return;
+        }
         case 'history_end': case 'end': case 'cancelled': nativeScope(packet); return;
         case 'error': {
             nativeDecimal(packet.connection_id);

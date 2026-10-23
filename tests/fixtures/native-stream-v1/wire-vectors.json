@@ -120,6 +120,21 @@
       "name": "trailing JSON document",
       "valid": false,
       "text": "{\"type\":\"pong\",\"id\":\"1\"} {}"
+    },
+    {
+      "name": "pending-cancelled can allocate a server subscription before accepted",
+      "valid": true,
+      "text": "{\"type\":\"cancelled\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"request_id\":\"1\"}"
+    },
+    {
+      "name": "unpaired Unicode surrogate is not a valid UTF8 string",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"\\u65e5\\u672c\\u8a9e \\ud83c\\udf10\"}},\"memo\":\"\\ud800\"}}]}"
+    },
+    {
+      "name": "escaped duplicate scope key",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"\\u0067eneration\":\"2\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
     }
   ]
 }

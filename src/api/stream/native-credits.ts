@@ -10,6 +10,7 @@ interface CreditScope {
     sent: bigint;
     acknowledged: bigint;
     outstanding: Map<string, Usage>;
+    serializing: boolean;
     pending?: Reservation;
 }
 export type NativeSendResult = 'sent' | 'blocked' | 'frame_exceeds_window' | 'transport_rejected' | 'scope_retired';
@@ -55,7 +56,7 @@ export class NativeStreamCredits {
             throw new NativeStreamProtocolError('Subscription limit exceeded');
         const selected = nativeWindow(window), key = scopeKey(scope);
         this.scopes.set(key, {scope, window: selected, used: {records: 0, bytes: 0}, sent: 0n,
-            acknowledged: 0n, outstanding: new Map()});
+            acknowledged: 0n, outstanding: new Map(), serializing: false});
         this.streams.set(scope.stream_id, key);
         this.usedGenerations.add(generation);
         this.usedSubscriptions.add(scope.subscription_id);
@@ -66,11 +67,14 @@ export class NativeStreamCredits {
         write: (encoded: string) => boolean): NativeSendResult {
         const scope = nativeScope(value), entry = this.current(scope);
         if (!entry) return 'scope_retired';
-        if (entry.pending) return 'blocked';
+        if (entry.pending || entry.serializing) return 'blocked';
         const sequence = (entry.sent + 1n).toString();
         let encoded: string;
+        // User payloads may invoke toJSON; fence same-scope sends before serialization.
+        entry.serializing = true;
         try {encoded = encodeNativeServerPacket({type: 'data', ...scope, sequence, mode, records});}
         catch (error) {if (error instanceof NativeStreamFrameSizeError) return 'frame_exceeds_window'; throw error;}
+        finally {entry.serializing = false;}
         if (this.current(scope) !== entry) return 'scope_retired';
         const cost = {records: (JSON.parse(encoded).records as unknown[]).length, bytes: Buffer.byteLength(encoded)};
         if (cost.records > entry.window.records || cost.bytes > entry.window.bytes

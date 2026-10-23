@@ -133,3 +133,64 @@ test('only a true transport result commits a frame', () => {
     assert.equal(credits.snapshot().bytes, 0);
     assert.equal(credits.acknowledge(ack(selected)), false);
 });
+
+test('payload serialization cannot reenter the same scope or overwrite retained frame costs', () => {
+    const credits = new NativeStreamCredits('9', {records: 3, bytes: 4096}), selected = scope();
+    credits.open(selected, {records: 3, bytes: 4096});
+    const frames = [], write = text => {frames.push(text); return true;};
+    const payload = {toJSON() {
+        assert.equal(credits.send(selected, 'history', [record()], write), 'blocked');
+        assert.equal(credits.snapshot().records, 0);
+        return record().payload;
+    }};
+    assert.equal(credits.send(selected, 'history', [{...record(), payload}], write), 'sent');
+    assert.equal(credits.send(selected, 'history', [record()], write), 'sent');
+    assert.deepEqual(frames.map(text => JSON.parse(text).sequence), ['1', '2']);
+    assert.equal(credits.snapshot().bytes, frames.reduce((total, text) => total + Buffer.byteLength(text), 0));
+    assert.equal(credits.acknowledge(ack(selected)), true);
+    assert.equal(credits.acknowledge(ack(selected, '2')), true);
+    assert.equal(credits.acknowledge(ack(selected)), false);
+    assert.deepEqual(credits.snapshot(), {records: 0, bytes: 0, streams: 1, lifetimeSubscriptions: 1});
+});
+
+test('serialization errors release the guard and cannot consume a sequence or credit', () => {
+    const credits = new NativeStreamCredits('9', {records: 1, bytes: 2048}), selected = scope();
+    credits.open(selected, {records: 1, bytes: 2048});
+    const invalid = {...record(), payload: {toJSON() {throw new Error('failed serialization');}}};
+    assert.throws(() => credits.send(selected, 'history', [invalid], () => true), /not JSON serializable/);
+    assert.equal(credits.snapshot().bytes, 0);
+    assert.equal(credits.send(selected, 'history', [record()], text => {
+        assert.equal(JSON.parse(text).sequence, '1'); return true;
+    }), 'sent');
+});
+
+test('retirement during serialization cannot charge the retired scope or its replacement', () => {
+    const credits = new NativeStreamCredits('9', {records: 2, bytes: 4096}), selected = scope(), next = scope('1', '2', '101');
+    credits.open(selected, {records: 2, bytes: 4096});
+    const payload = {toJSON() {
+        assert.equal(credits.close(selected), true);
+        credits.open(next, {records: 2, bytes: 4096});
+        return record().payload;
+    }};
+    assert.equal(credits.send(selected, 'history', [{...record(), payload}], () => {throw new Error('retired writer');}), 'scope_retired');
+    assert.equal(credits.snapshot().bytes, 0);
+    assert.equal(credits.send(next, 'history', [record()], text => {
+        assert.equal(JSON.parse(text).sequence, '1'); return true;
+    }), 'sent');
+    assert.equal(credits.acknowledge(ack(next)), true);
+    assert.equal(credits.snapshot().bytes, 0);
+});
+
+test('serialization on one scope still allows independent streams within the shared window', () => {
+    const credits = new NativeStreamCredits('9', {records: 2, bytes: 4096}), first = scope(), second = scope('2', '1', '200');
+    credits.open(first, {records: 2, bytes: 4096}); credits.open(second, {records: 2, bytes: 4096});
+    const payload = {toJSON() {
+        assert.equal(credits.send(second, 'live', [record()], () => true), 'sent');
+        return record().payload;
+    }};
+    assert.equal(credits.send(first, 'history', [{...record(), payload}], () => true), 'sent');
+    assert.equal(credits.snapshot().records, 2);
+    assert.equal(credits.acknowledge(ack(first)), true);
+    assert.equal(credits.acknowledge(ack(second)), true);
+    assert.equal(credits.snapshot().bytes, 0);
+});

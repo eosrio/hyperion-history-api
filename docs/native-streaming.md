@@ -17,11 +17,13 @@ decimal-string identifiers, complete UTF-8 frame limits, duplicate-key rejection
 Contract JSON under `data` stays opaque; compound or wider delta identities retain their strings.
 Outgoing serialization validates the actual encoded document and rejects non-finite numbers.
 
-The exact shared wire vectors are from client commit `bd74a84f1110653b555c85e6a058d3777eb42d71`.
+The shared protocol and fixtures are from client commit `0dd24d59f4f8ac5773c67b051a966bdfd77fec2f`.
 [The fixture source record](../tests/fixtures/native-stream-v1/source.json) retains repository,
-path, license, byte count and SHA-256; tests verify the frozen bytes. The textual contract at that
-revision is an implementation draft. Its typed LIB/fork envelopes require `connection_id`; its
-examples are being corrected in the client repository. Updates require an explicit new pin.
+paths, license, byte counts and SHA-256; tests verify all frozen bytes against the source manifest.
+All 27 wire vectors run through the codec. The 24 state scenarios and two network sessions are
+retained for subsequent session/endpoint integration; this module slice verifies their identity,
+without claiming their server acceptance. The textual contract remains an implementation draft.
+Updates require an explicit new pin.
 
 `NativeStreamCredits` owns count and complete encoded-byte accounting for one connection incarnation.
 It maintains both connection and subscription windows, per-scope data sequences and bounded active
@@ -29,7 +31,7 @@ and lifetime subscription identities. Its default bookkeeping limits are 16 acti
 and 4,096 lifetime subscriptions. Window values are positive integers bounded locally to 65,536
 records and 64 MiB; the default frame cap is 1 MiB. These are module limits, not qualified operator defaults.
 
-Send reserves measured costs before invoking a synchronous writer. Only `true` commits the frame;
+Send fences same-scope serialization reentry and reserves measured costs before invoking a synchronous writer. Only `true` commits the frame;
 `false` or an exception releases the reservation without consuming its sequence. The transport
 adapter must distinguish accepted-but-buffered writes from dropped writes. An ACK releases only
 the next committed frame's retained costs, exactly once. Old, foreign and out-of-order ACKs grant
@@ -48,6 +50,9 @@ acceptance includes actual resolved anchors and block identities, connection/gen
 history-before-live ordering, pending cancellation, relay replacement, fork/LIB handling, bounded
 query/queue memory, and installation/proxy guidance. Proposed `/stream/v2` listener coexistence has
 only a loopback prototype observation; it still needs production-adapter and proxy checks.
+Relay replacement/outage must close the native WebSocket; a new physical connection receives a
+new incarnation. An in-band second `hello` is invalid. Pending cancellation may return the allocated
+full scope without manufacturing an `accepted` packet, after actual cleanup completes.
 
 Module and shared-vector tests supplement real HAPI/client tests. They do not establish full
 native endpoint support, retained-history completeness, selected Wire testnet qualification,
