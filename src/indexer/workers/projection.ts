@@ -19,6 +19,7 @@ export default class ProjectionWorker extends HyperionWorker {
             const initialized = await this.runProjectionAttempt('projection-initialization', {chainId: this.chainId,
                 portableState: this.conf.features.portable_state}, async () => {
             await this.protocolReady;
+            this.assertWorkerAttemptActive();
             const configuration = resolvePortableStateConfiguration(this.conf.features.portable_state, this.chainId);
             if (!configuration) throw new Error('Projection worker requires explicit portable state configuration');
             if (!this.usesExtensionProtocol || !this.protocol.verifyNativeGenesis || !this.conf.indexer.live_reader)
@@ -27,6 +28,7 @@ export default class ProjectionWorker extends HyperionWorker {
             if (!this.manager.mongodbClient) this.manager.prepareMongoClient();
             const client = this.manager.mongodbClient!;
             await client.connect();
+            this.assertWorkerAttemptActive();
             const adapter = createPortableStateBackend(client, configuration);
             const source = new PortableProjectionSource({client: this.client, chain: this.chain, chainId: this.chainId,
                 profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
@@ -37,6 +39,7 @@ export default class ProjectionWorker extends HyperionWorker {
                 attempts: {run: (metadata, operation) => this.runProjectionAttempt('projection-frame', metadata, operation),
                     bind: fields => this.bindWorkerAttempt(fields)},
                 onProgress: data => {try {process.send?.({event: 'portable_state_progress', data});} catch {}}});
+            this.assertWorkerAttemptActive();
             return {client};
             });
             while (!this.stopped) {

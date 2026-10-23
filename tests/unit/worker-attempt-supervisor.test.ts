@@ -6,7 +6,8 @@ import {WorkerAttemptSupervisor, describeWorkerAttemptEnd, type AcceptedWorkerAt
     from '../../src/indexer/protocol/worker-attempt-supervisor.js';
 import {WorkerAttemptClient, createControlledLocalAttemptClient} from '../../src/indexer/protocol/worker-attempt-client.js';
 import {HyperionWorker} from '../../src/indexer/workers/hyperionWorker.js';
-import {ProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
+import {ProofConsumerScope, currentProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
+import ProjectionWorker from '../../src/indexer/workers/projection.js';
 import {PortableStateController} from '../../src/indexer/projection/controller.js';
 import {resolvePortableStateConfiguration} from '../../src/indexer/projection/config.js';
 import {PROJECTION_CAPABILITIES} from '@eosrio/hyperion-sdk/projection';
@@ -116,4 +117,28 @@ it('does not dispatch a projection marker or apply after a held source revalidat
     void work.catch(() => {}); await entered; scope.fence(); release();
     await expect(work).rejects.toThrow('Original worker attempt'); await scope.closeAndDrain();
     expect(effects).toEqual([]); await controller.stop();
+});
+
+it('does not open a projection database after held protocol initialization loses its original attempt', async () => {
+    const worker = Object.create(ProjectionWorker.prototype) as any, exits: unknown[] = [];
+    let release!: () => void, entered!: () => void, scope!: ProofConsumerScope, connections = 0;
+    const held = new Promise<void>(yes => {release = yes;}), started = new Promise<void>(yes => {entered = yes;});
+    Object.assign(worker, {chainId: 'c'.repeat(64), protocolReady: held,
+        conf: {features: {portable_state: {backend: {kind: 'mongodb', id: 'fixture', database: 'fixture'}, projections: [{
+            schemaVersion: 1, id: 'items', mappingRevision: 'a'.repeat(64),
+            source: {contract: 'items', table: 'items', abiDeployment: 'original-source-epoch', abiSha256: 'b'.repeat(64)},
+            fields: [{name: 'owner', path: ['owner'], type: 'string'}], initialization: {kind: 'genesis'}}]}},
+            indexer: {live_reader: true}},
+        protocol: {profileId: 'controlled-native-profile', verifyNativeGenesis() {}}, profiler: {stopReporting() {}},
+        manager: {conn: {mongodb: {}}, mongodbClient: {async connect() {connections++; throw new Error('Controlled unexpected connection');}}}});
+    worker.installControlledAttemptLifecycle('projection');
+    const run = worker.runProjectionAttempt.bind(worker);
+    worker.runProjectionAttempt = (kind: any, metadata: any, operation: any) => run(kind, metadata, () => {
+        scope = currentProofConsumerScope(true)!; entered(); return operation();
+    });
+    const exit = process.exit;
+    process.exit = ((code?: unknown) => {exits.push(code);}) as any;
+    try {const work = worker.run(); await started; scope.fence(); release(); await work;}
+    finally {process.exit = exit; worker.workerAttemptClient.dispose();}
+    expect(connections).toBe(0); expect(exits).toEqual([1]);
 });
