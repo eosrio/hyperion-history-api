@@ -1,4 +1,4 @@
-/** Original Wire MainDS source callback through an owned native child and parent adjudicator.
+/** Original Wire MainDS/DS callbacks through owned native children and parent adjudication.
  * Storage and canonical authority are controlled; this is not a live broker or fork qualification. */
 import assert from 'node:assert/strict';
 import cluster from 'node:cluster';
@@ -13,8 +13,11 @@ import {ActionAttemptAdjudicator} from '../../build/indexer/history/action-attem
 import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-source-admission.js';
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 
+const mode = process.argv[2] ?? 'main';
+assert(['main','ds'].includes(mode));
+const role = mode === 'main' ? 'deserializer' : 'ds_pool_worker';
 cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-worker.mjs', import.meta.url)),
-    args: ['managed-original-main'], silent: true});
+    args: [mode === 'main' ? 'managed-original-main' : 'managed-original-ds'], silent: true});
 const ends = [], supervisor = new WorkerAttemptSupervisor({onEnd: end => ends.push(end)});
 const child = cluster.fork(), messages = [];
 let stderr = '', stdout = '', exited = false, exitCode, snapshotPath;
@@ -22,7 +25,7 @@ child.process.stderr.on('data', bytes => {stderr += bytes.toString();});
 child.process.stdout.on('data', bytes => {stdout += bytes.toString();});
 child.on('message', message => messages.push(message));
 child.on('exit', code => {exited = true; exitCode = code;});
-supervisor.attach(child, 'deserializer');
+supervisor.attach(child, role);
 
 function waitFor(predicate, label, timeout = 30_000) {
     if (predicate()) return Promise.resolve();
@@ -33,12 +36,15 @@ function waitFor(predicate, label, timeout = 30_000) {
 }
 
 try {
-    await waitFor(() => messages.some(message => message?.event === 'qualification_fixture') && ends.length === 1,
-        'original Wire MainDS fresh result and owned worker end');
+    await waitFor(() => messages.some(message => message?.event === 'qualification_fixture') && ends.length === 1 || exited,
+        `original Wire ${mode} fresh result and owned worker end`);
+    assert(messages.some(message => message?.event === 'qualification_fixture') && ends.length === 1,
+        JSON.stringify({mode, exitCode, stderr: stderr.slice(-4000), stdout: stdout.slice(-4000),
+            events: messages.map(message => message.event), ends: ends.length}));
     const fixture = messages.find(message => message.event === 'qualification_fixture');
     snapshotPath = resolve(fixture.path);
     assert.equal(dirname(snapshotPath), resolve(tmpdir()));
-    assert.match(basename(snapshotPath), /^hyperion-managed-wire-main-[0-9a-f-]+\.json$/);
+    assert.match(basename(snapshotPath), /^hyperion-managed-wire-(?:main|ds)-[0-9a-f-]+\.json$/);
     const size = statSync(snapshotPath).size;
     assert(size > 0 && size <= 64 * 1024 * 1024 && size === fixture.bytes);
     const bytes = readFileSync(snapshotPath);
@@ -54,7 +60,7 @@ try {
     const endRequest = messages.findIndex(message => message.event === 'worker_attempt_request'
         && message.payload?.operation === 'end');
     assert(registration >= 0 && freshWrite > registration && ack > freshWrite && endRequest > ack,
-        'the original MainDS callback must observe its fresh write before ACK and quiescent end');
+        'the original callback must observe its fresh write before ACK and quiescent end');
     const memory = frontierMemoryClient();
     for (const [key, value] of snapshot.documents) memory.documents.set(key, value);
     for (const [key, value] of snapshot.mappings) memory.mappings.set(key, value);
@@ -64,17 +70,20 @@ try {
         selections = new ProtocolSourceBindingStore(memory.client, chain);
     const admission = await store.resolve(snapshot.admissionId);
     const recorded = await store.readAttemptDisposition(snapshot.dispositionId);
-    assert.equal(recorded.observation.disposition, 'source-unprocessable');
-    assert.equal(recorded.observation.reason, 'source-traces-missing');
+    assert.equal(recorded.observation.disposition, mode === 'main' ? 'source-unprocessable' : 'no-effects');
+    if (mode === 'main') assert.equal(recorded.observation.reason, 'source-traces-missing');
     const source = admission.source.inventoryInput.source, end = describeWorkerAttemptEnd(supervisor, ends[0]);
-    assert.equal(source.blockNum, 1);
-    assert.equal(end.role, 'deserializer');
+    assert.equal(source.blockNum, mode === 'main' ? 1 : 36);
+    assert.equal(end.role, role);
     assert.equal(end.status, 'quiescent');
     assert.equal(end.rootResult, 'returned');
     assert.equal(end.acknowledgementAttempted, true);
     assert.equal(end.freshWrites.length, 1);
     assert.equal(end.freshWrites[0].id, snapshot.dispositionId);
-    assert.equal(end.descriptor.payloadSha256, createHash('sha256').update(Buffer.from(admission.source.frameHex, 'hex')).digest('hex'));
+    const originalPayload = mode === 'main' ? Buffer.from(admission.source.frameHex, 'hex')
+        : Buffer.from(admission.inventory.transactions.find(value => value.traceOrdinal === end.binding.traceOrdinal)
+            .dispatch.canonicalJson);
+    assert.equal(end.descriptor.payloadSha256, createHash('sha256').update(originalPayload).digest('hex'));
     const authority = {
         configurationSha256: () => admission.source.producer.configurationSha256,
         targetUuid: async name => {assert.equal(name, admission.target.name); return memory.settings.get(name)['index.uuid'];},
@@ -88,15 +97,17 @@ try {
     const associated = await adjudicator.adjudicate(ends[0]);
     assert.equal(associated.state, 'associated');
     const observation = (await store.readAttemptAssociation(associated.id)).observation;
-    assert.deepEqual(observation.results, [{id: snapshot.dispositionId, classification: 'source-incomplete'}]);
+    assert.deepEqual(observation.results, [{id: snapshot.dispositionId,
+        classification: mode === 'main' ? 'source-incomplete' : 'intentional-no-effect'}]);
     assert.equal(observation.brokerSettlement, 'unknown');
     assert.equal(observation.sourceChecked, true);
     assert.equal(observation.end.attemptId, end.attemptId);
     child.send({event: 'qualification_done'});
-    await waitFor(() => exited, 'owned Wire MainDS child exit');
+    await waitFor(() => exited, `owned Wire ${mode} child exit`);
     assert.equal(exitCode, 0, stdout.slice(-4000));
     assert.equal(stderr, '', stdout.slice(-4000));
-    console.log(JSON.stringify({passed: true, native: process.version, originalWireMainCallback: true,
+    console.log(JSON.stringify({passed: true, native: process.version, mode,
+        originalWireMainCallback: mode === 'main', originalWireDsCallback: mode === 'ds',
         managedParentEnd: true, writeBeforeAckBeforeEnd: true, originalAckCount: 1,
         classification: observation.results[0].classification,
         controlledStorageAndCanonicalAuthority: true, brokerSettlement: observation.brokerSettlement,
@@ -105,12 +116,12 @@ try {
     if (!exited) {
         try {child.send({event: 'qualification_done'});} catch {}
         try {child.process.kill();} catch {}
-        await waitFor(() => exited, 'owned Wire MainDS failure cleanup', 5000).catch(() => {});
+        await waitFor(() => exited, `owned Wire ${mode} failure cleanup`, 5000).catch(() => {});
     }
     if (snapshotPath) {
         const owned = resolve(snapshotPath);
         assert.equal(dirname(owned), resolve(tmpdir()));
-        assert.match(basename(owned), /^hyperion-managed-wire-main-[0-9a-f-]+\.json$/);
+        assert.match(basename(owned), /^hyperion-managed-wire-(?:main|ds)-[0-9a-f-]+\.json$/);
         rmSync(owned, {force: true});
     }
     supervisor.stop();

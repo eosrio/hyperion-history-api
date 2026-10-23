@@ -23,16 +23,17 @@ const directory = mkdtempSync(join(tmpdir(), 'hyperion-attempt-worker-original-'
 const chain = 'handoff-worker-original', chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d', blockId = number => number.toString(16).padStart(64, '0');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const mode = process.argv[2] ?? 'lifecycle';
-const managedOriginalMain = mode === 'managed-original-main';
+const managedOriginalMain = mode === 'managed-original-main', managedOriginalDs = mode === 'managed-original-ds';
+const managedOriginal = managedOriginalMain || managedOriginalDs;
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
 let reader, coordinator, managedClient, snapshotPath, draining = Promise.resolve();
 let finishManaged;
 const managedFinished = new Promise(resolve => {finishManaged = resolve;});
-if (managedOriginalMain) process.on('message', message => {
+if (managedOriginal) process.on('message', message => {
     if (message?.event === 'qualification_done') finishManaged();
 });
 process.send = (event, callback) => {
-    if (managedOriginalMain && event?.event === 'worker_attempt_request')
+    if (managedOriginal && event?.event === 'worker_attempt_request')
         return previousSend.call(process, event, callback);
     events.push(event);
     if (event.event === 'protocol_abi_prepared') draining = coordinator.drain();
@@ -138,8 +139,9 @@ try {
     const readerPublisher = new ControlledPublisher(), mainPublisher = new ControlledPublisher(), poolPublisher = new ControlledPublisher();
     const worker = (prototype, consumer, publisher) => {
         const value = Object.create(prototype);
-        if (prototype === Main.prototype && managedOriginalMain) {
-            managedClient = new WorkerAttemptClient({mode: 'managed', role: 'deserializer', transport: process,
+        if (prototype === Main.prototype && managedOriginalMain || prototype === Pool.prototype && managedOriginalDs) {
+            managedClient = new WorkerAttemptClient({mode: 'managed',
+                role: managedOriginalMain ? 'deserializer' : 'ds_pool_worker', transport: process,
                 timeoutMs: 1000, drainTimeoutMs: 5000, retries: 2});
             value.configureWorkerAttemptLifecycle(managedClient);
         } else if (prototype === Main.prototype || prototype === Pool.prototype)
@@ -155,7 +157,7 @@ try {
     reader = worker(Reader.prototype, readerConsumer, readerPublisher);
     const main = worker(Main.prototype, mainConsumer, mainPublisher), pool = worker(Pool.prototype, poolConsumer, poolPublisher);
     const attemptLifecycle = (value, role) => {
-        if (!(managedOriginalMain && value === main)) controlledAttemptLifecycle(value, role);
+        if (!(managedOriginalMain && value === main || managedOriginalDs && value === pool)) controlledAttemptLifecycle(value, role);
         return value;
     };
     Object.assign(reader, {baseRequest: {}, shipRev: 0, socketGeneration: 0, activeIngressGeneration: 0,
@@ -207,8 +209,12 @@ try {
         await parser.parseMessage(main, [delivery]); await draining;
         assert.equal(mainConsumer.acked.at(-1), delivery);
         const messages = mainPublisher.sent.slice(mainBefore).map(sent => {
-            const delivery = message(sent); (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureActionAdmissionDelivery(delivery, poolConsumer);
-            (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureProtocolActionDelivery(delivery, poolConsumer); return delivery;
+            const delivery = message(sent);
+            if (!managedOriginalDs || numberFrom(bytes) === 36) {
+                attemptLifecycle(pool, 'ds_pool_worker').captureActionAdmissionDelivery(delivery, poolConsumer);
+                attemptLifecycle(pool, 'ds_pool_worker').captureProtocolActionDelivery(delivery, poolConsumer);
+            }
+            return delivery;
         });
         const admissionId = messages[0]?.properties.headers[actionSourceAdmissionHeader];
         // Empty-block links contain no source body; resolve the bounded set by actual retained source association.
@@ -225,7 +231,7 @@ try {
             // Original genesis omits traces. Retain that missing-input boundary, never manufacture an empty vector.
             assert.ok(admission.incomplete); assert.equal(messages.length, 0);
             assert.equal(ids(memory, 'h45actionhandoff1:').length, 0, 'missing original genesis traces cannot be a successful handoff');
-            await assert.rejects(pool.getProtocolNativeReader().waitForOpen({chainId, blockNum: 1,
+            if (!managedOriginalDs) await assert.rejects(pool.getProtocolNativeReader().waitForOpen({chainId, blockNum: 1,
                 blockId: admission.source.inventoryInput.source.blockId}, sourceSelectionId), {code: 'native_source_incomplete'});
             return {admission, messages, sourceSelectionId};
         }
@@ -242,6 +248,20 @@ try {
     const numberFrom = bytes => Number(codec.decode('result', bytes)[1].this_block.block_num);
     const sourceAckChecks = [];
     const records = () => ids(memory, 'h45actionattempt1:').map(id => ({id, value: JSON.parse(retained(memory, admissionStore.index, id).payloadJson)}));
+    const publishManagedSnapshot = async (role, admissionId, dispositionId, originalAckCount) => {
+        assert(managedOriginal && (role === 'main' ? managedOriginalMain : managedOriginalDs));
+        const snapshot = {documents: [...memory.documents], mappings: [...memory.mappings], settings: [...memory.settings],
+            admissionId, dispositionId, originalAckCount};
+        const bytes = Buffer.from(JSON.stringify(snapshot));
+        snapshotPath = join(tmpdir(), `hyperion-managed-wire-${role}-${randomUUID()}.json`);
+        writeFileSync(snapshotPath, bytes);
+        previousSend.call(process, {event: 'qualification_fixture', path: snapshotPath,
+            sha256: hash(bytes), bytes: bytes.length});
+        let timer;
+        try {await Promise.race([managedFinished, new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('Managed Wire qualification parent did not finish')), 20_000);
+        })]);} finally {clearTimeout(timer);}
+    };
     mainConsumer.onAck = () => {
         const rows = records();
         assert.equal(rows.length, 1, 'Original missing-trace source ACK requires its durable typed source observation');
@@ -258,17 +278,7 @@ try {
     mainConsumer.onAck = undefined;
     if (managedOriginalMain) {
         assert.equal(mainConsumer.acked.length, 1, 'original Wire MainDS ACK follows its retained disposition');
-        const snapshot = {documents: [...memory.documents], mappings: [...memory.mappings], settings: [...memory.settings],
-            admissionId: genesis.admission.id, dispositionId: sourceAckChecks[0].id, originalAckCount: mainConsumer.acked.length};
-        const bytes = Buffer.from(JSON.stringify(snapshot));
-        snapshotPath = join(tmpdir(), `hyperion-managed-wire-main-${randomUUID()}.json`);
-        writeFileSync(snapshotPath, bytes);
-        previousSend.call(process, {event: 'qualification_fixture', path: snapshotPath,
-            sha256: hash(bytes), bytes: bytes.length});
-        let timer;
-        try {await Promise.race([managedFinished, new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Error('Managed Wire qualification parent did not finish')), 20_000);
-        })]);} finally {clearTimeout(timer);}
+        await publishManagedSnapshot('main', genesis.admission.id, sourceAckChecks[0].id, mainConsumer.acked.length);
     } else {
     const lifecycle = ['original-genesis-no-invented-membership'];
     const originalGenesisDelivery = mainConsumer.acked[0];
@@ -364,7 +374,9 @@ try {
     const corruptContract = async action => {corruptionCalls.push(action.act.name); action.receipt[1].recv_sequence = 'not-a-sequence';};
     for (let number = 2; number <= 37; number++) {
         if (number === 36 && mode === 'lifecycle') loader.handledActions.set('*', new Map([['setcode', corruptContract]]));
-        if (number === 36 && mode === 'no-effects') {filters.action_whitelist.add('sysio::setabi'); filters.action_blacklist.add('sysio::setabi');}
+        if (number === 36 && (mode === 'no-effects' || managedOriginalDs)) {
+            filters.action_whitelist.add('sysio::setabi'); filters.action_blacklist.add('sysio::setabi');
+        }
         if (number === 33 && mode === 'traces-disabled') {
             config.indexer.fetch_traces = false;
             mainConsumer.onAck = () => {
@@ -393,7 +405,7 @@ try {
         }
         originalControls.set(number, prepared);
         if (number === 33 && mode === 'traces-disabled') {assert.equal(prepared.messages.length, 0); break;}
-        if (number === 36 && mode === 'no-effects') {
+        if (number === 36 && (mode === 'no-effects' || managedOriginalDs)) {
             assert.equal(prepared.messages.length, 1); assert.equal(prepared.messages[0].properties.headers.action_trace_ordinal, 1);
             const transaction = prepared.admission.inventory.transactions[1];
             assert.equal(transaction.transactionId, '140abb3d398f206518e117c02ccf1f1604b37b9fb55f7abed2034cf2fb374c66');
@@ -405,6 +417,7 @@ try {
                 const ds = rows.find(row => row.value.work.stage === 'ds-transaction');
                 assert(ds); assert.equal(ds.value.disposition, 'no-effects'); assert.equal(ds.value.work.transaction.traceOrdinal, 1);
                 assert.equal(ds.value.work.transaction.expectedGroups, 0); assert.deepEqual(ds.value.output, {kind: 'none-required'});
+                if (managedOriginalDs) previousSend.call(process, {event: 'qualification_ack', dispositionId: ds.id});
             };
             await pool.processMessages(prepared.messages); assert.equal(poolPublisher.sent.length, 0);
             poolConsumer.onAck = undefined; break;
@@ -422,6 +435,12 @@ try {
             await pool.processMessages(prepared.messages.filter(value => value.properties.headers.action_trace_ordinal === 1));
             assert.equal(poolPublisher.sent.length, 0); loader.handledActions.clear(); poolConsumer.onAck = undefined;
         }
+    }
+    if (managedOriginalDs) {
+        const ds = records().find(row => row.value.work.admissionId === prepared.admission.id
+            && row.value.work.stage === 'ds-transaction');
+        assert(ds); assert.equal(poolConsumer.acked.length, 1);
+        await publishManagedSnapshot('ds', prepared.admission.id, ds.id, poolConsumer.acked.length);
     }
     if (mode === 'lifecycle') {
     const disabled = prepared;
@@ -674,7 +693,7 @@ try {
     lifecycle.push('original-contract-proof-and-mixed-native-view-revoked-across-disposition-writes-no-ack');
     loader.handledActions.clear();
     }
-    console.log(JSON.stringify({passed: true, originalBlocks: mode === 'no-effects' ? 36 : mode === 'traces-disabled' ? 33 : mode === 'empty-vector' ? 1 : 39, constructedBlocks: mode === 'lifecycle' ? 3 : mode === 'empty-vector' ? 1 : 0, mode, lifecycle, cases: ['original-missing-traces-write-before-ack', 'operator-disabled-write-before-ds-ack'], controlledBrokerStorage: true, fullWorkerQualification: false}));
+    if (!managedOriginalDs) console.log(JSON.stringify({passed: true, originalBlocks: mode === 'no-effects' ? 36 : mode === 'traces-disabled' ? 33 : mode === 'empty-vector' ? 1 : 39, constructedBlocks: mode === 'lifecycle' ? 3 : mode === 'empty-vector' ? 1 : 0, mode, lifecycle, cases: ['original-missing-traces-write-before-ack', 'operator-disabled-write-before-ds-ack'], controlledBrokerStorage: true, fullWorkerQualification: false}));
     }
     assert.equal(nativeAddonResolutions, 0);
 } finally {
@@ -683,10 +702,10 @@ try {
     process.send = previousSend; process.chdir(previousDirectory); hooks.deregister();
     if (snapshotPath) {
         const ownedSnapshot = resolve(snapshotPath); assert.equal(dirname(ownedSnapshot), resolve(tmpdir()));
-        assert.match(basename(ownedSnapshot), /^hyperion-managed-wire-main-[0-9a-f-]+\.json$/);
+        assert.match(basename(ownedSnapshot), /^hyperion-managed-wire-(?:main|ds)-[0-9a-f-]+\.json$/);
         rmSync(ownedSnapshot, {force: true});
     }
     const ownedDirectory = resolve(directory); assert.equal(dirname(ownedDirectory), resolve(tmpdir()));
     assert.match(basename(ownedDirectory), /^hyperion-attempt-worker-original-/); rmSync(ownedDirectory, {recursive: true, force: true});
-    if (managedOriginalMain) process.disconnect();
+    if (managedOriginal) process.disconnect();
 }
