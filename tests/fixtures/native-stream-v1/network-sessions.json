@@ -1,0 +1,268 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "action native interoperability",
+      "request": {
+        "kind": "action",
+        "contract": "eosio.token",
+        "action": "transfer",
+        "start_from": 100,
+        "filter_op": "or",
+        "filters": [
+          {
+            "field": "data.flag",
+            "value": false
+          },
+          {
+            "field": "data.count",
+            "value": 0
+          },
+          {
+            "field": "data.memo",
+            "value": ""
+          }
+        ]
+      },
+      "server_frames": [
+        {
+          "type": "accepted",
+          "connection_id": "1",
+          "stream_id": "1",
+          "generation": "1",
+          "subscription_id": "100",
+          "request_id": "1",
+          "start_from": 100
+        },
+        {
+          "type": "data",
+          "connection_id": "1",
+          "stream_id": "1",
+          "generation": "1",
+          "subscription_id": "100",
+          "sequence": "1",
+          "mode": "history",
+          "records": [
+            {
+              "block_num": 100,
+              "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "cursor": "18446744073709551615",
+              "payload": {
+                "global_sequence": "18446744073709551615",
+                "act": {
+                  "data": {
+                    "memo": "日本語 🌐",
+                    "sequence": 42
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "ping",
+          "id": "18446744073709551615"
+        },
+        {
+          "type": "history_end",
+          "connection_id": "1",
+          "stream_id": "1",
+          "generation": "1",
+          "subscription_id": "100"
+        },
+        {
+          "type": "data",
+          "connection_id": "1",
+          "stream_id": "1",
+          "generation": "1",
+          "subscription_id": "100",
+          "sequence": "2",
+          "mode": "live",
+          "records": [
+            {
+              "block_num": 101,
+              "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "cursor": "18446744073709551615",
+              "payload": {
+                "global_sequence": "18446744073709551615",
+                "act": {
+                  "data": {
+                    "memo": "日本語 🌐",
+                    "sequence": 42
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "end",
+          "connection_id": "1",
+          "stream_id": "1",
+          "generation": "1",
+          "subscription_id": "100"
+        }
+      ],
+      "expected_records": [
+        {
+          "block_num": 100,
+          "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "cursor": "18446744073709551615",
+          "payload": {
+            "global_sequence": "18446744073709551615",
+            "act": {
+              "data": {
+                "memo": "日本語 🌐",
+                "sequence": 42
+              }
+            }
+          }
+        },
+        {
+          "block_num": 101,
+          "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "cursor": "18446744073709551615",
+          "payload": {
+            "global_sequence": "18446744073709551615",
+            "act": {
+              "data": {
+                "memo": "日本語 🌐",
+                "sequence": 42
+              }
+            }
+          }
+        }
+      ],
+      "expected_acks": [
+        "1",
+        "2"
+      ]
+    },
+    {
+      "name": "delta native interoperability",
+      "request": {
+        "kind": "delta",
+        "code": "eosio.token",
+        "table": "accounts",
+        "scope": "*",
+        "start_from": 100,
+        "filter_op": "or",
+        "filters": [
+          {
+            "field": "data.flag",
+            "value": false
+          },
+          {
+            "field": "data.count",
+            "value": 0
+          },
+          {
+            "field": "data.memo",
+            "value": ""
+          }
+        ]
+      },
+      "server_frames": [
+        {
+          "type": "accepted",
+          "connection_id": "1",
+          "stream_id": "1",
+          "generation": "1",
+          "subscription_id": "100",
+          "request_id": "1",
+          "start_from": 100
+        },
+        {
+          "type": "data",
+          "connection_id": "1",
+          "stream_id": "1",
+          "generation": "1",
+          "subscription_id": "100",
+          "sequence": "1",
+          "mode": "history",
+          "records": [
+            {
+              "block_num": 100,
+              "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "cursor": "18446744073709551615",
+              "payload": {
+                "primary_key": "account:340282366920938463463374607431768211455",
+                "data": {
+                  "balance": "1.0000 EOS"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "ping",
+          "id": "18446744073709551615"
+        },
+        {
+          "type": "history_end",
+          "connection_id": "1",
+          "stream_id": "1",
+          "generation": "1",
+          "subscription_id": "100"
+        },
+        {
+          "type": "data",
+          "connection_id": "1",
+          "stream_id": "1",
+          "generation": "1",
+          "subscription_id": "100",
+          "sequence": "2",
+          "mode": "live",
+          "records": [
+            {
+              "block_num": 101,
+              "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "cursor": "18446744073709551615",
+              "payload": {
+                "primary_key": "account:340282366920938463463374607431768211455",
+                "data": {
+                  "balance": "1.0000 EOS"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "end",
+          "connection_id": "1",
+          "stream_id": "1",
+          "generation": "1",
+          "subscription_id": "100"
+        }
+      ],
+      "expected_records": [
+        {
+          "block_num": 100,
+          "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "cursor": "18446744073709551615",
+          "payload": {
+            "primary_key": "account:340282366920938463463374607431768211455",
+            "data": {
+              "balance": "1.0000 EOS"
+            }
+          }
+        },
+        {
+          "block_num": 101,
+          "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "cursor": "18446744073709551615",
+          "payload": {
+            "primary_key": "account:340282366920938463463374607431768211455",
+            "data": {
+              "balance": "1.0000 EOS"
+            }
+          }
+        }
+      ],
+      "expected_acks": [
+        "1",
+        "2"
+      ]
+    }
+  ]
+}

@@ -1883,33 +1883,38 @@ export default class MainDSWorker extends HyperionWorker {
             return;
         }
 
-        if (contractState.contracts && contractState?.contracts[jsonRow.code] || this.allowedDynamicContracts.has(jsonRow.code)) {
-            if (contractState.contracts?.[jsonRow.code]?.[jsonRow.table] || this.allowedDynamicContracts.has(jsonRow.code)) {
-                const doc = {
-                    '@timestamp': jsonRow['@timestamp'],
-                    scope: jsonRow.scope,
-                    primary_key: jsonRow.primary_key,
-                    payer: jsonRow.payer,
-                    block_num: jsonRow.block_num,
-                    block_id: jsonRow.block_id,
-                    data: jsonRow.data,
-                    ...(jsonRow['protocol'] ? {protocol: jsonRow['protocol']} : {})
-                };
-                this.enqueueDerivedPublication({
-                    queue: this.chain + ":index_dynamic:" + (this.dyn_emit_idx),
-                    content: bufferFromJson(doc),
-                    headers: {
-                        code: jsonRow.code,
-                        table: jsonRow.table,
-                        block_num: jsonRow.block_num,
-                        present: jsonRow.present
-                    }
-                }).catch(console.log);
-                this.dyn_emit_idx++;
-                if (this.dyn_emit_idx > this.conf.scaling.dyn_idx_queues) {
-                    this.dyn_emit_idx = 1;
-                }
+        const contracts = contractState.contracts;
+        const tables = contracts && Object.hasOwn(contracts, jsonRow.code) ? contracts[jsonRow.code] : undefined;
+        const operatorAuthorized = contractState.enabled === true && tables &&
+            Object.hasOwn(tables, jsonRow.table) && tables[jsonRow.table];
+        const pluginAuthorized = this.allowedDynamicContracts.has(jsonRow.code);
+        if (!operatorAuthorized && !pluginAuthorized) {
+            return;
+        }
+
+        const doc = {
+            '@timestamp': jsonRow['@timestamp'],
+            scope: jsonRow.scope,
+            primary_key: jsonRow.primary_key,
+            payer: jsonRow.payer,
+            block_num: jsonRow.block_num,
+            block_id: jsonRow.block_id,
+            data: jsonRow.data,
+            ...(jsonRow['protocol'] ? {protocol: jsonRow['protocol']} : {})
+        };
+        this.enqueueDerivedPublication({
+            queue: this.chain + ":index_dynamic:" + (this.dyn_emit_idx),
+            content: bufferFromJson(doc),
+            headers: {
+                code: jsonRow.code,
+                table: jsonRow.table,
+                block_num: jsonRow.block_num,
+                present: jsonRow.present
             }
+        }).catch(console.log);
+        this.dyn_emit_idx++;
+        if (this.dyn_emit_idx > this.conf.scaling.dyn_idx_queues) {
+            this.dyn_emit_idx = 1;
         }
     }
 

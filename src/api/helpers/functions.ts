@@ -11,8 +11,9 @@ import {assertCompleteActionSearch, normalizeActionSearchSources} from './action
 import {assertProtocolProjectionReady, assertProtocolRouteReady} from './protocol-state-readiness.js';
 import {assertProtocolActionRequestReady, assertProtocolActionStreamReady} from './protocol-action-query.js';
 import {canonicalUint64} from '../../indexer/helpers/uint64.js';
-import {isActionSequenceField} from '../../indexer/helpers/action-sequences.js';
 import {validateActionSequenceQuery} from './action-sequence-query.js';
+import type {StreamHistoryDelivery} from '../stream/history-delivery.js';
+import {SocketIOHistoryDelivery} from '../stream/socketio-history-delivery.js';
 
 export type BoolQuerySearchBody = estypes.SearchRequest & {
     query: estypes.QueryDslQueryContainer & {
@@ -26,6 +27,17 @@ const deltaQueryFields = ['code', 'table', 'scope', 'payer'];
 const actionQueryFields = ['receiver', 'act', 'account'];
 
 const MAX_SCROLL_TIME_SEC = 120;
+
+function withStreamCancellation<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return operation;
+    signal.throwIfAborted();
+    return new Promise<T>((resolve, reject) => {
+        const abort = () => reject(signal.reason);
+        signal.addEventListener('abort', abort, {once: true});
+        operation.then(value => {signal.removeEventListener('abort', abort); resolve(value);},
+            error => {signal.removeEventListener('abort', abort); reject(error);});
+    });
+}
 
 export function getTotalValue(searchResponse: estypes.SearchResponse): number {
     if (searchResponse.hits.total) {
@@ -89,10 +101,23 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
     socket: Socket,
     requestUUID: string,
     data: StreamTypeMap[T]["request"],
-    dataKind: T
+    dataKind: T,
+    signal?: AbortSignal
+) {
+    return replayStreamHistory(fastify, new SocketIOHistoryDelivery(socket), requestUUID, data, dataKind, signal);
+}
+
+export async function replayStreamHistory<T extends keyof StreamTypeMap>(
+    fastify: FastifyInstance,
+    delivery: StreamHistoryDelivery,
+    requestUUID: string,
+    data: StreamTypeMap[T]["request"],
+    dataKind: T,
+    signal?: AbortSignal
 ) {
     if (dataKind === 'delta') assertProtocolProjectionReady(fastify, 'row-history');
     if (dataKind === 'action') assertProtocolActionStreamReady(fastify, data as StreamActionsRequest);
+    signal?.throwIfAborted();
 
     // Elasticsearch query
     const search_body: BoolQuerySearchBody = {query: {bool: {must: []}}, sort: {block_num: 'asc'}};
@@ -102,14 +127,10 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
             const actionReq = data as StreamActionsRequest;
 
             if (actionReq.account && actionReq.account !== '') {
-                search_body.query.bool.must.push({
-                    bool: {
-                        should: [
-                            {term: {'notified': actionReq.account}},
-                            {term: {'act.authorization.actor': actionReq.account}}
-                        ]
-                    }
-                });
+                search_body.query.bool.must.push({bool: {should: [
+                    {term: {notified: actionReq.account}},
+                    {term: {'act.authorization.actor': actionReq.account}}
+                ], minimum_should_match: 1}});
             }
 
             if (actionReq.contract && actionReq.contract !== '*' && actionReq.contract !== '') {
@@ -130,39 +151,24 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
             break;
         }
     }
-    const onDemandFilters: any[] = [];
-    let bool_should_group: estypes.QueryDslQueryContainer | undefined;
-    if (data.filter_op === 'or' && data.filters && data.filters.length > 0) {
-        bool_should_group = {
-            bool: {
-                should: [] as estypes.QueryDslQueryContainer[],
-                minimum_should_match: 1
-            }
-        };
-        search_body.query.bool.must.push(bool_should_group);
-    }
-
-    if (data.filters && data.filters.length > 0) {
-        data.filters.forEach(f => {
-            if (f.field && (f.value || (dataKind === 'action' && isActionSequenceField(f.field)))) {
-                if (f.operator && f.operator !== "eq") {
-                    onDemandFilters.push(f);
-                } else {
-                    if ((f.field.startsWith('@') && !f.field.startsWith('data')) || f.field === 'scope') {
-                        const _q = {} as Record<string, any>;
-                        _q[f.field] = f.value;
-                        const q_obj = {'term': _q};
-                        if (data.filter_op === 'or') {
-                            (bool_should_group?.bool?.should as estypes.QueryDslQueryContainer[]).push(q_obj);
-                        } else {
-                            search_body.query.bool.must.push(q_obj);
-                        }
-                    } else {
-                        onDemandFilters.push(f);
-                    }
-                }
-            }
-        });
+    const filters = data.filters ?? [];
+    // Every filter is evaluated against the same response shape as live delivery.
+    // Only exact delta scopes are safe to restrict in Elasticsearch: decoded ABI
+    // aliases and arbitrary data paths may exist only in the delivered document.
+    const indexedScope = (filter: typeof filters[number]): estypes.QueryDslQueryContainer | undefined =>
+        dataKind === 'delta' && filter.field === 'scope'
+        && (!filter.operator || filter.operator === 'eq') && typeof filter.value === 'string'
+            ? {term: {scope: filter.value}} : undefined;
+    if (data.filter_op === 'or') {
+        const indexed = filters.map(indexedScope);
+        if (indexed.length > 0 && indexed.every(Boolean))
+            search_body.query.bool.must.push({bool: {should: indexed as estypes.QueryDslQueryContainer[],
+                minimum_should_match: 1}});
+    } else {
+        for (const filter of filters) {
+            const indexed = indexedScope(filter);
+            if (indexed) search_body.query.bool.must.push(indexed);
+        }
     }
 
     const responseQueue: estypes.SearchResponse<any, any>[] = [];
@@ -183,10 +189,11 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
     // console.dir(esQuery, {depth: Infinity, colors: true});
     // console.dir(onDemandFilters);
 
-    const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery);
+    const init_response: estypes.SearchResponse<any, any> = await fastify.elastic.search(esQuery, {signal});
     let pendingScrollId: estypes.ScrollId | undefined = init_response._scroll_id;
     let activeProofScope: ReturnType<typeof createProtocolStreamScope> | undefined;
     try {
+        signal?.throwIfAborted();
         if (dataKind === 'action') {
             assertCompleteActionSearch(init_response);
             normalizeActionSearchSources(init_response);
@@ -197,13 +204,6 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
         const scrollLimit = fastify.manager.config.api.stream_scroll_limit;
         if (scrollLimit && scrollLimit !== -1 && totalHits > scrollLimit) {
             const errorMsg = `Requested ${totalHits} ${dataKind}s, limit is ${scrollLimit}.`;
-            socket.emit('message', {
-                reqUUID: requestUUID,
-                type: `${dataKind}_trace`,
-                mode: 'history',
-                messages: [],
-                error: errorMsg
-            });
             return {status: false, error: errorMsg};
         }
 
@@ -215,13 +215,15 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
         // emit the first block
         if (init_response.hits.hits.length > 0) {
-            emitTraceInit(socket, requestUUID, init_response.hits.hits[0]._source.block_num, totalHits);
+            delivery.begin({requestId: requestUUID, firstBlock: init_response.hits.hits[0]._source.block_num,
+                totalResults: totalHits});
         }
 
         responseQueue.push(init_response);
 
         let lastTransmittedBlock = 0;
         while (responseQueue.length) {
+            signal?.throwIfAborted();
             let filterCount = 0;
             const rp = responseQueue.shift();
 
@@ -230,7 +232,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                 if (rp._scroll_id) pendingScrollId = rp._scroll_id;
                 const enqueuedMessages: any[] = [];
                 activeProofScope?.dispose();
-                activeProofScope = createProtocolStreamScope([socket]);
+                activeProofScope = createProtocolStreamScope([delivery.connection]);
                 const proofScope = activeProofScope.scope;
                 if (dataKind === 'action') {
                     assertCompleteActionSearch(rp);
@@ -239,6 +241,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                 counter += rp.hits.hits.length;
 
                 for (const doc of rp.hits.hits) {
+                    signal?.throwIfAborted();
                     let allow = false;
 
                     if (dataKind === 'action') {
@@ -250,13 +253,13 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                     }
 
                     // const tRef = process.hrtime.bigint();
-                    if (onDemandFilters.length > 0) {
+                    if (filters.length > 0) {
                         if (data.filter_op === 'or') {
-                            allow = onDemandFilters.some(filter => {
+                            allow = filters.some(filter => {
                                 return checkMetaFilter(filter, doc._source, dataKind);
                             });
                         } else {
-                            allow = onDemandFilters.every(filter => {
+                            allow = filters.every(filter => {
                                 // console.log(doc._source);
                                 return checkMetaFilter(filter, doc._source, dataKind);
                             });
@@ -280,28 +283,23 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
                 totalFiltered += filterCount;
 
-                if (socket.connected) {
+                if (delivery.connection.connected) {
                     if (enqueuedMessages.length > 0) {
                         const messages = dataKind === 'action'
                             ? await protocolActionsForStream(fastify, proofScope, enqueuedMessages) : enqueuedMessages;
                         try {
 
                             // Wait for 120 s
-                            const ackResponse = await socket
-                                .timeout(MAX_SCROLL_TIME_SEC * 1000)
-                                .emitWithAck('message', {
-                                    reqUUID: requestUUID,
-                                    type: `${dataKind}_trace`,
-                                    mode: 'history',
-                                    messages,
-                                    filtered: filterCount
-                                });
+                            const ackResponse = await withStreamCancellation(delivery.deliver({
+                                requestId: requestUUID, kind: dataKind, messages, filtered: filterCount
+                            }, MAX_SCROLL_TIME_SEC * 1000), signal);
 
                             if (ackResponse.status !== true) {
                                 hLog(`${dataKind}_trace scroll TIMEOUT`);
                                 return {status: ackResponse.status, error: ackResponse.error};
                             }
                         } catch (e: any) {
+                            if (signal?.aborted) throw signal.reason;
                             hLog(`${dataKind}_trace scroll NACK`, e);
                             return {status: false, error: e};
                         }
@@ -316,19 +314,20 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                 }
 
                 if (getTotalValue(rp) === counter) {
-                    hLog(`${counter} past ${dataKind}s streamed to ${socket.id} (${totalFiltered} filtered)`);
+                    hLog(`${counter} past ${dataKind}s streamed to ${delivery.connection.id} (${totalFiltered} filtered)`);
                     break;
                 }
 
+                signal?.throwIfAborted();
                 const next_response = await fastify.elastic.scroll({
                     scroll_id: rp._scroll_id ?? "",
                     scroll: `${MAX_SCROLL_TIME_SEC}s`
-                });
+                }, {signal});
                 responseQueue.push(next_response);
             }
 
             // TODO: Apply dynamic delay for request throttling
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await withStreamCancellation(new Promise(resolve => setTimeout(resolve, 200)), signal);
         }
 
         if (counter === 0) {
@@ -548,13 +547,7 @@ export function emitTraceInit(
     firstBlock: number,
     totalResults: number
 ) {
-    socket.emit('message', {
-        reqUUID: requestUUID,
-        type: 'trace_init',
-        mode: 'history',
-        first_block: firstBlock,
-        results: totalResults
-    });
+    new SocketIOHistoryDelivery(socket).begin({requestId: requestUUID, firstBlock, totalResults});
 }
 
 // export async function streamPastActions(

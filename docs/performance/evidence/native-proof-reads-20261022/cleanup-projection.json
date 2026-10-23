@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "createdBy": "windows:codex:hyperion-tools",
+  "kind": "Declared projection of complete private host/cleanup receipts",
+  "removedServiceContainers": 4,
+  "removedServiceVolumes": 4,
+  "remainingServiceContainers": 0,
+  "remainingServiceVolumes": 0,
+  "remainingServiceNetworks": 0,
+  "ownedInstanceRemoved": true,
+  "removedHostFiles": 5,
+  "remainingOwnedHostFiles": 0,
+  "incumbentProcessIdentityUnchanged": true,
+  "incumbentInstanceUuidAndConfigUnchanged": true,
+  "vmMaxMapCountUnchanged": true,
+  "wireHeadBefore": 504062,
+  "wireHeadAfter": 509996,
+  "wireLibBefore": 504060,
+  "wireLibAfter": 509994,
+  "omittedFields": [
+    "private host addresses and listeners",
+    "full incumbent process and container inventory",
+    "full owned-instance creation/cleanup configuration"
+  ],
+  "privateReceiptHashes": {
+    "host-before.remote.stdout": "32f86ce1e04b3399d4c3c803abfd58cd3bf618b986036bc97bfd5d28e37ce673",
+    "host-cleanup-record.json": "0bcfa5a2d2fd0a3df1aaf9046a49dd164f8681eed402f9c69a4417d7fc810943",
+    "cleanup-proof-services.instance.stdout": "66b4e39cc709b63d2299628c681837d7ab7365d359498706e371c876978cb8bd",
+    "cleanup-host-files.remote.stdout": "8d3b8a11172ebd856b1cd9abec6c43a5721f78fe3ddbb415ad0951028d9bd94c"
+  }
+}

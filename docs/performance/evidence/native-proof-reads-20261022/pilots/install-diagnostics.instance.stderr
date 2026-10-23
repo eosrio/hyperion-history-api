@@ -1,0 +1,9 @@
+  File "<stdin>", line 4
+    assert subprocess.check_output(['git','rev-parse',''fedc4bd4de8c23c83468df3c3ff034b6227ebc26''],cwd=repo,text=True).strip()=='c914dd8ca6d27f235c2c343d0c5ad1f45916998c'
+                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?
+Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['lxc', 'exec', 'hyp45-p277-20261022-165401a5', '--', 'python3', '-']' returned non-zero exit status 1.
