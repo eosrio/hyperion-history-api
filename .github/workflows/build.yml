@@ -31,7 +31,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
-        run: node --test tests/native/stream-request-lifecycle.test.mjs
+        run: node --test tests/native/stream-request-lifecycle.test.mjs tests/native/stream-history-delivery.test.mjs
       - name: Check history/live stream filters and selectors on Node ${{ matrix.node-version }}
         run: node --test tests/native/stream-filter-parity.test.mjs
       - name: Typecheck Elasticsearch qualification runner
