@@ -275,6 +275,13 @@ export async function portableSourceRpc(source: PortableWorkerSource, errors: st
                 peer: {address: incoming.socket.remoteAddress, port: incoming.socket.remotePort},
                 userAgent: incoming.headers['user-agent']?.slice(0, 256)};
             requests.push(observedRequest);
+            // Host discovery also probes this loopback listener. Decline its exact health request;
+            // it is not source RPC authority and must not invent a successful Hyperion health view.
+            if (incoming.method === 'GET' && incoming.url === '/v2/health' && bytes === 0) {
+                observedRequest.kind = 'unsupported-health-probe';
+                outgoing.writeHead(404, {'content-type': 'application/json'});
+                outgoing.end('{"error":"source RPC fixture has no Hyperion health route"}'); return;
+            }
             assert.ok(allowed, 'RPC fallback is outside the retained startup view');
             if (block) {
                 const verified = await verifiedBlock(blockNum);

@@ -19,17 +19,32 @@ const plan = () => ({schemaVersion: 1, source: {directory: 'source', receiptSha2
         {through: 4, rows: {rows: [{key: 'a', value: {value: 'after'}}]}}]});
 
 describe('portable actual-source harness guards', () => {
-    it('records an unsupported HTTP caller and retains strict source RPC failure', async () => {
-        const errors: string[] = [], source = {records: [{blockId: 'a'.repeat(64)}], startupInfo: {chain_id: 'b'.repeat(64)}} as PortableWorkerSource;
+    it('declines an exact discovery health probe without creating source authority or poisoning the replay', async () => {
+        const errors: string[] = [], source = {endBlock: 1, records: [{blockId: 'a'.repeat(64)}], startupInfo: {chain_id: 'b'.repeat(64)}} as PortableWorkerSource;
         const rpc = await portableSourceRpc(source, errors);
         try {
             const response = await fetch(rpc.url + '/v2/health', {headers: {'user-agent': 'qualification-caller-regression'}});
-            expect(response.status).toBe(503);
-            expect(await response.json()).toEqual({error: 'retained RPC input unavailable'});
-            expect(errors).toHaveLength(1); expect(errors[0]).toContain('RPC fallback is outside the retained startup view');
+            expect(response.status).toBe(404);
+            expect(await response.json()).toEqual({error: 'source RPC fixture has no Hyperion health route'});
+            expect(errors).toEqual([]);
             expect(rpc.requests).toHaveLength(1); expect(rpc.requests[0]).toMatchObject({method: 'GET', path: '/v2/health',
-                allowed: false, peer: {address: '127.0.0.1'}, userAgent: 'qualification-caller-regression'});
+                allowed: false, kind: 'unsupported-health-probe', peer: {address: '127.0.0.1'}, userAgent: 'qualification-caller-regression'});
             expect(rpc.requests[0].peer.port).toBeGreaterThan(0);
+            const info = await fetch(rpc.url + '/v1/chain/get_info');
+            expect(info.status).toBe(200); expect(await info.json()).toEqual(source.startupInfo); expect(errors).toEqual([]);
+        } finally {await rpc.close();}
+    });
+    it('keeps health lookalikes and every unsupported source RPC request fatal', async () => {
+        const errors: string[] = [], source = {records: [{blockId: 'a'.repeat(64)}]} as PortableWorkerSource;
+        const rpc = await portableSourceRpc(source, errors);
+        try {
+            for (const [method, path] of [['POST', '/v2/health'], ['GET', '/v2/health?probe=1'],
+                ['GET', '/v1/chain/get_abi'], ['POST', '/v1/chain/get_block']]) {
+                const response = await fetch(rpc.url + path, {method});
+                expect(response.status).toBe(503); expect(await response.json()).toEqual({error: 'retained RPC input unavailable'});
+            }
+            expect(errors).toHaveLength(4); expect(errors.every(error => error.includes('RPC fallback is outside the retained startup view'))).toBe(true);
+            expect(rpc.requests.every(request => request.allowed === false && !request.kind)).toBe(true);
         } finally {await rpc.close();}
     });
     it('derives the public state boundary from the original ABI deployment independently of durable progress', () => {
