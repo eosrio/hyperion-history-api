@@ -264,15 +264,20 @@ export abstract class HyperionWorker {
         if (!Number.isSafeInteger(blockNum) || blockNum < 1 || !Number.isSafeInteger(settings.index_partition_size)
             || settings.index_partition_size < 1) throw new Error('Invalid admitted action partition');
         const name = `${this.chain}-action-${settings.index_version}-${Math.ceil(blockNum / settings.index_partition_size).toString().padStart(6, '0')}`;
-        if (provision && !await this.client.indices.exists({index: name})) {
-            try {
-                const result = await this.client.indices.create({index: name});
-                if (result.acknowledged !== true || result.shards_acknowledged !== true || result.index !== name)
-                    throw new Error('Action admission target creation was not acknowledged');
-            } catch (error: any) {
-                if (error?.meta?.statusCode !== 400 || error?.meta?.body?.error?.type !== 'resource_already_exists_exception') throw error;
+        if (provision) {
+            const exists = await this.client.indices.exists({index: name});
+            this.assertWorkerAttemptActive();
+            if (!exists) {
+                try {
+                    const result = await this.client.indices.create({index: name});
+                    if (result.acknowledged !== true || result.shards_acknowledged !== true || result.index !== name)
+                        throw new Error('Action admission target creation was not acknowledged');
+                } catch (error: any) {
+                    if (error?.meta?.statusCode !== 400 || error?.meta?.body?.error?.type !== 'resource_already_exists_exception') throw error;
+                }
             }
         }
+        this.assertWorkerAttemptActive();
         const result = await this.client.indices.getSettings({index: name, flat_settings: true});
         const uuid = result[name]?.settings?.['index.uuid'];
         if (Object.keys(result).length !== 1 || typeof uuid !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(uuid))

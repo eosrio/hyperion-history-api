@@ -142,3 +142,26 @@ it('does not open a projection database after held protocol initialization loses
     finally {process.exit = exit; worker.workerAttemptClient.dispose();}
     expect(connections).toBe(0); expect(exits).toEqual([1]);
 });
+
+for (const boundary of ['exists', 'create', 'already-exists'] as const) {
+    it(`does not dispatch target I/O after a held ${boundary} loses its original attempt`, async () => {
+        const worker = Object.create(HyperionWorker.prototype) as any, effects: string[] = [];
+        let enter!: () => void, release!: () => void;
+        const entered = new Promise<void>(yes => {enter = yes;}), held = new Promise<void>(yes => {release = yes;});
+        Object.assign(worker, {chain: 'controlled', conf: {settings: {index_partition_size: 1000, index_version: 'v1'}},
+            client: {indices: {
+                async exists() {if (boundary === 'exists') {enter(); await held;} return false;},
+                async create({index}: {index: string}) {
+                    effects.push('create');
+                    if (boundary !== 'exists') {enter(); await held;}
+                    if (boundary === 'already-exists') throw {meta: {statusCode: 400, body: {error: {type: 'resource_already_exists_exception'}}}};
+                    return {acknowledged: true, shards_acknowledged: true, index};
+                },
+                async getSettings({index}: {index: string}) {effects.push('settings'); return {[index]: {settings: {'index.uuid': 'fixture_uuid'}}};},
+            }}});
+        const scope = new ProofConsumerScope('held-target-' + boundary), work = scope.run(() => worker.actionTarget(1, true));
+        void work.catch(() => {}); await entered; scope.fence(); release();
+        await expect(work).rejects.toThrow('Original worker attempt'); await scope.closeAndDrain();
+        expect(effects).toEqual(boundary === 'exists' ? [] : ['create']);
+    });
+}
