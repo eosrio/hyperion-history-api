@@ -236,7 +236,7 @@ test('installed provider snapshots bypass callable-owned bind accessors and repl
     expect(await runNativeLoader(script)).toBe('intrinsic-method-binding-passed\n');
 },25000);
 
-test('installed Wire profiles keep native actions inactive and deployed contract decoding strict',async()=>{
+test('installed legacy Wire profiles keep native actions inactive and deployed contract decoding strict',async()=>{
     const script=`
         import assert from 'node:assert/strict'; import {readFileSync} from 'node:fs';
         import {dirname,resolve} from 'node:path'; import {fileURLToPath} from 'node:url';
@@ -245,12 +245,13 @@ test('installed Wire profiles keep native actions inactive and deployed contract
         const read=path=>readFileSync(resolve(root,path));const json=path=>JSON.parse(read(path));
         const descriptor=json('dist/protocol-provider.json');
         assert(descriptor.profiles.length>0);
-        for(const profile of descriptor.profiles){
+        for(const id of ['wire-sysio-6508c9e8-engineering-v1','wire-sysio-7dede884-engineering-v1']){
+            const profile=descriptor.profiles.find(profile=>profile.id===id);assert(profile);
             assert.equal(Object.hasOwn(profile,'nativeActions'),false,'Wire descriptor unexpectedly requires native actions');
             const selected=await loadChainProtocol({provider:'extension',package:'@eosrio/hyperion-wire-plugin',profileId:profile.id});
             assert.equal('nativeActions' in selected.provider,false,'Wire runtime unexpectedly exposes native actions');
             assert.deepEqual(selected.components.map(component=>component.sourceRevision),
-                ['332534cb9fb2c64599bce1bb3f9f33e7a6147315','332534cb9fb2c64599bce1bb3f9f33e7a6147315']);
+                ['7167659e9c043cb3351074fcacb40200cc57f3a3','7167659e9c043cb3351074fcacb40200cc57f3a3']);
             const codec=selected.provider.contractCodec;
             const abi=codec.decodeAbi(codec.encodeAbi({version:'sysio::abi/1.3',structs:[
                 {name:'record',base:'',fields:[{name:'value',type:'uint32'}]}]}));
@@ -270,4 +271,9 @@ test('installed Wire profiles keep native actions inactive and deployed contract
         console.log('installed-wire-inactive-passed');
     `;
     expect(await runNativeLoader(script)).toBe('installed-wire-inactive-passed\n');
+},25000);
+
+test('installed native Wire profile binds its source and components to the committed dependency lock',async()=>{
+    const proof = new URL('./protocol-native-installed.mjs',import.meta.url).href;
+    expect(await runNativeLoader(`await import(${JSON.stringify(proof)});`)).toBe('installed-wire-native-passed\n');
 },25000);
