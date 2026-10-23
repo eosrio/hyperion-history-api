@@ -827,8 +827,12 @@ export default class DSPoolWorker extends HyperionWorker {
                 if (scope.handoff.rawIncomplete) {
                     const evidence = await this.getActionAdmissionStore().prepareRawIncompleteAttemptDisposition(handoffInput);
                     await this.assertActionHandoffCurrent(scope);
-                    await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
-                } else await this.getActionAdmissionStore().recordConfirmedHandoff(handoffInput);
+                    const recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                    await this.observeFreshActionWrite(recorded);
+                } else {
+                    const recorded = await this.getActionAdmissionStore().recordConfirmedHandoff(handoffInput);
+                    await this.observeFreshActionWrite(recorded);
+                }
                 await this.assertActionHandoffCurrent(scope);
                 this.assertActionAdmissionOwner(scope);
             }
@@ -838,7 +842,8 @@ export default class DSPoolWorker extends HyperionWorker {
                     traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload, configuration: scope.configuration,
                     owner: scope.owner, failure: scope.contractFailure});
                 await this.assertActionAttemptCurrent(scope);
-                await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                const recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                await this.observeFreshActionWrite(recorded);
                 await this.assertActionAttemptCurrent(scope);
             }
             if (scope.attemptEligible) {
@@ -846,7 +851,10 @@ export default class DSPoolWorker extends HyperionWorker {
                 const evidence = await this.getActionAdmissionStore().prepareTransactionAttemptDisposition({admissionId: scope.admission.id,
                     traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload, configuration: scope.configuration, owner: scope.owner});
                 await this.assertActionAttemptCurrent(scope);
-                if (evidence) await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                if (evidence) {
+                    const recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                    await this.observeFreshActionWrite(recorded);
+                }
                 await this.assertActionAttemptCurrent(scope);
             }
             this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); scope.owner.consumer.ack(data);
@@ -919,6 +927,7 @@ export default class DSPoolWorker extends HyperionWorker {
         this.activeActionAdmission = {admission, traceOrdinal: ordinal, payload, headers, configuration: epoch.configuration, owner};
         await this.bindWorkerAttempt({admissionId: admission.id, planId: admission.planId, blockNum: source.blockNum, blockId: source.blockId,
             ...(admission.inventory ? {traceOrdinal: ordinal} : {}),
+            ...(admission.inventory?.sourceSelectionId ? {selectionId: admission.inventory.sourceSelectionId} : {}),
             configurationSha256: createHash('sha256').update(epoch.configuration).digest('hex'),
             targetName: admission.target.name, targetUuid: admission.target.uuid});
         this.assertWorkerAttemptActive();

@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import {ImmutableProtocolBundleStore} from '../protocol/immutable-bundle-store.js';
+import type {FreshBundlePrepare} from '../protocol/immutable-bundle-store.js';
 import {ActionHistorySourceJournal, ActionHistorySourceJournalReadError} from './action-source-journal.js';
 import {actionHistoryImmutableJson, validateActionHistoryBlockPlan, fingerprintActionHistoryEffect,
     createActionHistoryFragment, actionHistoryFragmentId, type ActionHistoryBlockPlan, type ActionHistoryEffect} from './action-history-manifest.js';
@@ -12,6 +13,9 @@ import {actionAttemptDispositionBounds, actionAttemptDispositionId, issueActionA
     readActionContractOutputFailure, validateActionAttemptDisposition, type ActionContractOutputFailure, type ActionContractFailureBinding,
     type ActionAttemptDisposition, type ActionAttemptDispositionEvidence} from './action-attempt-disposition.js';
 import {assertCompleteProtocolSearch} from '../protocol/search.js';
+import {issueFreshActionWrite} from './action-fresh-write.js';
+import {describeWorkerAttemptEnd, type AcceptedWorkerAttemptEnd, type WorkerAttemptSupervisor,
+    type WorkerAttemptEndDescription} from '../protocol/worker-attempt-supervisor.js';
 
 export const actionSourceAdmissionHeader = 'hyperion-action-admission-v1';
 export const actionSourceIngressHeader = 'hyperion-action-source-v1';
@@ -59,6 +63,16 @@ export interface ActionSourceConfirmedHandoffInput {
     readonly configuration: string; readonly owner: ActionPublicationOwner;
     readonly publications: readonly ConfirmedActionPublication[];
 }
+export interface ActionAttemptAssociation {
+    readonly schemaVersion: 1; readonly kind: 'action-attempt-association';
+    readonly end: WorkerAttemptEndDescription;
+    /** An ACK call is not a broker settlement acknowledgement. */
+    readonly brokerSettlement: 'unknown';
+    readonly results: readonly {id: string; classification: 'confirmed-handoff' | 'intentional-no-effect'
+        | 'intentional-suppression' | 'source-incomplete' | 'contract-incomplete' | 'raw-incomplete'}[];
+    /** Observed at write time only; readers must revalidate before granting any authority. */
+    readonly sourceChecked: true;
+}
 const sha = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
 const hex64 = /^[0-9a-f]{64}$/;
 const sourceSyntax = /^h45actionsource1:[0-9a-f]{64}$/;
@@ -85,9 +99,9 @@ export class ActionSourceAdmissionStore {
         this.operations++;
         try {return await work();} finally {this.operations--;}
     }
-    private async put(id: string, value: unknown, signal?: AbortSignal): Promise<void> {
+    private async put(id: string, value: unknown, signal?: AbortSignal): Promise<FreshBundlePrepare> {
         // The outer bundle uses integer-only JSON; retained opaque JSON may contain finite fractional values.
-        await this.bundles.prepare(id, {schemaVersion: 1, payloadJson: actionHistoryImmutableJson(value)}, signal);
+        return this.bundles.prepare(id, {schemaVersion: 1, payloadJson: actionHistoryImmutableJson(value)}, signal);
     }
     private async get(id: string, signal?: AbortSignal): Promise<any> {
         const value: any = await this.bundles.read(id, signal);
@@ -266,8 +280,8 @@ export class ActionSourceAdmissionStore {
             const outcome: ActionSourceConfirmedHandoff = {schemaVersion: 1, kind: 'confirmed-action-handoff', work,
                 fragmentId: prepared.fragmentId, effectRoot, effects};
             const id = this.handoffId(work);
-            currentOwner(); await this.put(id, outcome, signal); currentOwner();
-            return {id, outcome: copy(outcome)};
+            currentOwner(); const proof = await this.put(id, outcome, signal); currentOwner();
+            return issueFreshActionWrite({id, outcome: copy(outcome)}, 'confirmed-handoff', id, outcome, proof, this.bundles);
         });
     }
 
@@ -485,9 +499,9 @@ export class ActionSourceAdmissionStore {
             if (!evidence.current() || actionHistoryImmutableJson(observation) !== actionHistoryImmutableJson(evidence.observation))
                 throw new Error('Action attempt source/output association changed');
             const id = actionAttemptDispositionId(observation);
-            await this.put(id, observation, signal); signal?.throwIfAborted();
+            const proof = await this.put(id, observation, signal); signal?.throwIfAborted();
             if (!evidence.current()) throw new Error('Action attempt owner changed across persistence');
-            return {id, observation: copy(observation)};
+            return issueFreshActionWrite({id, observation: copy(observation)}, 'attempt-disposition', id, observation, proof, this.bundles);
         });
     }
     async readAttemptDisposition(id: string, signal?: AbortSignal): Promise<{id: string; observation: ActionAttemptDisposition}> {
@@ -497,6 +511,49 @@ export class ActionSourceAdmissionStore {
             validateActionAttemptDisposition(observation);
             if (actionAttemptDispositionId(observation) !== id)
                 throw new Error('Invalid observed action attempt record');
+            return {id, observation: copy(observation)};
+        });
+    }
+    /** Stores a private observation only after the actual supervisor-issued end has been joined in this process.
+     * Reading this JSON later cannot reissue the original end, fresh write, or broker settlement. */
+    async recordAttemptAssociation(supervisor: WorkerAttemptSupervisor, evidence: AcceptedWorkerAttemptEnd,
+                                   association: Omit<ActionAttemptAssociation, 'schemaVersion' | 'kind' | 'end' | 'brokerSettlement'>,
+                                   signal?: AbortSignal): Promise<{id: string; observation: ActionAttemptAssociation}> {
+        const end = describeWorkerAttemptEnd(supervisor, evidence);
+        if (end.status !== 'quiescent' || end.rootResult !== 'returned' || end.acknowledgementAttempted !== true
+            || end.freshWriteOverflow || end.descriptor.headersSha256 === null || !association.sourceChecked
+            || !Array.isArray(association.results) || association.results.length !== end.freshWrites.length
+            || association.results.length < 1 || association.results.length > 32
+            || association.results.some(result => !result || typeof result.id !== 'string'
+                || !['confirmed-handoff','intentional-no-effect','intentional-suppression','source-incomplete',
+                    'contract-incomplete','raw-incomplete'].includes(result.classification))
+            || association.results.some((result, index) => result.id !== end.freshWrites[index]?.id
+                || result.classification !== end.freshWrites[index]?.classification))
+            throw new Error('Invalid bounded worker attempt association');
+        const observation: ActionAttemptAssociation = {schemaVersion: 1, kind: 'action-attempt-association', end,
+            brokerSettlement: 'unknown', results: copy(association.results), sourceChecked: association.sourceChecked};
+        const id = 'h45actionassociation1:' + sha(actionHistoryImmutableJson([end.epoch, end.incarnation, end.attemptId]));
+        return this.bounded(async () => {await this.put(id, observation, signal); return {id, observation: copy(observation)};});
+    }
+    /** Restart inspection only: a stored association cannot recreate its opaque end or settle its broker ACK. */
+    async readAttemptAssociation(id: string, signal?: AbortSignal): Promise<{id: string; observation: ActionAttemptAssociation}> {
+        if (!/^h45actionassociation1:[0-9a-f]{64}$/.test(id)) throw new Error('Invalid action attempt association ID');
+        return this.bounded(async () => {
+            const observation = await this.get(id, signal) as ActionAttemptAssociation;
+            const end = observation?.end;
+            if (observation.schemaVersion !== 1 || observation.kind !== 'action-attempt-association'
+                || observation.brokerSettlement !== 'unknown' || observation.sourceChecked !== true
+                || !end || end.status !== 'quiescent' || end.rootResult !== 'returned'
+                || end.acknowledgementAttempted !== true || end.freshWriteOverflow !== false
+                || !Array.isArray(end.freshWrites) || !Array.isArray(observation.results)
+                || observation.results.length !== end.freshWrites.length || observation.results.length < 1
+                || observation.results.length > 32
+                || observation.results.some((result, index) => result.id !== end.freshWrites[index]?.id
+                    || !['confirmed-handoff','intentional-no-effect','intentional-suppression','source-incomplete',
+                        'contract-incomplete','raw-incomplete'].includes(result.classification)
+                    || result.classification !== end.freshWrites[index]?.classification)
+                || id !== 'h45actionassociation1:' + sha(actionHistoryImmutableJson([end.epoch, end.incarnation, end.attemptId])))
+                throw new Error('Invalid retained action attempt association');
             return {id, observation: copy(observation)};
         });
     }

@@ -1,6 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {ProofConsumerScope, currentProofConsumerScope, assertProofConsumerEnd} from './proof-consumer-scope.js';
+import {consumeFreshActionWrite, type FreshActionWrite} from '../history/action-fresh-write.js';
 import {workerAttemptJson, workerAttemptDigest, validateWorkerAttemptDescriptor, validateWorkerAttemptBinding,
+    validateFreshActionWrite,
     type WorkerAttemptDescriptor, type WorkerAttemptBinding, type WorkerAttemptRole, type WorkerAttemptTransport,
     type WorkerAttemptEndDescription} from './worker-attempt-supervisor.js';
 
@@ -10,6 +12,7 @@ interface Attempt {
     handle: WorkerAttempt; id: string; sequence: number; descriptor: WorkerAttemptDescriptor; scope: ProofConsumerScope;
     accepted: Promise<void>; challenge?: string; binding: WorkerAttemptBinding; bindingVersion: number;
     acknowledgementAttempted: boolean; ended?: WorkerAttemptEndDescription; running: boolean;
+    freshWrites: FreshActionWrite[]; freshWriteOverflow: boolean;
     fenceTimer?: ReturnType<typeof setTimeout>;
 }
 type Managed = {mode: 'managed'; role: WorkerAttemptRole; transport: WorkerAttemptTransport};
@@ -94,7 +97,8 @@ export class WorkerAttemptClient {
         validateWorkerAttemptDescriptor(descriptor, this.options.role);
         const handle = Object.freeze({}) as WorkerAttempt, id = randomUUID(), sequence = ++this.sequence;
         const record: Attempt = {handle, id, sequence, descriptor: JSON.parse(workerAttemptJson(descriptor)), scope: new ProofConsumerScope(id),
-            accepted: Promise.resolve(), binding: {}, bindingVersion: 0, acknowledgementAttempted: false, running: false};
+            accepted: Promise.resolve(), binding: {}, bindingVersion: 0, acknowledgementAttempted: false, running: false,
+            freshWrites: [], freshWriteOverflow: false};
         this.attempts.set(handle, record); this.scopes.set(record.scope, record);
         record.scope.signal.addEventListener('abort', () => {
             record.fenceTimer = setTimeout(() => {
@@ -141,6 +145,35 @@ export class WorkerAttemptClient {
         if (!record) throw new Error('Worker ACK lacks its original attempt');
         scope.assertActive(); record.acknowledgementAttempted = true;
     }
+    /** A fresh store return is associated with this physical receipt, never inferred from record JSON. */
+    async observeFreshActionWrite(result: object): Promise<boolean> {
+        const scope = currentProofConsumerScope(true)!, record = this.scopes.get(scope);
+        if (!record) throw new Error('Fresh action write lacks its original worker attempt');
+        scope.assertActive();
+        const write = consumeFreshActionWrite(result);
+        validateFreshActionWrite(write);
+        if (this.options.mode === 'controlled-local-only' || record.freshWriteOverflow) return false;
+        await record.accepted; scope.assertActive();
+        return scope.operation(async () => {
+            const response = await this.request({operation: 'observe', ...this.authority, attemptId: record.id,
+                sequence: record.sequence, challenge: record.challenge, write});
+            scope.assertActive();
+            if (response.epoch !== this.authority?.epoch || response.incarnation !== this.authority?.incarnation
+                || response.attemptId !== record.id || response.writeSha256 !== workerAttemptDigest(write)
+                || typeof response.accepted !== 'boolean' || typeof response.freshWriteOverflow !== 'boolean'
+                || (!response.accepted && !response.freshWriteOverflow))
+                throw new Error('Worker fresh-write observation response mismatch');
+            if (response.accepted) {
+                const existing = record.freshWrites.find(value => value.kind === write.kind && value.id === write.id);
+                if (existing && workerAttemptJson(existing) !== workerAttemptJson(write))
+                    throw new Error('Conflicting local fresh action write');
+                if (!existing) record.freshWrites.push(write);
+                record.freshWrites.sort((a, b) => (a.kind + ':' + a.id).localeCompare(b.kind + ':' + b.id));
+            }
+            record.freshWriteOverflow ||= response.freshWriteOverflow;
+            return response.accepted;
+        });
+    }
     assertCurrent(handle: WorkerAttempt): void {
         const record = this.record(handle), scope = currentProofConsumerScope(true);
         if (scope !== record.scope) throw new Error('Worker receipt belongs to another attempt');
@@ -183,7 +216,8 @@ export class WorkerAttemptClient {
                     summary: {acknowledgementAttempted: record.acknowledgementAttempted, rootResult}});
                 const expected = {epoch: this.authority?.epoch, incarnation: this.authority?.incarnation, attemptId: record.id,
                     role: this.options.role, status: 'quiescent', descriptor: record.descriptor, binding: record.binding,
-                    acknowledgementAttempted: record.acknowledgementAttempted, rootResult};
+                    acknowledgementAttempted: record.acknowledgementAttempted, rootResult,
+                    freshWrites: record.freshWrites, freshWriteOverflow: record.freshWriteOverflow};
                 if (workerAttemptJson(result.end) !== workerAttemptJson(expected)) throw new Error('Worker end response mismatch');
                 record.ended = result.end;
             }

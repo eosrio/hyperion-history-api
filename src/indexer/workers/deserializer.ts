@@ -455,7 +455,9 @@ export default class MainDSWorker extends HyperionWorker {
             configuration: configuration!, owner: scope!.owner});
         await revalidate();
         for (const evidence of observations) {
-            await store.recordAttemptDisposition({owner: scope!.owner, evidence}); await revalidate();
+            const recorded = await store.recordAttemptDisposition({owner: scope!.owner, evidence});
+            await this.observeFreshActionWrite(recorded);
+            await revalidate();
         }
         assertCurrent(); this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); scope!.owner.consumer.ack(message);
     }

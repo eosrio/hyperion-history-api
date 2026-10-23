@@ -6,6 +6,8 @@ import {dirname, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {actionHistoryImmutableJson, type ActionHistoryBlockPlan} from './action-history-manifest.js';
 import type {HyperionWorker} from '../workers/hyperionWorker.js';
+import type {HyperionConfig} from '../../interfaces/hyperionConfig.js';
+import type {Filters} from '../modules/config.js';
 import type {ActionSourceInventoryPolicy} from './action-source-inventory.js';
 
 const hash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
@@ -50,11 +52,13 @@ async function installedArtifacts(includeNativeCodec: boolean) {
     })().catch(error => {artifacts.delete(includeNativeCodec); throw error;}); artifacts.set(includeNativeCodec, pending);}
     return pending;
 }
+export function actionConfigurationSnapshot(config: HyperionConfig, filters: Filters, handlers: unknown): string {
+    return actionHistoryImmutableJson({config, filters: {
+        actionBlacklist: [...filters.action_blacklist].sort(), actionWhitelist: [...filters.action_whitelist].sort(),
+        deltaBlacklist: [...filters.delta_blacklist].sort(), deltaWhitelist: [...filters.delta_whitelist].sort()}, handlers});
+}
 export function currentActionConfiguration(worker: HyperionWorker): string {
-    return actionHistoryImmutableJson({config: worker.conf, filters: {
-        actionBlacklist: [...worker.filters.action_blacklist].sort(), actionWhitelist: [...worker.filters.action_whitelist].sort(),
-        deltaBlacklist: [...worker.filters.delta_blacklist].sort(), deltaWhitelist: [...worker.filters.delta_whitelist].sort()},
-        handlers: worker.mLoader.snapshotActionHandlers()});
+    return actionConfigurationSnapshot(worker.conf, worker.filters, worker.mLoader.snapshotActionHandlers());
 }
 export function currentActionPolicy(worker: HyperionWorker): ActionSourceInventoryPolicy {
     if (worker.conf.settings.parser !== '3.2' || worker.mLoader.parser?.flatten) throw new Error('Unsupported admission parser/grouping policy');

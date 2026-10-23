@@ -17,7 +17,8 @@ for (const mode of ['scope', 'snapshot', 'end-identity', 'proof', 'publication',
         mode, capacityAuthority: false, fullWorkerQualification: false});
 }, 60_000);
 
-for (const mode of ['retry', 'disconnect', 'unknown', 'main-ingress', 'headers', 'ds-unadmitted', 'shutdown']) test(`native worker IPC preserves ${mode} lifetime`, async () => {
+for (const mode of ['retry', 'disconnect', 'unknown', 'main-ingress', 'headers', 'ds-unadmitted', 'shutdown',
+    'fresh-action']) test(`native worker IPC preserves ${mode} lifetime`, async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
         fileURLToPath(new URL('./worker-attempt-ipc.mjs', import.meta.url)), mode],
     {stdout: 'pipe', stderr: 'pipe', timeout: mode === 'main-ingress' ? 60_000 : 15_000});
