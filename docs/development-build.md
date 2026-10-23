@@ -1,12 +1,14 @@
 # Development build
 
-Follow the [shared 4.5 TypeScript toolchain policy](https://github.com/eosrio/hyperion-tools/blob/1a38d018cbc25aef3ac35636e11761ef8c9863f3/docs/architecture/hyperion-4.5-typescript-toolchain.md).
+Follow the [shared 4.5 TypeScript toolchain policy](https://github.com/eosrio/hyperion-tools/blob/main/docs/architecture/hyperion-4.5-typescript-toolchain.md).
 
-The 4.5 baseline is TypeScript **7.0.2** and Bun **1.4.3**. The compiler version
+The 4.5 baseline is TypeScript **7.0.2** and Bun **1.4.4**. The compiler version
 is pinned in `package.json`, and the Bun version is pinned in `.bun-version` and
-read by CI. This Bun release checks with TypeScript 7.0.2 semantics.
+read by CI. This Bun release embeds TypeScript 7.0.2, verified with
+`bun -p process.versions.typescript`. The operator selected this checker baseline
+in [the shared toolchain update](https://github.com/eosrio/hyperion-tools/issues/61).
 
-Install Bun 1.4.3 for development, and use the committed `package-lock.json` for
+Install Bun 1.4.4 for development, and use the committed `package-lock.json` for
 the dependency tree, matching `.github/workflows/build.yml`:
 
 ```sh
