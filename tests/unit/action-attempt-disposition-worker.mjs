@@ -8,7 +8,7 @@ import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync} from 'node:
 import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {EventEmitter} from 'node:events';
-import {createHash} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
 import {spawnSync} from 'node:child_process';
@@ -23,9 +23,17 @@ const directory = mkdtempSync(join(tmpdir(), 'hyperion-attempt-worker-original-'
 const chain = 'handoff-worker-original', chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d', blockId = number => number.toString(16).padStart(64, '0');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const mode = process.argv[2] ?? 'lifecycle';
+const managedOriginalMain = mode === 'managed-original-main';
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
-let reader, coordinator, draining = Promise.resolve();
+let reader, coordinator, managedClient, snapshotPath, draining = Promise.resolve();
+let finishManaged;
+const managedFinished = new Promise(resolve => {finishManaged = resolve;});
+if (managedOriginalMain) process.on('message', message => {
+    if (message?.event === 'qualification_done') finishManaged();
+});
 process.send = (event, callback) => {
+    if (managedOriginalMain && event?.event === 'worker_attempt_request')
+        return previousSend.call(process, event, callback);
     events.push(event);
     if (event.event === 'protocol_abi_prepared') draining = coordinator.drain();
     callback?.(null); return true;
@@ -101,7 +109,7 @@ try {
         {ProtocolAbiCoordinator}, {ProtocolAbiCoordinatorRpc}, {ProtocolSourceBindingStore, protocolSourceSelectionHeader},
         {ProtocolAbiObservationStore}, {ProtocolAbiFrontierStore}, {ActionSourceAdmissionStore, actionSourceIngressHeader, actionSourceAdmissionHeader},
         {deriveActionSourceInventory, ActionSourceInventoryError}, {actionHistoryImmutableJson, fingerprintActionHistoryEffect}, {currentActionPolicy, currentActionConfiguration},
-        {publishAdmittedActionWithEvidence}] = await Promise.all([
+        {publishAdmittedActionWithEvidence}, {WorkerAttemptClient}] = await Promise.all([
         import('../../build/indexer/workers/state-reader.js'), import('../../build/indexer/workers/deserializer.js'),
         import('../../build/indexer/workers/ds-pool.js'), import('../../build/indexer/modules/parsers/3.2-parser.js'),
         import('../../build/indexer/modules/loader.js'), import('../../build/indexer/protocol/selection.js'),
@@ -109,7 +117,8 @@ try {
         import('../../build/indexer/protocol/source-bindings.js'), import('../../build/indexer/protocol/abi-observation-store.js'),
         import('../../build/indexer/protocol/abi-frontier-store.js'), import('../../build/indexer/history/action-source-admission.js'),
         import('../../build/indexer/history/action-source-inventory.js'), import('../../build/indexer/history/action-history-manifest.js'),
-        import('../../build/indexer/history/action-producer-epoch.js'), import('../../build/indexer/history/action-confirmed-publication.js')]);
+        import('../../build/indexer/history/action-producer-epoch.js'), import('../../build/indexer/history/action-confirmed-publication.js'),
+        import('../../build/indexer/protocol/worker-attempt-client.js')]);
     const installed = await loadChainProtocol(config.settings.protocol);
     assert.ok(installed.provider.nativeActions, 'select the installed native provider normally');
     assert(installed.components.every(component => component.sourceRevision === '7167659e9c043cb3351074fcacb40200cc57f3a3'));
@@ -129,7 +138,11 @@ try {
     const readerPublisher = new ControlledPublisher(), mainPublisher = new ControlledPublisher(), poolPublisher = new ControlledPublisher();
     const worker = (prototype, consumer, publisher) => {
         const value = Object.create(prototype);
-        if (prototype === Main.prototype || prototype === Pool.prototype)
+        if (prototype === Main.prototype && managedOriginalMain) {
+            managedClient = new WorkerAttemptClient({mode: 'managed', role: 'deserializer', transport: process,
+                timeoutMs: 1000, drainTimeoutMs: 5000, retries: 2});
+            value.configureWorkerAttemptLifecycle(managedClient);
+        } else if (prototype === Main.prototype || prototype === Pool.prototype)
             controlledAttemptLifecycle(value, prototype === Pool.prototype ? 'ds_pool_worker' : 'deserializer');
         Object.assign(value, {chain, chainId, conf: config, configModule: cm, filters, mLoader: loader,
             protocol: selected.provider, protocolId: selected.id, protocolComponents: selected.components,
@@ -141,6 +154,10 @@ try {
     };
     reader = worker(Reader.prototype, readerConsumer, readerPublisher);
     const main = worker(Main.prototype, mainConsumer, mainPublisher), pool = worker(Pool.prototype, poolConsumer, poolPublisher);
+    const attemptLifecycle = (value, role) => {
+        if (!(managedOriginalMain && value === main)) controlledAttemptLifecycle(value, role);
+        return value;
+    };
     Object.assign(reader, {baseRequest: {}, shipRev: 0, socketGeneration: 0, activeIngressGeneration: 0,
         isLiveReader: true, local_block_num: 0, local_lib: 0, receivedFirstBlock: true,
         reversibleBlockMap: new Map(), forkedBlocks: new Map(), publications: new Map(),
@@ -185,7 +202,8 @@ try {
         assert.ok(raw.payload.equals(bytes)); assert.ok(raw.options.headers[actionSourceIngressHeader]);
         const retainedIngress = await admissionStore.resolveIngress(raw.options.headers[actionSourceIngressHeader]);
         assert.equal(retainedIngress.frameHex, bytes.toString('hex'));
-        (controlledAttemptLifecycle(main, 'deserializer'), main).captureActionAdmissionDelivery(delivery, mainConsumer); (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(delivery, mainConsumer);
+        attemptLifecycle(main, 'deserializer').captureActionAdmissionDelivery(delivery, mainConsumer);
+        attemptLifecycle(main, 'deserializer').captureProtocolSourceDelivery(delivery, mainConsumer);
         await parser.parseMessage(main, [delivery]); await draining;
         assert.equal(mainConsumer.acked.at(-1), delivery);
         const messages = mainPublisher.sent.slice(mainBefore).map(sent => {
@@ -232,18 +250,34 @@ try {
         assert.equal(rows[0].value.work.source.blockNum, 1);
         assert.equal(rows[0].value.work.transaction, null); assert.equal(rows[0].value.work.planId, null);
         assert.deepEqual(rows[0].value.output, {kind: 'unresolved'}); sourceAckChecks.push(rows[0]);
+        if (managedOriginalMain) previousSend.call(process, {event: 'qualification_ack', dispositionId: rows[0].id});
     };
     const genesis = await prepare(readFileSync(join(sourceDir, 'block-000001.bin')));
     assert.equal(sourceAckChecks.length, 1); assert.ok(genesis.admission.incomplete);
     assert.equal(sourceAckChecks[0].value.work.source.captureSha256, genesis.admission.source.captureSha256);
     mainConsumer.onAck = undefined;
+    if (managedOriginalMain) {
+        assert.equal(mainConsumer.acked.length, 1, 'original Wire MainDS ACK follows its retained disposition');
+        const snapshot = {documents: [...memory.documents], mappings: [...memory.mappings], settings: [...memory.settings],
+            admissionId: genesis.admission.id, dispositionId: sourceAckChecks[0].id, originalAckCount: mainConsumer.acked.length};
+        const bytes = Buffer.from(JSON.stringify(snapshot));
+        snapshotPath = join(tmpdir(), `hyperion-managed-wire-main-${randomUUID()}.json`);
+        writeFileSync(snapshotPath, bytes);
+        previousSend.call(process, {event: 'qualification_fixture', path: snapshotPath,
+            sha256: hash(bytes), bytes: bytes.length});
+        let timer;
+        try {await Promise.race([managedFinished, new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('Managed Wire qualification parent did not finish')), 20_000);
+        })]);} finally {clearTimeout(timer);}
+    } else {
     const lifecycle = ['original-genesis-no-invented-membership'];
     const originalGenesisDelivery = mainConsumer.acked[0];
     const runSource = (source = originalGenesisDelivery) => {
         const delivery = {content: Buffer.from(source.content), properties: structuredClone(source.properties), fields: {deliveryTag: 1}};
         const consumer = new ControlledConsumer(), publisher = new ControlledPublisher();
         main.ch = consumer; main.cch = publisher; main.ch_ready = true; main.cch_ready = true;
-        (controlledAttemptLifecycle(main, 'deserializer'), main).captureActionAdmissionDelivery(delivery, consumer); (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(delivery, consumer);
+        attemptLifecycle(main, 'deserializer').captureActionAdmissionDelivery(delivery, consumer);
+        attemptLifecycle(main, 'deserializer').captureProtocolSourceDelivery(delivery, consumer);
         const pending = parser.parseMessage(main, [delivery]); pending.catch(() => {});
         return {delivery, consumer, publisher, pending};
     };
@@ -640,11 +674,19 @@ try {
     lifecycle.push('original-contract-proof-and-mixed-native-view-revoked-across-disposition-writes-no-ack');
     loader.handledActions.clear();
     }
-    assert.equal(nativeAddonResolutions, 0);
     console.log(JSON.stringify({passed: true, originalBlocks: mode === 'no-effects' ? 36 : mode === 'traces-disabled' ? 33 : mode === 'empty-vector' ? 1 : 39, constructedBlocks: mode === 'lifecycle' ? 3 : mode === 'empty-vector' ? 1 : 0, mode, lifecycle, cases: ['original-missing-traces-write-before-ack', 'operator-disabled-write-before-ds-ack'], controlledBrokerStorage: true, fullWorkerQualification: false}));
+    }
+    assert.equal(nativeAddonResolutions, 0);
 } finally {
+    managedClient?.dispose();
     reader?.coordinatorRpc?.cancel(); reader?.shipSession?.close?.();
     process.send = previousSend; process.chdir(previousDirectory); hooks.deregister();
+    if (snapshotPath) {
+        const ownedSnapshot = resolve(snapshotPath); assert.equal(dirname(ownedSnapshot), resolve(tmpdir()));
+        assert.match(basename(ownedSnapshot), /^hyperion-managed-wire-main-[0-9a-f-]+\.json$/);
+        rmSync(ownedSnapshot, {force: true});
+    }
     const ownedDirectory = resolve(directory); assert.equal(dirname(ownedDirectory), resolve(tmpdir()));
     assert.match(basename(ownedDirectory), /^hyperion-attempt-worker-original-/); rmSync(ownedDirectory, {recursive: true, force: true});
+    if (managedOriginalMain) process.disconnect();
 }

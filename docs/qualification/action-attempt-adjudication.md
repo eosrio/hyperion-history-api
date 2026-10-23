@@ -12,14 +12,14 @@ The configured RPC alone is insufficient to establish the current reversible SHI
 
 ## Evidence and remaining gates
 
-Focused tests exercise cross-attempt redelivery, copied results and ends, foreign physical owners, observation retry, conflicting effects, overflow, stale config/target/fork, failed association storage, and restart readback. The native cluster IPC fixture exercises two owned workers with identical semantic work: only the first produces a fresh result and can be associated; a replayed observation from the second physical owner is rejected. It uses controlled source/target authority and does not prove a live broker ACK. Existing original Wire36 MainDS/DS fixtures exercise the production callbacks, configured-copy failures and held confirm/drain before original ACK; their controlled-local mode does not itself issue a parent-accepted end.
+Focused tests exercise cross-attempt redelivery, copied results and ends, foreign physical owners, observation retry, conflicting effects, overflow, stale config/target/fork, failed association storage, and restart readback. The native cluster IPC fixture exercises two owned workers with identical semantic work: only the first produces a fresh result and can be associated; a replayed observation from the second physical owner is rejected. It uses controlled source/target authority and does not prove a live broker ACK. A separate Node 22/24 case runs the original Wire genesis frame through the Reader and MainDS callback in a managed child, transfers its test-only retained storage snapshot to the parent, and reads and associates the source-incomplete result after the authentic end. This joins original MainDS output to parent IPC but still uses controlled storage and canonical authority. Existing original Wire36 MainDS/DS fixtures exercise the production callbacks, configured-copy failures and held confirm/drain before original ACK; their controlled-local mode does not itself issue a parent-accepted end. The analogous original DS callback, no-effect/contract cases, and full broker/storage/fork path remain open.
 
 Run after `npm ci --allow-git=all`:
 
 ```sh
 npm run typecheck
 npm run build
-bun test tests/unit/action-fresh-write.test.ts tests/unit/action-attempt-adjudicator.test.ts tests/unit/worker-attempt-fresh-write.test.ts tests/unit/worker-attempt-quiescence.test.ts
+bun test tests/unit/action-fresh-write.test.ts tests/unit/action-attempt-adjudicator.test.ts tests/unit/action-attempt-managed-wire-ipc.test.ts tests/unit/worker-attempt-fresh-write.test.ts tests/unit/worker-attempt-quiescence.test.ts
 npm test
 ```
 
