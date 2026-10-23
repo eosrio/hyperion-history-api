@@ -28,6 +28,17 @@ binary. This status-only probe issued no block-flow request and exercised no wor
 Elasticsearch write or fork recovery. It establishes a reachable current source for the
 combined qualification, which remains open.
 
+The later [partial worker replay](evidence/action-attempt-worker-20261023/README.md)
+used the unchanged original 1..1480 capture, native Node 24.19.0 workers,
+owned broker/Elasticsearch/MongoDB services, and source-bounded historical RPC
+checks. It passed the physical block-33 hold after the observer was corrected
+to watch the actual confirmed-publication helper. Its block-122 queue-drain
+wait exceeded the local 60-second budget while the DS worker was still
+processing; both runs remain failed, with zero owned service residue. The
+archive retains the raw publication, prefix and bulk observations, plus
+topology-redacted reports. This does not establish the full replay or live
+fork/ACK matrix.
+
 ## Evidence and remaining gates
 
 Focused tests exercise cross-attempt redelivery, copied results and ends, foreign physical owners, observation retry, conflicting effects, overflow, stale config/target/fork, failed association storage, and restart readback. A native child fixture runs the reader's ordered source probe and the parent's request/reply handler: a replacement frame queued before the probe rejects the old source, while the new branch is accepted. A coordinator test covers a newly selected replay of its committed head. The native cluster IPC fixture exercises two owned workers with identical semantic work: only the first produces a fresh result and can be associated; a replayed observation from the second physical owner is rejected. These use controlled source/target authority and do not prove a live broker ACK.

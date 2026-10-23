@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "releaseQualified": false,
+  "issue": "https://github.com/eosrio/hyperion-history-api/issues/288",
+  "pullRequest": "https://github.com/eosrio/hyperion-history-api/pull/289",
+  "baseCommit": "c4f7780459dc2bd2d7ef13016bad35c79fdcaedb",
+  "nodeVersion": "24.19.0",
+  "source": {
+    "chainId": "9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d",
+    "archiveSha256": "42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7",
+    "range": [1, 1480],
+    "profileId": "wire-sysio-6508c9e8-native-engineering-v1"
+  },
+  "runs": [
+    {
+      "id": "b3e08fbb8a95",
+      "status": "failed",
+      "reportSha256": "06521cd8a2da41f4d6baaa106e83189555ea988fbd3e4e6b294dd102f61ffd6b",
+      "heldPrefixes": [1],
+      "sourceCheckedRpcBlockCalls": 40,
+      "reason": "observer missed the confirmed action publication helper at block 33",
+      "driverCleanupPassed": true,
+      "ownedServiceCleanupResidue": 0
+    },
+    {
+      "id": "8265aea186dd",
+      "status": "failed",
+      "reportSha256": "0717655f46e99de77ad0e59e3f59e22f2f43f4de362d95ad35ced83bc0409506",
+      "heldPrefixes": [1, 33],
+      "sourceCheckedRpcBlockCalls": 138,
+      "sourceAckThrough": 122,
+      "brokerConfirmedActionPublications": 141,
+      "reason": "owned Rabbit queue drain exceeded the 60-second hold budget at block 122",
+      "driverCleanupPassed": false,
+      "driverCleanupFailure": "master exited unsuccessfully after the timed-out driver stopped it",
+      "ownedServiceCleanupResidue": 0
+    }
+  ]
+}

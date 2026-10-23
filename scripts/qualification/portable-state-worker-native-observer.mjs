@@ -66,6 +66,36 @@ HyperionWorker.prototype.publishAdmitted = async function (owner, queue, content
     const result = await publication.call(this, owner, queue, content, headers, ...args);
     record('admitted_publish_confirmed', origin); return result;
 };
+// Confirmed action handoffs call the publication helper directly, bypassing publishAdmitted.
+// Observe the actual owned AMQP send and its broker callback without replacing either result.
+const actionPublicationOwner = HyperionWorker.prototype.actionPublicationOwner;
+const observedPublishers = new WeakSet();
+HyperionWorker.prototype.actionPublicationOwner = function (...args) {
+    const owner = actionPublicationOwner.apply(this, args), publisher = owner.publisher;
+    if (!observedPublishers.has(publisher)) {
+        observedPublishers.add(publisher);
+        const sendToQueue = publisher.sendToQueue;
+        publisher.sendToQueue = function (queue, content, options, callback) {
+            if (!queue.startsWith(chain + ':index_actions:'))
+                return sendToQueue.call(this, queue, content, options, callback);
+            assert.equal(typeof callback, 'function', 'admitted action publication requires a broker confirm callback');
+            assert.equal(options.persistent, true); assert.equal(options.mandatory, true);
+            const canonicalPayloadSha256 = hash(actionHistoryImmutableJson(JSON.parse(content.toString())));
+            const payloadSha256 = hash(content);
+            assert.equal(canonicalPayloadSha256, payloadSha256, 'admitted production action bytes must be canonical');
+            const origin = {queue, payloadSha256, canonicalPayloadSha256, bytes: content.length,
+                headers: structuredClone(options.headers), messageId: options.messageId,
+                persistent: options.persistent, mandatory: options.mandatory};
+            record('admitted_broker_publish_begin', origin);
+            return sendToQueue.call(this, queue, content, options, error => {
+                record(error ? 'admitted_broker_nack' : 'admitted_broker_confirmed',
+                    error ? {...origin, error: String(error)} : origin);
+                return callback(error);
+            });
+        };
+    }
+    return owner;
+};
 const sourceAck = Deserializer.prototype.ackAdmittedSourceDelivery;
 Deserializer.prototype.ackAdmittedSourceDelivery = function (message, ...args) {
     const admission = this.activeActionSource?.admission;

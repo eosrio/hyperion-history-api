@@ -205,11 +205,12 @@ export async function createPortableNativeQualification(options: NativeRunOption
             // Actual admitted DS production uses actionHistoryImmutableJson for publication bytes (ds-pool.ts).
             // Its canonical sorted keys survive ES object insertion-order changes; ordinary JSON.stringify does not.
             const logicalSha256 = portableSourceHash(manifests.actionHistoryImmutableJson(row.logical));
-            const confirmed = events.filter(value => value.kind === 'native_boundary' && value.event === 'admitted_publish_confirmed'
+            const confirmed = events.filter(value => value.kind === 'native_boundary' && value.event === 'admitted_broker_confirmed'
                 && value.queue.startsWith(chain + ':index_actions:') && value.payloadSha256 === logicalSha256
                 && value.headers['hyperion-action-admission-v1'] === current.id);
             assert.equal(confirmed.length, 1, 'stored output lacks one actual confirmed publication from its admitted source');
             assert.equal(confirmed[0].canonicalPayloadSha256, logicalSha256);
+            assert.equal(confirmed[0].persistent, true); assert.equal(confirmed[0].mandatory, true);
             const fragment = manifest.fragments.find((fragment: any) => fragment.effects.some((effect: any) => effect.globalSequence === row.logical.global_sequence));
             assert.ok(fragment); assert.equal(confirmed[0].headers.action_fragment_id, manifests.actionHistoryFragmentId(fragment, plan));
             persistedOutputs.set(JSON.stringify([row.index, row.id]), {index: row.index, id: row.id, logicalSha256,

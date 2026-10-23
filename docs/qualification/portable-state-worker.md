@@ -246,6 +246,26 @@ release readiness. Preserve the incumbent Wire node/binary/listeners before and
 after the isolated bare-metal-hosted run and verify external fixture cleanup as
 described below.
 
+For the private [#288](https://github.com/eosrio/hyperion-history-api/issues/288)
+attempt-adjudication investigation, an optional `--native --authority-rpc URL`
+mode checks the retained source against a current Wire testnet RPC. Pass an HTTP
+origin ending in `/` after the normal state, plan and new output-directory
+arguments. The driver first verifies the chain ID and retained irreversible
+height. It permits only `get_info` and `get_block` for a block in the original
+1..1480 source or an original SHiP irreversible anchor. Each fetched block ID
+must match the original captured ID; captured blocks also require the exact
+predecessor. Replay `get_info` follows the released original irreversible
+prefix. The source frames and original status bytes remain unchanged. This
+mode checks historical identity against the running RPC; it does not exercise
+live SHiP fork recovery or qualify public activation.
+
+The native observer records the actual persistent, mandatory AMQP action send
+and broker confirmation callback on the owned publisher. The DS worker's
+confirmed-publication helper bypasses the older `publishAdmitted` method, so
+that older observation alone cannot prove action handoff. The original
+confirmed-publication evidence and journal seal still govern drain, source
+membership and effects; the observer does not issue a replacement receipt.
+
 The production worker reserves the exact certified source target as non-serving
 before contract-dependent source materialization or declarative mapping. Only
 successful exact-source application clears that durable intent. Failure to persist
