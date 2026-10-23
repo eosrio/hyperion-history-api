@@ -252,12 +252,37 @@ async function actualUnprocessableIngress() {
     }
 }
 
+async function supervisorShutdownWithHeldFinalizer() {
+    const child = spawn('supervisor-shutdown-held-finalizer'); await waitFor(() => child.phase('ready'), 'shutdown child ready');
+    child.send('start'); await waitFor(() => child.phase('body-entered'), 'shutdown original accepted root');
+    child.send('finish-body'); await waitFor(() => child.phase('ack-attempted'), 'original ACK marker precedes held finalizer');
+    assert.equal(endEvidence.length, 0); assert.equal(child.phase('finalizer-ended'), undefined);
+    supervisor.stop(); child.send('probe-helper'); await waitFor(() => child.phase('probe-rejected'), 'actual parent shutdown fences retained host helper');
+    assert.equal(child.phase('probe-rejected').data.code, 'worker_attempt_fenced');
+    assert.equal(child.phase('probe-rejected').data.attempt.scope.state, 'fenced');
+    assert.equal(child.phase('late-host-helper-invoked'), undefined); assert.equal(child.phase('probe-returned'), undefined);
+    assert.equal(endEvidence.length, 0, 'supervisor stop cannot declare a still-held real finalizer quiescent');
+    assert.equal(child.requests.some(request => request.payload.operation === 'end'), false);
+    child.send('new-root'); await waitFor(() => child.phase('new-root-rejected'), 'shutdown refuses a new actual worker root');
+    assert.equal(child.phase('new-root-entered'), undefined); assert.equal(child.requests.filter(request => request.payload.operation === 'register').length, 1);
+    child.send('finish-finalizer'); await waitFor(() => child.phase('done'), 'retired exact physical owner genuinely drains original finalizer');
+    assert.equal(endEvidence.length, 1); const end = describeWorkerAttemptEnd(supervisor, endEvidence[0]);
+    assert.equal(end.status, 'quiescent'); assert.equal(end.rootResult, 'returned'); assert.equal(end.acknowledgementAttempted, true);
+    assert.deepEqual(end.binding, {}); assert.equal(child.phase('finalizer-ended') !== undefined, true);
+    child.send('quit'); await waitFor(() => child.exited && child.closed, 'shutdown exact owned process exit and pipe close');
+    assert.equal(endEvidence.length, 1); assert.equal(child.stderr, '');
+    cases.push({id: 'actual-supervisor-stop-fences-held-finalizer-before-genuine-drain', heldFinalizerEndedBeforeAcceptedEnd: true,
+        prematureAcceptedEnds: 0, lateHelperInvocations: 0, newRootRegistrations: 0, originalAckMarkerPrecededShutdown: true,
+        killCallUsedAsEndEvidence: false, exactProcessCleanupObserved: true});
+}
+
 try {
     if (mode === 'retry') await exactRetryAndFinalizer();
     else if (mode === 'disconnect') await physicalDisconnectAndReplacement();
     else if (mode === 'unknown') await permanentlyLostResponses();
     else if (mode === 'main-ingress') await actualMainIngress();
     else if (mode === 'headers' || mode === 'ds-unadmitted') await actualUnprocessableIngress();
+    else if (mode === 'shutdown') await supervisorShutdownWithHeldFinalizer();
     else assert.fail('unsupported IPC case');
     console.log(JSON.stringify({passed: true, mode, native: process.version, cases, transcript,
         ownedProcessesOnly: true, capacityAuthority: false, fullWorkerQualification: false}));

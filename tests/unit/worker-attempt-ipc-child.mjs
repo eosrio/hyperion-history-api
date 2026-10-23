@@ -8,6 +8,7 @@ import {join, resolve, dirname, basename} from 'node:path';
 import assert from 'node:assert/strict';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 import {WorkerAttemptClient} from '../../build/indexer/protocol/worker-attempt-client.js';
+import {currentProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
 
 const gate = () => {let release; const promise = new Promise(resolve => {release = resolve;}); return {promise, release};};
 const body = gate(), finalizer = gate();
@@ -16,7 +17,7 @@ const role = process.env.QUALIFICATION_WORKER_ROLE ?? 'ds_pool_worker';
 const client = new WorkerAttemptClient({mode: 'managed', role, transport: process,
     timeoutMs: 150, drainTimeoutMs: 500, retries: 2});
 const report = (phase, data = {}) => process.send?.({event: 'qualification_phase', phase, data});
-let handle, work, actualWorker, actualReceipt, originalConsumer, directory;
+let handle, work, actualWorker, actualReceipt, originalConsumer, directory, retainedHelper;
 
 async function captureActualRole(headerKind) {
     directory = mkdtempSync(join(tmpdir(), 'hyperion-attempt-owned-ipc-'));
@@ -61,12 +62,21 @@ async function command(message) {
             headersSha256: digest('{}'), consumerId: randomUUID(), publisherId: randomUUID(), queue: 'owned:ds', deliveryTag: 1});
         report('captured', client.describe(handle));
         work = client.run(handle, async () => {
+            retainedHelper = currentProofConsumerScope(true).bindCallback(() => report('late-host-helper-invoked'));
             report('body-entered'); await body.promise;
             client.markAcknowledgementAttempt(); report('ack-attempted');
             await finalizer.promise; report('finalizer-ended'); return 'original-result';
         });
         void work.then(result => report('done', {result, attempt: client.describe(handle)}),
             error => report('failed', {message: error.message, attempt: client.describe(handle)}));
+    } else if (message.command === 'probe-helper') {
+        try {retainedHelper(); report('probe-returned');}
+        catch (error) {report('probe-rejected', {code: error.code, attempt: client.describe(handle)});}
+    } else if (message.command === 'new-root') {
+        try {
+            const next = client.capture({...client.describe(handle).descriptor, receiptId: randomUUID()});
+            await client.run(next, () => report('new-root-entered')); report('new-root-returned');
+        } catch (error) {report('new-root-rejected', {message: error.message});}
     } else if (message.command === 'capture-role') await captureActualRole(message.headerKind);
     else if (message.command === 'run-role') {
         work = actualWorker.processMessages([actualReceipt]);

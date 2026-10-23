@@ -1037,6 +1037,109 @@ async function canonicalForkAndApiExpiry() {
     } finally {held.release(); await root; assertProofConsumerEnd(active, await active.closeAndDrain());}
 }
 
+/** Actual MainDS and real retained stores; constructed host codec, controlled method-return gates, no canonical grant. */
+async function sourceContinuationFences() {
+    const previousDirectory = process.cwd(), previousConfig = process.env.CONFIG_JSON, previousSend = process.send;
+    const directory = mkdtempSync(join(tmpdir(), 'hyperion-attempt-source-continuation-'));
+    mkdirSync(join(directory, 'config')); writeFileSync(join(directory, 'config/connections.json'), '{}');
+    const conf = {settings: {chain: 'source-continuation', es_replicas: 0}, indexer: {}, features: {}, whitelists: {}, blacklists: {}};
+    writeFileSync(join(directory, 'chain.json'), JSON.stringify(conf)); process.env.CONFIG_JSON = join(directory, 'chain.json'); process.chdir(directory);
+    const [{default: Main}, {protocolSourceCapture}, {ProtocolSourceBindingReadError, protocolSourceSelectionHeader}] = await Promise.all([
+        import('../../build/indexer/workers/deserializer.js'), import('../../build/indexer/workers/hyperionWorker.js'),
+        import('../../build/indexer/protocol/source-bindings.js')]);
+    const observations = [];
+    try {
+        for (const schedule of ['ready', 'selection-reject', 'selection-success', 'abi-prepare', 'observation-link', 'native-prepare',
+            'abi-prepare-reject', 'observation-link-reject', 'native-prepare-reject', 'codec-rejection', 'selection-reject-unfenced', 'codec-reject-unfenced']) {
+            const effects = [], memory = frontierMemoryClient(), held = gate(), entered = gate(), rootEntered = gate();
+            const bindings = new ProtocolSourceBindingStore(memory.client, conf.settings.chain), abi = new ProtocolAbiObservationStore(memory.client, conf.settings.chain);
+            const native = new ProtocolNativeObservationStore(memory.client, conf.settings.chain), worker = Object.create(Main.prototype);
+            const schemaJson = '{"fixture":"controlled-source-continuations"}'; let scope, fenceIndex, ending, sessionCloses = 0;
+            const result = ['get_blocks_result_v0', {this_block: {block_num: 2, block_id: blockId(2)}, prev_block: {block_num: 1, block_id: blockId(1)},
+                head: {block_num: 2, block_id: blockId(2)}, last_irreversible: {block_num: 0, block_id: blockId(0)},
+                block: '00', traces: Buffer.from('[]').toString('hex'), deltas: Buffer.from('[]').toString('hex')}];
+            const frame = Buffer.from(JSON.stringify(result)), capture = protocolSourceCapture(chainId, result[1], schemaJson);
+            const context = await bindings.prepareContext({schemaVersion: 1, chainId, protocol: profile, schemaJson});
+            const selection = await bindings.prepareSelection({schemaVersion: 1, contextId: context.id, readerSessionId: 'controlled-source-continuation',
+                readerRole: 'bulk', assignmentId: null, source: capture.source, frameSha256: hash(frame), captureSha256: capture.captureSha256,
+                head: {blockNum: 2, blockId: blockId(2)}, irreversible: {blockNum: 0, blockId: blockId(0)}});
+            const channel = new EventEmitter(); channel.ack = () => effects.push('ack');
+            const message = {content: Buffer.from(frame), properties: {headers: {[protocolSourceSelectionHeader]: selection.id}}, fields: {deliveryTag: 1}};
+            const provider = {profileId: profile.profileId, createShipSession() {
+                effects.push('session-create'); return {
+                    decodeResult(bytes) {
+                        effects.push('decode-result');
+                        if (schedule === 'codec-rejection') {fenceIndex = effects.length; scope.fence(); entered.release(); throw new Error('controlled synchronous codec rejection');}
+                        if (schedule === 'codec-reject-unfenced') throw new Error('controlled unfenced codec rejection');
+                        return JSON.parse(Buffer.from(bytes).toString());
+                    },
+                    decodeTraces(bytes) {effects.push('decode-traces'); return JSON.parse(Buffer.from(bytes).toString());},
+                    decodeDeltas(bytes) {effects.push('decode-deltas'); return JSON.parse(Buffer.from(bytes).toString());},
+                    close() {sessionCloses++;},
+                };
+            }, observeBlockAbi() {effects.push('observe-abi'); return {schemaVersion: 1, actionInputs: [], deployments: [], finalStates: []};},
+                nativeActions: {interfaceVersion: 1, observe() {effects.push('observe-native'); return {schemaVersion: 1, decisions: []};}}};
+            Object.assign(worker, {chain: conf.settings.chain, chainId, conf, client: memory.client,
+                ch: channel, cch: new EventEmitter(), ch_ready: true, cch_ready: true, protocolReady: schedule === 'ready' ? held.promise : Promise.resolve(),
+                protocolId: profile.id, protocol: provider, protocolComponents: profile.components, profiler: {start: () => () => {}},
+                protocolDeliveryOwners: new WeakMap(), protocolSourceBindingStore: bindings, protocolAbiObservationStore: abi, protocolNativeObservationStore: native});
+            worker.installControlledAttemptLifecycle('deserializer'); worker.captureProtocolSourceDelivery(message, channel);
+            const readSelection = bindings.readSelection.bind(bindings);
+            bindings.readSelection = async id => {
+                effects.push('read-selection'); const value = await readSelection(id);
+                if (schedule === 'selection-reject-unfenced') throw new ProtocolSourceBindingReadError('missing', 'selection', id, 'controlled original read result rejected');
+                if (schedule === 'selection-reject' || schedule === 'selection-success') {entered.release(); await held.promise;}
+                if (schedule === 'selection-reject') throw new ProtocolSourceBindingReadError('missing', 'selection', id, 'controlled held original read result rejected');
+                return value;
+            };
+            const quarantine = bindings.quarantine.bind(bindings);
+            bindings.quarantine = (...args) => {effects.push('quarantine'); return quarantine(...args);};
+            for (const [object, method, boundary] of [[abi, 'prepare', 'abi-prepare'], [bindings, 'prepareObservationLink', 'observation-link'], [native, 'prepare', 'native-prepare']]) {
+                const actual = object[method].bind(object);
+                object[method] = async (...args) => {
+                    effects.push(boundary); const value = await actual(...args);
+                    if (schedule === boundary || schedule === boundary + '-reject') {entered.release(); await held.promise;}
+                    if (schedule === boundary + '-reject') throw new Error('controlled original ' + boundary + ' return rejected');
+                    return value;
+                };
+            }
+            process.send = event => {if (event.event === 'protocol_abi_prepared') effects.push('prepare-hint'); return true;};
+            const work = worker.runWorkerAttemptDelivery(message, () => {
+                scope = currentProofConsumerScope(true); rootEntered.release();
+                return worker.processProtocolSourceDelivery(message, async decoded => {
+                    effects.push('process-bound');
+                    if (schedule.includes('prepare') || schedule.includes('observation-link')) await worker.prepareProtocolAbiObservations(decoded);
+                });
+            }); work.catch(() => {});
+            try {
+                const unfenced = schedule.endsWith('-unfenced');
+                if (unfenced) {
+                    await work; assert.equal(effects.filter(value => value === 'quarantine').length, 1); assert.equal(effects.filter(value => value === 'ack').length, 1);
+                    observations.push({schedule, unfencedClassificationPreserved: true, quarantineWrites: 1, originalAckAttempts: 1});
+                } else {
+                    if (schedule === 'ready') await rootEntered.promise; else await entered.promise;
+                    fenceIndex ??= effects.length; let ended = false;
+                    ending = scope.closeAndDrain().then(end => {ended = true; return end;});
+                    if (schedule !== 'codec-rejection') {await turn(); assert.equal(ended, false, 'held original source continuation must drain honestly');}
+                    held.release(); const outcome = await Promise.allSettled([work]); assertProofConsumerEnd(scope, await ending);
+                    assert.equal(effects.includes('ack'), false);
+                    observations.push({schedule, dispatchedBeforeFence: effects.slice(0, fenceIndex), newCallsAfterFence: effects.slice(fenceIndex),
+                        rootStatus: outcome[0].status, sessionCloses, originalAckAttempts: 0});
+                }
+            } finally {held.release(); await Promise.allSettled([work, ending]); worker.workerAttemptClient.dispose();}
+        }
+        console.log(JSON.stringify({sourceContinuationSchedules: observations}));
+        assert.deepEqual(observations.filter(value => value.newCallsAfterFence?.length).map(value => ({schedule: value.schedule, newCalls: value.newCallsAfterFence})), [],
+            'fenced actual MainDS must not dispatch new quarantine, decode, sequential PREPARE/link/native work or hints after held returns');
+        for (const observed of observations) cases.push({id: 'actual-main-source-continuation-' + observed.schedule, ...observed,
+            constructedHostCodecAndControlledMethodReturns: true, actualRetainedStores: true, canonicalGrantIssued: false, masterAcceptedEnd: false});
+    } finally {
+        process.send = previousSend; process.chdir(previousDirectory); if (previousConfig === undefined) delete process.env.CONFIG_JSON; else process.env.CONFIG_JSON = previousConfig;
+        const owned = resolve(directory); assert.equal(dirname(owned), resolve(tmpdir())); assert.match(basename(owned), /^hyperion-attempt-source-continuation-/);
+        rmSync(owned, {recursive: true, force: true});
+    }
+}
+
 const mode = process.argv[2] ?? 'scope';
 if (mode === 'scope') {await reentrantRootClosure(); await reentrantOperationClosure();}
 else if (mode === 'snapshot') await callerSourceSnapshot();
@@ -1059,6 +1162,7 @@ else if (mode === 'projection-admission-fence') await projectionRoles('admission
 else if (mode === 'projection-init-fence') await projectionInitializationFence();
 else if (mode === 'fork-and-expiry') await canonicalForkAndApiExpiry();
 else if (mode === 'target') await targetContinuationFences();
+else if (mode === 'source-continuations') await sourceContinuationFences();
 else assert.fail('unsupported lifecycle case');
 console.log(JSON.stringify({passed: true, mode, native: process.version, cases,
     controlledIO: true, capacityAuthority: false, fullWorkerQualification: false}));
