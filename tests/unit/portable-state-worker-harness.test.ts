@@ -166,6 +166,15 @@ describe('portable actual-source harness guards', () => {
         expect(environment.NODE_OPTIONS).toBe(''); expect(environment.worker_role).toBeUndefined(); expect(environment.ES198_FAULT).toBeUndefined(); expect(environment.PATH).toBe('kept');
         expect(environment.HYPERION_PORTABLE_NATIVE_QUALIFICATION).toBeUndefined();
     });
+    it('enables bounded CPU capture only from the explicit profile option', () => {
+        const inherited = {ES198_CPU_PROFILE: '1', ES198_PROFILE_MAX_MS: '1', NODE_OPTIONS: '--import foreign'};
+        const control = portableWorkerEnvironment(inherited, '/output', '/config', 'chain');
+        expect(control.ES198_CPU_PROFILE).toBe('0'); expect(control.ES198_PROFILE_MAX_MS).toBeUndefined();
+        const enabled = portableWorkerEnvironment(inherited, '/output', '/config', 'chain', true);
+        expect(enabled.ES198_CPU_PROFILE).toBe('1'); expect(enabled.ES198_PROFILE_MAX_MS).toBe(String(portableSourceLimits.runMs));
+        expect(enabled.NODE_OPTIONS).toBe('');
+        expect(() => portableWorkerEnvironment(inherited, '/output', '/config', 'chain', 1 as any)).toThrow();
+    });
     it('requires exact HTTP checkpoint, binding, rows/count and shared completeness headers', () => {
         // SDK validation uses null-prototype records; HTTP JSON and adapter snapshots use ordinary records.
         const binding = Object.assign(Object.create(null), {projectionId: 'rows'}), block = {blockNum: 4, blockId: '4'.repeat(64)}, rows = [{key: 'a', value: {value: 'after'}}];
