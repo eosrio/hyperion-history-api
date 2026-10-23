@@ -272,7 +272,12 @@ try {
     poolPublisher.held = new Promise(resolve => {releaseConfirm = resolve;});
     const entered = new Promise(resolve => {enterConfirm = resolve;}); poolPublisher.entered = enterConfirm;
     const ackBefore = poolConsumer.acked.length, streamBefore = poolConsumer.streamed.length, cacheBefore = cache.length;
-    const consuming = pool.processMessages(lastPrepared.messages); await entered;
+    await assert.rejects(pool.processMessages(lastPrepared.messages), /root cannot be repeated/);
+    const redeliveries = lastPrepared.messages.map(original => {
+        const delivery = {...original, content: Buffer.from(original.content), properties: structuredClone(original.properties)};
+        pool.captureActionAdmissionDelivery(delivery, poolConsumer); pool.captureProtocolActionDelivery(delivery, poolConsumer); return delivery;
+    });
+    const consuming = pool.processMessages(redeliveries); await entered;
     await coordinator.revokeSource(reader.sourceContext.readerSessionId); releaseConfirm();
     await assert.rejects(consuming, error => error.statusCode === 503);
     assert.equal(poolConsumer.acked.length, ackBefore); assert.equal(poolConsumer.streamed.length, streamBefore); assert.equal(cache.length, cacheBefore);

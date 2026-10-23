@@ -32,6 +32,27 @@ import {currentProofConsumerScope, assertProofConsumerCapability, trackProofCons
 
 // Broker-decoded headers may contain bytes, timestamps or undefined fields, unlike portable action JSON.
 function workerAttemptHeadersSha256(headers: unknown): string {
+    let budget = 0, nodes = 0; const seen = new Set<object>();
+    const add = (bytes: number) => {budget += bytes; if (budget > 64 * 1024) throw new Error('Worker attempt original header budget exhausted');};
+    const visit = (value: unknown, depth: number): void => {
+        if (++nodes > 4096 || depth > 32) throw new Error('Worker attempt original header structure budget exhausted');
+        add(32);
+        if (typeof value === 'string') {if (value.length > 64 * 1024) add(64 * 1024); add(Buffer.byteLength(value)); return;}
+        if (value == null || ['number','boolean','bigint','undefined'].includes(typeof value)) return;
+        if (value instanceof Uint8Array) {add(value.byteLength); return;}
+        if (value instanceof Date) return;
+        if (typeof value !== 'object' || seen.has(value)) throw new Error('Original worker headers are not bounded typed data');
+        const prototype = Object.getPrototypeOf(value);
+        if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) throw new Error('Unsupported original worker header type');
+        seen.add(value);
+        for (const key in value) if (Object.hasOwn(value, key)) {
+            add(key.length * 3); const descriptor = Object.getOwnPropertyDescriptor(value, key);
+            if (!descriptor || !('value' in descriptor)) throw new Error('Original worker header accessor is unavailable');
+            visit(descriptor.value, depth + 1);
+        }
+        seen.delete(value);
+    };
+    visit(headers, 0);
     const bytes = serialize(headers);
     if (bytes.length > 64 * 1024) throw new Error('Worker attempt original header budget exhausted');
     return createHash('sha256').update(bytes).digest('hex');
@@ -95,7 +116,7 @@ export abstract class HyperionWorker {
     private actionAdmissionStore?: ActionSourceAdmissionStore;
     private readonly actionAdmissionOwners = new WeakMap<object, Channel>();
     protected workerAttemptClient?: WorkerAttemptClient;
-    private workerAttemptDeliveries?: WeakMap<object, {handle: WorkerAttempt; payloadSha256: string; headersSha256: string; consumer: Channel}>;
+    private workerAttemptDeliveries?: WeakMap<object, {handle: WorkerAttempt; payloadSha256: string; headersSha256: string | null; consumer: Channel}>;
     private workerAttemptChannels?: WeakMap<object, string>;
     private workerAttemptChannelListeners?: WeakSet<object>;
 
@@ -131,7 +152,8 @@ export abstract class HyperionWorker {
         const previous = this.workerAttemptDeliveries.get(message);
         if (previous) {if (previous.consumer !== channel) throw new Error('Cannot replace original attempt consumer'); return;}
         const payloadSha256 = createHash('sha256').update(message.content).digest('hex');
-        const headersSha256 = workerAttemptHeadersSha256(message.properties?.headers ?? {});
+        let headersSha256: string | null;
+        try {headersSha256 = workerAttemptHeadersSha256(message.properties?.headers ?? {});} catch {headersSha256 = null;}
         const handle = this.attemptClient().capture({kind, receiptId: randomUUID(), payloadSha256, headersSha256,
             consumerId: this.attemptChannelId(channel), publisherId: this.attemptChannelId(this.cch),
             queue: typeof process.env.worker_queue === 'string' ? process.env.worker_queue : null,
@@ -143,6 +165,7 @@ export abstract class HyperionWorker {
         const retained = this.workerAttemptDeliveries?.get(message);
         if (!retained) throw new Error('Worker attempt lacks its original physical ingress');
         return this.attemptClient().run(retained.handle, () => {
+            if (retained.headersSha256 === null) throw new Error('Original worker header snapshot is unavailable; raw custody is retained');
             if (createHash('sha256').update(message.content).digest('hex') !== retained.payloadSha256
                 || workerAttemptHeadersSha256(message.properties?.headers ?? {}) !== retained.headersSha256)
                 throw new Error('Original queued worker attempt bytes/headers changed');

@@ -1775,7 +1775,6 @@ export default class MainDSWorker extends HyperionWorker {
 
     /** Core helpers stage effects while a protocol row's async handlers are unresolved. */
     private stageProtocolPublication(effect: () => unknown | Promise<unknown>, bytes: number): boolean {
-        this.assertWorkerAttemptActive();
         const scope = this.protocolDerivedPublications?.getStore();
         if (!scope) return false;
         if (!scope.accepting) {
@@ -1783,6 +1782,7 @@ export default class MainDSWorker extends HyperionWorker {
                 code: 'protocol_derived_scope_closed', message: 'Detached work cannot publish after its protocol record scope settled'}});
             return true;
         }
+        this.assertWorkerAttemptActive();
         // One record cannot retain an unbounded set of helper publications.
         if (scope.failure || scope.effects.length >= 4096 || scope.bytes + bytes > 64 * 1024 * 1024) {
             scope.failure ??= new ProtocolAbiProofUnavailableError('protocol_derived_publication_limit', 'Protocol record derived publication budget exceeded');
@@ -1792,6 +1792,11 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     private enqueueDerivedPublication(payload: QueuePayload): Promise<unknown> {
+        // Preserve the established isolated diagnostic/drop for an already-closed record scope.
+        // It performs no helper operation or publication and cannot adopt a later attempt.
+        if (this.protocolDerivedPublications?.getStore()?.accepting === false) {
+            this.stageProtocolPublication(() => undefined, 0); return Promise.resolve();
+        }
         this.assertWorkerAttemptActive();
         const attempt = currentProofConsumerScope(), channel = this.ch;
         const queue = (value: QueuePayload) => {

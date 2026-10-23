@@ -63,6 +63,8 @@ Descriptors have exact fields `kind,receiptId,payloadSha256,headersSha256,consum
 queue,deliveryTag`. Roles are `deserializer,ds_pool_worker,projection`; kinds are
 `source-delivery,ds-delivery,projection-initialization,projection-frame`. No absent semantic ID is
 invented. Optional binding fields are declared in `WorkerAttemptBinding`.
+An unavailable bounded header snapshot is explicitly `headersSha256:null`: raw receipt/body custody
+still registers, but its processing callback is refused. This cannot issue header/source authority.
 
 Registration, binding and end requests use exact-response retries with a stable request ID.
 The parent checks physical owner/incarnation, epoch, session, sequence and original association;
@@ -117,5 +119,5 @@ Existing component fixtures explicitly install a controlled local-only transport
 `tests/unit/worker-attempt-fixture.mjs`. They produce no parent-accepted end. Their immediate controlled
 channels are augmented with event registration so a missing close/drain/confirm cannot be silently
 fabricated. Actual managed worker/IPC, retained original Wire inputs, projection isolation and cache
-counts are exercised by the separate issue286 qualification lane. Full integration/review remains
+counts are required in the separate issue286 qualification lane. Full integration/review remains
 required; this note does not activate #277 capacity, #225, #191 or release support.

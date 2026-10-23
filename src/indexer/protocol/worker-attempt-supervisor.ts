@@ -4,7 +4,7 @@ import {actionHistoryImmutableJson} from '../history/action-history-manifest.js'
 export type WorkerAttemptRole = 'deserializer' | 'ds_pool_worker' | 'projection';
 export type WorkerAttemptKind = 'source-delivery' | 'ds-delivery' | 'projection-initialization' | 'projection-frame';
 export interface WorkerAttemptDescriptor {
-    kind: WorkerAttemptKind; receiptId: string; payloadSha256: string; headersSha256: string;
+    kind: WorkerAttemptKind; receiptId: string; payloadSha256: string; headersSha256: string | null;
     consumerId: string | null; publisherId: string | null; queue: string | null; deliveryTag: number | null;
 }
 export interface WorkerAttemptBinding {
@@ -52,7 +52,7 @@ function keys(value: any, expected: string[]) {return value && typeof value === 
     && Object.keys(value).sort().join('|') === expected.sort().join('|');}
 export function validateWorkerAttemptDescriptor(value: WorkerAttemptDescriptor, role: WorkerAttemptRole): void {
     if (!keys(value, ['kind','receiptId','payloadSha256','headersSha256','consumerId','publisherId','queue','deliveryTag'])
-        || !uuid.test(value.receiptId) || !hash.test(value.payloadSha256) || !hash.test(value.headersSha256)
+        || !uuid.test(value.receiptId) || !hash.test(value.payloadSha256) || !(value.headersSha256 === null || hash.test(value.headersSha256))
         || ![value.consumerId, value.publisherId].every(id => id === null || typeof id === 'string' && uuid.test(id))
         || !(value.queue === null || typeof value.queue === 'string' && value.queue.length > 0 && value.queue.length <= 255 && value.queue.isWellFormed())
         || !(value.deliveryTag === null || Number.isSafeInteger(value.deliveryTag) && value.deliveryTag >= 0)

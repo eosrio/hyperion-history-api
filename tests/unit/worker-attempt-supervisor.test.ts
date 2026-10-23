@@ -5,7 +5,11 @@ import {setImmediate as turn} from 'node:timers/promises';
 import {WorkerAttemptSupervisor, describeWorkerAttemptEnd, type AcceptedWorkerAttemptEnd}
     from '../../src/indexer/protocol/worker-attempt-supervisor.js';
 import {WorkerAttemptClient, createControlledLocalAttemptClient} from '../../src/indexer/protocol/worker-attempt-client.js';
-import {currentProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
+import {HyperionWorker} from '../../src/indexer/workers/hyperionWorker.js';
+import {ProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
+import {PortableStateController} from '../../src/indexer/projection/controller.js';
+import {resolvePortableStateConfiguration} from '../../src/indexer/projection/config.js';
+import {PROJECTION_CAPABILITIES} from '@eosrio/hyperion-sdk/projection';
 
 const descriptor = () => ({kind: 'source-delivery' as const, receiptId: randomUUID(), payloadSha256: '1'.repeat(64), headersSha256: '2'.repeat(64),
     consumerId: randomUUID(), publisherId: randomUUID(), queue: 'fixture:source', deliveryTag: 1});
@@ -55,4 +59,41 @@ it('retains a non-draining fenced root until exact observed process exit, never 
     expect(describeWorkerAttemptEnd(supervisor, ends[0])).toMatchObject({status: 'process-exited-unresolved',
         acknowledgementAttempted: null, rootResult: 'unknown'});
     release(); await Promise.allSettled([work]); first.client.dispose(); replacement.client.dispose();
+});
+
+it('retains a physical receipt whose bounded header snapshot is unavailable and never enters proof processing', async () => {
+    const ends: AcceptedWorkerAttemptEnd[] = [], supervisor = new WorkerAttemptSupervisor({onEnd: end => ends.push(end)});
+    const physical = connection(supervisor), worker = Object.create(HyperionWorker.prototype) as any;
+    const consumer = new EventEmitter(), publisher = new EventEmitter();
+    Object.assign(worker, {ch: consumer, cch: publisher, ch_ready: true, cch_ready: true});
+    worker.configureWorkerAttemptLifecycle(physical.client);
+    const message = {content: Buffer.from('original malformed-header custody'), fields: {deliveryTag: 1},
+        properties: {headers: {large: Buffer.alloc(70 * 1024)}}};
+    expect(() => worker.captureWorkerAttemptDelivery(message, consumer, 'source-delivery')).not.toThrow();
+    let processed = false;
+    await expect(worker.runWorkerAttemptDelivery(message, () => {processed = true;})).rejects.toThrow('header snapshot is unavailable');
+    expect(processed).toBe(false); expect(ends).toHaveLength(1);
+    expect(describeWorkerAttemptEnd(supervisor, ends[0])).toMatchObject({descriptor: {headersSha256: null},
+        acknowledgementAttempted: false, rootResult: 'threw'});
+    physical.client.dispose(); physical.physical.emit('exit');
+});
+
+it('fences a held projection initialization before a following definition can start', async () => {
+    const chainId = 'c'.repeat(64), initialized: string[] = [];
+    const definition = (id: string) => ({schemaVersion: 1 as const, id, mappingRevision: 'a'.repeat(64),
+        source: {contract: 'items', table: id, abiDeployment: 'original-source-epoch', abiSha256: 'b'.repeat(64)},
+        fields: [{name: 'owner', path: ['owner'], type: 'string' as const}], initialization: {kind: 'genesis' as const}});
+    const configuration = resolvePortableStateConfiguration({backend: {kind: 'mongodb', id: 'fixture', database: 'fixture'},
+        projections: [definition('first'), definition('second')]}, chainId)!;
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>(yes => {enter = yes;}), held = new Promise<void>(yes => {release = yes;});
+    const adapter: any = {capabilities: {interfaceVersion: 1, supported: [...PROJECTION_CAPABILITIES]},
+        async initialize(definition: any) {initialized.push(definition.id); if (definition.id === 'first') {enter(); await held;}},
+        recovery: async () => {}};
+    const scope = new ProofConsumerScope('projection-initialization-control');
+    const work = scope.run(() => PortableStateController.create({chainId, configuration, adapter,
+        source: {frame: async () => {throw new Error('No canonical source in this controlled initialization');}, revalidate: async () => {}}}));
+    void work.catch(() => {}); await entered; scope.fence(); release();
+    await expect(work).rejects.toThrow('Original worker attempt'); await scope.closeAndDrain();
+    expect(initialized).toEqual(['first']);
 });

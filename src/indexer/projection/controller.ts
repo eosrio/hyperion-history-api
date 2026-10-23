@@ -42,9 +42,11 @@ export class PortableStateController {
             throw new ProjectionContractError('projection.invalid-contract', 'Projection drain budget must be between1 and32');
         const controller = new PortableStateController(options, maximum);
         for (const definition of options.configuration.projections) {
+            currentProofConsumerScope()?.assertActive();
             const binding = portableStateBinding(options.configuration, definition, options.chainId);
             controller.runtimes.set(definition.id, await DeclarativeProjectionRuntime.create({adapter: options.adapter,
                 definition, binding, genesis: {blockNum: 0, blockId: zero}, maximumPendingFrames: 1}));
+            currentProofConsumerScope()?.assertActive();
         }
         return controller;
     }
@@ -74,6 +76,7 @@ export class PortableStateController {
                     currentProofConsumerScope()?.assertActive();
                     let admitted: ProjectionBlock | undefined;
                     const admit = async (block: ProjectionBlock) => {
+                        currentProofConsumerScope()?.assertActive();
                         const target = Object.freeze(structuredClone(block));
                         if (admitted) {
                             if (json(target) !== json(admitted))
@@ -83,6 +86,7 @@ export class PortableStateController {
                         if (this.stopped) throw new ProjectionContractError('projection.apply-unavailable', 'Projection owner stopped before source admission');
                         await this.options.adapter.markIncomplete(runtime.binding, target,
                             'Canonical projection source admitted; durable application is pending');
+                        currentProofConsumerScope()?.assertActive();
                         admitted = target;
                     };
                     const selected = await this.options.source.frame(recovery.checkpoint.blockNum + 1, runtime.definition, admit);
