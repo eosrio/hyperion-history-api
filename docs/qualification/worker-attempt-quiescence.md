@@ -1,9 +1,9 @@
 # Private worker attempt quiescence
 
 Issue #286 builds a passive lifecycle prerequisite for #277. It grants no reader capacity,
-source completeness, sink readiness or public activation. The default proof ancestry remains256.
+source completeness, sink readiness or public activation. The default proof ancestry remains 256.
 
-## First frozen local proof API
+## Private proof scope API
 
 `src/indexer/protocol/proof-consumer-scope.ts` exports `ProofConsumerScope`,
 `ProofConsumerFencedError`, `currentProofConsumerScope`, `assertProofConsumerCapability`,
@@ -75,7 +75,7 @@ not a plugin sandbox or a cryptographic proof of arbitrary code behavior.
 
 Standalone fixtures must explicitly use `createControlledLocalAttemptClient(role)`. That mode
 never contacts a master and never issues a master-accepted end; it is controlled engineering only.
-The current API component tests do not establish actual production role integration.
+The controlled API component tests alone do not establish actual worker integration.
 
 ## Actual role wiring
 
@@ -96,6 +96,10 @@ JSON. No source/admission/trace ordinal is inferred at receipt. Verified associa
 MainDS parser work and DS message work run once per physical delivery. Original ACK/NACK attempts,
 contract-incomplete handling and local cleanup stay inside that root. A broker redelivery requires
 a new physical receipt even when its original semantic/source/admission identity is unchanged.
+MainDS checks the accepted root again after awaited source selection, protocol readiness, ABI
+observation, native preparation, quarantine and contract work, before it starts another output,
+hint or ACK. A late completion or rejection after a fence cannot start the next stage under the
+old receipt.
 DS proof-bearing ABI/type/view/native cache memos clear between tracked deliveries. This changes
 their earlier cargo lifetime; independent same-input read-count comparison is required, and no
 throughput improvement is claimed. Pure default component helpers still have their original return
@@ -113,18 +117,52 @@ proof revalidation and application. A held call may finish after a fence; its co
 start a fresh marker, apply, recovery read or subsequent projection definition.
 
 Confirmed publication keeps the original callback and required buffer-drain lifecycle alive after
-the outer wait aborts, or until the exact original channel closes. Ordinary non-confirm helper sends
-track observable buffer backpressure without claiming a durable broker confirmation. Queued host
-callbacks retain their original root; detached work cannot acquire a later root by saving a helper.
-Already-dispatched remote work may finish. Local quiescence does not certify its semantic result.
+the outer wait aborts, or until the exact original channel closes. For an ordinary non-confirm
+send, the observable boundary is synchronous transfer of message bytes to the transport and any
+reported buffer backpressure. A `sendToQueue()` return of `true` or a `drain` event does not prove
+physical socket flush, broker receipt, or durable settlement. Queued host callbacks retain their
+original root; detached work cannot acquire a later root by saving a helper. Already-dispatched
+remote work may finish. Local quiescence does not certify its semantic result.
 
 Existing component fixtures explicitly install a controlled local-only transport using
 `tests/unit/worker-attempt-fixture.mjs`. They produce no parent-accepted end. Their immediate controlled
 channels are augmented with event registration so a missing close/drain/confirm cannot be silently
-fabricated. Actual managed worker/IPC, retained original Wire inputs, projection isolation and cache
-counts are required in the separate issue286 qualification lane. Full integration/review remains
-required; this note does not activate #277 capacity, #225, #191 or release support.
+fabricated. The controlled qualification record below exercises managed worker IPC, retained
+original Wire inputs, projection isolation and cache counts on native Node. Whole-suite, review
+and CI checks are separate gates; this note does not activate #277 capacity, #225, #191 or
+release support.
 
 The source-binding component control intercepts the existing cargo exit request solely to assert
 fail-stop/no-ACK behavior, then uses a separate worker object and fresh broker receipts for replay.
 It does not report an observed physical exit or a normal end for that old worker's queued receipt.
+
+## Controlled qualification record
+
+The [frozen evidence archive](evidence/worker-attempt-quiescence/qualification.zip) has SHA256
+`15f6173004016f9dd4e2693714b668a6d234d88379834417d61ef09e70a572bd`.
+Its [index](evidence/worker-attempt-quiescence/index.json) records the qualified source and test
+hashes, exact commands, runtime versions, case matrix and remaining gates. The
+[transport manifest](evidence/worker-attempt-quiescence/transport-manifest.json) binds the
+multipart evidence delivery to the same archive. Run
+`python docs/qualification/evidence/worker-attempt-quiescence/verify.py` from the repository root
+to check every archived byte hash, command log, raw case observation and controlled cache comparison.
+
+With the normally installed pinned dependencies, both Node 22.23.3 and 24.19.0 completed normal
+`npm run build` emission. Bun 1.4.4 completed `bun check -p tsconfig.json` across 252 project
+files. Each native runtime passed 23 focused wrappers with 65 recorded case schedules, including
+actual worker IPC, retained proof reads, source continuation rejection and success, a held
+supervisor shutdown finalizer, projection frames, fork revocation and public ancestry expiry.
+The source continuation cases demonstrate a failing pre-fix schedule and a passing fixed source
+without changing the assertions. The archive contains the original raw outputs and emitted code;
+the index identifies the test-only freeze after those commands.
+
+The original Wire block 36 controlled same-cargo comparison used two independent physical
+receipts and produced `setcode, setabi, setcode, setabi` with two ACK attempts. Both runtimes
+recorded 238 DS memory-client `get` calls and 10,565,575 UTF-8 JSON bytes returned from successful
+reads, with zero count/byte delta in all 16 measured families against the earlier source.
+These are in-memory cache-read measurements for this one controlled Wire input. They do not
+measure network traffic, throughput, managed Antelope cache behavior or production latency.
+
+This evidence qualifies local quiescence behavior at the covered seams. It does not grant reader
+count or byte capacity, settle queued inputs between attempts, prove complete Wire/Mongo testnet
+support, or replace the unchanged original 1..1480 Linux replay and audits required by #277.
