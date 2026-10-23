@@ -11,7 +11,6 @@ import {assertCompleteActionSearch, normalizeActionSearchSources} from './action
 import {assertProtocolProjectionReady, assertProtocolRouteReady} from './protocol-state-readiness.js';
 import {assertProtocolActionRequestReady, assertProtocolActionStreamReady} from './protocol-action-query.js';
 import {canonicalUint64} from '../../indexer/helpers/uint64.js';
-import {isActionSequenceField} from '../../indexer/helpers/action-sequences.js';
 import {validateActionSequenceQuery} from './action-sequence-query.js';
 
 export type BoolQuerySearchBody = estypes.SearchRequest & {
@@ -115,14 +114,10 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
             const actionReq = data as StreamActionsRequest;
 
             if (actionReq.account && actionReq.account !== '') {
-                search_body.query.bool.must.push({
-                    bool: {
-                        should: [
-                            {term: {'notified': actionReq.account}},
-                            {term: {'act.authorization.actor': actionReq.account}}
-                        ]
-                    }
-                });
+                search_body.query.bool.must.push({bool: {should: [
+                    {term: {notified: actionReq.account}},
+                    {term: {'act.authorization.actor': actionReq.account}}
+                ], minimum_should_match: 1}});
             }
 
             if (actionReq.contract && actionReq.contract !== '*' && actionReq.contract !== '') {
@@ -143,39 +138,24 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
             break;
         }
     }
-    const onDemandFilters: any[] = [];
-    let bool_should_group: estypes.QueryDslQueryContainer | undefined;
-    if (data.filter_op === 'or' && data.filters && data.filters.length > 0) {
-        bool_should_group = {
-            bool: {
-                should: [] as estypes.QueryDslQueryContainer[],
-                minimum_should_match: 1
-            }
-        };
-        search_body.query.bool.must.push(bool_should_group);
-    }
-
-    if (data.filters && data.filters.length > 0) {
-        data.filters.forEach(f => {
-            if (f.field && (f.value || (dataKind === 'action' && isActionSequenceField(f.field)))) {
-                if (f.operator && f.operator !== "eq") {
-                    onDemandFilters.push(f);
-                } else {
-                    if ((f.field.startsWith('@') && !f.field.startsWith('data')) || f.field === 'scope') {
-                        const _q = {} as Record<string, any>;
-                        _q[f.field] = f.value;
-                        const q_obj = {'term': _q};
-                        if (data.filter_op === 'or') {
-                            (bool_should_group?.bool?.should as estypes.QueryDslQueryContainer[]).push(q_obj);
-                        } else {
-                            search_body.query.bool.must.push(q_obj);
-                        }
-                    } else {
-                        onDemandFilters.push(f);
-                    }
-                }
-            }
-        });
+    const filters = data.filters ?? [];
+    // Every filter is evaluated against the same response shape as live delivery.
+    // Only exact delta scopes are safe to restrict in Elasticsearch: decoded ABI
+    // aliases and arbitrary data paths may exist only in the delivered document.
+    const indexedScope = (filter: typeof filters[number]): estypes.QueryDslQueryContainer | undefined =>
+        dataKind === 'delta' && filter.field === 'scope'
+        && (!filter.operator || filter.operator === 'eq') && typeof filter.value === 'string'
+            ? {term: {scope: filter.value}} : undefined;
+    if (data.filter_op === 'or') {
+        const indexed = filters.map(indexedScope);
+        if (indexed.length > 0 && indexed.every(Boolean))
+            search_body.query.bool.must.push({bool: {should: indexed as estypes.QueryDslQueryContainer[],
+                minimum_should_match: 1}});
+    } else {
+        for (const filter of filters) {
+            const indexed = indexedScope(filter);
+            if (indexed) search_body.query.bool.must.push(indexed);
+        }
     }
 
     const responseQueue: estypes.SearchResponse<any, any>[] = [];
@@ -259,13 +239,13 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                     }
 
                     // const tRef = process.hrtime.bigint();
-                    if (onDemandFilters.length > 0) {
+                    if (filters.length > 0) {
                         if (data.filter_op === 'or') {
-                            allow = onDemandFilters.some(filter => {
+                            allow = filters.some(filter => {
                                 return checkMetaFilter(filter, doc._source, dataKind);
                             });
                         } else {
-                            allow = onDemandFilters.every(filter => {
+                            allow = filters.every(filter => {
                                 // console.log(doc._source);
                                 return checkMetaFilter(filter, doc._source, dataKind);
                             });

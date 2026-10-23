@@ -30,6 +30,11 @@ import {
 export const maximumPendingLiveActions = 64;
 export const maximumPendingLiveActionBytes = 16 * 1024 * 1024;
 
+function validAccountName(value: string): boolean {
+    try { return Name.from(value).toString() === value; }
+    catch { return false; }
+}
+
 interface PendingLiveAction {
     trace: {account: string; name: string; notified: string; message: string};
     targets: Map<string, string[]>;
@@ -854,35 +859,30 @@ export class SocketManager {
         switch (type) {
             case "action": {
                 const actionData = data as StreamActionsRequest;
-
-                // we should accept contract and action if account is not provided
-                // if the account is provided we don't need contract and action enforcement
-                if (!actionData.account && (!actionData.contract || !actionData.action)) {
+                // Account-only subscriptions and exact-contract action subscriptions
+                // are the shapes the live router can actually attach.
+                if ((!actionData.contract || !actionData.action) && !actionData.account) {
                     return {
                         status: 'ERROR',
                         message: 'account or contract and action are required'
                     };
                 }
-
-
-                // validate contract name
-                if (actionData.contract && Name.from(actionData.contract).toString() !== actionData.contract) {
+                if (Boolean(actionData.contract) !== Boolean(actionData.action)) {
+                    return {status: 'ERROR', message: 'contract and action must be provided together'};
+                }
+                if (actionData.contract && !validAccountName(actionData.contract)) {
                     return {
                         status: "ERROR",
                         message: `Invalid contract name: ${actionData.contract}`
                     };
                 }
-
-                // validate action name
-                if (actionData.action && Name.from(actionData.action).toString() !== actionData.action) {
+                if (actionData.action && actionData.action !== '*' && !validAccountName(actionData.action)) {
                     return {
                         status: "ERROR",
                         message: `Invalid action name: ${actionData.action}`
                     };
                 }
-
-                // validate account name
-                if (actionData.account && Name.from(actionData.account).toString() !== actionData.account) {
+                if (actionData.account && !validAccountName(actionData.account)) {
                     return {
                         status: "ERROR",
                         message: `Invalid account name: ${actionData.account}`
@@ -900,24 +900,27 @@ export class SocketManager {
                     };
                 }
 
-                if (Name.from(deltaData.table).toString() !== deltaData.table) {
+                if (deltaData.table !== '*' && !validAccountName(deltaData.table)) {
                     return {
                         status: "ERROR",
                         message: `Invalid table name: ${deltaData.table}`
                     };
                 }
 
-                if (Name.from(deltaData.code).toString() !== deltaData.code) {
+                if (!validAccountName(deltaData.code)) {
                     return {
                         status: "ERROR",
                         message: `Invalid code name: ${deltaData.code}`
                     };
                 }
 
-                if (Name.from(deltaData.scope).toString() !== deltaData.scope) {
+                // Empty means all scopes. Numeric/raw uint64 scopes are valid opaque
+                // keywords, but '*' is not understood by the live scope predicate.
+                if (deltaData.scope !== undefined
+                    && (typeof deltaData.scope !== 'string' || deltaData.scope === '*')) {
                     return {
                         status: "ERROR",
-                        message: `Invalid scope name: ${deltaData.scope}`
+                        message: `Invalid scope: ${deltaData.scope}`
                     };
                 }
 
@@ -976,7 +979,7 @@ export class SocketManager {
             const abi = ABI.from(abiData.abi);
             if (type === 'action') {
                 const actionName = (data as StreamActionsRequest).action;
-                const action = abi.actions.find(action => action.name.toString() === actionName);
+                const action = actionName === '*' || abi.actions.find(action => action.name.toString() === actionName);
                 if (!action) {
                     return {
                         status: 'ERROR',
@@ -985,7 +988,7 @@ export class SocketManager {
                 }
             } else if (type === 'delta') {
                 const tableName = (data as StreamDeltasRequest).table;
-                const tableDef = abi.tables.find(table => table.name.toString() === tableName);
+                const tableDef = tableName === '*' || abi.tables.find(table => table.name.toString() === tableName);
                 if (!tableDef) {
                     return {
                         status: 'ERROR',
