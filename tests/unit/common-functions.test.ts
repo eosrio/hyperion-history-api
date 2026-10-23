@@ -153,11 +153,7 @@ describe('checkMetaFilter', () => {
         });
 
         it('should use fallback expansion when @ field not in source directly', () => {
-            // When _source doesn't have @transfer at top level, getNested returns null,
-            // then the fallback expands @transfer -> act.data (if act.name matches)
-            // BUT: getNested mutates fieldParts via shift(), so after first call
-            // fieldParts is empty, meaning the fallback path checks fieldParts[0]
-            // which is undefined after mutation — fallback only works for single-segment fields
+            // The alias resolves through the matching action's decoded data.
             const result = checkMetaFilter(
                 { field: '@transfer.from', value: 'alice', operator: 'eq' },
                 {
@@ -168,8 +164,7 @@ describe('checkMetaFilter', () => {
                 },
                 'action'
             );
-            // This returns false because getNested consumed both parts of fieldParts
-            expect(result).toBe(false);
+            expect(result).toBe(true);
         });
 
         it('should not expand @action_name when action name does not match', () => {
