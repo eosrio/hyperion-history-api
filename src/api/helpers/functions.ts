@@ -12,6 +12,8 @@ import {assertProtocolProjectionReady, assertProtocolRouteReady} from './protoco
 import {assertProtocolActionRequestReady, assertProtocolActionStreamReady} from './protocol-action-query.js';
 import {canonicalUint64} from '../../indexer/helpers/uint64.js';
 import {validateActionSequenceQuery} from './action-sequence-query.js';
+import type {StreamHistoryDelivery} from '../stream/history-delivery.js';
+import {SocketIOHistoryDelivery} from '../stream/socketio-history-delivery.js';
 
 export type BoolQuerySearchBody = estypes.SearchRequest & {
     query: estypes.QueryDslQueryContainer & {
@@ -97,6 +99,17 @@ export async function getApiUsageHistory(fastify: FastifyInstance) {
 export async function streamPastCommon<T extends keyof StreamTypeMap>(
     fastify: FastifyInstance,
     socket: Socket,
+    requestUUID: string,
+    data: StreamTypeMap[T]["request"],
+    dataKind: T,
+    signal?: AbortSignal
+) {
+    return replayStreamHistory(fastify, new SocketIOHistoryDelivery(socket), requestUUID, data, dataKind, signal);
+}
+
+export async function replayStreamHistory<T extends keyof StreamTypeMap>(
+    fastify: FastifyInstance,
+    delivery: StreamHistoryDelivery,
     requestUUID: string,
     data: StreamTypeMap[T]["request"],
     dataKind: T,
@@ -202,7 +215,8 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
         // emit the first block
         if (init_response.hits.hits.length > 0) {
-            emitTraceInit(socket, requestUUID, init_response.hits.hits[0]._source.block_num, totalHits);
+            delivery.begin({requestId: requestUUID, firstBlock: init_response.hits.hits[0]._source.block_num,
+                totalResults: totalHits});
         }
 
         responseQueue.push(init_response);
@@ -218,7 +232,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                 if (rp._scroll_id) pendingScrollId = rp._scroll_id;
                 const enqueuedMessages: any[] = [];
                 activeProofScope?.dispose();
-                activeProofScope = createProtocolStreamScope([socket]);
+                activeProofScope = createProtocolStreamScope([delivery.connection]);
                 const proofScope = activeProofScope.scope;
                 if (dataKind === 'action') {
                     assertCompleteActionSearch(rp);
@@ -269,22 +283,16 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
 
                 totalFiltered += filterCount;
 
-                if (socket.connected) {
+                if (delivery.connection.connected) {
                     if (enqueuedMessages.length > 0) {
                         const messages = dataKind === 'action'
                             ? await protocolActionsForStream(fastify, proofScope, enqueuedMessages) : enqueuedMessages;
                         try {
 
                             // Wait for 120 s
-                            const ackResponse = await withStreamCancellation(socket
-                                .timeout(MAX_SCROLL_TIME_SEC * 1000)
-                                .emitWithAck('message', {
-                                    reqUUID: requestUUID,
-                                    type: `${dataKind}_trace`,
-                                    mode: 'history',
-                                    messages,
-                                    filtered: filterCount
-                                }), signal);
+                            const ackResponse = await withStreamCancellation(delivery.deliver({
+                                requestId: requestUUID, kind: dataKind, messages, filtered: filterCount
+                            }, MAX_SCROLL_TIME_SEC * 1000), signal);
 
                             if (ackResponse.status !== true) {
                                 hLog(`${dataKind}_trace scroll TIMEOUT`);
@@ -306,7 +314,7 @@ export async function streamPastCommon<T extends keyof StreamTypeMap>(
                 }
 
                 if (getTotalValue(rp) === counter) {
-                    hLog(`${counter} past ${dataKind}s streamed to ${socket.id} (${totalFiltered} filtered)`);
+                    hLog(`${counter} past ${dataKind}s streamed to ${delivery.connection.id} (${totalFiltered} filtered)`);
                     break;
                 }
 
@@ -539,13 +547,7 @@ export function emitTraceInit(
     firstBlock: number,
     totalResults: number
 ) {
-    socket.emit('message', {
-        reqUUID: requestUUID,
-        type: 'trace_init',
-        mode: 'history',
-        first_block: firstBlock,
-        results: totalResults
-    });
+    new SocketIOHistoryDelivery(socket).begin({requestId: requestUUID, firstBlock, totalResults});
 }
 
 // export async function streamPastActions(
