@@ -3,6 +3,7 @@ import {assertProtocolAbiObservationFacts} from './abi-observation-facts.js';
 import {protocolAbiObservationId, protocolAbiObservationJson, type ProtocolAbiObservationRecord} from './abi-observation-store.js';
 import type {ProtocolSourceProfile} from './source-bindings.js';
 import {isProtocolHex} from './hex.js';
+import {verifyNativeGenesisRecord, type ProtocolNativeGenesisCoverage, type ProtocolNativeGenesisVerifier} from './native-genesis.js';
 
 interface ProtocolAbiAccountSourceBase {
     readonly observationId: string;
@@ -40,7 +41,7 @@ export interface ProtocolAbiActionBinding extends ProtocolAbiActionInput {
 export type ProtocolAbiBlockReduction =
     | {readonly status: 'complete'; readonly reset: false;
         readonly bindings: readonly ProtocolAbiActionBinding[]; readonly updates: readonly ProtocolAbiAccountUpdate[];
-        readonly lastGlobalSequence: string | null}
+        readonly lastGlobalSequence: string | null; readonly nativeGenesis?: ProtocolNativeGenesisCoverage}
     | {readonly status: 'incomplete'; readonly reset: true; readonly bindings: readonly []; readonly updates: readonly [];
         readonly lastGlobalSequence: null; readonly reason: {readonly code: string; readonly message: string}};
 
@@ -128,17 +129,34 @@ function incomplete(code: string, message: string): ProtocolAbiBlockReduction {
  * Resolver/storage exceptions intentionally propagate for supervised redelivery.
  */
 export async function reduceProtocolAbiBlock(record: ProtocolAbiObservationRecord, resolveAccount: ProtocolAbiAccountResolver,
-                                            priorLastGlobalSequence?: string | null): Promise<ProtocolAbiBlockReduction> {
+                                            priorLastGlobalSequence?: string | null,
+                                            verifyNativeGenesis?: ProtocolNativeGenesisVerifier): Promise<ProtocolAbiBlockReduction> {
     try {
         try {protocolAbiObservationJson(record);} catch {
             throw new InvalidAbiReduction('protocol_abi_invalid_record', 'Invalid portable ABI observation record');
         }
-        requireFact(record && record.observation && ['observed', 'incomplete'].includes(record.observation.status),
+        requireFact(record && record.observation && ['observed', 'native-genesis', 'incomplete'].includes(record.observation.status),
             'Invalid ABI observation record status', 'protocol_abi_invalid_record');
         if (record.observation.status === 'incomplete') return incomplete('protocol_abi_observation_incomplete', 'Source ABI observations are incomplete');
         let observationId: string;
         try {observationId = protocolAbiObservationId(record);} catch {
             throw new InvalidAbiReduction('protocol_abi_invalid_record', 'Invalid ABI observation source identity');
+        }
+        if (record.observation.status === 'native-genesis') {
+            requireFact(priorLastGlobalSequence == null, 'Native genesis cannot extend a receipt fence');
+            let facts: ReturnType<typeof verifyNativeGenesisRecord>;
+            try {facts = verifyNativeGenesisRecord(record, verifyNativeGenesis);} catch {
+                throw new InvalidAbiReduction('protocol_native_genesis_unverified', 'Native genesis source verification failed');
+            }
+            const protocol = immutableProfile(record.protocol);
+            const updates = facts.abiStates.map(final => Object.freeze({account: final.account,
+                state: Object.freeze({account: final.account, present: final.present, abiHex: final.abiHex, protocol,
+                    source: Object.freeze({observationId, chainId: record.source.chainId, blockNum: 1,
+                        blockId: record.source.blockId, inputSha256: record.source.inputSha256,
+                        phase: 'block-end' as const, deltaOrdinal: final.deltaOrdinal})})}));
+            updates.sort((left, right) => left.account < right.account ? -1 : left.account > right.account ? 1 : 0);
+            return Object.freeze({status: 'complete', reset: false, bindings: Object.freeze([]), updates: Object.freeze(updates),
+                lastGlobalSequence: null, nativeGenesis: Object.freeze({previousBlockId: facts.previousBlockId, applicationState: 'empty'})});
         }
         requireFact(record.capture.schemaJson !== null && !!record.capture.tracesHex && !!record.capture.deltasHex,
             'Observed facts require their complete retained source sections');
@@ -251,6 +269,10 @@ export async function reduceProtocolAbiBlock(record: ProtocolAbiObservationRecor
             const priorState = await getAccount(final.account);
             requireFact(!priorState || !final.present || (priorState.present ? priorState.abiHex === final.abiHex : final.abiHex === ''),
                 'Final ABI changed without an observed publication', 'protocol_abi_final_state_mismatch');
+            // Ordinary account touches repeat the same ABI in final-state deltas. Retain the
+            // deployment epoch, rather than inventing a deployment at every such block. An
+            // explicit native ABI publication (even of identical bytes) was handled above.
+            if (priorState && priorState.present === final.present && priorState.abiHex === final.abiHex) continue;
             const source: ProtocolAbiAccountSource = Object.freeze({...position, phase: 'block-end', deltaOrdinal: final.deltaOrdinal});
             const state = Object.freeze({account: final.account, present: final.present, abiHex: final.abiHex, protocol, source});
             accounts.set(final.account, state);updated.set(final.account, state);

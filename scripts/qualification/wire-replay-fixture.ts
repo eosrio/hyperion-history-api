@@ -7,9 +7,10 @@ import {tmpdir} from 'node:os';
 import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {WebSocket, WebSocketServer} from 'ws';
+import type {ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
 
 export const wireReplayPins = Object.freeze({
-    packageRevision: '8b7d8a39f098bde77fa8d8f22a20a4fffc3e457b',
+    packageRevision: '7167659e9c043cb3351074fcacb40200cc57f3a3',
     profileId: 'wire-sysio-7dede884-engineering-v1', sourceRevision: '7dede884e0150d36fa788e85a119e10653ade8ca',
     chainId: '9f70136446c1a3ea95deefbbe4aaeee4f31f16870eba976fcb7054172fbffacf',
     archiveSha256: '9a0b82e070662be562b2da3d4db61f1f7e143f1b32df47fef7a831b120077026',
@@ -139,6 +140,8 @@ export async function auditWireReplayFixture(options: AuditWireReplayOptions = {
     if (options.packageRoot !== undefined) assert.equal(await realpath(options.packageRoot), packageRoot, 'fixture must use the installed selected package');
     const {loadChainProtocol} = await import('../../build/indexer/protocol/selection.js');
     const selection = await loadChainProtocol({provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId: wireReplayPins.profileId});
+    const provider = selection.provider as ProtocolProvider;
+    assert.ok(provider.observeBlockAbi, 'selected engineering profile must observe source-bound ABI deployments');
     assert.equal(selection.components?.length, 2);
     for (const component of selection.components!) assert.equal(component.sourceRevision, wireReplayPins.packageRevision);
     const fixtureRoot = join(packageRoot, 'fixtures/codec/application-capture-20261020');
@@ -206,7 +209,7 @@ export async function auditWireReplayFixture(options: AuditWireReplayOptions = {
             const deltaRows = bundle.deltaRows.map((row: any, ordinal: number) => {
                 assert.ok(row.present === 0 || row.present === 1); return {...row, present: row.present === 1, ordinal};
             }); rows += deltaRows.length;
-            const observations = selection.provider.observeBlockAbi!({traces: bundle.traces,
+            const observations = provider.observeBlockAbi({traces: bundle.traces,
                 accountRows: deltaRows.filter((row: any) => row.stream === 'account').map((row: any) =>
                     ({ordinal: row.ordinal, present: row.present, raw: Uint8Array.from(Buffer.from(row.rawHex, 'hex')), value: row.value}))},
                 {chainId: wireReplayPins.chainId, blockId: entry.blockId, blockNum: entry.blockNum, previousBlockId: previous});

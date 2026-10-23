@@ -80,11 +80,16 @@ compatibility; unsupported hosts fail rather than skipping the database checks.
 
 ## Remaining release work
 
-Existing-worker/RabbitMQ integration, operator configuration and HTTP serving remain
-[History API #191](https://github.com/eosrio/hyperion-history-api/issues/191).
+The opt-in existing-worker and HTTP path is tracked in
+[History API #191](https://github.com/eosrio/hyperion-history-api/issues/191). Its
+production integration fixture must exercise the real source, RabbitMQ, MongoDB
+and HTTP path; the adapter-only fixture above does not establish that acceptance.
 Canonical fork rollback, recovery-window input coverage, live mapping activation
 and the broader restart lifecycle remain
 [tools #21](https://github.com/eosrio/hyperion-tools/issues/21) and its follow-ups.
+The separate [bounded rollback path](projection-rollback.md) adds opt-in SDK v2
+runtime/adapter recovery and a native process-crash fixture; the production
+controller and live source/publication integration still require their own work.
 Legacy extension state integration remains
 [History API #221](https://github.com/eosrio/hyperion-history-api/issues/221).
 
@@ -92,3 +97,73 @@ This fixture does not qualify Wire testnet support, AtomicAssets/AtomicMarket
 parity, WormDB, a retained-history upgrade or the complete M1 operator path. No
 existing Elasticsearch history must be reindexed to run this independent state
 projection fixture.
+
+## Opt-in operator and HTTP contract
+
+Set `features.portable_state` in the chain configuration. It selects exactly one
+backend for that chain and an explicit list of fixed SDK `ProjectionDefinition`
+objects. Each definition's source contract/table is its allowed indexing scope.
+The existing `features.contract_state` configuration remains a separate legacy
+path; its native MongoDB fields and filters do not become portable queries.
+
+```typescript
+features.portable_state = {
+  backend: {kind: 'mongodb', id: 'chain-state-1', database: 'hyperion_portable_state'},
+  projections: [definition],
+};
+```
+
+The database uses the existing operator MongoDB connection. The packaged
+`@eosrio/hyperion-backend-mongodb` adapter owns native execution and isolated
+collections. Definitions include an immutable mapping revision, fixed source ABI
+SHA-256 and the source-proven ABI deployment identity
+`<deployment-block-id>:<contract>:<abi-sha256>`. A current-head ABI RPC response is
+not deployment authority. The host derives a stable instance generation from the
+chain, backend and individual definition; configuration has no generation or ready
+flag. Unrelated projection additions do not replace existing instance identities.
+Changed definitions still require the adapter's explicit activation/cutover
+contract rather than silently adopting existing state.
+
+The API attaches read-only consumers. It never initializes storage, publishes a
+ready flag or marks a failed projection complete. A ready adapter checkpoint must
+be greater than zero and have current certified canonical source coverage from
+actual block one. Readiness, exact binding/checkpoint and source authority are
+checked again after asynchronous query work. Snapshot rows and an optional count
+come from the shared logical query contract.
+
+`POST /v2/state/query` accepts a configured projection ID and SDK query:
+
+```json
+{
+  "projection": "inventory",
+  "query": {
+    "filter": [{"field": "owner", "op": "eq", "value": "alice"}],
+    "limit": 100,
+    "count": {"upTo": 10000}
+  }
+}
+```
+
+The response is `ProjectionQueryResult`: `view`, `rows`, optional `nextAfterKey`
+and optional bounded `count`. Supply `query.afterKey` from `nextAfterKey` for the
+next page. Typed equality preserves false, zero and explicit null. Native database
+operators, arbitrary sort/skip and unknown fields are rejected. Invalid queries
+return 400; an unknown configured projection ID returns 404. Missing, incomplete,
+stale or source-fenced state returns 503 with `retryable:true` and `Retry-After: 1`.
+An initialized empty database at checkpoint zero cannot return a successful page.
+
+Shared browser-readable response headers are `Hyperion-State-Block-Num`,
+`Hyperion-State-Block-Id` and `Hyperion-State-Last-Valid`. They identify the actual
+returned view; this slice always uses `false` for last-valid mode and serves no
+fallback after failure. This route uses `Cache-Control: no-store` and bypasses
+the history response cache, so history's last indexed block cannot replace its
+state checkpoint. Existing extension state routes and streams retain their
+readiness guards. Stream-client compatibility remains a separate
+[#231](https://github.com/eosrio/hyperion-history-api/issues/231) gate.
+
+The [actual-source worker reproduction](qualification/portable-state-worker.md)
+packages a bounded Wire primary-KV tracer through the existing workers, RabbitMQ,
+portable runtime, MongoDB adapter and real HTTP API, including controlled write
+failure and projection isolation checks. Its source fixture and instructions do
+not establish a successful run; record exact runtime results separately from
+fork, crash, Bun and broader release qualification.

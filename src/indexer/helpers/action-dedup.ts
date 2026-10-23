@@ -33,19 +33,22 @@ import { ActionTrace } from "../../interfaces/action-trace.js";
  */
 export function groupActionTraces(processedTraces: ActionTrace[], certifiedOrigins = false): ActionTrace[] {
     if (certifiedOrigins) {
+        // Schema2 raw/incomplete forms retain independently certified source ancestry, not value authority.
+        const hasOrigin = (proof: ActionTrace['protocol']): proof is NonNullable<ActionTrace['protocol']> & {input: {inputActionOrdinal: number}} =>
+            !!proof && (!('status' in proof) || proof.schemaVersion === 2);
         const groups = new Map<string, ActionTrace[]>();
         let rawOccurrence = 0;
         for (const trace of processedTraces) {
             const proof = trace.protocol;
             // No digest heuristic may invent a notification origin for unproved input.
-            const key = proof && !('status' in proof)
+            const key = hasOrigin(proof)
                 ? `${proof.input.transactionId}:${proof.input.inputActionOrdinal}`
                 : `raw:${rawOccurrence++}`;
             const members = groups.get(key) ?? [];
             members.push(trace); groups.set(key, members);
         }
         return [...groups.values()].map(members => {
-            const trace = members.find(member => member.protocol && !('status' in member.protocol)
+            const trace = members.find(member => hasOrigin(member.protocol)
                 && member.protocol.input.actionOrdinal === member.protocol.input.inputActionOrdinal) ?? members[0];
             trace['receipts'] = members.map(member => ({...member.receipt}));
             trace['code_sequence'] = trace.receipt.code_sequence;

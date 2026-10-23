@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {currentProofConsumerScope, assertProofConsumerCapability, trackProofConsumerOperation, proofConsumerSignal, type ProofConsumerScope} from './proof-consumer-scope.js';
 import {setTimeout as delay} from 'node:timers/promises';
 import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
 import type {ProtocolAbiAccountState} from './abi-reducer.js';
@@ -7,12 +8,17 @@ import {ProtocolAbiFrontierReadError,type ProtocolAbiFrontierStore} from './abi-
 import {protocolImmutableJson} from './immutable-bundle-store.js';
 import {isProtocolHex} from './hex.js';
 import type {ProtocolAbiCoordinatorControl} from './abi-coordinator.js';
+import {validNativeGenesisCoverage, type ProtocolNativeGenesisCoverage} from './native-genesis.js';
+import type {ProjectionFrame} from '../projection/runtime.js';
+import type {ProtocolNativeActionProofMetadata, ProtocolNativeActionSourceMetadata} from './native-authorization.js';
 
 export interface ProtocolAbiProofSource {readonly chainId:string;readonly blockNum:number;readonly blockId:string}
 export type ProtocolAbiProofBinding=Omit<ProtocolAbiActionInput,'rawHex'> & {readonly rawSha256:string;readonly stateId:string|null};
 export interface ProtocolAbiProofView {
     readonly certificateId:string;readonly commitId:string;readonly selectionId:string;
     readonly source:ProtocolSourcePosition;readonly bindings:readonly ProtocolAbiProofBinding[];
+    /** New epochs require native classification before any decoded v1 contract serving. */
+    readonly nativeActionInterfaceVersion?:1;
 }
 /** Kept outside act.data, before grouping, numeric conversion or contract enrichment. */
 export interface ProtocolActionProofMetadata {
@@ -24,12 +30,16 @@ export interface ProtocolActionSourceMetadata {
     readonly input:Omit<ProtocolAbiActionInput,'inputActionOrdinal'>;readonly status:'incomplete';
     readonly error:{readonly code:string;readonly message:string};
 }
-export type ProtocolActionMetadata=ProtocolActionProofMetadata|ProtocolActionSourceMetadata;
+export type ProtocolActionMetadata=ProtocolActionProofMetadata|ProtocolActionSourceMetadata|ProtocolNativeActionProofMetadata|ProtocolNativeActionSourceMetadata;
+/** Exact canonical input membership only; stateId does not grant ABI or native decoding authority. */
+export interface ProtocolAbiActionOccurrence {readonly binding:ProtocolAbiProofBinding}
 export interface ProtocolAbiResolvedAction {readonly binding:ProtocolAbiProofBinding;readonly state:ProtocolAbiAccountState}
 export interface ProtocolAbiProofReadOptions {readonly signal?:AbortSignal}
 export interface ProtocolAbiProofReaderOptions {
     readonly chainId:string;readonly profile:ProtocolSourceProfile;readonly store:ProtocolAbiFrontierStore;
     readonly maxAncestryBlocks?:number;
+    /** Internal worker wiring only; public/API readers remain independent. */
+    readonly requireAttemptScope?:boolean;
 }
 export class ProtocolAbiProofUnavailableError extends Error {
     readonly statusCode=503;
@@ -45,8 +55,11 @@ interface CanonicalCommit {
     source:ProtocolSourcePosition;previousCommitId:string|null;selectionId:string;
     status:'complete'|'incomplete';stateRootId:string|null;bindings:ProtocolAbiProofBinding[];
     coverageStart:number|null;lastGlobalSequence:string|null;
+    nativeGenesis?:ProtocolNativeGenesisCoverage;
+    nativeActionInterfaceVersion?:1;
 }
-interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit}
+interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit;scope?:ProofConsumerScope}
+type OriginalActionInput=Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number};
 const hex64=/^[0-9a-f]{64}$/;
 const text=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=256&&value.isWellFormed();
 const actionName=(value:unknown):value is string=>typeof value==='string'&&value.length<=256&&value.isWellFormed();
@@ -93,6 +106,23 @@ export class ProtocolAbiProofReader {
         this.maximumAncestry=options.maxAncestryBlocks??256;
         if(!uint(this.maximumAncestry,1)||this.maximumAncestry>4096)throw new Error('Invalid ABI proof ancestry bound');
     }
+    /** Independent issuance/cancellation state over storage that cannot initialize or write indices. */
+    asReadOnly():ProtocolAbiProofReader {
+        return new ProtocolAbiProofReader({chainId:this.options.chainId,profile:this.profile,
+            store:this.options.store.asReadOnly(),maxAncestryBlocks:this.maximumAncestry,requireAttemptScope:this.options.requireAttemptScope});
+    }
+    private consume<T>(view:ProtocolAbiProofView|undefined, operation:()=>Promise<T>):Promise<T> {
+        const issued=view&&this.issued.get(view),scope=issued?issued.scope:currentProofConsumerScope(this.options.requireAttemptScope);
+        assertProofConsumerCapability(scope);
+        return trackProofConsumerOperation(operation,scope);
+    }
+    /** Private host capability check before adjacent source reads; it grants no fresh canonical authority. */
+    assertConsumerScope(view:ProtocolAbiProofView):void {
+        const issued=this.issued.get(view);
+        if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
+        assertProofConsumerCapability(issued.scope);
+        currentProofConsumerScope(this.options.requireAttemptScope);
+    }
     private sameProfile(value:unknown):boolean {try{return json(value)===json(this.profile);}catch{return false;}}
     private assertActive(signal?:AbortSignal):void {
         if(signal?.aborted)unavailable('proof_cancelled','ABI proof request was cancelled');
@@ -101,7 +131,7 @@ export class ProtocolAbiProofReader {
         this.assertActive(signal);
         if(this.activeReads>=64)unavailable('proof_busy','Canonical ABI proof read budget is exhausted');
         this.activeReads++;
-        try{const result=await operation();this.assertActive(signal);return result;}catch(error:any){
+        try{const result=await trackProofConsumerOperation(operation);this.assertActive(signal);return result;}catch(error:any){
             this.assertActive(signal);
             if(error instanceof ProtocolAbiFrontierReadError)unavailable(error.code==='invalid'?'invalid_proof':code,error.message);
             if(error?.meta?.statusCode===404&&error?.meta?.body?.error?.type==='index_not_found_exception')
@@ -137,6 +167,12 @@ export class ProtocolAbiProofReader {
             &&value.coverageStart===null&&value.lastGlobalSequence===null,'Incomplete ABI commit grants knowledge');
         else requireProof(ident('h45abi1',value.observationId)&&hex64.test(value.observationDigest)
             &&value.coverageStart!==null,'Complete ABI commit lacks its retained observation');
+        if(value.nativeGenesis!==undefined)requireProof(validNativeGenesisCoverage(value.nativeGenesis)&&value.status==='complete'
+            &&value.source.blockNum===1&&value.source.previousBlockId===null&&value.previousCommitId===null
+            &&value.bindings.length===0&&value.lastGlobalSequence===null&&value.coverageStart===1,
+            'Invalid native genesis coverage');
+        if(value.nativeActionInterfaceVersion!==undefined)requireProof(value.nativeActionInterfaceVersion===1,
+            'Unsupported native action interface marker');
         const seen=new Set<string>();
         for(const binding of value.bindings){
             const key=binding.transactionId+':'+binding.actionOrdinal;
@@ -149,6 +185,8 @@ export class ProtocolAbiProofReader {
         return value;
     }
     async open(source:ProtocolAbiProofSource,selectionId?:string,{signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiProofView> {
+        return this.consume(undefined,async()=>{
+        signal=proofConsumerSignal(signal);
         requireProof(source?.chainId===this.options.chainId&&uint(source.blockNum,1)&&hex64.test(source.blockId)
             &&(selectionId===undefined||ident('h45srcsel1',selectionId)),'Invalid requested ABI source');
         // Snapshot caller-owned data before any storage await.
@@ -178,12 +216,16 @@ export class ProtocolAbiProofReader {
         if(commit.source.blockId!==source.blockId||(selectionId!==undefined&&selectionId!==commit.selectionId))
             unavailable('source_not_canonical','Requested ABI source selection is not canonical');
         if(commit.status!=='complete')unavailable('source_incomplete','Requested ABI source has incomplete knowledge');
-        const view=freeze(copy({certificateId,commitId,selectionId:commit.selectionId,source:commit.source,bindings:commit.bindings}));
-        this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit))});
+        const view=freeze(copy({certificateId,commitId,selectionId:commit.selectionId,source:commit.source,bindings:commit.bindings,
+            ...(commit.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})}));
+        this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),scope:currentProofConsumerScope()});
         await this.revalidate(view,{signal});return view;
+        });
     }
     async waitForOpen(source:ProtocolAbiProofSource,selectionId?:string,
                       options:{timeoutMs?:number;signal?:AbortSignal}={}):Promise<ProtocolAbiProofView> {
+        return this.consume(undefined,async()=>{
+        options={...options,signal:proofConsumerSignal(options.signal)};
         const timeout=options.timeoutMs??5000;
         if(!Number.isSafeInteger(timeout)||timeout<1||timeout>30000)throw new Error('Invalid ABI proof wait bound');
         source=copy(source);const controller=new AbortController();let timedOut=false;
@@ -216,16 +258,31 @@ export class ProtocolAbiProofReader {
         try{return await Promise.race([poll(),aborted]);}
         finally{clearTimeout(timer);options.signal?.removeEventListener('abort',cancel);
             controller.signal.removeEventListener('abort',onAbort);controller.abort();}
+        });
     }
     async revalidate(view:ProtocolAbiProofView,{signal}:ProtocolAbiProofReadOptions={}):Promise<void> {
+        return this.consume(view,async()=>{
+        signal=proofConsumerSignal(signal);
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
         const current=await this.authority(signal),prior=issued.certificate;
         if(current.ownerId!==prior.ownerId||current.generation!==prior.generation||current.head.blockNum<prior.head.blockNum
             ||(current.head.blockNum===prior.head.blockNum&&json(current.head)!==json(prior.head)))
             unavailable('authority_changed','Canonical ABI authority changed during consumption');
+        });
     }
-    async action(view:ProtocolAbiProofView,input:Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number},
-                 {signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiResolvedAction> {
+    /** An issued, current proof of native empty application state supplies the actual 0 -> 1 frame. */
+    async nativeGenesisFrame(view:ProtocolAbiProofView,options:ProtocolAbiProofReadOptions={}):Promise<ProjectionFrame> {
+        return this.consume(view,async()=>{
+        options={...options,signal:proofConsumerSignal(options.signal)};
+        const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
+        const facts=issued.commit.nativeGenesis;
+        if(!facts)unavailable('native_genesis_unavailable','Source has no verified native genesis application state');
+        await this.revalidate(view,options);
+        return freeze({chainId:issued.commit.source.chainId,block:{blockNum:1,blockId:issued.commit.source.blockId,
+            previousBlockId:facts.previousBlockId},changes:[]});
+        });
+    }
+    private actionBinding(view:ProtocolAbiProofView,input:OriginalActionInput,signal?:AbortSignal):ProtocolAbiProofBinding {
         this.assertActive(signal);
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
         requireProof(input&&hex64.test(input.transactionId)&&ordinal(input.actionOrdinal,1)&&[input.receiver,input.account].every(text)&&actionName(input.name)
@@ -238,21 +295,68 @@ export class ProtocolAbiProofReader {
             ||(input.inputActionOrdinal!==undefined&&binding.inputActionOrdinal!==input.inputActionOrdinal)
             ||binding.rawSha256!==hash(Buffer.from(input.rawHex,'hex')))
             unavailable('input_not_bound','Original action does not match its certified ABI input binding');
+        return binding;
+    }
+    /** Proves the original occurrence without reading, resolving or validating any account ABI state. */
+    async occurrence(view:ProtocolAbiProofView,input:OriginalActionInput,
+                     {signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiActionOccurrence> {
+        return this.consume(view,async()=>{
+        signal=proofConsumerSignal(signal);
+        const binding=this.actionBinding(view,input,signal);
+        await this.revalidate(view,{signal});return freeze({binding});
+        });
+    }
+    async action(view:ProtocolAbiProofView,input:OriginalActionInput,
+                 {signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiResolvedAction> {
+        return this.consume(view,async()=>{
+        signal=proofConsumerSignal(signal);
+        const binding=this.actionBinding(view,input,signal);
         if(!binding.stateId)unavailable('abi_state_unavailable','Action input ABI state is unknown');
-        const state=this.state(await this.retained(()=>this.options.store.readAccountState(binding.stateId!,signal),undefined,signal),view,input.account);
+        const state=this.state(await this.retained(()=>this.options.store.readAccountState(binding.stateId!,signal),undefined,signal),view,binding.account);
         await this.revalidate(view,{signal});return freeze({binding,state});
+        });
     }
     async finalState(view:ProtocolAbiProofView,account:string,{signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiAccountState> {
+        return this.consume(view,async()=>{
+        signal=proofConsumerSignal(signal);
         this.assertActive(signal);
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
         requireProof(text(account),'Invalid final ABI account');
         const state=this.state(await this.retained(()=>this.options.store.readAccount(issued.commit.stateRootId,account,signal),undefined,signal),view,account);
         await this.revalidate(view,{signal});return state;
+        });
+    }
+    /** Inspect known absence/empty barriers for lifecycle fencing; this does not authorize decoding. */
+    async inspectFinalState(view:ProtocolAbiProofView,account:string,
+                            {signal,atBlockNum}:ProtocolAbiProofReadOptions&{atBlockNum?:number}={}):Promise<ProtocolAbiAccountState|null> {
+        return this.consume(view,async()=>{
+        signal=proofConsumerSignal(signal);
+        this.assertActive(signal);
+        const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
+        atBlockNum??=view.source.blockNum;
+        requireProof(text(account)&&uint(atBlockNum,1)&&atBlockNum<=view.source.blockNum
+            &&view.source.blockNum-atBlockNum<=this.maximumAncestry,'Invalid ABI inspection ancestry');
+        let commit=issued.commit;
+        while(commit.source.blockNum>atBlockNum){
+            requireProof(commit.previousCommitId,'ABI inspection ancestry is not retained');
+            const previous=this.validateCommit(await this.retained(()=>this.options.store.readCommit(commit.previousCommitId!,signal),'ancestry_unavailable',signal));
+            requireProof(previous.status==='complete'&&previous.source.blockNum+1===commit.source.blockNum
+                &&previous.source.blockId===commit.source.previousBlockId,'ABI inspection ancestry is not complete and contiguous');
+            commit=previous;
+        }
+        const raw=await this.retained(()=>this.options.store.readAccount(commit.stateRootId,account,signal),undefined,signal);
+        const state=raw===null?null:this.knownState(raw,{...view,source:commit.source},account);
+        await this.revalidate(view,{signal});return state;
+        });
     }
     private state(value:any,view:ProtocolAbiProofView,account:string):ProtocolAbiAccountState {
         if(!value||value.account!==account||value.present!==true||!isProtocolHex(value.abiHex)||!value.abiHex)
             unavailable('abi_state_unavailable','Certified ABI state is unknown, absent or empty');
-        requireProof(this.sameProfile(value.protocol)&&value.source?.chainId===this.options.chainId
+        return this.knownState(value,view,account);
+    }
+    private knownState(value:any,view:ProtocolAbiProofView,account:string):ProtocolAbiAccountState {
+        requireProof(value&&value.account===account&&typeof value.present==='boolean'&&isProtocolHex(value.abiHex)
+            &&this.sameProfile(value.protocol)&&value.source?.chainId===this.options.chainId
             &&uint(value.source.blockNum,1)&&value.source.blockNum<=view.source.blockNum&&hex64.test(value.source.blockId)
             &&(value.source.blockNum!==view.source.blockNum||value.source.blockId===view.source.blockId)
             &&ident('h45abi1',value.source.observationId)&&hex64.test(value.source.inputSha256),'Invalid ABI state provenance');

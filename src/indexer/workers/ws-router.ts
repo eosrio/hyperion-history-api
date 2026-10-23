@@ -469,6 +469,11 @@ export default class WSRouter extends HyperionWorker {
                         this.removeClient(data.id);
                         break;
                     }
+                    case 'client_reconnected': {
+                        callback(this.reconnectClient(data.old_client_socket, data.client_socket,
+                            data.retained_request_ids, relaySocket.id));
+                        break;
+                    }
                     case 'cancel_request': {
                         const result = this.removeClientRequest(data.client_socket_id, data.reqUUID);
                         callback({
@@ -602,6 +607,31 @@ export default class WSRouter extends HyperionWorker {
         }
     }
 
+    private reconnectClient(previousId: unknown, newId: unknown, retainedIds: unknown,
+        relayId: string): {status: 'OK' | 'ERROR' | 'NOT_FOUND'} {
+        if (typeof previousId !== 'string' || typeof newId !== 'string' || previousId === newId ||
+            !Array.isArray(retainedIds) || retainedIds.some(id => typeof id !== 'string'))
+            return {status: 'ERROR'};
+        const previous = this.clientMap.get(previousId);
+        if (!previous) return {status: 'NOT_FOUND'};
+        if (previous.relayId !== relayId) return {status: 'ERROR'};
+        const current = this.clientMap.get(newId);
+        if (current && current.relayId !== relayId) return {status: 'ERROR'};
+        const retained = new Set<string>(retainedIds);
+        if ([...retained].some(id => !previous.requests.has(id) || current?.requests.has(id)))
+            return {status: 'ERROR'};
+        for (const [uuid, request] of previous.requests) {
+            if (!retained.has(uuid)) this.removeRequestByID(request, uuid);
+        }
+        if (retained.size) {
+            const destination = current ?? {relayId, requests: new Map<string, TrackedRequest>()};
+            for (const uuid of retained) destination.requests.set(uuid, previous.requests.get(uuid)!);
+            this.clientMap.set(newId, destination);
+        }
+        this.clientMap.delete(previousId);
+        return {status: 'OK'};
+    }
+
     private removeClientRequest(client_socket_id: any, reqUUID: any) {
         let removed = false;
         debugLog("Removing client request: ", client_socket_id, reqUUID);
@@ -617,6 +647,7 @@ export default class WSRouter extends HyperionWorker {
                     removed = true;
                 }
             }
+            if (requests.size === 0) this.clientMap.delete(client_socket_id);
         }
         return removed;
     }
@@ -730,46 +761,51 @@ export default class WSRouter extends HyperionWorker {
     }
 
     private replaceRelay(newId: string, lastRelayId: string) {
-        this.relays[newId] = this.relays[lastRelayId];
+        const previous = this.relays[lastRelayId];
+        if (!previous) {
+            this.relays[newId] = {clients: 0, connected: true};
+            this.countClients();
+            return;
+        }
+        this.relays[newId] = {...previous, connected: true};
+        delete this.relays[lastRelayId];
+        for (const client of this.clientMap.values()) {
+            if (client.relayId === lastRelayId) client.relayId = newId;
+            for (const request of client.requests.values())
+                if (request.relay_id === lastRelayId) request.relay_id = newId;
+        }
         this.countClients();
+
+        const moveLinks = (relayMap: Map<string, Set<string>>) => {
+            const ids = relayMap.get(lastRelayId);
+            if (!ids) return;
+            const destination = relayMap.get(newId) ?? new Set<string>();
+            for (const id of ids) destination.add(id);
+            relayMap.set(newId, destination);
+            relayMap.delete(lastRelayId);
+        };
 
         // DELTA PAYERS
         this.payerRelayMap.forEach((relayMap) => {
-            const relayData = relayMap.get(lastRelayId);
-            if (relayData) {
-                relayMap.set(newId, relayData);
-                relayData.delete(lastRelayId);
-            }
+            moveLinks(relayMap);
         });
 
         // ACTION NOTIFIED
         this.notifiedRelayMap.forEach((relayMap) => {
-            const relayData = relayMap.get(lastRelayId);
-            if (relayData) {
-                relayMap.set(newId, relayData);
-                relayData.delete(lastRelayId);
-            }
+            moveLinks(relayMap);
         });
 
         // ACTION CONTRACT/ACTIONS
         this.contractActionRelayMap.forEach((actionMap) => {
             actionMap.forEach((relayMap) => {
-                const relayData = relayMap.get(lastRelayId);
-                if (relayData) {
-                    relayMap.set(newId, relayData);
-                    relayData.delete(lastRelayId);
-                }
+                moveLinks(relayMap);
             });
         });
 
         // DELTA CODE/TABLES
         this.codeTableRelayMap.forEach((tableMap) => {
             tableMap.forEach((relayMap) => {
-                const relayData = relayMap.get(lastRelayId);
-                if (relayData) {
-                    relayMap.set(newId, relayData);
-                    relayData.delete(lastRelayId);
-                }
+                moveLinks(relayMap);
             });
         });
     }

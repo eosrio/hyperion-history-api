@@ -12,6 +12,7 @@ import fastifyMongodb from "@fastify/mongodb";
 
 // custom plugins
 import fastify_antelope from "./plugins/fastify-antelope.js";
+import {STATE_RESPONSE_HEADERS} from './helpers/state-headers.js';
 
 export async function registerPlugins(server: FastifyInstance, params: any) {
 
@@ -19,7 +20,7 @@ export async function registerPlugins(server: FastifyInstance, params: any) {
         server.register(fastifyMongodb, params.fastify_mongo);
     }
 
-    server.register(fastifyCors);
+    server.register(fastifyCors, {exposedHeaders: [...STATE_RESPONSE_HEADERS]});
     server.register(formBodyPlugin);
     server.register(fastifyRedis, params.fastify_redis);
 

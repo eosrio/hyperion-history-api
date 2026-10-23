@@ -1,162 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MongoServerError } from 'mongodb';
-import { createMongoDbProjectionAdapter } from '../dist/index.js';
-
-const copy = value => structuredClone(value);
-const hex = value => value.toString(16).padStart(64, '0');
-const genesis = { blockNum: 0, blockId: hex(0) };
-const definition = {
-    schemaVersion: 1, id: 'account-balance', mappingRevision: hex(10),
-    source: { contract: 'token', table: 'accounts', abiDeployment: 'deployment-1', abiSha256: hex(11) },
-    fields: [
-        { name: 'owner', path: ['owner'], type: 'string' },
-        { name: 'balance', path: ['balance'], type: 'integer' },
-        { name: 'enabled', path: ['enabled'], type: 'boolean' },
-        { name: 'empty', path: ['empty'], type: 'null' },
-    ], initialization: { kind: 'genesis' },
-};
-const binding = {
-    chainId: hex(12), backendId: 'fixture-backend', projectionId: definition.id,
-    mappingRevision: definition.mappingRevision, abiDeployment: definition.source.abiDeployment,
-    abiSha256: definition.source.abiSha256, generation: 'generation-1',
-};
-const value = (owner, balance) => ({ owner, balance, enabled: true, empty: null });
-const put = (key, owner, balance) => ({ kind: 'put', key, value: value(owner, balance) });
-const request = (number, mutations, selectedBinding = binding) => ({
-    binding: selectedBinding,
-    previous: { blockNum: number - 1, blockId: hex(number - 1) },
-    block: { blockNum: number, blockId: hex(number), previousBlockId: hex(number - 1) }, mutations,
-});
-const errorCode = code => error => error?.code === code;
-
-/** Boundary fixture; transaction guarantees additionally require the real-Mongo runner. */
-function databaseFixture() {
-    let storage = new Map();
-    const native = [];
-    const fixture = {
-        hello: { setName: 'fixture', isWritablePrimary: true, logicalSessionTimeoutMinutes: 30, maxWireVersion: 25 },
-        failPut: false,
-        foreignErrors: false,
-        beforeFind: null,
-        native,
-        get storage() { return storage; },
-    };
-    const mapFor = (name, session) => {
-        const selected = session?.storage ?? storage;
-        if (!selected.has(name)) selected.set(name, new Map());
-        return selected.get(name);
-    };
-    const get = (record, path) => path.split('.').reduce((parent, key) => parent?.[key], record);
-    const matches = (record, filter) => Object.entries(filter).every(([key, predicate]) => {
-        if (key === '$and') return predicate.every(term => matches(record, term));
-        const actual = get(record, key);
-        if (predicate && typeof predicate === 'object' && Object.hasOwn(predicate, '$eq')) return actual === predicate.$eq;
-        if (predicate && typeof predicate === 'object' && Object.hasOwn(predicate, '$gt')) {
-            return Buffer.compare(Buffer.from(actual), Buffer.from(predicate.$gt)) > 0;
-        }
-        return JSON.stringify(actual) === JSON.stringify(predicate);
-    });
-    const update = (collection, filter, change, session) => {
-        const records = mapFor(collection, session);
-        for (const [key, record] of records) if (matches(record, filter)) {
-            const changed = { ...record, ...copy(change.$set) };
-            records.set(key, changed);
-            return changed;
-        }
-        return null;
-    };
-    const collection = name => ({
-        collectionName: name,
-        async insertOne(record, options) {
-            native.push({ command: 'insert', name, options });
-            const records = mapFor(name, options?.session);
-            if (records.has(record._id)) {
-                throw fixture.foreignErrors ? Object.assign(new Error('duplicate'), { name: 'MongoServerError', code: 11000 }) :
-                    new MongoServerError({ message: 'duplicate', code: 11000 });
-            }
-            records.set(record._id, copy(record));
-            return { acknowledged: true, insertedId: record._id };
-        },
-        async findOne(filter, options) {
-            native.push({ command: 'findOne', name, options });
-            if (fixture.beforeFind) await fixture.beforeFind(name, options);
-            return copy([...mapFor(name, options?.session).values()].find(record => matches(record, filter)) ?? null);
-        },
-        async updateOne(filter, change, options) {
-            native.push({ command: 'update', name, options });
-            return { acknowledged: true, matchedCount: update(name, filter, change, options?.session) === null ? 0 : 1 };
-        },
-        async findOneAndUpdate(filter, change, options) {
-            native.push({ command: 'findAndModify', name, options });
-            return copy(update(name, filter, change, options?.session));
-        },
-        async replaceOne(filter, replacement, options) {
-            native.push({ command: 'replace', name, options });
-            assert.ok(options.session, 'effects must carry the transaction session');
-            if (fixture.failPut) { fixture.failPut = false; throw new Error('injected storage failure'); }
-            mapFor(name, options.session).set(filter._id, copy(replacement));
-            return { acknowledged: true, matchedCount: 1 };
-        },
-        async deleteOne(filter, options) {
-            native.push({ command: 'delete', name, options });
-            assert.ok(options.session);
-            return { acknowledged: true, deletedCount: Number(mapFor(name, options.session).delete(filter._id)) };
-        },
-        async options() { return { collation: { locale: 'simple' } }; },
-        find(filter, options) {
-            native.push({ command: 'find', name, options, filter });
-            assert.ok(options.session);
-            let limit = Infinity;
-            const cursor = {
-                sort(order) { assert.deepEqual(order, { _id: 1 }); return cursor; },
-                limit(number) { limit = number; return cursor; },
-                async toArray() {
-                    return copy([...mapFor(name, options.session).values()].filter(record => matches(record, filter))
-                        .sort((a, b) => Buffer.compare(Buffer.from(a._id), Buffer.from(b._id))).slice(0, limit));
-                },
-                async *[Symbol.asyncIterator]() { yield* await cursor.toArray(); },
-                async close() { native.push({ command: 'close', name }); },
-            };
-            return cursor;
-        },
-        async countDocuments(filter, options) {
-            native.push({ command: 'count', name, options, filter });
-            assert.ok(options.session);
-            return [...mapFor(name, options.session).values()].filter(record => matches(record, filter)).slice(0, options.limit).length;
-        },
-    });
-    const db = {
-        collection,
-        admin() { return { command: async () => { native.push({ command: 'hello' }); return fixture.hello; } }; },
-        async createCollection(name) {
-            native.push({ command: 'createCollection', name });
-            if (storage.has(name)) throw new MongoServerError({ message: 'exists', code: 48 });
-            storage.set(name, new Map());
-        },
-    };
-    fixture.client = {
-        db() { return db; },
-        startSession() {
-            const session = {
-                storage: null,
-                async withTransaction(operation, options) {
-                    native.push({ command: 'transaction', options });
-                    session.storage = copy(storage);
-                    const result = await operation(session);
-                    storage = session.storage;
-                    return result;
-                },
-                async endSession() { native.push({ command: 'endSession' }); },
-            };
-            return session;
-        },
-    };
-    fixture.adapter = options => createMongoDbProjectionAdapter({
-        client: fixture.client, databaseName: 'portable_fixture', backendId: binding.backendId, ...options,
-    });
-    return fixture;
-}
+import { binding, copy, databaseFixture, definition, errorCode, genesis, hex, put, request } from './fixture.mjs';
 
 test('initialization rejects unsupported topology before storage and rejects contract changes', async () => {
     const fixture = databaseFixture();
@@ -187,6 +31,43 @@ test('initialize incomplete is reserved for a valid exact stored binding and def
     const meta = [...fixture.storage.values()].flatMap(collection => [...collection.values()]).find(record => record.storageVersion);
     meta.definitionHash = hex(999);
     await assert.rejects(adapter.initialize(definition, binding, genesis), errorCode('projection.invalid-contract'));
+});
+
+test('incomplete source reservation uses exact majority-journaled CAS and snapshots caller input', async () => {
+    const fixture = databaseFixture(), adapter = fixture.adapter();
+    await adapter.initialize(definition, binding, genesis); fixture.native.length = 0;
+    const block = request(1, []).block, expected = copy(block);
+    const marking = adapter.markIncomplete(binding, block, 'canonical source admitted');
+    block.blockId = hex(999); await marking;
+    const operation = fixture.native.find(call => call.command === 'findAndModify');
+    assert.ok(operation); assert.equal(operation.options.writeConcern.w, 'majority');
+    assert.equal(operation.options.writeConcern.journal, true); assert.equal(operation.options.returnDocument, 'after');
+    assert.deepEqual(operation.filter.checkpoint, genesis); assert.equal(operation.filter.pending, null);
+    assert.equal(operation.filter.gap, null); assert.equal(operation.filter.initialized, true);
+    assert.deepEqual(operation.change.$set.pending, {block: expected, digest: null, reason: 'canonical source admitted'});
+    assert.equal(fixture.native.some(call => ['update', 'transaction', 'replace', 'delete'].includes(call.command)), false);
+    const restarted = fixture.adapter();
+    assert.deepEqual((await restarted.recovery(binding)).pending, operation.change.$set.pending);
+    await assert.rejects(restarted.open(binding), errorCode('projection.incomplete'));
+});
+
+test('rejected or unknown admission receipts never authorize processing and durable unknown writes keep reads fenced', async () => {
+    for (const fault of ['before', 'miss', 'after']) {
+        const fixture = databaseFixture(), adapter = fixture.adapter();
+        await adapter.initialize(definition, binding, genesis); await adapter.apply(request(1, [put('x', 'alice', 1)]));
+        fixture.failFindAndModify = fault;
+        await assert.rejects(adapter.markIncomplete(binding, request(2, []).block, 'canonical source admitted'),
+            errorCode('projection.apply-unavailable'));
+        const restarted = fixture.adapter(), recovery = await restarted.recovery(binding);
+        assert.deepEqual(recovery.checkpoint, {blockNum: 1, blockId: hex(1)});
+        if (fault === 'after') {
+            assert.deepEqual(recovery.pending.block, request(2, []).block);
+            await assert.rejects(restarted.open(binding), errorCode('projection.incomplete'));
+        } else {
+            assert.equal(recovery.pending, null);
+            assert.deepEqual((await restarted.open(binding)).checkpoint, recovery.checkpoint);
+        }
+    }
 });
 
 test('ordered effects, checkpoint, receipt, binary paging and capped count share a completed view', async () => {
@@ -223,6 +104,17 @@ test('failed transaction leaves durable intent across restart and exact replay n
     await assert.rejects(adapter.apply(request(1, [put('x', 'alice', 1)])), errorCode('projection.apply-unavailable'));
     const restarted = fixture.adapter({ receiptRetention: 2 });
     await assert.rejects(restarted.open(binding), errorCode('projection.incomplete'));
+    const progress = await restarted.recovery(binding);
+    assert.deepEqual(progress.checkpoint, genesis);
+    assert.deepEqual(progress.binding, binding);
+    assert.equal(progress.initialized, true);
+    assert.deepEqual(progress.pending.block, request(1, []).block);
+    assert.match(progress.pending.digest, /^[a-f0-9]{64}$/);
+    assert.equal(progress.gap, null);
+    // Recovery snapshots cannot mutate storage or grant an incomplete serving view.
+    progress.pending.block.blockNum = 99;
+    assert.equal((await restarted.recovery(binding)).pending.block.blockNum, 1);
+    await assert.rejects(restarted.recovery({...binding, generation: 'other'}), errorCode('projection.stale-view'));
     await assert.rejects(restarted.apply(request(1, [put('x', 'alice', 9)])), errorCode('projection.conflicting-replay'));
     assert.equal((await restarted.apply(request(1, [put('x', 'alice', 1)]))).status, 'applied');
     const second = await restarted.apply(request(2, [put('x', 'alice', 2)]));
@@ -234,6 +126,8 @@ test('failed transaction leaves durable intent across restart and exact replay n
     assert.equal((await restarted.query(duplicate.view, { filter: [], limit: 2 })).rows[0].value.balance, 2);
     await assert.rejects(restarted.apply(request(1, [put('x', 'alice', 8)])), errorCode('projection.conflicting-replay'));
     const third = await restarted.apply(request(3, [put('x', 'alice', 3)]));
+    assert.deepEqual(await restarted.recovery(binding), {binding, checkpoint: third.view.checkpoint,
+        initialized: true, pending: null, gap: null});
     await assert.rejects(restarted.apply(request(1, [put('x', 'alice', 1)])), errorCode('projection.replay-unavailable'));
     const meta = [...fixture.storage.values()].flatMap(collection => [...collection.values()]).find(record => record.storageVersion);
     assert.equal(meta.receipts.length, 2);
