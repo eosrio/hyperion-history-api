@@ -2,6 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {PortableSourceFlow, portableSourceLimits, servePortableWorkerSource, type PortableWorkerSource} from '../../scripts/qualification/portable-state-worker-source.ts';
 import {independentWirePrimaryRow, portableWorkerAbiAvailability} from '../../scripts/qualification/portable-state-worker-oracle.ts';
 import {createHash} from 'node:crypto';
+import {fileURLToPath} from 'node:url';
 import {assertPortableApiResult, assertPortablePending, assertPortableUnavailable, assertPortablePredeployment, describePortableWorkerError, portableWorkerConfig,
     portableSourceRpc, portableWorkerEnvironment, portableWorkerFaultDefinition, validatePortableWorkerPlan} from '../../scripts/qualification/portable-state-worker.ts';
 import {projectTableValue, validateProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
@@ -19,6 +20,17 @@ const plan = () => ({schemaVersion: 1, source: {directory: 'source', receiptSha2
         {through: 4, rows: {rows: [{key: 'a', value: {value: 'after'}}]}}]});
 
 describe('portable actual-source harness guards', () => {
+    it('bounds active SHIP sockets separately from closed status-probe history with the installed Wire provider', async () => {
+        const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--experimental-transform-types',
+            fileURLToPath(new URL('./portable-state-worker-connections.mjs', import.meta.url))],
+        {stdout: 'pipe', stderr: 'pipe', timeout: 35000});
+        const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+        expect({code, stderr: code ? stderr : undefined}).toEqual({code: 0, stderr: undefined});
+        const report = JSON.parse(stdout.trim().split('\n').at(-1)!);
+        expect(report).toMatchObject({passed: true, sequentialStatusProbes: portableSourceLimits.connections + 4,
+            concurrentLimit: portableSourceLimits.connections, sessionHistoryLimit: portableSourceLimits.sessions,
+            originalStatusOnly: true, streamedBlocks: 0, fullWorkerQualification: false});
+    }, 40000);
     it('declines an exact discovery health probe without creating source authority or poisoning the replay', async () => {
         const errors: string[] = [], source = {endBlock: 1, records: [{blockId: 'a'.repeat(64)}], startupInfo: {chain_id: 'b'.repeat(64)}} as PortableWorkerSource;
         const rpc = await portableSourceRpc(source, errors);

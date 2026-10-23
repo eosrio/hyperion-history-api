@@ -54,6 +54,23 @@ residue. WSL throughput does not qualify the bare-metal Linux full replay.
 
 ## Evidence and remaining gates
 
+The managed original MainDS callback also has a constructed retained-consumer-operation hold.
+Its fresh durable result and original ACK are observed before the root is fenced, but the parent
+receives no authenticated end until the retained operation physically settles. A negative control
+that bypassed the emitted client's drain failed this case; the original emitted bytes were restored.
+This joins the actual Wire callback to the existing scope/supervisor contract with controlled I/O;
+it does not qualify a live retained-proof failure, broker settlement or full fork recovery.
+
+The replay fixture separately bounds eight concurrent SHIP sockets and 32 retained session records.
+Normal API health checks open status sockets after their 60-second cache expires, so closed probes
+must not consume concurrent capacity for the entire 15-minute run. Native Node tests exercise the
+production status validator with original Wire bytes, permit repeated closed probes, and reject
+both excess concurrent sockets and excess retained history. Every status-only session streams zero
+blocks. Exact empty-body HTTP health discovery is declined with 404 and no source authority;
+other unsupported RPC stays fatal. The driver captures final source metrics and requests on failed
+runs as well as successful ones. Source bytes, credits, per-stage deadlines and production defaults
+are unchanged by these fixture controls.
+
 Focused tests exercise cross-attempt redelivery, copied results and ends, foreign physical owners, observation retry, conflicting effects, overflow, stale config/target/fork, failed association storage, and restart readback. A native child fixture runs the reader's ordered source probe and the parent's request/reply handler: a replacement frame queued before the probe rejects the old source, while the new branch is accepted. A coordinator test covers a newly selected replay of its committed head. The native cluster IPC fixture exercises two owned workers with identical semantic work: only the first produces a fresh result and can be associated; a replayed observation from the second physical owner is rejected. These use controlled source/target authority and do not prove a live broker ACK.
 
 Separate Node 22/24 cases run the original Wire genesis frame through the Reader and MainDS callback, and original block 33 native handoff plus block 36 no-effect and constructed contract-finalization-failure inputs through the DS callback, in managed children. The parent receives their authentic ends, reads test-only retained storage snapshots, and associates source-incomplete, confirmed-handoff, intentional-no-effect, and contract-incomplete results. Each successful case asserts fresh-write observation precedes the original ACK, which precedes the end. Additional managed MainDS cases hold and fail its attempt-manifest write. While held, the parent sees neither a fresh-write observation, original ACK, nor an end. On write failure, the original callback produces an authenticated thrown end for the original frame, no fresh write or ACK call, and an unresolved adjudication. A separate case throws from the original ACK call after the durable result and fresh-write observation: the end records the ACK attempt and thrown root, the local call does not return, and adjudication remains unresolved with broker settlement unknown. Storage, broker, and canonical authority remain controlled. Existing original Wire36 MainDS/DS fixtures exercise configured-copy failures and held confirm/drain before original ACK in controlled-local mode. The combined live broker/storage/fork path and complete hold/fail matrix remain open.

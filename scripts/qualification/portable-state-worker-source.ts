@@ -12,7 +12,7 @@ import {createWireShipCodec, resolveCodecProfile} from '@eosrio/hyperion-wire-pl
 export const portableSourceLimits = Object.freeze({blocks: 4096, bytes: 128 * 1024 * 1024,
     receiptBytes: 8 * 1024 * 1024, frameBytes: 8 * 1024 * 1024, window: 32,
     requests: 16384, requestBytes: 4096, requestTotalBytes: 8 * 1024 * 1024,
-    connections: 8, bufferedBytes: 16 * 1024 * 1024, runMs: 900_000});
+    connections: 8, sessions: 32, bufferedBytes: 16 * 1024 * 1024, runMs: 900_000});
 export const portableSourceHash = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
 const jsonCopy = <T>(value: T): T => structuredClone(value);
 const hex64 = /^[0-9a-f]{64}$/;
@@ -185,7 +185,8 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
     const server = new WebSocketServer({host: '127.0.0.1', port: 0, maxPayload: portableSourceLimits.requestBytes});
     await once(server, 'listening');
     const sessions: {flow: PortableSourceFlow; socket: WebSocket}[] = [], requests: any[] = [];
-    let through = 0, sentBytes = 0, requestBytes = 0, closed = false, closing: Promise<void> | undefined;
+    const activeSessions = new Set<typeof sessions[number]>();
+    let through = 0, sentBytes = 0, requestBytes = 0, peakActiveConnections = 0, closed = false, closing: Promise<void> | undefined;
     const close = () => closing ??= (async () => {closed = true; clearTimeout(timer); for (const {socket} of sessions) socket.terminate();
         await new Promise<void>((done, reject) => server.close(error => error ? reject(error) : done()));})();
     const timer = setTimeout(() => {errors.push('portable source deadline exceeded'); void close().catch(error => errors.push(String(error)));}, portableSourceLimits.runMs); timer.unref();
@@ -196,8 +197,13 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
             session.socket.send(frame, {binary: true}, error => {if (error && !closed) errors.push(String(error));});}
     };
     server.on('connection', socket => {
-        if (sessions.length >= portableSourceLimits.connections) {errors.push('portable source connection bound'); socket.terminate(); return;}
+        // Normal API health checks open and close a status socket once their cache expires.
+        // Keep physical concurrency and retained audit history separately bounded.
+        if (sessions.length >= portableSourceLimits.sessions) {errors.push('portable source session history bound'); socket.terminate(); return;}
+        if (activeSessions.size >= portableSourceLimits.connections) {errors.push('portable source concurrent connection bound'); socket.terminate(); return;}
         const session = {flow: new PortableSourceFlow(source.endBlock), socket}; sessions.push(session); session.flow.releaseThrough(through);
+        activeSessions.add(session); peakActiveConnections = Math.max(peakActiveConnections, activeSessions.size);
+        socket.once('close', () => activeSessions.delete(session));
         socket.send(retained.schema, {binary: false}); socket.on('error', error => {if (!closed) errors.push(String(error));});
         socket.on('message', (bytes, binary) => {try {assert.equal(binary, true); const frame = Buffer.from(bytes as Buffer); requestBytes += frame.length;
             assert.ok(requestBytes <= portableSourceLimits.requestTotalBytes); const request = retained.codec.decodeRequest(frame);
@@ -215,5 +221,6 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
             assert.deepEqual(sessions.flatMap(session => session.flow.acknowledged), expected);
             assert.ok(sessions.every(session => session.flow.outstanding === 0));},
         metrics() {return {through, sentBytes, requestBytes, connections: sessions.length,
+            activeConnections: activeSessions.size, peakActiveConnections,
             sessions: sessions.map(session => ({sent: [...session.flow.sent], acknowledged: [...session.flow.acknowledged], outstanding: session.flow.outstanding}))};}};
 }

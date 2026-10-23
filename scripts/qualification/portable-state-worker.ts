@@ -674,7 +674,10 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         for (const [name, close] of [['replay', () => replay?.close()], ['rpc', () => rpc?.close()], ['bulk', () => ledger?.close()],
             ['redis', () => redis?.disconnect()], ['mongo-client', () => mongo?.close()], ['elasticsearch', () => es.close()],
             ['owned-mongodb', () => mongoFixture.cleanup()]] as const) {
-            try {await close(); report.cleanup.push({name, ok: true});} catch (error) {report.status = 'failed'; report.cleanup.push({name, ok: false, error: describeError(error)});}
+            try {
+                if (name === 'replay' && replay) report.replay = {...replay.metrics(), requests: replay.requests};
+                await close(); report.cleanup.push({name, ok: true});
+            } catch (error) {report.status = 'failed'; report.cleanup.push({name, ok: false, error: describeError(error)});}
         }
         if (ledger) report.bulkCapture = {...ledger.limits, recordedRequests: ledger.receipts.length};
         report.mongoCleanup = mongoFixture.cleanupResult; report.completedAt = new Date().toISOString();

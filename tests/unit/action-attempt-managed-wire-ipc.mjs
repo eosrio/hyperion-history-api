@@ -14,9 +14,9 @@ import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-sou
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 
 const mode = process.argv[2] ?? 'main';
-assert(['main','main-held-write','main-failed-write','main-ack-throws','ds','contract','handoff',
+assert(['main','main-held-write','main-failed-write','main-ack-throws','main-held-operation','ds','contract','handoff',
     'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain','handoff-failed-drain'].includes(mode));
-const isMain = ['main','main-held-write','main-failed-write','main-ack-throws'].includes(mode);
+const isMain = ['main','main-held-write','main-failed-write','main-ack-throws','main-held-operation'].includes(mode);
 const role = isMain ? 'deserializer' : 'ds_pool_worker';
 cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-worker.mjs', import.meta.url)),
     args: [mode === 'main-held-write' ? 'managed-original-main-held-write'
@@ -113,6 +113,20 @@ try {
             noFreshWriteOrAssociation: true, controlledStorageAndBroker: true,
             brokerSettlement: 'unknown', fullWorkerQualification: false}));
     } else {
+    if (mode === 'main-held-operation') {
+        await waitFor(() => messages.some(message => message?.event === 'qualification_operation_fenced') || exited,
+            'original Wire root and ACK ended while the retained consumer operation is still pending');
+        assert.equal(exited, false, JSON.stringify({exitCode, stderr: stderr.slice(-4000)}));
+        const fenced = messages.find(message => message.event === 'qualification_operation_fenced');
+        assert.equal(fenced.originalAckCount, 1);
+        assert.equal(fenced.scope.state, 'fenced'); assert.ok(fenced.scope.pendingOperations >= 1);
+        assert(messages.some(message => message.event === 'qualification_operation_held'));
+        assert(messages.some(message => message.event === 'worker_attempt_request' && message.payload?.operation === 'observe'));
+        assert(messages.some(message => message.event === 'qualification_ack'));
+        assert.equal(messages.some(message => message.event === 'worker_attempt_request' && message.payload?.operation === 'end'), false);
+        assert.equal(ends.length, 0);
+        child.send({event: 'qualification_release_operation'});
+    }
     if (mode === 'main-held-write') {
         await waitFor(() => messages.some(message => message?.event === 'qualification_write_held') || exited,
             'original Wire MainDS disposition write held');
@@ -169,6 +183,12 @@ try {
         && message.payload?.operation === 'end');
     assert(registration >= 0 && freshWrite > registration && ack > freshWrite && endRequest > ack,
         'the original callback must observe its fresh write before ACK and quiescent end');
+    if (mode === 'main-held-operation') {
+        const fenced = messages.findIndex(message => message.event === 'qualification_operation_fenced');
+        const released = messages.findIndex(message => message.event === 'qualification_operation_released');
+        assert(fenced > ack && released > fenced && endRequest > released,
+            'only the physically settled retained consumer operation permits an authenticated end');
+    }
     const memory = frontierMemoryClient();
     for (const [key, value] of snapshot.documents) memory.documents.set(key, value);
     for (const [key, value] of snapshot.mappings) memory.mappings.set(key, value);
@@ -239,6 +259,7 @@ try {
         originalWireMainCallback: isMain, originalWireDsCallback: !isMain,
         managedParentEnd: true, writeBeforeAckBeforeEnd: true, originalAckCount: 1,
         heldWriteBeforeObservation: mode === 'main-held-write',
+        heldOperationAcrossAckAndRoot: mode === 'main-held-operation',
         heldPublishBeforeObservation: mode === 'handoff-held-confirm' || mode === 'handoff-held-drain',
         classification: observation.results[0].classification,
         controlledStorageAndCanonicalAuthority: true, brokerSettlement: observation.brokerSettlement,

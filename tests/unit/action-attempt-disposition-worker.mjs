@@ -10,6 +10,7 @@ import {basename, dirname, join, resolve} from 'node:path';
 import {EventEmitter} from 'node:events';
 import {createHash, randomUUID} from 'node:crypto';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {currentProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
 
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -26,8 +27,9 @@ const mode = process.argv[2] ?? 'lifecycle';
 const managedOriginalMainHeldWrite = mode === 'managed-original-main-held-write';
 const managedOriginalMainFailedWrite = mode === 'managed-original-main-failed-write';
 const managedOriginalMainAckThrows = mode === 'managed-original-main-ack-throws';
+const managedOriginalMainHeldOperation = mode === 'managed-original-main-held-operation';
 const managedOriginalMain = mode === 'managed-original-main' || managedOriginalMainHeldWrite
-    || managedOriginalMainFailedWrite || managedOriginalMainAckThrows,
+    || managedOriginalMainFailedWrite || managedOriginalMainAckThrows || managedOriginalMainHeldOperation,
     managedOriginalNoEffect = mode === 'managed-original-ds',
     managedOriginalContract = mode === 'managed-original-contract',
     managedOriginalHandoffHeldConfirm = mode === 'managed-original-handoff-held-confirm',
@@ -40,16 +42,18 @@ const managedOriginalDs = managedOriginalNoEffect || managedOriginalContract || 
 const managedOriginal = managedOriginalMain || managedOriginalDs;
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
 let reader, coordinator, managedClient, snapshotPath, draining = Promise.resolve();
-let finishManaged, releaseManagedWrite, releaseManagedConfirm, releaseManagedDrain;
+let finishManaged, releaseManagedWrite, releaseManagedConfirm, releaseManagedDrain, releaseManagedOperation;
 const managedFinished = new Promise(resolve => {finishManaged = resolve;});
 const managedWriteReleased = new Promise(resolve => {releaseManagedWrite = resolve;});
 const managedConfirmReleased = new Promise(resolve => {releaseManagedConfirm = resolve;});
 const managedDrainReleased = new Promise(resolve => {releaseManagedDrain = resolve;});
+const managedOperationReleased = new Promise(resolve => {releaseManagedOperation = resolve;});
 if (managedOriginal) process.on('message', message => {
     if (message?.event === 'qualification_done') finishManaged();
     if (message?.event === 'qualification_release_write') releaseManagedWrite();
     if (message?.event === 'qualification_release_confirm') releaseManagedConfirm();
     if (message?.event === 'qualification_release_drain') releaseManagedDrain();
+    if (message?.event === 'qualification_release_operation') releaseManagedOperation();
 });
 process.send = (event, callback) => {
     if (managedOriginal && event?.event === 'worker_attempt_request')
@@ -293,6 +297,19 @@ try {
         assert.equal(rows[0].value.work.transaction, null); assert.equal(rows[0].value.work.planId, null);
         assert.deepEqual(rows[0].value.output, {kind: 'unresolved'}); sourceAckChecks.push(rows[0]);
         if (managedOriginalMain) previousSend.call(process, {event: 'qualification_ack', recordId: rows[0].id});
+        if (managedOriginalMainHeldOperation) {
+            // A constructed retained consumer operation outlives the original callback and ACK.
+            // Use the actual managed scope; no fixture snapshot may manufacture its drained end.
+            const scope = currentProofConsumerScope(true);
+            void scope.operation(async () => {
+                previousSend.call(process, {event: 'qualification_operation_held', scope: scope.snapshot()});
+                await managedOperationReleased;
+                previousSend.call(process, {event: 'qualification_operation_released'});
+            });
+            scope.signal.addEventListener('abort', () => previousSend.call(process, {
+                event: 'qualification_operation_fenced', scope: scope.snapshot(), originalAckCount: mainConsumer.acked.length
+            }), {once: true});
+        }
         if (managedOriginalMainAckThrows) throw new Error('constructed original ACK call failure');
     };
     if (managedOriginalMainHeldWrite) {
