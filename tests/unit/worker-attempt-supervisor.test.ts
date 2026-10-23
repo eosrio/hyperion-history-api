@@ -165,3 +165,48 @@ for (const boundary of ['exists', 'create', 'already-exists'] as const) {
         expect(effects).toEqual(boundary === 'exists' ? [] : ['create']);
     });
 }
+
+for (const boundary of ['protocol-ready', 'selection-read'] as const) {
+    it(`does not begin source quarantine after a held ${boundary} loses its original attempt`, async () => {
+        // A separate native process keeps the module's existing configuration singleton out of other unit cases.
+        // This is an explicit controlled source-read failure, with no admission or canonical completion claim.
+        const driver = `
+            import assert from 'node:assert/strict';
+            import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
+            import {tmpdir} from 'node:os';
+            import {join,resolve,sep} from 'node:path';
+            const directory=mkdtempSync(join(tmpdir(),'hapi-main-attempt-'));
+            assert(directory.startsWith(resolve(tmpdir())+sep));
+            const previous=process.cwd();
+            try {
+                mkdirSync(join(directory,'config'));
+                writeFileSync(join(directory,'chain.json'),JSON.stringify({settings:{chain:'controlled',eosio_alias:'sysio'},indexer:{},features:{},scaling:{},api:{}}));
+                writeFileSync(join(directory,'config/connections.json'),'{}');
+                process.env.CONFIG_JSON=join(directory,'chain.json');process.chdir(directory);
+                const {default:MainDS}=await import(${JSON.stringify(new URL('../../build/indexer/workers/deserializer.js', import.meta.url).href)});
+                const {ProofConsumerScope}=await import(${JSON.stringify(new URL('../../build/indexer/protocol/proof-consumer-scope.js', import.meta.url).href)});
+                const {ProtocolSourceBindingReadError,protocolSourceSelectionHeader}=await import(${JSON.stringify(new URL('../../build/indexer/protocol/source-bindings.js', import.meta.url).href)});
+                let enter,release;const entered=new Promise(yes=>{enter=yes;}),held=new Promise(yes=>{release=yes;});
+                const effects=[],worker=Object.create(MainDS.prototype),selection='h45srcsel1:'+'1'.repeat(64);
+                const message={content:Buffer.from('controlled retained raw custody'),properties:{headers:{[protocolSourceSelectionHeader]:selection}}};
+                const channel={ack(){effects.push('ack');}};
+                Object.assign(worker,{protocolReady:${boundary === 'protocol-ready' ? 'held' : 'Promise.resolve()'},
+                    protocolDeliveryOwners:new WeakMap([[message,channel]]),protocolId:'wire',protocol:{profileId:'controlled'},
+                    protocolComponents:[],chainId:'c'.repeat(64),ch:channel,ch_ready:true,profiler:{start(){return()=>{};}},
+                    protocolSourceBindingStore:{async readSelection(){${boundary === 'selection-read' ? 'enter();await held;' : ''}
+                        throw new ProtocolSourceBindingReadError('missing','selection',selection,'controlled held selection');},
+                        async quarantine(){effects.push('quarantine');return{id:'controlled-existing-store'};}}});
+                const scope=new ProofConsumerScope('controlled-main-${boundary}');
+                const work=scope.run(()=>{${boundary === 'protocol-ready' ? 'enter();' : ''}
+                    return worker.processProtocolSourceDelivery(message,async()=>{effects.push('processBound');});});
+                void work.catch(()=>{});await entered;scope.fence();release();
+                await assert.rejects(work,/Original worker attempt/);await scope.closeAndDrain();
+                assert.deepEqual(effects,[]);console.log(JSON.stringify({passed:true,boundary:${JSON.stringify(boundary)},effects}));
+            } finally {process.chdir(previous);rmSync(directory,{recursive:true,force:true});}
+        `;
+        const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--input-type=module', '-e', driver],
+            {stdout: 'pipe', stderr: 'pipe', timeout: 15_000});
+        const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+        expect({code, stderr, stdout: stdout.slice(-4000)}).toMatchObject({code: 0, stderr: ''});
+    }, 20_000);
+}

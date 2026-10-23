@@ -190,7 +190,7 @@ export abstract class HyperionWorker {
         else {this.markWorkerAcknowledgementAttempt(); retained.consumer.ack(message);}
     }
     assertWorkerAttemptActive(): void {currentProofConsumerScope()?.assertActive();}
-    /** Ordinary non-confirm sends retain their real buffer lifetime, without claiming a durable broker acknowledgement. */
+    /** Observable backpressure after synchronous byte handoff; no physical flush or broker confirmation. */
     workerBufferedPublication(channel: Channel, send: () => boolean): boolean {
         const scope = currentProofConsumerScope(); if (!scope) return send();
         scope.assertActive(); let writable = false, ended = false, invoked = false, drained = false, closed = false, uncertain = false;

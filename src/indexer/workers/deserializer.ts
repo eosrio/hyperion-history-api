@@ -352,6 +352,7 @@ export default class MainDSWorker extends HyperionWorker {
         const ingressId = message.properties?.headers?.[actionSourceIngressHeader];
         const selectionId = message.properties?.headers?.[protocolSourceSelectionHeader];
         const ingress = await this.getActionAdmissionStore().resolveIngress(ingressId);
+        this.assertWorkerAttemptActive();
         if (!owner.current() || ingress.chainId !== this.chainId || ingress.protocolId !== this.protocolId
             || ingress.profileId !== this.protocol.profileId || ingress.frameHex !== frameHex
             || actionHistoryImmutableJson(ingress.components) !== actionHistoryImmutableJson(this.protocolComponents ?? []))
@@ -386,6 +387,7 @@ export default class MainDSWorker extends HyperionWorker {
         const scope = this.activeActionSource;
         if (!scope || !scope.owner.current()) throw new Error('Action admission lacks its original source delivery');
         const epoch = await actionProducerEpoch(this);
+        this.assertWorkerAttemptActive();
         let rootActions: Array<{account: string; name: string}> | undefined;
         if (epoch.policy.rootOnly) {
             try {
@@ -411,8 +413,11 @@ export default class MainDSWorker extends HyperionWorker {
             schemaJson: scope.schemaJson, captureSha256: capture.captureSha256, ingressId: scope.ingressId,
             previousBlockId: capture.source.previousBlockId, producer: epoch.producer,
             executableSha256: epoch.executableSha256, inventoryInput});
+        this.assertWorkerAttemptActive();
         const target = await this.actionTarget(capture.source.blockNum, true);
+        this.assertWorkerAttemptActive();
         const admission = await store.admit(sourceId, target);
+        this.assertWorkerAttemptActive();
         if (!scope.owner.current() || currentActionConfiguration(this) !== epoch.configuration)
             throw new Error('Action producer epoch changed during source admission');
         scope.admission = admission; scope.configuration = epoch.configuration;
@@ -464,16 +469,19 @@ export default class MainDSWorker extends HyperionWorker {
         const frame = Buffer.from(snapshot?.frame ?? message.content);
         const claimed = snapshot ? snapshot.selectionId : message.properties?.headers?.[protocolSourceSelectionHeader];
         await this.protocolReady;
+        this.assertWorkerAttemptActive();
         this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
         const store = this.protocolSourceBindingStore;
         const claimedSelectionId = typeof claimed === 'string' && claimed.length <= 4096 ? claimed : null;
         const quarantine = async (code: string, error: unknown) => {
+            this.assertWorkerAttemptActive();
             const stop = this.profiler.start('protocol_source_quarantine');
             try {
                 const capsule = await store.quarantine({schemaVersion: 1, chainId: this.chainId,
                 protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
                 frameHex: frame.toString('hex'), claimedSelectionId,
                 reason: {code, message: String((error as any)?.message ?? error).slice(0, 4096).toWellFormed() || code}});
+                this.assertWorkerAttemptActive();
                 process.send?.({event: 'ds_error', data: {type: 'protocol_source_incomplete', code, capsuleId: capsule.id, claimedSelectionId}});
                 if (ownerChannel && ownerChannel === this.ch && this.ch_ready) {
                     this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); ownerChannel.ack(message);
@@ -496,6 +504,7 @@ export default class MainDSWorker extends HyperionWorker {
             if (!(error instanceof ProtocolSourceBindingReadError)) throw error;
             readFailure = error;
         } finally { stopResolve(); }
+        this.assertWorkerAttemptActive();
         if (readFailure) { await quarantine('protocol_source_' + readFailure.code, readFailure); return; }
         let close: (() => void) | undefined;
         let result: GetBlocksResultV0;
@@ -571,6 +580,7 @@ export default class MainDSWorker extends HyperionWorker {
     /** Journal PREPARE precedes history filters and source ACK; it grants no decoding authority. */
     async prepareProtocolAbiObservations(res: GetBlocksResultV0): Promise<{traces?: any; deltas?: any[]; wireActionInputs?: readonly ProtocolAbiActionInput[]}> {
         if (!this.usesExtensionProtocol) return {};
+        this.assertWorkerAttemptActive();
         if (!this.activeSourceSelectionId || !this.activeProtocolShipSchemaJson || !this.protocolSourceBindingStore) {
             throw new Error('ABI observations require a verified reader source selection');
         }
@@ -625,15 +635,19 @@ export default class MainDSWorker extends HyperionWorker {
         const abiRecord: ProtocolAbiObservationRecord = {schemaVersion: 1,
             protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
             source, capture, observation};
+        this.assertWorkerAttemptActive();
         const prepared = await this.protocolAbiObservationStore.prepare(abiRecord);
+        this.assertWorkerAttemptActive();
         const stopLink = this.profiler.start('protocol_source_link_observation');
         try {
             await this.protocolSourceBindingStore.prepareObservationLink({schemaVersion: 1, selectionId: this.activeSourceSelectionId,
                 observationId: prepared.id, observationDigest: prepared.digest});
         } finally { stopLink(); }
+        this.assertWorkerAttemptActive();
         // Separate PREPARE must also run when ABI extraction failed, before its
         // codec rethrow/readiness wait. Neither retained labels nor readback grant authority.
         await this.prepareProtocolNativeObservations(abiRecord, prepared);
+        this.assertWorkerAttemptActive();
         // This is only a wake-up hint. Master resolves the durable link and source order itself.
         // Losing IPC cannot erase PREPARE; the master's bounded periodic drain repairs it.
         try {
@@ -651,11 +665,13 @@ export default class MainDSWorker extends HyperionWorker {
             if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;
             this.activeProtocolAbiProofView = undefined;
         } finally { stopProof(); }
+        this.assertWorkerAttemptActive();
         return decoded;
     }
 
     private async prepareProtocolNativeObservations(abi: ProtocolAbiObservationRecord,
                                                     prepared: {id: string; digest: string}): Promise<void> {
+        this.assertWorkerAttemptActive();
         const native = this.protocol.nativeActions;
         if (native === undefined) return;
         const selectionId = this.activeSourceSelectionId, binding = this.activeSourceBinding, delivery = this.activeSourceDelivery;
@@ -700,11 +716,13 @@ export default class MainDSWorker extends HyperionWorker {
             }
             record.observation = {status: 'incomplete', error: {code, message: message.slice(0, 4096).toWellFormed() || code}};
         } finally { stopExtract(); }
+        this.assertWorkerAttemptActive();
         if (!current()) throw new Error('Native observation source channel changed during extraction');
         this.protocolNativeObservationStore ??= new ProtocolNativeObservationStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
         const stopPrepare = this.profiler.start('protocol_native_prepare');
         try { await this.protocolNativeObservationStore.prepare(selectionId, record); }
         finally { stopPrepare(); }
+        this.assertWorkerAttemptActive();
         if (!current()) throw new Error('Native observation source channel changed during PREPARE');
     }
 
@@ -948,6 +966,7 @@ export default class MainDSWorker extends HyperionWorker {
             // Process Delta Traces (must be done first to catch ABI updates)
             if (deltas && this.conf.indexer.process_deltas) {
                 await this.processDeltas(deltas, block_num, block_ts, block_id);
+                this.assertWorkerAttemptActive();
             }
 
             // Process Action Traces
@@ -975,6 +994,7 @@ export default class MainDSWorker extends HyperionWorker {
                         await this.routeToPool(transaction.dispatch.body, headers, scope.owner, transaction.dispatch.canonicalJson);
                         if (process.env['live_mode'] === 'true') onBlockTransactions.push(transaction.transactionId);
                     }
+                    this.assertWorkerAttemptActive();
                     await this.getActionAdmissionStore().trySeal(admission);
                 } else if (_traces.length > 0 && this.conf.indexer.fetch_traces) {
                     for (const trace of _traces) {
@@ -2426,6 +2446,7 @@ export default class MainDSWorker extends HyperionWorker {
     }
 
     async processDeltas(deltas: [string, TableDelta][], block_num: number, block_ts: string, block_id: string) {
+        this.assertWorkerAttemptActive();
         const stopDeltas = this.profiler.start('process_deltas');
         this.deltaAbiCache.clear();
         this.verifyTypeCache.clear();
@@ -2439,6 +2460,7 @@ export default class MainDSWorker extends HyperionWorker {
                 if (!Array.isArray(delta) || !['table_delta_v0', 'table_delta_v1'].includes(delta[0])) throw new Error('Unsupported table_delta variant');
                 const {name: key, rows} = delta[1];
                 for (const row of rows) {
+                    this.assertWorkerAttemptActive();
                     const raw = protocolBytes(row.data);
                     const data = this.deserializeNative(key, raw);
                     const position = {chainId: this.chainId, blockId: block_id, blockNum: block_num, ordinal: ordinal++};
@@ -2454,11 +2476,13 @@ export default class MainDSWorker extends HyperionWorker {
                     if (normalized.kind === 'abi-required') {
                         try {
                             const abiDeployment = await this.selectProtocolAbi(normalized.account, block_num, block_id);
+                            this.assertWorkerAttemptActive();
                             selectedDeployment = abiDeployment;
                             normalized = this.protocol.normalizeDelta({stream: key, present, raw, value: data}, {...position, abiDeployment});
                             if (normalized.kind === 'abi-required') throw new Error('Provider repeated an ABI dependency request');
                             if (normalized.kind === 'ignore') continue;
                         } catch (error: any) {
+                            this.assertWorkerAttemptActive();
                             if (error instanceof ProtocolProofStorageError) throw error;
                             process.send?.({event: 'ds_error', data: {type: 'protocol_projection_incomplete',
                                 ...position, stream: key, message: error.message, rawHex: Buffer.from(raw).toString('hex')}});
@@ -2484,6 +2508,7 @@ export default class MainDSWorker extends HyperionWorker {
                                 {...row, present: present ? 1 : 0, ordinal: position.ordinal}, block_id);
                         }
                     } catch (error: any) {
+                        this.assertWorkerAttemptActive();
                         if (error instanceof ProtocolProofStorageError) throw error;
                         if (this.usesExtensionProtocol) process.send?.({event: 'ds_error', data: {type: 'protocol_record_incomplete',
                             ...position, stream: key, message: error.message, rawHex: Buffer.from(raw).toString('hex')}});
