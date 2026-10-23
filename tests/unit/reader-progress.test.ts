@@ -38,9 +38,13 @@ describe('live source replay checkpoint', () => {
         const checkpoint = new LiveReaderCheckpoint(10, 'nine');
         const oldLow = checkpoint.observe({num: 10, id: 'old-ten', previous: 'nine'}, 9);
         const oldHigh = checkpoint.observe({num: 11, id: 'old-eleven', previous: 'old-ten'}, 9);
+        expect(checkpoint.hasCurrentReversible({num: 11, id: 'old-eleven', previous: 'old-ten'})).toBe(true);
         oldHigh();
         const newLow = checkpoint.observe({num: 10, id: 'ten', previous: 'nine'}, 9);
+        expect(checkpoint.hasCurrentReversible({num: 11, id: 'old-eleven', previous: 'old-ten'})).toBe(false);
+        expect(checkpoint.hasCurrentReversible({num: 10, id: 'ten', previous: 'wrong'})).toBe(false);
         const newHigh = checkpoint.observe({num: 11, id: 'eleven', previous: 'ten'}, 10);
+        expect(checkpoint.hasCurrentReversible({num: 11, id: 'eleven', previous: 'ten'})).toBe(true);
         expect(oldLow()).toBeUndefined();
         expect(oldHigh()).toBeUndefined();
         expect(newHigh()).toBeUndefined();

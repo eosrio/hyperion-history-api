@@ -204,7 +204,17 @@ export class ProtocolAbiCoordinator {
                 return {status:'accepted',generation};
             }
             const source=selection.source;
-            if(version.value.head?.blockNum===source.blockNum&&version.value.head.blockId===source.blockId)return {status:'accepted',generation};
+            if(version.value.head?.blockNum===source.blockNum&&version.value.head.blockId===source.blockId){
+                const committed=await this.readCommit(version.value.head.commitId);
+                const original=(await this.options.bindings.readSelection(committed.selectionId)).selection;
+                this.assertEpoch(epoch);
+                // A new SHIP head/LIB envelope may replay the same raw source. Different traces,
+                // deltas, ABI context or parent must never inherit the committed head's authority.
+                if(json(committed.source)!==json(source)||json(original.source)!==json(source)
+                    ||original.captureSha256!==selection.captureSha256)return {status:'stale',generation};
+                this.rememberSelection(selectedId,source,generation,selection.readerSessionId);
+                return {status:'accepted',generation};
+            }
             const last=version.value.pending.length?await this.selection(version.value.pending.at(-1)!,version.value):null;
             const tip=last?.source??version.value.head;
             if(!tip||(source.blockNum===tip.blockNum+1&&source.previousBlockId===tip.blockId)){

@@ -45,7 +45,7 @@ import { HyperionQueueMonitor } from './queueMonitor.js';
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
-import {ProtocolSourceBindingStore} from '../protocol/source-bindings.js';
+import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
@@ -65,6 +65,25 @@ export class HyperionMaster {
     private workerAttemptSupervisor?: WorkerAttemptSupervisor;
     private actionAttemptAdjudicator?: ActionAttemptAdjudicator;
     private actionCanonicalLib?: {worker: Worker; blockNum: number; blockId: string};
+    private readonly protocolSourceProbes = new Map<string, {worker: Worker; readerSessionId: string;
+        generation: string; resolve: (current: boolean) => void}>();
+    private probePhysicalReversibleSource(worker: Worker, readerSessionId: string, generation: string,
+                                          source: ProtocolSourcePosition): Promise<boolean> {
+        return new Promise(resolve => {
+            const requestId = randomUUID();
+            let timer: Timeout;
+            const finish = (current: boolean) => {
+                if (!this.protocolSourceProbes.delete(requestId)) return;
+                clearTimeout(timer);
+                resolve(current);
+            };
+            timer = setTimeout(() => finish(false), 5000);
+            this.protocolSourceProbes.set(requestId, {worker, readerSessionId, generation, resolve: finish});
+            try {worker.send({event: 'protocol_source_probe_request', data: {requestId, readerSessionId, generation, source}},
+                error => {if (error) finish(false);});}
+            catch {finish(false);}
+        });
+    }
     private get attemptSupervisor(): WorkerAttemptSupervisor {
         if (!this.workerAttemptSupervisor) {
             const supervisor = new WorkerAttemptSupervisor({onEnd: evidence => this.attemptAdjudicatorFor(supervisor).enqueue(evidence)});
@@ -100,6 +119,9 @@ export class HyperionMaster {
                     if (!live?.generation || !coordinator || live.readerSessionId !== readerSessionId
                         || !this.isCurrentProtocolLiveReader(live.worker)) return false;
                     const generation = live.generation;
+                    if (!await coordinator.currentlyAdmittedSource(selectionId, source, readerSessionId, generation)) return false;
+                    if (!await this.probePhysicalReversibleSource(live.worker, readerSessionId, generation, source)) return false;
+                    // The reader barrier may have processed a fork and changed the coordinator during the round trip.
                     const admitted = await coordinator.currentlyAdmittedSource(selectionId, source, readerSessionId, generation);
                     return admitted && this.protocolAbiSource === live && live.generation === generation
                         && this.isCurrentProtocolLiveReader(live.worker);
@@ -337,6 +359,12 @@ export class HyperionMaster {
         this.msgHandlerMap = {
             protocol_abi_coordinator_request: async (worker: Worker, msg: WorkerMessage) => {
                 await this.handleProtocolAbiCoordinatorRequest(worker, msg);
+            },
+            protocol_source_probe_reply: (worker: Worker, msg: WorkerMessage) => {
+                const reply = msg.data, pending = this.protocolSourceProbes.get(reply?.requestId);
+                if (pending?.worker !== worker || pending.readerSessionId !== reply.readerSessionId
+                    || pending.generation !== reply.generation || typeof reply.current !== 'boolean') return;
+                pending.resolve(reply.current);
             },
             protocol_abi_source_revoked: (worker: Worker, msg: WorkerMessage) => {
                 if (!this.isCurrentProtocolLiveReader(worker) || typeof msg.data?.readerSessionId !== 'string') return;

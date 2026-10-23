@@ -23,12 +23,12 @@ async function fixture(options:{maxPendingBlocks?:number;recoveryWindowBlocks?:n
     const make=(ownerId:string)=>new ProtocolAbiCoordinator({chainId,profile,ownerId,bindings,observations,store,...options});
     const coordinator=make('master-1');await coordinator.start();let session='session-a';
     let generation=(await coordinator.openSource(contextId,session)).generation;
-    async function selected(number:number,identity=number,parent=number-1,facts=empty(),incomplete=false){
+    async function selected(number:number,identity=number,parent=number-1,facts=empty(),incomplete=false,headNumber=number,tracesHex='00'){
         const source={chainId,blockNum:number,blockId:block(identity),previousBlockId:number===1?null:block(parent)};
-        const capture={kind:'unattested-ship-result-sections-v1' as const,schemaJson,blockHex:'00',tracesHex:'00',deltasHex:'00'};
+        const capture={kind:'unattested-ship-result-sections-v1' as const,schemaJson,blockHex:'00',tracesHex,deltasHex:'00'};
         const captureSha256=protocolAbiCaptureDigest(source,capture),frame=Buffer.from('fixture-frame-'+identity);
         const selectionId=(await bindings.prepareSelection({schemaVersion:1,contextId,readerSessionId:session,readerRole:'live',assignmentId:null,
-            source,captureSha256,frameSha256:hash(frame),head:{blockNum:number,blockId:source.blockId},irreversible:{blockNum:0,blockId:block(0)}})).id;
+            source,captureSha256,frameSha256:hash(frame),head:{blockNum:headNumber,blockId:block(headNumber)},irreversible:{blockNum:0,blockId:block(0)}})).id;
         const record:ProtocolAbiObservationRecord={schemaVersion:1,protocol:profile,source:{...source,inputSha256:captureSha256},capture,
             observation:incomplete?{status:'incomplete',error:{code:'malformed-source',message:'Retained raw bytes'}}:{status:'observed',facts}};
         return {selectionId,record};
@@ -47,6 +47,18 @@ async function fixture(options:{maxPendingBlocks?:number;recoveryWindowBlocks?:n
 }
 
 describe('canonical ABI runtime coordinator',()=>{
+    it('remembers an accepted replay of the committed head with a new source selection ID',async()=>{
+        const f=await fixture(),first=await f.append(1);
+        const conflict=await f.selected(1,1,0,empty(),false,3,'ff');
+        expect((await f.admit(conflict)).status).toBe('stale');
+        const {inputSha256:_conflictInputSha256,...conflictSource}=conflict.record.source;
+        expect(await f.coordinator.currentlyAdmittedSource(conflict.selectionId,conflictSource,'session-a',f.generation)).toBe(false);
+        const replay=await f.selected(1,1,0,empty(),false,2);
+        expect(replay.selectionId).not.toBe(first.selectionId);
+        expect((await f.admit(replay)).status).toBe('accepted');
+        const {inputSha256:_inputSha256,...source}=replay.record.source;
+        expect(await f.coordinator.currentlyAdmittedSource(replay.selectionId,source,'session-a',f.generation)).toBe(true);
+    });
     it('keeps bounded live source membership through drain but revokes it on fork, reconnect and owner replacement',async()=>{
         const f=await fixture({recoveryWindowBlocks:2});
         const a=await f.selected(1),b=await f.selected(2),c=await f.selected(3);
