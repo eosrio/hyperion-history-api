@@ -258,88 +258,58 @@ function getNested(path_array: string[], jsonObj: Record<string, any>, operator?
     }
 }
 
-export function checkMetaFilter(filter: RequestFilter, _source: any, metaField: string) {
-    if (metaField === 'action' && filter.field && isActionSequenceField(filter.field)) {
+function filterValuesAtPath(source: any, path: string[]): any[] {
+    if (Array.isArray(source)) return source.flatMap(item => filterValuesAtPath(item, path));
+    if (!path.length) return source === undefined || source === null ? [] : [source];
+    if (source === undefined || source === null || typeof source !== 'object') return [];
+    const segment = path[0];
+    const indexed = /^(.+)\[(\d+)\]$/.exec(segment);
+    const next = indexed ? source[indexed[1]]?.[Number(indexed[2])] : source[segment];
+    return filterValuesAtPath(next, path.slice(1));
+}
+
+function filterValues(source: any, field: string, kind: string): any[] {
+    const path = field.split('.');
+    const direct = filterValuesAtPath(source, path);
+    if (direct.length) return direct;
+    if (path[0] === '@timestamp') return filterValuesAtPath(source, ['timestamp', ...path.slice(1)]);
+    if (path[0].startsWith('@')) {
+        const alias = path[0].slice(1);
+        if (kind === 'action' && source?.act?.name === alias)
+            return filterValuesAtPath(source.act.data, path.slice(1));
+        if (kind === 'delta' && source?.table === alias)
+            return filterValuesAtPath(source.data, path.slice(1));
+        return [];
+    }
+    return filterValuesAtPath(source?.data, path);
+}
+
+function matchesFilterValue(value: any, filter: RequestFilter): boolean {
+    if (filter.asset) {
+        if (typeof value !== 'string') return false;
+        const [amount, symbol] = value.trim().split(/\s+/);
+        if (symbol !== filter.asset || !Number.isFinite(Number(amount))) return false;
+        value = Number(amount);
+    }
+    switch (filter.operator) {
+        case 'gt': return value > filter.value;
+        case 'gte': return value >= filter.value;
+        case 'lt': return value < filter.value;
+        case 'lte': return value <= filter.value;
+        case 'ne': return value !== filter.value;
+        case 'contains': return typeof value === 'string' && value.includes(String(filter.value));
+        case 'starts_with': return typeof value === 'string' && value.startsWith(String(filter.value));
+        case 'ends_with': return typeof value === 'string' && value.endsWith(String(filter.value));
+        default: return value === filter.value;
+    }
+}
+
+export function checkMetaFilter(filter: RequestFilter, _source: any, metaField: string): boolean {
+    if (metaField === 'action' && filter?.field && isActionSequenceField(filter.field))
         return checkActionSequenceFilter(filter, _source);
-    }
-    if (filter.field && filter.value) {
-        const fieldParts = filter.field.split(".");
-        let fieldValue = getNested(fieldParts, _source, filter.operator);
-        if (!fieldValue) {
-            if (fieldParts[0].startsWith('@')) {
-                if (metaField === 'action') {
-                    const actName = fieldParts[0].replace('@', '');
-                    if (_source.act.name === actName) {
-                        fieldParts[0] = 'data';
-                        fieldParts.unshift('act');
-                        fieldValue = getNested(fieldParts, _source);
-                    }
-                } else if (metaField === 'delta') {
-                    const tableName = fieldParts[0].replace('@', '');
-                    if (_source.table === tableName) {
-                        fieldParts[0] = 'data';
-                        fieldValue = getNested(fieldParts, _source);
-                    }
-                }
-            } else {
-                fieldValue = getNested(["data", ...fieldParts], _source);
-            }
-        }
-        if (fieldValue) {
-            if (Array.isArray(fieldValue)) {
-                return fieldValue.some(item => {
-                    return checkMetaFilter({
-                        field: fieldParts.join('.'),
-                        operator: filter.operator,
-                        value: filter.value
-                    }, item, metaField);
-                });
-            } else {
-                if (filter.asset && filter.asset !== '' && typeof fieldValue === 'string') {
-                    const [amount, symbol] = fieldValue.split(' ');
-                    if (symbol === filter.asset) {
-                        fieldValue = parseFloat(amount);
-                    }
-                }
-                switch (filter.operator) {
-                    case "eq": {
-                        return fieldValue === filter.value;
-                    }
-                    case "gt": {
-                        return fieldValue > filter.value;
-                    }
-                    case "gte": {
-                        return fieldValue >= filter.value;
-                    }
-                    case "lt": {
-                        return fieldValue < filter.value;
-                    }
-                    case "lte": {
-                        return fieldValue <= filter.value;
-                    }
-                    case "ne": {
-                        return fieldValue !== filter.value;
-                    }
-                    case "contains": {
-                        return (fieldValue as string).includes(String(filter.value));
-                    }
-                    case "starts_with": {
-                        return (fieldValue as string).startsWith(String(filter.value));
-                    }
-                    case "ends_with": {
-                        return (fieldValue as string).endsWith(String(filter.value));
-                    }
-                    default: {
-                        return fieldValue === filter.value;
-                    }
-                }
-            }
-        } else {
-            return !filter.value;
-        }
-    } else {
+    if (typeof filter?.field !== 'string' || !filter.field || filter.value === undefined || filter.value === null)
         return false;
-    }
+    return filterValues(_source, filter.field, metaField).some(value => matchesFilterValue(value, filter));
 }
 
 export function checkFilter(filter: RequestFilter, _source: any) {
