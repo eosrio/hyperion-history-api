@@ -1,9 +1,9 @@
 import {describe, expect, it} from 'bun:test';
-import {PortableSourceFlow, portableSourceLimits, servePortableWorkerSource} from '../../scripts/qualification/portable-state-worker-source.ts';
+import {PortableSourceFlow, portableSourceLimits, servePortableWorkerSource, type PortableWorkerSource} from '../../scripts/qualification/portable-state-worker-source.ts';
 import {independentWirePrimaryRow, portableWorkerAbiAvailability} from '../../scripts/qualification/portable-state-worker-oracle.ts';
 import {createHash} from 'node:crypto';
 import {assertPortableApiResult, assertPortablePending, assertPortableUnavailable, assertPortablePredeployment, describePortableWorkerError, portableWorkerConfig,
-    portableWorkerEnvironment, portableWorkerFaultDefinition, validatePortableWorkerPlan} from '../../scripts/qualification/portable-state-worker.ts';
+    portableSourceRpc, portableWorkerEnvironment, portableWorkerFaultDefinition, validatePortableWorkerPlan} from '../../scripts/qualification/portable-state-worker.ts';
 import {projectTableValue, validateProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
 
 const request = (last: number, window = 8) => ['get_blocks_request_v0', {start_block_num: 1, end_block_num: last + 1,
@@ -19,6 +19,19 @@ const plan = () => ({schemaVersion: 1, source: {directory: 'source', receiptSha2
         {through: 4, rows: {rows: [{key: 'a', value: {value: 'after'}}]}}]});
 
 describe('portable actual-source harness guards', () => {
+    it('records an unsupported HTTP caller and retains strict source RPC failure', async () => {
+        const errors: string[] = [], source = {records: [{blockId: 'a'.repeat(64)}], startupInfo: {chain_id: 'b'.repeat(64)}} as PortableWorkerSource;
+        const rpc = await portableSourceRpc(source, errors);
+        try {
+            const response = await fetch(rpc.url + '/v2/health', {headers: {'user-agent': 'qualification-caller-regression'}});
+            expect(response.status).toBe(503);
+            expect(await response.json()).toEqual({error: 'retained RPC input unavailable'});
+            expect(errors).toHaveLength(1); expect(errors[0]).toContain('RPC fallback is outside the retained startup view');
+            expect(rpc.requests).toHaveLength(1); expect(rpc.requests[0]).toMatchObject({method: 'GET', path: '/v2/health',
+                allowed: false, peer: {address: '127.0.0.1'}, userAgent: 'qualification-caller-regression'});
+            expect(rpc.requests[0].peer.port).toBeGreaterThan(0);
+        } finally {await rpc.close();}
+    });
     it('derives the public state boundary from the original ABI deployment independently of durable progress', () => {
         const abiHex = 'aabb', abiSha256 = createHash('sha256').update(Buffer.from(abiHex, 'hex')).digest('hex');
         const blockId = '000000de' + 'a'.repeat(56), sourceAbi = {blockNum: 222, blockId, abiHex, abiSha256};

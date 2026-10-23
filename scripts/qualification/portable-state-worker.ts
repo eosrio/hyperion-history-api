@@ -208,7 +208,7 @@ export function portableSourceRpcIdentity(source: PortableWorkerSource, blockNum
     return source.records[blockNum - 1]?.blockId ?? source.irreversibleAnchors[String(blockNum)];
 }
 
-async function sourceRpc(source: PortableWorkerSource, errors: string[], options: {authorityRpc?: string;
+export async function portableSourceRpc(source: PortableWorkerSource, errors: string[], options: {authorityRpc?: string;
     replayThrough?: () => number} = {}) {
     assert.equal(!!options.authorityRpc, !!options.replayThrough,
         'live RPC checks require the owned replay cursor');
@@ -271,7 +271,9 @@ async function sourceRpc(source: PortableWorkerSource, errors: string[], options
                 && Object.keys(body).length === 1 && Number.isSafeInteger(blockNum)
                 && !!portableSourceRpcIdentity(source, blockNum);
             const allowed = info || block;
-            const observedRequest: any = {method: incoming.method, path: incoming.url, body, allowed};
+            const observedRequest: any = {method: incoming.method, path: incoming.url, body, allowed,
+                peer: {address: incoming.socket.remoteAddress, port: incoming.socket.remotePort},
+                userAgent: incoming.headers['user-agent']?.slice(0, 256)};
             requests.push(observedRequest);
             assert.ok(allowed, 'RPC fallback is outside the retained startup view');
             if (block) {
@@ -360,7 +362,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     const invalidDefinition = portableWorkerFaultDefinition(plan), faultThrough = plan.barriers[0].through;
     const mongoFixture = new OwnedMongoFixture({command: docker});
     let mongo: MongoClient | undefined, redis: Redis | undefined, master: ChildProcess | undefined, api: ChildProcess | undefined;
-    let replay: Awaited<ReturnType<typeof servePortableWorkerSource>> | undefined, rpc: Awaited<ReturnType<typeof sourceRpc>> | undefined;
+    let replay: Awaited<ReturnType<typeof servePortableWorkerSource>> | undefined, rpc: Awaited<ReturnType<typeof portableSourceRpc>> | undefined;
     let ledger: Awaited<ReturnType<typeof startBulkLedger>> | undefined;
     let mongoWriteFaultActive = false;
     const configureMongoWriteFault = async (mode: 'alwaysOn' | 'off') => {
@@ -424,7 +426,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         assert.deepEqual(await mongo.db(database).listCollections({}, {nameOnly: true}).toArray(), []);
         report.mongo = {uri: mongoUri, version: MONGODB_VERSION, replicaSet: mongoFixture.replicaSet, container: mongoFixture.ownedContainer('replica'), database};
         replay = await servePortableWorkerSource(source, report.errors);
-        rpc = await sourceRpc(source, report.errors, options.authorityRpc
+        rpc = await portableSourceRpc(source, report.errors, options.authorityRpc
             ? {authorityRpc: options.authorityRpc, replayThrough: () => replay!.metrics().through} : {});
         report.rpc = {requests: rpc.requests, lineage: rpc.lineage};
         ledger = await startBulkLedger(state.core.nodes[0].url, join(output, 'bulk'), report.errors, 20000);
