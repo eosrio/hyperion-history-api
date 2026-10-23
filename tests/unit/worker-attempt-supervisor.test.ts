@@ -97,3 +97,23 @@ it('fences a held projection initialization before a following definition can st
     await expect(work).rejects.toThrow('Original worker attempt'); await scope.closeAndDrain();
     expect(initialized).toEqual(['first']);
 });
+
+it('does not dispatch a projection marker or apply after a held source revalidation loses its attempt', async () => {
+    const chainId = 'c'.repeat(64), effects: string[] = [], selected = {schemaVersion: 1 as const, id: 'items', mappingRevision: 'a'.repeat(64),
+        source: {contract: 'items', table: 'items', abiDeployment: 'original-source-epoch', abiSha256: 'b'.repeat(64)},
+        fields: [{name: 'owner', path: ['owner'], type: 'string' as const}], initialization: {kind: 'genesis' as const}};
+    const configuration = resolvePortableStateConfiguration({backend: {kind: 'mongodb', id: 'fixture', database: 'fixture'}, projections: [selected]}, chainId)!;
+    let enter!: () => void, release!: () => void, binding: any;
+    const entered = new Promise<void>(yes => {enter = yes;}), held = new Promise<void>(yes => {release = yes;});
+    const adapter: any = {capabilities: {interfaceVersion: 1, supported: [...PROJECTION_CAPABILITIES]},
+        async initialize(_definition: any, value: any) {binding = value;},
+        async recovery() {return {binding, initialized: true, checkpoint: {blockNum: 0, blockId: '0'.repeat(64)}, pending: null, gap: null};},
+        async markIncomplete() {effects.push('mark');}, async apply() {effects.push('apply');}};
+    const controller = await PortableStateController.create({chainId, configuration, adapter, maximumFramesPerProjection: 1,
+        source: {async frame() {return {frame: {chainId, block: {blockNum: 1, blockId: '1'.repeat(64), previousBlockId: '0'.repeat(64)}, changes: []},
+            proof: {} as any, evidence: {} as any};}, async revalidate() {enter(); await held;}}});
+    const scope = new ProofConsumerScope('projection-frame-control'), work = scope.run(() => controller.drain());
+    void work.catch(() => {}); await entered; scope.fence(); release();
+    await expect(work).rejects.toThrow('Original worker attempt'); await scope.closeAndDrain();
+    expect(effects).toEqual([]); await controller.stop();
+});

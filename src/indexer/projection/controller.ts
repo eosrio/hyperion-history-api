@@ -69,7 +69,9 @@ export class PortableStateController {
             const operation = async (): Promise<boolean> => {
                 let recovery: ProjectionRecoveryView | undefined;
                 try {
+                    currentProofConsumerScope()?.assertActive();
                     recovery = await this.recovery(runtime);
+                    currentProofConsumerScope()?.assertActive();
                     await this.options.attempts?.bind({projectionId: runtime.definition.id,
                         bindingSha256: createHash('sha256').update(json(runtime.binding)).digest('hex'),
                         checkpointBlockNum: recovery.checkpoint.blockNum, checkpointBlockId: recovery.checkpoint.blockId});
@@ -90,14 +92,18 @@ export class PortableStateController {
                         admitted = target;
                     };
                     const selected = await this.options.source.frame(recovery.checkpoint.blockNum + 1, runtime.definition, admit);
+                    currentProofConsumerScope()?.assertActive();
                     await this.options.attempts?.bind({blockNum: selected.frame.block.blockNum, blockId: selected.frame.block.blockId});
                     currentProofConsumerScope()?.assertActive();
                     if (this.stopped) return false;
                     await this.options.source.revalidate(selected.proof);
+                    currentProofConsumerScope()?.assertActive();
                     // Runtime repeats the admission after its immutable capture. This binds the exact target and
                     // also reserves before mapping for compatible source fixtures that omit the early callback.
                     const applied = await runtime.process(selected.frame, admit);
+                    currentProofConsumerScope()?.assertActive();
                     await this.options.source.revalidate(selected.proof);
+                    currentProofConsumerScope()?.assertActive();
                     this.report({...common, status: applied.status, checkpoint: applied.view.checkpoint, evidence: selected.evidence});
                 } catch (error) {
                     // A revoked attempt cannot dispatch fresh recovery I/O after its capability fence.
@@ -105,14 +111,18 @@ export class PortableStateController {
                     if (error instanceof PortableProjectionFrameError) {
                         try {await this.options.adapter.markIncomplete(runtime.binding, error.block, reason(error));}
                         catch (markError) {
+                            currentProofConsumerScope()?.assertActive();
                             this.report({...common, status: 'incomplete', ...(recovery ? {recovery} : {}),
                                 reason: 'Durable projection failure marking requires retry: ' + reason(markError)});
                             return false;
                         }
+                        currentProofConsumerScope()?.assertActive();
                     }
                     // Runtime mapping errors already mark incomplete. Transport/apply errors retain exact source intent.
                     // Resume always asks the adapter for checkpoint+1; no failed target is skipped or acknowledged here.
+                    currentProofConsumerScope()?.assertActive();
                     try {recovery = await this.recovery(runtime);} catch {}
+                    currentProofConsumerScope()?.assertActive();
                     this.report({...common, status: recovery?.pending || recovery?.gap ? 'incomplete' : 'waiting',
                         ...(recovery ? {recovery, checkpoint: recovery.checkpoint} : {}), reason: reason(error)});
                     return false;
