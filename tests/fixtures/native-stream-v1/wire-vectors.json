@@ -135,6 +135,56 @@
       "name": "escaped duplicate scope key",
       "valid": false,
       "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"\\u0067eneration\":\"2\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"global_sequence\":\"18446744073709551615\",\"act\":{\"data\":{\"global_sequence\":42,\"memo\":\"日本語 🌐\"}}}}]}"
+    },
+    {
+      "name": "receipt null is optional",
+      "valid": true,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"receipt\":null}}]}"
+    },
+    {
+      "name": "grouped receipts must be an array",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"receipts\":\"invalid\"}}]}"
+    },
+    {
+      "name": "grouped receipts cannot contain null",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"receipts\":[null]}}]}"
+    },
+    {
+      "name": "auth_sequence must be an array",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"receipt\":{\"auth_sequence\":\"18446744073709551615\"}}}]}"
+    },
+    {
+      "name": "authorization entries must be objects",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"receipt\":{\"auth_sequence\":[null]}}}]}"
+    },
+    {
+      "name": "receipt variant needs two entries",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"receipt\":[\"receipt\"]}}]}"
+    },
+    {
+      "name": "receipt variant tag must be a string",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"receipt\":[1,{}]}}]}"
+    },
+    {
+      "name": "receipt variant body must be an object",
+      "valid": false,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"receipt\":[\"receipt\",null]}}]}"
+    },
+    {
+      "name": "empty grouped receipts are valid",
+      "valid": true,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"receipts\":[]}}]}"
+    },
+    {
+      "name": "arbitrary contract sequence fields stay opaque",
+      "valid": true,
+      "text": "{\"type\":\"data\",\"connection_id\":\"1\",\"stream_id\":\"1\",\"generation\":\"1\",\"subscription_id\":\"100\",\"sequence\":\"1\",\"mode\":\"history\",\"records\":[{\"block_num\":100,\"block_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cursor\":\"18446744073709551615\",\"payload\":{\"sequence\":42,\"act\":{\"data\":{\"receipt\":\"contract data\",\"auth_sequence\":\"opaque\",\"global_sequence\":42}}}}]}"
     }
   ]
 }

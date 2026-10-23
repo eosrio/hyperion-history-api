@@ -1,13 +1,14 @@
 {
   "version": 1,
+  "revision": 2,
   "resources": [
     {
       "path": "protocol/v1/README.md",
-      "sha256": "3eb03369222564aff5e57c4be27361ad47ff1c63f2f689e2ebb355473a852599"
+      "sha256": "e7635fead5c909277f04086b0c857b0a20954bf6bd442eac15a71f862489f907"
     },
     {
       "path": "conformance/v1/wire-vectors.json",
-      "sha256": "1f107bda8c14aeff5dbf7cf7b621b2569e7c8b1c601056b11a3987b66a56a252"
+      "sha256": "dfa5e6fc58ac3a9ef510c32e9cb2f9db6a05e2ef7a7dbe7d8be1678e79d58f49"
     },
     {
       "path": "conformance/v1/scenarios.json",

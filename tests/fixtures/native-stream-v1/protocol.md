@@ -80,6 +80,11 @@ known uint64 metadata (`global_sequence`, receipt sequences) uses decimal string
 including values beyond JavaScript's safe integer range. Delta primary/secondary
 keys retain their complete existing strings, including compound/wider identities.
 Every record requires a real block_id; unavailable identity fails explicitly.
+Optional receipt is an object, null, or a SHIP variant `[string, object]`.
+Grouped receipts is an array of objects; each receipt's auth_sequence, when
+present, is an array of objects with optional exact decimal-string sequence.
+Malformed known container shapes fail; arbitrary contract act.data/delta data
+and unrelated sequence-named fields remain opaque.
 
 Both per-stream and per-connection windows bound **unacknowledged** record counts
 and UTF-8 encoded bytes of complete data JSON messages (including envelope).

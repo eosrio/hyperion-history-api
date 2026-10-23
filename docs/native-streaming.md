@@ -17,10 +17,11 @@ decimal-string identifiers, complete UTF-8 frame limits, duplicate-key rejection
 Contract JSON under `data` stays opaque; compound or wider delta identities retain their strings.
 Outgoing serialization validates the actual encoded document and rejects non-finite numbers.
 
-The shared protocol and fixtures are from client commit `0dd24d59f4f8ac5773c67b051a966bdfd77fec2f`.
+The shared protocol and fixtures are from client commit `346c473f55979ff2dd841aa2bbba4bcfebc49ef7`.
 [The fixture source record](../tests/fixtures/native-stream-v1/source.json) retains repository,
 paths, license, byte counts and SHA-256; tests verify all frozen bytes against the source manifest.
-All 27 wire vectors run through the codec. The 24 state scenarios and two network sessions are
+All 37 wire vectors run through the codec, including receipt shape and opaque payload cases.
+The 24 state scenarios and two network sessions are
 retained for subsequent session/endpoint integration; this module slice verifies their identity,
 without claiming their server acceptance. The textual contract remains an implementation draft.
 Updates require an explicit new pin.

@@ -1,28 +1,28 @@
 {
   "repository": "https://github.com/eosrio/hyperion-stream-client",
-  "commit": "0dd24d59f4f8ac5773c67b051a966bdfd77fec2f",
+  "commit": "346c473f55979ff2dd841aa2bbba4bcfebc49ef7",
   "path": "conformance/v1/wire-vectors.json",
-  "sha256": "1f107bda8c14aeff5dbf7cf7b621b2569e7c8b1c601056b11a3987b66a56a252",
-  "bytes": 10742,
+  "sha256": "dfa5e6fc58ac3a9ef510c32e9cb2f9db6a05e2ef7a7dbe7d8be1678e79d58f49",
+  "bytes": 15333,
   "license": "MIT",
   "manifest": {
     "path": "conformance/v1/manifest.json",
     "local_path": "manifest.json",
-    "sha256": "95b4c9f432c75bd98158c67406716774563fdfc31d71a3b4a5c5787708ca6c16",
-    "bytes": 614
+    "sha256": "6248a781904d526e9a9af120d80f1e8112edf51bbaa364a88b112f2a5ce3b5f1",
+    "bytes": 631
   },
   "resources": [
     {
       "path": "protocol/v1/README.md",
-      "sha256": "3eb03369222564aff5e57c4be27361ad47ff1c63f2f689e2ebb355473a852599",
+      "sha256": "e7635fead5c909277f04086b0c857b0a20954bf6bd442eac15a71f862489f907",
       "local_path": "protocol.md",
-      "bytes": 11857
+      "bytes": 12214
     },
     {
       "path": "conformance/v1/wire-vectors.json",
-      "sha256": "1f107bda8c14aeff5dbf7cf7b621b2569e7c8b1c601056b11a3987b66a56a252",
+      "sha256": "dfa5e6fc58ac3a9ef510c32e9cb2f9db6a05e2ef7a7dbe7d8be1678e79d58f49",
       "local_path": "wire-vectors.json",
-      "bytes": 10742
+      "bytes": 15333
     },
     {
       "path": "conformance/v1/scenarios.json",

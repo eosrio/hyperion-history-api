@@ -7,13 +7,13 @@ import {parseNativeJson, parseNativeClientPacket, assertNativeServerPacket, enco
 
 const source = JSON.parse(readFileSync(new URL('../fixtures/native-stream-v1/source.json', import.meta.url)));
 const bytes = readFileSync(new URL('../fixtures/native-stream-v1/wire-vectors.json', import.meta.url));
-assert.equal(source.commit, '0dd24d59f4f8ac5773c67b051a966bdfd77fec2f');
+assert.equal(source.commit, '346c473f55979ff2dd841aa2bbba4bcfebc49ef7');
 assert.equal(source.path, 'conformance/v1/wire-vectors.json');
 assert.equal(createHash('sha256').update(bytes).digest('hex'), source.sha256);
 assert.equal(bytes.length, source.bytes);
 const vectors = JSON.parse(bytes);
 assert.equal(vectors.version, 1);
-assert.equal(vectors.cases.length, 27);
+assert.equal(vectors.cases.length, 37);
 
 test('all pinned protocol and integration fixtures match the source manifest byte for byte', () => {
     for (const resource of [source.manifest, ...source.resources]) {
