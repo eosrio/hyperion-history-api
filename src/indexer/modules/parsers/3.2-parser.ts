@@ -10,7 +10,6 @@ import { GetBlocksResultV0 } from "../../workers/state-reader.js";
 import {protocolBytes} from "../../protocol/contract-cache.js";
 import {normalizeActionSequences} from '../../helpers/action-sequences.js';
 import {canonicalUint64, Uint64ValueError} from '../../helpers/uint64.js';
-import {ActionSourceInventoryError} from '../../history/action-source-inventory.js';
 
 export default class HyperionParser extends BaseParser {
 
@@ -91,8 +90,7 @@ export default class HyperionParser extends BaseParser {
         return true;
         } catch (error) {
             // This region contains only metadata finalization after the awaited decoder/hooks, never storage I/O.
-            if (worker.actionSourceAdmissionEnabled) throw new ActionSourceInventoryError('Action metadata finalization failed: '
-                + (error instanceof Error ? error.message : String(error)));
+            if (worker.actionSourceAdmissionEnabled) throw worker.contractOutputFailure('contract-finalization-invalid', error);
             throw error;
         }
         } finally {
@@ -220,7 +218,7 @@ export default class HyperionParser extends BaseParser {
                     hLog(`ERROR: Block data not found for #${res['this_block']['block_num']}`);
                 }
                 if (worker.actionSourceAdmissionEnabled) {
-                    worker.ackAdmittedSourceDelivery(message);
+                    await worker.ackAdmittedSourceDelivery(message);
                 } else if (worker.usesExtensionProtocol) {
                     worker.ackProtocolSourceDelivery(message);
                 } else if (worker.ch && worker.ch_ready) {

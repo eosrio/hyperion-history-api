@@ -28,9 +28,10 @@ import {transactionSequenceCacheKey} from '../helpers/transaction-cache.js';
 import {actionSourceAdmissionHeader, type ActionSourceAdmission} from '../history/action-source-admission.js';
 import {actionProducerEpoch, currentActionConfiguration} from '../history/action-producer-epoch.js';
 import {actionHistoryImmutableJson} from '../history/action-history-manifest.js';
-import {ActionSourceInventoryError} from '../history/action-source-inventory.js';
+import {ActionSourceInventoryError, isActionSourceValidationFailure, actionSourceValidationFailure} from '../history/action-source-inventory.js';
 import {publishAdmittedActionWithEvidence, assertActionPublicationBatchBudget,
     type ActionPublicationOwner, type ConfirmedActionPublication} from '../history/action-confirmed-publication.js';
+import {ActionContractOutputFailure, isActionContractOutputFailure, actionContractOutputFailure, type ActionContractFailureReason} from '../history/action-attempt-disposition.js';
 import {createHash} from 'node:crypto';
 import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
 
@@ -44,7 +45,8 @@ interface ProtocolActionWork {
 interface ActionAdmissionScope {
     admission: ActionSourceAdmission; traceOrdinal: number; payload: Buffer;
     headers: Message['properties']['headers']; configuration: string; owner: ActionPublicationOwner; fragmentId?: string;
-    handoff?: {publications: ConfirmedActionPublication[]; entries: Array<{payload: Buffer; work?: ProtocolActionWork}>};
+    attemptEligible?: boolean; contractFailure?: ActionContractOutputFailure; proofView?: ProtocolAbiProofView; nativeView?: ProtocolNativeActionView;
+    handoff?: {rawIncomplete?: boolean; publications: ConfirmedActionPublication[]; entries: Array<{payload: Buffer; work?: ProtocolActionWork}>};
 }
 
 type ActionAbiIdentity =
@@ -97,6 +99,9 @@ function cleanActionTrace(t: any) {
         console.log(e);
     }
 }
+
+// Existing untyped async hook failures remain isolated no-output diagnostics, without a contract cause.
+class ActionHookOutputDiagnostic extends ActionSourceInventoryError {}
 
 function detachAdmittedActionBatch(actions: readonly unknown[]): any[] {
     try {return JSON.parse(actionHistoryImmutableJson(actions));} catch (error) {
@@ -592,8 +597,13 @@ export default class DSPoolWorker extends HyperionWorker {
             if (!type) throw new Error('Certified ABI has no action mapping');
             action.act.data = this.protocol.contractCodec.decodeValue(abi, type, protocolBytes(input.rawHex));
             action.protocol = work.metadata; delete action['ds_error'];
-            await this.common.attachActionExtras(this, action);
         } catch (error: any) {
+            if (this.activeActionAdmission) throw this.contractOutputFailure('contract-abi-invalid', error);
+            this.restoreProtocolAction(action, new ProtocolAbiProofUnavailableError('protocol_action_abi_invalid', String(error?.message ?? error)));
+            return;
+        }
+        try {await this.common.attachActionExtras(this, action);} catch (error: any) {
+            // Arbitrary async hook failures remain a narrower isolated diagnostic, never a typed contract cause.
             this.restoreProtocolAction(action, new ProtocolAbiProofUnavailableError('protocol_action_abi_invalid', String(error?.message ?? error)));
         }
     }
@@ -755,7 +765,8 @@ export default class DSPoolWorker extends HyperionWorker {
                     }
                     const parsedData = JSON.parse((this.activeActionAdmission?.payload ?? data.content).toString());
                     try {await this.processTraces(parsedData, this.activeActionAdmission?.headers ?? data.properties.headers);} catch (error) {
-                        if (!this.activeActionAdmission || !(error instanceof ActionSourceInventoryError)) throw error;
+                        if (!this.activeActionAdmission || !(isActionSourceValidationFailure(error) || isActionContractOutputFailure(error) || error instanceof ActionHookOutputDiagnostic)) throw error;
+                        if (isActionContractOutputFailure(error)) this.activeActionAdmission.contractFailure = error;
                         this.activeActionAdmission.handoff = undefined;
                         // Retained input plus an explicit failure keeps this scope recoverable; it never certifies an empty fragment.
                         await this.getActionAdmissionStore().noteIncomplete(this.activeActionAdmission.admission.id,
@@ -773,11 +784,32 @@ export default class DSPoolWorker extends HyperionWorker {
                         if (scope.handoff) {
                             await this.assertActionHandoffCurrent(scope);
                             // This await is outside contract-incomplete handling. Unknown or failed I/O cannot ACK.
-                            await this.getActionAdmissionStore().recordConfirmedHandoff({admissionId: scope.admission.id,
-                                traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload, configuration: scope.configuration,
-                                owner: scope.owner, publications: scope.handoff.publications});
+                            const handoffInput = {admissionId: scope.admission.id, traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload,
+                                configuration: scope.configuration, owner: scope.owner, publications: scope.handoff.publications};
+                            if (scope.handoff.rawIncomplete) {
+                                const evidence = await this.getActionAdmissionStore().prepareRawIncompleteAttemptDisposition(handoffInput);
+                                await this.assertActionHandoffCurrent(scope);
+                                await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                            } else await this.getActionAdmissionStore().recordConfirmedHandoff(handoffInput);
                             await this.assertActionHandoffCurrent(scope);
                             this.assertActionAdmissionOwner(scope);
+                        }
+                        if (scope.contractFailure) {
+                            await this.assertActionAttemptCurrent(scope);
+                            const evidence = await this.getActionAdmissionStore().prepareContractAttemptDisposition({admissionId: scope.admission.id,
+                                traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload, configuration: scope.configuration,
+                                owner: scope.owner, failure: scope.contractFailure});
+                            await this.assertActionAttemptCurrent(scope);
+                            await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                            await this.assertActionAttemptCurrent(scope);
+                        }
+                        if (scope.attemptEligible) {
+                            await this.assertActionAttemptCurrent(scope);
+                            const evidence = await this.getActionAdmissionStore().prepareTransactionAttemptDisposition({admissionId: scope.admission.id,
+                                traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload, configuration: scope.configuration, owner: scope.owner});
+                            await this.assertActionAttemptCurrent(scope);
+                            if (evidence) await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                            await this.assertActionAttemptCurrent(scope);
                         }
                         scope.owner.consumer.ack(data);
                         this.activeActionAdmission = undefined;
@@ -883,6 +915,20 @@ export default class DSPoolWorker extends HyperionWorker {
         this.assertProtocolDelivery();
     }
 
+    contractOutputFailure(reason: ActionContractFailureReason, error: unknown): ActionContractOutputFailure | ActionSourceInventoryError {
+        const scope = this.activeActionAdmission!;
+        if (this.usesExtensionProtocol && !scope.proofView) return actionSourceValidationFailure('Output validation lacks original contract proof authority');
+        return actionContractOutputFailure({admissionId: scope.admission.id, traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload,
+            configuration: scope.configuration, owner: scope.owner}, reason, error instanceof Error ? error.message : String(error));
+    }
+
+    private async assertActionAttemptCurrent(scope: ActionAdmissionScope): Promise<void> {
+        await this.assertActionAdmissionCurrent();
+        if (scope.proofView) await this.getProtocolProofReader().revalidate(scope.proofView);
+        if (scope.nativeView) await this.getProtocolNativeReader().revalidate(scope.nativeView);
+        await this.assertActionAdmissionCurrent(); this.assertActionAdmissionOwner(scope);
+    }
+
     private async assertActionHandoffCurrent(scope: ActionAdmissionScope): Promise<void> {
         await this.assertActionAdmissionCurrent();
         // processTraces clears protocolTrace. Keep every original issued contract view through outcome persistence.
@@ -957,6 +1003,10 @@ export default class DSPoolWorker extends HyperionWorker {
                         this.protocolTrace = {error};
                     } finally { stop(); }
                 }
+                if (this.activeActionAdmission) {
+                    this.activeActionAdmission.proofView = this.protocolTrace?.view;
+                    this.activeActionAdmission.nativeView = this.protocolTrace?.nativeView;
+                }
                 let action_count = 0;
                 const trx_id = transaction_trace['id'].toLowerCase();
                 const _actDataArray: any[] = [];
@@ -1020,7 +1070,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 try {_finalTraces = groupActionTraces(_processedTraces, this.usesExtensionProtocol);} catch (error) {
                     // A later hook may have corrupted an earlier action. Only pure grouping is classified here.
                     if (!this.activeActionAdmission) throw error;
-                    throw new ActionSourceInventoryError('Action grouping failed: ' + (error instanceof Error ? error.message : String(error)));
+                    throw this.contractOutputFailure('contract-grouping-invalid', error);
                 }
 
                 // Submit Actions after deduplication
@@ -1052,7 +1102,7 @@ export default class DSPoolWorker extends HyperionWorker {
                     } catch (error) {
                         // Proof, storage and transport awaits stay outside this contract-output failure boundary.
                         if (!this.activeActionAdmission) throw error;
-                        throw new ActionSourceInventoryError('Action finalization failed: ' + (error instanceof Error ? error.message : String(error)));
+                        throw this.contractOutputFailure('contract-finalization-invalid', error);
                     }
 
                     finalized.push(uniqueAction);
@@ -1060,9 +1110,9 @@ export default class DSPoolWorker extends HyperionWorker {
                 let finalBatch: readonly any[] = finalized;
                 const admissionScope = this.activeActionAdmission;
                 if (admissionScope?.admission.inventory) {
-                    if (this.actionHookFailure !== undefined) throw new ActionSourceInventoryError('Action hook failed before whole-transaction settlement');
+                    if (this.actionHookFailure !== undefined) throw new ActionHookOutputDiagnostic('Action hook failed before whole-transaction settlement');
                     // Detach every finalized document before target/proof/journal awaits; hooks may retain their input.
-                    finalBatch = detachAdmittedActionBatch(finalized);
+                    try {finalBatch = detachAdmittedActionBatch(finalized);} catch (error) {throw this.contractOutputFailure('contract-output-not-portable', error);}
                     await this.assertActionAdmissionCurrent();
                     for (let index = 0; index < finalBatch.length; index++) {
                         await this.revalidateProtocolPublication(finalBatch[index], this.protocolActions?.get(finalized[index]));
@@ -1073,31 +1123,37 @@ export default class DSPoolWorker extends HyperionWorker {
                     await this.assertActionAdmissionCurrent();
                 } else if (admissionScope) {
                     // Explicitly incomplete source output grants no membership certificate.
-                    finalBatch = detachAdmittedActionBatch(finalized);
+                    try {finalBatch = detachAdmittedActionBatch(finalized);} catch (error) {throw this.contractOutputFailure('contract-output-not-portable', error);}
                 } else if (this.usesExtensionProtocol) {
                     // Hooks may retain parsed objects; queued bytes and routing metadata own detached snapshots.
                     finalBatch = JSON.parse(JSON.stringify(finalized));
+                }
+                if (admissionScope) {
+                    const sourceTransaction = admissionScope.admission.inventory?.transactions.find(value => value.traceOrdinal === admissionScope.traceOrdinal);
+                    admissionScope.attemptEligible = sourceTransaction?.disposition === 'no-effects' ||
+                        (sourceTransaction?.disposition === 'process' && sourceTransaction.groups.length > 0 && this.conf.indexer.disable_indexing === true);
                 }
                 const staged = finalBatch.map((action, index) => ({action, work: this.protocolActions?.get(finalized[index]),
                     payload: Buffer.from(admissionScope ? actionHistoryImmutableJson(action) : JSON.stringify(action))}));
                 for (const {work, payload} of staged) if (work?.metadata.schemaVersion === 2)
                     this.protocolDeliveryNativeEntries?.add({work, payload: Buffer.from(payload)});
-                const completeHandoff = !!admissionScope?.admission.inventory && !!admissionScope.fragmentId && staged.length > 0
-                    && !this.conf.indexer.disable_indexing && staged.every(({action}) => !Object.hasOwn(action, 'ds_error') && action.protocol?.status !== 'incomplete');
+                const confirmedHandoff = !!admissionScope?.admission.inventory && !!admissionScope.fragmentId && staged.length > 0
+                    && !this.conf.indexer.disable_indexing;
+                const rawIncomplete = staged.some(({action}) => action.protocol?.status === 'incomplete');
                 const confirmed: ConfirmedActionPublication[] = [];
                 const publicationHeaders = {block_num, [actionSourceAdmissionHeader]: admissionScope?.admission.id,
                     ...(admissionScope?.fragmentId ? {action_fragment_id: admissionScope.fragmentId} : {})};
-                if (completeHandoff) assertActionPublicationBatchBudget(staged.map(({payload}) => ({payload, headers: publicationHeaders})));
+                if (confirmedHandoff) assertActionPublicationBatchBudget(staged.map(({payload}) => ({payload, headers: publicationHeaders})));
                 if (admissionScope) for (const {action, work, payload} of staged) {
                     await this.assertActionAdmissionCurrent();
                     await this.revalidateProtocolPublication(action, work);
                     const q = `${this.chain}:index_actions:${this.act_emit_idx}`;
                     this.act_emit_idx = this.act_emit_idx % this.conf.scaling.ad_idx_queues + 1;
-                    if (completeHandoff) confirmed.push(await publishAdmittedActionWithEvidence(admissionScope.owner, q, payload, {headers: publicationHeaders}));
+                    if (confirmedHandoff) confirmed.push(await publishAdmittedActionWithEvidence(admissionScope.owner, q, payload, {headers: publicationHeaders}));
                     else if (!this.conf.indexer.disable_indexing) await this.publishAdmitted(admissionScope.owner, q, payload, publicationHeaders);
                     await this.revalidateProtocolPublication(action, work);
                 }
-                if (completeHandoff) admissionScope!.handoff = {publications: confirmed,
+                if (confirmedHandoff) admissionScope!.handoff = {rawIncomplete, publications: confirmed,
                     entries: staged.map(({payload, work}) => ({payload: Buffer.from(payload), work}))};
                 for (const {action: uniqueAction, work, payload} of staged) {
                     await this.revalidateProtocolPublication(uniqueAction, work);
