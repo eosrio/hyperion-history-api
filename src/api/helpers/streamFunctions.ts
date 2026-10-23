@@ -41,7 +41,7 @@ export function processTableRequests(
         }
 
         requests.forEach((request, uuid) => {
-            if (scope && request.scope && request.scope !== scope) return;
+            if (request.scope && request.scope !== scope) return;
             if (checkDeltaFilters(request, payer, message)) {
                 targetClients.get(clientId)?.push(uuid);
             }
