@@ -1,0 +1,462 @@
+{
+  "schemaVersion": 1,
+  "testedCodeCommit": "781cd19bd30fac42a9d1318b00fb163bc357460e",
+  "sdkCommit": "c0156c7bc65bee780b2215ba731ee6e5fe2bb52d",
+  "componentScope": "Tools #21 runtime/adapter restart and bounded rollback correctness",
+  "releaseQualification": false,
+  "runtimeAcceptance": [
+    {
+      "case": "node22-retry-b",
+      "node": "v22.23.3",
+      "status": "passed",
+      "createdAt": "2026-10-21T16:26:12.622Z",
+      "completedAt": "2026-10-21T16:29:07.387Z",
+      "checks": 14,
+      "processes": 34,
+      "crashBoundaries": [
+        "after-apply-intent",
+        "before-apply-commit",
+        "after-apply-commit",
+        "after-rollback-intent",
+        "before-rollback-commit",
+        "after-rollback-step",
+        "after-result"
+      ],
+      "unavailableAttempts": [
+        {
+          "boundary": "before-apply-commit",
+          "code": "projection.apply-unavailable",
+          "elapsedMS": 60071,
+          "independentlyCompleted": false,
+          "checkpoint": {
+            "blockNum": 1,
+            "blockId": "6cebb309d42bcb2a51016e1319996fa633e3bea9db8dbc79d43a0bd4d949eaa0"
+          }
+        },
+        {
+          "boundary": "before-rollback-commit",
+          "code": "projection.apply-unavailable",
+          "elapsedMS": 59837,
+          "independentlyCompleted": false,
+          "checkpoint": {
+            "blockNum": 4,
+            "blockId": "d1f5cf1b535e828c297da9ff2ce4ff256674ab302862dacde0c9832ebd1b406e"
+          }
+        }
+      ],
+      "expectedStaleRequestFailures": 1,
+      "boundedTruncatedTraces": 2,
+      "parentUsage": {
+        "resource": {
+          "userCPUTime": 6547790,
+          "systemCPUTime": 6740727,
+          "maxRSS": 517384,
+          "sharedMemorySize": 0,
+          "unsharedDataSize": 0,
+          "unsharedStackSize": 0,
+          "minorPageFault": 2124693,
+          "majorPageFault": 0,
+          "swappedOut": 0,
+          "fsRead": 0,
+          "fsWrite": 0,
+          "ipcSent": 0,
+          "ipcReceived": 0,
+          "signalsCount": 0,
+          "voluntaryContextSwitches": 6794,
+          "involuntaryContextSwitches": 89
+        },
+        "cpu": {
+          "user": 6547851,
+          "system": 6740790
+        },
+        "memory": {
+          "rss": 90288128,
+          "heapTotal": 32038912,
+          "heapUsed": 21037096,
+          "external": 39190451,
+          "arrayBuffers": 36554308
+        }
+      },
+      "fixtureGroup": {
+        "memoryPeak": "484372480",
+        "cpu": "usage_usec 31152868\nuser_usec 21691270\nsystem_usec 9461598\ncore_sched.force_idle_usec 0\nnr_periods 1454\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0"
+      },
+      "reportMember": "native/node22-retry-b.json",
+      "reportSha256": "d88732bbb522f29b26324bac6092719197e524ca9157783c5798f45b9c9d4839"
+    },
+    {
+      "case": "node24-retry-b",
+      "node": "v24.19.0",
+      "status": "passed",
+      "createdAt": "2026-10-21T16:26:12.621Z",
+      "completedAt": "2026-10-21T16:29:07.277Z",
+      "checks": 14,
+      "processes": 34,
+      "crashBoundaries": [
+        "after-apply-intent",
+        "before-apply-commit",
+        "after-apply-commit",
+        "after-rollback-intent",
+        "before-rollback-commit",
+        "after-rollback-step",
+        "after-result"
+      ],
+      "unavailableAttempts": [
+        {
+          "boundary": "before-apply-commit",
+          "code": "projection.apply-unavailable",
+          "elapsedMS": 60006,
+          "independentlyCompleted": false,
+          "checkpoint": {
+            "blockNum": 1,
+            "blockId": "6cebb309d42bcb2a51016e1319996fa633e3bea9db8dbc79d43a0bd4d949eaa0"
+          }
+        },
+        {
+          "boundary": "before-rollback-commit",
+          "code": "projection.apply-unavailable",
+          "elapsedMS": 60035,
+          "independentlyCompleted": false,
+          "checkpoint": {
+            "blockNum": 4,
+            "blockId": "d1f5cf1b535e828c297da9ff2ce4ff256674ab302862dacde0c9832ebd1b406e"
+          }
+        }
+      ],
+      "expectedStaleRequestFailures": 1,
+      "boundedTruncatedTraces": 2,
+      "parentUsage": {
+        "resource": {
+          "userCPUTime": 6329092,
+          "systemCPUTime": 7021679,
+          "maxRSS": 540352,
+          "sharedMemorySize": 0,
+          "unsharedDataSize": 0,
+          "unsharedStackSize": 0,
+          "minorPageFault": 2121199,
+          "majorPageFault": 0,
+          "swappedOut": 0,
+          "fsRead": 0,
+          "fsWrite": 0,
+          "ipcSent": 0,
+          "ipcReceived": 0,
+          "signalsCount": 0,
+          "voluntaryContextSwitches": 7879,
+          "involuntaryContextSwitches": 60
+        },
+        "cpu": {
+          "user": 6329150,
+          "system": 7021744
+        },
+        "memory": {
+          "rss": 552222720,
+          "heapTotal": 34492416,
+          "heapUsed": 27233904,
+          "external": 486771012,
+          "arrayBuffers": 484003646
+        }
+      },
+      "fixtureGroup": {
+        "memoryPeak": "505675776",
+        "cpu": "usage_usec 29336894\nuser_usec 19483410\nsystem_usec 9853483\ncore_sched.force_idle_usec 0\nnr_periods 1407\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0"
+      },
+      "reportMember": "native/node24-retry-b.json",
+      "reportSha256": "c491548e5b69ca2dc0f2134bb72b7614610c59fb25d81d1eb5331cef85c73c72"
+    }
+  ],
+  "ciAcceptance": [
+    {
+      "runId": 39635039652,
+      "url": "https://github.com/eosrio/hyperion-history-api/actions/runs/39635039652",
+      "node": "v22.23.3",
+      "status": "passed",
+      "existingV1Checks": 12,
+      "rollbackChecks": 14,
+      "rollbackProcesses": 34,
+      "cleanup": {
+        "containers": {
+          "standalone": true,
+          "replica": true
+        },
+        "network": true,
+        "volume": true,
+        "verified": true
+      },
+      "reportMember": "ci/node22-projection-report.json",
+      "reportSha256": "ef925e0f00977c374186649c8287f05f0d185a28a76524252afd93047067a92d",
+      "workflowPrHeadCommit": "216af120f5b45bf43780f967d093224780bc1409",
+      "checkedOutSourceCommit": "747ccc845bb818c5a492b19ffadf2d84896018fe",
+      "checkedOutSourceKind": "GitHub synthetic pull-request merge",
+      "checkedOutParents": [
+        "3a3e1d2a868635386172854c1157c76904547538",
+        "216af120f5b45bf43780f967d093224780bc1409"
+      ],
+      "provenanceFile": "ci-provenance.json"
+    },
+    {
+      "runId": 39635039652,
+      "url": "https://github.com/eosrio/hyperion-history-api/actions/runs/39635039652",
+      "node": "v24.22.0",
+      "status": "passed",
+      "existingV1Checks": 12,
+      "rollbackChecks": 14,
+      "rollbackProcesses": 34,
+      "cleanup": {
+        "containers": {
+          "standalone": true,
+          "replica": true
+        },
+        "network": true,
+        "volume": true,
+        "verified": true
+      },
+      "reportMember": "ci/node24-projection-report.json",
+      "reportSha256": "ee720f54a055ec492e6ca168d9357139659d8a4b3e4e9c12887adf24182cd92f",
+      "workflowPrHeadCommit": "216af120f5b45bf43780f967d093224780bc1409",
+      "checkedOutSourceCommit": "747ccc845bb818c5a492b19ffadf2d84896018fe",
+      "checkedOutSourceKind": "GitHub synthetic pull-request merge",
+      "checkedOutParents": [
+        "3a3e1d2a868635386172854c1157c76904547538",
+        "216af120f5b45bf43780f967d093224780bc1409"
+      ],
+      "provenanceFile": "ci-provenance.json"
+    }
+  ],
+  "failedRuns": [
+    {
+      "case": "node24-pilot",
+      "head": "40550a13a58d9e58396dca2f6cd29000fde09efc",
+      "completedChecks": 1,
+      "failure": "Worker failed: {\"type\":\"error\",\"error\":{\"message\":\"MongoDB projection operation did not complete; retry the same source or request\",\"code\":\"projection.apply-unavailable\",\"stack\":\"ProjectionContractError: MongoDB projection operation did not complete; retry the same source or request\\n    at MongoDbRollbackAdapter.guarded (file:///tmp/hyp45-p21-20261021/node24-source/packages/backend-mongodb/dist/storage.js:79:33)\\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\\n    at async Object.apply (file:///tmp/hyp45-p21-20261021/node24-source/build/indexer/projection/recoverable-runtime.js:62:32)\"}} \n\n1 !== 0\n",
+      "reportMember": "failed/node24-pilot.json",
+      "reportSha256": "dfda1464131d56768370d13b40267a8e74c1298c8450f6208121a39e6f141ff1"
+    },
+    {
+      "case": "node22-retry-a",
+      "head": "31f22333cba9ec123b9cb03a664d8b29bb169442",
+      "completedChecks": 3,
+      "failure": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n+ {\n- [Object: null prototype] {\n    blockId: 'd1f5cf1b535e828c297da9ff2ce4ff256674ab302862dacde0c9832ebd1b406e',\n    blockNum: 4\n  }\n",
+      "reportMember": "failed/node22-retry-a.json",
+      "reportSha256": "0e2d7eb0a58e7dfe0e77831894daf91129129a718fa2fa2743af053d3db5a1cf"
+    },
+    {
+      "case": "node24-retry-a",
+      "head": "31f22333cba9ec123b9cb03a664d8b29bb169442",
+      "completedChecks": 3,
+      "failure": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n+ {\n- [Object: null prototype] {\n    blockId: 'd1f5cf1b535e828c297da9ff2ce4ff256674ab302862dacde0c9832ebd1b406e',\n    blockNum: 4\n  }\n",
+      "reportMember": "failed/node24-retry-a.json",
+      "reportSha256": "b61731477874b17c149a98f2761da1e7bb766c35a67b519433d7169ff419243e"
+    }
+  ],
+  "checks": {
+    "schemaVersion": 1,
+    "codeCommit": "781cd19bd30fac42a9d1318b00fb163bc357460e",
+    "sdkCommit": "c0156c7bc65bee780b2215ba731ee6e5fe2bb52d",
+    "bun": "1.4.3",
+    "typescript": "7.0.2",
+    "unit": {
+      "passed": 947,
+      "failed": 0,
+      "assertions": 6853,
+      "files": 84
+    },
+    "sdkNativeTestsEach": 47,
+    "adapterNativeTestsEach": 24,
+    "nativeVersions": [
+      "22.23.3",
+      "24.19.0"
+    ],
+    "wholeProjectTypecheckFiles": 243,
+    "adapterTypecheckFiles": 5,
+    "nativeTypeScriptEmission": "passed",
+    "logs": [
+      {
+        "file": "hapi-final-bun-check.log",
+        "bytes": 44,
+        "sha256": "05d0719bc9ad699e8d1b9c04d31e874bb1be93921dde357f467f831354f7848d"
+      },
+      {
+        "file": "hapi-final-build.log",
+        "bytes": 220,
+        "sha256": "f5d8288057e7beda0aafa4760056680183499fdb48f1af22b622ff7940cf504c"
+      },
+      {
+        "file": "hapi-final-unit.log",
+        "bytes": 153564,
+        "sha256": "c538d5173fd93ef1263ef37379cac2d58ec9a24667f62929c57d76ea0d86b303"
+      },
+      {
+        "file": "adapter-final-bun-check.log",
+        "bytes": 41,
+        "sha256": "bee866e85490609df92679da56ad3f956d72194ddda337254cf012afb62ec57c"
+      },
+      {
+        "file": "adapter-final-node22.log",
+        "bytes": 6486,
+        "sha256": "6a626781e5d5a3deb3b44d9224ee0ec0652bc1b7a730fce327229ca213958c19"
+      },
+      {
+        "file": "adapter-final-node24.log",
+        "bytes": 2809,
+        "sha256": "27731e0122251073029056c553e81891608a5956bb8f869dd0b87ae9718a793b"
+      },
+      {
+        "file": "sdk-final-node22.log",
+        "bytes": 11420,
+        "sha256": "b9f098187a1037cb717fff501a25271730ec10d8b2ab3dd1cb0fedc2ef923454"
+      },
+      {
+        "file": "sdk-final-node24.log",
+        "bytes": 4783,
+        "sha256": "dc1cd1ad2476361dd29f5506fa7e372efc56e811d2177c3271fbcf626c319771"
+      }
+    ]
+  },
+  "cleanup": {
+    "schemaVersion": 1,
+    "createdAt": "2026-10-21T16:31:55Z",
+    "owner": "windows:codex:hyperion-tools",
+    "issue": "eosrio/hyperion-tools#21",
+    "ownedMongo": {
+      "unit": "hyp45-p21-mongo-20261021",
+      "pid": 2530738,
+      "stopped": true,
+      "listenerClosed": true
+    },
+    "applicationSnapshot": {
+      "databases": 6,
+      "documents": 442,
+      "bytes": 273857
+    },
+    "protectedProcessesUnchanged": true,
+    "protectedPids": [
+      2431729,
+      3122,
+      71207
+    ],
+    "wireBinarySha256": "c556257473bb460278208bd081cf370511ec9f1705a9c55d7535aa3a469d0fd0",
+    "wireBefore": {
+      "chain_id": "9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d",
+      "head_block_num": 318930,
+      "last_irreversible_block_num": 318928,
+      "head_block_id": "0004ddd2372c52c3d47f7aef5dc11b023564ba81b8926bd2a6201e33d12c0aa8",
+      "head_block_time": "2026-10-21T16:31:55.000"
+    },
+    "wireAfter": {
+      "chain_id": "9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d",
+      "head_block_num": 318931,
+      "last_irreversible_block_num": 318929,
+      "head_block_id": "0004ddd314669c7e670767a65c35c5cf49d74f0a0c8b96ec76d2c982b78d4038",
+      "head_block_time": "2026-10-21T16:31:55.500"
+    },
+    "protectedListenersPresent": [
+      58271,
+      58272,
+      58273,
+      9200,
+      58080,
+      8161
+    ],
+    "lxdContainers": [
+      {
+        "name": "tibs",
+        "status": "Running"
+      }
+    ],
+    "fixtureDirectoryRemoved": true,
+    "completedAt": "2026-10-21T16:33:45Z",
+    "backup": {
+      "sha256": "85039e55d4431022f239deab7b0822c70905606a6de2f18095cfe0af44fd6328",
+      "members": 40,
+      "everyMemberVerifiedLocally": true
+    },
+    "wireAfterRemoval": {
+      "chain_id": "9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d",
+      "head_block_num": 319150,
+      "last_irreversible_block_num": 319148,
+      "head_block_id": "0004deae59bdf4ac8b8bcfff11863d32ac21bdd251ce969a72cc74bd4f535ef1",
+      "head_block_time": "2026-10-21T16:33:45.000"
+    }
+  },
+  "resources": {
+    "schemaVersion": 1,
+    "host": "Hyperion-3",
+    "platform": "linux/x64",
+    "os": "Ubuntu 24.04.4 LTS",
+    "kernel": "6.8.0-136-generic",
+    "cpu": "AMD Ryzen 9 5950X, 16 cores / 32 threads",
+    "artifacts": {
+      "mongodb": {
+        "url": "https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2404-8.0.34.tgz",
+        "sha256": "3e55cdcf7013fbc805d29d8195230df4b23c7688733ee15ad58ac6bc2a416611",
+        "bytes": 105552693,
+        "binarySha256": "b07e6a9f1802303add4aab26d78798396c9c243d39ce60bad51bc6ad5a8859b7"
+      },
+      "v22.23.3": {
+        "url": "https://nodejs.org/dist/v22.23.3/node-v22.23.3-linux-x64.tar.xz",
+        "sha256": "df450af89261115ef9f9e3830c3eeb2cc9213b63c720b1af623cb5dcbe2e02de",
+        "bytes": 31001304,
+        "binarySha256": "fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48"
+      },
+      "v24.19.0": {
+        "url": "https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-x64.tar.xz",
+        "sha256": "14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647",
+        "bytes": 31633904,
+        "binarySha256": "bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12"
+      }
+    },
+    "nativeNodeUnits": {
+      "cpuQuotaPercentEach": 200,
+      "memoryMaxBytesEach": 2147483648
+    },
+    "mongoUnit": {
+      "cpuQuotaPercent": 200,
+      "memoryMaxBytes": 3221225472,
+      "wiredTigerCacheGiB": 0.5,
+      "replicaMembers": 1,
+      "bind": "127.0.0.1:58321"
+    },
+    "transactionLifetimeLimitSeconds": 60,
+    "scope": "Native Linux processes on the authorized host in bounded systemd cgroups; synthetic functional correctness, not sustained-load profiling.",
+    "projectionOf": {
+      "provisionSha256": "1d3702abf297e61030534350d4d13d87aac3c6989b59501091137b3102ca1ea4",
+      "ownerSha256": "a27f52f949300d421074c6b66e30250e7b2ab0f7ed8d7aecea1d0a219a1ecc8c",
+      "omissions": "Protected full process command lines and private provisioning paths omitted. Runtime/archive pins and bounded limits retained."
+    }
+  },
+  "reviews": {
+    "unresolvedSpecFindings": 0,
+    "documentedStandardsBreaches": 0,
+    "actionableSmells": 0,
+    "originalFindings": [
+      {
+        "scope": "SDK recovery validator",
+        "priority": "P2",
+        "resolvedBy": "c0156c7bc65bee780b2215ba731ee6e5fe2bb52d"
+      },
+      {
+        "scope": "runtime retired rollback fence",
+        "priority": "P2",
+        "resolvedBy": "1e34a3cf02aaf753b984781652063fbd835904d7"
+      },
+      {
+        "scope": "fixture duplicate after proven completion",
+        "priority": "P2",
+        "resolvedBy": "781cd19bd30fac42a9d1318b00fb163bc357460e"
+      }
+    ]
+  },
+  "limits": [
+    "Synthetic explicit fork frames; no live Wire fork/reconnect or irreversible-only qualification.",
+    "Production controller remains on v1; live canonical host selection, affected-query publication and legacy route integration remain #221.",
+    "Uncovered local undo remains incomplete; historical-source fetch/rebuild orchestration is not implemented by this slice.",
+    "Single-member MongoDB replica set, no sharding or multi-member durability qualification.",
+    "No Bun runtime, AtomicAssets/AtomicMarket parity, WormDB, retained-history upgrade or sustained-load performance qualification.",
+    "Native transaction retry traces are bounded; truncated traces are explicitly flagged and every received worker failure remains recorded."
+  ],
+  "archive": {
+    "file": "raw-evidence.tar.gz",
+    "bytes": 467320,
+    "sha256": "da9e723f83a161861e4643a00f4b7db5c3d479dd2e577f5525ec2e82f3d3e33f"
+  }
+}

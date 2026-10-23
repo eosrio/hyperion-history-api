@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
@@ -102,11 +103,11 @@ try {
     const prepare=async bytes=>{
         reader.local_block_num=Number(reader.decodeShipResult(bytes)[1].this_block.block_num)-1;
         await reader.onMessage(bytes);const publication=publications.at(-1),message={content:publication.content,properties:{headers:publication.headers}};
-        main.captureProtocolSourceDelivery(message,main.ch);const routedBefore=poolMessages.length;
+        (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(message,main.ch);const routedBefore=poolMessages.length;
         await main.mLoader.parser.parseMessage(main,[message]);await draining;
         return {message,selectionId:publication.headers[header],pool:poolMessages.slice(routedBefore)};
     };
-    const consumePool=async messages=>{for(const message of messages)pool.captureProtocolActionDelivery(message,pool.ch);await pool.processMessages(messages);};
+    const consumePool=async messages=>{for(const message of messages)(controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureProtocolActionDelivery(message,pool.ch);await pool.processMessages(messages);};
     await prepare(frame(1,[],[account(abiA)]));
     const setabi=Buffer.concat([codec.encode('name','hyp.replay'),codec.encode('bytes',abiB)]).toString('hex');
     const changed=await prepare(frame(2,[occurrence(1,'9007199254740993'),occurrence(2,'9007199254740994',{account:'sysio',name:'setabi',raw:setabi}),
@@ -274,7 +275,7 @@ try {
     assert.equal(sourceAcks.length,beforeQueueFailure);
     main.preIndexingQueue.push=async value=>indexOutput.push(value);
     const retryPublication=publications.at(-1),retryMessage={content:retryPublication.content,properties:{headers:retryPublication.headers}};
-    main.captureProtocolSourceDelivery(retryMessage,main.ch);await main.mLoader.parser.parseMessage(main,[retryMessage]);await draining;
+    (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(retryMessage,main.ch);await main.mLoader.parser.parseMessage(main,[retryMessage]);await draining;
     assert.equal(sourceAcks.length,beforeQueueFailure+1);
     // Native/default helpers retain their immediate sink and buffer behavior.
     const nativeQueue=[],nativeStreams=[],nativeWorker=Object.assign(Object.create(MainDS.prototype),{chain:'native-fixture',

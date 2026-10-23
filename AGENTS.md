@@ -2,7 +2,7 @@
 
 Follow [the development build guide](docs/development-build.md).
 
-- Use the pinned TypeScript 7.0.2 compiler and Bun 1.4.3 from `.bun-version`.
+- Use the pinned TypeScript 7.0.2 compiler and Bun 1.4.4 from `.bun-version`.
 - Install dependencies from `package-lock.json` with `npm ci`. Bun runs the checker
   and unit tests against this dependency tree.
 - Use `npm run typecheck` (`bun check -p tsconfig.json`) during development and in CI.

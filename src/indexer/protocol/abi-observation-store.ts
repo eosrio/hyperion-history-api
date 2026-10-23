@@ -10,7 +10,7 @@ export interface ProtocolAbiObservationRecord {
     source: {chainId: string; blockNum: number; blockId: string; previousBlockId: string | null; inputSha256: string};
     capture: {kind: 'unattested-ship-result-sections-v1'; schemaJson: string | null;
         blockHex: string | null; tracesHex: string | null; deltasHex: string | null};
-    observation: {status: 'observed'; facts: unknown} | {status: 'incomplete'; error: {code: string; message: string}};
+    observation: {status: 'observed' | 'native-genesis'; facts: unknown} | {status: 'incomplete'; error: {code: string; message: string}};
 }
 
 export {protocolImmutableJson as protocolAbiObservationJson} from './immutable-bundle-store.js';
@@ -36,7 +36,7 @@ export function protocolAbiObservationId(record: ProtocolAbiObservationRecord): 
         || typeof protocol.profileId !== 'string' || !protocol.profileId.length || protocol.profileId.length > 256
         || !Array.isArray(protocol.components) || !protocol.components.length
         || protocol.components.some(component => !/^[0-9a-f]{40}$/.test(component.sourceRevision) || !hex64.test(component.sha256))
-        || !['observed', 'incomplete'].includes(record.observation?.status)
+        || !['observed', 'native-genesis', 'incomplete'].includes(record.observation?.status)
         || record.capture?.kind !== 'unattested-ship-result-sections-v1'
         || (record.capture.schemaJson !== null && typeof record.capture.schemaJson !== 'string')
         || ['blockHex', 'tracesHex', 'deltasHex'].some(key => record.capture[key] !== null
@@ -57,9 +57,9 @@ export class ProtocolAbiObservationStore {
     get index():string {return this.bundles.index;}
 
     constructor(client:Client,chain:string,replicas=0,
-                bounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256}) {
+                bounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256},options:{readOnly?:boolean}={}) {
         this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,
-            'protocol-abi-observations','protocol-abi-observations-v1',bounds);
+            'protocol-abi-observations','protocol-abi-observations-v1',bounds,options);
     }
 
     async prepare(record:ProtocolAbiObservationRecord):Promise<{id:string;digest:string}> {
@@ -67,9 +67,13 @@ export class ProtocolAbiObservationStore {
         return this.bundles.prepare(id,{...record,protocol:{...record.protocol,components:orderedComponents(record.protocol.components)}});
     }
 
-    async read(id:string):Promise<ProtocolAbiObservationRecord> {
-        const record=await this.bundles.read(id) as ProtocolAbiObservationRecord;
-        if(protocolAbiObservationId(record)!==id)throw new Error('ABI observation source identity mismatch');
-        return record;
+    async read(id:string,signal?:AbortSignal):Promise<ProtocolAbiObservationRecord> {
+        signal?.throwIfAborted();
+        try {
+            const record=await this.bundles.read(id,signal) as ProtocolAbiObservationRecord;
+            signal?.throwIfAborted();
+            if(protocolAbiObservationId(record)!==id)throw new Error('ABI observation source identity mismatch');
+            return record;
+        } finally {signal?.throwIfAborted();}
     }
 }

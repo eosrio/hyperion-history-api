@@ -136,8 +136,8 @@ export function protocolSourceObservationLinkId(value:string):string {
 export class ProtocolSourceBindingStore {
     private readonly bundles:ImmutableProtocolBundleStore;
     get index():string{return this.bundles.index;}
-    constructor(client:Client,chain:string,replicas=0) {
-        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-source-bindings','protocol-source-bindings-v1');
+    constructor(client:Client,chain:string,replicas=0,options:{readOnly?:boolean}={}) {
+        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-source-bindings','protocol-source-bindings-v1',undefined,options);
     }
     async prepareContext(input:ProtocolSourceContext):Promise<{id:string}> {
         const value=context(input),recordId=protocolSourceContextId(value);await this.bundles.prepare(recordId,value);return {id:recordId};
@@ -150,39 +150,56 @@ export class ProtocolSourceBindingStore {
     async quarantine(input:ProtocolSourceQuarantine):Promise<{id:string}> {
         const value=quarantine(input),recordId=protocolSourceQuarantineId(value);await this.bundles.prepare(recordId,value);return {id:recordId};
     }
-    async readSelection(recordId:string):Promise<{selection:ProtocolSourceSelection;context:ProtocolSourceContext}> {
-        const value=await this.readRecord('selection',recordId),storedContext=await this.readRecord('context',value.contextId);
+    async readSelection(recordId:string,signal?:AbortSignal):Promise<{selection:ProtocolSourceSelection;context:ProtocolSourceContext}> {
+        signal?.throwIfAborted();
+        const value=await this.readRecord('selection',recordId,signal),storedContext=await this.readRecord('context',value.contextId,signal);
+        signal?.throwIfAborted();
         if(storedContext.chainId!==value.source.chainId)throw new ProtocolSourceBindingReadError('invalid','selection',recordId,'Source context chain mismatch');
         return {selection:value,context:storedContext};
     }
-    async readContext(recordId:string):Promise<ProtocolSourceContext> {return this.readRecord('context',recordId);}
-    async readQuarantine(recordId:string):Promise<ProtocolSourceQuarantine> {return this.readRecord('quarantine',recordId);}
+    async readContext(recordId:string,signal?:AbortSignal):Promise<ProtocolSourceContext> {
+        signal?.throwIfAborted();const value=await this.readRecord('context',recordId,signal);
+        signal?.throwIfAborted();return value;
+    }
+    async readQuarantine(recordId:string,signal?:AbortSignal):Promise<ProtocolSourceQuarantine> {
+        signal?.throwIfAborted();const value=await this.readRecord('quarantine',recordId,signal);
+        signal?.throwIfAborted();return value;
+    }
     async prepareObservationLink(input:ProtocolSourceObservationLink):Promise<{id:string}> {
         const value=observationLink(input);await this.readSelection(value.selectionId);
         const recordId=protocolSourceObservationLinkId(value.selectionId);
         await this.bundles.prepare(recordId,value);return {id:recordId};
     }
-    async readObservationLink(selectedId:string):Promise<ProtocolSourceObservationLink> {
+    async readObservationLink(selectedId:string,signal?:AbortSignal):Promise<ProtocolSourceObservationLink> {
+        signal?.throwIfAborted();
         if(typeof selectedId!=='string'||!selectionId.test(selectedId))throw new ProtocolSourceBindingReadError('invalid','observation-link',selectedId,'Invalid source selection ID');
         const recordId=protocolSourceObservationLinkId(selectedId);
-        const value=await this.readRecord('observation-link',recordId);
+        const value=await this.readRecord('observation-link',recordId,signal);
+        signal?.throwIfAborted();
         if(value.selectionId!==selectedId)throw new ProtocolSourceBindingReadError('invalid','observation-link',recordId,'Source observation link mismatch');
-        await this.readSelection(selectedId);return value;
+        await this.readSelection(selectedId,signal);signal?.throwIfAborted();return value;
     }
-    private async readRecord<K extends keyof SourceRecords>(kind:K,recordId:string):Promise<SourceRecords[K]> {
+    private async readRecord<K extends keyof SourceRecords>(kind:K,recordId:string,signal?:AbortSignal):Promise<SourceRecords[K]> {
+        signal?.throwIfAborted();
         const syntax={context:contextId,selection:selectionId,quarantine:quarantineId,'observation-link':observationLinkId}[kind];
         if(typeof recordId!=='string'||!syntax.test(recordId))throw new ProtocolSourceBindingReadError('invalid',kind,recordId,'Invalid source binding ID');
         let value:unknown;
-        try {value=await this.bundles.read(recordId);} catch(error) {
+        try {value=await this.bundles.read(recordId,signal);} catch(error) {
+            signal?.throwIfAborted();
             if(error instanceof ImmutableProtocolBundleReadError)throw new ProtocolSourceBindingReadError(error.code,kind,recordId,error.message);
             throw error; // Infrastructure, unsafe retention and malformed ES receipts must prevent ACK.
         }
+        signal?.throwIfAborted();
         try {
             const normalized=kind==='context'?context(value):kind==='selection'?selection(value):kind==='quarantine'?quarantine(value):observationLink(value);
             const expected=kind==='context'?protocolSourceContextId(normalized as ProtocolSourceContext)
                 :kind==='selection'?protocolSourceSelectionId(normalized as ProtocolSourceSelection):kind==='quarantine'?protocolSourceQuarantineId(normalized as ProtocolSourceQuarantine)
                 :protocolSourceObservationLinkId((normalized as ProtocolSourceObservationLink).selectionId);
-            if(expected!==recordId)fail();return freeze(normalized) as any;
-        } catch {throw new ProtocolSourceBindingReadError('invalid',kind,recordId,'Stored source binding type or identity mismatch');}
+            if(expected!==recordId)fail();const result=freeze(normalized) as SourceRecords[K];
+            signal?.throwIfAborted();return result;
+        } catch {
+            signal?.throwIfAborted();
+            throw new ProtocolSourceBindingReadError('invalid',kind,recordId,'Stored source binding type or identity mismatch');
+        }
     }
 }

@@ -1,3 +1,4 @@
+import {currentProofConsumerScope} from '../protocol/proof-consumer-scope.js';
 import {
     ProjectionContractError,
     PROJECTION_LIMITS,
@@ -89,6 +90,7 @@ export class DeclarativeProjectionRuntime {
     ) {}
 
     static async create(options: ProjectionRuntimeOptions): Promise<DeclarativeProjectionRuntime> {
+        currentProofConsumerScope()?.assertActive();
         const activation = checked(validateProjectionActivation(options.definition, options.binding, options.adapter.capabilities));
         const maximumPendingFrames = bounded(options.maximumPendingFrames, 32, 256, 'maximumPendingFrames');
         const maximumPendingBytes = bounded(options.maximumPendingBytes, 16 * 1024 * 1024, 64 * 1024 * 1024, 'maximumPendingBytes');
@@ -99,11 +101,12 @@ export class DeclarativeProjectionRuntime {
             // Attach for exact replay; open/query still consult durable readiness before serving.
             if (!(error instanceof Error) || !('code' in error) || error.code !== 'projection.incomplete') throw error;
         }
+        currentProofConsumerScope()?.assertActive();
         return new DeclarativeProjectionRuntime(options.adapter, activation.definition, activation.binding,
             maximumPendingFrames, maximumPendingBytes);
     }
 
-    process(frame: ProjectionFrame): Promise<ProjectionApplyResult> {
+    process(frame: ProjectionFrame, admitSource?: (block: ProjectionBlock) => Promise<void>): Promise<ProjectionApplyResult> {
         // A source from another chain must not poison this projection's durable readiness.
         if (frame.chainId !== this.binding.chainId) {
             return Promise.reject(new ProjectionContractError('projection.invalid-contract', 'Projection frame belongs to another chain'));
@@ -145,6 +148,11 @@ export class DeclarativeProjectionRuntime {
         this.pendingFrames++;
         this.pendingBytes += bytes;
         const work = this.tail.then(async () => {
+            currentProofConsumerScope()?.assertActive();
+            // Production admission is durable before mapping can reject. Ordinary callers retain exact
+            // adapter duplicate-replay behavior and need not reserve an already completed source again.
+            await admitSource?.(header.block);
+            currentProofConsumerScope()?.assertActive();
             let request: ProjectionApplyRequest;
             try {
                 if (frameError) throw frameError;
@@ -162,6 +170,7 @@ export class DeclarativeProjectionRuntime {
                 }
                 request = checked(validateProjectionApply(this.definition, {...header, mutations}));
             } catch (error) {
+                currentProofConsumerScope()?.assertActive();
                 try {
                     await this.adapter.markIncomplete(this.binding, header.block,
                         error instanceof Error ? error.message : 'Projection contract processing failed');
@@ -173,7 +182,10 @@ export class DeclarativeProjectionRuntime {
                 }
                 throw error;
             }
-            return this.adapter.apply(request);
+            currentProofConsumerScope()?.assertActive();
+            const applied = await this.adapter.apply(request);
+            currentProofConsumerScope()?.assertActive();
+            return applied;
         });
         this.tail = work.then(() => undefined, () => undefined);
         return work.finally(() => {this.pendingFrames--; this.pendingBytes -= bytes;});

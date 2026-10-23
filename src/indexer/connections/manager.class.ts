@@ -223,6 +223,7 @@ export class ConnectionManager {
     }
 
     prepareMongoClient() {
+        if (this.mongodbClient) return;
         if (!this.conn.mongodb) {
             console.error('MongoDB connection not specified!');
             process.exit(1);
@@ -233,6 +234,16 @@ export class ConnectionManager {
         } else {
             uri += `${this.conn.mongodb.host}:${this.conn.mongodb.port}`;
         }
-        this.mongodbClient = new MongoClient(uri);
+        const {directConnection, replicaSet} = this.conn.mongodb;
+        if (directConnection !== undefined && typeof directConnection !== 'boolean') {
+            throw new Error('MongoDB directConnection must be a boolean');
+        }
+        if (replicaSet !== undefined && (typeof replicaSet !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(replicaSet))) {
+            throw new Error('MongoDB replicaSet must be a bounded replica-set name');
+        }
+        this.mongodbClient = new MongoClient(uri, {
+            ...(directConnection === undefined ? {} : {directConnection}),
+            ...(replicaSet === undefined ? {} : {replicaSet}),
+        });
     }
 }

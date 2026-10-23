@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/wire-full-worker-replay" ]
+    branches: [ "main", "dev", "release/4.5", "fix/stream-client-compatibility-45", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "codex/wire-full-worker-replay" ]
 
 jobs:
   build:
@@ -24,12 +24,22 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
+      - name: Verify the pinned checker and embedded TypeScript
+        run: |
+          test "$(bun --version)" = "$(cat .bun-version)"
+          test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
       - run: npm run typecheck
       - run: npm run build
+      - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
+        run: node --test tests/native/stream-request-lifecycle.test.mjs
+      - name: Check history/live stream filters and selectors on Node ${{ matrix.node-version }}
+        run: node --test tests/native/stream-filter-parity.test.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check retained Wire source and replay credits with native Node
         run: node --experimental-strip-types scripts/qualification/check-wire-replay-fixture.mjs
+      - name: Check portable state source and fixture ownership guards
+        run: python3 tests/fixtures/portable-state-worker/test_helpers.py
       - name: Verify Elasticsearch evidence checksums
         working-directory: docs/performance/evidence/es955-20261018
         run: sha256sum -c SHA256SUMS
@@ -80,10 +90,20 @@ jobs:
       - name: Verify protocol adapter observation checksum
         working-directory: docs/performance/evidence/protocol-adapter-20261019
         run: sha256sum -c SHA256SUMS
+      - name: Verify projection rollback evidence checksums
+        working-directory: docs/performance/evidence/projection-rollback-20261021
+        run: sha256sum -c SHA256SUMS
       - run: bun test tests/unit
-      - name: Check ABI journal, source bindings and canonical frontier against disposable Elasticsearch 9.5.5
+      - name: Check ABI/native journals, source bindings and canonical frontier against disposable Elasticsearch 9.5.5
         if: matrix.node-version == '24.x'
-        run: node scripts/qualification/check-protocol-abi-store.mjs
+        run: node scripts/qualification/check-protocol-abi-store.mjs protocol-journals.json
+      - name: Retain protocol journal evidence and cleanup result
+        if: always() && matrix.node-version == '24.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocol-journals-node24
+          path: protocol-journals.json
+          if-no-files-found: error
 
   projection-mongodb:
     runs-on: ubuntu-22.04

@@ -8,11 +8,16 @@ RabbitMQ queues and Elasticsearch writers. It complements the
 
 ## Source and startup view
 
-The npm lockfile pins the Wire package to `8b7d8a39f098bde77fa8d8f22a20a4fffc3e457b`.
-Its application corpus contains original Wire v1.0.0 SHiP messages for 119 irreversible
+The current npm lockfile pins the Wire package to `7167659e9c043cb3351074fcacb40200cc57f3a3`.
+The published bare-metal evidence was captured with package
+`8b7d8a39f098bde77fa8d8f22a20a4fffc3e457b` at worker code `5da54fb77699ce0a92d52f59c7569cb8d3e81ba7`.
+The offline guards authenticate the same original corpus against the current installed package;
+they do not establish a new full-worker qualification result.
+
+The application corpus contains original Wire v1.0.0 SHiP messages for 119 irreversible
 blocks, 2–120 inclusive, under `wire-sysio-7dede884-engineering-v1`. The node source
-revision is `7dede884e0150d36fa788e85a119e10653ade8ca`. These are engineering pins;
-the selected testnet launch pins remain pending.
+revision is `7dede884e0150d36fa788e85a119e10653ade8ca`. These pins identify this historical
+engineering corpus; selected-testnet qualification remains separate in Tools #22.
 
 Before service writes, the fixture audits the package's two original archives, their
 complete ordinary-file inventories and the independent source derivation. The original

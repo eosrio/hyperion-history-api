@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 /** Real DSPool constructor/cargo/processMessages, with inert protocol startup and controlled failed source I/O.
  * This is a native Antelope branch regression, not native-addon, broker or database qualification. */
 import assert from 'node:assert/strict';
@@ -58,7 +59,7 @@ try {
         pool.getActionAdmissionStore = () => ({async resolve() {resolutions++; entered.release(); await release.promise; throw failure;}});
         const first: any = {content: Buffer.from('{}'), properties: {headers: {[actionSourceAdmissionHeader]: 'h45actionadmission1:' + 'a'.repeat(64)}}, fields: {deliveryTag: 1}};
         const second = {...first, fields: {deliveryTag: 2}};
-        pool.captureActionAdmissionDelivery(first, original); pool.captureActionAdmissionDelivery(second, original);
+        (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureActionAdmissionDelivery(first, original); (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureActionAdmissionDelivery(second, original);
         const batches: any[][] = [], processMessages = pool.processMessages.bind(pool);
         pool.processMessages = async (messages: any[]) => {batches.push(messages); return processMessages(messages);};
         const exits: any[] = []; let callbacks = 0;

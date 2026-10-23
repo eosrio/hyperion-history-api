@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "encoding": "base64-zip-multipart",
+  "createdBy": "windows:codex:hyperion-tools",
+  "correlation": "task_hapi286_qualification",
+  "archiveSha256": "15f6173004016f9dd4e2693714b668a6d234d88379834417d61ef09e70a572bd",
+  "archiveBytes": 6299757,
+  "members": 454,
+  "indexArtifact": "art_20261023T020042_4ddfd319e814",
+  "indexSha256": "d1a433d1c3bacab768c1bceb824ab7527d80152ec992b4f95f488e88daa832eb",
+  "patchSha256": "e146cb0a7f1f44b516be8e37b59c709c0a304e8cfe5ec674b9faa24be91d904b",
+  "finalPacketSha256": "3b891c82281dad53dc74f0a61eaa1c9ce17ff07d1662c47131a3fa682d4f1086",
+  "base": "ee8b1d6576aef09f16a1435f9d33d7312a631f00",
+  "head": "096b1b870616e488b48df99bfeb4fb44a7b0d141",
+  "tree": "7274eb58e3b863042a0610dac0d7e379a5815889",
+  "reassembly": "Verify each artifact content SHA, decode each part base64, verify each raw part SHA and contiguous offset, concatenate in partNumber order, verify final archive SHA and byte length, then verify all ZIP members against index.json. No extraction is required for inspection.",
+  "parts": [
+    {
+      "partNumber": 1,
+      "offset": 0,
+      "bytes": 4000284,
+      "rawSha256": "fbf790ed10335a4846319a8424ee3d4c70fc8d63ff706b4abc120e9a63624624",
+      "artifactId": "art_20261023T020237_525f9805851e",
+      "sha256": "a0ddeff11791c0d552531a20c3a1d5df88a63af8105673368932d694eb6f0a26",
+      "putGetExact": true
+    },
+    {
+      "partNumber": 2,
+      "offset": 3000000,
+      "bytes": 4000290,
+      "rawSha256": "28f25926248f1ad31851f9984ddff62c91c5a4a115712d5f5a480684d8e00035",
+      "artifactId": "art_20261023T020238_f07f18831d52",
+      "sha256": "a97b19fbc3497b2622d23006f56f923756f1e6d862af10563ed8ffcba618ec3d",
+      "putGetExact": true
+    },
+    {
+      "partNumber": 3,
+      "offset": 6000000,
+      "bytes": 399965,
+      "rawSha256": "ec94c3390253ab1e5e3fe743644362006d89d56dac63df399e58cdcce6c84bdd",
+      "artifactId": "art_20261023T020238_47ad33c7aca5",
+      "sha256": "d2f4f31416cb64e92ccfbbb6c538e5fac73209e79c162c740865dcc09c7676f0",
+      "putGetExact": true
+    }
+  ]
+}

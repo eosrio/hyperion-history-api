@@ -17,6 +17,7 @@ test('bulk ledger preserves actual request/response bytes and records item outco
     }); upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening'); const errors: string[] = [];
     const ledger = await startBulkLedger(`http://127.0.0.1:${(upstream.address() as any).port}`, directory, errors);
     try {
+        expect(ledger.limits).toEqual({maximumRequests: 10000, maximumCapturedBytes: 256 * 1024 * 1024});
         const result = await fetch(ledger.url + '/hyp-replay-owned-action-v1/_bulk', {method: 'POST', body, headers: {'content-type': 'application/x-ndjson'}});
         expect(result.status).toBe(200); expect(result.headers.get('x-proof')).toBe('unchanged'); expect(Buffer.from(await result.arrayBuffer())).toEqual(response);
         expect(received).toEqual(body); expect(await readFile(join(directory, ledger.receipts[0].request.file))).toEqual(body);
@@ -24,6 +25,44 @@ test('bulk ledger preserves actual request/response bytes and records item outco
         expect(summarizeBulkLedger(ledger.receipts)).toMatchObject({requests: 1, successfulItems: 1, failedItems: 0, repeatedAttempts: 0, attemptsAfterObservedFailure: 0});
         ledger.assertIdle(); expect(errors).toEqual([]);
     } finally { await ledger.close(); upstream.closeAllConnections(); await new Promise<void>(done => upstream.close(() => done())); await rm(directory, {recursive: true, force: true}); }
+});
+
+test('bulk receipt count overrides remain bounded before opening a listener', async () => {
+    for (const maximum of [0, -1, 20001, 1.5, NaN, Infinity]) {
+        await expect(startBulkLedger('http://127.0.0.1:1', 'not-created', [], maximum)).rejects.toThrow('maximumRequests');
+    }
+    const ledger = await startBulkLedger('http://127.0.0.1:1', 'not-created', [], 20000);
+    try {expect(ledger.limits).toEqual({maximumRequests: 20000, maximumCapturedBytes: 256 * 1024 * 1024});}
+    finally {await ledger.close();}
+});
+
+test('an explicit receipt cap preserves admitted bytes and rejects excess work before forwarding', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'hyperion-bulk-budget-')); let forwarded = 0;
+    const body = Buffer.from('{"index":{"_id":"1"}}\n{"memo":"unchanged bytes"}\n');
+    const reply = Buffer.from('{"errors":false,"items":[{"index":{"_id":"1","_index":"owned-action","status":201}}]}\n');
+    const upstream = createServer(async (incoming, outgoing) => {
+        const parts: Buffer[] = []; for await (const part of incoming) parts.push(Buffer.from(part));
+        expect(Buffer.concat(parts)).toEqual(body); forwarded++; outgoing.writeHead(200); outgoing.end(reply);
+    });
+    upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening'); const errors: string[] = [];
+    const ledger = await startBulkLedger(`http://127.0.0.1:${(upstream.address() as any).port}`, directory, errors, 2);
+    try {
+        for (let count = 0; count < 2; count++) {
+            const response = await fetch(ledger.url + '/owned-action/_bulk', {method: 'POST', body});
+            expect(Buffer.from(await response.arrayBuffer())).toEqual(reply);
+        }
+        const denied = await fetch(ledger.url + '/owned-action/_bulk', {method: 'POST', body})
+            .then(response => ({status: response.status, body: response.arrayBuffer()}), () => null);
+        if (denied) {await denied.body; expect(denied.status).toBeGreaterThanOrEqual(400);}
+        expect(forwarded).toBe(2); expect(ledger.receipts).toHaveLength(2);
+        expect(errors.some(value => value.includes('bulk receipt budget exceeded'))).toBe(true);
+        expect(await readFile(join(directory, ledger.receipts[0].request.file))).toEqual(body);
+        expect(await readFile(join(directory, ledger.receipts[1].responseBody.file))).toEqual(reply);
+        ledger.assertIdle();
+    } finally {
+        await ledger.close(); upstream.closeAllConnections(); await new Promise<void>(done => upstream.close(() => done()));
+        await rm(directory, {recursive: true, force: true});
+    }
 });
 test('repeated successes remain separate from retries after an observed failure', () => {
     const operation = {operation: 'index', index: 'owned-action', id: '1'};

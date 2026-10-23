@@ -235,6 +235,9 @@ export class OwnedMongoFixture {
     }
 }
 
+/** @param {() => any} clientFactory
+ * @param {{primary?: boolean, replicaSet?: string, timeoutMS?: number}} [options]
+ */
 export async function waitForMongo(clientFactory, {primary = false, replicaSet, timeoutMS = 60_000} = {}) {
     const deadline = Date.now() + timeoutMS;
     let last;
