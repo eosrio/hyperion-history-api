@@ -7,6 +7,7 @@ docs/performance/evidence/portable-state-worker-20261021/** -text
 docs/performance/evidence/projection-rollback-20261021/** -text
 docs/performance/evidence/native-wire-worker-20261022/** -text
 docs/performance/evidence/native-proof-reads-20261022/** -text
+docs/performance/evidence/native-wire-profile-20261024/** -text
 docs/qualification/evidence/worker-attempt-quiescence/** -text
 docs/qualification/evidence/action-attempt-worker-20261023/** -text
 tests/fixtures/native-stream-v1/* -text

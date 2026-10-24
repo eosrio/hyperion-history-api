@@ -44,3 +44,7 @@ Those remain required in [#248](https://github.com/eosrio/hyperion-history-api/i
 in #251 use another recovery branch/workload and need validation against this current native path.
 One sequential profile/control pair does not rank runtimes, quantify profiler overhead or establish
 production capacity, leak freedom, complete Wire support or release readiness.
+
+The [2026-10-23 capture and published analysis](native-wire-worker-profile-20261024.md) retains all
+14 profiles from the frozen `3febe95e` run. Replay remains failed. The archive verifier checks the
+physical census and exact native/prefix/bulk bytes separately from normalized diagnostic paths.
