@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {ProofConsumerScope, currentProofConsumerScope, assertProofConsumerEnd} from './proof-consumer-scope.js';
+import {ProofConsumerScope, ProofConsumerFencedError, currentProofConsumerScope, assertProofConsumerEnd} from './proof-consumer-scope.js';
 import {consumeFreshActionWrite, type FreshActionWrite} from '../history/action-fresh-write.js';
 import {workerAttemptJson, workerAttemptDigest, validateWorkerAttemptDescriptor, validateWorkerAttemptBinding,
     validateFreshActionWrite,
@@ -13,6 +13,7 @@ interface Attempt {
     accepted: Promise<void>; challenge?: string; binding: WorkerAttemptBinding; bindingVersion: number;
     acknowledgementAttempted: boolean; ended?: WorkerAttemptEndDescription; running: boolean;
     freshWrites: FreshActionWrite[]; freshWriteOverflow: boolean;
+    activeFence: boolean; fencedFailure?: ProofConsumerFencedError; initializationRetryClaimed: boolean;
     fenceTimer?: ReturnType<typeof setTimeout>;
 }
 type Managed = {mode: 'managed'; role: WorkerAttemptRole; transport: WorkerAttemptTransport};
@@ -86,7 +87,9 @@ export class WorkerAttemptClient {
             const fence = this.pendingFence; this.pendingFence = undefined;
             if (fence && fence.epoch === result.epoch && fence.incarnation === result.incarnation) {
                 if (fence.stop) this.stopped = true;
-                for (const record of this.scopes.values()) if (record.sequence <= fence.sequence) record.scope.fence();
+                for (const record of this.scopes.values()) if (record.sequence <= fence.sequence) {
+                    record.activeFence = !fence.stop; record.scope.fence();
+                }
             }
         })();
         void this.opening.catch(() => {}); return this.opening;
@@ -98,7 +101,7 @@ export class WorkerAttemptClient {
         const handle = Object.freeze({}) as WorkerAttempt, id = randomUUID(), sequence = ++this.sequence;
         const record: Attempt = {handle, id, sequence, descriptor: JSON.parse(workerAttemptJson(descriptor)), scope: new ProofConsumerScope(id),
             accepted: Promise.resolve(), binding: {}, bindingVersion: 0, acknowledgementAttempted: false, running: false,
-            freshWrites: [], freshWriteOverflow: false};
+            freshWrites: [], freshWriteOverflow: false, activeFence: false, initializationRetryClaimed: false};
         this.attempts.set(handle, record); this.scopes.set(record.scope, record);
         record.scope.signal.addEventListener('abort', () => {
             record.fenceTimer = setTimeout(() => {
@@ -201,6 +204,9 @@ export class WorkerAttemptClient {
             try {await record.accepted;} catch (error) {this.requestSupervisedRetirement(); throw error;}
             record.scope.assertActive();
             const result = await record.scope.run(operation); rootResult = 'returned'; return result;
+        } catch (error) {
+            if (record.activeFence && record.scope.ownsFenceError(error)) record.fencedFailure = error;
+            throw error;
         } finally {
             try {await this.boundedDrain(record.scope);}
             catch (error) {
@@ -226,7 +232,18 @@ export class WorkerAttemptClient {
         }
     }
     fenceAll(): void {this.stopped = true; for (const record of this.scopes.values()) record.scope.fence();}
-    fenceActiveAttempts(): void {for (const record of this.scopes.values()) record.scope.fence();}
+    fenceActiveAttempts(): void {for (const record of this.scopes.values()) {record.activeFence = true; record.scope.fence();}}
+    /** One fresh initialization may follow a genuinely drained current-parent source fence. No semantic completion is inferred. */
+    consumeProjectionInitializationRetry(handle: WorkerAttempt, error: unknown): boolean {
+        const record = this.attempts.get(handle), end = record?.ended;
+        if (this.options.mode !== 'managed' || this.options.role !== 'projection' || this.stopped || !record
+            || record.descriptor.kind !== 'projection-initialization' || !record.activeFence || record.initializationRetryClaimed
+            || !record.fencedFailure || record.fencedFailure !== error || !end || end.rootResult !== 'threw' || end.status !== 'quiescent'
+            || end.epoch !== this.authority?.epoch || end.incarnation !== this.authority?.incarnation
+            || end.acknowledgementAttempted || end.freshWrites.length || end.freshWriteOverflow
+            || record.scope.snapshot().state !== 'drained') return false;
+        record.initializationRetryClaimed = true; return true;
+    }
     /** Original physical channel retirement affects queued roots too, before their processing starts. */
     fenceChannel(channelId: string): void {
         for (const record of this.scopes.values()) if (record.descriptor.consumerId === channelId || record.descriptor.publisherId === channelId) record.scope.fence();
