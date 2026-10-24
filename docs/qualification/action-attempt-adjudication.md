@@ -70,6 +70,22 @@ produces an unresolved exit observation, with unknown root/ACK outcome and no as
 Both cases pass with native Node 22/24. These controlled transport faults extend the same-attempt
 matrix; they do not establish live broker settlement or full source/fork qualification.
 
+The managed MainDS matrix also holds the parent's post-end association-manifest write.
+The authentic end and fresh result remain visible, but the association is not complete.
+A second physical native worker runs the original Wire genesis callback, observes its
+own fresh source-incomplete result, calls its original ACK and reaches an authentic end
+while the first association remains held. Releasing the hold permits the queued association;
+this checks that post-end storage does not occupy the supervisor's mutation lane.
+
+A separate case loses the association write receipt after its bytes become primary-visible.
+The queued adjudicator records a failure while a second original native callback still completes.
+Inspection through a reopened store keeps broker settlement unknown. A new supervisor rejects
+both the previous opaque end and its stored JSON without writing an association. This is a
+controlled supervisor/store recreation, not a live parent-process restart. The original parent
+can retry only through a fresh conditional manifest write and its ordinary receipt checks.
+Both cases use controlled storage and canonical authority; live broker/storage/fork recovery,
+the remaining hold/fail matrix and count-and-byte capacity acceptance remain open.
+
 The replay fixture separately bounds eight concurrent SHIP sockets and 32 retained session records.
 Normal API health checks open status sockets after their 60-second cache expires, so closed probes
 must not consume concurrent capacity for the entire 15-minute run. Native Node tests exercise the

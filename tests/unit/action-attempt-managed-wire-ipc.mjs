@@ -14,15 +14,17 @@ import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-sou
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 
 const mode = process.argv[2] ?? 'main';
-assert(['main','main-held-write','main-failed-write','main-ack-throws','main-held-operation','main-held-end','main-failed-end','ds','contract','handoff',
+assert(['main','main-held-write','main-failed-write','main-ack-throws','main-held-operation','main-held-end','main-failed-end',
+    'main-held-adjudication','main-unknown-association','ds','contract','handoff',
     'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain','handoff-failed-drain'].includes(mode));
-const isMain = ['main','main-held-write','main-failed-write','main-ack-throws','main-held-operation','main-held-end','main-failed-end'].includes(mode);
+const isMain = mode.startsWith('main');
 const role = isMain ? 'deserializer' : 'ds_pool_worker';
 cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-worker.mjs', import.meta.url)),
     args: [mode === 'main-held-write' ? 'managed-original-main-held-write'
         : mode === 'main-failed-write' ? 'managed-original-main-failed-write'
         : mode === 'main-ack-throws' ? 'managed-original-main-ack-throws'
-        : mode === 'main' ? 'managed-original-main' : mode === 'ds' ? 'managed-original-ds'
+        : ['main','main-held-adjudication','main-unknown-association'].includes(mode) ? 'managed-original-main'
+        : mode === 'ds' ? 'managed-original-ds'
         : mode === 'contract' ? 'managed-original-contract' : 'managed-original-' + mode],
     silent: true});
 const ends = [], supervisor = new WorkerAttemptSupervisor({onEnd: end => ends.push(end)});
@@ -40,6 +42,40 @@ function waitFor(predicate, label, timeout = 30_000) {
         const poll = setInterval(() => {if (predicate()) {clearInterval(poll); clearTimeout(timer); resolveWait();}}, 5);
         const timer = setTimeout(() => {clearInterval(poll); reject(new Error('Timed out: ' + label));}, timeout);
     });
+}
+
+/** Another original callback must finish while the first post-end association is held. */
+async function unrelatedWorkerProgress(supervisor, ends) {
+    const peer = cluster.fork(), peerMessages = [];
+    let peerExited = false, peerCode, peerError = '';
+    peer.on('message', message => peerMessages.push(message));
+    peer.process.stdout.resume();
+    peer.process.stderr.on('data', bytes => {peerError += bytes.toString();});
+    peer.on('exit', code => {peerExited = true; peerCode = code;});
+    supervisor.attach(peer, 'deserializer');
+    try {
+        await waitFor(() => peerMessages.some(message => message.event === 'qualification_fixture')
+            && ends.length === 2 || peerExited, 'unrelated original Wire callback during held adjudication');
+        assert.equal(peerExited, false, peerError);
+        const snapshot = peerMessages.find(message => message.event === 'qualification_fixture');
+        assert(snapshot);
+        const observed = describeWorkerAttemptEnd(supervisor, ends[1]);
+        assert.equal(observed.status, 'quiescent');
+        assert.equal(observed.rootResult, 'returned');
+        assert.equal(observed.acknowledgementAttempted, true);
+        assert.equal(observed.freshWrites.length, 1);
+        assert.notEqual(observed.incarnation, describeWorkerAttemptEnd(supervisor, ends[0]).incarnation);
+        assert(peerMessages.some(message => message.event === 'qualification_ack'));
+        peer.send({event: 'qualification_done'});
+        await waitFor(() => peerExited, 'unrelated owned Wire child exit');
+        assert.equal(peerCode, 0); assert.equal(peerError, '');
+    } finally {
+        if (!peerExited) {
+            try {peer.send({event: 'qualification_done'});} catch {}
+            try {peer.process.kill();} catch {}
+            await waitFor(() => peerExited, 'unrelated owned Wire child failure cleanup', 5000).catch(() => {});
+        }
+    }
 }
 
 try {
@@ -267,7 +303,7 @@ try {
         if (isMain) assert.equal(recorded.observation.reason, 'source-traces-missing');
         if (mode === 'contract') assert.equal(recorded.observation.reason, 'contract-finalization-invalid');
     }
-    let observation;
+    let observation, recovery = {};
     if (mode === 'main-ack-throws') {
         const untouched = new Proxy({}, {get() {assert.fail('failed ACK reached storage or current authority');}});
         const adjudicator = new ActionAttemptAdjudicator(supervisor, untouched, untouched, untouched);
@@ -283,6 +319,78 @@ try {
         }
     };
     const adjudicator = new ActionAttemptAdjudicator(supervisor, store, selections, authority);
+    if (mode === 'main-held-adjudication') {
+        let release, heldId;
+        const held = new Promise(resolveHold => {release = resolveHold;});
+        memory.faults.beforeWrite = async request => {
+            if (request.index === store.index && request.document?.kind === 'manifest'
+                && request.document.bundle_id.startsWith('h45actionassociation1:')) {
+                heldId = request.id;
+                await held;
+            }
+        };
+        try {
+            adjudicator.enqueue(ends[0]);
+            await waitFor(() => heldId !== undefined, 'post-end private association write held');
+            assert.deepEqual(adjudicator.snapshot(), {active: 1, pending: 0, failures: 0, dropped: 0});
+            assert.equal(memory.documents.has(memory.key(store.index, heldId)), false);
+            await unrelatedWorkerProgress(supervisor, ends);
+            assert.deepEqual(adjudicator.snapshot(), {active: 1, pending: 0, failures: 0, dropped: 0});
+            assert.equal(memory.documents.has(memory.key(store.index, heldId)), false);
+        } finally {
+            delete memory.faults.beforeWrite;
+            release();
+        }
+        await waitFor(() => adjudicator.snapshot().active === 0, 'released post-end association');
+        assert.deepEqual(adjudicator.snapshot(), {active: 0, pending: 0, failures: 0, dropped: 0});
+        const saved = await store.readAttemptAssociation(heldId);
+        assert.equal(saved.observation.end.attemptId, end.attemptId);
+        recovery = {heldAdjudicationBeforePersistence: true, unrelatedWorkerProgressDuringHold: true};
+    }
+    if (mode === 'main-unknown-association') {
+        let unknownId, lostReceipts = 0;
+        memory.faults.receipt = (receipt, request) => {
+            if (request.index === store.index && request.document?.kind === 'manifest'
+                && request.document.bundle_id.startsWith('h45actionassociation1:')) {
+                unknownId = request.id; lostReceipts++;
+                throw new Error('constructed lost association write receipt');
+            }
+            return receipt;
+        };
+        try {
+            adjudicator.enqueue(ends[0]);
+            await waitFor(() => adjudicator.snapshot().active === 0 && adjudicator.snapshot().failures === 1,
+                'unknown post-end association write recorded as a failed adjudication');
+        } finally {delete memory.faults.receipt;}
+        assert.equal(lostReceipts, 1);
+        assert(memory.documents.has(memory.key(store.index, unknownId)));
+        await unrelatedWorkerProgress(supervisor, ends);
+        assert.deepEqual(adjudicator.snapshot(), {active: 0, pending: 0, failures: 1, dropped: 0});
+        const reopened = new ActionSourceAdmissionStore(memory.client, chain);
+        const inspected = await reopened.readAttemptAssociation(unknownId);
+        assert.equal(inspected.observation.brokerSettlement, 'unknown');
+        const restarted = new WorkerAttemptSupervisor();
+        try {
+            const afterRestart = new ActionAttemptAdjudicator(restarted, reopened, selections, authority);
+            const writesBefore = memory.calls.filter(call => ['create','index'].includes(call.method)).length;
+            await assert.rejects(afterRestart.adjudicate(ends[0]), /Unissued or foreign/);
+            await assert.rejects(afterRestart.adjudicate(inspected.observation.end), /Unissued or foreign/);
+            assert.equal(memory.calls.filter(call => ['create','index'].includes(call.method)).length, writesBefore);
+        } finally {restarted.stop();}
+        // Reads did not acknowledge the lost write. Even the original live parent must retry the write.
+        const beforeRetry = memory.calls.length;
+        const retried = await adjudicator.adjudicate(ends[0]);
+        assert.equal(retried.state, 'associated'); assert.equal(retried.id, unknownId);
+        const manifestRetry = memory.calls.slice(beforeRetry).find(call => call.method === 'index'
+            && call.request.index === store.index && call.request.id === unknownId);
+        assert(manifestRetry);
+        assert.equal(manifestRetry.request.wait_for_active_shards, 'all');
+        assert(Number.isSafeInteger(manifestRetry.request.if_seq_no));
+        assert(Number.isSafeInteger(manifestRetry.request.if_primary_term));
+        recovery = {unknownAssociationWrite: true, failedAdjudicationIsolated: true,
+            unrelatedWorkerProgressDuringFailure: true, primaryVisibleInspectionOnly: true,
+            restartCannotReissueEnd: true, freshRetryReceiptRequired: true};
+    }
     const associated = await adjudicator.adjudicate(ends[0]);
     assert.equal(associated.state, 'associated');
     observation = (await store.readAttemptAssociation(associated.id)).observation;
@@ -308,6 +416,7 @@ try {
         heldOperationAcrossAckAndRoot: mode === 'main-held-operation',
         heldEndBeforeAssociation: mode === 'main-held-end',
         heldPublishBeforeObservation: mode === 'handoff-held-confirm' || mode === 'handoff-held-drain',
+        ...recovery,
         classification: observation.results[0].classification,
         controlledStorageAndCanonicalAuthority: true, brokerSettlement: observation.brokerSettlement,
         fullWorkerQualification: false}));
