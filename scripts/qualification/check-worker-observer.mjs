@@ -2,7 +2,9 @@ import nodeAssert from 'node:assert/strict';
 import { fork, spawnSync } from 'node:child_process';
 import cluster from 'node:cluster';
 import http from 'node:http';
+import fs from 'node:fs';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -26,6 +28,11 @@ function alive(pid) {
 if (mode === 'master') {
     cluster.setupPrimary({ exec: source, execArgv: process.execArgv });
     const worker = cluster.fork({ ES198_OBSERVER_CHECK_MODE: 'worker', worker_role: 'reader', worker_id: '1' });
+    worker.on('message', message => {
+        if (message?.event === 'qualifier_flushed') {
+            process.send({event: 'fixture_child_flushed', pid: worker.process.pid, receipt: message});
+        }
+    });
     // Capture one-time readiness before imports or queue HTTP can yield to it.
     const ready = new Promise((resolve, reject) => {
         const cleanup = () => {
@@ -74,10 +81,33 @@ if (mode === 'master') {
     await ready;
     const sent = worker.send({ event: 'pause', marker: 'unchanged' }, undefined, undefined, error => {
         assert.ifError(error);
-        process.send({ event: 'master_ready', queue, sendReturnBoolean: typeof sent === 'boolean' });
+        process.send({ event: 'master_ready', queue, childPid: worker.process.pid, sendReturnBoolean: typeof sent === 'boolean' });
     });
     setInterval(() => {}, 1000);
 } else if (mode === 'worker') {
+    if (process.env.ES198_OBSERVER_CHECK_CASE === 'signal-before-shutdown') {
+        // Keep a valid, closed profile visible before its flush receipt. The
+        // checker must await completion before intentionally killing this child.
+        const originalOpen = fs.openSync;
+        const originalClose = fs.closeSync;
+        const profiles = new Set();
+        fs.openSync = function (path, ...args) {
+            const descriptor = Reflect.apply(originalOpen, this, [path, ...args]);
+            if (typeof path === 'string' && path.endsWith('.cpuprofile')) profiles.add(descriptor);
+            return descriptor;
+        };
+        fs.closeSync = function (descriptor) {
+            const result = Reflect.apply(originalClose, this, [descriptor]);
+            if (profiles.delete(descriptor)) {
+                fs.openSync = originalOpen;
+                fs.closeSync = originalClose;
+                syncBuiltinESMExports();
+                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);
+            }
+            return result;
+        };
+        syncBuiltinESMExports();
+    }
     const { default: StateReader } = await import(url('build/indexer/workers/state-reader.js'));
     const reader = { baseRequest: {}, shipRev: 'v0', ship: { connected: false } };
     const returned = StateReader.prototype.requestBlockRange.call(reader, '17', '25');
@@ -251,9 +281,21 @@ async function runCase(name) {
             assert.ok(!readerRecords.some(row => row.kind === 'shutdown'));
         }
         child.send({ event: 'qualifier_flush', requestId: 'smoke-flush' });
-        while (readdirSync(directory).filter(name => name.endsWith('.cpuprofile')).length < 2 && Date.now() < deadline) {
+        const saved = (receipt, pid, reason, requestId) => receipt?.success === true &&
+            receipt.profileState === 'saved' && receipt.profilePath === join(directory, `worker-${pid}.cpuprofile`) &&
+            receipt.reason === reason && receipt.requestId === requestId;
+        const masterFlushed = () => messages.some(message => message.event === 'qualifier_flushed' &&
+            saved(message, child.pid, 'qualifier_flush', 'smoke-flush'));
+        const readerFlushed = () => messages.some(message => message.event === 'fixture_child_flushed' &&
+            message.pid === ready.childPid && saved(message.receipt, ready.childPid,
+                readerFinished ? 'worker_finished' : 'qualifier_flush', readerFinished ? null : 'smoke-flush'));
+        // File creation precedes profile_saved, flush and IPC completion. A
+        // filename count can race an intentional exit in the negative cases.
+        while ((!masterFlushed() || !readerFlushed()) && Date.now() < deadline) {
             await new Promise(resolve => setTimeout(resolve, 25));
         }
+        assert.ok(masterFlushed(), `${name}: master did not complete its profile flush`);
+        assert.ok(readerFlushed(), `${name}: reader did not complete its profile flush`);
         if (beforeShutdown && !readerFinished) {
             child.send({event: 'fixture_exit_child', signal: signalExit});
             while (!messages.some(message => message.event === 'fixture_child_exited') && Date.now() < deadline) await sleep(10);
@@ -276,7 +318,7 @@ async function runCase(name) {
         for (const start of starts) {
             const own = records.filter(row => row.pid === start.pid);
             assert.ok(own.some(row => row.kind === 'sample' && Number.isFinite(row.memory.rss)));
-            assert.ok(own.some(row => row.kind === 'profile_saved'));
+            assert.ok(own.some(row => row.kind === 'profile_saved'), `${name}: ${start.role}/${start.pid} has no saved profile`);
             assert.ok(own.some(row => row.kind === 'flush' && row.success && row.profileState === 'saved'));
             if (start.role === 'master') {
                 const shutdown = own.find(row => row.kind === 'shutdown');
