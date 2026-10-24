@@ -91,6 +91,18 @@ export class HyperionMaster {
         }
         return this.workerAttemptSupervisor;
     }
+    /** Canonical identity checks do not decode a chain-specific signed block header. */
+    private async readCanonicalRpcBlock(blockNum: number) {
+        if (!Number.isSafeInteger(blockNum) || blockNum < 1 || blockNum > 0xffffffff)
+            throw new Error('Invalid canonical RPC block number');
+        const response = await this.rpc.call<unknown>({path: '/v1/chain/get_block', params: {block_num_or_id: blockNum}});
+        const block = response as {block_num?: unknown; id?: unknown; previous?: unknown};
+        if (!block || typeof block !== 'object' || Array.isArray(block) || block.block_num !== blockNum
+            || typeof block.id !== 'string' || !/^[0-9a-f]{64}$/i.test(block.id)
+            || typeof block.previous !== 'string' || !/^[0-9a-f]{64}$/i.test(block.previous))
+            throw new Error('RPC returned an inconsistent canonical block identity');
+        return {blockId: block.id.toLowerCase(), previousBlockId: blockNum === 1 ? null : block.previous.toLowerCase()};
+    }
     private attemptAdjudicatorFor(supervisor: WorkerAttemptSupervisor): ActionAttemptAdjudicator {
         return this.actionAttemptAdjudicator ??= new ActionAttemptAdjudicator(supervisor,
             new ActionSourceAdmissionStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0),
@@ -106,13 +118,12 @@ export class HyperionMaster {
                         const lib = this.actionCanonicalLib;
                         if (!lib || this.liveReader?.wref !== lib.worker || lib.blockNum < blockNum)
                             throw new Error('Current live SHIP irreversible anchor is unavailable');
-                        const anchored = await this.rpc.v1.chain.get_block(lib.blockNum);
-                        if (String(anchored.id).toLowerCase() !== lib.blockId)
+                        const anchored = await this.readCanonicalRpcBlock(lib.blockNum);
+                        if (anchored.blockId !== lib.blockId)
                             throw new Error('RPC and live SHIP irreversible branches differ');
                     }
-                    const block = await this.rpc.v1.chain.get_block(blockNum);
-                    return {chainId: String(info.chain_id).toLowerCase(), blockId: String(block.id).toLowerCase(),
-                        previousBlockId: blockNum === 1 ? null : String(block.previous).toLowerCase(), irreversible};
+                    const block = await this.readCanonicalRpcBlock(blockNum);
+                    return {chainId: String(info.chain_id).toLowerCase(), ...block, irreversible};
                 },
                 reversibleSelection: async (selectionId, source, readerSessionId) => {
                     const live = this.protocolAbiSource, coordinator = this.protocolAbiCoordinator;
