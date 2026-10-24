@@ -7,6 +7,7 @@ import {dirname, join, resolve} from 'node:path';
 export const wireRecoveryExitCode = 86;
 const chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d';
 const profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
+const publicationMembership = new WeakMap();
 const sha = value => createHash('sha256').update(value).digest('hex');
 const copy = value => JSON.parse(JSON.stringify(value));
 function bounded(file, maximum) {
@@ -123,6 +124,8 @@ export async function auditWireAttemptRecovery({control, marker, events, queues,
     assert.equal(retries.length, 1, 'one actual broker redelivery must ACK through the replacement worker');
     const retry = retries[0];
     assert.equal(retry.parentPid, masterPid); assert.equal(retry.workerId, marker.workerId);
+    assert.ok([marker.pid, retry.pid, masterPid].every(pid => Number.isSafeInteger(pid) && pid > 0));
+    assert.equal(new Set([marker.pid, retry.pid, masterPid]).size, 3);
     const replacements = events.filter(row => row.event === 'adjudicated' && row.pid === masterPid
         && row.end.attemptId === retry.attempt.attemptId && row.result.state === 'associated');
     assert.equal(replacements.length, 1, 'replacement needs its own real master adjudication');
@@ -142,9 +145,21 @@ export async function auditWireAttemptRecovery({control, marker, events, queues,
     const queue = queues.find(row => row.name === control.chain + ':ds_pool:1');
     assert.ok(queue && queue.redelivered >= 1 && queue.ready === 0 && queue.unacked === 0);
     assert.equal(queue.delivered, queue.ack + queue.redelivered, 'broker ACK accounting must include every real redelivery');
-    return {schemaVersion: 1, outcome: 'real-worker-exit-and-redelivery', marker, originalEnd: ended,
+    const receipt = Object.freeze({schemaVersion: 1, outcome: 'real-worker-exit-and-redelivery', marker, originalEnd: ended,
         replacement: retry, association: saved, broker: queue,
-        releaseQualified: false, parentRestartQualified: false, forkQualified: false, fullReplayQualified: false};
+        releaseQualified: false, parentRestartQualified: false, forkQualified: false, fullReplayQualified: false});
+    publicationMembership.set(receipt, Object.freeze({admissionId: marker.admissionId, planId: ended.binding.planId,
+        traceOrdinal: marker.traceOrdinal, blockNum: marker.source.blockNum, blockId: marker.source.blockId,
+        owners: Object.freeze([marker.pid, retry.pid])}));
+    return receipt;
+}
+/** Only this run's completed recovery audit can declare the two expected publication owners. */
+export function wireRecoveryPublicationOwners(receipt, context) {
+    if (receipt === undefined) return undefined;
+    const membership = publicationMembership.get(receipt);
+    assert.ok(membership, 'unissued worker recovery publication evidence');
+    return ['admissionId', 'planId', 'traceOrdinal', 'blockNum', 'blockId'].every(key => context[key] === membership[key])
+        ? membership.owners : undefined;
 }
 /** Validate every raw exit before making a detached view for the existing zero-failure shutdown oracle. */
 export function wireRecoveryShutdownRows(rows, marker, masterPid, exitCode, signal) {

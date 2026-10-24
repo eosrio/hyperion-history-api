@@ -4,7 +4,9 @@ import {mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {auditWireAttemptRecovery, createWireRecoveryControl, readWireRecoveryControl, wireRecoveryShutdownRows} from '../../scripts/qualification/portable-state-worker-recovery.mjs';
+import {auditWireAttemptRecovery, createWireRecoveryControl, readWireRecoveryControl, wireRecoveryShutdownRows,
+    wireRecoveryPublicationOwners} from '../../scripts/qualification/portable-state-worker-recovery.mjs';
+import {assertPortableNativePublications} from '../../scripts/qualification/portable-state-worker-native.ts';
 import {parsePortableWorkerArguments, validatePortableWorkerOptions} from '../../scripts/qualification/portable-state-worker.ts';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -98,6 +100,38 @@ test('recovery oracle requires the original unresolved end, a different physical
         (value: any) => {value.store.readAttemptAssociation = async () => ({observation: {}});},
         (value: any) => {value.store.readAttemptAssociation = async () => {throw new Error('storage unavailable');};}]) {
         const value = recoveryFixture(); mutate(value); await expect(auditWireAttemptRecovery(value)).rejects.toThrow();
+    }
+});
+test('only a fresh completed recovery audit declares the two publication owners for its exact transaction', async () => {
+    const value = recoveryFixture(), receipt = await auditWireAttemptRecovery(value);
+    const context = {admissionId: value.marker.admissionId, planId: value.marker.attempt.binding.planId,
+        traceOrdinal: value.marker.traceOrdinal, blockNum: 33, blockId: value.control.blockId};
+    expect(wireRecoveryPublicationOwners(receipt, context)).toEqual([11, 12]);
+    expect(wireRecoveryPublicationOwners(undefined, context)).toBeUndefined();
+    expect(() => wireRecoveryPublicationOwners(structuredClone(receipt), context)).toThrow('unissued');
+    for (const patch of [{admissionId: 'foreign'}, {planId: 'foreign'}, {traceOrdinal: 1}, {blockNum: 34}, {blockId: 'foreign'}])
+        expect(wireRecoveryPublicationOwners(receipt, {...context, ...patch})).toBeUndefined();
+    receipt.marker.pid = 999;
+    expect(wireRecoveryPublicationOwners(receipt, context)).toEqual([11, 12]);
+});
+test('publication accounting keeps ordinary cardinality and checks both exact recovery copies completely', () => {
+    const expected = {payloadSha256: 'a'.repeat(64), admissionId: 'admission', fragmentId: 'fragment', blockNum: 33};
+    const original = {pid: 11, payloadSha256: expected.payloadSha256, canonicalPayloadSha256: expected.payloadSha256,
+        persistent: true, mandatory: true,
+        headers: {'hyperion-action-admission-v1': 'admission', action_fragment_id: 'fragment', block_num: 33}};
+    const replacement = {...structuredClone(original), pid: 12}, pair = [original, replacement];
+    expect(() => assertPortableNativePublications([original], expected)).not.toThrow();
+    expect(() => assertPortableNativePublications(pair, expected)).toThrow();
+    const recovery = {...expected, owners: [11, 12]};
+    expect(() => assertPortableNativePublications(pair, recovery)).not.toThrow();
+    for (const observed of [[original], [original, original], [...pair, replacement], [original, {...replacement, pid: 13}]])
+        expect(() => assertPortableNativePublications(observed, recovery)).toThrow();
+    for (const mutate of [(row: any) => {row.payloadSha256 = 'bad';}, (row: any) => {row.canonicalPayloadSha256 = 'bad';},
+        (row: any) => {row.persistent = false;}, (row: any) => {row.mandatory = false;},
+        (row: any) => {row.headers['hyperion-action-admission-v1'] = 'bad';},
+        (row: any) => {row.headers.action_fragment_id = 'bad';}, (row: any) => {row.headers.block_num = 34;}]) {
+        const changed = structuredClone(pair); mutate(changed[1]);
+        expect(() => assertPortableNativePublications(changed, recovery)).toThrow();
     }
 });
 test('shutdown verification cannot hide a second process failure or mutate raw observed exits', () => {

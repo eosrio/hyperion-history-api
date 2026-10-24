@@ -560,7 +560,9 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             return {history: await history(block.blockNum), states};
         };
         const native = nativeOracle ? await createPortableNativeQualification({source, oracle: nativeOracle, client: es, chain, apiPort,
-            events: () => observedRows(), http, unrelated, wait, bulk: {directory: join(output, 'bulk'), receipts: ledger.receipts}}) : undefined;
+            events: () => observedRows(), http, unrelated, wait, bulk: {directory: join(output, 'bulk'), receipts: ledger.receipts},
+            ...(options.workerRecovery ? {attemptRecovery: () => report.attemptRecovery?.status === 'observed'
+                ? report.attemptRecovery.evidence : undefined} : {})}) : undefined;
         if (native) report.native = {profile: native.profile, oracleHashes: native.oracleHashes, holds: [],
             activation: 'Existing admission engineering preload only; ordinary installed native provider; public/default operator activation remains disabled.',
             constructedControls: native.controls, notificationInventory: native.originalNotifications};

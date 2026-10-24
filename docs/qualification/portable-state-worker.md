@@ -340,6 +340,15 @@ association. Actual broker delivery/ACK/redelivery totals must reconcile. Stored
 association metadata continues to say broker settlement is unknown; the
 independently observed broker counters do not change that runtime contract.
 
+Ordinary runs still require exactly one confirmed publication for each stored
+output. For the exact recovered transaction, a completed in-process recovery
+audit declares the original and replacement physical publication owners. The
+fault case requires exactly one confirmation from each, and checks every copy's
+full payload hash, admission, fragment, block, persistence and mandatory routing.
+Copied/stored audit JSON, another transaction, a missing/extra copy or a different
+owner cannot declare this expectation. Physical stored effects and independent
+source oracles remain unchanged.
+
 The fault control binds the owned output/config, exact source frame, chain and
 installed engineering profile. Its exclusive durable marker permits one exit.
 Raw observer and process outcomes remain unchanged. Cleanup validates the full
