@@ -15,7 +15,8 @@ const control = readWireMasterRestartControl(process.env.ES198_WIRE_MASTER_CONTR
     observerDirectory: process.env.ES198_OBSERVER_DIR, chain: process.env.CHAIN_NAME, configFile: process.env.CONFIG_JSON, phase});
 if (cluster.isPrimary) {
     const record = createWireMasterRecorder(control), selected = end => end.role === 'ds_pool_worker'
-        && end.binding.blockNum === control.blockNum && end.binding.traceOrdinal === control.traceOrdinal;
+        && end.binding.blockNum === (phase === 'before' ? control.blockNum : control.resumeBlockNum)
+        && end.binding.traceOrdinal === control.traceOrdinal;
     const physical = (adjudicator, end) => {
         const owners = [...adjudicator.supervisor.owners.values()].filter(value => value.incarnation === end.incarnation);
         assert.equal(owners.length, 1); const worker = owners[0].worker;

@@ -17,15 +17,17 @@ const directory = control => join(control.output, 'master-recovery');
 const missingAssociation = (store, end) => assert.rejects(() => store.readAttemptAssociation(associationId(end)),
     error => error.name === 'ImmutableProtocolBundleReadError' && error.code === 'missing' && error.recordId === associationId(end));
 
-export function createWireMasterRestartControl({output, configFile, chain, source, frameSha256}) {
+export function createWireMasterRestartControl({output, configFile, chain, source, frameSha256, resumeFrameSha256}) {
     assert.equal(realpathSync(output), resolve(output)); assert.equal(resolve(configFile), join(output, 'chain.json'));
     assert.match(chain, /^hyp-p191-[0-9a-f]{12}$/);
     assert.equal(source.chainId, chainId); assert.equal(source.profileId, profileId); assert.equal(source.endBlock, 1480);
     assert.match(frameSha256, /^[0-9a-f]{64}$/);
+    assert.match(resumeFrameSha256, /^[0-9a-f]{64}$/);
     const config = JSON.parse(boundedRecoveryFile(configFile, 1024 * 1024).toString());
     mkdirSync(join(output, 'master-recovery'));
     const control = Object.freeze({schemaVersion: 1, kind: 'wire-master-restart', runId: randomUUID(), output, configFile, chain,
         chainId, profileId, blockNum: 33, blockId: source.records[32].blockId, traceOrdinal: 0, frameSha256,
+        resumeBlockNum: 34, resumeBlockId: source.records[33].blockId, resumeFrameSha256,
         configSha256: hash(boundedRecoveryFile(configFile, 1024 * 1024)), masterTitle: `${config.settings.process_prefix || 'hyp'}-${chain}-master`});
     const file = join(directory(control), 'control.json'); durableRecoveryFile(file, control); controls.add(control);
     return {file, control};
@@ -44,6 +46,8 @@ export function readWireMasterRestartControl(file, {observerDirectory, configFil
     assert.equal(control.chainId, chainId); assert.equal(control.profileId, profileId);
     assert.equal(control.blockNum, 33); assert.equal(control.traceOrdinal, 0); assert.match(control.blockId, /^[0-9a-f]{64}$/);
     assert.match(control.frameSha256, /^[0-9a-f]{64}$/);
+    assert.equal(control.resumeBlockNum, 34); assert.match(control.resumeBlockId, /^[0-9a-f]{64}$/);
+    assert.match(control.resumeFrameSha256, /^[0-9a-f]{64}$/);
     const config = JSON.parse(boundedRecoveryFile(configFile, 1024 * 1024).toString());
     assert.equal(config.settings.chain, chain); assert.equal(config.settings.protocol.profileId, profileId);
     assert.equal(control.masterTitle, `${config.settings.process_prefix || 'hyp'}-${chain}-master`);
@@ -51,10 +55,11 @@ export function readWireMasterRestartControl(file, {observerDirectory, configFil
     return control;
 }
 export const createWireMasterRecorder = control => createRecoveryRecorder(directory(control), control.runId);
-function selectedEnd(control, end) {
+function selectedEnd(control, end, resumed = false) {
     assert.equal(end.role, 'ds_pool_worker'); assert.equal(end.status, 'quiescent'); assert.equal(end.rootResult, 'returned');
     assert.equal(end.acknowledgementAttempted, true); assert.equal(end.freshWriteOverflow, false);
-    assert.equal(end.binding.blockNum, control.blockNum); assert.equal(end.binding.blockId, control.blockId);
+    assert.equal(end.binding.blockNum, resumed ? control.resumeBlockNum : control.blockNum);
+    assert.equal(end.binding.blockId, resumed ? control.resumeBlockId : control.blockId);
     assert.equal(end.binding.traceOrdinal, control.traceOrdinal); assert.ok(end.binding.admissionId && end.binding.planId);
     assert.equal(end.descriptor.kind, 'ds-delivery'); assert.match(end.descriptor.payloadSha256, /^[a-f0-9]{64}$/);
     assert.match(end.descriptor.headersSha256, /^[a-f0-9]{64}$/);
@@ -78,13 +83,15 @@ export function readWireMasterRestartEvidence(control) {
     return {marker: JSON.parse(boundedRecoveryFile(join(directory(control), 'held-end.json'), 128 * 1024).toString()),
         events: readRecoveryRecords(directory(control), control.runId, ['control.json', 'held-end.json'])};
 }
-async function durableEnd(control, end, store) {
-    selectedEnd(control, end);
+async function durableEnd(control, end, store, resumed = false) {
+    selectedEnd(control, end, resumed);
+    const blockNum = resumed ? control.resumeBlockNum : control.blockNum, blockId = resumed ? control.resumeBlockId : control.blockId;
+    const frameSha256 = resumed ? control.resumeFrameSha256 : control.frameSha256;
     const admission = await store.resolve(end.binding.admissionId), source = admission.source;
     assert.equal(source.inventoryInput.source.chainId, control.chainId);
-    assert.equal(source.inventoryInput.source.blockNum, control.blockNum); assert.equal(source.inventoryInput.source.blockId, control.blockId);
+    assert.equal(source.inventoryInput.source.blockNum, blockNum); assert.equal(source.inventoryInput.source.blockId, blockId);
     assert.equal(source.inventoryInput.profileId, control.profileId); assert.equal(source.producer.profileId, control.profileId);
-    assert.equal(hash(Buffer.from(source.frameHex, 'hex')), control.frameSha256);
+    assert.equal(hash(Buffer.from(source.frameHex, 'hex')), frameSha256);
     assert.equal(admission.planId, end.binding.planId); assert.equal(source.inventoryInput.sourceSelectionId, end.binding.selectionId);
     assert.equal(source.producer.configurationSha256, end.binding.configurationSha256);
     assert.equal(admission.target.name, end.binding.targetName); assert.equal(admission.target.uuid, end.binding.targetUuid);
@@ -96,7 +103,7 @@ async function durableEnd(control, end, store) {
     assert.equal(digest(record.outcome), end.freshWrites[0].recordSha256);
     assert.equal(digest(record.outcome.work), end.freshWrites[0].workSha256);
     return {admissionId: admission.id, planId: admission.planId, target: admission.target, recordId: record.id,
-        recordSha256: digest(record.outcome), payloadSha256: hash(payload), frameSha256: control.frameSha256};
+        recordSha256: digest(record.outcome), payloadSha256: hash(payload), frameSha256};
 }
 export async function inspectWireMasterCheckpoint({control, masterPid, store, queues}) {
     assert.ok(controls.has(control), 'unissued master restart control');
@@ -131,18 +138,9 @@ export function describeWireMasterCrash(receipt) {
     const value = crashes.get(receipt); assert.ok(value, 'unissued Wire master crash receipt');
     return structuredClone(value);
 }
-export function wireMasterSourceSequence(receipt, through) {
-    assert.ok(Number.isSafeInteger(through) && through >= 0 && through <= 4096);
-    if (receipt === undefined) return Array.from({length: through}, (_, index) => index + 1);
-    const {control} = describeWireMasterCrash(receipt);
-    assert.ok(Number.isSafeInteger(through) && through >= control.blockNum && through <= 1480);
-    return [...Array.from({length: control.blockNum}, (_, index) => index + 1),
-        ...Array.from({length: through - control.blockNum + 1}, (_, index) => control.blockNum + index)];
-}
-/** Both original and resumed observations remain checked; a replay cannot hide an unknown physical publisher. */
-export function wireMasterEventGroups(receipt, newMasterPid, events, blockNum) {
+/** Resume uses the coordinator's next block; no old physical event can substitute for the new epoch. */
+export function wireMasterResumedEvents(receipt, newMasterPid, events) {
     const {control, fence} = describeWireMasterCrash(receipt);
-    if (blockNum !== control.blockNum) return [events];
     assert.ok(Number.isSafeInteger(newMasterPid) && newMasterPid > 0 && newMasterPid !== fence.root.pid);
     const starts = events.filter(row => row.kind === 'start');
     assert.equal(new Set(starts.map(row => row.pid)).size, starts.length);
@@ -150,12 +148,12 @@ export function wireMasterEventGroups(receipt, newMasterPid, events, blockNum) {
     const group = root => new Set([root, ...starts.filter(row => row.parentPid === root).map(row => row.pid)]);
     const before = group(fence.root.pid), after = group(newMasterPid);
     assert.ok([...before].every(pid => !after.has(pid)));
-    for (const event of events.filter(row => row.kind === 'native_boundary' && row.blockNum === blockNum))
-        assert.ok(before.has(event.pid) || after.has(event.pid), 'unowned native event in the resumed block');
-    const groups = [events.filter(row => before.has(row.pid)), events.filter(row => after.has(row.pid))];
-    assert.ok(groups.every(rows => rows.some(row => row.kind === 'native_boundary'
-        && row.event === 'native_prepare_readback' && row.blockNum === blockNum)));
-    return groups;
+    for (const event of events.filter(row => row.kind === 'native_boundary' && row.blockNum === control.resumeBlockNum))
+        assert.ok(after.has(event.pid), 'old or unowned native event in the resumed block');
+    const current = events.filter(row => after.has(row.pid));
+    assert.ok(current.some(row => row.kind === 'native_boundary'
+        && row.event === 'native_prepare_readback' && row.blockNum === control.resumeBlockNum));
+    return current;
 }
 export async function auditWireMasterRestart({receipt, newMasterPid, rows, store, queues}) {
     const {control, checkpoint, fence} = describeWireMasterCrash(receipt), old = checkpoint.marker.end;
@@ -166,7 +164,7 @@ export async function auditWireMasterRestart({receipt, newMasterPid, rows, store
     assert.equal(probes[0].oldAssociationId, associationId(old)); assert.equal(probes[0].outcome, 'rejected');
     assert.equal(probes[0].error?.name, 'Error'); assert.equal(probes[0].error.message, 'Unissued or foreign worker end evidence');
     const associated = events.filter(row => row.event === 'adjudicated' && row.pid === newMasterPid
-        && row.end.binding.blockNum === control.blockNum && row.end.binding.traceOrdinal === control.traceOrdinal
+        && row.end.binding.blockNum === control.resumeBlockNum && row.end.binding.traceOrdinal === control.traceOrdinal
         && row.result.state === 'associated');
     assert.equal(associated.length, 1); const current = associated[0], fresh = current.end;
     assert.notEqual(fresh.epoch, old.epoch); assert.notEqual(fresh.incarnation, old.incarnation); assert.notEqual(fresh.attemptId, old.attemptId);
@@ -176,8 +174,8 @@ export async function auditWireMasterRestart({receipt, newMasterPid, rows, store
     const newWorker = ends[0].workerPid; assert.ok(!fence.members.some(value => value.pid === newWorker));
     assert.equal(rows.filter(row => row.kind === 'start' && row.pid === newWorker && row.parentPid === newMasterPid
         && row.role === 'ds_pool_worker').length, 1);
-    const retained = await durableEnd(control, old, store), replacement = await durableEnd(control, fresh, store);
-    assert.deepEqual(retained, checkpoint.record); assert.equal(replacement.payloadSha256, retained.payloadSha256);
+    const retained = await durableEnd(control, old, store), replacement = await durableEnd(control, fresh, store, true);
+    assert.deepEqual(retained, checkpoint.record); assert.notEqual(replacement.admissionId, retained.admissionId);
     await missingAssociation(store, old);
     const saved = await store.readAttemptAssociation(current.result.id);
     assert.equal(saved.id, associationId(fresh)); assert.deepEqual(saved.observation.end, fresh);

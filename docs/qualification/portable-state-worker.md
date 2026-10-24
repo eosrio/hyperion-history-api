@@ -376,23 +376,25 @@ settlement. Copied census and exit JSON cannot issue a restart receipt.
 
 The normal Hyperion launcher then starts another master against the same owned
 RabbitMQ, Elasticsearch, Redis, MongoDB and configuration. The source permits
-one resumed stream from block 33 only after the original stream has closed and
-the genuine crash receipt matches the original frame/profile/chain. Ordinary
-runs still start at block 1. Source grants, queue budgets, ancestry and deadlines
-are unchanged.
+one resumed stream from block 34 only after the original stream has closed and
+the genuine crash receipt matches the original frames/profile/chain. The
+existing coordinator resumes at its completed head plus one; it does not replay
+the already acknowledged block 33. Ordinary runs still start at block 1. Source
+grants, queue budgets, ancestry and deadlines are unchanged.
 
 The replacement's real adjudicator must reject a JSON copy of the old end. Its
-own block-33 attempt needs a fresh conditional write, authenticated end and
-persisted association; reading the old result cannot substitute for those facts.
-The old association remains absent, and stored broker settlement stays unknown.
+own block-34 attempt needs a fresh conditional write, authenticated end and
+persisted association against that block's original source; reading the old
+block-33 result cannot substitute for those facts. The old association remains
+absent, and stored broker settlement stays unknown.
 
-The exact replay is `[1..33, 33..1480]`: 1,480 unique original inputs and 1,481
-deliveries/ACKs if the complete run succeeds. Only this in-process crash receipt
-can select that expectation. Both physical epochs' block-33 input, native values,
-notifications, publication fingerprints and successful bulk versions are checked.
-New reader-session provenance can change the stored version for the same action
-ID; every independently validated version needs its own captured successful bulk
-evidence, and an unvalidated replacement fails the oracle.
+The exact replay remains `1..1480`: 1,480 unique original inputs and deliveries/ACKs
+if the complete run succeeds, without skips or duplicates across the restart.
+The old block-33 hold retains its independent native/state/publication checks.
+The resumed block-34 source, physical owner, canonical native observations,
+admission/publication fingerprints, captured successful bulk and recovery state
+are checked before continuing. The ordinary single-version stored-output oracle
+remains unchanged.
 
 Raw pre-crash observer files retain their actual bytes and any unterminated tail;
 they are not rewritten into successful shutdowns. The crash census and file

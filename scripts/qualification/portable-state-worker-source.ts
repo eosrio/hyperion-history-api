@@ -232,20 +232,19 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
             assert.equal(control.chainId, source.chainId); assert.equal(control.profileId, source.profileId);
             assert.equal(control.blockId, source.records[32].blockId);
             assert.equal(control.frameSha256, portableSourceHash(retained.frames[32]));
+            assert.equal(control.resumeBlockNum, through + 1); assert.equal(control.resumeBlockId, source.records[33].blockId);
+            assert.equal(control.resumeFrameSha256, portableSourceHash(retained.frames[33]));
             assert.equal(fence.directory, control.output);
             const flows = sessions.filter(value => value.flow.started);
             assert.equal(flows.length, 1); assert.equal(flows[0].socket.readyState, WebSocket.CLOSED);
             const expected = Array.from({length: through}, (_, index) => index + 1);
             assert.deepEqual(flows[0].flow.sent, expected); assert.deepEqual(flows[0].flow.acknowledged, expected);
             assert.equal(flows[0].flow.outstanding, 0); assert.deepEqual(errors, []);
-            restart = {blockNum: through, oldMasterPid: fence.root.pid};
+            restart = {blockNum: control.resumeBlockNum, oldMasterPid: fence.root.pid};
         },
         releaseThrough(block: number) {assert.ok(!closed && block >= through && block <= source.endBlock); through = block;
             for (const session of sessions) if (session.socket.readyState === WebSocket.OPEN) send(session, session.flow.releaseThrough(block));},
-        assertThrough(block: number) {const expected = restart
-            ? [...Array.from({length: restart.blockNum}, (_, index) => index + 1),
-                ...Array.from({length: block - restart.blockNum + 1}, (_, index) => restart!.blockNum + index)]
-            : Array.from({length: block}, (_, index) => index + 1);
+        assertThrough(block: number) {const expected = Array.from({length: block}, (_, index) => index + 1);
             assert.deepEqual(errors, []); assert.deepEqual(sessions.flatMap(session => session.flow.sent), expected);
             assert.deepEqual(sessions.flatMap(session => session.flow.acknowledged), expected);
             assert.ok(sessions.every(session => session.flow.outstanding === 0));},

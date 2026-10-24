@@ -29,7 +29,7 @@ import {auditPortablePhysicalMongo} from './portable-state-worker-mongo.ts';
 import {auditPortableWorkerProfiles, portableWorkerProfileEnvironment, portableWorkerProfileLimits} from './portable-state-worker-profiles.ts';
 import {createWireRecoveryControl, readWireRecoveryEvidence, auditWireAttemptRecovery, wireRecoveryShutdownRows} from './portable-state-worker-recovery.mjs';
 import {createWireMasterRestartControl, inspectWireMasterCheckpoint, crashWireMaster, describeWireMasterCrash,
-    auditWireMasterRestart, wireMasterSourceSequence} from './portable-state-master-recovery.mjs';
+    auditWireMasterRestart} from './portable-state-master-recovery.mjs';
 import {portableWorkerSourceFrame} from './portable-state-worker-source.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -529,7 +529,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         }
         if (options.masterRecovery) {
             masterControl = createWireMasterRestartControl({output, configFile, chain, source,
-                frameSha256: portableSourceHash(portableWorkerSourceFrame(source, 33))});
+                frameSha256: portableSourceHash(portableWorkerSourceFrame(source, 33)),
+                resumeFrameSha256: portableSourceHash(portableWorkerSourceFrame(source, 34))});
             report.masterRestart = {status: 'pending', control: masterControl.control};
             report.preloads.push('portable-state-master-recovery-preload.mjs');
         }
@@ -729,7 +730,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     rows: await observedDirectoryRows(), store, queues: await queues()});
                 const copiedCrash = describeWireMasterCrash(masterCrash); copiedCrash.control.blockNum = 1;
                 assert.equal(describeWireMasterCrash(masterCrash).control.blockNum, 33);
-                assert.throws(() => wireMasterSourceSequence(structuredClone(masterCrash), 33), /unissued/);
+                assert.throws(() => describeWireMasterCrash(structuredClone(masterCrash)), /unissued/);
                 report.masterRestart.crash = describeWireMasterCrash(masterCrash);
                 report.masterRestart.originalExit = {code: originalMaster.exitCode, signal: originalMaster.signalCode};
                 report.masterRestart.crashedObserverFiles = [];
@@ -744,29 +745,28 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     await replay!.allowMasterRestart(masterCrash);
                 });
                 const copiedSource = replay.metrics(); assert.ok(copiedSource.restart); copiedSource.restart.blockNum = 1;
-                assert.equal(replay.metrics().restart?.blockNum, 33, 'diagnostic source metadata changed restart authority');
+                assert.equal(replay.metrics().restart?.blockNum, 34, 'diagnostic source metadata changed restart authority');
+                through = masterControl.control.resumeBlockNum; replay.releaseThrough(through);
+                const resumedBlock = source.records[through - 1];
                 masterRestarted = true; master = await spawnOwned('build/indexer/launcher.js', configFile);
                 report.masterPid = master.pid; report.masterRestart.status = 'restarted';
                 report.masterRestart.replacementMasterPid = master.pid;
-                await wait('replacement master rejects the old end and completes its own fresh block33 association', async () => {
-                    replay!.assertThrough(33); ledger!.assertIdle();
+                await wait('replacement master rejects the old end and completes its own fresh block34 association', async () => {
+                    replay!.assertThrough(34); ledger!.assertIdle();
                     report.masterRestart.evidence = await auditWireMasterRestart({receipt: masterCrash, newMasterPid: master!.pid,
                         rows: await observedDirectoryRows('master-restarted'), store, queues: await queues()});
                     const recoveries = await Promise.all(adapters.map((adapter, index) => adapter.recovery(bindings[index])));
                     for (const recovery of recoveries) {
                         assert.equal(recovery.initialized, true);
-                        assert.deepEqual(recovery.checkpoint, {blockNum: 33, blockId: block.blockId});
+                        assert.deepEqual(recovery.checkpoint, {blockNum: 34, blockId: resumedBlock.blockId});
                         assert.equal(recovery.pending, null); assert.equal(recovery.gap, null);
                     }
                     report.masterRestart.recovery = recoveries;
                     report.masterRestart.stateResponses = [];
-                    for (const [index, definition] of plan.definitions.entries()) {
+                    assert.ok(through < stateAbiAvailability.fromBlock, 'this fixed restart case precedes the original ABI deployment');
+                    for (const definition of plan.definitions) {
                         const response = await query(definition.id);
-                        if (through < stateAbiAvailability.fromBlock) assertPortablePredeployment(response);
-                        else {
-                            assert.equal(response.status, 200); assertPortableApiResult(response.body, response.headers, bindings[index],
-                                {blockNum: through, blockId: block.blockId}, barrier.rows[definition.id]);
-                        }
+                        assertPortablePredeployment(response);
                         report.masterRestart.stateResponses.push(responseReceipt(response));
                     }
                 });
@@ -781,13 +781,13 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         await wait('broker actual consumer ACK statistics', async () => {const rows = await queues();
             const sourceQueues = rows.filter((row: any) => row.name === chain + ':live_blocks');
             assert.ok(sourceQueues.length > 0, 'source block queue is missing');
-            const expectedDeliveries = wireMasterSourceSequence(masterCrash, source.endBlock).length;
+            const expectedDeliveries = source.endBlock;
             assert.equal(sourceQueues.reduce((sum: number, row: any) => sum + row.ack, 0), expectedDeliveries, 'broker ACK count differs from the exact original/resumed source sequence');
             assert.equal(sourceQueues.reduce((sum: number, row: any) => sum + row.delivered, 0), expectedDeliveries, 'broker delivery count differs from the exact original/resumed source sequence');
             assert.equal(sourceQueues.reduce((sum: number, row: any) => sum + row.redelivered, 0), 0);
             assert.ok(rows.every((row: any) => row.ready === 0 && row.unacked === 0 && row.messages === 0)); report.brokerAcks = rows;
         });
-        const observer = await observedRows(), expected = wireMasterSourceSequence(masterCrash, source.endBlock);
+        const observer = await observedRows(), expected = Array.from({length: source.endBlock}, (_, index) => index + 1);
         for (const direction of ['ipc_send', 'ipc_receive']) assert.deepEqual(observer.filter(row => row.kind === direction && row.event === 'read_block' && row.role === 'continuous_reader')
             .map(row => row.message.block_num), expected, 'publisher-confirmed source interval differs');
         report.replay = replay.metrics(); report.bulk = summarizeBulkLedger(ledger.receipts);

@@ -121,22 +121,22 @@ describe('portable actual-source harness guards', () => {
         expect(flow.sent).toHaveLength(portableSourceLimits.window); expect(flow.outstanding).toBe(portableSourceLimits.window);
         expect(flow.receive(ack(8)).blocks).toHaveLength(8); expect(flow.outstanding).toBe(portableSourceLimits.window);
     });
-    it('starts an explicitly selected resumed flow at its exact original block with bounded ACK accounting', () => {
-        const value = request(40, 1000); value[1].start_block_num = 33;
-        const flow = new PortableSourceFlow(40, 33);
-        expect(flow.releaseThrough(33)).toEqual([]);
-        expect(flow.receive(value).blocks).toEqual([33]);
-        expect(flow.sent).toEqual([33]); expect(flow.outstanding).toBe(1);
+    it('resumes from the next original block after the completed coordinator head with bounded ACK accounting', () => {
+        const value = request(40, 1000); value[1].start_block_num = 34;
+        const flow = new PortableSourceFlow(40, 34);
+        expect(flow.releaseThrough(34)).toEqual([]);
+        expect(flow.receive(value).blocks).toEqual([34]);
+        expect(flow.sent).toEqual([34]); expect(flow.outstanding).toBe(1);
         expect(flow.receive(ack(1)).blocks).toEqual([]);
-        expect(flow.releaseThrough(40)).toEqual([34, 35, 36, 37, 38, 39, 40]);
+        expect(flow.releaseThrough(40)).toEqual([35, 36, 37, 38, 39, 40]);
         expect(flow.outstanding).toBeLessThanOrEqual(portableSourceLimits.window);
-        flow.receive(ack(7));
-        expect(flow.acknowledged).toEqual([33, 34, 35, 36, 37, 38, 39, 40]);
+        flow.receive(ack(6));
+        expect(flow.acknowledged).toEqual([34, 35, 36, 37, 38, 39, 40]);
         expect(flow.outstanding).toBe(0);
         expect(() => new PortableSourceFlow(40).receive(value)).toThrow();
-        for (const start of [32, 34]) {
+        for (const start of [33, 35]) {
             const wrong = request(40); wrong[1].start_block_num = start;
-            expect(() => new PortableSourceFlow(40, 33).receive(wrong)).toThrow();
+            expect(() => new PortableSourceFlow(40, 34).receive(wrong)).toThrow();
         }
         for (const first of [0, 41, 1.5, NaN]) expect(() => new PortableSourceFlow(40, first)).toThrow();
     });
