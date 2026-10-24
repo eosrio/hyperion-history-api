@@ -41,7 +41,7 @@ export default class ProjectionWorker extends HyperionWorker {
                 onProgress: data => {try {process.send?.({event: 'portable_state_progress', data});} catch {}}});
             this.assertWorkerAttemptActive();
             return {client};
-            });
+            }, () => !this.stopped);
             while (!this.stopped) {
                 await this.controller!.drain();
                 if (!this.stopped) await delay(100);

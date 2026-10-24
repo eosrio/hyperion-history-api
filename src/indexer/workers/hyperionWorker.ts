@@ -30,6 +30,8 @@ import {WorkerAttemptClient, createControlledLocalAttemptClient, type WorkerAtte
 import type {WorkerAttemptBinding, WorkerAttemptKind, WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
 import {currentProofConsumerScope, assertProofConsumerCapability, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
 
+const maximumProjectionInitializationAttempts = 4;
+
 // Broker-decoded headers may contain bytes, timestamps or undefined fields, unlike portable action JSON.
 function workerAttemptHeadersSha256(headers: unknown): string {
     let budget = 0, nodes = 0; const seen = new Set<object>();
@@ -173,11 +175,18 @@ export abstract class HyperionWorker {
         });
     }
     async runProjectionAttempt<T>(kind: Extract<WorkerAttemptKind, 'projection-initialization' | 'projection-frame'>,
-                                  metadata: unknown, operation: () => T | Promise<T>): Promise<T> {
-        const bytes = actionHistoryImmutableJson(metadata), digest = createHash('sha256').update(bytes).digest('hex');
-        const client = this.attemptClient(), handle = client.capture({kind, receiptId: randomUUID(), payloadSha256: digest,
-            headersSha256: createHash('sha256').update('{}').digest('hex'), consumerId: null, publisherId: null, queue: null, deliveryTag: null});
-        return client.run(handle, operation);
+                                  metadata: unknown, operation: () => T | Promise<T>, mayRetryInitialization?: () => boolean): Promise<T> {
+        const client = this.attemptClient();
+        for (let attempt = 1; ; attempt++) {
+            const bytes = actionHistoryImmutableJson(metadata), digest = createHash('sha256').update(bytes).digest('hex');
+            const handle = client.capture({kind, receiptId: randomUUID(), payloadSha256: digest,
+                headersSha256: createHash('sha256').update('{}').digest('hex'), consumerId: null, publisherId: null, queue: null, deliveryTag: null});
+            try {return await client.run(handle, operation);}
+            catch (error) {
+                if (kind !== 'projection-initialization' || attempt >= maximumProjectionInitializationAttempts || !mayRetryInitialization?.()
+                    || !client.consumeProjectionInitializationRetry(handle, error)) throw error;
+            }
+        }
     }
     async bindWorkerAttempt(fields: WorkerAttemptBinding): Promise<void> {await this.attemptClient().bindCurrent(fields);}
     /** A fresh store return is forwarded by its original scoped worker; controlled fixtures have no parent authority. */

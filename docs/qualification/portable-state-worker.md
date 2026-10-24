@@ -367,6 +367,18 @@ original block-33 DS handoff has a fresh durable write and an authenticated
 quiescent end. The original state/native hold and owned queue drain must pass
 before the crash. The old association must still be absent.
 
+A current-parent source transition may fence projection initialization while a
+Mongo connection or setup operation is pending. The production projection worker
+allows at most four separately accepted initialization attempts. Each recovery
+waits for the old physical root and retained operations to drain and for its real
+parent end reply. Only the same client's issued source-fence failure can consume
+one retry claim. A stop, retired/disconnected owner, uncertain end reply, ordinary
+storage/configuration error or copied diagnostic cannot authorize recovery. Frame
+and broker-delivery attempts retain their existing behavior. The native
+`projection-startup-fencing` cases use the actual emitted worker/client/supervisor
+and cluster IPC with controlled Mongo/controller I/O; real-service restart and
+full replay acceptance remain separate gates.
+
 The controller checks the launched master's parent, executable, command, working
 directory, session/process group and birth identities against the physical
 observer census. It refuses unobserved members or a changed group, then sends
