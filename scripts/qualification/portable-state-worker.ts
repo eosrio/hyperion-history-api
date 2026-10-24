@@ -27,6 +27,8 @@ import {auditPortableNativeOracle, createPortableNativeQualification, nativePort
     portableNativeProfile} from './portable-state-worker-native.ts';
 import {auditPortablePhysicalMongo} from './portable-state-worker-mongo.ts';
 import {auditPortableWorkerProfiles, portableWorkerProfileEnvironment, portableWorkerProfileLimits} from './portable-state-worker-profiles.ts';
+import {createWireRecoveryControl, readWireRecoveryEvidence, auditWireAttemptRecovery, wireRecoveryShutdownRows} from './portable-state-worker-recovery.mjs';
+import {portableWorkerSourceFrame} from './portable-state-worker-source.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
@@ -307,7 +309,7 @@ export async function portableSourceRpc(source: PortableWorkerSource, errors: st
         close: () => new Promise<void>(done => {server.closeAllConnections(); server.close(() => done());})};
 }
 
-export interface PortableWorkerOptions {readonly native?: boolean; readonly authorityRpc?: string; readonly profile?: boolean}
+export interface PortableWorkerOptions {readonly native?: boolean; readonly authorityRpc?: string; readonly profile?: boolean; readonly workerRecovery?: boolean}
 
 function portableAuthorityRpcOrigin(value: string): URL {
     const upstream = new URL(value);
@@ -320,10 +322,11 @@ function portableAuthorityRpcOrigin(value: string): URL {
 export function validatePortableWorkerOptions(options: unknown): asserts options is PortableWorkerOptions {
     assert.ok(options && typeof options === 'object' && !Array.isArray(options)
         && [Object.prototype, null].includes(Object.getPrototypeOf(options))
-        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile'].includes(key)));
+        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile', 'workerRecovery'].includes(key)));
     const selected = options as PortableWorkerOptions;
     if (Object.hasOwn(selected, 'native')) assert.equal(typeof selected.native, 'boolean');
     if (Object.hasOwn(selected, 'profile')) assert.equal(typeof selected.profile, 'boolean');
+    if (Object.hasOwn(selected, 'workerRecovery')) assert.equal(typeof selected.workerRecovery, 'boolean');
     if (Object.hasOwn(selected, 'authorityRpc')) {
         assert.ok(selected.native === true && typeof selected.authorityRpc === 'string',
             'the source-bounded RPC check requires explicit native qualification');
@@ -331,16 +334,18 @@ export function validatePortableWorkerOptions(options: unknown): asserts options
     }
     assert.ok(!selected.profile || selected.native === true && typeof selected.authorityRpc === 'string',
         'CPU profiling requires explicit native source-bounded RPC qualification');
+    assert.ok(!selected.workerRecovery || selected.native === true && typeof selected.authorityRpc === 'string' && !selected.profile,
+        'Worker recovery requires native source-bounded RPC qualification without CPU capture');
 }
 
 export function parsePortableWorkerArguments(args: readonly string[]) {
     assert.ok(args.slice(0, 3).length === 3 && args.slice(0, 3).every(value => typeof value === 'string' && value.length > 0)
         && (args.length === 3 || args.length === 4 && args[3] === '--native'
-            || (args.length === 6 || args.length === 7 && args[6] === '--profile')
+            || (args.length === 6 || args.length === 7 && ['--profile', '--worker-recovery'].includes(args[6]))
                 && args[3] === '--native' && args[4] === '--authority-rpc'),
-    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile]]]');
+    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile|--worker-recovery]]]');
     const options = {...(args.length > 3 ? {native: true} : {}), ...(args.length >= 6 ? {authorityRpc: args[5]} : {}),
-        ...(args.length === 7 ? {profile: true} : {})};
+        ...(args[6] === '--profile' ? {profile: true} : {}), ...(args[6] === '--worker-recovery' ? {workerRecovery: true} : {})};
     validatePortableWorkerOptions(options);
     return {stateFile: args[0], planFile: args[1], outputDirectory: args[2], options};
 }
@@ -405,6 +410,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     let mongo: MongoClient | undefined, redis: Redis | undefined, master: ChildProcess | undefined, api: ChildProcess | undefined;
     let replay: Awaited<ReturnType<typeof servePortableWorkerSource>> | undefined, rpc: Awaited<ReturnType<typeof portableSourceRpc>> | undefined;
     let ledger: Awaited<ReturnType<typeof startBulkLedger>> | undefined;
+    let recoveryControl: ReturnType<typeof createWireRecoveryControl> | undefined;
     let mongoWriteFaultActive = false;
     const configureMongoWriteFault = async (mode: 'alwaysOn' | 'off') => {
         assert.ok(mongo); mongoFixture.ownedContainer('replica');
@@ -441,9 +447,12 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         const stdout = await open(join(output, name + '.stdout.log'), 'wx'), stderr = await open(join(output, name + '.stderr.log'), 'wx');
         const nativePreloads = options.native ? ['action-source-admission-preload.mjs', 'portable-state-worker-native-observer.mjs']
             .flatMap(file => ['--import', pathToFileURL(join(repo, 'scripts/qualification', file)).href]) : [];
+        if (name === 'master' && recoveryControl) nativePreloads.push('--import',
+            pathToFileURL(join(repo, 'scripts/qualification/portable-state-worker-recovery-preload.mjs')).href);
         try {const child = spawn(process.execPath, [...nativePreloads, '--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href, join(repo, entry)],
             {cwd: output, env: {...portableWorkerEnvironment(process.env, output, config, chain, options.profile === true), ES198_OBSERVER_DIR: join(output, 'observer', name),
-                ...(options.native ? {HYPERION_PORTABLE_NATIVE_QUALIFICATION: '1'} : {})},
+                ...(options.native ? {HYPERION_PORTABLE_NATIVE_QUALIFICATION: '1'} : {}),
+                ...(name === 'master' && recoveryControl ? {ES198_WIRE_RECOVERY_CONTROL: recoveryControl.file} : {})},
                 detached: process.platform !== 'win32', stdio: ['ignore', stdout.fd, stderr.fd, 'ipc']});
             child.on('error', error => report.errors.push(describeError(error))); return child;
         } finally {await stdout.close(); await stderr.close();}
@@ -493,6 +502,11 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         for (const [path, value] of [[configFile, config], [join(output, 'config/chains', chain + '.config.json'), config],
             [join(output, 'config/connections.json'), connections], [join(output, 'package.json'), JSON.parse((await boundedPortableFile(join(repo, 'package.json'), 65536)).toString())]] as const)
             await writeFile(path, JSON.stringify(value, null, 2) + '\n', {flag: 'wx'});
+        if (options.workerRecovery) {
+            recoveryControl = createWireRecoveryControl({output, configFile, chain, source,
+                frameSha256: portableSourceHash(portableWorkerSourceFrame(source, 33))});
+            report.attemptRecovery = {status: 'pending', control: recoveryControl.control};
+        }
         report.config = config; report.bindings = bindings; report.connections = connections;
         report.contractFailure = {definition: invalidDefinition, binding: invalidBinding,
             description: 'Fixture-only missing required source field; healthy definitions and independent expected rows are unchanged.', observations: []};
@@ -643,6 +657,16 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             }
             await wait(`owned Rabbit queues drained at${through}`, async () => {const rows = await queues(); assert.ok(rows.length > 0);
                 assert.ok(rows.every((row: any) => row.ready === 0 && row.unacked === 0 && row.messages === 0));});
+            if (recoveryControl && through === 33) {
+                const {ActionSourceAdmissionStore} = await import(new URL('../../build/indexer/history/action-source-admission.js', import.meta.url).href);
+                const store = new ActionSourceAdmissionStore(es, chain, 1);
+                await wait('actual Wire worker redelivery and production-master adjudication', async () => {
+                    const evidence = readWireRecoveryEvidence(recoveryControl!.control);
+                    report.attemptRecovery = {status: 'observed', control: recoveryControl!.control,
+                        evidence: await auditWireAttemptRecovery({control: recoveryControl!.control, ...evidence,
+                            queues: await queues(), masterPid: master!.pid, store})};
+                });
+            }
             let physicalMongo;
             if (plan.barriers.some(value => value.through === through)) {
                 replay.assertThrough(through); mongoFixture.ownedContainer('replica');
@@ -684,6 +708,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         const afterSource = await auditPortableWorkerSource(plan.source, source.profileId as PortableSourceProfile);
         assert.deepEqual(afterSource.inputHashes, source.inputHashes); assert.deepEqual(afterSource.components, source.components);
         assert.equal(writeFailureObserved, true); assert.ok(report.contractFailure.observations.length >= 2);
+        if (recoveryControl) assert.equal(report.attemptRecovery.status, 'observed');
         report.limits.writeFailureIsolationQualified = true;
         report.status = 'passed';
     } catch (error) {report.status = 'failed'; report.error = describeError(error);}
@@ -697,7 +722,15 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             try {if (child.exitCode === null && child.signalCode === null && child.connected) child.send({event: 'qualifier_shutdown'});
                 if (child.exitCode === null && child.signalCode === null) await Promise.race([once(child, 'exit'), pause(10000)]);
                 report[name + 'Exit'] = {code: child.exitCode, signal: child.signalCode};
-                const all = await observedRows(name, true); report[name + 'Shutdown'] = assertSuccessfulWorkerShutdown(all, child.pid!, child.exitCode, child.signalCode);
+                const all = await observedRows(name, true);
+                const fault = name === 'master' && recoveryControl
+                    && (await readdir(join(output, 'attempt-recovery'))).includes('fault.json')
+                    ? readWireRecoveryEvidence(recoveryControl.control).marker : undefined;
+                const checked = fault ? wireRecoveryShutdownRows(all, fault, child.pid!, child.exitCode, child.signalCode) : all;
+                report[name + 'Shutdown'] = assertSuccessfulWorkerShutdown(checked, child.pid!, fault ? 0 : child.exitCode, child.signalCode);
+                if (fault) report.expectedWorkerExit = {marker: fault, rawMasterExit: report[name + 'Exit'],
+                    rawShutdown: all.find(row => row.kind === 'shutdown' && row.pid === child.pid),
+                    note: 'Only the proven deliberate worker exit is normalized in the detached cleanup verifier input.'};
                 report.cleanup.push({name, ok: true});
             } catch (error) {report.status = 'failed'; report.cleanup.push({name, ok: false, error: describeError(error)});
                 try {if (child.pid && child.exitCode === null && child.signalCode === null) {
@@ -705,7 +738,11 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     else process.kill(-child.pid, 'SIGKILL');
                 }} catch (cleanupError: any) {if (cleanupError.code !== 'ESRCH') report.cleanup.push({name: name + '-forced', ok: false, error: describeError(cleanupError)});}}
             try {
-                report.profiling.components.push({component: name, processes: await auditPortableWorkerProfiles(output, name,
+                if (name === 'master' && report.expectedWorkerExit) {
+                    report.profiling.recoveryCensus = {cpuCapture: false, expectedUnflushedWorker: report.expectedWorkerExit.marker.pid,
+                        processes: (await observedRows(name, true)).filter(row => row.kind === 'start').map(row => ({pid: row.pid, role: row.role})),
+                        note: 'Raw exits and full physical process census validated by the recovery shutdown oracle; no profile capture claimed.'};
+                } else report.profiling.components.push({component: name, processes: await auditPortableWorkerProfiles(output, name,
                     await observedRows(name, true), child.pid!, options.profile === true)});
             } catch (error) {
                 report.status = 'failed'; report.profiling.failures.push({component: name, error: describeError(error)});
