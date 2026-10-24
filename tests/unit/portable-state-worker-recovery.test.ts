@@ -120,7 +120,8 @@ test('recovery issuance rejects marker and ACK scope that disagree with authenti
         (value: any) => {value.marker.traceOrdinal = 1; value.events[2].traceOrdinal = 1;},
         (value: any) => {value.marker.admissionId = 'foreign'; value.events[2].admissionId = 'foreign';},
         (value: any) => {value.marker.payloadSha256 = '9'.repeat(64); value.events[2].payloadSha256 = value.marker.payloadSha256;},
-        (value: any) => {value.marker.source.blockId = '9'.repeat(64); value.control.blockId = value.marker.source.blockId;},
+        (value: any) => {value.marker.source.blockId = '9'.repeat(64); value.control.blockId = value.marker.source.blockId;
+            value.marker.controlSha256 = hash(JSON.stringify(value.control));},
         (value: any) => {value.events[2].attempt.binding.traceOrdinal = 1;},
         (value: any) => {value.events[2].attempt.descriptor.payloadSha256 = '9'.repeat(64);},
         (value: any) => {value.marker.attempt.mode = 'controlled-local-only';},
