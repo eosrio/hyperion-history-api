@@ -12,6 +12,18 @@ The configured RPC alone is insufficient to establish the current reversible SHI
 
 ## Current Wire testnet source preflight
 
+Canonical RPC validation reads only the requested block number, ID and parent ID.
+It does not decode the whole RPC response as an Antelope signed block. The actual
+master callback regression retains an unchanged 1,031-byte Wire testnet block-33
+RPC response captured on 2026-10-24, SHA-256
+`2fbe2a135ad825e5105843dfc0c31bbd8017c15e6b1d2ca9c973be90fd7ecc95`.
+The block ID is `000000211b7e773b53576a30619f893252a2a47e23da7b25c090dbe8b0de7655`,
+on the chain identified below. Its Wire header omits Antelope's `confirmed` field.
+The previous typed RPC call rejected it before canonical identity validation.
+Both the physical live-reader LIB and source block identities remain checked;
+invalid numbers/IDs/parents, missing or replaced anchors and branch disagreement
+fail closed. Protocol-specific full block decoding stays in the selected provider.
+
 The read-only [source preflight](evidence/action-attempt-live-source-20261023.json)
 queried the running Hyperion-3 Wire SHIP and RPC endpoints on 2026-10-23 at 05:41 UTC. It used
 the installed `wire-sysio-6508c9e8-native-engineering-v1` codec profile and Node 26.4.0 for the

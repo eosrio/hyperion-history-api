@@ -4,6 +4,7 @@ import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import type {Client} from '@elastic/elasticsearch';
 import {boundedPortableFile, portableSourceHash, portableWorkerSourceFrame, type PortableWorkerSource} from './portable-state-worker-source.ts';
+import {wireRecoveryPublicationOwners} from './portable-state-worker-recovery.mjs';
 
 export const portableNativeProfile = 'wire-sysio-6508c9e8-native-engineering-v1';
 export const portableLegacyProfile = 'wire-sysio-6508c9e8-engineering-v1';
@@ -22,6 +23,22 @@ export function nativePortableHolds(original: readonly number[]) {
 }
 const sequence = (value: unknown) => {assert.equal(typeof value, 'string'); assert.match(value as string, /^(?:0|[1-9][0-9]*)$/);
     assert.ok(BigInt(value as string) <= 0xffffffffffffffffn);};
+export function assertPortableNativePublications(confirmed: readonly any[], expected: {
+    payloadSha256: string; admissionId: string; fragmentId: string; blockNum: number; owners?: readonly number[]}) {
+    if (expected.owners) {
+        assert.equal(expected.owners.length, 2); assert.equal(new Set(expected.owners).size, 2);
+        assert.ok(expected.owners.every(pid => Number.isSafeInteger(pid) && pid > 0));
+    }
+    assert.equal(confirmed.length, expected.owners ? 2 : 1, 'stored output lacks its exact expected confirmed publications');
+    if (expected.owners) assert.deepEqual(confirmed.map(value => value.pid).sort((a, b) => a - b),
+        [...expected.owners].sort((a, b) => a - b), 'recovery needs one confirmation from each original physical worker');
+    for (const value of confirmed) {
+        assert.equal(value.payloadSha256, expected.payloadSha256); assert.equal(value.canonicalPayloadSha256, expected.payloadSha256);
+        assert.equal(value.persistent, true); assert.equal(value.mandatory, true);
+        assert.equal(value.headers['hyperion-action-admission-v1'], expected.admissionId);
+        assert.equal(value.headers.action_fragment_id, expected.fragmentId); assert.equal(value.headers.block_num, expected.blockNum);
+    }
+}
 export async function assertPortableNativeAction(action: any, expected: any,
     encode: (kind: string, value: unknown) => Uint8Array | Promise<Uint8Array>) {
     assert.equal(action.block_num, expected.blockNum); assert.equal(action.block_id, expected.blockId);
@@ -83,6 +100,7 @@ interface NativeRunOptions {
     readonly unrelated: (through: number) => Promise<unknown>;
     readonly bulk: {readonly directory: string; readonly receipts: readonly any[]};
     readonly wait: (name: string, work: () => Promise<void>) => Promise<void>;
+    readonly attemptRecovery?: () => unknown;
 }
 
 /** Native proof services are read-only. Constructed negative controls touch only one owned action row. */
@@ -208,11 +226,13 @@ export async function createPortableNativeQualification(options: NativeRunOption
             const confirmed = events.filter(value => value.kind === 'native_boundary' && value.event === 'admitted_broker_confirmed'
                 && value.queue.startsWith(chain + ':index_actions:') && value.payloadSha256 === logicalSha256
                 && value.headers['hyperion-action-admission-v1'] === current.id);
-            assert.equal(confirmed.length, 1, 'stored output lacks one actual confirmed publication from its admitted source');
-            assert.equal(confirmed[0].canonicalPayloadSha256, logicalSha256);
-            assert.equal(confirmed[0].persistent, true); assert.equal(confirmed[0].mandatory, true);
             const fragment = manifest.fragments.find((fragment: any) => fragment.effects.some((effect: any) => effect.globalSequence === row.logical.global_sequence));
-            assert.ok(fragment); assert.equal(confirmed[0].headers.action_fragment_id, manifests.actionHistoryFragmentId(fragment, plan));
+            assert.ok(fragment);
+            const transaction = plan.transactions.find((value: any) => value.transactionId === fragment.transactionId); assert.ok(transaction);
+            const owners = wireRecoveryPublicationOwners(options.attemptRecovery?.(), {admissionId: current.id, planId: current.planId,
+                traceOrdinal: transaction.traceOrdinal, blockNum: number, blockId: plan.source.blockId});
+            assertPortableNativePublications(confirmed, {payloadSha256: logicalSha256, admissionId: current.id,
+                fragmentId: manifests.actionHistoryFragmentId(fragment, plan), blockNum: number, owners});
             persistedOutputs.set(JSON.stringify([row.index, row.id]), {index: row.index, id: row.id, logicalSha256,
                 physicalSha256: portableSourceHash(manifests.actionHistoryImmutableJson(row.physical)), blockNum: number});
         }

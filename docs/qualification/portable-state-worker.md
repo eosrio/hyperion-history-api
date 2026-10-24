@@ -321,3 +321,40 @@ default 256-block verified ancestry. The full Node 22 replay and final 1480
 acceptance remain pending. Follow #277 for measured worker/proof backpressure;
 keep #270/#274 open. Do not widen ancestry or relax queue/seal guards to turn
 that failed run into a passing result.
+
+## Production-master worker replacement
+
+For #288, append `--worker-recovery` to the native, source-bounded RPC command
+instead of `--profile`. This opt-in case exits one actual Wire DS worker after
+its confirmed handoff has a fresh durable acknowledgment and before its original
+consumer ACK. The existing Hyperion master replaces the worker; RabbitMQ owns
+redelivery. The source archive, 1..1480 interval, grants, queue budgets, ancestry,
+independent Mongo/action oracles and deadlines stay unchanged.
+
+At the original block-33 hold, the additional oracle requires the production
+master to retain the dead attempt as unresolved, with no private association.
+The replacement must receive the same body and headers on a distinct physical
+receipt/channel, obtain a fresh acknowledged write for the same semantic handoff,
+ACK the broker delivery and produce its own authenticated end and stored
+association. Actual broker delivery/ACK/redelivery totals must reconcile. Stored
+association metadata continues to say broker settlement is unknown; the
+independently observed broker counters do not change that runtime contract.
+
+Ordinary runs still require exactly one confirmed publication for each stored
+output. For the exact recovered transaction, a completed in-process recovery
+audit declares the original and replacement physical publication owners. The
+fault case requires exactly one confirmation from each, and checks every copy's
+full payload hash, admission, fragment, block, persistence and mandatory routing.
+Copied/stored audit JSON, another transaction, a missing/extra copy or a different
+owner cannot declare this expectation. Physical stored effects and independent
+source oracles remain unchanged.
+
+The fault control binds the owned output/config, exact source frame, chain and
+installed engineering profile. Its exclusive durable marker permits one exit.
+Raw observer and process outcomes remain unchanged. Cleanup validates the full
+process census and precisely the expected exit before feeding a detached view
+to the normal shutdown verifier. This mode does not capture CPU profiles.
+
+An observed block-33 recovery case remains separate from the full replay result.
+A later replay failure is still a failed run. This case does not qualify parent
+restart, broker/server restart, forks, launch pins or the complete release.
