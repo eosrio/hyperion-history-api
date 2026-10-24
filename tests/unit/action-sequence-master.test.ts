@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 
 // The master imports uWebSockets; exercise actual emitted Node artifacts rather
-// than loading its native module through Bun. The CI matrix supplies Node22/24.
+// than loading its native module through Bun. The CI matrix supplies Node24/26.
 it('requires action template acknowledgment and the actual named mapping readback while preserving unrelated templates', async () => {
     const master = new URL('../../build/indexer/modules/master.js', import.meta.url).href;
     const storage = new URL('../../build/indexer/history/action-sequence-storage.js', import.meta.url).href;
@@ -51,7 +51,7 @@ it('requires action template acknowledgment and the actual named mapping readbac
         console.log('action-sequence-master-passed');
     `;
     const node = process.env.HYPERION_NATIVE_NODE ?? process.env.READER_RECOVERY_NODE ?? Bun.which('node');
-    if (!node) throw new Error('Node.js22/24 is required for the native action template test');
+    if (!node) throw new Error('Node.js24/26 is required for the native action template test');
     const fixtureRoot = resolve(tmpdir()), prefix = 'hyperion-sequence-master-';
     const directory = mkdtempSync(join(fixtureRoot, prefix));
     try {

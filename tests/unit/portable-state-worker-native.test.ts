@@ -42,7 +42,7 @@ test('persisted native assertions require original wrapper, source identity, los
     await expect(assertPortableNativeAction(row, expected, () => Buffer.from('aabb00', 'hex'))).rejects.toThrow();
 });
 test('ordinary installed native profile verifies original1480 source and all genuine notification origins without services', async () => {
-    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--experimental-transform-types',
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--experimental-strip-types',
         fileURLToPath(new URL('./portable-state-worker-native-source.mjs', import.meta.url))],
     {stdout: 'pipe', stderr: 'pipe', timeout: 90000});
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);

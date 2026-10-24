@@ -1,5 +1,6 @@
 /** Real native observer capture/flush, without services or a substitute Wire correctness workload. */
 import assert from 'node:assert/strict';
+import {assertNativeQualificationRuntime} from '../../scripts/qualification/native-node-runtime.mjs';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
@@ -9,6 +10,7 @@ import {auditPortableWorkerProfiles} from '../../scripts/qualification/portable-
 import {portableWorkerEnvironment} from '../../scripts/qualification/portable-state-worker.ts';
 import {assertSuccessfulWorkerShutdown} from '../../scripts/qualification/es955-workers.ts';
 
+assertNativeQualificationRuntime();
 const mode = process.argv[2]; assert(['control', 'profile'].includes(mode));
 const enabled = mode === 'profile', output = mkdtempSync(join(tmpdir(), 'hyperion-portable-profile-'));
 const observer = join(output, 'observer/master'); mkdirSync(observer, {recursive: true});

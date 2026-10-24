@@ -3,6 +3,7 @@
  * This driver imports no old source corpus or evidence archive and never initializes a projection.
  */
 import assert from 'node:assert/strict';
+import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
 import {spawn, execFileSync, type ChildProcess} from 'node:child_process';
 import {mkdir, open, readdir, writeFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -346,7 +347,7 @@ export function parsePortableWorkerArguments(args: readonly string[]) {
 
 export async function runPortableStateWorker(stateFile: string, planFile: string, outputDirectory: string, options: PortableWorkerOptions = {}) {
     validatePortableWorkerOptions(options);
-    assert.equal(process.release.name, 'node'); assert.ok(!process.versions.bun && /^(22|24)\./.test(process.versions.node));
+    assertNativeQualificationRuntime();
     const deadline = performance.now() + portableSourceLimits.runMs;
     const remaining = () => {const value = Math.floor(deadline - performance.now()); assert.ok(value > 0, 'portable worker deadline exceeded'); return value;};
     let cleanupDeadline: number | undefined;

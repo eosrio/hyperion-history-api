@@ -1,5 +1,6 @@
 /** Real loopback status probes with original Wire bytes; no worker, database or live-chain qualification. */
 import assert from 'node:assert/strict';
+import {assertNativeQualificationRuntime} from '../../scripts/qualification/native-node-runtime.mjs';
 import {once} from 'node:events';
 import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -11,7 +12,7 @@ import {WebSocket} from 'ws';
 import {StateHistorySocket} from '../../build/indexer/connections/state-history.js';
 import {auditPortableWorkerSource, portableSourceLimits, servePortableWorkerSource} from '../../scripts/qualification/portable-state-worker-source.ts';
 
-assert.match(process.versions.node, /^(22|24)\./);
+assertNativeQualificationRuntime();
 const root = fileURLToPath(new URL('../../', import.meta.url)), directory = mkdtempSync(join(tmpdir(), 'hapi288-status-connections-'));
 const fixtures = [], sockets = [];
 async function eventually(condition) {

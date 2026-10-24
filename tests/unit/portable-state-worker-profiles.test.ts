@@ -109,11 +109,11 @@ test('disabled CPU capture requires disabled flushes and no residual profile fil
 }));
 
 for (const mode of ['control', 'profile']) test(`actual native observer ${mode} validates profile capture and original shutdown`, async () => {
-    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--experimental-transform-types',
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--experimental-strip-types',
         fileURLToPath(new URL('./portable-state-worker-profiles.mjs', import.meta.url)), mode], {stdout: 'pipe', stderr: 'pipe', timeout: 15000});
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({code, stdout, stderr}).toMatchObject({code: 0});
-    expect(stderr.replace(/\(node:\d+\) ExperimentalWarning: Transform Types is an experimental feature and might change at any time\r?\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\r?\n/, '')).toBe('');
+    expect(stderr).toBe('');
     expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toMatchObject({passed: true, mode, ordinaryBoundedFilesVerified: true,
         actualSampledWorkload: mode === 'profile', fullWorkerQualification: false});
 }, 20000);

@@ -21,7 +21,7 @@ const plan = () => ({schemaVersion: 1, source: {directory: 'source', receiptSha2
 
 describe('portable actual-source harness guards', () => {
     it('bounds active SHIP sockets separately from closed status-probe history with the installed Wire provider', async () => {
-        const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--experimental-transform-types',
+        const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--experimental-strip-types',
             fileURLToPath(new URL('./portable-state-worker-connections.mjs', import.meta.url))],
         {stdout: 'pipe', stderr: 'pipe', timeout: 35000});
         const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);

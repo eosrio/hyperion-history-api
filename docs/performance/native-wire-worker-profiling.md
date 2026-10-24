@@ -9,12 +9,13 @@ The ordinary `portable-state-worker.ts` command keeps CPU capture disabled, incl
 environment variables try to enable it. Explicit capture requires the native source-bounded RPC form:
 
 ```sh
-node --experimental-transform-types scripts/qualification/portable-state-worker.ts \
+node --experimental-strip-types scripts/qualification/portable-state-worker.ts \
   OWNED_WORKER_STATE.json AUDITED_PLAN.json NEW_OUTPUT_DIRECTORY \
   --native --authority-rpc http://SELECTED_WIRE_RPC_ORIGIN:PORT --profile
 ```
 
-Use the pinned native Node 22/24 executable. The existing source/RPC identity checks still apply.
+Use the pinned native Node 24/26 executable. Historical Node 22 captures keep their original runtime
+and source labels. The existing source/RPC identity checks still apply.
 Only the exact `--profile` form is accepted; invalid options are rejected before fixture allocation.
 The original 1..1480 source, complete held-prefix schedule, independent oracles, actual MongoDB,
 HTTP, history replicas, native seals, broker accounting and teardown checks remain required. This

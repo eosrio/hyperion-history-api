@@ -6,10 +6,10 @@ test('native Wire qualification uses deterministic disjoint owned runtime namesp
     const run = '0123456789ab';
     expect(wireAdmissionNames(run, 24).map(value => value.chain)).toEqual([
         'hyp-wire-admit-0123456789ab-n24-6508', 'hyp-wire-admit-0123456789ab-n24-7d', 'hyp-wire-admit-0123456789ab-n24-captured7d']);
-    const node22 = new Set(wireAdmissionNames(run, 22).map(value => value.chain));
-    expect(wireAdmissionNames(run, 24).every(value => !node22.has(value.chain))).toBe(true);
+    const node26 = new Set(wireAdmissionNames(run, 26).map(value => value.chain));
+    expect(wireAdmissionNames(run, 24).every(value => !node26.has(value.chain))).toBe(true);
     for (const invalid of ['foreign', '../0123456789ab', '0123456789AB', '0123456789abcd']) expect(() => wireAdmissionNames(invalid, 24)).toThrow();
-    for (const unsupported of [20, 23, 26, NaN]) expect(() => wireAdmissionNames(run, unsupported)).toThrow();
+    for (const unsupported of [20, 22, 23, 25, NaN]) expect(() => wireAdmissionNames(run, unsupported)).toThrow();
 });
 
 test('public qualification CLI requires exactly owned-state and new-output paths', () => {

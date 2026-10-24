@@ -1,5 +1,6 @@
 /** Bounded retained-Wire qualification through the real launcher and existing workers. */
 import assert from 'node:assert/strict';
+import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
 import {spawn, execFileSync, type ChildProcess} from 'node:child_process';
 import {mkdir, lstat, open, readFile, readdir, writeFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -244,7 +245,7 @@ async function sourceSnapshot(selected: readonly {runtime: string; sha256: strin
 
 export async function runWireWorkerReplay(stateFile: string, outputDirectory: string, packageRoot?: string, stateMode?: WireStateMode) {
     assert.equal(process.release.name, 'node', 'Wire worker qualification requires native Node');
-    assert.ok(!process.versions.bun && /^(22|24)\./.test(process.versions.node), 'qualify Wire workers with Node22 or Node24');
+    assertNativeQualificationRuntime();
     const deadline = performance.now() + wireReplayLimits.runMs;
     const remaining = () => {const value = Math.floor(deadline - performance.now()); assert.ok(value > 0, 'Wire qualification run deadline exceeded'); return value;};
     const docker = (args: string[]) => execFileSync('docker', args, {encoding: 'utf8', timeout: Math.min(30000, remaining()), maxBuffer: 16 * 1024 * 1024}).trim();
