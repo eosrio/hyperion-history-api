@@ -98,6 +98,7 @@ interface NativeRunOptions {
     readonly events: () => Promise<any[]>;
     readonly http: (path: string) => Promise<{status: number; headers: Headers; body: any}>;
     readonly unrelated: (through: number) => Promise<unknown>;
+    readonly rawHistory: (through: number) => Promise<unknown>;
     readonly bulk: {readonly directory: string; readonly receipts: readonly any[]};
     readonly wait: (name: string, work: () => Promise<void>) => Promise<void>;
     readonly attemptRecovery?: () => unknown;
@@ -282,7 +283,7 @@ export async function createPortableNativeQualification(options: NativeRunOption
             const raw = await durable(events, 34), physical = await actions(34);
             const membership = await admission(events, 34, physical);
             const confirmedBulk = await auditBulk();
-            return {blockNum: 34, current, commit, raw, physical, membership, confirmedBulk, history: await options.unrelated(34)};
+            return {blockNum: 34, current, commit, raw, physical, membership, confirmedBulk, history: await options.rawHistory(34)};
         },
         async hold(through: number) {
             let events: any[] = [];
