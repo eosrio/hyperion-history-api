@@ -1,8 +1,8 @@
 import {expect, test} from 'bun:test';
 import {fileURLToPath} from 'node:url';
 
-for (const scenario of ['retry', 'success', 'foreign-fence', 'held-child', 'retire', 'disconnect', 'stop', 'lost-end', 'stale-end',
-    'retire-after-end', 'ordinary-error', 'undefined-error', 'code-shaped-error', 'forged-error', 'exhaustion'])
+for (const scenario of ['retry', 'issued-abort', 'success', 'foreign-fence', 'held-child', 'retire', 'disconnect', 'stop', 'lost-end', 'stale-end',
+    'retire-after-end', 'ordinary-error', 'undefined-error', 'code-shaped-error', 'forged-error', 'constructed-after-fence', 'foreign-after-fence', 'exhaustion'])
 test(`native projection initialization preserves recovery and revocation: ${scenario}`, async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
         fileURLToPath(new URL('./projection-startup-fencing.mjs', import.meta.url)), scenario],

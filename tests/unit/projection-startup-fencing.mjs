@@ -9,12 +9,12 @@ import {registerHooks} from 'node:module';
 import {setTimeout as delay} from 'node:timers/promises';
 import {WorkerAttemptSupervisor, describeWorkerAttemptEnd} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
 import {WorkerAttemptClient} from '../../build/indexer/protocol/worker-attempt-client.js';
-import {currentProofConsumerScope, ProofConsumerFencedError} from '../../build/indexer/protocol/proof-consumer-scope.js';
+import {currentProofConsumerScope, ProofConsumerFencedError, ProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
 
 const scenario = process.argv[2] ?? 'retry';
-const successful = ['retry', 'success', 'foreign-fence', 'held-child'].includes(scenario);
+const successful = ['retry', 'issued-abort', 'success', 'foreign-fence', 'held-child'].includes(scenario);
 assert.ok(successful || ['retire', 'disconnect', 'stop', 'lost-end', 'stale-end', 'retire-after-end', 'ordinary-error',
-    'undefined-error', 'code-shaped-error', 'forged-error', 'exhaustion'].includes(scenario));
+    'undefined-error', 'code-shaped-error', 'forged-error', 'constructed-after-fence', 'foreign-after-fence', 'exhaustion'].includes(scenario));
 const activeFence = !['success', 'foreign-fence', 'forged-error', 'retire', 'disconnect'].includes(scenario);
 const gate = () => {let release; const promise = new Promise(resolve => {release = resolve;}); return {promise, release};};
 const until = async (test, message, milliseconds = 5000) => {
@@ -78,7 +78,11 @@ if (cluster.isWorker) {
             if (scenario === 'ordinary-error') throw new Error('controlled Mongo connection failure');
             if (scenario === 'undefined-error') throw undefined;
             if (scenario === 'code-shaped-error') throw {name: 'ProofConsumerFencedError', code: 'worker_attempt_fenced'};
-            if (scenario === 'forged-error') throw new ProofConsumerFencedError();
+            if (scenario === 'forged-error' || scenario === 'constructed-after-fence') throw new ProofConsumerFencedError();
+            if (scenario === 'foreign-after-fence') {
+                const foreign = new ProofConsumerScope('foreign-initialization'); foreign.fence(); throw foreign.signal.reason;
+            }
+            if (scenario === 'issued-abort') throw scope.signal.reason;
         }
         return client;
     }, async close() {send({event: 'fixture_client_closed'});}};

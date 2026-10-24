@@ -371,8 +371,10 @@ A current-parent source transition may fence projection initialization while a
 Mongo connection or setup operation is pending. The production projection worker
 allows at most four separately accepted initialization attempts. Each recovery
 waits for the old physical root and retained operations to drain and for its real
-parent end reply. Only the same client's issued source-fence failure can consume
-one retry claim. A stop, retired/disconnected owner, uncertain end reply, ordinary
+parent end reply. Only a source-fence failure issued by the original proof scope,
+including its own abort reason, can consume one retry claim. A constructed or
+foreign-scope error cannot authorize recovery even after a real active fence.
+A stop, retired/disconnected owner, uncertain end reply, ordinary
 storage/configuration error or copied diagnostic cannot authorize recovery. Frame
 and broker-delivery attempts retain their existing behavior. The native
 `projection-startup-fencing` cases use the actual emitted worker/client/supervisor

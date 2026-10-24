@@ -205,7 +205,7 @@ export class WorkerAttemptClient {
             record.scope.assertActive();
             const result = await record.scope.run(operation); rootResult = 'returned'; return result;
         } catch (error) {
-            if (record.activeFence && error instanceof ProofConsumerFencedError) record.fencedFailure = error;
+            if (record.activeFence && record.scope.ownsFenceError(error)) record.fencedFailure = error;
             throw error;
         } finally {
             try {await this.boundedDrain(record.scope);}
