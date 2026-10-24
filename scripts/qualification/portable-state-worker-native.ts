@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import type {Client} from '@elastic/elasticsearch';
 import {boundedPortableFile, portableSourceHash, portableWorkerSourceFrame, type PortableWorkerSource} from './portable-state-worker-source.ts';
 import {wireRecoveryPublicationOwners} from './portable-state-worker-recovery.mjs';
+import {PortableNativeStoredVersions} from './portable-state-native-bulk.ts';
 
 export const portableNativeProfile = 'wire-sysio-6508c9e8-native-engineering-v1';
 export const portableLegacyProfile = 'wire-sysio-6508c9e8-engineering-v1';
@@ -101,6 +102,7 @@ interface NativeRunOptions {
     readonly bulk: {readonly directory: string; readonly receipts: readonly any[]};
     readonly wait: (name: string, work: () => Promise<void>) => Promise<void>;
     readonly attemptRecovery?: () => unknown;
+    readonly masterRestart?: () => {receipt: unknown; masterPid: number} | undefined;
 }
 
 /** Native proof services are read-only. Constructed negative controls touch only one owned action row. */
@@ -158,7 +160,13 @@ export async function createPortableNativeQualification(options: NativeRunOption
     assert.equal(notifications.length, 25); assert.equal(new Set(notifications.map(value => value.blockNum)).size, 17);
     let lastNativeThrough = 0;
     const checkedNotifications = new Set<string>(), held: any[] = [], controls: any[] = [];
-    const persistedOutputs = new Map<string, {index: string; id: string; physicalSha256: string; logicalSha256: string; blockNum: number}>();
+    const persistedOutputs = new PortableNativeStoredVersions(options.masterRestart ? 33 : undefined);
+    let masterReplayChecked = false;
+    const eventGroups = async (events: any[], number: number) => {
+        const restart = options.masterRestart?.(); if (!restart) return [events];
+        const {wireMasterEventGroups} = await import('./portable-state-master-recovery.mjs');
+        return wireMasterEventGroups(restart.receipt, restart.masterPid, events, number) as any[][];
+    };
     const path = (number: number) => `/v2/history/get_actions?after=${number}&before=${number}&filter=sysio:onblock&hydrate=false&limit=100`;
     const receipt = (response: {status: number; headers: Headers; body: any}) => ({status: response.status, headers: Object.fromEntries(response.headers), body: response.body});
     const completeSearch = (response: any) => {assert.equal(response.timed_out, false); assert.equal(response._shards.failed, 0);
@@ -233,19 +241,67 @@ export async function createPortableNativeQualification(options: NativeRunOption
                 traceOrdinal: transaction.traceOrdinal, blockNum: number, blockId: plan.source.blockId});
             assertPortableNativePublications(confirmed, {payloadSha256: logicalSha256, admissionId: current.id,
                 fragmentId: manifests.actionHistoryFragmentId(fragment, plan), blockNum: number, owners});
-            persistedOutputs.set(JSON.stringify([row.index, row.id]), {index: row.index, id: row.id, logicalSha256,
+            persistedOutputs.register({index: row.index, id: row.id, logicalSha256,
                 physicalSha256: portableSourceHash(manifests.actionHistoryImmutableJson(row.physical)), blockNum: number});
         }
         return {event, current, ingress, manifestId: id, manifest};
     };
+    const nativeBlock = async (events: any[], number: number) => {
+        const target = oracle.rows.find((value: any) => value.blockNum === number); assert.ok(target);
+        const raw = await durable(events, number), physical = await actions(number);
+        const row = physical.find(value => value.logical.trx_id === target.transactionId && value.logical.action_ordinal === target.actionOrdinal);
+        assert.ok(row); await assertPortableNativeAction(row.logical, target, provider.nativeActions.encodeValue.bind(provider.nativeActions));
+        const view = await native.open(raw.original.position, raw.event.selectionId);
+        const decision = await native.authorize(view, row.logical.protocol.input); assert.equal(decision.kind, 'native');
+        assert.deepEqual(await native.metadata(decision.grant), row.logical.protocol);
+        assert.deepEqual(await native.decodeValue(decision.grant), target.expectedValue);
+        const response = await options.http(path(number)); assert.equal(response.status, 200, JSON.stringify(response.body));
+        const served = response.body.actions.find((value: any) => value.trx_id === target.transactionId);
+        assert.ok(served); assert.deepEqual(served.act.data, target.expectedValue); assert.equal(served.global_sequence, target.globalSequence);
+        return {raw, physical, row, membership: await admission(events, number, physical), response: receipt(response)};
+    };
+    const notificationBlock = async (events: any[], number: number, replay = false) => {
+        const raw = await durable(events, number), view = await native.open(raw.original.position, raw.event.selectionId);
+        const canonical = await reader.open(raw.original.position, raw.event.selectionId), physical = await actions(number), rows: any[] = [];
+        for (const expected of notifications.filter(value => value.blockNum === number)) {
+            const occurrence = await reader.occurrence(canonical, expected.occurrence.input);
+            assert.equal(occurrence.binding.inputActionOrdinal, expected.origin.actionOrdinal);
+            assert.equal((await native.authorize(view, expected.occurrence.input)).kind, 'contract');
+            const grouped = physical.filter(value => value.logical.trx_id === expected.occurrence.input.transactionId
+                && value.logical.receipts.some((receipt: any) => receipt.global_sequence === expected.occurrence.input.globalSequence));
+            assert.equal(grouped.length, 1);
+            const storedReceipt = grouped[0].logical.receipts.find((receipt: any) => receipt.global_sequence === expected.occurrence.input.globalSequence);
+            assert.deepEqual(storedReceipt, expected.occurrence.receipt); assert.equal(grouped[0].logical.protocol.schemaVersion, 1);
+            assert.equal(grouped[0].logical.protocol.input.inputActionOrdinal, expected.origin.actionOrdinal);
+            const identity = `${number}:${expected.occurrence.input.transactionId}:${expected.occurrence.input.actionOrdinal}`;
+            assert.equal(checkedNotifications.has(identity), replay);
+            if (!replay) checkedNotifications.add(identity);
+            rows.push({expected, occurrence, stored: grouped[0]});
+        }
+        return {blockNum: number, raw, canonical, rows, membership: await admission(events, number, physical)};
+    };
     return {profile, oracleHashes: oracle.hashes, held, controls, originalNotifications: notifications,
+        async resumedHead() {
+            assert.equal(lastNativeThrough, 33); assert.equal(masterReplayChecked, false);
+            const prior = held.find(value => value.through === 33); assert.ok(prior?.native);
+            const groups = await eventGroups(await options.events(), 33); assert.equal(groups.length, 2);
+            const original = await admission(groups[0], 33, prior.native.physical);
+            const resumed = await nativeBlock(groups[1], 33);
+            const replayedNotifications = notifications.some(value => value.blockNum === 33)
+                ? [await notificationBlock(groups[1], 33, true)] : [];
+            const confirmedBulk = await persistedOutputs.audit(options.bulk.directory, options.bulk.receipts, manifests.actionHistoryImmutableJson);
+            masterReplayChecked = true; return {blockNum: 33, original, resumed, replayedNotifications, confirmedBulk};
+        },
         async hold(through: number) {
             let events: any[] = [];
             await wait(`native PREPARE and source ACK through${through}`, async () => {
                 events = await options.events();
+                const restart = options.masterRestart?.();
+                const expected = restart ? (await import('./portable-state-master-recovery.mjs')).wireMasterSourceSequence(restart.receipt, through)
+                    : Array.from({length: through}, (_, index) => index + 1);
                 for (const event of ['native_prepare_readback', 'source_ack_sent']) assert.deepEqual(events.filter(value =>
                     value.kind === 'native_boundary' && value.event === event && value.blockNum <= through).map(value => value.blockNum),
-                Array.from({length: through}, (_, index) => index + 1));
+                expected);
             });
             const control = await frontier.readControl(); assert.ok(control); assert.equal(control.value.head.blockNum, through);
             assert.equal(control.value.profile.profileId, portableNativeProfile); assert.equal(control.value.phase, 'following');
@@ -257,17 +313,8 @@ export async function createPortableNativeQualification(options: NativeRunOption
                 result.genesis = {raw, membership, wholeHistoryCompleteness: false};}
             const target = oracle.rows.find((value: any) => value.blockNum === through);
             if (target) {
-                const raw = await durable(events, through), physical = await actions(through);
-                const row = physical.find(value => value.logical.trx_id === target.transactionId && value.logical.action_ordinal === target.actionOrdinal);
-                assert.ok(row); await assertPortableNativeAction(row.logical, target, provider.nativeActions.encodeValue.bind(provider.nativeActions));
-                const view = await native.open(raw.original.position, raw.event.selectionId);
-                const decision = await native.authorize(view, row.logical.protocol.input); assert.equal(decision.kind, 'native');
-                assert.deepEqual(await native.metadata(decision.grant), row.logical.protocol);
-                assert.deepEqual(await native.decodeValue(decision.grant), target.expectedValue);
-                const response = await options.http(path(through)); assert.equal(response.status, 200, JSON.stringify(response.body));
-                const served = response.body.actions.find((value: any) => value.trx_id === target.transactionId);
-                assert.ok(served); assert.deepEqual(served.act.data, target.expectedValue); assert.equal(served.global_sequence, target.globalSequence);
-                result.native = {raw, physical, membership: await admission(events, through, physical), response: receipt(response)};
+                const {row, ...verified} = await nativeBlock(events, through), raw = verified.raw;
+                result.native = verified;
                 if (through === 397) {
                     // Constructed stored-output controls are separate from the unchanged genuine replay source.
                     for (const kind of ['exact-raw-fallback', 'corrupt-raw-value', 'incomplete-native-metadata']) {
@@ -295,23 +342,7 @@ export async function createPortableNativeQualification(options: NativeRunOption
             }
             if (through <= 397) {
                 for (const number of [...new Set(notifications.filter(value => value.blockNum > lastNativeThrough && value.blockNum <= through).map(value => value.blockNum))]) {
-                    assert.ok(through - number <= 256); const raw = await durable(events, number), view = await native.open(raw.original.position, raw.event.selectionId);
-                    const canonical = await reader.open(raw.original.position, raw.event.selectionId), physical = await actions(number);
-                    const rows: any[] = [];
-                    for (const expected of notifications.filter(value => value.blockNum === number)) {
-                        const occurrence = await reader.occurrence(canonical, expected.occurrence.input);
-                        assert.equal(occurrence.binding.inputActionOrdinal, expected.origin.actionOrdinal);
-                        assert.equal((await native.authorize(view, expected.occurrence.input)).kind, 'contract');
-                        const grouped = physical.filter(value => value.logical.trx_id === expected.occurrence.input.transactionId
-                            && value.logical.receipts.some((receipt: any) => receipt.global_sequence === expected.occurrence.input.globalSequence));
-                        assert.equal(grouped.length, 1); const storedReceipt = grouped[0].logical.receipts.find((receipt: any) => receipt.global_sequence === expected.occurrence.input.globalSequence);
-                        assert.deepEqual(storedReceipt, expected.occurrence.receipt);
-                        assert.equal(grouped[0].logical.protocol.schemaVersion, 1);
-                        assert.equal(grouped[0].logical.protocol.input.inputActionOrdinal, expected.origin.actionOrdinal);
-                        const identity = `${number}:${expected.occurrence.input.transactionId}:${expected.occurrence.input.actionOrdinal}`;
-                        assert.ok(!checkedNotifications.has(identity)); checkedNotifications.add(identity); rows.push({expected, occurrence, stored: grouped[0]});
-                    }
-                    result.notifications.push({blockNum: number, raw, canonical, rows, membership: await admission(events, number, physical)});
+                    assert.ok(through - number <= 256); result.notifications.push(await notificationBlock(events, number));
                 }
                 lastNativeThrough = through;
             }
@@ -322,43 +353,24 @@ export async function createPortableNativeQualification(options: NativeRunOption
             assert.equal(checkedNotifications.size, 25); assert.equal(controls.length, 3);
             const expired: any[] = [], events = await options.events();
             for (const expected of oracle.rows) {
-                const event = selectionEvent(events, expected.blockNum), retained = await nativeStore.readSelection(event.selectionId);
+                const groups = await eventGroups(events, expected.blockNum), currentEvents = groups.at(-1)!;
+                const event = selectionEvent(currentEvents, expected.blockNum), retained = await nativeStore.readSelection(event.selectionId);
                 const position = {chainId: source.chainId, blockNum: expected.blockNum, blockId: expected.blockId};
                 await assert.rejects(reader.open(position, event.selectionId), {code: 'ancestry_unavailable'});
                 await assert.rejects(native.open(position, event.selectionId), {code: 'ancestry_unavailable'});
                 const response = await options.http(path(expected.blockNum)); assertPortableNativeUnavailable(response, ['ancestry_unavailable']);
                 assert.equal(retained.abiObservation.capture.blockHex, originals.get(expected.blockNum).capture.blockHex);
-                const membership = await admission(events, expected.blockNum, await actions(expected.blockNum));
+                if (groups.length > 1) {
+                    assert.equal(masterReplayChecked, true);
+                    const prior = held.find(value => value.through === 33); assert.ok(prior?.native);
+                    await admission(groups[0], expected.blockNum, prior.native.physical);
+                }
+                const membership = await admission(currentEvents, expected.blockNum, await actions(expected.blockNum));
                 expired.push({blockNum: expected.blockNum, decoded: receipt(response), retainedSelectionId: event.selectionId,
                     rawCaptureSha256: retained.record.captureRef.inputSha256, retainedIngressSha256: portableSourceHash(Buffer.from(membership.ingress.frameHex, 'hex')),
                     rawHistory: await options.unrelated(expected.blockNum)});
             }
-            const confirmedBulk: any[] = [], unmatched = new Set(persistedOutputs.keys());
-            for (const entry of options.bulk.receipts) {
-                assert.match(entry.request.file, /^[0-9]{5}-request\.ndjson$/);
-                const bytes = await boundedPortableFile(join(options.bulk.directory, entry.request.file), 16 * 1024 * 1024);
-                assert.equal(bytes.length, entry.request.bytes); assert.equal(portableSourceHash(bytes), entry.request.sha256);
-                if (entry.status < 200 || entry.status >= 300) continue;
-                assert.match(entry.responseBody.file, /^[0-9]{5}-response\.json$/);
-                const responseBytes = await boundedPortableFile(join(options.bulk.directory, entry.responseBody.file), 16 * 1024 * 1024);
-                assert.equal(responseBytes.length, entry.responseBody.bytes); assert.equal(portableSourceHash(responseBytes), entry.responseBody.sha256);
-                assert.deepEqual(JSON.parse(responseBytes.toString()), entry.response);
-                const lines = bytes.toString().trimEnd().split('\n'); let ordinal = 0;
-                for (let offset = 0; offset < lines.length; ordinal++) {
-                    const metadata = JSON.parse(lines[offset++]), operation = Object.keys(metadata)[0], target = metadata[operation];
-                    const document = operation === 'delete' ? undefined : JSON.parse(lines[offset++]);
-                    const index = target._index ?? entry.operations[ordinal].index, key = JSON.stringify([index, String(target._id)]);
-                    const expected = persistedOutputs.get(key); if (!expected || !['index', 'create'].includes(operation)) continue;
-                    assert.equal(portableSourceHash(manifests.actionHistoryImmutableJson(document)), expected.physicalSha256,
-                        'actual worker bulk bytes differ from independently read physical native/notification output');
-                    const result = entry.response.items[ordinal][operation]; assert.equal(result._index, expected.index);
-                    assert.equal(String(result._id), expected.id); assert.ok(result.status >= 200 && result.status < 300 && !result.error);
-                    if (result._shards) {assert.equal(result._shards.failed, 0); assert.ok(result._shards.successful >= 1);}
-                    unmatched.delete(key); confirmedBulk.push({requestNumber: entry.number, operationOrdinal: ordinal,
-                        expected, result, requestSha256: entry.request.sha256, responseSha256: entry.responseBody.sha256});
-                }
-            }
-            assert.equal(unmatched.size, 0, 'some checked native/notification outputs lack captured successful worker bulk receipts');
+            const confirmedBulk = await persistedOutputs.audit(options.bulk.directory, options.bulk.receipts, manifests.actionHistoryImmutableJson);
             return {expired, confirmedBulk, verifiedNotifications: checkedNotifications.size, notificationBlocks: 17, defaultAncestryBlocks: 256,
                 admissionActivation: 'existing-explicit-engineering-preload; public/default operator activation remains disabled',
                 historicalServingQualified: false, fullForkRecoveryQualified: false, streamCompatibilityQualified: false};

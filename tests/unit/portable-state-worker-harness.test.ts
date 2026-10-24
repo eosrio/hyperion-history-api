@@ -29,7 +29,7 @@ describe('portable actual-source harness guards', () => {
         const report = JSON.parse(stdout.trim().split('\n').at(-1)!);
         expect(report).toMatchObject({passed: true, sequentialStatusProbes: portableSourceLimits.connections + 4,
             concurrentLimit: portableSourceLimits.connections, sessionHistoryLimit: portableSourceLimits.sessions,
-            originalStatusOnly: true, streamedBlocks: 0, fullWorkerQualification: false});
+            originalStatusOnly: true, streamedBlocks: 0, copiedMasterRestartRejected: true, fullWorkerQualification: false});
     }, 40000);
     it('declines an exact discovery health probe without creating source authority or poisoning the replay', async () => {
         const errors: string[] = [], source = {endBlock: 1, records: [{blockId: 'a'.repeat(64)}], startupInfo: {chain_id: 'b'.repeat(64)}} as PortableWorkerSource;
@@ -120,6 +120,25 @@ describe('portable actual-source harness guards', () => {
         const flow = new PortableSourceFlow(100); flow.releaseThrough(100); flow.receive(request(100, 1000));
         expect(flow.sent).toHaveLength(portableSourceLimits.window); expect(flow.outstanding).toBe(portableSourceLimits.window);
         expect(flow.receive(ack(8)).blocks).toHaveLength(8); expect(flow.outstanding).toBe(portableSourceLimits.window);
+    });
+    it('starts an explicitly selected resumed flow at its exact original block with bounded ACK accounting', () => {
+        const value = request(40, 1000); value[1].start_block_num = 33;
+        const flow = new PortableSourceFlow(40, 33);
+        expect(flow.releaseThrough(33)).toEqual([]);
+        expect(flow.receive(value).blocks).toEqual([33]);
+        expect(flow.sent).toEqual([33]); expect(flow.outstanding).toBe(1);
+        expect(flow.receive(ack(1)).blocks).toEqual([]);
+        expect(flow.releaseThrough(40)).toEqual([34, 35, 36, 37, 38, 39, 40]);
+        expect(flow.outstanding).toBeLessThanOrEqual(portableSourceLimits.window);
+        flow.receive(ack(7));
+        expect(flow.acknowledged).toEqual([33, 34, 35, 36, 37, 38, 39, 40]);
+        expect(flow.outstanding).toBe(0);
+        expect(() => new PortableSourceFlow(40).receive(value)).toThrow();
+        for (const start of [32, 34]) {
+            const wrong = request(40); wrong[1].start_block_num = start;
+            expect(() => new PortableSourceFlow(40, 33).receive(wrong)).toThrow();
+        }
+        for (const first of [0, 41, 1.5, NaN]) expect(() => new PortableSourceFlow(40, first)).toThrow();
     });
     it('refuses source skips, fake resume ancestry, missing fetch flags and unknown request fields', () => {
         for (const edit of [(body: any) => {body.start_block_num = 2;}, (body: any) => {body.have_positions = [{block_num: 1}];},
