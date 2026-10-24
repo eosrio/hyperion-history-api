@@ -107,10 +107,17 @@ export async function auditWireAttemptRecovery({control, marker, events, queues,
         && row.end.attemptId === marker.attempt.attemptId);
     assert.equal(original.length, 1, 'actual master must observe one unresolved original physical end');
     const ended = original[0].end;
+    assert.equal(ended.role, 'ds_pool_worker'); assert.equal(marker.role, ended.role);
+    assert.equal(marker.attempt.mode, 'managed'); assert.equal(marker.attempt.masterEnd, null);
     assert.equal(ended.status, 'process-exited-unresolved'); assert.equal(ended.rootResult, 'unknown');
     assert.equal(ended.acknowledgementAttempted, null);
     assert.deepEqual(ended.descriptor, marker.attempt.descriptor);
     assert.deepEqual(ended.binding, marker.attempt.binding);
+    assert.equal(ended.binding.admissionId, marker.admissionId); assert.equal(ended.binding.traceOrdinal, marker.traceOrdinal);
+    assert.equal(ended.binding.blockNum, marker.source.blockNum); assert.equal(ended.binding.blockId, marker.source.blockId);
+    assert.equal(ended.descriptor.payloadSha256, marker.payloadSha256);
+    assert.ok(Number.isSafeInteger(ended.binding.traceOrdinal) && ended.binding.traceOrdinal >= 0);
+    assert.ok(typeof ended.binding.planId === 'string' && ended.binding.planId.length > 0);
     assert.equal(ended.freshWrites.length, 1); assert.equal(ended.freshWrites[0].id, marker.freshId);
     const originalResults = events.filter(row => row.event === 'adjudicated' && row.end.attemptId === ended.attemptId);
     assert.equal(originalResults.length, 1); assert.deepEqual(originalResults[0].result, {state: 'unresolved'});
@@ -130,6 +137,8 @@ export async function auditWireAttemptRecovery({control, marker, events, queues,
         && row.end.attemptId === retry.attempt.attemptId && row.result.state === 'associated');
     assert.equal(replacements.length, 1, 'replacement needs its own real master adjudication');
     const replacement = replacements[0], fresh = replacement.end;
+    assert.equal(retry.role, fresh.role); assert.equal(retry.attempt.mode, 'managed'); assert.equal(retry.attempt.masterEnd, null);
+    assert.deepEqual(retry.attempt.descriptor, fresh.descriptor); assert.deepEqual(retry.attempt.binding, fresh.binding);
     assert.equal(fresh.status, 'quiescent'); assert.equal(fresh.rootResult, 'returned'); assert.equal(fresh.acknowledgementAttempted, true);
     assert.notEqual(fresh.attemptId, ended.attemptId); assert.notEqual(fresh.incarnation, ended.incarnation);
     assert.equal(fresh.epoch, ended.epoch); assert.equal(fresh.role, ended.role);
@@ -148,8 +157,8 @@ export async function auditWireAttemptRecovery({control, marker, events, queues,
     const receipt = Object.freeze({schemaVersion: 1, outcome: 'real-worker-exit-and-redelivery', marker, originalEnd: ended,
         replacement: retry, association: saved, broker: queue,
         releaseQualified: false, parentRestartQualified: false, forkQualified: false, fullReplayQualified: false});
-    publicationMembership.set(receipt, Object.freeze({admissionId: marker.admissionId, planId: ended.binding.planId,
-        traceOrdinal: marker.traceOrdinal, blockNum: marker.source.blockNum, blockId: marker.source.blockId,
+    publicationMembership.set(receipt, Object.freeze({admissionId: ended.binding.admissionId, planId: ended.binding.planId,
+        traceOrdinal: ended.binding.traceOrdinal, blockNum: ended.binding.blockNum, blockId: ended.binding.blockId,
         owners: Object.freeze([marker.pid, retry.pid])}));
     return receipt;
 }

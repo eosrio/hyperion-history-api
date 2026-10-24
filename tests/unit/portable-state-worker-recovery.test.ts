@@ -69,16 +69,17 @@ function recoveryFixture() {
     const end = {epoch: 'epoch', incarnation: 'old', attemptId: 'attempt-old', role: 'ds_pool_worker',
         status: 'process-exited-unresolved', rootResult: 'unknown', acknowledgementAttempted: null,
         descriptor, binding, freshWrites, freshWriteOverflow: false};
-    const marker = {runId: control.runId, parentPid: 10, pid: 11, workerId: 'slot',
+    const marker = {runId: control.runId, parentPid: 10, pid: 11, workerId: 'slot', role: 'ds_pool_worker',
         controlSha256: hash(JSON.stringify(control)), exitCode: 86, source: {blockNum: 33, blockId: control.blockId, chainId},
         originalFrameSha256: control.frameSha256, payloadSha256: descriptor.payloadSha256, freshId: freshWrites[0].id,
-        admissionId: binding.admissionId, traceOrdinal: 0, attempt: {attemptId: end.attemptId, descriptor, binding}};
+        admissionId: binding.admissionId, traceOrdinal: 0, attempt: {attemptId: end.attemptId, descriptor, binding, mode: 'managed', masterEnd: null}};
     const replacement = {...structuredClone(end), incarnation: 'new', attemptId: 'attempt-new', status: 'quiescent',
         rootResult: 'returned', acknowledgementAttempted: true, descriptor: {...descriptor,
             receiptId: 'receipt-new', consumerId: 'consumer-new', publisherId: 'publisher-new'}};
     const events = [{event: 'end', pid: 10, end}, {event: 'adjudicated', pid: 10, end, result: {state: 'unresolved'}},
-        {event: 'ack-sent', pid: 12, parentPid: 10, workerId: 'slot', redelivered: true, payloadSha256: marker.payloadSha256,
-            admissionId: marker.admissionId, traceOrdinal: 0, attempt: {attemptId: replacement.attemptId}},
+        {event: 'ack-sent', pid: 12, parentPid: 10, workerId: 'slot', role: 'ds_pool_worker', redelivered: true, payloadSha256: marker.payloadSha256,
+            admissionId: marker.admissionId, traceOrdinal: 0, attempt: {attemptId: replacement.attemptId,
+                descriptor: structuredClone(replacement.descriptor), binding: structuredClone(replacement.binding), mode: 'managed', masterEnd: null}},
         {event: 'adjudicated', pid: 10, end: replacement, result: {state: 'associated', id: 'association'}}];
     const saved = {id: 'association', observation: {end: replacement, brokerSettlement: 'unknown',
         results: [{id: marker.freshId, classification: 'confirmed-handoff'}]}};
@@ -113,6 +114,21 @@ test('only a fresh completed recovery audit declares the two publication owners 
         expect(wireRecoveryPublicationOwners(receipt, {...context, ...patch})).toBeUndefined();
     receipt.marker.pid = 999;
     expect(wireRecoveryPublicationOwners(receipt, context)).toEqual([11, 12]);
+});
+test('recovery issuance rejects marker and ACK scope that disagree with authenticated ends', async () => {
+    for (const mutate of [
+        (value: any) => {value.marker.traceOrdinal = 1; value.events[2].traceOrdinal = 1;},
+        (value: any) => {value.marker.admissionId = 'foreign'; value.events[2].admissionId = 'foreign';},
+        (value: any) => {value.marker.payloadSha256 = '9'.repeat(64); value.events[2].payloadSha256 = value.marker.payloadSha256;},
+        (value: any) => {value.marker.source.blockId = '9'.repeat(64); value.control.blockId = value.marker.source.blockId;},
+        (value: any) => {value.events[2].attempt.binding.traceOrdinal = 1;},
+        (value: any) => {value.events[2].attempt.descriptor.payloadSha256 = '9'.repeat(64);},
+        (value: any) => {value.marker.attempt.mode = 'controlled-local-only';},
+        (value: any) => {value.events[2].role = 'projection';}
+    ]) {
+        const value = recoveryFixture(); mutate(value);
+        await expect(auditWireAttemptRecovery(value)).rejects.toThrow();
+    }
 });
 test('publication accounting keeps ordinary cardinality and checks both exact recovery copies completely', () => {
     const expected = {payloadSha256: 'a'.repeat(64), admissionId: 'admission', fragmentId: 'fragment', blockNum: 33};
