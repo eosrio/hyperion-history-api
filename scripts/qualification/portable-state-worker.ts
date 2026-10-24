@@ -28,6 +28,8 @@ import {auditPortableNativeOracle, createPortableNativeQualification, nativePort
 import {auditPortablePhysicalMongo} from './portable-state-worker-mongo.ts';
 import {auditPortableWorkerProfiles, portableWorkerProfileEnvironment, portableWorkerProfileLimits} from './portable-state-worker-profiles.ts';
 import {createWireRecoveryControl, readWireRecoveryEvidence, auditWireAttemptRecovery, wireRecoveryShutdownRows} from './portable-state-worker-recovery.mjs';
+import {createWireMasterRestartControl, inspectWireMasterCheckpoint, crashWireMaster, describeWireMasterCrash,
+    auditWireMasterRestart} from './portable-state-master-recovery.mjs';
 import {portableWorkerSourceFrame} from './portable-state-worker-source.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -309,7 +311,8 @@ export async function portableSourceRpc(source: PortableWorkerSource, errors: st
         close: () => new Promise<void>(done => {server.closeAllConnections(); server.close(() => done());})};
 }
 
-export interface PortableWorkerOptions {readonly native?: boolean; readonly authorityRpc?: string; readonly profile?: boolean; readonly workerRecovery?: boolean}
+export interface PortableWorkerOptions {readonly native?: boolean; readonly authorityRpc?: string; readonly profile?: boolean;
+    readonly workerRecovery?: boolean; readonly masterRecovery?: boolean}
 
 function portableAuthorityRpcOrigin(value: string): URL {
     const upstream = new URL(value);
@@ -322,11 +325,12 @@ function portableAuthorityRpcOrigin(value: string): URL {
 export function validatePortableWorkerOptions(options: unknown): asserts options is PortableWorkerOptions {
     assert.ok(options && typeof options === 'object' && !Array.isArray(options)
         && [Object.prototype, null].includes(Object.getPrototypeOf(options))
-        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile', 'workerRecovery'].includes(key)));
+        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile', 'workerRecovery', 'masterRecovery'].includes(key)));
     const selected = options as PortableWorkerOptions;
     if (Object.hasOwn(selected, 'native')) assert.equal(typeof selected.native, 'boolean');
     if (Object.hasOwn(selected, 'profile')) assert.equal(typeof selected.profile, 'boolean');
     if (Object.hasOwn(selected, 'workerRecovery')) assert.equal(typeof selected.workerRecovery, 'boolean');
+    if (Object.hasOwn(selected, 'masterRecovery')) assert.equal(typeof selected.masterRecovery, 'boolean');
     if (Object.hasOwn(selected, 'authorityRpc')) {
         assert.ok(selected.native === true && typeof selected.authorityRpc === 'string',
             'the source-bounded RPC check requires explicit native qualification');
@@ -336,16 +340,20 @@ export function validatePortableWorkerOptions(options: unknown): asserts options
         'CPU profiling requires explicit native source-bounded RPC qualification');
     assert.ok(!selected.workerRecovery || selected.native === true && typeof selected.authorityRpc === 'string' && !selected.profile,
         'Worker recovery requires native source-bounded RPC qualification without CPU capture');
+    assert.ok(!selected.masterRecovery || selected.native === true && typeof selected.authorityRpc === 'string'
+        && !selected.profile && !selected.workerRecovery,
+        'Master recovery requires native source-bounded RPC qualification without CPU capture or another fault');
 }
 
 export function parsePortableWorkerArguments(args: readonly string[]) {
     assert.ok(args.slice(0, 3).length === 3 && args.slice(0, 3).every(value => typeof value === 'string' && value.length > 0)
         && (args.length === 3 || args.length === 4 && args[3] === '--native'
-            || (args.length === 6 || args.length === 7 && ['--profile', '--worker-recovery'].includes(args[6]))
+            || (args.length === 6 || args.length === 7 && ['--profile', '--worker-recovery', '--master-recovery'].includes(args[6]))
                 && args[3] === '--native' && args[4] === '--authority-rpc'),
-    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile|--worker-recovery]]]');
+    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile|--worker-recovery|--master-recovery]]]');
     const options = {...(args.length > 3 ? {native: true} : {}), ...(args.length >= 6 ? {authorityRpc: args[5]} : {}),
-        ...(args[6] === '--profile' ? {profile: true} : {}), ...(args[6] === '--worker-recovery' ? {workerRecovery: true} : {})};
+        ...(args[6] === '--profile' ? {profile: true} : {}), ...(args[6] === '--worker-recovery' ? {workerRecovery: true} : {}),
+        ...(args[6] === '--master-recovery' ? {masterRecovery: true} : {})};
     validatePortableWorkerOptions(options);
     return {stateFile: args[0], planFile: args[1], outputDirectory: args[2], options};
 }
@@ -353,6 +361,7 @@ export function parsePortableWorkerArguments(args: readonly string[]) {
 export async function runPortableStateWorker(stateFile: string, planFile: string, outputDirectory: string, options: PortableWorkerOptions = {}) {
     validatePortableWorkerOptions(options);
     assertNativeQualificationRuntime();
+    if (options.masterRecovery) assert.equal(process.platform, 'linux', 'production master crash qualification requires Linux');
     const deadline = performance.now() + portableSourceLimits.runMs;
     const remaining = () => {const value = Math.floor(deadline - performance.now()); assert.ok(value > 0, 'portable worker deadline exceeded'); return value;};
     let cleanupDeadline: number | undefined;
@@ -411,6 +420,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     let replay: Awaited<ReturnType<typeof servePortableWorkerSource>> | undefined, rpc: Awaited<ReturnType<typeof portableSourceRpc>> | undefined;
     let ledger: Awaited<ReturnType<typeof startBulkLedger>> | undefined;
     let recoveryControl: ReturnType<typeof createWireRecoveryControl> | undefined;
+    let masterControl: ReturnType<typeof createWireMasterRestartControl> | undefined;
+    let masterCrash: Awaited<ReturnType<typeof crashWireMaster>> | undefined, masterRestarted = false;
     let mongoWriteFaultActive = false;
     const configureMongoWriteFault = async (mode: 'alwaysOn' | 'off') => {
         assert.ok(mongo); mongoFixture.ownedContainer('replica');
@@ -433,7 +444,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             ready: row.messages_ready, unacked: row.messages_unacknowledged, messages: row.messages, consumers: row.consumers,
             ack: row.message_stats?.ack ?? 0, delivered: row.message_stats?.deliver_get ?? 0, redelivered: row.message_stats?.redeliver ?? 0}));
     };
-    const observedRows = async (kind = 'master', complete = false) => {
+    const observedDirectoryRows = async (kind = 'master', complete = false) => {
         const directory = join(output, 'observer', kind);
         const names = (await readdir(directory)).filter(name => name.endsWith('.jsonl')); assert.ok(names.length <= 64);
         const rows: any[] = []; for (const name of names) {const bytes = await boundedPortableFile(join(directory, name), 64 * 1024 * 1024);
@@ -442,17 +453,26 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             }}
         return rows;
     };
+    const observedRows = async (kind = 'master', complete = false) => kind === 'master' && masterRestarted
+        ? [...await observedDirectoryRows('master'), ...await observedDirectoryRows('master-restarted', complete)]
+        : observedDirectoryRows(kind, complete);
     const spawnOwned = async (entry: string, config: string) => {
         const name = entry.includes('/api/') ? 'api' : 'master';
-        const stdout = await open(join(output, name + '.stdout.log'), 'wx'), stderr = await open(join(output, name + '.stderr.log'), 'wx');
+        const instance = name === 'master' && masterRestarted ? 'master-restarted' : name;
+        if (instance === 'master-restarted') await mkdir(join(output, 'observer', instance));
+        const stdout = await open(join(output, instance + '.stdout.log'), 'wx'), stderr = await open(join(output, instance + '.stderr.log'), 'wx');
         const nativePreloads = options.native ? ['action-source-admission-preload.mjs', 'portable-state-worker-native-observer.mjs']
             .flatMap(file => ['--import', pathToFileURL(join(repo, 'scripts/qualification', file)).href]) : [];
         if (name === 'master' && recoveryControl) nativePreloads.push('--import',
             pathToFileURL(join(repo, 'scripts/qualification/portable-state-worker-recovery-preload.mjs')).href);
+        if (name === 'master' && masterControl) nativePreloads.push('--import',
+            pathToFileURL(join(repo, 'scripts/qualification/portable-state-master-recovery-preload.mjs')).href);
         try {const child = spawn(process.execPath, [...nativePreloads, '--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href, join(repo, entry)],
-            {cwd: output, env: {...portableWorkerEnvironment(process.env, output, config, chain, options.profile === true), ES198_OBSERVER_DIR: join(output, 'observer', name),
+            {cwd: output, env: {...portableWorkerEnvironment(process.env, output, config, chain, options.profile === true), ES198_OBSERVER_DIR: join(output, 'observer', instance),
                 ...(options.native ? {HYPERION_PORTABLE_NATIVE_QUALIFICATION: '1'} : {}),
-                ...(name === 'master' && recoveryControl ? {ES198_WIRE_RECOVERY_CONTROL: recoveryControl.file} : {})},
+                ...(name === 'master' && recoveryControl ? {ES198_WIRE_RECOVERY_CONTROL: recoveryControl.file} : {}),
+                ...(name === 'master' && masterControl ? {ES198_WIRE_MASTER_CONTROL: masterControl.file,
+                    ES198_WIRE_MASTER_PHASE: masterRestarted ? 'after' : 'before'} : {})},
                 detached: process.platform !== 'win32', stdio: ['ignore', stdout.fd, stderr.fd, 'ipc']});
             child.on('error', error => report.errors.push(describeError(error))); return child;
         } finally {await stdout.close(); await stderr.close();}
@@ -507,6 +527,13 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 frameSha256: portableSourceHash(portableWorkerSourceFrame(source, 33))});
             report.attemptRecovery = {status: 'pending', control: recoveryControl.control};
         }
+        if (options.masterRecovery) {
+            masterControl = createWireMasterRestartControl({output, configFile, chain, source,
+                frameSha256: portableSourceHash(portableWorkerSourceFrame(source, 33)),
+                resumeFrameSha256: portableSourceHash(portableWorkerSourceFrame(source, 34))});
+            report.masterRestart = {status: 'pending', control: masterControl.control};
+            report.preloads.push('portable-state-master-recovery-preload.mjs');
+        }
         report.config = config; report.bindings = bindings; report.connections = connections;
         report.contractFailure = {definition: invalidDefinition, binding: invalidBinding,
             description: 'Fixture-only missing required source field; healthy definitions and independent expected rows are unchanged.', observations: []};
@@ -560,9 +587,11 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             return {history: await history(block.blockNum), states};
         };
         const native = nativeOracle ? await createPortableNativeQualification({source, oracle: nativeOracle, client: es, chain, apiPort,
-            events: () => observedRows(), http, unrelated, wait, bulk: {directory: join(output, 'bulk'), receipts: ledger.receipts},
+            events: () => observedRows(), http, unrelated, rawHistory: history, wait, bulk: {directory: join(output, 'bulk'), receipts: ledger.receipts},
             ...(options.workerRecovery ? {attemptRecovery: () => report.attemptRecovery?.status === 'observed'
-                ? report.attemptRecovery.evidence : undefined} : {})}) : undefined;
+                ? report.attemptRecovery.evidence : undefined} : {}),
+            ...(options.masterRecovery ? {masterRestart: () => masterCrash && master?.pid
+                ? {receipt: masterCrash, masterPid: master.pid} : undefined} : {})}) : undefined;
         if (native) report.native = {profile: native.profile, oracleHashes: native.oracleHashes, holds: [],
             activation: 'Existing admission engineering preload only; ordinary installed native provider; public/default operator activation remains disabled.',
             constructedControls: native.controls, notificationInventory: native.originalNotifications};
@@ -689,17 +718,76 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 stateAbiAvailability, queues: await queues(), recovery: report.lastRecovery, source: replay.metrics(), isolation, physicalMongo};
             const bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n'); const file = `prefixes/block-${through}.json`;
             await writeFile(join(output, file), bytes, {flag: 'wx'}); report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
+            if (masterControl && through === 33) {
+                const {ActionSourceAdmissionStore} = await import(new URL('../../build/indexer/history/action-source-admission.js', import.meta.url).href);
+                const store = new ActionSourceAdmissionStore(es, chain, 1), originalMaster = master!;
+                await wait('original master holds same-attempt adjudication after durable handoff', async () => {
+                    report.masterRestart.checkpoint = await inspectWireMasterCheckpoint({control: masterControl!.control,
+                        masterPid: originalMaster.pid, store, queues: await queues()});
+                    ledger!.assertIdle();
+                });
+                masterCrash = await crashWireMaster({control: masterControl.control, child: originalMaster,
+                    rows: await observedDirectoryRows(), store, queues: await queues()});
+                const copiedCrash = describeWireMasterCrash(masterCrash); copiedCrash.control.blockNum = 1;
+                assert.equal(describeWireMasterCrash(masterCrash).control.blockNum, 33);
+                assert.throws(() => describeWireMasterCrash(structuredClone(masterCrash)), /unissued/);
+                report.masterRestart.crash = describeWireMasterCrash(masterCrash);
+                report.masterRestart.originalExit = {code: originalMaster.exitCode, signal: originalMaster.signalCode};
+                report.masterRestart.crashedObserverFiles = [];
+                for (const name of (await readdir(join(output, 'observer/master'))).filter(value => value.endsWith('.jsonl'))) {
+                    const content = await boundedPortableFile(join(output, 'observer/master', name), 64 * 1024 * 1024);
+                    report.masterRestart.crashedObserverFiles.push({file: 'observer/master/' + name, bytes: content.length,
+                        sha256: portableSourceHash(content), unterminatedTailBytes: content.length - content.lastIndexOf(10) - 1});
+                }
+                report.cleanup.push({name: 'original-master-crash', ok: true, fence: report.masterRestart.crash.fence});
+                master = undefined;
+                await wait('old master source stream closes before a single resumed stream is permitted', async () => {
+                    await replay!.allowMasterRestart(masterCrash);
+                });
+                const copiedSource = replay.metrics(); assert.ok(copiedSource.restart); copiedSource.restart.blockNum = 1;
+                assert.equal(replay.metrics().restart?.blockNum, 34, 'diagnostic source metadata changed restart authority');
+                through = masterControl.control.resumeBlockNum; replay.releaseThrough(through);
+                const resumedBlock = source.records[through - 1];
+                masterRestarted = true; master = await spawnOwned('build/indexer/launcher.js', configFile);
+                report.masterPid = master.pid; report.masterRestart.status = 'restarted';
+                report.masterRestart.replacementMasterPid = master.pid;
+                await wait('replacement master rejects the old end and completes its own fresh block34 association', async () => {
+                    replay!.assertThrough(34); ledger!.assertIdle();
+                    report.masterRestart.evidence = await auditWireMasterRestart({receipt: masterCrash, newMasterPid: master!.pid,
+                        rows: await observedDirectoryRows('master-restarted'), store, queues: await queues()});
+                    const recoveries = await Promise.all(adapters.map((adapter, index) => adapter.recovery(bindings[index])));
+                    for (const recovery of recoveries) {
+                        assert.equal(recovery.initialized, true);
+                        assert.deepEqual(recovery.checkpoint, {blockNum: 34, blockId: resumedBlock.blockId});
+                        assert.equal(recovery.pending, null); assert.equal(recovery.gap, null);
+                    }
+                    report.masterRestart.recovery = recoveries;
+                    report.masterRestart.stateResponses = [];
+                    assert.ok(through < stateAbiAvailability.fromBlock, 'this fixed restart case precedes the original ABI deployment');
+                    for (const definition of plan.definitions) {
+                        const response = await query(definition.id);
+                        assertPortablePredeployment(response);
+                        report.masterRestart.stateResponses.push(responseReceipt(response));
+                    }
+                });
+                await es.indices.refresh({index: chain + '-action-*'});
+                assert.ok(native); report.masterRestart.nativeReplay = await native.resumedHead();
+                report.masterRestart.status = 'observed';
+                const result = Buffer.from(JSON.stringify(report.masterRestart, null, 2) + '\n');
+                await writeFile(join(output, 'prefixes/master-restart-33.json'), result, {flag: 'wx'});
+            }
         }
         replay.assertThrough(source.endBlock); ledger.assertIdle();
         await wait('broker actual consumer ACK statistics', async () => {const rows = await queues();
             const sourceQueues = rows.filter((row: any) => row.name === chain + ':live_blocks');
             assert.ok(sourceQueues.length > 0, 'source block queue is missing');
-            assert.equal(sourceQueues.reduce((sum: number, row: any) => sum + row.ack, 0), source.endBlock, 'broker ACK count differs from original source blocks');
-            assert.equal(sourceQueues.reduce((sum: number, row: any) => sum + row.delivered, 0), source.endBlock, 'broker delivery count differs from original source blocks');
+            const expectedDeliveries = source.endBlock;
+            assert.equal(sourceQueues.reduce((sum: number, row: any) => sum + row.ack, 0), expectedDeliveries, 'broker ACK count differs from the exact original/resumed source sequence');
+            assert.equal(sourceQueues.reduce((sum: number, row: any) => sum + row.delivered, 0), expectedDeliveries, 'broker delivery count differs from the exact original/resumed source sequence');
             assert.equal(sourceQueues.reduce((sum: number, row: any) => sum + row.redelivered, 0), 0);
             assert.ok(rows.every((row: any) => row.ready === 0 && row.unacked === 0 && row.messages === 0)); report.brokerAcks = rows;
         });
-        const observer = await observedRows(), expected = source.records.map(record => record.blockNum);
+        const observer = await observedRows(), expected = Array.from({length: source.endBlock}, (_, index) => index + 1);
         for (const direction of ['ipc_send', 'ipc_receive']) assert.deepEqual(observer.filter(row => row.kind === direction && row.event === 'read_block' && row.role === 'continuous_reader')
             .map(row => row.message.block_num), expected, 'publisher-confirmed source interval differs');
         report.replay = replay.metrics(); report.bulk = summarizeBulkLedger(ledger.receipts);
@@ -711,6 +799,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         assert.deepEqual(afterSource.inputHashes, source.inputHashes); assert.deepEqual(afterSource.components, source.components);
         assert.equal(writeFailureObserved, true); assert.ok(report.contractFailure.observations.length >= 2);
         if (recoveryControl) assert.equal(report.attemptRecovery.status, 'observed');
+        if (masterControl) assert.equal(report.masterRestart.status, 'observed');
         report.limits.writeFailureIsolationQualified = true;
         report.status = 'passed';
     } catch (error) {report.status = 'failed'; report.error = describeError(error);}
@@ -724,7 +813,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             try {if (child.exitCode === null && child.signalCode === null && child.connected) child.send({event: 'qualifier_shutdown'});
                 if (child.exitCode === null && child.signalCode === null) await Promise.race([once(child, 'exit'), pause(10000)]);
                 report[name + 'Exit'] = {code: child.exitCode, signal: child.signalCode};
-                const all = await observedRows(name, true);
+                const observerInstance = name === 'master' && masterRestarted ? 'master-restarted' : name;
+                const all = await observedDirectoryRows(observerInstance, true);
                 const fault = name === 'master' && recoveryControl
                     && (await readdir(join(output, 'attempt-recovery'))).includes('fault.json')
                     ? readWireRecoveryEvidence(recoveryControl.control).marker : undefined;
@@ -744,8 +834,11 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     report.profiling.recoveryCensus = {cpuCapture: false, expectedUnflushedWorker: report.expectedWorkerExit.marker.pid,
                         processes: (await observedRows(name, true)).filter(row => row.kind === 'start').map(row => ({pid: row.pid, role: row.role})),
                         note: 'Raw exits and full physical process census validated by the recovery shutdown oracle; no profile capture claimed.'};
-                } else report.profiling.components.push({component: name, processes: await auditPortableWorkerProfiles(output, name,
-                    await observedRows(name, true), child.pid!, options.profile === true)});
+                } else {
+                    const observerInstance = name === 'master' && masterRestarted ? 'master-restarted' : name;
+                    report.profiling.components.push({component: observerInstance, processes: await auditPortableWorkerProfiles(output, observerInstance,
+                        await observedDirectoryRows(observerInstance, true), child.pid!, options.profile === true)});
+                }
             } catch (error) {
                 report.status = 'failed'; report.profiling.failures.push({component: name, error: describeError(error)});
             }

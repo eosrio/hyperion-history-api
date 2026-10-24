@@ -67,6 +67,16 @@ test('missing, foreign, failed and excess profile evidence cannot satisfy captur
     unlinkSync(file); await expect(auditPortableWorkerProfiles(output, 'master', rows, 123, true)).rejects.toThrow();
 }));
 
+test('the restarted master has its own complete, disabled-profile census and cannot borrow old epoch files', async () => fixture(async ({output, rows}) => {
+    mkdirSync(join(output, 'observer', 'master-restarted'));
+    const disabled = rows.filter(row => !['profile_started', 'profile_saved'].includes(row.kind))
+        .map(row => row.kind === 'flush' ? {...row, profileState: 'disabled', profilePath: null} : row);
+    expect(await auditPortableWorkerProfiles(output, 'master-restarted', disabled, 123, false))
+        .toEqual([{component: 'master-restarted', pid: 123, role: 'deserializer', state: 'disabled', file: null}]);
+    await expect(auditPortableWorkerProfiles(output, 'master-restarted', rows, 123, true)).rejects.toThrow();
+    await expect(auditPortableWorkerProfiles(output, '../master' as any, disabled, 123, false)).rejects.toThrow();
+}));
+
 test('capture census cannot omit a parent-observed worker or accept orphan profile events', async () => fixture(async ({output, rows}) => {
     const fork = {kind: 'worker_fork', pid: 123, childPid: 456};
     const exit = {kind: 'worker_exit', pid: 123, childPid: 456, code: 0, signal: null};

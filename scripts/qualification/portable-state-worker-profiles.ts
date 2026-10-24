@@ -14,15 +14,15 @@ export function portableWorkerProfileEnvironment(enabled: boolean): NodeJS.Proce
 }
 
 export interface PortableWorkerProfileReceipt {
-    readonly component: 'master' | 'api'; readonly pid: number; readonly role: string;
+    readonly component: 'master' | 'api' | 'master-restarted'; readonly pid: number; readonly role: string;
     readonly state: 'saved' | 'disabled'; readonly file: string | null;
     readonly sha256?: string; readonly bytes?: number; readonly samples?: number; readonly durationMicros?: number;
 }
 
 /** Match the launched primary and its physical forks to observer starts, flushes and bounded files. */
-export async function auditPortableWorkerProfiles(output: string, component: 'master' | 'api', rows: readonly any[], primaryPid: number, enabled: boolean)
+export async function auditPortableWorkerProfiles(output: string, component: 'master' | 'api' | 'master-restarted', rows: readonly any[], primaryPid: number, enabled: boolean)
     : Promise<PortableWorkerProfileReceipt[]> {
-    assert.ok(component === 'master' || component === 'api'); assert.equal(typeof enabled, 'boolean');
+    assert.ok(['master', 'api', 'master-restarted'].includes(component)); assert.equal(typeof enabled, 'boolean');
     assert.ok(Number.isSafeInteger(primaryPid) && primaryPid > 0, 'invalid profile primary PID');
     const root = await realpath(await ordinaryPortablePath(output, true));
     const directory = await realpath(await ordinaryPortablePath(join(root, 'observer', component), true));

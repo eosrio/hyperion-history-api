@@ -1,8 +1,10 @@
 /** Qualification-only custody oracle for one real Wire worker exit and broker redelivery. */
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
-import {closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, writeFileSync} from 'node:fs';
+import {mkdirSync, realpathSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
+import {boundedRecoveryFile as bounded, durableRecoveryFile as durableNew,
+    createRecoveryRecorder, readRecoveryRecords} from './recovery-custody.mjs';
 
 export const wireRecoveryExitCode = 86;
 const chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d';
@@ -10,21 +12,6 @@ const profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
 const publicationMembership = new WeakMap();
 const sha = value => createHash('sha256').update(value).digest('hex');
 const copy = value => JSON.parse(JSON.stringify(value));
-function bounded(file, maximum) {
-    const stat = lstatSync(file);
-    assert.ok(stat.isFile() && !stat.isSymbolicLink() && stat.size > 0 && stat.size <= maximum, 'invalid recovery evidence file');
-    const bytes = readFileSync(file); assert.equal(bytes.length, stat.size); return bytes;
-}
-function durableNew(file, value) {
-    const bytes = Buffer.from(JSON.stringify(value) + '\n');
-    assert.ok(bytes.length <= 128 * 1024, 'recovery marker exceeds bound');
-    const fd = openSync(file, 'wx');
-    try {writeFileSync(fd, bytes); fsyncSync(fd);} finally {closeSync(fd);}
-    if (process.platform !== 'win32') {
-        const directory = openSync(dirname(file), 'r');
-        try {fsyncSync(directory);} finally {closeSync(directory);}
-    }
-}
 export function createWireRecoveryControl({output, configFile, chain, source, frameSha256}) {
     assert.equal(realpathSync(output), resolve(output)); assert.equal(resolve(configFile), join(output, 'chain.json'));
     assert.match(chain, /^hyp-p191-[0-9a-f]{12}$/);
@@ -55,15 +42,7 @@ export function readWireRecoveryControl(file, {observerDirectory, configFile, ch
     return control;
 }
 export function createWireRecoveryRecorder(control) {
-    let fd, bytes = 0, sequence = 0;
-    return (event, value) => {
-        const line = Buffer.from(JSON.stringify({event, ...value, sequence: ++sequence,
-            runId: control.runId, pid: process.pid, parentPid: process.ppid, at: Date.now()}) + '\n');
-        bytes += line.length;
-        assert.ok(sequence <= 4096 && bytes <= 8 * 1024 * 1024, 'recovery observer budget exceeded');
-        fd ??= openSync(join(control.output, 'attempt-recovery', 'process-' + process.pid + '.jsonl'), 'wx');
-        writeFileSync(fd, line); fsyncSync(fd);
-    };
+    return createRecoveryRecorder(join(control.output, 'attempt-recovery'), control.runId);
 }
 /** A single exclusive marker lets the normal master replace the worker; later deliveries never exit. */
 export function exitWireWorkerBeforeAck(control, snapshot) {
@@ -81,20 +60,8 @@ export function exitWireWorkerBeforeAck(control, snapshot) {
 }
 export function readWireRecoveryEvidence(control) {
     const directory = join(control.output, 'attempt-recovery');
-    const names = readdirSync(directory);
-    assert.ok(names.length <= 66 && names.every(name => ['control.json', 'fault.json'].includes(name)
-        || /^process-[1-9][0-9]*\.jsonl$/.test(name)), 'unowned recovery file');
-    const marker = JSON.parse(bounded(join(directory, 'fault.json'), 128 * 1024).toString()), events = [];
-    let bytes = 0;
-    for (const name of names.filter(name => name.startsWith('process-'))) {
-        const contents = bounded(join(directory, name), 8 * 1024 * 1024); bytes += contents.length;
-        assert.ok(bytes <= 64 * 1024 * 1024); assert.equal(contents.at(-1), 10, 'truncated recovery observation');
-        const rows = contents.toString().trimEnd().split('\n').map(line => JSON.parse(line));
-        for (const [index, row] of rows.entries()) {
-            assert.equal(row.sequence, index + 1); assert.equal(row.pid, Number(name.slice(8, -6)));
-            assert.equal(row.runId, control.runId); events.push(row);
-        }
-    }
+    const events = readRecoveryRecords(directory, control.runId, ['control.json', 'fault.json']);
+    const marker = JSON.parse(bounded(join(directory, 'fault.json'), 128 * 1024).toString());
     return {marker, events};
 }
 export async function auditWireAttemptRecovery({control, marker, events, queues, masterPid, store}) {

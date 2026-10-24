@@ -358,3 +358,51 @@ to the normal shutdown verifier. This mode does not capture CPU profiles.
 An observed block-33 recovery case remains separate from the full replay result.
 A later replay failure is still a failed run. This case does not qualify parent
 restart, broker/server restart, forks, launch pins or the complete release.
+
+## Production master restart before adjudication
+
+On native Linux, use `--master-recovery` in place of `--profile` or
+`--worker-recovery`. This case holds the actual master's adjudication after the
+original block-33 DS handoff has a fresh durable write and an authenticated
+quiescent end. The original state/native hold and owned queue drain must pass
+before the crash. The old association must still be absent.
+
+The controller checks the launched master's parent, executable, command, working
+directory, session/process group and birth identities against the physical
+observer census. It refuses unobserved members or a changed group, then sends
+SIGKILL only to that owned group and verifies the original identities have gone.
+This process fence proves no storage effect, source completeness or broker ACK
+settlement. Copied census and exit JSON cannot issue a restart receipt.
+
+The normal Hyperion launcher then starts another master against the same owned
+RabbitMQ, Elasticsearch, Redis, MongoDB and configuration. The source permits
+one resumed stream from block 34 only after the original stream has closed and
+the genuine crash receipt matches the original frames/profile/chain. The
+existing coordinator resumes at its completed head plus one; it does not replay
+the already acknowledged block 33. Ordinary runs still start at block 1. Source
+grants, queue budgets, ancestry and deadlines are unchanged.
+
+The replacement's real adjudicator must reject a JSON copy of the old end. Its
+own block-34 attempt needs a fresh conditional write, authenticated end and
+persisted association against that block's original source; reading the old
+block-33 result cannot substitute for those facts. The old association remains
+absent, and stored broker settlement stays unknown.
+
+The exact replay remains `1..1480`: 1,480 unique original inputs and deliveries/ACKs
+if the complete run succeeds, without skips or duplicates across the restart.
+The old block-33 hold retains its independent native/state/publication checks.
+The resumed block-34 source, physical owner, canonical native observations,
+admission/publication fingerprints, captured successful bulk and recovery state
+are checked before continuing. The ordinary single-version stored-output oracle
+remains unchanged.
+
+Raw pre-crash observer files retain their actual bytes and any unterminated tail;
+they are not rewritten into successful shutdowns. The crash census and file
+hashes are reported separately. The replacement master and persistent API still
+require normal complete shutdown evidence. CPU capture remains disabled.
+
+The driver continues through the unchanged full source and independent physical
+Mongo barriers. An observed restart boundary is separate from the final replay
+result: a later failure is still a failed run. This single drained-queue crash
+does not qualify other crash windows, broker/server restart, generic reversible
+inputs, live forks, launch pins or the complete release.

@@ -30,6 +30,9 @@ try {
         package: '@eosrio/hyperion-wire-plugin', profileId: source.profileId}).validateShipServers(source.chainId);
 
     const sequential = await start(), cycles = portableSourceLimits.connections + 4;
+    await assert.rejects(sequential.server.allowMasterRestart({schemaVersion: 1, kind: 'wire-master-crash-observed'}),
+        /unissued Wire master crash receipt/);
+    assert.equal(sequential.server.metrics().restart, undefined);
     for (let index = 0; index < cycles; index++) {
         const result = await probe(sequential.server);
         assert.equal(result.length, 1, `closed status sessions must not consume concurrent capacity at probe ${index + 1}`);
@@ -63,7 +66,7 @@ try {
     assert.ok(historical.server.metrics().sessions.every(session => session.sent.length === 0 && session.acknowledged.length === 0));
     console.log(JSON.stringify({passed: true, node: process.version, sequentialStatusProbes: cycles,
         concurrentLimit: portableSourceLimits.connections, sessionHistoryLimit: portableSourceLimits.sessions,
-        originalStatusOnly: true, streamedBlocks: 0, fullWorkerQualification: false}));
+        originalStatusOnly: true, streamedBlocks: 0, copiedMasterRestartRejected: true, fullWorkerQualification: false}));
 } finally {
     for (const socket of sockets) socket.terminate();
     for (const fixture of fixtures) await fixture.close();

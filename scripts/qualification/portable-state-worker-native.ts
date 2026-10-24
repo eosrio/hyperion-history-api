@@ -98,9 +98,11 @@ interface NativeRunOptions {
     readonly events: () => Promise<any[]>;
     readonly http: (path: string) => Promise<{status: number; headers: Headers; body: any}>;
     readonly unrelated: (through: number) => Promise<unknown>;
+    readonly rawHistory: (through: number) => Promise<unknown>;
     readonly bulk: {readonly directory: string; readonly receipts: readonly any[]};
     readonly wait: (name: string, work: () => Promise<void>) => Promise<void>;
     readonly attemptRecovery?: () => unknown;
+    readonly masterRestart?: () => {receipt: unknown; masterPid: number} | undefined;
 }
 
 /** Native proof services are read-only. Constructed negative controls touch only one owned action row. */
@@ -238,7 +240,51 @@ export async function createPortableNativeQualification(options: NativeRunOption
         }
         return {event, current, ingress, manifestId: id, manifest};
     };
+    const auditBulk = async () => {
+        const confirmedBulk: any[] = [], unmatched = new Set(persistedOutputs.keys());
+        for (const entry of options.bulk.receipts) {
+            assert.match(entry.request.file, /^[0-9]{5}-request\.ndjson$/);
+            const bytes = await boundedPortableFile(join(options.bulk.directory, entry.request.file), 16 * 1024 * 1024);
+            assert.equal(bytes.length, entry.request.bytes); assert.equal(portableSourceHash(bytes), entry.request.sha256);
+            if (entry.status < 200 || entry.status >= 300) continue;
+            assert.match(entry.responseBody.file, /^[0-9]{5}-response\.json$/);
+            const responseBytes = await boundedPortableFile(join(options.bulk.directory, entry.responseBody.file), 16 * 1024 * 1024);
+            assert.equal(responseBytes.length, entry.responseBody.bytes); assert.equal(portableSourceHash(responseBytes), entry.responseBody.sha256);
+            assert.deepEqual(JSON.parse(responseBytes.toString()), entry.response);
+            const lines = bytes.toString().trimEnd().split('\n'); let ordinal = 0;
+            for (let offset = 0; offset < lines.length; ordinal++) {
+                const metadata = JSON.parse(lines[offset++]), operation = Object.keys(metadata)[0], target = metadata[operation];
+                const document = operation === 'delete' ? undefined : JSON.parse(lines[offset++]);
+                const index = target._index ?? entry.operations[ordinal].index, key = JSON.stringify([index, String(target._id)]);
+                const expected = persistedOutputs.get(key); if (!expected || !['index', 'create'].includes(operation)) continue;
+                assert.equal(portableSourceHash(manifests.actionHistoryImmutableJson(document)), expected.physicalSha256,
+                    'actual worker bulk bytes differ from independently read physical native/notification output');
+                const result = entry.response.items[ordinal][operation]; assert.equal(result._index, expected.index);
+                assert.equal(String(result._id), expected.id); assert.ok(result.status >= 200 && result.status < 300 && !result.error);
+                if (result._shards) {assert.equal(result._shards.failed, 0); assert.ok(result._shards.successful >= 1);}
+                unmatched.delete(key); confirmedBulk.push({requestNumber: entry.number, operationOrdinal: ordinal,
+                    expected, result, requestSha256: entry.request.sha256, responseSha256: entry.responseBody.sha256});
+            }
+        }
+        assert.equal(unmatched.size, 0, 'some checked native/notification outputs lack captured successful worker bulk receipts');
+        return confirmedBulk;
+    };
     return {profile, oracleHashes: oracle.hashes, held, controls, originalNotifications: notifications,
+        async resumedHead() {
+            assert.equal(lastNativeThrough, 33);
+            const restart = options.masterRestart?.(); assert.ok(restart);
+            const {describeWireMasterCrash, wireMasterResumedEvents} = await import('./portable-state-master-recovery.mjs');
+            const {control} = describeWireMasterCrash(restart.receipt); assert.equal(control.resumeBlockNum, 34);
+            const events = wireMasterResumedEvents(restart.receipt, restart.masterPid, await options.events());
+            const current = await frontier.readControl(); assert.ok(current);
+            assert.equal(current.value.phase, 'following'); assert.equal(current.value.head.blockNum, 34);
+            const commit = await frontier.readCommit(current.value.head.commitId);
+            assert.equal(commit.nativeActionInterfaceVersion, 1); assert.equal(commit.source.blockId, control.resumeBlockId);
+            const raw = await durable(events, 34), physical = await actions(34);
+            const membership = await admission(events, 34, physical);
+            const confirmedBulk = await auditBulk();
+            return {blockNum: 34, current, commit, raw, physical, membership, confirmedBulk, history: await options.rawHistory(34)};
+        },
         async hold(through: number) {
             let events: any[] = [];
             await wait(`native PREPARE and source ACK through${through}`, async () => {
@@ -333,32 +379,7 @@ export async function createPortableNativeQualification(options: NativeRunOption
                     rawCaptureSha256: retained.record.captureRef.inputSha256, retainedIngressSha256: portableSourceHash(Buffer.from(membership.ingress.frameHex, 'hex')),
                     rawHistory: await options.unrelated(expected.blockNum)});
             }
-            const confirmedBulk: any[] = [], unmatched = new Set(persistedOutputs.keys());
-            for (const entry of options.bulk.receipts) {
-                assert.match(entry.request.file, /^[0-9]{5}-request\.ndjson$/);
-                const bytes = await boundedPortableFile(join(options.bulk.directory, entry.request.file), 16 * 1024 * 1024);
-                assert.equal(bytes.length, entry.request.bytes); assert.equal(portableSourceHash(bytes), entry.request.sha256);
-                if (entry.status < 200 || entry.status >= 300) continue;
-                assert.match(entry.responseBody.file, /^[0-9]{5}-response\.json$/);
-                const responseBytes = await boundedPortableFile(join(options.bulk.directory, entry.responseBody.file), 16 * 1024 * 1024);
-                assert.equal(responseBytes.length, entry.responseBody.bytes); assert.equal(portableSourceHash(responseBytes), entry.responseBody.sha256);
-                assert.deepEqual(JSON.parse(responseBytes.toString()), entry.response);
-                const lines = bytes.toString().trimEnd().split('\n'); let ordinal = 0;
-                for (let offset = 0; offset < lines.length; ordinal++) {
-                    const metadata = JSON.parse(lines[offset++]), operation = Object.keys(metadata)[0], target = metadata[operation];
-                    const document = operation === 'delete' ? undefined : JSON.parse(lines[offset++]);
-                    const index = target._index ?? entry.operations[ordinal].index, key = JSON.stringify([index, String(target._id)]);
-                    const expected = persistedOutputs.get(key); if (!expected || !['index', 'create'].includes(operation)) continue;
-                    assert.equal(portableSourceHash(manifests.actionHistoryImmutableJson(document)), expected.physicalSha256,
-                        'actual worker bulk bytes differ from independently read physical native/notification output');
-                    const result = entry.response.items[ordinal][operation]; assert.equal(result._index, expected.index);
-                    assert.equal(String(result._id), expected.id); assert.ok(result.status >= 200 && result.status < 300 && !result.error);
-                    if (result._shards) {assert.equal(result._shards.failed, 0); assert.ok(result._shards.successful >= 1);}
-                    unmatched.delete(key); confirmedBulk.push({requestNumber: entry.number, operationOrdinal: ordinal,
-                        expected, result, requestSha256: entry.request.sha256, responseSha256: entry.responseBody.sha256});
-                }
-            }
-            assert.equal(unmatched.size, 0, 'some checked native/notification outputs lack captured successful worker bulk receipts');
+            const confirmedBulk = await auditBulk();
             return {expired, confirmedBulk, verifiedNotifications: checkedNotifications.size, notificationBlocks: 17, defaultAncestryBlocks: 256,
                 admissionActivation: 'existing-explicit-engineering-preload; public/default operator activation remains disabled',
                 historicalServingQualified: false, fullForkRecoveryQualified: false, streamCompatibilityQualified: false};
