@@ -1,10 +1,11 @@
 /** Offline native-Node check of the installed corpus and bounded replay request path. */
 import assert from 'node:assert/strict';
+import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
 import {createWireShipCodec, resolveCodecProfile} from '@eosrio/hyperion-wire-plugin';
 import {auditWireReplayFixture, createWireReplaySession, createWireReplayRpc} from './wire-replay-fixture.ts';
 import {readWireComponentSources} from './wire-worker-replay.ts';
 
-assert.ok(/^(22|24)\./.test(process.versions.node) && !process.versions.bun);
+assertNativeQualificationRuntime();
 const fixture = await auditWireReplayFixture();
 const artifacts = await readWireComponentSources(fixture.packageRoot, fixture.lineage.components);
 const records = fixture.records;

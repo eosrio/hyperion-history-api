@@ -70,7 +70,7 @@ npm run build
 node scripts/qualification/check-action-source-journal.mjs action-source-journal.json
 ```
 
-The runner supports native Node 22 and 24. It imports the emitted production journal, manifest, exact
+The runner supports native Node 24 and 26. It imports the emitted production journal, manifest, exact
 metadata and immutable storage modules, plus the production action template and master alias logic.
 Its JSON evidence records their source/emitted SHA-256 hashes and committed Git blob hashes,
 the script hash, Git head, native runtime, actual installed Elasticsearch client/transport versions

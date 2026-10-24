@@ -23,20 +23,20 @@ project. Use it for routine development feedback and the CI typecheck gate.
 `npm run build` uses the pinned TypeScript 7 compiler to emit Node.js JavaScript
 and source maps. `bun check` performs checking only and does not emit artifacts.
 
-The workflow runs this sequence on Node.js 22 and 24 for pushes and pull requests
-to `main`, `dev`, and `release/4.5`. Bun checks and runs the unit tests against
+Hyperion 4.5 requires Node.js 24 or newer. The workflow runs this sequence on Node.js 24 and 26
+for pushes and pull requests to `main`, `dev`, and `release/4.5`. Bun checks and runs the unit tests against
 the npm-installed dependencies. `package-lock.json` is the canonical install
 lockfile; the stale Bun install lockfile has been removed.
 
-Keep the pinned dependency preparation scripts enabled, as in the Node 22/24 build jobs. The
+Keep the pinned dependency preparation scripts enabled, as in the Node 24/26 build jobs. The
 source-pinned Wire provider verifies its Git revision and preparation receipt during installation.
-The Node 22 design-fixture job failed that verification while using `--ignore-scripts`, before any
+The earlier Node 22 design-fixture job failed that verification while using `--ignore-scripts`, before any
 Elasticsearch test ran; the ordinary Node 22 install and complete tests passed. The fixture follows
 the ordinary install recipe rather than bypassing the provider's source checks. Build/test checks
 remain separate from operator installation and live runtime qualification.
 
 On npm versions that reject the locked Git dependencies with `EALLOWGIT`, use
-the same invocation-scoped policy as the Node 22/24 CI jobs:
+the same invocation-scoped policy as the Node 24/26 CI jobs:
 
 ```sh
 npm ci --allow-git=all
@@ -52,6 +52,16 @@ not change a global Git-dependency policy to run these checks.
 The [portable projection checks](portable-projection.md) additionally build an
 independent MongoDB adapter and exercise an owned database fixture. Those checks
 have separate dependency locks and do not qualify the complete 4.5 state path.
+
+## Node 24 minimum and CI transition
+
+The operator selected Node 24 as the minimum for 4.5 in
+[the coordinated runtime baseline](https://github.com/eosrio/hyperion-tools/issues/65).
+The application and independent MongoDB adapter declare this floor in their package and lock
+metadata. The worker/recovery qualification gates select native Node 24 or 26 and reject Bun and Node 22.
+Existing Node 22 reports retain their original source/runtime identities. They do not establish
+Node 26 acceptance. Production runtime upgrades and full release qualification remain separate.
+Superseded PR validation runs are cancelled; push and manual runs keep distinct concurrency groups.
 
 ## Historical dependency-related type errors
 

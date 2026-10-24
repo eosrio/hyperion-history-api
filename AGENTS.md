@@ -10,4 +10,5 @@ Follow [the development build guide](docs/development-build.md).
 - Use `npm run build` for the Node.js JavaScript and source-map artifacts emitted
   by TypeScript 7, and `npm test` for the existing unit suite.
 - Keep generated build files out of commits. Update the npm lockfile when changing
-  dependency versions, and validate on the CI Node.js 22/24 matrix.
+  dependency versions, and validate on the CI Node.js 24/26 matrix.
+- Node 24 is the minimum for Hyperion 4.5.

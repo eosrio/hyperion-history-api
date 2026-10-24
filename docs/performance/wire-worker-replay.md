@@ -41,7 +41,7 @@ time bounds make the finite external completion check possible while the reader 
 
 ## Execution and evidence
 
-Use the pinned Node 22 or 24 runtime after `npm ci --allow-git=all`, the complete
+Use the pinned Node 24 or 26 runtime after `npm ci --allow-git=all`, the complete
 `bun check -p tsconfig.json`, qualifier typecheck and native TypeScript build.
 Create a fresh fixture with `scripts/qualification/es955-worker-fixture.ps1` and retain
 its state journal. Run:

@@ -1,5 +1,6 @@
 /** Original-source preflight only. No Docker, database, socket, provider injection or source edit. */
 import assert from 'node:assert/strict';
+import {assertNativeQualificationRuntime} from '../../scripts/qualification/native-node-runtime.mjs';
 import {spawnSync} from 'node:child_process';
 import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -8,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 import {auditPortableWorkerSource} from '../../scripts/qualification/portable-state-worker-source.ts';
 import {portableWorkerAbiAvailability, assertPortableWorkerOracle} from '../../scripts/qualification/portable-state-worker-oracle.ts';
 import {auditPortableNativeOracle, createPortableNativeQualification, portableNativeProfile} from '../../scripts/qualification/portable-state-worker-native.ts';
-assert.match(process.versions.node, /^(22|24)\./);
+assertNativeQualificationRuntime();
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const directory = mkdtempSync(join(tmpdir(), 'hapi270-native-source-'));
 try {
