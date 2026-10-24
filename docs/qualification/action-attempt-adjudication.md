@@ -86,6 +86,18 @@ can retry only through a fresh conditional manifest write and its ordinary recei
 Both cases use controlled storage and canonical authority; live broker/storage/fork recovery,
 the remaining hold/fail matrix and count-and-byte capacity acceptance remain open.
 
+A further native process scenario runs the original MainDS genesis and DS block-33 handoff
+callbacks through a supervised parent, retaining their exact source, output, ACK-attempt and
+authentic end before adjudication. The original worker exits cleanly, a bounded snapshot is
+written and synced, and the controller kills the actual test-parent process with SIGKILL.
+A newly launched native parent can inspect the frozen retained records, but cannot reissue
+the previous end or associate a new read-only physical attempt. A separate new attempt must
+perform an idempotent conditional manifest write before its fresh result can be associated.
+The persisted sequence watermark, semantic record identity and unknown broker settlement
+remain explicit. This exercises actual native test-parent termination and relaunch with a
+controlled retained backend; production-master restart with live RabbitMQ/Elasticsearch,
+MongoDB and current SHIP/fork authority remains a combined qualification gate.
+
 The replay fixture separately bounds eight concurrent SHIP sockets and 32 retained session records.
 Normal API health checks open status sockets after their 60-second cache expires, so closed probes
 must not consume concurrent capacity for the entire 15-minute run. Native Node tests exercise the

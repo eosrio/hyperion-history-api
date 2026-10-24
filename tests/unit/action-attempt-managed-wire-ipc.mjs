@@ -12,18 +12,22 @@ import {WorkerAttemptSupervisor, describeWorkerAttemptEnd} from '../../build/ind
 import {ActionAttemptAdjudicator} from '../../build/indexer/history/action-attempt-adjudicator.js';
 import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-source-admission.js';
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
+import {persistRestartSnapshot, restartDirectory} from './action-attempt-restart-snapshot.mjs';
 
 const mode = process.argv[2] ?? 'main';
 assert(['main','main-held-write','main-failed-write','main-ack-throws','main-held-operation','main-held-end','main-failed-end',
-    'main-held-adjudication','main-unknown-association','ds','contract','handoff',
+    'main-held-adjudication','main-unknown-association','main-restart-checkpoint','handoff-restart-checkpoint','ds','contract','handoff',
     'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain','handoff-failed-drain'].includes(mode));
 const isMain = mode.startsWith('main');
+const checkpointDirectory = mode.endsWith('-restart-checkpoint') ? restartDirectory(process.argv[3]) : undefined;
+if (checkpointDirectory) assert.equal(typeof process.send, 'function', 'restart checkpoint requires its owning controller');
 const role = isMain ? 'deserializer' : 'ds_pool_worker';
 cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-worker.mjs', import.meta.url)),
     args: [mode === 'main-held-write' ? 'managed-original-main-held-write'
         : mode === 'main-failed-write' ? 'managed-original-main-failed-write'
         : mode === 'main-ack-throws' ? 'managed-original-main-ack-throws'
-        : ['main','main-held-adjudication','main-unknown-association'].includes(mode) ? 'managed-original-main'
+        : ['main','main-held-adjudication','main-unknown-association','main-restart-checkpoint'].includes(mode) ? 'managed-original-main'
+        : mode === 'handoff-restart-checkpoint' ? 'managed-original-handoff'
         : mode === 'ds' ? 'managed-original-ds'
         : mode === 'contract' ? 'managed-original-contract' : 'managed-original-' + mode],
     silent: true});
@@ -319,6 +323,22 @@ try {
         }
     };
     const adjudicator = new ActionAttemptAdjudicator(supervisor, store, selections, authority);
+    if (checkpointDirectory) {
+        assert.equal(memory.calls.some(call => ['create','index'].includes(call.method)
+            && call.request.document?.bundle_id?.startsWith('h45actionassociation1:')), false);
+        // Finish the original physical child before the controller kills this parent: no orphan is needed.
+        child.send({event: 'qualification_done'});
+        await waitFor(() => exited, 'original Wire child exits before parent restart boundary');
+        assert.equal(exitCode, 0); assert.equal(stderr, '');
+        const retained = persistRestartSnapshot(checkpointDirectory, snapshot, end, supervisor.epoch);
+        process.send({event: 'restart_checkpoint', ...retained, parentPid: process.pid,
+            originalChildPid: child.process.pid, originalChildExited: true, associationWritten: false});
+        await new Promise((_, reject) => {
+            const timer = setTimeout(() => reject(new Error('Restart controller did not terminate the original parent')), 20_000);
+            process.once('disconnect', () => {clearTimeout(timer); reject(new Error('Restart controller disconnected'));});
+        });
+        assert.fail('restart checkpoint cannot return normally');
+    }
     if (mode === 'main-held-adjudication') {
         let release, heldId;
         const held = new Promise(resolveHold => {release = resolveHold;});
