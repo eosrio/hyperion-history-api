@@ -8,6 +8,10 @@ import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-sou
 import {HyperionWorker} from '../../build/indexer/workers/hyperionWorker.js';
 import {default as Deserializer} from '../../build/indexer/workers/deserializer.js';
 import {actionHistoryImmutableJson} from '../../build/indexer/history/action-history-manifest.js';
+import {UndiciConnection} from '@elastic/transport';
+import {ProtocolAbiProofReader} from '../../build/indexer/protocol/abi-proof.js';
+import {ImmutableProtocolBundleStore} from '../../build/indexer/protocol/immutable-bundle-store.js';
+import {ObserverIoMetrics, installProofMetrics} from './portable-state-worker-proof-metrics.mjs';
 
 assert.equal(process.env.HYPERION_PORTABLE_NATIVE_QUALIFICATION, '1');
 const chain = process.env.CHAIN_NAME;
@@ -22,14 +26,23 @@ const directory = realpathSync(process.env.ES198_OBSERVER_DIR); assert.ok(statSy
 const descriptor = openSync(join(directory, `native-${process.pid}.jsonl`), 'wx');
 const hash = value => createHash('sha256').update(value).digest('hex');
 let sequence = 0, bytes = 0;
+const observerIo = new ObserverIoMetrics();
 const record = (event, value) => {
     const line = JSON.stringify({kind: 'native_boundary', event, sequence: ++sequence, pid: process.pid,
         role: process.env.worker_role || 'master', monotonicNs: process.hrtime.bigint().toString(), ...value}) + '\n';
     bytes += Buffer.byteLength(line); assert.ok(bytes <= 24 * 1024 * 1024, 'native observer byte budget');
-    writeSync(descriptor, line); fsyncSync(descriptor);
+    observerIo.write(Buffer.byteLength(line), () => writeSync(descriptor, line));
+    observerIo.sync(() => fsyncSync(descriptor));
 };
 record('start', {profileId: config.settings.protocol.profileId, observationOnly: true});
-process.once('exit', () => {record('exit', {bytes}); closeSync(descriptor);});
+const proofMetrics = installProofMetrics({ProofReader: ProtocolAbiProofReader, BundleStore: ImmutableProtocolBundleStore,
+    Connection: UndiciConnection, record});
+process.once('exit', () => {
+    // Snapshot excludes this summary row and the following exit row's own writes/syncs.
+    record('observer_metrics', {coverage: 'before-this-row', io: observerIo.snapshot(), proofs: proofMetrics.snapshot()});
+    record('exit', {bytes}); closeSync(descriptor);
+    if (proofMetrics.snapshot().reportFailures) process.exitCode = 1;
+});
 
 const prepare = ProtocolNativeObservationStore.prototype.prepare;
 ProtocolNativeObservationStore.prototype.prepare = async function (selectionId, input, ...args) {
@@ -65,6 +78,36 @@ HyperionWorker.prototype.publishAdmitted = async function (owner, queue, content
     record('admitted_publish_begin', origin);
     const result = await publication.call(this, owner, queue, content, headers, ...args);
     record('admitted_publish_confirmed', origin); return result;
+};
+// Confirmed action handoffs call the publication helper directly, bypassing publishAdmitted.
+// Observe the actual owned AMQP send and its broker callback without replacing either result.
+const actionPublicationOwner = HyperionWorker.prototype.actionPublicationOwner;
+const observedPublishers = new WeakSet();
+HyperionWorker.prototype.actionPublicationOwner = function (...args) {
+    const owner = actionPublicationOwner.apply(this, args), publisher = owner.publisher;
+    if (!observedPublishers.has(publisher)) {
+        observedPublishers.add(publisher);
+        const sendToQueue = publisher.sendToQueue;
+        publisher.sendToQueue = function (queue, content, options, callback) {
+            if (!queue.startsWith(chain + ':index_actions:'))
+                return sendToQueue.call(this, queue, content, options, callback);
+            assert.equal(typeof callback, 'function', 'admitted action publication requires a broker confirm callback');
+            assert.equal(options.persistent, true); assert.equal(options.mandatory, true);
+            const canonicalPayloadSha256 = hash(actionHistoryImmutableJson(JSON.parse(content.toString())));
+            const payloadSha256 = hash(content);
+            assert.equal(canonicalPayloadSha256, payloadSha256, 'admitted production action bytes must be canonical');
+            const origin = {queue, payloadSha256, canonicalPayloadSha256, bytes: content.length,
+                headers: structuredClone(options.headers), messageId: options.messageId,
+                persistent: options.persistent, mandatory: options.mandatory};
+            record('admitted_broker_publish_begin', origin);
+            return sendToQueue.call(this, queue, content, options, error => {
+                record(error ? 'admitted_broker_nack' : 'admitted_broker_confirmed',
+                    error ? {...origin, error: String(error)} : origin);
+                return callback(error);
+            });
+        };
+    }
+    return owner;
 };
 const sourceAck = Deserializer.prototype.ackAdmittedSourceDelivery;
 Deserializer.prototype.ackAdmittedSourceDelivery = function (message, ...args) {

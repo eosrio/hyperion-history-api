@@ -4,7 +4,7 @@ import { API, APIClient } from '@wharfkit/antelope';
 import { queue, QueueObject } from 'async';
 
 import cluster, { Worker } from 'cluster';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 
 import { createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync, WriteStream } from 'fs';
 
@@ -45,12 +45,15 @@ import { HyperionQueueMonitor } from './queueMonitor.js';
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
-import {ProtocolSourceBindingStore} from '../protocol/source-bindings.js';
+import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
 import {resolvePortableStateConfiguration} from '../projection/config.js';
 import {WorkerAttemptSupervisor, type WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
+import {ActionAttemptAdjudicator} from '../history/action-attempt-adjudicator.js';
+import {ActionSourceAdmissionStore} from '../history/action-source-admission.js';
+import {actionConfigurationSnapshot} from '../history/action-producer-epoch.js';
 import {assertActionSequenceTemplateReadback, ensureActionSequenceMappings,
     ensureActionSequenceWriteTemplate} from '../history/action-sequence-storage.js';
 
@@ -60,7 +63,77 @@ import { IPermission } from '../../interfaces/table-permissions.js';
 export class HyperionMaster {
     // Own physical Worker objects independently of the replaceable logical workerMap entries.
     private workerAttemptSupervisor?: WorkerAttemptSupervisor;
-    private get attemptSupervisor(): WorkerAttemptSupervisor {return this.workerAttemptSupervisor ??= new WorkerAttemptSupervisor();}
+    private actionAttemptAdjudicator?: ActionAttemptAdjudicator;
+    private actionCanonicalLib?: {worker: Worker; blockNum: number; blockId: string};
+    private readonly protocolSourceProbes = new Map<string, {worker: Worker; readerSessionId: string;
+        generation: string; resolve: (current: boolean) => void}>();
+    private probePhysicalReversibleSource(worker: Worker, readerSessionId: string, generation: string,
+                                          source: ProtocolSourcePosition): Promise<boolean> {
+        return new Promise(resolve => {
+            const requestId = randomUUID();
+            let timer: Timeout;
+            const finish = (current: boolean) => {
+                if (!this.protocolSourceProbes.delete(requestId)) return;
+                clearTimeout(timer);
+                resolve(current);
+            };
+            timer = setTimeout(() => finish(false), 5000);
+            this.protocolSourceProbes.set(requestId, {worker, readerSessionId, generation, resolve: finish});
+            try {worker.send({event: 'protocol_source_probe_request', data: {requestId, readerSessionId, generation, source}},
+                error => {if (error) finish(false);});}
+            catch {finish(false);}
+        });
+    }
+    private get attemptSupervisor(): WorkerAttemptSupervisor {
+        if (!this.workerAttemptSupervisor) {
+            const supervisor = new WorkerAttemptSupervisor({onEnd: evidence => this.attemptAdjudicatorFor(supervisor).enqueue(evidence)});
+            this.workerAttemptSupervisor = supervisor;
+        }
+        return this.workerAttemptSupervisor;
+    }
+    private attemptAdjudicatorFor(supervisor: WorkerAttemptSupervisor): ActionAttemptAdjudicator {
+        return this.actionAttemptAdjudicator ??= new ActionAttemptAdjudicator(supervisor,
+            new ActionSourceAdmissionStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0),
+            new ProtocolSourceBindingStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}), {
+                configurationSha256: () => createHash('sha256').update(actionConfigurationSnapshot(this.conf, this.cm.filters,
+                    this.mLoader.snapshotActionHandlers())).digest('hex'),
+                canonicalBlock: async blockNum => {
+                    const info = await this.rpc.v1.chain.get_info();
+                    if (info.head_block_num.toNumber() < blockNum) throw new Error('Canonical node is behind the original worker source');
+                    const irreversible = info.last_irreversible_block_num.toNumber() >= blockNum;
+                    // RPC alone can lag a SHIP fork. An authenticated live reader's LIB anchors its branch.
+                    if (irreversible && this.conf.indexer.live_reader) {
+                        const lib = this.actionCanonicalLib;
+                        if (!lib || this.liveReader?.wref !== lib.worker || lib.blockNum < blockNum)
+                            throw new Error('Current live SHIP irreversible anchor is unavailable');
+                        const anchored = await this.rpc.v1.chain.get_block(lib.blockNum);
+                        if (String(anchored.id).toLowerCase() !== lib.blockId)
+                            throw new Error('RPC and live SHIP irreversible branches differ');
+                    }
+                    const block = await this.rpc.v1.chain.get_block(blockNum);
+                    return {chainId: String(info.chain_id).toLowerCase(), blockId: String(block.id).toLowerCase(),
+                        previousBlockId: blockNum === 1 ? null : String(block.previous).toLowerCase(), irreversible};
+                },
+                reversibleSelection: async (selectionId, source, readerSessionId) => {
+                    const live = this.protocolAbiSource, coordinator = this.protocolAbiCoordinator;
+                    if (!live?.generation || !coordinator || live.readerSessionId !== readerSessionId
+                        || !this.isCurrentProtocolLiveReader(live.worker)) return false;
+                    const generation = live.generation;
+                    if (!await coordinator.currentlyAdmittedSource(selectionId, source, readerSessionId, generation)) return false;
+                    if (!await this.probePhysicalReversibleSource(live.worker, readerSessionId, generation, source)) return false;
+                    // The reader barrier may have processed a fork and changed the coordinator during the round trip.
+                    const admitted = await coordinator.currentlyAdmittedSource(selectionId, source, readerSessionId, generation);
+                    return admitted && this.protocolAbiSource === live && live.generation === generation
+                        && this.isCurrentProtocolLiveReader(live.worker);
+                },
+                targetUuid: async name => {
+                    const settings = await this.esClient.indices.getSettings({index: name, flat_settings: true});
+                    const uuid = settings[name]?.settings?.['index.uuid'];
+                    if (Object.keys(settings).length !== 1 || typeof uuid !== 'string') throw new Error('Action target is unavailable');
+                    return uuid;
+                }
+            });
+    }
     // global configuration
     conf: HyperionConfig;
 
@@ -286,6 +359,12 @@ export class HyperionMaster {
         this.msgHandlerMap = {
             protocol_abi_coordinator_request: async (worker: Worker, msg: WorkerMessage) => {
                 await this.handleProtocolAbiCoordinatorRequest(worker, msg);
+            },
+            protocol_source_probe_reply: (worker: Worker, msg: WorkerMessage) => {
+                const reply = msg.data, pending = this.protocolSourceProbes.get(reply?.requestId);
+                if (pending?.worker !== worker || pending.readerSessionId !== reply.readerSessionId
+                    || pending.generation !== reply.generation || typeof reply.current !== 'boolean') return;
+                pending.resolve(reply.current);
             },
             protocol_abi_source_revoked: (worker: Worker, msg: WorkerMessage) => {
                 if (!this.isCurrentProtocolLiveReader(worker) || typeof msg.data?.readerSessionId !== 'string') return;
@@ -533,9 +612,13 @@ export class HyperionMaster {
                     }
                 }
             },
-            lib_update: (_worker: Worker, msg: WorkerMessage) => {
+            lib_update: (worker: Worker, msg: WorkerMessage) => {
+                if (this.liveReader?.wref !== worker) return;
                 // publish LIB to hub
                 if (msg.data) {
+                    const blockNum = Number(msg.data.block_num), blockId = String(msg.data.block_id).toLowerCase();
+                    if (!Number.isSafeInteger(blockNum) || blockNum < 1 || !/^[0-9a-f]{64}$/.test(blockId)) return;
+                    this.actionCanonicalLib = {worker, blockNum, blockId};
                     // save local lib
                     this.lastIrreversibleBlock = msg.data.block_num;
 

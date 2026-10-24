@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "purpose": "read-only current source preflight",
+  "releaseQualified": false,
+  "workerQualified": false,
+  "brokerQualified": false,
+  "observedAt": "2026-10-23T05:41:41.526Z",
+  "nodeVersion": "v26.4.0",
+  "chainId": "9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d",
+  "profileId": "wire-sysio-6508c9e8-native-engineering-v1",
+  "sourceRevision": "6508c9e8f4044df8d5acb082a7af3be6a80cd9a0",
+  "shipStatusType": "get_status_result_v0",
+  "schemaSha256": "94c5661306467f8c49f22180213e390db10d290be9ebf512fb63314f440ef6f9",
+  "statusSha256": "c6bbd64f4332f07044da4b1920c245cb5e3cc1f4bd1e124a945e52ffc1591756",
+  "shipHead": {
+    "block_num": 586496,
+    "block_id": "0008f3003df0db7cdf067ea5f2967b5bb121b0e0512115b28c4ef6fdb2d52111"
+  },
+  "shipLib": {
+    "block_num": 586494,
+    "block_id": "0008f2fe622301b35b47b6a8ca4c308af6689201bc53197895ea483f01abf569"
+  },
+  "rpcHeadBefore": {
+    "blockNum": 586496,
+    "blockId": "0008f3003df0db7cdf067ea5f2967b5bb121b0e0512115b28c4ef6fdb2d52111"
+  },
+  "rpcLibAfter": {
+    "blockNum": 586494,
+    "blockId": "0008f2fe622301b35b47b6a8ca4c308af6689201bc53197895ea483f01abf569"
+  },
+  "rpcAnchor": {
+    "blockNum": 586494,
+    "blockId": "0008f2fe622301b35b47b6a8ca4c308af6689201bc53197895ea483f01abf569"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "releaseQualified": false,
+  "environment": "Ubuntu 24.04.4 WSL with a separate Linux Docker daemon",
+  "codeCommit": "2aa85b491947327bb80edda57ebc9bdcb28716e3",
+  "nodeVersion": "24.19.0",
+  "bunVersion": "1.4.4",
+  "sourceArchiveSha256": "42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7",
+  "runs": [
+    {
+      "id": "767fb01f3a8b",
+      "status": "failed",
+      "reportSha256": "3fdb8914566d764873446ea0871766a0ae5658d0f9b8e700e84cbe03db62abfa",
+      "heldPrefixes": [1],
+      "reason": "two eight-second historical RPC timeouts while the Docker daemon pulled MongoDB",
+      "ownedServiceCleanupResidue": 0
+    },
+    {
+      "id": "f978c0c08f62",
+      "status": "failed",
+      "reportSha256": "c62b6bf5f5ef63451947c2f7b938dfd5ec223b7d09a26995456becfa19094d9f",
+      "heldPrefixes": [1, 33, 122, 256],
+      "sourceCheckedRpcBlockCalls": 486,
+      "sourceAckThrough": 392,
+      "brokerConfirmedActionPublications": 576,
+      "dsConfirmedThrough": 370,
+      "failure": "durable contiguous projection cursor stayed at block 392 during the 60-second wait for block 397",
+      "sharedReaderBackpressure": {
+        "pauseAt": "2026-10-23T07:11:23.490Z",
+        "dsPoolQueueAtPause": 65,
+        "configuredPauseLimit": 64,
+        "dsPoolQueuePeak": 84,
+        "dsPoolQueueAtControlledStop": 37,
+        "configuredResumeTrigger": 8,
+        "resumeObserved": false
+      },
+      "observerStageMilliseconds": {
+        "pairedBlocks": 369,
+        "brokerConfirmToSealMedian": 159.6,
+        "sealToOriginalAckMedian": 199.3
+      },
+      "driverCleanupPassed": true,
+      "ownedServiceCleanupResidue": 0
+    }
+  ]
+}

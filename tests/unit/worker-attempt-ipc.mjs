@@ -2,8 +2,9 @@
 import assert from 'node:assert/strict';
 import cluster from 'node:cluster';
 import {fileURLToPath} from 'node:url';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {WorkerAttemptSupervisor, describeWorkerAttemptEnd, workerAttemptDigest} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
+import {ActionAttemptAdjudicator} from '../../build/indexer/history/action-attempt-adjudicator.js';
 
 const mode = process.argv[2] ?? 'retry';
 const transcript = [], cases = [], owned = [];
@@ -276,6 +277,71 @@ async function supervisorShutdownWithHeldFinalizer() {
         killCallUsedAsEndEvidence: false, exactProcessCleanupObserved: true});
 }
 
+async function nativeFreshActionAssociation() {
+    const chainId = 'c'.repeat(64), blockId = 'b'.repeat(64), previousBlockId = 'a'.repeat(64),
+        config = 'd'.repeat(64), admissionId = 'h45actionadmission1:' + '1'.repeat(64),
+        sourceId = 'h45actionsource1:' + '2'.repeat(64), planId = 'h45actionplan1:' + '3'.repeat(64),
+        id = 'h45actionattempt1:' + '4'.repeat(64), target = {name: 'native-action-v1-000001', uuid: 'native-target-uuid'};
+    const source = {chainId, blockNum: 36, blockId}, dispatchJson = '{"native":"original-ds-cargo"}',
+        ingressId = 'h45actioningress1:' + '5'.repeat(64), captureSha256 = '6'.repeat(64),
+        executableSha256 = '7'.repeat(64), policySha256 = '8'.repeat(64),
+        producer = {protocolId: 'wire', profileId: 'wire-sysio-6508c9e8-engineering-v1',
+            codeRevision: '0'.repeat(40), configurationSha256: config, pluginsSha256: '9'.repeat(64)},
+        transaction = {transactionId: '1'.repeat(64), traceOrdinal: 1, traceSha256: '2'.repeat(64),
+            dispatch: {canonicalJson: dispatchJson, bodySha256: createHash('sha256').update(dispatchJson).digest('hex')}, groups: []};
+    const binding = {admissionId, planId, traceOrdinal: 1, blockNum: source.blockNum, blockId,
+        configurationSha256: config, targetName: target.name, targetUuid: target.uuid};
+    const observation = {kind: 'action-attempt-disposition', disposition: 'no-effects', work: {
+        stage: 'ds-transaction', admissionId, sourceId, ingressId, planId, target, producer,
+        executableSha256, policySha256, sourceSelectionId: null,
+        source: {...source, previousBlockId, captureSha256},
+        transaction: {transactionId: transaction.transactionId, traceOrdinal: transaction.traceOrdinal,
+            traceSha256: transaction.traceSha256, dispatchSha256: transaction.dispatch.bodySha256, expectedGroups: 0}}};
+    const admission = {id: admissionId, sourceId, planId, target,
+        inventory: {transactions: [transaction], policySha256}, source: {
+        ingressId, captureSha256, executableSha256, previousBlockId, producer,
+        inventoryInput: {source, sourceSelectionId: null, policy: {}}}};
+    const first = spawn('native-fresh-original'), replay = spawn('native-fresh-redelivery');
+    await waitFor(() => first.phase('ready') && replay.phase('ready'), 'native fresh physical children ready');
+    const before = endEvidence.length;
+    first.send('fresh-action', {binding, observation, id, dispatchJson});
+    await waitFor(() => first.phase('fresh-done') && endEvidence.length === before + 1, 'native fresh original end');
+    assert.equal(first.phase('fresh-failed'), undefined);
+    const firstEnd = describeWorkerAttemptEnd(supervisor, endEvidence[before]);
+    assert.equal(firstEnd.freshWrites.length, 1);
+    assert.equal(firstEnd.freshWrites[0].id, id);
+    const foreignObservation = structuredClone(first.requests.find(request => request.payload.operation === 'observe'));
+    foreignObservation.requestId = randomUUID();
+    replay.send('replay', {request: foreignObservation});
+    await waitFor(() => replay.replies.some(reply => reply.requestId === foreignObservation.requestId), 'foreign fresh write rejected');
+    assert.equal(replay.replies.find(reply => reply.requestId === foreignObservation.requestId).result.ok, false);
+    replay.send('fresh-action', {binding, observation, id, dispatchJson, skipWrite: true});
+    await waitFor(() => replay.phase('fresh-done') && endEvidence.length === before + 2, 'native redelivery end');
+    assert.equal(replay.phase('fresh-failed'), undefined);
+    const replayEnd = describeWorkerAttemptEnd(supervisor, endEvidence[before + 1]);
+    assert.equal(replayEnd.freshWrites.length, 0);
+    assert.equal(replayEnd.acknowledgementAttempted, true);
+    const persisted = [];
+    const store = {resolve: async () => admission, readAttemptDisposition: async () => ({id, observation}),
+        recordAttemptAssociation: async (_supervisor, _end, association) => {
+            persisted.push(association); return {id: 'private-native-association'};
+        }};
+    const authority = {configurationSha256: () => config, targetUuid: async () => target.uuid,
+        canonicalBlock: async () => ({chainId, blockId, previousBlockId, irreversible: true})};
+    const adjudicator = new ActionAttemptAdjudicator(supervisor, store, {}, authority);
+    assert.deepEqual(await adjudicator.adjudicate(endEvidence[before + 1]), {state: 'unresolved'});
+    assert.equal(persisted.length, 0);
+    assert.deepEqual(await adjudicator.adjudicate(endEvidence[before]), {state: 'associated', id: 'private-native-association'});
+    assert.equal(persisted.length, 1);
+    assert.throws(() => describeWorkerAttemptEnd(supervisor, structuredClone(endEvidence[before])), /Unissued/);
+    first.send('quit'); replay.send('quit');
+    await waitFor(() => first.exited && first.closed && replay.exited && replay.closed, 'native fresh children cleanup');
+    assert.equal(first.stderr, ''); assert.equal(replay.stderr, '');
+    cases.push({id: 'native-fresh-original-vs-redelivery', firstWrites: 1, redeliveryWrites: 0,
+        foreignPhysicalReplayAccepted: false, originalAssociated: true, redeliveryAssociated: false,
+        brokerSettlement: 'unknown', controlledAuthority: true});
+}
+
 try {
     if (mode === 'retry') await exactRetryAndFinalizer();
     else if (mode === 'disconnect') await physicalDisconnectAndReplacement();
@@ -283,6 +349,7 @@ try {
     else if (mode === 'main-ingress') await actualMainIngress();
     else if (mode === 'headers' || mode === 'ds-unadmitted') await actualUnprocessableIngress();
     else if (mode === 'shutdown') await supervisorShutdownWithHeldFinalizer();
+    else if (mode === 'fresh-action') await nativeFreshActionAssociation();
     else assert.fail('unsupported IPC case');
     console.log(JSON.stringify({passed: true, mode, native: process.version, cases, transcript,
         ownedProcessesOnly: true, capacityAuthority: false, fullWorkerQualification: false}));

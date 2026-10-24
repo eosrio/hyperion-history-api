@@ -6,7 +6,7 @@ import {protocolNumber} from '../protocol/contract-cache.js';
 
 import {HyperionWorker, protocolSourceCapture} from './hyperionWorker.js';
 import {createHash, randomUUID} from 'node:crypto';
-import {ProtocolSourceBindingStore, protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
+import {ProtocolSourceBindingStore, protocolSourceSelectionHeader, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {ProtocolAbiCoordinatorRpc} from '../protocol/abi-coordinator-rpc.js';
 import {debugLog, hLog} from '../helpers/common_functions.js';
 import {RabbitQueueDef} from '../definitions/index-queues.js';
@@ -26,7 +26,9 @@ interface BlockInfo {
 
 class StaleProtocolIngress extends Error {}
 class RevokedProtocolSource extends Error {}
-type ProtocolIngress = {generation: number; kind: 'connected'} | {generation: number; kind: 'frame'; data: Buffer};
+type ProtocolIngress = {generation: number; kind: 'connected'} | {generation: number; kind: 'frame'; data: Buffer}
+    | {generation?: number; kind: 'source-probe'; requestId: string; readerSessionId: string;
+        coordinatorGeneration: string; source: ProtocolSourcePosition};
 interface ShipCreditOwner {generation?: number; epoch: object; session?: ProtocolShipSession}
 
 export interface GetBlocksResultV0 {
@@ -76,6 +78,7 @@ export default class StateReader extends HyperionWorker {
     private stageOneDistQueue: QueueObject<any>;
     private pendingDistribution?: {publisher: ConfirmChannel; resume: () => void};
     private blockReadingQueue: QueueObject<any>;
+    private readonly sourceProbes = new Set<string>();
     private range_size = parseInt(process.env.last_block ?? '0') - parseInt(process.env.first_block ?? '0');
     private completionMonitoring: NodeJS.Timeout | null | undefined;
 
@@ -392,6 +395,25 @@ export default class StateReader extends HyperionWorker {
     onIpcMessage(msg: any): void {
         if (this.coordinatorRpc?.onMessage(msg)) return;
         switch (msg.event) {
+            case 'protocol_source_probe_request': {
+                const request = msg.data, source = request?.source;
+                if (!this.isLiveReader || !this.usesExtensionProtocol || typeof request?.requestId !== 'string'
+                    || typeof request.readerSessionId !== 'string' || typeof request.generation !== 'string'
+                    || source?.chainId !== this.chainId || !Number.isSafeInteger(source.blockNum)
+                    || typeof source.blockId !== 'string' || (source.previousBlockId !== null && typeof source.previousBlockId !== 'string')) break;
+                if (this.sourceProbes.size >= 32 || this.sourceProbes.has(request.requestId)) {
+                    process.send?.({event: 'protocol_source_probe_reply', data: {requestId: request.requestId,
+                        readerSessionId: request.readerSessionId, generation: request.generation, current: false}});
+                    break;
+                }
+                // This barrier follows already queued physical SHIP frames, including a replacement fork.
+                this.sourceProbes.add(request.requestId);
+                void this.blockReadingQueue.push({kind: 'source-probe', generation: this.physicalIngressGeneration,
+                    requestId: request.requestId, readerSessionId: request.readerSessionId,
+                    coordinatorGeneration: request.generation, source} satisfies ProtocolIngress)
+                    .catch(console.log).finally(() => this.sourceProbes.delete(request.requestId));
+                break;
+            }
             case 'new_range': {
                 if (msg.target === process.env.worker_id) {
                     this.newRange(msg.data);
@@ -541,7 +563,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private async processIncomingBlocks(block_array: any[]) {
-        if (this.usesOrderedSourceIngress && block_array.some(item => item?.kind === 'frame' || item?.kind === 'connected')) {
+        if (this.usesOrderedSourceIngress && block_array.some(item => item?.kind === 'frame' || item?.kind === 'connected' || item?.kind === 'source-probe')) {
             let credits = 0;
             let creditGeneration: number | undefined;
             let creditOwner: ShipCreditOwner | undefined;
@@ -558,6 +580,18 @@ export default class StateReader extends HyperionWorker {
                     credits = 0;
                     creditOwner = undefined;
                     creditGeneration = item.generation;
+                    continue;
+                }
+                if (item.kind === 'source-probe') {
+                    const position = {num: item.source.blockNum, id: item.source.blockId,
+                        previous: item.source.previousBlockId ?? ''};
+                    const current = item.generation !== undefined && item.generation === this.physicalIngressGeneration
+                        && this.verifiedReaderSessionId === item.readerSessionId
+                        && this.coordinatorSource?.readerSessionId === item.readerSessionId
+                        && this.coordinatorSource.generation === item.coordinatorGeneration
+                        && !!this.liveCheckpoint?.hasCurrentReversible(position);
+                    process.send?.({event: 'protocol_source_probe_reply', data: {requestId: item.requestId,
+                        readerSessionId: item.readerSessionId, generation: item.coordinatorGeneration, current}});
                     continue;
                 }
                 if (item.kind !== 'frame' || !Buffer.isBuffer(item.data)) throw new Error('Invalid protocol ingress envelope');

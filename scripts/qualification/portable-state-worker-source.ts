@@ -12,7 +12,7 @@ import {createWireShipCodec, resolveCodecProfile} from '@eosrio/hyperion-wire-pl
 export const portableSourceLimits = Object.freeze({blocks: 4096, bytes: 128 * 1024 * 1024,
     receiptBytes: 8 * 1024 * 1024, frameBytes: 8 * 1024 * 1024, window: 32,
     requests: 16384, requestBytes: 4096, requestTotalBytes: 8 * 1024 * 1024,
-    connections: 8, bufferedBytes: 16 * 1024 * 1024, runMs: 900_000});
+    connections: 8, sessions: 32, bufferedBytes: 16 * 1024 * 1024, runMs: 900_000});
 export const portableSourceHash = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
 const jsonCopy = <T>(value: T): T => structuredClone(value);
 const hex64 = /^[0-9a-f]{64}$/;
@@ -35,6 +35,8 @@ export interface PortableWorkerSource {
     readonly chainId: string; readonly profileId: string; readonly sourceRevision: string;
     readonly components: readonly any[]; readonly endBlock: number; readonly schemaJson: string;
     readonly records: readonly PortableSourceBlock[]; readonly inputHashes: Readonly<Record<string, string>>;
+    /** Original SHIP status/frame LIB observations, keyed by their block number. */
+    readonly irreversibleAnchors: Readonly<Record<string, string>>;
     readonly originalStatus: any; readonly startupInfo: any;
 }
 interface PrivateSource {frames: Buffer[]; status: Buffer; schema: Buffer; codec: ReturnType<typeof createWireShipCodec>;}
@@ -97,7 +99,16 @@ export async function auditPortableWorkerSource(input: PortableSourceInput,
     assert.equal(Number(decodedStatus[1].chain_state_begin_block), 1); assert.equal(Number(decodedStatus[1].trace_begin_block), 2);
     for (const name of ['chain_state_end_block', 'trace_end_block']) assert.ok(Number(decodedStatus[1][name]) > input.endBlock, 'source retention does not cover requested prefix');
     const originalInfo = JSON.parse(infoBytes.toString('utf8')); assert.equal(originalInfo.chain_id, receipt.chainId);
-    const frames: Buffer[] = [], records: PortableSourceBlock[] = [];
+    const frames: Buffer[] = [], records: PortableSourceBlock[] = [], irreversibleAnchors: Record<string, string> = {};
+    const retainAnchor = (value: {block_num: number | string; block_id: string}) => {
+        const blockNum = Number(value.block_num), blockId = value.block_id;
+        assert.ok(Number.isSafeInteger(blockNum) && blockNum >= 1 && blockNum <= 0xffffffff && hex64.test(blockId));
+        const key = String(blockNum);
+        assert.ok(irreversibleAnchors[key] === undefined || irreversibleAnchors[key] === blockId,
+            'original SHIP irreversible anchor changed for the same block');
+        irreversibleAnchors[key] = blockId;
+    };
+    retainAnchor(decodedStatus[1].last_irreversible);
     const inputHashes: Record<string, string> = {'receipt.json': input.receiptSha256, 'schema.json': portableSourceHash(schema),
         [input.status.path]: input.status.sha256, [input.getInfo.path]: input.getInfo.sha256};
     let totalBytes = schema.length + status.length + infoBytes.length, parent: string | null = null;
@@ -108,6 +119,7 @@ export async function auditPortableWorkerSource(input: PortableSourceInput,
         totalBytes += frame.length; assert.ok(totalBytes <= portableSourceLimits.bytes, 'source aggregate byte bound exceeded');
         const bundle: any = codec.decodeBundle(frame), result = bundle.envelope[1];
         assert.equal(bundle.envelope[0], 'get_blocks_result_v0'); assert.equal(Number(result.this_block.block_num), index + 1);
+        retainAnchor(result.last_irreversible);
         assert.equal(result.this_block.block_id, entry.blockId); assert.ok(hex64.test(entry.blockId));
         assert.equal(result.prev_block?.block_id ?? null, parent, 'original source is not contiguous');
         assert.ok(Number(result.last_irreversible.block_num) >= index + 1, 'input was not captured irreversible');
@@ -130,7 +142,8 @@ export async function auditPortableWorkerSource(input: PortableSourceInput,
         head_block_producer: first.producer};
     const source = Object.freeze({chainId: receipt.chainId, profileId, sourceRevision: profile.upstreamRevision,
         components: Object.freeze(jsonCopy(selected.components)), endBlock: input.endBlock, schemaJson,
-        records: Object.freeze(records), inputHashes: Object.freeze(inputHashes), originalStatus: jsonCopy(decodedStatus), startupInfo: Object.freeze(startupInfo)});
+        records: Object.freeze(records), inputHashes: Object.freeze(inputHashes),
+        irreversibleAnchors: Object.freeze(irreversibleAnchors), originalStatus: jsonCopy(decodedStatus), startupInfo: Object.freeze(startupInfo)});
     sealed.set(source, {frames, status, schema, codec}); return source;
 }
 
@@ -172,7 +185,8 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
     const server = new WebSocketServer({host: '127.0.0.1', port: 0, maxPayload: portableSourceLimits.requestBytes});
     await once(server, 'listening');
     const sessions: {flow: PortableSourceFlow; socket: WebSocket}[] = [], requests: any[] = [];
-    let through = 0, sentBytes = 0, requestBytes = 0, closed = false, closing: Promise<void> | undefined;
+    const activeSessions = new Set<typeof sessions[number]>();
+    let through = 0, sentBytes = 0, requestBytes = 0, peakActiveConnections = 0, closed = false, closing: Promise<void> | undefined;
     const close = () => closing ??= (async () => {closed = true; clearTimeout(timer); for (const {socket} of sessions) socket.terminate();
         await new Promise<void>((done, reject) => server.close(error => error ? reject(error) : done()));})();
     const timer = setTimeout(() => {errors.push('portable source deadline exceeded'); void close().catch(error => errors.push(String(error)));}, portableSourceLimits.runMs); timer.unref();
@@ -183,8 +197,13 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
             session.socket.send(frame, {binary: true}, error => {if (error && !closed) errors.push(String(error));});}
     };
     server.on('connection', socket => {
-        if (sessions.length >= portableSourceLimits.connections) {errors.push('portable source connection bound'); socket.terminate(); return;}
+        // Normal API health checks open and close a status socket once their cache expires.
+        // Keep physical concurrency and retained audit history separately bounded.
+        if (sessions.length >= portableSourceLimits.sessions) {errors.push('portable source session history bound'); socket.terminate(); return;}
+        if (activeSessions.size >= portableSourceLimits.connections) {errors.push('portable source concurrent connection bound'); socket.terminate(); return;}
         const session = {flow: new PortableSourceFlow(source.endBlock), socket}; sessions.push(session); session.flow.releaseThrough(through);
+        activeSessions.add(session); peakActiveConnections = Math.max(peakActiveConnections, activeSessions.size);
+        socket.once('close', () => activeSessions.delete(session));
         socket.send(retained.schema, {binary: false}); socket.on('error', error => {if (!closed) errors.push(String(error));});
         socket.on('message', (bytes, binary) => {try {assert.equal(binary, true); const frame = Buffer.from(bytes as Buffer); requestBytes += frame.length;
             assert.ok(requestBytes <= portableSourceLimits.requestTotalBytes); const request = retained.codec.decodeRequest(frame);
@@ -202,5 +221,6 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
             assert.deepEqual(sessions.flatMap(session => session.flow.acknowledged), expected);
             assert.ok(sessions.every(session => session.flow.outstanding === 0));},
         metrics() {return {through, sentBytes, requestBytes, connections: sessions.length,
+            activeConnections: activeSessions.size, peakActiveConnections,
             sessions: sessions.map(session => ({sent: [...session.flow.sent], acknowledged: [...session.flow.acknowledged], outstanding: session.flow.outstanding}))};}};
 }

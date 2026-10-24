@@ -1,5 +1,6 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {actionHistoryImmutableJson} from '../history/action-history-manifest.js';
+import type {FreshActionWrite} from '../history/action-fresh-write.js';
 
 export type WorkerAttemptRole = 'deserializer' | 'ds_pool_worker' | 'projection';
 export type WorkerAttemptKind = 'source-delivery' | 'ds-delivery' | 'projection-initialization' | 'projection-frame';
@@ -30,6 +31,7 @@ interface Entry {
     size: number;
     id: string; sequence: number; descriptor: WorkerAttemptDescriptor; descriptorJson: string; challenge: string;
     registrationRequest: string; binding: WorkerAttemptBinding; bindingVersion: number; bindingRequest?: string;
+    freshWrites: FreshActionWrite[]; freshWriteBytes: number; freshWriteOverflow: boolean;
     endRequest?: string; endJson?: string; end?: WorkerAttemptEndDescription;
 }
 export interface WorkerAttemptEndDescription {
@@ -37,6 +39,7 @@ export interface WorkerAttemptEndDescription {
     status: 'quiescent' | 'process-exited-unresolved';
     descriptor: WorkerAttemptDescriptor; binding: WorkerAttemptBinding;
     acknowledgementAttempted: boolean | null; rootResult: 'returned' | 'threw' | 'unknown';
+    freshWrites: readonly FreshActionWrite[]; freshWriteOverflow: boolean;
 }
 declare const acceptedEndBrand: unique symbol;
 export interface AcceptedWorkerAttemptEnd {readonly [acceptedEndBrand]: true}
@@ -45,7 +48,8 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const hash = /^[0-9a-f]{64}$/;
 const roles = new Set(['deserializer', 'ds_pool_worker', 'projection']);
 export const workerAttemptBounds = Object.freeze({maximumOwners: 256, maximumActive: 4096,
-    maximumRetainedEndsPerOwner: 256, maximumMetadataBytes: 64 * 1024 * 1024, maximumMessageBytes: 16 * 1024});
+    maximumRetainedEndsPerOwner: 256, maximumMetadataBytes: 64 * 1024 * 1024, maximumMessageBytes: 16 * 1024,
+    maximumFreshWritesPerAttempt: 32, maximumFreshWriteBytesPerAttempt: 8 * 1024});
 export const workerAttemptJson = (value: unknown) => actionHistoryImmutableJson(value, workerAttemptBounds.maximumMessageBytes);
 export const workerAttemptDigest = (value: unknown) => createHash('sha256').update(workerAttemptJson(value)).digest('hex');
 function keys(value: any, expected: string[]) {return value && typeof value === 'object' && !Array.isArray(value)
@@ -71,6 +75,16 @@ export function validateWorkerAttemptBinding(value: WorkerAttemptBinding): void 
             : typeof field === 'string' && field.length > 0 && field.length <= 256 && field.isWellFormed()))
             throw new Error('Invalid worker attempt binding field');
     }
+    workerAttemptJson(value);
+}
+export function validateFreshActionWrite(value: FreshActionWrite): void {
+    if (!keys(value, ['kind','id','recordSha256','workSha256','classification'])
+        || !(value.kind === 'confirmed-handoff' && typeof value.id === 'string' && /^h45actionhandoff1:[0-9a-f]{64}$/.test(value.id)
+            || value.kind === 'attempt-disposition' && typeof value.id === 'string' && /^h45actionattempt1:[0-9a-f]{64}$/.test(value.id))
+        || !hash.test(value.recordSha256) || !hash.test(value.workSha256)
+        || !(value.kind === 'confirmed-handoff' ? value.classification === 'confirmed-handoff'
+            : ['intentional-no-effect','intentional-suppression','source-incomplete','contract-incomplete',
+                'raw-incomplete'].includes(value.classification))) throw new Error('Invalid fresh action write');
     workerAttemptJson(value);
 }
 /** Private parent-side census. It never grants source progress, reader credit or recovered authority. */
@@ -154,7 +168,8 @@ export class WorkerAttemptSupervisor {
                         this.overflow = true; throw new Error('Worker attempt census budget exhausted');
                     }
                     entry = this.account({size: 0, id: input.attemptId, sequence: input.sequence, descriptor: JSON.parse(descriptorJson), descriptorJson,
-                        challenge: randomUUID(), registrationRequest: requestId, binding: {}, bindingVersion: 0});
+                        challenge: randomUUID(), registrationRequest: requestId, binding: {}, bindingVersion: 0,
+                        freshWrites: [], freshWriteBytes: 0, freshWriteOverflow: false});
                     owner.entries.set(entry.id, entry); owner.sequence = entry.sequence; this.active++;
                 }
                 this.reply(worker, requestId, {ok: true, epoch: this.epoch, incarnation: owner.incarnation,
@@ -179,6 +194,33 @@ export class WorkerAttemptSupervisor {
                 }
                 this.reply(worker, requestId, {ok: true, bindingSha256: workerAttemptDigest(entry.binding)}); return true;
             }
+            if (input.operation === 'observe') {
+                if (entry.end || owner.state !== 'active') throw new Error('Worker attempt observation is retired');
+                validateFreshActionWrite(input.write);
+                const write: FreshActionWrite = JSON.parse(workerAttemptJson(input.write));
+                const existing = entry.freshWrites.find(item => item.kind === write.kind && item.id === write.id);
+                if (existing && workerAttemptJson(existing) !== workerAttemptJson(write))
+                    throw new Error('Conflicting fresh action write for original attempt');
+                if (!existing && entry.freshWrites.some(item => item.workSha256 === write.workSha256))
+                    throw new Error('Conflicting fresh action work for original attempt');
+                let acceptedWrite = !!existing;
+                if (!existing && !entry.freshWriteOverflow) {
+                    const bytes = Buffer.byteLength(workerAttemptJson(write));
+                    if (entry.freshWrites.length >= workerAttemptBounds.maximumFreshWritesPerAttempt
+                        || entry.freshWriteBytes + bytes > workerAttemptBounds.maximumFreshWriteBytesPerAttempt) {
+                        entry = this.account({...entry, freshWriteOverflow: true});
+                    } else {
+                        const freshWrites = [...entry.freshWrites, write].sort((a, b) =>
+                            (a.kind + ':' + a.id).localeCompare(b.kind + ':' + b.id));
+                        entry = this.account({...entry, freshWrites, freshWriteBytes: entry.freshWriteBytes + bytes});
+                        acceptedWrite = true;
+                    }
+                    owner.entries.set(entry.id, entry);
+                }
+                this.reply(worker, requestId, {ok: true, epoch: this.epoch, incarnation: owner.incarnation,
+                    attemptId: entry.id, accepted: acceptedWrite, freshWriteOverflow: entry.freshWriteOverflow,
+                    writeSha256: workerAttemptDigest(write)}); return true;
+            }
             if (input.operation !== 'end' || input.descriptorSha256 !== workerAttemptDigest(entry.descriptor)
                 || input.bindingSha256 !== workerAttemptDigest(entry.binding)
                 || !keys(input.summary, ['acknowledgementAttempted','rootResult'])
@@ -199,7 +241,7 @@ export class WorkerAttemptSupervisor {
         if (entry.end) return entry;
         const end: WorkerAttemptEndDescription = JSON.parse(workerAttemptJson({epoch: this.epoch, incarnation: owner.incarnation, attemptId: entry.id, role: owner.role,
             status, descriptor: entry.descriptor, binding: entry.binding, acknowledgementAttempted: summary?.acknowledgementAttempted ?? null,
-            rootResult: summary?.rootResult ?? 'unknown'}));
+            rootResult: summary?.rootResult ?? 'unknown', freshWrites: entry.freshWrites, freshWriteOverflow: entry.freshWriteOverflow}));
         const next = {...entry, ...request, end};
         if (status === 'quiescent') {entry = this.account(next); owner.entries.set(entry.id, entry);}
         this.active--; owner.completed.push(entry.id);

@@ -180,6 +180,11 @@ export abstract class HyperionWorker {
         return client.run(handle, operation);
     }
     async bindWorkerAttempt(fields: WorkerAttemptBinding): Promise<void> {await this.attemptClient().bindCurrent(fields);}
+    /** A fresh store return is forwarded by its original scoped worker; controlled fixtures have no parent authority. */
+    async observeFreshActionWrite(result: object): Promise<boolean> {
+        const client = this.attemptClient();
+        return client.mode === 'managed' ? client.observeFreshActionWrite(result) : false;
+    }
     markWorkerAcknowledgementAttempt(): void {if (currentProofConsumerScope()) this.attemptClient().markAcknowledgementAttempt();}
     settleOriginalWorkerDelivery(message: Message, negative = false): void {
         if (!this.tracksWorkerAttempts) {negative ? this.ch?.nack(message) : this.ch?.ack(message); return;}

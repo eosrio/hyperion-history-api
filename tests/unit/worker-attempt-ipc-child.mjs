@@ -9,6 +9,9 @@ import assert from 'node:assert/strict';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 import {WorkerAttemptClient} from '../../build/indexer/protocol/worker-attempt-client.js';
 import {currentProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
+import {ImmutableProtocolBundleStore} from '../../build/indexer/protocol/immutable-bundle-store.js';
+import {issueFreshActionWrite} from '../../build/indexer/history/action-fresh-write.js';
+import {actionHistoryImmutableJson} from '../../build/indexer/history/action-history-manifest.js';
 
 const gate = () => {let release; const promise = new Promise(resolve => {release = resolve;}); return {promise, release};};
 const body = gate(), finalizer = gate();
@@ -56,7 +59,26 @@ async function captureActualRole(headerKind) {
 }
 
 async function command(message) {
-    if (message.command === 'start') {
+    if (message.command === 'fresh-action') {
+        const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+        const receipt = client.capture({kind: 'ds-delivery', receiptId: randomUUID(), payloadSha256: digest(message.dispatchJson),
+            headersSha256: digest('{}'), consumerId: randomUUID(), publisherId: randomUUID(), queue: 'owned:ds', deliveryTag: 55});
+        work = client.run(receipt, async () => {
+            await client.bindCurrent(message.binding);
+            if (!message.skipWrite) {
+                const bundles = new ImmutableProtocolBundleStore(frontierMemoryClient().client, 'native-fresh-action', 0,
+                    'action-source-admission', 'history-source-admission-v1');
+                const proof = await bundles.prepare(message.id,
+                    {schemaVersion: 1, payloadJson: actionHistoryImmutableJson(message.observation)});
+                const result = issueFreshActionWrite({id: message.id, observation: message.observation},
+                    'attempt-disposition', message.id, message.observation, proof, bundles);
+                assert.equal(await client.observeFreshActionWrite(result), true);
+                report('fresh-observed');
+            }
+            client.markAcknowledgementAttempt();
+        });
+        void work.then(() => report('fresh-done'), error => report('fresh-failed', {message: error.message}));
+    } else if (message.command === 'start') {
         const digest = bytes => createHash('sha256').update(bytes).digest('hex');
         handle = client.capture({kind: 'ds-delivery', receiptId: randomUUID(), payloadSha256: digest('original-cargo'),
             headersSha256: digest('{}'), consumerId: randomUUID(), publisherId: randomUUID(), queue: 'owned:ds', deliveryTag: 1});
