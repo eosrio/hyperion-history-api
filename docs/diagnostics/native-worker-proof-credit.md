@@ -7,7 +7,7 @@ production behavior, public activation, ancestry bound, timeout, or service.
 
 ## Reproduce
 
-Use Node.js 22 or 24, Bun 1.4.4 for checking, and the committed npm dependency
+Use Node.js 24 or 26, Bun 1.4.4 for checking, and the committed npm dependency
 tree with preparation scripts enabled:
 
 ```sh
@@ -201,7 +201,7 @@ node tests/unit/protocol-native-lag-replay.mjs --measure > proof-measurement.log
 node tests/unit/protocol-native-lag-replay.mjs --assert-pending-native-preserved
 ```
 
-Select an explicit native Node 22 or 24 executable; `node` above denotes that
+Select an explicit native Node 24 or 26 executable; `node` above denotes that
 executable. The measurement command exits zero when it has confirmed the known
 expiry defect and its controls. The final command deliberately exits one because
 the genuine pending native action produces no complete output at distance 257.
@@ -235,8 +235,8 @@ HYPERION_PROOF_CPU_PROFILE_DIR="$CASE/cpu" \
 "$NODE24" tests/unit/protocol-native-lag-replay.mjs --measure > "$CASE/probe.log"
 ```
 
-Repeat with the explicit Node 22 executable, another new case directory and a
-distinct `h45proof277-${RUN_ID}-n22` prefix. No existing index may match the complete
+Repeat with the explicit Node 26 executable, another new case directory and a
+distinct `h45proof277-${RUN_ID}-n26` prefix. No existing index may match the complete
 selected prefix before a run. The adapter requires an unauthenticated URL without
 embedded credentials/query parameters, verifies server version 9.5.5 and restricts
 its writes to that fresh namespace. Use the disposable fixture rather than an

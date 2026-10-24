@@ -49,7 +49,7 @@ captured Spring frame through actual reader publication and confirmation before
 pause/resume, then checks the replacement transport's encoded credit bytes.
 
 After installing the committed npm lockfile with preparation scripts enabled and
-building the emitted artifacts, run with the CI Node.js 22 or 24 executable:
+building the emitted artifacts, run with the CI Node.js 24 or 26 executable:
 
 ```sh
 READER_RECOVERY_NODE=/path/to/node bun test tests/unit/state-reader-live-backpressure.test.ts
