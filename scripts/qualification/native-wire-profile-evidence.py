@@ -1,7 +1,6 @@
 """Publish/verify the frozen #297 capture. Raw configuration and console files are never exported."""
 import argparse
 import collections
-import copy
 import csv
 import gzip
 import hashlib
@@ -63,22 +62,62 @@ def read_archive(path):
     return files, aliases
 
 
-def redact(value):
+def relocate(value, replacements):
     if isinstance(value, str):
-        return value.replace(PRIVATE_ROOT + '/source', '/qualification/source').replace(PRIVATE_ROOT, PUBLIC_ROOT)
+        for original, replacement in replacements:
+            value = value.replace(original, replacement)
+        return value
     if isinstance(value, list):
-        return [redact(v) for v in value]
+        return [relocate(v, replacements) for v in value]
     if isinstance(value, dict):
-        result = {redact(k): redact(v) for k, v in value.items()}
+        result = {relocate(k, replacements): relocate(v, replacements) for k, v in value.items()}
         if len(result) != len(value):
             raise ValueError('Redaction would collapse distinct metadata keys')
         return result
     return value
 
 
+def redact(value):
+    return relocate(value, [(PRIVATE_ROOT + '/source', '/qualification/source'), (PRIVATE_ROOT, PUBLIC_ROOT)])
+
+
 def scan(data):
     if SENSITIVE.search(data):
         raise ValueError('Private path, endpoint or credential marker in publication')
+
+
+def observation_treatment(name):
+    if name.startswith(('bulk/', 'prefixes/')) or re.fullmatch(r'observer/(api|master)/native-[0-9]+\.jsonl', name):
+        return 'verbatim'
+    if re.fullmatch(r'observer/(api|master)/worker-[0-9]+\.cpuprofile', name):
+        return 'profile-urls-redacted'
+    if re.fullmatch(r'observer/(api|master)/worker-[0-9]+\.jsonl', name):
+        return 'observation-paths-redacted'
+    return None
+
+
+def publish_observations(raw, prefix, redactor):
+    published, entries = {}, []
+    for name, data in sorted(raw.items()):
+        if not name.startswith(prefix):
+            continue
+        relative = name[len(prefix):]
+        treatment = observation_treatment(relative)
+        if treatment is None:
+            continue
+        if treatment == 'verbatim':
+            content = data
+        elif treatment == 'profile-urls-redacted':
+            value = json.loads(data)
+            for node in value['nodes']:
+                node['callFrame']['url'] = redactor(node['callFrame']['url'])
+            content = encoded(value)
+        else:
+            content = b''.join(encoded(redactor(json.loads(line))) for line in data.splitlines())
+        scan(content); published[relative] = content
+        entries.append({'path': relative, 'sourcePath': name, 'sourceBytes': len(data), 'sourceSha256': sha(data),
+            'bytes': len(content), 'sha256': sha(content), 'treatment': treatment})
+    return published, entries
 
 
 def summarize_profile(profile, rows):
@@ -227,28 +266,7 @@ def publish(source, output, node):
         'logRoot': PRIVATE_ROOT + '/' + REPLAY.rstrip('/'), 'profiles': profiles}
     original_observers = {name[len(REPLAY):]: data for name, data in raw.items() if name.startswith(REPLAY + 'observer/')}
     audit_with_node(original_observers, metadata, node, 'original')
-    published, entries = {}, []
-    for name, data in sorted(raw.items()):
-        if not name.startswith(REPLAY):
-            continue
-        relative = name[len(REPLAY):]
-        if relative.startswith(('bulk/', 'prefixes/')) or relative.startswith('observer/') and '/native-' in relative:
-            content, treatment = data, 'verbatim'
-        elif relative.startswith('observer/') and relative.endswith('.cpuprofile'):
-            profile = json.loads(data)
-            normalized = copy.deepcopy(profile)
-            for item in normalized['nodes']:
-                item['callFrame']['url'] = redact(item['callFrame']['url'])
-            content, treatment = encoded(normalized), 'profile-urls-redacted'
-        elif relative.startswith('observer/') and re.search(r'/worker-\d+\.jsonl$', relative):
-            content = b''.join(encoded(redact(json.loads(line))) for line in data.splitlines())
-            treatment = 'observation-paths-redacted'
-        else:
-            continue
-        scan(content)
-        published[relative] = content
-        entries.append({'path': relative, 'sourcePath': name, 'sourceBytes': len(data), 'sourceSha256': sha(data),
-            'bytes': len(content), 'sha256': sha(content), 'treatment': treatment})
+    published, entries = publish_observations(raw, REPLAY, redact)
     for item in profiles:
         entry = next(v for v in entries if v['path'] == item['file'])
         item.update({'publishedSha256': entry['sha256'], 'publishedBytes': entry['bytes']})
