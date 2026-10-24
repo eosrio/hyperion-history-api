@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
 import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -134,8 +135,7 @@ export async function runRollbackWorker(job, {assertOwned, children = new Set(),
  */
 export async function runProjectionRollbackQualification({uri, databaseName, run, assertOwned}) {
     assert.equal(process.platform, 'linux', 'Process-crash fixture requires Linux');
-    assert.equal(process.release.name, 'node');
-    assert.ok(['22', '24'].includes(process.versions.node.split('.')[0]), 'Use native Node.js 22 or 24');
+    assertNativeQualificationRuntime();
     assert.match(run, /^[0-9a-f]{32}$/);
     assert.equal(typeof assertOwned, 'function');
     assertOwned();

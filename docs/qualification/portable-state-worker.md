@@ -12,6 +12,10 @@ records passing native Linux Node 22/24 runs at the pinned code commit, independ
 reviews, process observations and verified cleanup. Its scope and remaining release
 gates are explicit.
 
+For new qualification, [the current baseline](https://github.com/eosrio/hyperion-tools/issues/65)
+requires Node 24 or newer, with selected Node 24/26 runs. Dated Node 22 observations and their
+then-pending gates below are historical; they do not establish Node 26 acceptance.
+
 ## Original inputs and independent expectations
 
 The [fixture bundle](../../tests/fixtures/portable-state-worker/README.md) retains
@@ -53,7 +57,7 @@ collections and the legacy Elasticsearch state route are outside this tracer.
 ## Prepare the checkout and source
 
 Run from the repository root on an isolated Linux qualification host with Docker,
-Python 3.10+, PowerShell 7, native Node 22 or 24, and pinned Bun 1.4.3 on `PATH`.
+Python 3.10+, PowerShell 7, native Node 24 or 26, and pinned Bun 1.4.4 on `PATH`.
 Allow roughly 12 GiB RAM and 45 GiB free fixture storage. Docker uses only pinned images
 and ephemeral loopback ports. The existing ES fixture requires an appropriate host
 `vm.max_map_count`; provision host prerequisites separately before running it.
@@ -115,11 +119,11 @@ a production recommendation nor a performance result.
 ## Run and inspect
 
 ```sh
-node --experimental-transform-types scripts/qualification/portable-state-worker.ts out/p191-services/worker-state.json out/p191-source/plan.json out/p191-node24
+node --experimental-strip-types scripts/qualification/portable-state-worker.ts out/p191-services/worker-state.json out/p191-source/plan.json out/p191-node24
 ```
 
 Select the intended native Node executable on `PATH`. Use a fresh service fixture
-and new output directory for a separate Node 22 run. The source can be reused
+and new output directory for a separate Node 26 run. The source can be reused
 unchanged. A passing typecheck or a prepared fixture is not runtime acceptance.
 
 The driver starts the actual indexer/API processes and requires:
@@ -147,12 +151,12 @@ The driver starts the actual indexer/API processes and requires:
 ## Native engineering replay for #270
 
 The same tracer has an explicit native mode. Use a new owned service fixture and
-output directory for each native Node 22/24 run, with the ordinary committed npm
+output directory for each native Node 24/26 run, with the ordinary committed npm
 lock and preparation scripts enabled:
 
 ```sh
 bun test tests/unit/portable-state-worker-native.test.ts tests/unit/portable-state-worker-harness.test.ts
-node --experimental-transform-types scripts/qualification/portable-state-worker.ts out/p191-services/worker-state.json out/p191-source/plan.json out/p270-node24 --native
+node --experimental-strip-types scripts/qualification/portable-state-worker.ts out/p191-services/worker-state.json out/p191-source/plan.json out/p270-node24 --native
 ```
 
 Select `wire-sysio-6508c9e8-native-engineering-v1` through the generated ordinary

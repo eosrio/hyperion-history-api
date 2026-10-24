@@ -108,4 +108,4 @@ bun test tests/unit/action-fresh-write.test.ts tests/unit/action-attempt-adjudic
 npm test
 ```
 
-For native Node 22/24, set `HYPERION_NATIVE_NODE` to the exact executable and rerun the emitted worker tests. The physical-reader probe still needs original-worker live fork qualification. Live broker, Elasticsearch, and current-fork authority require combined qualification. The Linux 1–1480 Wire/Mongo replay and #277 count-and-byte capacity reservation are separate work.
+For native Node 24/26, set `HYPERION_NATIVE_NODE` to the exact executable and rerun the emitted worker tests. The dated Node 22 results above remain historical evidence. The physical-reader probe still needs original-worker live fork qualification. Live broker, Elasticsearch, and current-fork authority require combined qualification. The Linux 1–1480 Wire/Mongo replay and #277 count-and-byte capacity reservation are separate work.

@@ -47,7 +47,7 @@ capabilities establish behavior, without a throughput claim.
 
 ## Reproducible checks
 
-Use the pinned Node.js 22 or 24 toolchain with TypeScript 7.0.2 and Bun 1.4.3:
+Use the pinned Node.js 24 or 26 toolchain with TypeScript 7.0.2 and Bun 1.4.4:
 
 ```sh
 npm ci --allow-git=all
@@ -68,7 +68,7 @@ projection isolation. Resource cleanup checks ownership and records verification
 in the JSON report. Source/emission fingerprints and exact component pins accompany
 the result. The report intentionally keeps release qualification false.
 
-CI runs this real fixture separately on Node.js 22 and 24. Cleanup unit tests and
+CI runs this real fixture separately on Node.js 24 and 26. Cleanup unit tests and
 in-memory runtime tests do not replace the actual MongoDB result. See the
 [adapter package](../packages/backend-mongodb/README.md) for its API and limits.
 

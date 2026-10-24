@@ -39,7 +39,7 @@ proof window, public API or SDK interface is introduced.
 ## Reproduce the focused worker checks
 
 From a normally installed checkout (`npm ci --allow-git=all`, committed lockfile and allowScripts
-policy), emit the native TypeScript build with Node 22 or 24, run the complete project check,
+policy), emit the native TypeScript build with Node 24 or 26, run the complete project check,
 then run the following with pinned Bun 1.4.4 and the chosen native Node in `HYPERION_NATIVE_NODE`:
 
 ```sh

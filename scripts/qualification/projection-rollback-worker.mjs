@@ -1,4 +1,5 @@
 import {writeSync} from 'node:fs';
+import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
 import {fileURLToPath} from 'node:url';
 
 const prefixPattern = /^[a-z][a-z0-9_]{0,31}$/;
@@ -91,8 +92,8 @@ export function matchesCrashBoundary(boundary, phase, stage) {
 
 async function runJob(raw) {
     const job = validateWorkerJob(raw);
-    if (process.release.name !== 'node' || !['22', '24'].includes(process.versions.node.split('.')[0]) || process.platform !== 'linux')
-        throw new Error('Process-crash qualification requires native Linux Node.js 22 or 24');
+    assertNativeQualificationRuntime();
+    if (process.platform !== 'linux') throw new Error('Process-crash qualification requires native Linux Node.js 24 or 26');
     const {MongoClient} = await import('mongodb');
     const {createMongoDbRollbackAdapter} = await import('../../packages/backend-mongodb/dist/index.js');
     const {RecoverableProjectionRuntime} = await import('../../build/indexer/projection/recoverable-runtime.js');

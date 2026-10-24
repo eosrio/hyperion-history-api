@@ -3,6 +3,7 @@
  * This driver imports no old source corpus or evidence archive and never initializes a projection.
  */
 import assert from 'node:assert/strict';
+import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
 import {spawn, execFileSync, type ChildProcess} from 'node:child_process';
 import {mkdir, open, readdir, writeFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -315,7 +316,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     if (Object.hasOwn(options, 'native')) assert.equal(typeof options.native, 'boolean');
     if (Object.hasOwn(options, 'authorityRpc')) assert.ok(options.native && typeof options.authorityRpc === 'string',
         'the source-bounded RPC check requires explicit native qualification');
-    assert.equal(process.release.name, 'node'); assert.ok(!process.versions.bun && /^(22|24)\./.test(process.versions.node));
+    assertNativeQualificationRuntime();
     const deadline = performance.now() + portableSourceLimits.runMs;
     const remaining = () => {const value = Math.floor(deadline - performance.now()); assert.ok(value > 0, 'portable worker deadline exceeded'); return value;};
     let cleanupDeadline: number | undefined;
