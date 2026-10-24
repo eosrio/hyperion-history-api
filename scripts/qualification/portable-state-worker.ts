@@ -26,6 +26,7 @@ import {assertPortableWorkerOracle, portableWorkerAbiAvailability} from './porta
 import {auditPortableNativeOracle, createPortableNativeQualification, nativePortableHolds, portableLegacyProfile,
     portableNativeProfile} from './portable-state-worker-native.ts';
 import {auditPortablePhysicalMongo} from './portable-state-worker-mongo.ts';
+import {auditPortableWorkerProfiles, portableWorkerProfileEnvironment, portableWorkerProfileLimits} from './portable-state-worker-profiles.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
@@ -117,12 +118,12 @@ export function validatePortableWorkerPlan(value: unknown): PortableWorkerPlan {
     return structuredClone(plan);
 }
 
-export function portableWorkerEnvironment(environment: NodeJS.ProcessEnv, output: string, config: string, chain: string) {
+export function portableWorkerEnvironment(environment: NodeJS.ProcessEnv, output: string, config: string, chain: string, profile = false) {
     const selected = {...environment};
     for (const name of Object.keys(selected)) if (name.startsWith('ES198_') || name.startsWith('worker_') || name.startsWith('HYPERION_PORTABLE_') ||
         ['NODE_OPTIONS', 'NODE_PATH', 'CONFIG_JSON', 'CHAIN_NAME', 'first_block', 'last_block', 'live_mode'].includes(name)) delete selected[name];
     return {...selected, NODE_OPTIONS: '', CONFIG_JSON: config, CHAIN_NAME: chain,
-        ES198_OBSERVER_DIR: join(output, 'observer'), ES198_CPU_PROFILE: '0'};
+        ES198_OBSERVER_DIR: join(output, 'observer'), ...portableWorkerProfileEnvironment(profile)};
 }
 
 export function portableWorkerConfig(chain: string, database: string, definitions: readonly ProjectionDefinition[], port: number, rpc: string,
@@ -213,10 +214,7 @@ export async function portableSourceRpc(source: PortableWorkerSource, errors: st
     replayThrough?: () => number} = {}) {
     assert.equal(!!options.authorityRpc, !!options.replayThrough,
         'live RPC checks require the owned replay cursor');
-    const upstream = options.authorityRpc ? new URL(options.authorityRpc) : undefined;
-    if (upstream) assert.ok(['http:', 'https:'].includes(upstream.protocol) && upstream.pathname === '/'
-        && !upstream.username && !upstream.password && !upstream.search && !upstream.hash,
-    'qualification authority RPC must be an ordinary HTTP origin');
+    const upstream = options.authorityRpc ? portableAuthorityRpcOrigin(options.authorityRpc) : undefined;
     const upstreamRequest = async (path: string, body: object) => {
         assert.ok(upstream);
         const response = await fetch(new URL(path, upstream), {method: 'POST', headers: {'content-type': 'application/json'},
@@ -309,13 +307,46 @@ export async function portableSourceRpc(source: PortableWorkerSource, errors: st
         close: () => new Promise<void>(done => {server.closeAllConnections(); server.close(() => done());})};
 }
 
-export async function runPortableStateWorker(stateFile: string, planFile: string, outputDirectory: string,
-    options: {native?: boolean; authorityRpc?: string} = {}) {
+export interface PortableWorkerOptions {readonly native?: boolean; readonly authorityRpc?: string; readonly profile?: boolean}
+
+function portableAuthorityRpcOrigin(value: string): URL {
+    const upstream = new URL(value);
+    assert.ok(['http:', 'https:'].includes(upstream.protocol) && upstream.pathname === '/'
+        && !upstream.username && !upstream.password && !upstream.search && !upstream.hash,
+    'qualification authority RPC must be an ordinary HTTP origin');
+    return upstream;
+}
+
+export function validatePortableWorkerOptions(options: unknown): asserts options is PortableWorkerOptions {
     assert.ok(options && typeof options === 'object' && !Array.isArray(options)
-        && Object.keys(options).every(key => ['native', 'authorityRpc'].includes(key)));
-    if (Object.hasOwn(options, 'native')) assert.equal(typeof options.native, 'boolean');
-    if (Object.hasOwn(options, 'authorityRpc')) assert.ok(options.native && typeof options.authorityRpc === 'string',
-        'the source-bounded RPC check requires explicit native qualification');
+        && [Object.prototype, null].includes(Object.getPrototypeOf(options))
+        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile'].includes(key)));
+    const selected = options as PortableWorkerOptions;
+    if (Object.hasOwn(selected, 'native')) assert.equal(typeof selected.native, 'boolean');
+    if (Object.hasOwn(selected, 'profile')) assert.equal(typeof selected.profile, 'boolean');
+    if (Object.hasOwn(selected, 'authorityRpc')) {
+        assert.ok(selected.native === true && typeof selected.authorityRpc === 'string',
+            'the source-bounded RPC check requires explicit native qualification');
+        portableAuthorityRpcOrigin(selected.authorityRpc);
+    }
+    assert.ok(!selected.profile || selected.native === true && typeof selected.authorityRpc === 'string',
+        'CPU profiling requires explicit native source-bounded RPC qualification');
+}
+
+export function parsePortableWorkerArguments(args: readonly string[]) {
+    assert.ok(args.slice(0, 3).length === 3 && args.slice(0, 3).every(value => typeof value === 'string' && value.length > 0)
+        && (args.length === 3 || args.length === 4 && args[3] === '--native'
+            || (args.length === 6 || args.length === 7 && args[6] === '--profile')
+                && args[3] === '--native' && args[4] === '--authority-rpc'),
+    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile]]]');
+    const options = {...(args.length > 3 ? {native: true} : {}), ...(args.length >= 6 ? {authorityRpc: args[5]} : {}),
+        ...(args.length === 7 ? {profile: true} : {})};
+    validatePortableWorkerOptions(options);
+    return {stateFile: args[0], planFile: args[1], outputDirectory: args[2], options};
+}
+
+export async function runPortableStateWorker(stateFile: string, planFile: string, outputDirectory: string, options: PortableWorkerOptions = {}) {
+    validatePortableWorkerOptions(options);
     assertNativeQualificationRuntime();
     const deadline = performance.now() + portableSourceLimits.runMs;
     const remaining = () => {const value = Math.floor(deadline - performance.now()); assert.ok(value > 0, 'portable worker deadline exceeded'); return value;};
@@ -363,6 +394,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             : options.native ? 'installed-native-wire-engineering' : 'legacy-wire-state',
         preloads: options.native ? ['action-source-admission-preload.mjs', 'portable-state-worker-native-observer.mjs', 'es955-worker-observer.mjs'] : ['es955-worker-observer.mjs'],
         runtime: {node: process.version, executable: process.execPath}, inspections, network, volumes: volumeEvidence,
+        profiling: {enabled: options.profile === true, status: options.profile === true ? 'pending' : 'disabled',
+            limits: portableWorkerProfileLimits, components: [], failures: []},
         prefixes: [], cleanup: [], errors: [], limits: {releaseQualified: false, forkRecoveryQualified: false, rustQualified: false,
             processCrashRecoveryQualified: false, writeFailureIsolationQualified: false,
             note: 'Actual Node worker/Mongo/HTTP tracer; no AtomicAssets, full release, fork or Bun qualification.'}};
@@ -409,7 +442,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         const nativePreloads = options.native ? ['action-source-admission-preload.mjs', 'portable-state-worker-native-observer.mjs']
             .flatMap(file => ['--import', pathToFileURL(join(repo, 'scripts/qualification', file)).href]) : [];
         try {const child = spawn(process.execPath, [...nativePreloads, '--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href, join(repo, entry)],
-            {cwd: output, env: {...portableWorkerEnvironment(process.env, output, config, chain), ES198_OBSERVER_DIR: join(output, 'observer', name),
+            {cwd: output, env: {...portableWorkerEnvironment(process.env, output, config, chain, options.profile === true), ES198_OBSERVER_DIR: join(output, 'observer', name),
                 ...(options.native ? {HYPERION_PORTABLE_NATIVE_QUALIFICATION: '1'} : {})},
                 detached: process.platform !== 'win32', stdio: ['ignore', stdout.fd, stderr.fd, 'ipc']});
             child.on('error', error => report.errors.push(describeError(error))); return child;
@@ -671,7 +704,15 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {timeout: 5000});
                     else process.kill(-child.pid, 'SIGKILL');
                 }} catch (cleanupError: any) {if (cleanupError.code !== 'ESRCH') report.cleanup.push({name: name + '-forced', ok: false, error: describeError(cleanupError)});}}
+            try {
+                report.profiling.components.push({component: name, processes: await auditPortableWorkerProfiles(output, name,
+                    await observedRows(name, true), child.pid!, options.profile === true)});
+            } catch (error) {
+                report.status = 'failed'; report.profiling.failures.push({component: name, error: describeError(error)});
+            }
         }
+        if (options.profile) report.profiling.status = report.profiling.failures.length === 0 && report.profiling.components.length === 2
+            ? 'captured' : 'incomplete';
         for (const [name, close] of [['replay', () => replay?.close()], ['rpc', () => rpc?.close()], ['bulk', () => ledger?.close()],
             ['redis', () => redis?.disconnect()], ['mongo-client', () => mongo?.close()], ['elasticsearch', () => es.close()],
             ['owned-mongodb', () => mongoFixture.cleanup()]] as const) {
@@ -688,11 +729,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    assert.ok(process.argv.length === 5 || process.argv.length === 6 && process.argv[5] === '--native'
-        || process.argv.length === 8 && process.argv[5] === '--native' && process.argv[6] === '--authority-rpc',
-    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL]]');
-    const result = await runPortableStateWorker(process.argv[2], process.argv[3], process.argv[4],
-        {native: process.argv[5] === '--native', ...(process.argv.length === 8 ? {authorityRpc: process.argv[7]} : {})});
+    const args = parsePortableWorkerArguments(process.argv.slice(2));
+    const result = await runPortableStateWorker(args.stateFile, args.planFile, args.outputDirectory, args.options);
     console.log(JSON.stringify({status: result.status, error: result.error, prefixes: result.prefixes}));
     if (result.status !== 'passed') process.exitCode = 1;
 }
