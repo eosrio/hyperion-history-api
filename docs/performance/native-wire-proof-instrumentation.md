@@ -80,9 +80,10 @@ three-commit ancestry validates accounting; it does not qualify a Wire codec or 
 memory. Tests also cover concurrent/cancelled scopes, late I/O, exact error preservation,
 bounded distributions and actual guarded preload shutdown with synchronous logging.
 
-Next: run a fresh owned native Linux capture with the unchanged original source/oracles,
-inspect these records alongside all physical-worker profiles and original replay/ACK/
-cleanup results, and measure logger overhead, host/backend I/O and exclusive validation/
-wait attribution. Full replay, live canonical recovery, count/byte capacity and #248's
+The [first instrumented capture](native-wire-proof-io-20261024.md) retained the failed
+block-685 wait, all 14 CPU profiles, complete proof counters and successful cleanup.
+Next: isolate logger/read costs with controlled experiments and measure incremental
+overhead, host/backend I/O and exclusive validation/wait attribution. Full replay,
+live canonical recovery, count/byte capacity and #248's
 dense concurrent-view/retained-memory matrix remain open. Keep the failed historical
 capture immutable. Use the current Node 24/26 release policy.

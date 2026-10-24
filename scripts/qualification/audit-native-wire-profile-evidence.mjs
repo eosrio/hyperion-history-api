@@ -9,7 +9,8 @@ assertNativeQualificationRuntime();
 const [rootArgument, metadataFile, mode] = process.argv.slice(2);
 assert.ok(rootArgument && metadataFile && ['original', 'published'].includes(mode));
 const root = resolve(rootArgument), metadata = JSON.parse(await readFile(metadataFile, 'utf8'));
-assert.equal(metadata.sourceRevision, '3febe95e9faf52067f96350b9f9df0dd2e2a2678');
+assert.ok(['3febe95e9faf52067f96350b9f9df0dd2e2a2678', '7b2fefc0f4d9a79ee73eb23da5e9b37e811d9389'].includes(metadata.sourceRevision),
+    'unknown frozen capture source');
 assert.equal(metadata.profiles.length, 14);
 const receipts = [];
 for (const component of ['api', 'master']) {
