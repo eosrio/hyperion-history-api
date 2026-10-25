@@ -328,6 +328,10 @@ that failed run into a passing result.
 
 ## Owned broker restart instrumentation
 
+For the additional #331 decision and original-custody observations, see
+[worker rejection provenance](worker-rejection-provenance.md). These diagnostics
+do not classify failed exits as expected or weaken the shared shutdown checker.
+
 The initial #319 fault mode uses `--native --authority-rpc URL --broker-recovery`
 on native Linux Node 24/26. It excludes profiling and other fault modes. Create
 its private services with `services.py create NEW_DIRECTORY --pin-rabbit-ports`.

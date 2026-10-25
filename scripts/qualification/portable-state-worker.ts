@@ -19,6 +19,7 @@ import {validateFixture, assertNodeOwnership} from './es955-replicas.ts';
 import {assertOwnedBinding, assertSuccessfulWorkerShutdown} from './es955-workers.ts';
 import {startBulkLedger, summarizeBulkLedger} from './replay-bulk-ledger.ts';
 import {createPortableHistoryDiagnostics, portableHistoryClock} from './portable-state-history-diagnostics.ts';
+import {auditWorkerRejectionDiagnostics} from './worker-rejection-diagnostics.mjs';
 import {OwnedMongoFixture, MONGODB_VERSION, waitForMongo} from './projection-fixture.mjs';
 import {auditPortableWorkerSource, boundedPortableFile, ordinaryPortablePath, portableSourceHash,
     portableSourceLimits, servePortableWorkerSource, type PortableSourceInput, type PortableSourceFile,
@@ -1086,6 +1087,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 report[name + 'Exit'] = {code: child.exitCode, signal: child.signalCode};
                 const observerInstance = name === 'master' && masterRestarted ? 'master-restarted' : name;
                 const all = await observedDirectoryRows(observerInstance, true);
+                if (options.native) report[name + 'RejectionDiagnostics'] = auditWorkerRejectionDiagnostics(all);
                 const fault = name === 'master' && recoveryControl
                     && (await readdir(join(output, 'attempt-recovery'))).includes('fault.json')
                     ? readWireRecoveryEvidence(recoveryControl.control).marker : undefined;
