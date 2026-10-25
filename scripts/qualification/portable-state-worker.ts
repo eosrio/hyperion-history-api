@@ -30,6 +30,10 @@ import {auditPortableWorkerProfiles, portableWorkerProfileEnvironment, portableW
 import {createWireRecoveryControl, readWireRecoveryEvidence, auditWireAttemptRecovery, wireRecoveryShutdownRows} from './portable-state-worker-recovery.mjs';
 import {createWireMasterRestartControl, inspectWireMasterCheckpoint, crashWireMaster, describeWireMasterCrash,
     auditWireMasterRestart} from './portable-state-master-recovery.mjs';
+import {createWireReaderRecoveryControl, readWireReaderRecoveryEvidence, snapshotWireReader, describeWireReaderSnapshot,
+    crashWireReader, describeWireReaderCrash, wireReaderStatus, releaseWireReaderRpc, auditWireReaderHandover,
+    wireReaderShutdownRows, wireReaderControlDigest} from './portable-state-reader-recovery.mjs';
+import {auditWireRecoveryEnd} from './wire-recovery-end-audit.mjs';
 import {portableWorkerSourceFrame} from './portable-state-worker-source.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -304,6 +308,12 @@ export async function portableSourceRpc(source: PortableWorkerSource, errors: st
     });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
     return {url: `http://127.0.0.1:${(server.address() as any).port}`, requests,
+        async checkedBlockResponse(blockNum: number) {
+            assert.ok(upstream && Number.isSafeInteger(blockNum) && upstreamBlocks.has(blockNum),
+                'no original source-checked RPC response was observed for this block');
+            const result = await upstreamBlocks.get(blockNum)!;
+            return {blockNum, blockId: result.id, bytes: Buffer.from(result.bytes)};
+        },
         lineage: upstream ? {kind: 'source-bounded-live-rpc-check', chainId: source.chainId,
             description: 'Replay get_info follows released original irreversible frames; each get_block is checked against original SHIP bytes and the selected current RPC. This does not qualify a live SHIP fork.'}
             : {kind: 'derived-startup-control', blockNum: 1, blockId: source.records[0].blockId,
@@ -312,7 +322,7 @@ export async function portableSourceRpc(source: PortableWorkerSource, errors: st
 }
 
 export interface PortableWorkerOptions {readonly native?: boolean; readonly authorityRpc?: string; readonly profile?: boolean;
-    readonly workerRecovery?: boolean; readonly masterRecovery?: boolean}
+    readonly workerRecovery?: boolean; readonly masterRecovery?: boolean; readonly readerRecovery?: boolean}
 
 function portableAuthorityRpcOrigin(value: string): URL {
     const upstream = new URL(value);
@@ -325,12 +335,13 @@ function portableAuthorityRpcOrigin(value: string): URL {
 export function validatePortableWorkerOptions(options: unknown): asserts options is PortableWorkerOptions {
     assert.ok(options && typeof options === 'object' && !Array.isArray(options)
         && [Object.prototype, null].includes(Object.getPrototypeOf(options))
-        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile', 'workerRecovery', 'masterRecovery'].includes(key)));
+        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile', 'workerRecovery', 'masterRecovery', 'readerRecovery'].includes(key)));
     const selected = options as PortableWorkerOptions;
     if (Object.hasOwn(selected, 'native')) assert.equal(typeof selected.native, 'boolean');
     if (Object.hasOwn(selected, 'profile')) assert.equal(typeof selected.profile, 'boolean');
     if (Object.hasOwn(selected, 'workerRecovery')) assert.equal(typeof selected.workerRecovery, 'boolean');
     if (Object.hasOwn(selected, 'masterRecovery')) assert.equal(typeof selected.masterRecovery, 'boolean');
+    if (Object.hasOwn(selected, 'readerRecovery')) assert.equal(typeof selected.readerRecovery, 'boolean');
     if (Object.hasOwn(selected, 'authorityRpc')) {
         assert.ok(selected.native === true && typeof selected.authorityRpc === 'string',
             'the source-bounded RPC check requires explicit native qualification');
@@ -341,19 +352,23 @@ export function validatePortableWorkerOptions(options: unknown): asserts options
     assert.ok(!selected.workerRecovery || selected.native === true && typeof selected.authorityRpc === 'string' && !selected.profile,
         'Worker recovery requires native source-bounded RPC qualification without CPU capture');
     assert.ok(!selected.masterRecovery || selected.native === true && typeof selected.authorityRpc === 'string'
-        && !selected.profile && !selected.workerRecovery,
+        && !selected.profile && !selected.workerRecovery && !selected.readerRecovery,
         'Master recovery requires native source-bounded RPC qualification without CPU capture or another fault');
+    assert.ok(!selected.readerRecovery || selected.native === true && typeof selected.authorityRpc === 'string'
+        && !selected.profile && !selected.workerRecovery && !selected.masterRecovery,
+        'Reader recovery requires native source-bounded RPC qualification without CPU capture or another fault');
 }
 
 export function parsePortableWorkerArguments(args: readonly string[]) {
     assert.ok(args.slice(0, 3).length === 3 && args.slice(0, 3).every(value => typeof value === 'string' && value.length > 0)
         && (args.length === 3 || args.length === 4 && args[3] === '--native'
-            || (args.length === 6 || args.length === 7 && ['--profile', '--worker-recovery', '--master-recovery'].includes(args[6]))
+            || (args.length === 6 || args.length === 7 && ['--profile', '--worker-recovery', '--master-recovery', '--reader-recovery'].includes(args[6]))
                 && args[3] === '--native' && args[4] === '--authority-rpc'),
-    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile|--worker-recovery|--master-recovery]]]');
+    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile|--worker-recovery|--master-recovery|--reader-recovery]]]');
     const options = {...(args.length > 3 ? {native: true} : {}), ...(args.length >= 6 ? {authorityRpc: args[5]} : {}),
         ...(args[6] === '--profile' ? {profile: true} : {}), ...(args[6] === '--worker-recovery' ? {workerRecovery: true} : {}),
-        ...(args[6] === '--master-recovery' ? {masterRecovery: true} : {})};
+        ...(args[6] === '--master-recovery' ? {masterRecovery: true} : {}),
+        ...(args[6] === '--reader-recovery' ? {readerRecovery: true} : {})};
     validatePortableWorkerOptions(options);
     return {stateFile: args[0], planFile: args[1], outputDirectory: args[2], options};
 }
@@ -362,6 +377,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     validatePortableWorkerOptions(options);
     assertNativeQualificationRuntime();
     if (options.masterRecovery) assert.equal(process.platform, 'linux', 'production master crash qualification requires Linux');
+    if (options.readerRecovery) assert.equal(process.platform, 'linux', 'production reader handover qualification requires Linux');
     const deadline = performance.now() + portableSourceLimits.runMs;
     const remaining = () => {const value = Math.floor(deadline - performance.now()); assert.ok(value > 0, 'portable worker deadline exceeded'); return value;};
     let cleanupDeadline: number | undefined;
@@ -422,6 +438,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     let recoveryControl: ReturnType<typeof createWireRecoveryControl> | undefined;
     let masterControl: ReturnType<typeof createWireMasterRestartControl> | undefined;
     let masterCrash: Awaited<ReturnType<typeof crashWireMaster>> | undefined, masterRestarted = false;
+    let readerControl: ReturnType<typeof createWireReaderRecoveryControl> | undefined;
+    let readerCrash: Awaited<ReturnType<typeof crashWireReader>> | undefined;
     let mongoWriteFaultActive = false;
     const configureMongoWriteFault = async (mode: 'alwaysOn' | 'off') => {
         assert.ok(mongo); mongoFixture.ownedContainer('replica');
@@ -448,7 +466,10 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         const directory = join(output, 'observer', kind);
         const names = (await readdir(directory)).filter(name => name.endsWith('.jsonl')); assert.ok(names.length <= 64);
         const rows: any[] = []; for (const name of names) {const bytes = await boundedPortableFile(join(directory, name), 64 * 1024 * 1024);
-            const lines = bytes.toString().split(/\r?\n/); for (const [index, line] of lines.entries()) if (line.trim()) {
+            const interruptedReader = kind === 'master' && readerCrash
+                && name === `worker-${describeWireReaderCrash(readerCrash).fence.reader.pid}.jsonl`;
+            const content = interruptedReader ? bytes.subarray(0, bytes.lastIndexOf(10) + 1) : bytes;
+            const lines = content.toString().split(/\r?\n/); for (const [index, line] of lines.entries()) if (line.trim()) {
                 try {rows.push(JSON.parse(line));} catch (error) {if (complete || index < lines.length - 1) throw error;}
             }}
         return rows;
@@ -467,12 +488,15 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             pathToFileURL(join(repo, 'scripts/qualification/portable-state-worker-recovery-preload.mjs')).href);
         if (name === 'master' && masterControl) nativePreloads.push('--import',
             pathToFileURL(join(repo, 'scripts/qualification/portable-state-master-recovery-preload.mjs')).href);
+        if (name === 'master' && readerControl) nativePreloads.push('--import',
+            pathToFileURL(join(repo, 'scripts/qualification/portable-state-reader-recovery-preload.mjs')).href);
         try {const child = spawn(process.execPath, [...nativePreloads, '--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href, join(repo, entry)],
             {cwd: output, env: {...portableWorkerEnvironment(process.env, output, config, chain, options.profile === true), ES198_OBSERVER_DIR: join(output, 'observer', instance),
                 ...(options.native ? {HYPERION_PORTABLE_NATIVE_QUALIFICATION: '1'} : {}),
                 ...(name === 'master' && recoveryControl ? {ES198_WIRE_RECOVERY_CONTROL: recoveryControl.file} : {}),
                 ...(name === 'master' && masterControl ? {ES198_WIRE_MASTER_CONTROL: masterControl.file,
-                    ES198_WIRE_MASTER_PHASE: masterRestarted ? 'after' : 'before'} : {})},
+                    ES198_WIRE_MASTER_PHASE: masterRestarted ? 'after' : 'before'} : {}),
+                ...(name === 'master' && readerControl ? {ES198_WIRE_READER_CONTROL: readerControl.file} : {})},
                 detached: process.platform !== 'win32', stdio: ['ignore', stdout.fd, stderr.fd, 'ipc']});
             child.on('error', error => report.errors.push(describeError(error))); return child;
         } finally {await stdout.close(); await stderr.close();}
@@ -534,6 +558,13 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             report.masterRestart = {status: 'pending', control: masterControl.control};
             report.preloads.push('portable-state-master-recovery-preload.mjs');
         }
+        if (options.readerRecovery) {
+            readerControl = createWireReaderRecoveryControl({output, configFile, chain, source,
+                frameSha256: portableSourceHash(portableWorkerSourceFrame(source, 33)),
+                resumeFrameSha256: portableSourceHash(portableWorkerSourceFrame(source, 34))});
+            report.readerRecovery = {status: 'pending', control: readerControl.control};
+            report.preloads.push('portable-state-reader-recovery-preload.mjs');
+        }
         report.config = config; report.bindings = bindings; report.connections = connections;
         report.contractFailure = {definition: invalidDefinition, binding: invalidBinding,
             description: 'Fixture-only missing required source field; healthy definitions and independent expected rows are unchanged.', observations: []};
@@ -591,7 +622,9 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             ...(options.workerRecovery ? {attemptRecovery: () => report.attemptRecovery?.status === 'observed'
                 ? report.attemptRecovery.evidence : undefined} : {}),
             ...(options.masterRecovery ? {masterRestart: () => masterCrash && master?.pid
-                ? {receipt: masterCrash, masterPid: master.pid} : undefined} : {})}) : undefined;
+                ? {receipt: masterCrash, masterPid: master.pid} : undefined} : {}),
+            ...(options.readerRecovery ? {readerRestart: () => readerCrash && master?.pid
+                ? {receipt: readerCrash, masterPid: master.pid} : undefined} : {})}) : undefined;
         if (native) report.native = {profile: native.profile, oracleHashes: native.oracleHashes, holds: [],
             activation: 'Existing admission engineering preload only; ordinary installed native provider; public/default operator activation remains disabled.',
             constructedControls: native.controls, notificationInventory: native.originalNotifications};
@@ -718,6 +751,77 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 stateAbiAvailability, queues: await queues(), recovery: report.lastRecovery, source: replay.metrics(), isolation, physicalMongo};
             const bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n'); const file = `prefixes/block-${through}.json`;
             await writeFile(join(output, file), bytes, {flag: 'wx'}); report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
+            if (readerControl && through === 33) {
+                const {ActionSourceAdmissionStore} = await import(new URL('../../build/indexer/history/action-source-admission.js', import.meta.url).href);
+                const {ProtocolSourceBindingStore} = await import(new URL('../../build/indexer/protocol/source-bindings.js', import.meta.url).href);
+                const store = new ActionSourceAdmissionStore(es, chain, 1);
+                const selections = new ProtocolSourceBindingStore(es, chain, 1, {readOnly: true});
+                let checkpoint: any;
+                await wait('original same master holds its selected source-backed canonical RPC', async () => {
+                    const evidence = readWireReaderRecoveryEvidence(readerControl!.control), held = evidence.held;
+                    assert.equal(held.masterPid, master!.pid); assert.equal(held.parentPid, process.pid);
+                    assert.equal(held.controlSha256, wireReaderControlDigest(readerControl!.control));
+                    const original = await auditWireRecoveryEnd(readerControl!.control, held.end, store);
+                    const counters = await queues(); assert.ok(counters.length > 0);
+                    assert.ok(counters.every((row: any) => row.ready === 0 && row.unacked === 0 && row.messages === 0));
+                    replay!.assertThrough(33); ledger!.assertIdle(); checkpoint = {held, original, counters};
+                });
+                const captured = await snapshotWireReader({control: readerControl.control, child: master!, rows: await observedDirectoryRows()});
+                const snapshot = describeWireReaderSnapshot(captured); assert.deepEqual(snapshot.end, checkpoint.held.end);
+                const response = await rpc.checkedBlockResponse(snapshot.readBlockNum);
+                assert.equal(response.blockId, snapshot.response.blockId);
+                const responseValue = JSON.parse(response.bytes.toString()); assert.equal(responseValue.block_num, snapshot.readBlockNum);
+                assert.equal(responseValue.previous, snapshot.response.previousBlockId);
+                const rpcFile = 'reader-recovery/held-rpc-response.json';
+                await writeFile(join(output, rpcFile), response.bytes, {flag: 'wx'});
+                report.readerRecovery.checkpoint = checkpoint; report.readerRecovery.snapshot = snapshot;
+                report.readerRecovery.rpcResponse = {file: rpcFile, bytes: response.bytes.length, sha256: portableSourceHash(response.bytes),
+                    blockNum: snapshot.readBlockNum, blockId: response.blockId};
+                await assert.rejects(() => crashWireReader(structuredClone(captured)), /unissued/);
+                readerCrash = await crashWireReader(captured); report.readerRecovery.crash = describeWireReaderCrash(readerCrash);
+                report.cleanup.push({name: 'original-reader-crash', ok: true, fence: report.readerRecovery.crash.fence});
+                assert.throws(() => describeWireReaderCrash(structuredClone(readerCrash)), /unissued/);
+                const oldObserver = `observer/master/worker-${report.readerRecovery.crash.fence.reader.pid}.jsonl`;
+                const oldRows = await boundedPortableFile(join(output, oldObserver), 64 * 1024 * 1024);
+                report.readerRecovery.interruptedObserver = {file: oldObserver, bytes: oldRows.length,
+                    sha256: portableSourceHash(oldRows), unterminatedTailBytes: oldRows.length - oldRows.lastIndexOf(10) - 1};
+                await wait('original reader stream closes before the normal resumed stream is permitted', async () => {
+                    await replay!.allowReaderRestart(readerCrash);
+                });
+                through = readerControl.control.resumeBlockNum; replay.releaseThrough(through);
+                await wait('same master establishes its replacement reader source and LIB', async () => {
+                    const status = await wireReaderStatus(readerCrash); assert.equal(status.masterPid, master!.pid);
+                    assert.equal(status.terminated, true); assert.ok(status.replacement);
+                    report.readerRecovery.currentReader = status.replacement;
+                });
+                await releaseWireReaderRpc(readerCrash);
+                const resumedBlock = source.records[through - 1];
+                await wait('old canonical return rejects while the same master records a fresh source-bound association', async () => {
+                    replay!.assertThrough(34); ledger!.assertIdle();
+                    report.readerRecovery.evidence = await auditWireReaderHandover({receipt: readerCrash, masterPid: master!.pid,
+                        rows: await observedDirectoryRows(), store, selections, es, queues: await queues()});
+                    const recoveries = await Promise.all(adapters.map((adapter, index) => adapter.recovery(bindings[index])));
+                    for (const recovery of recoveries) {
+                        assert.equal(recovery.initialized, true); assert.deepEqual(recovery.checkpoint, {blockNum: 34, blockId: resumedBlock.blockId});
+                        assert.equal(recovery.pending, null); assert.equal(recovery.gap, null);
+                    }
+                    report.readerRecovery.recovery = recoveries; report.readerRecovery.stateResponses = [];
+                    assert.ok(through < stateAbiAvailability.fromBlock, 'this fixed handover case precedes the original ABI deployment');
+                    for (const definition of plan.definitions) {
+                        const response = await query(definition.id); assertPortablePredeployment(response);
+                        report.readerRecovery.stateResponses.push(responseReceipt(response));
+                    }
+                });
+                const absenceFile = 'reader-recovery/old-association-absence.json';
+                await writeFile(join(output, absenceFile), JSON.stringify(report.readerRecovery.evidence.absence, null, 2) + '\n', {flag: 'wx'});
+                report.readerRecovery.absenceFile = absenceFile;
+                await es.indices.refresh({index: chain + '-action-*'});
+                assert.ok(native); report.readerRecovery.nativeReplay = await native.resumedHead();
+                assert.equal(report.readerRecovery.nativeReplay.current.value.source.readerSessionId, report.readerRecovery.currentReader.readerSessionId);
+                assert.equal(report.readerRecovery.nativeReplay.current.value.generation, report.readerRecovery.currentReader.generation);
+                report.readerRecovery.status = 'observed';
+                await writeFile(join(output, 'prefixes/reader-handover-33.json'), JSON.stringify(report.readerRecovery, null, 2) + '\n', {flag: 'wx'});
+            }
             if (masterControl && through === 33) {
                 const {ActionSourceAdmissionStore} = await import(new URL('../../build/indexer/history/action-source-admission.js', import.meta.url).href);
                 const store = new ActionSourceAdmissionStore(es, chain, 1), originalMaster = master!;
@@ -800,6 +904,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         assert.equal(writeFailureObserved, true); assert.ok(report.contractFailure.observations.length >= 2);
         if (recoveryControl) assert.equal(report.attemptRecovery.status, 'observed');
         if (masterControl) assert.equal(report.masterRestart.status, 'observed');
+        if (readerControl) assert.equal(report.readerRecovery.status, 'observed');
         report.limits.writeFailureIsolationQualified = true;
         report.status = 'passed';
     } catch (error) {report.status = 'failed'; report.error = describeError(error);}
@@ -818,11 +923,16 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 const fault = name === 'master' && recoveryControl
                     && (await readdir(join(output, 'attempt-recovery'))).includes('fault.json')
                     ? readWireRecoveryEvidence(recoveryControl.control).marker : undefined;
-                const checked = fault ? wireRecoveryShutdownRows(all, fault, child.pid!, child.exitCode, child.signalCode) : all;
-                report[name + 'Shutdown'] = assertSuccessfulWorkerShutdown(checked, child.pid!, fault ? 0 : child.exitCode, child.signalCode);
+                const readerFault = name === 'master' && readerCrash ? readerCrash : undefined;
+                const checked = readerFault ? wireReaderShutdownRows(all, readerFault, child.pid!, child.exitCode, child.signalCode)
+                    : fault ? wireRecoveryShutdownRows(all, fault, child.pid!, child.exitCode, child.signalCode) : all;
+                report[name + 'Shutdown'] = assertSuccessfulWorkerShutdown(checked, child.pid!, fault || readerFault ? 0 : child.exitCode, child.signalCode);
                 if (fault) report.expectedWorkerExit = {marker: fault, rawMasterExit: report[name + 'Exit'],
                     rawShutdown: all.find(row => row.kind === 'shutdown' && row.pid === child.pid),
                     note: 'Only the proven deliberate worker exit is normalized in the detached cleanup verifier input.'};
+                if (readerFault) report.expectedReaderExit = {fence: describeWireReaderCrash(readerFault).fence, rawMasterExit: report[name + 'Exit'],
+                    rawShutdown: all.find(row => row.kind === 'shutdown' && row.pid === child.pid),
+                    note: 'Only the privately issued, ownership-verified reader SIGKILL is removed from detached normal-lifecycle checks; all raw evidence is retained.'};
                 report.cleanup.push({name, ok: true});
             } catch (error) {report.status = 'failed'; report.cleanup.push({name, ok: false, error: describeError(error)});
                 try {if (child.pid && child.exitCode === null && child.signalCode === null) {
@@ -836,8 +946,11 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                         note: 'Raw exits and full physical process census validated by the recovery shutdown oracle; no profile capture claimed.'};
                 } else {
                     const observerInstance = name === 'master' && masterRestarted ? 'master-restarted' : name;
+                    const rawRows = await observedDirectoryRows(observerInstance, true);
+                    const profileRows = name === 'master' && readerCrash
+                        ? wireReaderShutdownRows(rawRows, readerCrash, child.pid!, child.exitCode, child.signalCode) : rawRows;
                     report.profiling.components.push({component: observerInstance, processes: await auditPortableWorkerProfiles(output, observerInstance,
-                        await observedDirectoryRows(observerInstance, true), child.pid!, options.profile === true)});
+                        profileRows, child.pid!, options.profile === true)});
                 }
             } catch (error) {
                 report.status = 'failed'; report.profiling.failures.push({component: name, error: describeError(error)});

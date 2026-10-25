@@ -192,7 +192,7 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
     const sessions: {flow: PortableSourceFlow; socket: WebSocket; epoch: number}[] = [], requests: any[] = [];
     const activeSessions = new Set<typeof sessions[number]>();
     let through = 0, sentBytes = 0, requestBytes = 0, peakActiveConnections = 0, closed = false, closing: Promise<void> | undefined;
-    let restart: {blockNum: number; oldMasterPid: number} | undefined;
+    let restart: {blockNum: number; oldMasterPid?: number; kind?: 'reader'; masterPid?: number; oldReaderPid?: number} | undefined;
     const close = () => closing ??= (async () => {closed = true; clearTimeout(timer); for (const {socket} of sessions) socket.terminate();
         await new Promise<void>((done, reject) => server.close(error => error ? reject(error) : done()));})();
     const timer = setTimeout(() => {errors.push('portable source deadline exceeded'); void close().catch(error => errors.push(String(error)));}, portableSourceLimits.runMs); timer.unref();
@@ -241,6 +241,25 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
             assert.deepEqual(flows[0].flow.sent, expected); assert.deepEqual(flows[0].flow.acknowledged, expected);
             assert.equal(flows[0].flow.outstanding, 0); assert.deepEqual(errors, []);
             restart = {blockNum: control.resumeBlockNum, oldMasterPid: fence.root.pid};
+        },
+        async allowReaderRestart(receipt: unknown) {
+            const {describeWireReaderCrash, wireReaderStatus} = await import('./portable-state-reader-recovery.mjs');
+            const {control, fence} = describeWireReaderCrash(receipt);
+            assert.equal(restart, undefined, 'only one original reader handover is permitted');
+            assert.equal(through, 33); assert.equal(control.blockNum, through);
+            assert.equal(control.chainId, source.chainId); assert.equal(control.profileId, source.profileId);
+            assert.equal(control.blockId, source.records[32].blockId); assert.equal(control.frameSha256, portableSourceHash(retained.frames[32]));
+            assert.equal(control.resumeBlockNum, through + 1); assert.equal(control.resumeBlockId, source.records[33].blockId);
+            assert.equal(control.resumeFrameSha256, portableSourceHash(retained.frames[33])); assert.equal(fence.directory, control.output);
+            const flows = sessions.filter(value => value.flow.started);
+            assert.equal(flows.length, 1); assert.equal(flows[0].socket.readyState, WebSocket.CLOSED);
+            const expected = Array.from({length: through}, (_, index) => index + 1);
+            assert.deepEqual(flows[0].flow.sent, expected); assert.deepEqual(flows[0].flow.acknowledged, expected);
+            assert.equal(flows[0].flow.outstanding, 0); assert.deepEqual(errors, []);
+            const status = await wireReaderStatus(receipt);
+            assert.equal(status.masterPid, fence.parent.pid); assert.equal(status.oldReaderPid, fence.reader.pid);
+            assert.equal(status.held, true); assert.equal(status.terminated, true);
+            restart = {kind: 'reader', blockNum: control.resumeBlockNum, masterPid: fence.parent.pid, oldReaderPid: fence.reader.pid};
         },
         releaseThrough(block: number) {assert.ok(!closed && block >= through && block <= source.endBlock); through = block;
             for (const session of sessions) if (session.socket.readyState === WebSocket.OPEN) send(session, session.flow.releaseThrough(block));},
