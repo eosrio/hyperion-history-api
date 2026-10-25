@@ -177,7 +177,7 @@ try {
         const result = await adjudicator.adjudicate(evidence); assert.equal(result.state, 'associated');
         const association = (await store.readAttemptAssociation(result.id)).observation;
         assert.equal(association.sourceChecked, true); assert.equal(association.brokerSettlement, 'unknown');
-        assert.equal(association.end.incarnation, end.incarnation); assert.equal(association.end.attemptId, end.attemptId);
+        assert.deepEqual(association.end, end, 'Retained association differs from its original complete physical end');
         const actual = publications.filter(p => p.worker === state.name)[index]; assert(actual);
         const row = JSON.parse(Buffer.from(actual.payloadHex, 'hex').toString());
         assert.equal(row.global_sequence, expected.globalSequence); assert.equal(row.trx_id, expected.transactionId);
