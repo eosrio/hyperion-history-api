@@ -38,6 +38,8 @@ import {createWireBrokerRecoveryControl, readWireBrokerRecoveryEvidence, assertW
     releaseWireBrokerReceipt, auditWireBrokerSourceCounterWindows, assertWireBrokerHeldQueues,
     auditWireBrokerAttemptRecovery} from './portable-state-broker-recovery.mjs';
 import {captureOwnedWireBroker, describeOwnedWireBroker, restartOwnedWireBroker} from './owned-wire-broker.mjs';
+import {captureOwnedWireReplica, describeOwnedWireReplica} from './owned-wire-replica.mjs';
+import {qualifyWireStorageRestart} from './portable-state-storage-recovery.mjs';
 import {portableWorkerSourceFrame} from './portable-state-worker-source.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -326,7 +328,8 @@ export async function portableSourceRpc(source: PortableWorkerSource, errors: st
 }
 
 export interface PortableWorkerOptions {readonly native?: boolean; readonly authorityRpc?: string; readonly profile?: boolean;
-    readonly workerRecovery?: boolean; readonly masterRecovery?: boolean; readonly readerRecovery?: boolean; readonly brokerRecovery?: boolean}
+    readonly workerRecovery?: boolean; readonly masterRecovery?: boolean; readonly readerRecovery?: boolean;
+    readonly brokerRecovery?: boolean; readonly storageRecovery?: boolean}
 
 function portableAuthorityRpcOrigin(value: string): URL {
     const upstream = new URL(value);
@@ -339,7 +342,7 @@ function portableAuthorityRpcOrigin(value: string): URL {
 export function validatePortableWorkerOptions(options: unknown): asserts options is PortableWorkerOptions {
     assert.ok(options && typeof options === 'object' && !Array.isArray(options)
         && [Object.prototype, null].includes(Object.getPrototypeOf(options))
-        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile', 'workerRecovery', 'masterRecovery', 'readerRecovery', 'brokerRecovery'].includes(key)));
+        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile', 'workerRecovery', 'masterRecovery', 'readerRecovery', 'brokerRecovery', 'storageRecovery'].includes(key)));
     const selected = options as PortableWorkerOptions;
     if (Object.hasOwn(selected, 'native')) assert.equal(typeof selected.native, 'boolean');
     if (Object.hasOwn(selected, 'profile')) assert.equal(typeof selected.profile, 'boolean');
@@ -347,6 +350,7 @@ export function validatePortableWorkerOptions(options: unknown): asserts options
     if (Object.hasOwn(selected, 'masterRecovery')) assert.equal(typeof selected.masterRecovery, 'boolean');
     if (Object.hasOwn(selected, 'readerRecovery')) assert.equal(typeof selected.readerRecovery, 'boolean');
     if (Object.hasOwn(selected, 'brokerRecovery')) assert.equal(typeof selected.brokerRecovery, 'boolean');
+    if (Object.hasOwn(selected, 'storageRecovery')) assert.equal(typeof selected.storageRecovery, 'boolean');
     if (Object.hasOwn(selected, 'authorityRpc')) {
         assert.ok(selected.native === true && typeof selected.authorityRpc === 'string',
             'the source-bounded RPC check requires explicit native qualification');
@@ -365,19 +369,22 @@ export function validatePortableWorkerOptions(options: unknown): asserts options
     assert.ok(!selected.brokerRecovery || selected.native === true && typeof selected.authorityRpc === 'string'
         && !selected.profile && !selected.workerRecovery && !selected.masterRecovery && !selected.readerRecovery,
         'Broker recovery requires native source-bounded RPC qualification without CPU capture or another fault');
+    assert.ok(!selected.storageRecovery || selected.brokerRecovery === true,
+        'Storage recovery requires the explicit native broker handover case');
 }
 
 export function parsePortableWorkerArguments(args: readonly string[]) {
     assert.ok(args.slice(0, 3).length === 3 && args.slice(0, 3).every(value => typeof value === 'string' && value.length > 0)
         && (args.length === 3 || args.length === 4 && args[3] === '--native'
-            || (args.length === 6 || args.length === 7 && ['--profile', '--worker-recovery', '--master-recovery', '--reader-recovery', '--broker-recovery'].includes(args[6]))
+            || (args.length === 6 || args.length === 7 && ['--profile', '--worker-recovery', '--master-recovery', '--reader-recovery', '--broker-recovery', '--broker-storage-recovery'].includes(args[6]))
                 && args[3] === '--native' && args[4] === '--authority-rpc'),
-    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile|--worker-recovery|--master-recovery|--reader-recovery|--broker-recovery]]]');
+    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile|--worker-recovery|--master-recovery|--reader-recovery|--broker-recovery|--broker-storage-recovery]]]');
     const options = {...(args.length > 3 ? {native: true} : {}), ...(args.length >= 6 ? {authorityRpc: args[5]} : {}),
         ...(args[6] === '--profile' ? {profile: true} : {}), ...(args[6] === '--worker-recovery' ? {workerRecovery: true} : {}),
         ...(args[6] === '--master-recovery' ? {masterRecovery: true} : {}),
         ...(args[6] === '--reader-recovery' ? {readerRecovery: true} : {}),
-        ...(args[6] === '--broker-recovery' ? {brokerRecovery: true} : {})};
+        ...(['--broker-recovery', '--broker-storage-recovery'].includes(args[6]) ? {brokerRecovery: true} : {}),
+        ...(args[6] === '--broker-storage-recovery' ? {storageRecovery: true} : {})};
     validatePortableWorkerOptions(options);
     return {stateFile: args[0], planFile: args[1], outputDirectory: args[2], options};
 }
@@ -416,6 +423,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     const network = JSON.parse(docker(['network', 'inspect', state.network]))[0];
     assertPortableWorkerServices(state, inspections, network);
     if (options.brokerRecovery) describeOwnedWireBroker(captureOwnedWireBroker(state.core, docker));
+    if (options.storageRecovery) describeOwnedWireReplica(captureOwnedWireReplica(state.core, docker));
     const volumeEvidence: any[] = [];
     for (const service of services) {
         const volume = JSON.parse(docker(['volume', 'inspect', service.volume]))[0];
@@ -587,6 +595,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             report.brokerRecovery = {status: 'pending', control: brokerControl.control,
                 recoveryQualified: false, note: 'Restart observation alone grants no recovery, ACK settlement or capacity acceptance.'};
             report.preloads.push('portable-state-broker-recovery-preload.mjs');
+            if (options.storageRecovery) report.storageRecovery = {status: 'pending', brokerHandover: 'pending',
+                freshWriteAuthority: false, capacityAuthority: false, releaseQualified: false};
         }
         report.config = config; report.bindings = bindings; report.connections = connections;
         report.contractFailure = {definition: invalidDefinition, binding: invalidBinding,
@@ -796,6 +806,12 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             await writeFile(join(output, file), bytes, {flag: 'wx'}); report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
             if (brokerControl && through === 33) {
                 await observeBrokerCut(); const control = brokerControl.control;
+                if (options.storageRecovery) {
+                    await qualifyWireStorageRestart({core: state.core, docker, es, control, replay, wait, evidence: report.storageRecovery});
+                    const file = 'prefixes/storage-restart-33.json', bytes = Buffer.from(JSON.stringify(report.storageRecovery, null, 2) + '\n');
+                    await writeFile(join(output, file), bytes, {flag: 'wx'});
+                    report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
+                }
                 const token = captureOwnedWireBroker(state.core, docker);
                 report.brokerRecovery.originalIncarnation = describeOwnedWireBroker(token);
                 try {
@@ -874,6 +890,9 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     source: replay.metrics(), recovery: report.lastRecovery, queues: await queues(),
                     evidence: readWireBrokerRecoveryEvidence(control), counterWindows, recoveryQualified: false};
                 report.brokerRecovery.status = 'observed';
+                if (options.storageRecovery) report.storageRecovery.brokerHandover = {status: 'observed', through,
+                    report: `prefixes/broker-restart-${through}.json`, originalAttemptId: brokerAttemptAudit!.originalEnd.attemptId,
+                    replacementAttemptId: brokerAttemptAudit!.end.attemptId, brokerSettlement: 'unknown'};
                 const file = `prefixes/broker-restart-${through}.json`, bytes = Buffer.from(JSON.stringify(report.brokerRecovery, null, 2) + '\n');
                 await writeFile(join(output, file), bytes, {flag: 'wx'});
                 report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
@@ -1039,6 +1058,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     } catch (error) {report.status = 'failed'; report.error = describeError(error);}
     finally {
         if (brokerControl) report.brokerRecovery.fullWorkloadVerdict = report.status;
+        if (report.storageRecovery) report.storageRecovery.fullWorkloadVerdict = report.status;
         cleanupDeadline = performance.now() + 90_000;
         if (brokerControl && !brokerReceiptReleased) {
             try {releaseWireBrokerReceipt(brokerControl.control); brokerReceiptReleased = true;}

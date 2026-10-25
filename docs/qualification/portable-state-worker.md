@@ -472,6 +472,52 @@ not qualify live SHIP forks, the remaining recovery matrix, prospective capacity
 full replay, launch pins or the release. Source bytes/oracles, queue budgets,
 256-block ancestry, durability, activation and phase/run deadlines are unchanged.
 
+## Replica restart before broker handover
+
+For [#329](https://github.com/eosrio/hyperion-history-api/issues/329), create a fresh
+owned fixture with both explicit port options:
+
+```sh
+python tests/fixtures/portable-state-worker/services.py create out/storage-services --pin-rabbit-ports --pin-elasticsearch-ports
+node scripts/qualification/portable-state-worker.ts out/storage-services/worker-state.json out/p191-source/plan.json out/storage-node24 --native --authority-rpc http://SELECTED_RPC_ORIGIN --broker-storage-recovery
+```
+
+The baseline uses the same checkout, runtimes and fixed-port fixture creation with
+`--broker-recovery`. Each run needs fresh services and output. Both options are
+qualification-only; ordinary fixture creation retains random loopback ports.
+Endpoint intent is saved before creation. A competing bind fails without choosing
+another endpoint. Cleanup retains its existing exclusive ownership checks.
+
+The combined case first requires the unchanged block-33 source/native/API oracles.
+It holds the actual confirmed-handoff manifest response after the original
+two-copy write, before its fresh observation and consumer ACK. The new controller
+checks the current private Docker socket/daemon, target container, fixed loopback
+bind, exclusive volume, exact image/environment/budgets, private network members
+and Linux process births. An opaque, single-use capability restarts only the
+secondary data-node container, retaining its volume. Copied diagnostics and a
+changed census cannot authorize that mutation.
+
+Before broker handover, require the original cluster/index UUIDs, a green
+three-node/two-data-node cluster and the exact original manifest on both configured
+copies. Refresh and physical-copy reads establish visibility; the held original
+write response remains the write acknowledgment. Its record must remain unchanged
+and held, with no fresh result, ACK, end or association during storage recovery.
+The existing broker restart then fences the original attempt before releasing its
+return. Exactly one original block-34 continuation allows the replacement to obtain
+its own conditional two-copy receipt, authenticated end and retained association.
+Only the exact two original block-33 publishers may reconcile this retry.
+
+`prefixes/storage-restart-33.json` records the storage boundary separately from
+`prefixes/broker-restart-34.json`. The final report links that replacement attempt
+and retains the full workload verdict, software shutdown and physical cleanup
+separately. A later 685/full replay failure remains failed. This case tests an
+already acknowledged two-copy write surviving one replica restart before the
+caller observes it. It does not qualify new writes during node loss, power-loss
+durability, live forks, prospective capacity, deployment or the release. Keep
+settlement unknown and preserve all original inputs, grants, ancestry, budgets
+and deadlines. Node 24/26 actual Linux runs and retained raw evidence are required;
+resource-free/native capability controls alone cannot complete #329.
+
 ## Production master restart before adjudication
 
 The irreversible canonical RPC check retains the original physical live-reader

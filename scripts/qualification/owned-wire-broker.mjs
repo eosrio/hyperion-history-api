@@ -1,13 +1,9 @@
 /** Qualification-only, single-use authority to restart the exact owned RabbitMQ container. */
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
-import {lstatSync, readFileSync, readlinkSync, realpathSync} from 'node:fs';
-import {parseLinuxProcessStat} from './owned-master-process-group.mjs';
-import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
+import {captureOwnedFixtureDaemon, captureOwnedFixtureProcess} from './owned-fixture-runtime.mjs';
 
 const captured = new WeakMap(), restarted = new WeakMap();
 const image = 'rabbitmq@sha256:09b39ca8a3e884e91cab8842cd41264de21aab0625e1f1d016a9a3135ba590ef';
-const sha = value => createHash('sha256').update(value).digest('hex');
 const lines = value => value.split(/\r?\n/).filter(Boolean).sort();
 const labels = (value, run) => {
     assert.equal(value?.['io.eosrio.qualifier'], 'es198-replicas');
@@ -60,27 +56,8 @@ export function assertWireBrokerInspection(core, inspected, volume, users, netwo
         image, startedAt: inspected.State.StartedAt, pid: inspected.State.Pid, networkPeers: peers};
 }
 
-function processIdentity(pid) {
-    const first = parseLinuxProcessStat(readFileSync(`/proc/${pid}/stat`, 'utf8'), pid);
-    const command = readFileSync(`/proc/${pid}/cmdline`);
-    assert.ok(command.length > 0 && command.length <= 65536 && command.at(-1) === 0);
-    const executable = readlinkSync(`/proc/${pid}/exe`);
-    const second = parseLinuxProcessStat(readFileSync(`/proc/${pid}/stat`, 'utf8'), pid);
-    const {state: firstState, ...birth} = first, {state: secondState, ...secondBirth} = second;
-    assert.ok(!['Z', 'X'].includes(firstState) && !['Z', 'X'].includes(secondState));
-    assert.deepEqual(secondBirth, birth, 'broker process changed during capture');
-    return {...birth, executable, commandSha256: sha(command)};
-}
-
 function inspect(core, docker) {
-    assertNativeQualificationRuntime(); assert.equal(process.platform, 'linux');
-    const endpoint = process.env.DOCKER_HOST;
-    assert.ok(!process.env.DOCKER_CONTEXT, 'Docker context must not override the explicit private socket');
-    assert.ok(typeof endpoint === 'string' && endpoint.startsWith('unix:///'), 'restart requires an explicit local Docker socket');
-    const path = endpoint.slice('unix://'.length), stat = lstatSync(path);
-    assert.ok(stat.isSocket() && !stat.isSymbolicLink()); assert.equal(realpathSync(path), path);
-    const daemon = JSON.parse(docker(['info', '--format', '{{json .}}']));
-    assert.ok(typeof daemon.ID === 'string' && daemon.ID.length > 0);
+    const daemon = captureOwnedFixtureDaemon(docker);
     const inspected = JSON.parse(docker(['inspect', core.broker.containerId]))[0];
     const volume = JSON.parse(docker(['volume', 'inspect', core.broker.volume]))[0];
     const users = lines(docker(['ps', '-a', '--no-trunc', '--filter', 'volume=' + core.broker.volume, '--format', '{{.ID}}']));
@@ -92,9 +69,7 @@ function inspect(core, docker) {
         assert.equal(member.Id, cid); assert.equal(member.Config.Labels?.['io.eosrio.run'], core.run);
         assert.ok(['es198-replicas', 'es198-workers'].includes(member.Config.Labels?.['io.eosrio.qualifier']));
     }
-    return {broker, process: processIdentity(broker.pid),
-        daemon: {endpoint, socketDevice: stat.dev, socketInode: stat.ino, id: daemon.ID,
-            name: daemon.Name, root: daemon.DockerRootDir, version: daemon.ServerVersion}};
+    return {broker, process: captureOwnedFixtureProcess(broker.pid), daemon};
 }
 
 export function captureOwnedWireBroker(core, docker) {
