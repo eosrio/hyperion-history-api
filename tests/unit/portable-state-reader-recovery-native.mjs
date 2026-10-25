@@ -15,6 +15,7 @@ import {installWireReaderRecoveryHost} from '../../scripts/qualification/wire-re
 import {durableRecoveryFile} from '../../scripts/qualification/recovery-custody.mjs';
 import {assertSuccessfulWorkerShutdown} from '../../scripts/qualification/es955-workers.ts';
 import {auditPortableWorkerProfiles} from '../../scripts/qualification/portable-state-worker-profiles.ts';
+import {captureOwnedMasterGroup, terminateOwnedMasterGroup} from '../../scripts/qualification/owned-master-process-group.mjs';
 
 assert.equal(process.platform, 'linux'); assert.equal(process.versions.bun, undefined); assert.match(process.version, /^v(?:24|26)\./);
 const file = fileURLToPath(import.meta.url), mode = process.argv[2], scenario = process.argv[3] ?? mode;
@@ -155,7 +156,10 @@ if (mode === 'reader') {
         if (!state.exited) {
             if (child.connected) child.send({event: 'qualifier_shutdown'});
             try {await until(() => state.exited, 'native controller cleanup');}
-            catch {process.kill(-child.pid, 'SIGKILL'); await until(() => state.exited, 'owned test group fallback cleanup');}
+            catch {
+                const fence = captureOwnedMasterGroup(child, output, await observerRows(), control.titlePrefix + '-master');
+                await terminateOwnedMasterGroup(fence); await until(() => state.exited, 'owned test group fallback cleanup');
+            }
         }
         const resolved = realpathSync(output); assert.equal(dirname(resolved), realpathSync(tmpdir()));
         assert.ok(basename(resolved).startsWith('hapi-reader-controller-')); rmSync(resolved, {recursive: true, force: true});
