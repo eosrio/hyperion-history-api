@@ -46,6 +46,7 @@ test('a redelivery end cannot borrow the prior attempt fresh write for identical
             associations.push(association); return {id: 'private-association'};
         }};
     const authority = {configurationSha256: () => currentConfig,
+        assertCanonicalCurrent: () => {},
         canonicalBlock: async () => currentBlock,
         targetUuid: async () => currentTarget};
     const adjudicator = new ActionAttemptAdjudicator(supervisor, store, {} as any, authority);
@@ -130,6 +131,7 @@ test('a reversible Wire attempt needs the current admitted source selection befo
     let admitted = false;
     const authority = {configurationSha256: () => config, targetUuid: async () => target.uuid,
         canonicalBlock: async () => ({chainId, blockId, previousBlockId, irreversible: false}),
+        assertCanonicalCurrent: () => {},
         reversibleSelection: async (id: string, position: typeof source, session: string) => {
             calls.push({id, position, session}); return admitted;
         }};

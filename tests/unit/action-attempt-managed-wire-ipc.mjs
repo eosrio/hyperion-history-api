@@ -15,15 +15,35 @@ import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bi
 import {persistRestartSnapshot, restartDirectory} from './action-attempt-restart-snapshot.mjs';
 
 const mode = process.argv[2] ?? 'main';
+const lateAuthorityCases = {
+    'main-late-config-target': ['config', 'target'],
+    'handoff-late-config-canonical': ['config', 'canonical'],
+    'handoff-late-target-canonical': ['target', 'canonical'],
+    'handoff-late-config-selection': ['config', 'selection'],
+    'handoff-late-target-selection': ['target', 'selection'],
+    'handoff-late-config-chunk': ['config', 'chunk'],
+    'handoff-late-target-chunk': ['target', 'chunk'],
+    'handoff-late-config-manifest': ['config', 'manifest'],
+    'handoff-late-target-manifest': ['target', 'manifest'],
+    'handoff-late-config-reassertion-read': ['config', 'reassertion-read'],
+    'handoff-late-target-reassertion-read': ['target', 'reassertion-read'],
+    'handoff-late-source-selection': ['source', 'selection'],
+    'handoff-late-source-manifest': ['source', 'manifest'],
+    'handoff-late-source-prewrite-target': ['source', 'prewrite-target'],
+    'handoff-late-source-postwrite-target': ['source', 'postwrite-target'],
+    'handoff-late-source-reassertion-read': ['source', 'reassertion-read']
+};
+const lateAuthorityCase = lateAuthorityCases[mode];
 assert(['main','main-held-write','main-failed-write','main-ack-throws','main-held-operation','main-held-end','main-failed-end',
     'main-held-adjudication','main-unknown-association','main-restart-checkpoint','handoff-restart-checkpoint','ds','contract','handoff',
-    'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain','handoff-failed-drain'].includes(mode));
+    'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain','handoff-failed-drain'].includes(mode) || lateAuthorityCase);
 const isMain = mode.startsWith('main');
 const checkpointDirectory = mode.endsWith('-restart-checkpoint') ? restartDirectory(process.argv[3]) : undefined;
 if (checkpointDirectory) assert.equal(typeof process.send, 'function', 'restart checkpoint requires its owning controller');
 const role = isMain ? 'deserializer' : 'ds_pool_worker';
 cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-worker.mjs', import.meta.url)),
-    args: [mode === 'main-held-write' ? 'managed-original-main-held-write'
+    args: [lateAuthorityCase ? isMain ? 'managed-original-main' : 'managed-original-handoff'
+        : mode === 'main-held-write' ? 'managed-original-main-held-write'
         : mode === 'main-failed-write' ? 'managed-original-main-failed-write'
         : mode === 'main-ack-throws' ? 'managed-original-main-ack-throws'
         : ['main','main-held-adjudication','main-unknown-association','main-restart-checkpoint'].includes(mode) ? 'managed-original-main'
@@ -56,7 +76,7 @@ async function unrelatedWorkerProgress(supervisor, ends) {
     peer.process.stdout.resume();
     peer.process.stderr.on('data', bytes => {peerError += bytes.toString();});
     peer.on('exit', code => {peerExited = true; peerCode = code;});
-    supervisor.attach(peer, 'deserializer');
+    supervisor.attach(peer, role);
     try {
         await waitFor(() => peerMessages.some(message => message.event === 'qualification_fixture')
             && ends.length === 2 || peerExited, 'unrelated original Wire callback during held adjudication');
@@ -313,16 +333,100 @@ try {
         const adjudicator = new ActionAttemptAdjudicator(supervisor, untouched, untouched, untouched);
         assert.deepEqual(await adjudicator.adjudicate(ends[0]), {state: 'unresolved'});
     } else {
+    let currentConfiguration = admission.source.producer.configurationSha256, canonicalGeneration = 0,
+        canonicalReturned = false, latestCanonical;
+    const canonicalObservations = new WeakMap();
     const authority = {
-        configurationSha256: () => admission.source.producer.configurationSha256,
+        configurationSha256: () => currentConfiguration,
+        assertCanonicalCurrent: block => {
+            assert.ok(canonicalObservations.has(block), 'unissued controlled canonical observation');
+            assert.equal(canonicalObservations.get(block), canonicalGeneration, 'controlled canonical source was revoked');
+        }, // Constructed generations, not a live source qualification; the real master fence has separate native tests.
         targetUuid: async name => {assert.equal(name, admission.target.name); return memory.settings.get(name)['index.uuid'];},
         canonicalBlock: async blockNum => {
             assert.equal(blockNum, source.blockNum);
-            return {chainId: source.chainId, blockId: source.blockId,
-                previousBlockId: admission.source.previousBlockId, irreversible: true};
+            const value = Object.freeze({chainId: source.chainId, blockId: source.blockId,
+                previousBlockId: admission.source.previousBlockId, irreversible: true});
+            canonicalObservations.set(value, canonicalGeneration); canonicalReturned = true; latestCanonical = value;
+            return value;
         }
     };
     const adjudicator = new ActionAttemptAdjudicator(supervisor, store, selections, authority);
+    if (lateAuthorityCase) {
+        const [change, boundary] = lateAuthorityCase, originalConfiguration = currentConfiguration;
+        const targetSettings = memory.settings.get(admission.target.name), originalUuid = targetSettings['index.uuid'];
+        const originalTarget = authority.targetUuid, originalCanonical = authority.canonicalBlock,
+            originalSelection = selections.readSelection, originalAssociation = store.recordAttemptAssociation;
+        const isAssociation = request => request.index === store.index && request.document?.bundle_id?.startsWith('h45actionassociation1:');
+        let prior;
+        if (boundary === 'reassertion-read') {
+            prior = await adjudicator.adjudicate(ends[0]); assert.equal(prior.state, 'associated');
+        } else assert.equal(memory.calls.some(call => ['create','index'].includes(call.method) && isAssociation(call.request)), false,
+            'no association was already written before the controlled authority hold');
+        let reached = false, release;
+        const gate = new Promise(resolveGate => {release = resolveGate;});
+        const hold = async () => {if (!reached) {reached = true; await gate;}};
+        if (boundary === 'prewrite-target' || boundary === 'postwrite-target') {
+            let associationReturned = false;
+            store.recordAttemptAssociation = async (...args) => {
+                const value = await originalAssociation.apply(store, args); associationReturned = true; return value;
+            };
+            authority.targetUuid = async name => {
+                const uuid = await originalTarget(name);
+                if (canonicalReturned && associationReturned === (boundary === 'postwrite-target')) await hold();
+                return uuid;
+            };
+        } else if (boundary === 'target') authority.targetUuid = async name => {
+            const uuid = await originalTarget(name); await hold(); return uuid;
+        };
+        else if (boundary === 'canonical') authority.canonicalBlock = async block => {
+            const value = await originalCanonical(block); await hold(); return value;
+        };
+        else if (boundary === 'selection') {
+            assert.ok(admission.source.inventoryInput.sourceSelectionId, 'original selected source required');
+            selections.readSelection = async (...args) => {
+                const value = await originalSelection.apply(selections, args); await hold(); return value;
+            };
+        } else if (boundary === 'reassertion-read') memory.faults.beforeRead = async request => {
+            if (request.index === store.index && request.id === prior.id) await hold();
+        };
+        else memory.faults.beforeWrite = async request => {
+            if (isAssociation(request) && request.document.kind === boundary) await hold();
+        };
+        const before = memory.calls.length, pending = adjudicator.adjudicate(ends[0]); void pending.catch(() => {});
+        try {
+            await waitFor(() => reached, `original ${boundary} operation held`);
+            if (change === 'config') {
+                currentConfiguration = '0'.repeat(64); assert.notEqual(currentConfiguration, originalConfiguration);
+                assert.equal(authority.configurationSha256(), currentConfiguration, 'current getter observes changed configuration');
+            } else if (change === 'target') {
+                targetSettings['index.uuid'] = 'changed-physical-target'; assert.notEqual(await originalTarget(admission.target.name), originalUuid);
+            } else canonicalGeneration++;
+            if (change === 'config' && boundary === 'manifest') await unrelatedWorkerProgress(supervisor, ends);
+            release();
+            if (change === 'source') await assert.rejects(pending, /controlled canonical source was revoked/);
+            else assert.deepEqual(await pending, {state: 'unresolved'}, `${change} changed during ${boundary} must not associate`);
+            const storedDuringWrite = ['chunk', 'manifest', 'reassertion-read', 'postwrite-target'].includes(boundary);
+            if (storedDuringWrite) {
+                const id = 'h45actionassociation1:' + createHash('sha256').update(JSON.stringify([end.epoch, end.incarnation, end.attemptId])).digest('hex');
+                const retained = await store.readAttemptAssociation(id);
+                assert.equal(retained.observation.end.attemptId, end.attemptId); assert.equal(retained.observation.brokerSettlement, 'unknown');
+                const foreign = new WorkerAttemptSupervisor();
+                try {assert.throws(() => describeWorkerAttemptEnd(foreign, retained.observation.end), /Unissued or foreign/);}
+                finally {foreign.stop();}
+            } else assert.equal(memory.calls.slice(before).some(call => ['create','index'].includes(call.method) && isAssociation(call.request)), false);
+            recovery = {lateAuthorityRejected: true, lateAuthorityChange: change, lateAuthorityBoundary: boundary,
+                retainedRecordInspectionOnly: storedDuringWrite, restoredOriginalContextControl: true,
+                unrelatedWorkerProgressDuringHold: change === 'config' && boundary === 'manifest'};
+        } finally {
+            release(); await pending.catch(() => {});
+            authority.targetUuid = originalTarget; authority.canonicalBlock = originalCanonical; selections.readSelection = originalSelection;
+            store.recordAttemptAssociation = originalAssociation;
+            delete memory.faults.beforeRead; delete memory.faults.beforeWrite;
+            currentConfiguration = originalConfiguration; targetSettings['index.uuid'] = originalUuid;
+        }
+        if (change === 'source') assert.throws(() => authority.assertCanonicalCurrent(latestCanonical), /controlled canonical source was revoked/);
+    }
     if (checkpointDirectory) {
         assert.equal(memory.calls.some(call => ['create','index'].includes(call.method)
             && call.request.document?.bundle_id?.startsWith('h45actionassociation1:')), false);
@@ -411,8 +515,16 @@ try {
             unrelatedWorkerProgressDuringFailure: true, primaryVisibleInspectionOnly: true,
             restartCannotReissueEnd: true, freshRetryReceiptRequired: true};
     }
-    const associated = await adjudicator.adjudicate(ends[0]);
+    const beforeControl = memory.calls.length, associated = await adjudicator.adjudicate(ends[0]);
     assert.equal(associated.state, 'associated');
+    if (recovery?.retainedRecordInspectionOnly) {
+        const reassertion = memory.calls.slice(beforeControl).find(call => call.method === 'index'
+            && call.request.index === store.index && call.request.id === associated.id);
+        assert(reassertion, 'a visible record still needs a fresh conditional association write');
+        assert.equal(reassertion.request.wait_for_active_shards, 'all');
+        assert(Number.isSafeInteger(reassertion.request.if_seq_no)); assert(Number.isSafeInteger(reassertion.request.if_primary_term));
+        recovery.freshReassertionReceiptRequired = true;
+    }
     observation = (await store.readAttemptAssociation(associated.id)).observation;
     assert.deepEqual(observation.results, [{id: snapshot.recordId,
         classification: isMain ? 'source-incomplete'

@@ -10,10 +10,18 @@ const sha = (value: unknown) => createHash('sha256').update(actionHistoryImmutab
 const shaBytes = (value: Uint8Array) => createHash('sha256').update(value).digest('hex');
 const same = (left: unknown, right: unknown) => actionHistoryImmutableJson(left) === actionHistoryImmutableJson(right);
 
+export interface CurrentAttemptCanonicalBlock {
+    readonly chainId: string;
+    readonly blockId: string;
+    readonly previousBlockId: string | null;
+    readonly irreversible: boolean;
+}
+
 export interface CurrentAttemptAuthority {
     configurationSha256(): string;
-    canonicalBlock(blockNum: number): Promise<{chainId: string; blockId: string; previousBlockId: string | null;
-        irreversible: boolean}>;
+    canonicalBlock(blockNum: number): Promise<CurrentAttemptCanonicalBlock>;
+    /** Revalidate the original process-local observation after later I/O; JSON cannot reissue it. */
+    assertCanonicalCurrent(block: CurrentAttemptCanonicalBlock): void;
     /** Source-selected reversible input needs current physical SHIP/coordinator authority. */
     reversibleSelection?(selectionId: string, source: ProtocolSourcePosition, readerSessionId: string): Promise<boolean>;
     targetUuid(name: string): Promise<string>;
@@ -67,8 +75,7 @@ export class ActionAttemptAdjudicator {
             if (!result) return {state: 'unresolved'};
             results.push(result);
         }
-        if (this.current.configurationSha256() !== admission.source.producer.configurationSha256
-            || await this.current.targetUuid(admission.target.name) !== admission.target.uuid) return {state: 'unresolved'};
+        if (!await this.currentProducerMatches(admission)) return {state: 'unresolved'};
         const block = await this.current.canonicalBlock(source.blockNum);
         if (block.chainId !== source.chainId || block.blockId !== source.blockId
             || (admission.source.previousBlockId !== null && block.previousBlockId !== admission.source.previousBlockId))
@@ -89,8 +96,21 @@ export class ActionAttemptAdjudicator {
             || !await this.current.reversibleSelection(selected, {chainId: source.chainId, blockNum: source.blockNum,
                 blockId: source.blockId, previousBlockId: admission.source.previousBlockId}, selectedReaderSessionId)))
             return {state: 'unresolved'};
+        this.current.assertCanonicalCurrent(block);
+        if (!await this.currentProducerMatches(admission)) return {state: 'unresolved'};
+        this.current.assertCanonicalCurrent(block);
         const persisted = await this.store.recordAttemptAssociation(this.supervisor, evidence, {results, sourceChecked: true});
+        this.current.assertCanonicalCurrent(block);
+        if (!await this.currentProducerMatches(admission)) return {state: 'unresolved'};
+        this.current.assertCanonicalCurrent(block);
         return {state: 'associated', id: persisted.id};
+    }
+
+    private async currentProducerMatches(admission: Awaited<ReturnType<ActionSourceAdmissionStore['resolve']>>): Promise<boolean> {
+        const expected = admission.source.producer.configurationSha256;
+        if (this.current.configurationSha256() !== expected) return false;
+        const target = await this.current.targetUuid(admission.target.name);
+        return target === admission.target.uuid && this.current.configurationSha256() === expected;
     }
 
     private async verifyWrite(end: WorkerAttemptEndDescription, write: FreshActionWrite,
