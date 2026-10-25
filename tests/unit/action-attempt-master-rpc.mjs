@@ -19,9 +19,10 @@ const rpc = new APIClient({provider: {async call(args) {
 }}});
 rpc.v1.chain.get_info = async () => ({head_block_num: UInt32.from(head), last_irreversible_block_num: UInt32.from(lib),
     chain_id: Checksum256.from(chainId)});
-const owner = {}, master = Object.assign(Object.create(HyperionMaster.prototype), {rpc,
+const owner = {isConnected: () => true, isDead: () => false}, master = Object.assign(Object.create(HyperionMaster.prototype), {rpc,
     chain: 'rpc-identity-fixture', esClient: {}, conf: {settings: {es_replicas: 0}, indexer: {live_reader: true}},
-    liveReader: {wref: owner}, actionCanonicalLib: {worker: owner, blockNum: 33, blockId: original.id}});
+    liveReader: {wref: owner}, workerMap: [{wref: owner, worker_role: 'continuous_reader'}],
+    actionCanonicalLib: {worker: owner, blockNum: 33, blockId: original.id}});
 const supervisor = new WorkerAttemptSupervisor();
 const authority = master.attemptAdjudicatorFor(supervisor).current;
 try {

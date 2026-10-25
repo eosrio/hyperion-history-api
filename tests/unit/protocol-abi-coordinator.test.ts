@@ -47,6 +47,46 @@ async function fixture(options:{maxPendingBlocks?:number;recoveryWindowBlocks?:n
 }
 
 describe('canonical ABI runtime coordinator',()=>{
+    it('retains local source revocation across held fork recovery without additional storage reads',async()=>{
+        const f=await fixture();await f.append(1);
+        const calls=f.memory.calls.length,current=f.coordinator.retainSourceFence('session-a',f.generation);
+        expect(current()).toBe(true);expect(f.memory.calls).toHaveLength(calls);
+        await f.append(2);expect(current()).toBe(true);
+        const generation=f.generation,fork=await f.selected(2,20,1);
+        const recover=(f.coordinator as any).recoverParent.bind(f.coordinator);
+        let release!:()=>void,entered!:()=>void;
+        const gate=new Promise<void>(resolve=>{release=resolve;}),waiting=new Promise<void>(resolve=>{entered=resolve;});
+        (f.coordinator as any).recoverParent=async(...args:any[])=>{entered();await gate;return recover(...args);};
+        const pending=f.admit(fork);void pending.catch(()=>{});
+        try {
+            await waiting;
+            const heldCalls=f.memory.calls.length;
+            expect(current()).toBe(false);
+            expect(f.coordinator.retainSourceFence('session-a',generation)()).toBe(false);
+            expect(f.memory.calls).toHaveLength(heldCalls);
+            release();await pending;
+            expect(current()).toBe(false);
+            expect(f.coordinator.retainSourceFence('session-a',f.generation)()).toBe(true);
+        } finally {release();(f.coordinator as any).recoverParent=recover;}
+    });
+    it('does not restore a locally revoked session from repaired old control after failed storage',async()=>{
+        const f=await fixture(),generation=f.generation,current=f.coordinator.retainSourceFence('session-a',generation);
+        const save=f.store.compareAndSet.bind(f.store);
+        let release!:()=>void,entered!:()=>void;
+        const gate=new Promise<void>(resolve=>{release=resolve;}),waiting=new Promise<void>(resolve=>{entered=resolve;});
+        f.store.compareAndSet=async()=>{entered();await gate;throw new Error('controlled revoke write failure');};
+        const pending=f.coordinator.revokeSource('session-a');void pending.catch(()=>{});
+        try {
+            expect(current()).toBe(false);
+            expect(f.coordinator.retainSourceFence('session-a',generation)()).toBe(false);
+            await waiting;release();await expect(pending).rejects.toThrow('controlled revoke write failure');
+        } finally {release();f.store.compareAndSet=save;}
+        expect((await f.coordinator.inspect()).source?.readerSessionId).toBe('session-a');
+        expect(f.coordinator.retainSourceFence('session-a',generation)()).toBe(false);
+        const opened=await f.coordinator.openSource(f.contextId,'session-b');
+        expect(f.coordinator.retainSourceFence('session-b',opened.generation)()).toBe(true);
+        expect(current()).toBe(false);
+    });
     it('remembers an accepted replay of the committed head with a new source selection ID',async()=>{
         const f=await fixture(),first=await f.append(1);
         const conflict=await f.selected(1,1,0,empty(),false,3,'ff');

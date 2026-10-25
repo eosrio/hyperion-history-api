@@ -60,11 +60,13 @@ import {assertActionSequenceTemplateReadback, ensureActionSequenceMappings,
 import Timeout = NodeJS.Timeout;
 import { IPermission } from '../../interfaces/table-permissions.js';
 
+interface ActionLibAnchor {readonly worker: Worker; readonly blockNum: number; readonly blockId: string}
+
 export class HyperionMaster {
     // Own physical Worker objects independently of the replaceable logical workerMap entries.
     private workerAttemptSupervisor?: WorkerAttemptSupervisor;
     private actionAttemptAdjudicator?: ActionAttemptAdjudicator;
-    private actionCanonicalLib?: {worker: Worker; blockNum: number; blockId: string};
+    private actionCanonicalLib?: ActionLibAnchor;
     private readonly protocolSourceProbes = new Map<string, {worker: Worker; readerSessionId: string;
         generation: string; resolve: (current: boolean) => void}>();
     private probePhysicalReversibleSource(worker: Worker, readerSessionId: string, generation: string,
@@ -103,6 +105,25 @@ export class HyperionMaster {
             throw new Error('RPC returned an inconsistent canonical block identity');
         return {blockId: block.id.toLowerCase(), previousBlockId: blockNum === 1 ? null : block.previous.toLowerCase()};
     }
+    private captureActionLibAnchor(blockNum: number): () => ActionLibAnchor {
+        const anchor = this.actionCanonicalLib, coordinator = this.protocolAbiCoordinator, source = this.protocolAbiSource;
+        const readerSessionId = source?.readerSessionId, generation = source?.generation;
+        const sourceFence = coordinator && source && generation ? coordinator.retainSourceFence(source.readerSessionId, generation) : undefined;
+        return () => {
+            const current = this.actionCanonicalLib;
+            if (!anchor || this.shutdownStarted || this.liveReader?.wref !== anchor.worker
+                || !anchor.worker.isConnected() || anchor.worker.isDead() || anchor.blockNum < blockNum
+                || !this.workerMap.some(definition => definition.wref === anchor.worker && definition.worker_role === 'continuous_reader')
+                || !current || current.worker !== anchor.worker || current.blockNum < anchor.blockNum
+                || current.blockNum === anchor.blockNum && current.blockId !== anchor.blockId
+                || this.protocolAbiCoordinator !== coordinator || this.protocolAbiSource !== source
+                || source?.readerSessionId !== readerSessionId || source?.generation !== generation
+                || (coordinator ? !source || !generation || source.worker !== anchor.worker
+                    || !this.isCurrentProtocolLiveReader(anchor.worker) || !sourceFence?.() : !!source))
+                throw new Error('Current live SHIP irreversible anchor is unavailable');
+            return anchor;
+        };
+    }
     private attemptAdjudicatorFor(supervisor: WorkerAttemptSupervisor): ActionAttemptAdjudicator {
         return this.actionAttemptAdjudicator ??= new ActionAttemptAdjudicator(supervisor,
             new ActionSourceAdmissionStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0),
@@ -113,16 +134,17 @@ export class HyperionMaster {
                     const info = await this.rpc.v1.chain.get_info();
                     if (info.head_block_num.toNumber() < blockNum) throw new Error('Canonical node is behind the original worker source');
                     const irreversible = info.last_irreversible_block_num.toNumber() >= blockNum;
+                    const checkAnchor = irreversible && this.conf.indexer.live_reader ? this.captureActionLibAnchor(blockNum) : undefined;
                     // RPC alone can lag a SHIP fork. An authenticated live reader's LIB anchors its branch.
-                    if (irreversible && this.conf.indexer.live_reader) {
-                        const lib = this.actionCanonicalLib;
-                        if (!lib || this.liveReader?.wref !== lib.worker || lib.blockNum < blockNum)
-                            throw new Error('Current live SHIP irreversible anchor is unavailable');
+                    if (checkAnchor) {
+                        const lib = checkAnchor();
                         const anchored = await this.readCanonicalRpcBlock(lib.blockNum);
+                        checkAnchor();
                         if (anchored.blockId !== lib.blockId)
                             throw new Error('RPC and live SHIP irreversible branches differ');
                     }
                     const block = await this.readCanonicalRpcBlock(blockNum);
+                    checkAnchor?.();
                     return {chainId: String(info.chain_id).toLowerCase(), ...block, irreversible};
                 },
                 reversibleSelection: async (selectionId, source, readerSessionId) => {
