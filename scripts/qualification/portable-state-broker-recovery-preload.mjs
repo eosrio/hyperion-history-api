@@ -110,7 +110,10 @@ if (cluster.isPrimary) {
                 recordId: request.id, request, response, scope: scope.snapshot()};
             // The marker is exclusive across physical DS workers. A later retry uses the original transport normally.
             try {durableRecoveryFile(join(control.output, 'broker-recovery/held-receipt.json'), assertWireBrokerHeldReceipt(control, held));}
-            catch (error) {if (error.code === 'EEXIST') return response; throw error;}
+            catch (error) {
+                if (error.code === 'EEXIST') {record('handoff-retry-receipt-returned', held); return response;}
+                throw error;
+            }
             let returned = false;
             const fenced = () => record('held-attempt-fenced', {attemptId: view.attempt.attemptId,
                 scope: scope.snapshot(), returned, attempt: context.worker.workerAttemptClient.describe(

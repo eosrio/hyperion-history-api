@@ -104,6 +104,22 @@ export async function awaitWireBrokerReceiptRelease(control) {
         await pause(50);
     }
 }
+/** The selected DS receipt stays pending; every other queue must drain before the original oracles run. */
+export function assertWireBrokerHeldQueues(chain, rows) {
+    assert.match(chain, /^hyp-p191-[a-f0-9]{12}$/);
+    assert.ok(Array.isArray(rows) && rows.length > 0 && rows.length <= 4096);
+    assert.equal(new Set(rows.map(row => row.name)).size, rows.length);
+    const held = rows.filter(row => row.name === chain + ':ds_pool:1'); assert.equal(held.length, 1);
+    const source = rows.filter(row => row.name === chain + ':live_blocks'); assert.equal(source.length, 1);
+    assert.equal(source[0].delivered, 33); assert.equal(source[0].ack, 33);
+    for (const row of rows) {
+        assert.ok(row.name.startsWith(chain + ':')); assert.equal(row.ready, 0);
+        if (row === held[0]) {
+            assert.equal(row.consumers, 1); assert.ok(Number.isSafeInteger(row.unacked) && row.unacked > 0);
+            assert.equal(row.messages, row.unacked);
+        } else {assert.equal(row.unacked, 0); assert.equal(row.messages, 0);}
+    }
+}
 /** Read-only counters are scoped to their observed process incarnation, never reconstructed as one broker total. */
 export function auditWireBrokerSourceCounterWindows({chain, through, restart, before, after}) {
     assert.match(chain, /^hyp-p191-[a-f0-9]{12}$/); assert.ok(Number.isSafeInteger(through) && through > 33 && through <= 1480);

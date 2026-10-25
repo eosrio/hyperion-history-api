@@ -35,7 +35,7 @@ import {createWireReaderRecoveryControl, readWireReaderRecoveryEvidence, snapsho
     wireReaderShutdownRows, wireReaderControlDigest} from './portable-state-reader-recovery.mjs';
 import {auditWireRecoveryEnd} from './wire-recovery-end-audit.mjs';
 import {createWireBrokerRecoveryControl, readWireBrokerRecoveryEvidence, assertWireBrokerHeldReceipt,
-    releaseWireBrokerReceipt, auditWireBrokerSourceCounterWindows} from './portable-state-broker-recovery.mjs';
+    releaseWireBrokerReceipt, auditWireBrokerSourceCounterWindows, assertWireBrokerHeldQueues} from './portable-state-broker-recovery.mjs';
 import {captureOwnedWireBroker, describeOwnedWireBroker, restartOwnedWireBroker} from './owned-wire-broker.mjs';
 import {portableWorkerSourceFrame} from './portable-state-worker-source.ts';
 
@@ -649,6 +649,23 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         if (native) report.native = {profile: native.profile, oracleHashes: native.oracleHashes, holds: [],
             activation: 'Existing admission engineering preload only; ordinary installed native provider; public/default operator activation remains disabled.',
             constructedControls: native.controls, notificationInventory: native.originalNotifications};
+        const observeBrokerCut = async () => {
+            assert.ok(brokerControl); const control = brokerControl.control;
+            await wait('original Wire handoff manifest receipt held after actual confirmed publication', async () => {
+                const evidence = readWireBrokerRecoveryEvidence(control), held = assertWireBrokerHeldReceipt(control, evidence.held);
+                assert.equal(held.parentPid, master!.pid);
+                assert.equal(evidence.events.filter(row => row.event === 'handoff-receipt-held'
+                    && row.pid === held.pid && row.attempt.attemptId === held.attempt.attemptId).length, 1);
+                assert.ok(!evidence.events.some(row => row.event === 'fresh-observation-attempt' && row.pid === held.pid
+                    || row.event === 'end' && row.end.attemptId === held.attempt.attemptId));
+                const publications = (await observedRows()).filter(row => row.kind === 'native_boundary'
+                    && row.event === 'admitted_broker_confirmed' && row.pid === held.pid
+                    && row.headers['hyperion-action-admission-v1'] === held.admissionId && row.headers.block_num === 33);
+                assert.ok(publications.length > 0);
+                const counters = await queues(); assertWireBrokerHeldQueues(chain, counters);
+                replay!.assertThrough(33); report.brokerRecovery.before = {held, publications, counters};
+            });
+        };
         let writeFailureObserved = false;
         let through = 0;
         const schedule = native ? nativePortableHolds(plan.barriers.map(barrier => barrier.through)).map(through =>
@@ -701,50 +718,6 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 through = Math.min(through + portableSourceLimits.window, barrier.through,
                     !writeFailureObserved ? faultThrough - 1 : source.endBlock); replay.releaseThrough(through);
                 const block = source.records[through - 1];
-                if (brokerControl && through === 33) {
-                    const control = brokerControl.control;
-                    await wait('original Wire handoff manifest receipt held after actual confirmed publication', async () => {
-                        const evidence = readWireBrokerRecoveryEvidence(control), held = assertWireBrokerHeldReceipt(control, evidence.held);
-                        assert.equal(held.parentPid, master!.pid);
-                        assert.equal(evidence.events.filter(row => row.event === 'handoff-receipt-held'
-                            && row.pid === held.pid && row.attempt.attemptId === held.attempt.attemptId).length, 1);
-                        assert.ok(!evidence.events.some(row => row.event === 'fresh-observation-attempt' && row.pid === held.pid
-                            || row.event === 'end' && row.end.attemptId === held.attempt.attemptId));
-                        const publications = (await observedRows()).filter(row => row.kind === 'native_boundary'
-                            && row.event === 'admitted_broker_confirmed' && row.pid === held.pid
-                            && row.headers['hyperion-action-admission-v1'] === held.admissionId && row.headers.block_num === 33);
-                        assert.ok(publications.length > 0);
-                        const counters = await queues(), sourceQueue = counters.find((row: any) => row.name === chain + ':live_blocks');
-                        assert.ok(sourceQueue && sourceQueue.delivered === 33 && sourceQueue.ack === 33);
-                        assert.ok(counters.some((row: any) => row.name.startsWith(chain + ':ds_pool:') && row.unacked > 0));
-                        replay!.assertThrough(33); report.brokerRecovery.before = {held, publications, counters};
-                    });
-                    const token = captureOwnedWireBroker(state.core, docker);
-                    report.brokerRecovery.originalIncarnation = describeOwnedWireBroker(token);
-                    try {
-                        report.brokerRecovery.restart = restartOwnedWireBroker(token);
-                        replay.allowBrokerRestart(report.brokerRecovery.restart, control);
-                        report.brokerRecovery.status = 'restart-observed';
-                        await wait('original handoff attempt fenced while its actual receipt remains held', async () => {
-                            const evidence = readWireBrokerRecoveryEvidence(control);
-                            const held = evidence.held, fences = evidence.events.filter(row => row.event === 'held-attempt-fenced'
-                                && row.pid === held.pid && row.attemptId === held.attempt.attemptId);
-                            assert.equal(fences.length, 1); assert.equal(fences[0].returned, false);
-                            assert.equal(fences[0].scope.state, 'fenced'); assert.equal(fences[0].attempt.masterEnd, null);
-                            assert.ok(evidence.events.some(row => row.event === 'channel-close' && row.pid === held.pid));
-                            assert.ok(!evidence.events.some(row => row.event === 'handoff-receipt-released'
-                                || row.event === 'end' && row.end.attemptId === held.attempt.attemptId));
-                            report.brokerRecovery.heldAfterRestart = evidence;
-                        });
-                    } finally {
-                        releaseWireBrokerReceipt(control); brokerReceiptReleased = true;
-                    }
-                    await wait('owned RabbitMQ management returned after physical restart', async () => {
-                        report.brokerRecovery.restartedIncarnationCounters = await queues();
-                        replay!.assertBrokerReconnected();
-                        report.brokerRecovery.sourceReconnection = replay!.metrics();
-                    });
-                }
                 await wait(`durable contiguous projection cursor ${through}`, async () => {
                     const recoveries = await Promise.all(adapters.map((adapter, index) => adapter.recovery(bindings[index])));
                     for (const recovery of recoveries) {assert.equal(recovery.initialized, true); assert.deepEqual(recovery.checkpoint, {blockNum: through, blockId: block.blockId});
@@ -784,7 +757,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                         {blockNum: through, blockId: block.blockId}, expectedRows.filter(row => row.value[field] === value));
                 }
             }
-            await wait(`owned Rabbit queues drained at${through}`, async () => {const rows = await queues(); assert.ok(rows.length > 0);
+            if (brokerControl && through === 33) await observeBrokerCut();
+            else await wait(`owned Rabbit queues drained at${through}`, async () => {const rows = await queues(); assert.ok(rows.length > 0);
                 assert.ok(rows.every((row: any) => row.ready === 0 && row.unacked === 0 && row.messages === 0));});
             if (recoveryControl && through === 33) {
                 const {ActionSourceAdmissionStore} = await import(new URL('../../build/indexer/history/action-source-admission.js', import.meta.url).href);
@@ -813,9 +787,83 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 const file = `prefixes/native-${through}.json`, bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n');
                 await writeFile(join(output, file), bytes, {flag: 'wx'}); report.native.holds.push({through, file, sha256: portableSourceHash(bytes)});}
             const observed = {through, blockId: block.blockId, responses, history: await history(through),
-                stateAbiAvailability, queues: await queues(), recovery: report.lastRecovery, source: replay.metrics(), isolation, physicalMongo};
+                stateAbiAvailability, queues: await queues(), recovery: report.lastRecovery, source: replay.metrics(), isolation, physicalMongo,
+                ...(brokerControl && through === 33 ? {brokerReceiptHeld: true, queuesDrained: false} : {})};
             const bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n'); const file = `prefixes/block-${through}.json`;
             await writeFile(join(output, file), bytes, {flag: 'wx'}); report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
+            if (brokerControl && through === 33) {
+                await observeBrokerCut(); const control = brokerControl.control;
+                const token = captureOwnedWireBroker(state.core, docker);
+                report.brokerRecovery.originalIncarnation = describeOwnedWireBroker(token);
+                try {
+                    report.brokerRecovery.restart = restartOwnedWireBroker(token);
+                    replay.allowBrokerRestart(report.brokerRecovery.restart, control);
+                    report.brokerRecovery.status = 'restart-observed';
+                    await wait('original handoff attempt fenced while its actual receipt remains held', async () => {
+                        const evidence = readWireBrokerRecoveryEvidence(control);
+                        const held = evidence.held, fences = evidence.events.filter(row => row.event === 'held-attempt-fenced'
+                            && row.pid === held.pid && row.attemptId === held.attempt.attemptId);
+                        assert.equal(fences.length, 1); assert.equal(fences[0].returned, false);
+                        assert.equal(fences[0].scope.state, 'fenced'); assert.equal(fences[0].attempt.masterEnd, null);
+                        assert.ok(evidence.events.some(row => row.event === 'channel-close' && row.pid === held.pid));
+                        assert.ok(!evidence.events.some(row => row.event === 'handoff-receipt-released'
+                            || row.event === 'end' && row.end.attemptId === held.attempt.attemptId));
+                        report.brokerRecovery.heldAfterRestart = evidence;
+                    });
+                } finally {
+                    releaseWireBrokerReceipt(control); brokerReceiptReleased = true;
+                }
+                await wait('owned RabbitMQ management returned after physical restart', async () => {
+                    report.brokerRecovery.restartedIncarnationCounters = await queues();
+                    replay!.assertBrokerReconnected();
+                    report.brokerRecovery.sourceReconnection = replay!.metrics();
+                });
+                const unavailable: any[] = [];
+                await wait('state APIs remain unavailable before the new source continuation', async () => {
+                    for (const [index, definition] of plan.definitions.entries()) {
+                        const response = await query(definition.id); assertPortableUnavailable(response);
+                        assert.equal(response.body.code, 'projection_source_unavailable');
+                        unavailable[index] = {projectionId: definition.id, ...responseReceipt(response)};
+                    }
+                });
+                report.brokerRecovery.unavailableBeforeContinuation = unavailable;
+                // A new reader session cannot settle canonical authority without its next real frame.
+                // The original 33 oracles above remain intact; release exactly one bounded continuation.
+                replay.releaseBrokerContinuation(); through = 34;
+                const resumedBlock = source.records[through - 1];
+                assert.ok(through < stateAbiAvailability.fromBlock, 'continuation must precede the pinned projection ABI deployment');
+                await wait('broker continuation reached the actual projection checkpoint', async () => {
+                    const recoveries = await Promise.all(adapters.map((adapter, index) => adapter.recovery(bindings[index])));
+                    for (const recovery of recoveries) {
+                        assert.equal(recovery.initialized, true);
+                        assert.deepEqual(recovery.checkpoint, {blockNum: through, blockId: resumedBlock.blockId});
+                        assert.equal(recovery.pending, null); assert.equal(recovery.gap, null);
+                    }
+                    replay!.assertBrokerContinued(); replay!.assertThrough(through); report.lastRecovery = recoveries;
+                });
+                const responses: any[] = [];
+                await wait('original predeployment APIs restored after canonical continuation', async () => {
+                    for (const [index, definition] of plan.definitions.entries()) {
+                        const response = await query(definition.id); assertPortablePredeployment(response);
+                        responses[index] = {projectionId: definition.id, ...responseReceipt(response)};
+                    }
+                });
+                await wait('owned Rabbit queues drained after broker continuation', async () => {
+                    const rows = await queues(); assert.ok(rows.length > 0);
+                    assert.ok(rows.every((row: any) => row.ready === 0 && row.unacked === 0 && row.messages === 0));
+                });
+                assert.ok(native); await es.indices.refresh({index: chain + '-action-*'});
+                const nativePrefix = await native.hold(through);
+                const nativeFile = `prefixes/native-${through}.json`, nativeBytes = Buffer.from(JSON.stringify(nativePrefix, null, 2) + '\n');
+                await writeFile(join(output, nativeFile), nativeBytes, {flag: 'wx'});
+                report.native.holds.push({through, file: nativeFile, sha256: portableSourceHash(nativeBytes)});
+                report.brokerRecovery.continuation = {through, blockId: resumedBlock.blockId, responses,
+                    source: replay.metrics(), recovery: report.lastRecovery, queues: await queues(),
+                    evidence: readWireBrokerRecoveryEvidence(control), recoveryQualified: false};
+                const file = `prefixes/broker-restart-${through}.json`, bytes = Buffer.from(JSON.stringify(report.brokerRecovery, null, 2) + '\n');
+                await writeFile(join(output, file), bytes, {flag: 'wx'});
+                report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
+            }
             if (readerControl && through === 33) {
                 const {ActionSourceAdmissionStore} = await import(new URL('../../build/indexer/history/action-source-admission.js', import.meta.url).href);
                 const {ProtocolSourceBindingStore} = await import(new URL('../../build/indexer/protocol/source-bindings.js', import.meta.url).href);

@@ -355,9 +355,19 @@ The replay permits one block-34 stream after the issued broker restart and the
 unchanged run control match the original source. Its original stream must have
 sent and acknowledged exactly blocks 1-33. Reconnection releases no new source
 bytes: the controller first observes the old socket physically closed and one
-new, empty block-34 stream. Normal prefix holds and source credit limits still
-govern subsequent delivery. Copied restart or control JSON cannot authorize this
-transition.
+new, empty block-34 stream. Copied restart or control JSON cannot authorize this
+transition or release its continuation.
+
+Run the original block-33 API and native oracles before the restart while the
+selected handoff receipt is held. Only that DS queue may remain unacknowledged;
+every other queue must drain. Query-visible data does not settle that original
+attempt. After reconnecting, observe retryable source unavailability, then release
+only the original block 34 so the new reader can establish canonical authority.
+Verify its actual source ACK, projection checkpoint, restored predeployment API
+contract and native frontier before the remaining original prefix holds. Waiting
+for settled prefix-33 authority while withholding this continuation deadlocks the
+fixture: opening a reader session deliberately fences the old proof authority.
+Source credits, bytes, budgets, ancestry and deadlines remain unchanged.
 
 This is instrumentation, **not completed broker-recovery qualification**. The
 report retains `recoveryQualified: false` and records the full workload verdict

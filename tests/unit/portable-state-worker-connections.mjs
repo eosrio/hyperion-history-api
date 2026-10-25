@@ -36,6 +36,8 @@ try {
         /unissued reader crash receipt/);
     assert.throws(() => sequential.server.allowBrokerRestart({kind: 'owned-wire-broker-restart-observed'}, {}),
         /unissued broker restart receipt/);
+    assert.throws(() => sequential.server.releaseBrokerContinuation());
+    assert.throws(() => sequential.server.assertBrokerContinued());
     assert.equal(sequential.server.metrics().restart, undefined);
     for (let index = 0; index < cycles; index++) {
         const result = await probe(sequential.server);
@@ -71,7 +73,7 @@ try {
     console.log(JSON.stringify({passed: true, node: process.version, sequentialStatusProbes: cycles,
         concurrentLimit: portableSourceLimits.connections, sessionHistoryLimit: portableSourceLimits.sessions,
         originalStatusOnly: true, streamedBlocks: 0, copiedMasterRestartRejected: true, copiedReaderRestartRejected: true,
-        copiedBrokerRestartRejected: true, fullWorkerQualification: false}));
+        copiedBrokerRestartRejected: true, unissuedBrokerContinuationRejected: true, fullWorkerQualification: false}));
 } finally {
     for (const socket of sockets) socket.terminate();
     for (const fixture of fixtures) await fixture.close();

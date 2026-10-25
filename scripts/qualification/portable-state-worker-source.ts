@@ -227,6 +227,20 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
         } catch (error) {errors.push(String(error)); socket.close(1008, 'source request refused');}});
     });
     server.on('error', error => errors.push(String(error)));
+    const brokerStream = () => {
+        assert.ok(restart?.kind === 'broker' && brokerOriginal, 'broker source restart was not issued');
+        assert.deepEqual(errors, []);
+        assert.equal(brokerOriginal.socket.readyState, WebSocket.CLOSED, 'original source socket is still physically open');
+        const resumed = sessions.filter(value => value.epoch === 1 && value.flow.started);
+        assert.equal(resumed.length, 1); assert.equal(resumed[0].flow.first, 34);
+        assert.equal(resumed[0].socket.readyState, WebSocket.OPEN);
+        return resumed[0];
+    };
+    const emptyBrokerStream = () => {
+        assert.equal(through, 33); const resumed = brokerStream();
+        assert.deepEqual(resumed.flow.sent, []); assert.deepEqual(resumed.flow.acknowledged, []);
+        assert.equal(resumed.flow.outstanding, 0);
+    };
     return {url: `ws://127.0.0.1:${(server.address() as any).port}`, requests, sessions, close,
         // Synchronous: queued socket events cannot observe the new broker without its issued boundary.
         allowBrokerRestart(receipt: unknown, issuedControl: unknown) {
@@ -246,15 +260,16 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
             restart = {kind: 'broker', blockNum: 34, brokerContainerId: broker.after.broker.containerId,
                 brokerStartedAt: broker.after.broker.startedAt};
         },
-        assertBrokerReconnected() {
-            assert.ok(restart?.kind === 'broker' && brokerOriginal, 'broker source restart was not issued');
-            assert.deepEqual(errors, []);
-            assert.equal(brokerOriginal.socket.readyState, WebSocket.CLOSED, 'original source socket is still physically open');
-            const resumed = sessions.filter(value => value.epoch === 1 && value.flow.started);
-            assert.equal(resumed.length, 1); assert.equal(resumed[0].flow.first, 34);
-            assert.equal(resumed[0].socket.readyState, WebSocket.OPEN);
-            assert.deepEqual(resumed[0].flow.sent, []); assert.deepEqual(resumed[0].flow.acknowledged, []);
-            assert.equal(resumed[0].flow.outstanding, 0);
+        assertBrokerReconnected: emptyBrokerStream,
+        releaseBrokerContinuation() {
+            emptyBrokerStream(); through = 34;
+            for (const session of sessions) if (session.socket.readyState === WebSocket.OPEN)
+                send(session, session.flow.releaseThrough(through));
+        },
+        assertBrokerContinued() {
+            assert.equal(through, 34); const resumed = brokerStream();
+            assert.deepEqual(resumed.flow.sent, [34]); assert.deepEqual(resumed.flow.acknowledged, [34]);
+            assert.equal(resumed.flow.outstanding, 0);
         },
         async allowMasterRestart(receipt: unknown) {
             const {describeWireMasterCrash} = await import('./portable-state-master-recovery.mjs');

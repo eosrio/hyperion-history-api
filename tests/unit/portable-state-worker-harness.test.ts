@@ -30,7 +30,7 @@ describe('portable actual-source harness guards', () => {
         expect(report).toMatchObject({passed: true, sequentialStatusProbes: portableSourceLimits.connections + 4,
             concurrentLimit: portableSourceLimits.connections, sessionHistoryLimit: portableSourceLimits.sessions,
             originalStatusOnly: true, streamedBlocks: 0, copiedMasterRestartRejected: true, copiedReaderRestartRejected: true,
-            copiedBrokerRestartRejected: true, fullWorkerQualification: false});
+            copiedBrokerRestartRejected: true, unissuedBrokerContinuationRejected: true, fullWorkerQualification: false});
     }, 40000);
     it('declines an exact discovery health probe without creating source authority or poisoning the replay', async () => {
         const errors: string[] = [], source = {endBlock: 1, records: [{blockId: 'a'.repeat(64)}], startupInfo: {chain_id: 'b'.repeat(64)}} as PortableWorkerSource;

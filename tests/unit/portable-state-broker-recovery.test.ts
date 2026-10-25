@@ -9,7 +9,8 @@ import {parsePortableWorkerArguments, validatePortableWorkerOptions} from '../..
 import {assertWireBrokerInspection, describeOwnedWireBroker, describeOwnedWireBrokerRestart, restartOwnedWireBroker} from '../../scripts/qualification/owned-wire-broker.mjs';
 import {createWireBrokerRecoveryControl, readWireBrokerRecoveryControl, releaseWireBrokerReceipt,
     awaitWireBrokerReceiptRelease, assertWireBrokerHeldReceipt, wireBrokerRecoveryDigest,
-    auditWireBrokerSourceCounterWindows, describeIssuedWireBrokerControl} from '../../scripts/qualification/portable-state-broker-recovery.mjs';
+    auditWireBrokerSourceCounterWindows, describeIssuedWireBrokerControl,
+    assertWireBrokerHeldQueues} from '../../scripts/qualification/portable-state-broker-recovery.mjs';
 
 const origin = 'http://127.0.0.1:58271', profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
 const chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d';
@@ -157,6 +158,22 @@ test('source counters must reconcile independently on each real broker incarnati
         (v: any) => {v.restart.after.broker.startedAt = 'before';},
         (v: any) => {v.restart.after.process = v.restart.before.process;}
     ]) {const changed = structuredClone(value); mutate(changed); expect(() => auditWireBrokerSourceCounterWindows(changed)).toThrow();}
+});
+
+test('the held cut permits only its original DS queue to remain pending before unchanged oracles', () => {
+    const chain = 'hyp-p191-abcdef012345';
+    const queues = () => [
+        {name: chain + ':live_blocks', delivered: 33, ack: 33, consumers: 1, ready: 0, unacked: 0, messages: 0},
+        {name: chain + ':ds_pool:1', delivered: 40, ack: 38, consumers: 1, ready: 0, unacked: 2, messages: 2},
+        {name: chain + ':index_actions:1', consumers: 1, ready: 0, unacked: 0, messages: 0}];
+    expect(() => assertWireBrokerHeldQueues(chain, queues())).not.toThrow();
+    for (const mutate of [
+        (v: any[]) => {v[0].ack = 0;}, (v: any[]) => {v[0].unacked = 1; v[0].messages = 1;},
+        (v: any[]) => {v[1].unacked = 0; v[1].messages = 0;}, (v: any[]) => {v[1].consumers = 0;},
+        (v: any[]) => {v[1].ready = 1;}, (v: any[]) => {v[1].messages = 0;},
+        (v: any[]) => {v[2].unacked = 1; v[2].messages = 1;}, (v: any[]) => {v[2].name = 'foreign:index_actions:1';},
+        (v: any[]) => {v.push({...v[1]});}, (v: any[]) => {v.splice(0, 1);}, (v: any[]) => {v.splice(1, 1);}
+    ]) {const changed = queues(); mutate(changed); expect(() => assertWireBrokerHeldQueues(chain, changed)).toThrow();}
 });
 
 test('native broker error observations preserve original unhandled exits and existing handlers', async () => {
