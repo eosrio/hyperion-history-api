@@ -111,7 +111,7 @@ export function restartOwnedWireBroker(token) {
     const before = inspect(value.core, value.docker);
     assert.deepEqual(before, value.snapshot, 'owned broker or daemon changed before restart');
     // The command names one container ID, never a daemon, service, network, volume, label or wildcard.
-    const result = value.docker(['restart', '--time', '0', before.broker.containerId]);
+    const result = value.docker(['restart', '--timeout', '0', before.broker.containerId]);
     assert.equal(result, before.broker.containerId);
     const after = inspect(value.core, value.docker);
     assert.deepEqual(after.daemon, before.daemon, 'fixture daemon changed during broker restart');
