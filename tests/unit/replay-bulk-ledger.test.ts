@@ -15,13 +15,21 @@ test('bulk ledger preserves actual request/response bytes and records item outco
         const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk)); received = Buffer.concat(chunks);
         reply.writeHead(200, {'content-type': 'application/json', 'x-proof': 'unchanged'}); reply.end(response);
     }); upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening'); const errors: string[] = [];
-    const ledger = await startBulkLedger(`http://127.0.0.1:${(upstream.address() as any).port}`, directory, errors);
+    const ledger = await startBulkLedger(`http://127.0.0.1:${(upstream.address() as any).port}`, directory, errors, 10000, true);
     try {
         expect(ledger.limits).toEqual({maximumRequests: 10000, maximumCapturedBytes: 256 * 1024 * 1024});
         const result = await fetch(ledger.url + '/hyp-replay-owned-action-v1/_bulk', {method: 'POST', body, headers: {'content-type': 'application/x-ndjson'}});
         expect(result.status).toBe(200); expect(result.headers.get('x-proof')).toBe('unchanged'); expect(Buffer.from(await result.arrayBuffer())).toEqual(response);
         expect(received).toEqual(body); expect(await readFile(join(directory, ledger.receipts[0].request.file))).toEqual(body);
         expect(await readFile(join(directory, ledger.receipts[0].responseBody.file))).toEqual(response); expect(ledger.receipts[0].request.sha256).toBe(digest(body));
+        expect(ledger.receipts[0].chronology).toMatchObject({file: '00001-chronology.json'});
+        const chronologyBytes = await readFile(join(directory, ledger.receipts[0].chronology.file));
+        expect(digest(chronologyBytes)).toBe(ledger.receipts[0].chronology.sha256);
+        const chronology = JSON.parse(chronologyBytes.toString());
+        expect(chronology.request.sha256).toBe(digest(body)); expect(chronology.response.sha256).toBe(digest(response));
+        expect(chronology.clock.pid).toBe(process.pid); expect(chronology.status).toBe(200);
+        expect(BigInt(chronology.dispatchInvoked.monotonicNs)).toBeGreaterThanOrEqual(BigInt(chronology.requestObserved.monotonicNs));
+        expect(BigInt(chronology.responseObserved.monotonicNs)).toBeGreaterThanOrEqual(BigInt(chronology.dispatchInvoked.monotonicNs));
         expect(summarizeBulkLedger(ledger.receipts)).toMatchObject({requests: 1, successfulItems: 1, failedItems: 0, repeatedAttempts: 0, attemptsAfterObservedFailure: 0});
         ledger.assertIdle(); expect(errors).toEqual([]);
     } finally { await ledger.close(); upstream.closeAllConnections(); await new Promise<void>(done => upstream.close(() => done())); await rm(directory, {recursive: true, force: true}); }
@@ -81,10 +89,12 @@ test('closing a failed run terminates an in-flight upstream request and its hand
     const seen = new Promise<void>(done => { observed = done; });
     const upstream = createServer(async request => { for await (const _chunk of request) {} observed(); });
     upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening'); const errors: string[] = [];
-    const ledger = await startBulkLedger(`http://127.0.0.1:${(upstream.address() as any).port}`, directory, errors);
+    const ledger = await startBulkLedger(`http://127.0.0.1:${(upstream.address() as any).port}`, directory, errors, 10000, true);
     const response = fetch(ledger.url + '/owned-action/_bulk', {method: 'POST', body: '{"index":{"_id":"1"}}\n{}\n'}).then(() => 'completed', () => 'closed');
     try {
         await seen; expect(() => ledger.assertIdle()).toThrow('still active'); await ledger.close();
         expect(await response).toBe('closed'); ledger.assertIdle(); expect(errors.some(error => error.includes('ledger closed'))).toBe(true);
+        const chronology = JSON.parse((await readFile(join(directory, ledger.receipts[0].chronology.file))).toString());
+        expect(chronology.dispatchInvoked).not.toBeNull(); expect(chronology.responseObserved).toBeNull(); expect(chronology.error).toContain('ledger closed');
     } finally { upstream.closeAllConnections(); await new Promise<void>(done => upstream.close(() => done())); await rm(directory, {recursive: true, force: true}); }
 });

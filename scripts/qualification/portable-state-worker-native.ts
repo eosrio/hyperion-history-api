@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import type {Client} from '@elastic/elasticsearch';
+import type {PortableHistoryDiagnostics} from './portable-state-history-diagnostics.ts';
 import {boundedPortableFile, portableSourceHash, portableWorkerSourceFrame, type PortableWorkerSource} from './portable-state-worker-source.ts';
 import {wireRecoveryPublicationOwners} from './portable-state-worker-recovery.mjs';
 import {wireBrokerRecoveryPublicationOwners} from './portable-state-broker-recovery.mjs';
@@ -102,6 +103,7 @@ interface NativeRunOptions {
     readonly rawHistory: (through: number) => Promise<unknown>;
     readonly bulk: {readonly directory: string; readonly receipts: readonly any[]};
     readonly wait: (name: string, work: () => Promise<void>) => Promise<void>;
+    readonly historyDiagnostics?: PortableHistoryDiagnostics;
     readonly attemptRecovery?: () => unknown;
     readonly brokerRecovery?: () => unknown;
     readonly masterRestart?: () => {receipt: unknown; masterPid: number} | undefined;
@@ -168,9 +170,16 @@ export async function createPortableNativeQualification(options: NativeRunOption
     const receipt = (response: {status: number; headers: Headers; body: any}) => ({status: response.status, headers: Object.fromEntries(response.headers), body: response.body});
     const completeSearch = (response: any) => {assert.equal(response.timed_out, false); assert.equal(response._shards.failed, 0);
         assert.ok(response._shards.total > 0); assert.equal(response._shards.successful, response._shards.total);};
-    const actions = async (number: number) => {
-        const response = await client.search<any>({index: chain + '-action-*', size: 1024, track_total_hits: true,
-            query: {term: {block_num: number}}}); completeSearch(response);
+    const actions = async (number: number, phase: unknown = {name: 'native-history-read'}) => {
+        const request = {index: chain + '-action-*', size: 1024, track_total_hits: true, query: {term: {block_num: number}}};
+        const original = originals.get(number), expected = oracle.rows.find((value: any) => value.blockNum === number);
+        const search = () => client.search<any>(request);
+        const response = options.historyDiagnostics ? await options.historyDiagnostics.observe('action-search', {request, phase,
+            profile, source: original?.position, frameSha256: original && portableSourceHash(original.raw),
+            oracleManifestSha256: oracle.hashes['manifest.json'], expected: expected && {blockNum: expected.blockNum,
+                blockId: expected.blockId, transactionId: expected.transactionId, actionOrdinal: expected.actionOrdinal,
+                globalSequence: expected.globalSequence, nativeKind: expected.nativeKind, rawSha256: expected.rawSha256}}, search) : await search();
+        completeSearch(response);
         assert.equal(typeof response.hits.total, 'object'); assert.equal((response.hits.total as any).relation, 'eq');
         assert.equal((response.hits.total as any).value, response.hits.hits.length);
         return response.hits.hits.map(hit => ({index: hit._index, id: hit._id!, physical: hit._source!, logical: sequences.restoreActionSequenceStorage(hit._source)}));
@@ -320,7 +329,9 @@ export async function createPortableNativeQualification(options: NativeRunOption
                 result.genesis = {raw, membership, wholeHistoryCompleteness: false};}
             const target = oracle.rows.find((value: any) => value.blockNum === through);
             if (target) {
-                const raw = await durable(events, through), physical = await actions(through);
+                const raw = await durable(events, through), physical = await actions(through, {name: 'native-oracle-hold', through,
+                    control, commit, selection: raw.event, sourceAck: raw.sourceAck,
+                    workerEvents: events.filter(value => value.kind === 'native_boundary' && value.blockNum === through)});
                 const row = physical.find(value => value.logical.trx_id === target.transactionId && value.logical.action_ordinal === target.actionOrdinal);
                 assert.ok(row); await assertPortableNativeAction(row.logical, target, provider.nativeActions.encodeValue.bind(provider.nativeActions));
                 const view = await native.open(raw.original.position, raw.event.selectionId);

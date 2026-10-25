@@ -51,3 +51,15 @@ test('ordinary installed native profile verifies original1480 source and all gen
     expect(report.notificationOccurrences).toBe(25); expect(report.notificationBlocks).toBe(17);
     expect(report.nativeOracleBlocks).toEqual([33, 122, 397]); expect(report.serviceExecution).toBe(false);
 }, 95000);
+
+test('original native hold captures missing/wrong/orphan and shard failures before its unchanged assertions', async () => {
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--experimental-strip-types',
+        fileURLToPath(new URL('./portable-native-history-capture.mjs', import.meta.url))],
+    {stdout: 'pipe', stderr: 'pipe', timeout: 90000});
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect({code, error: code ? stderr : undefined}).toEqual({code: 0, error: undefined});
+    const report = JSON.parse(stdout); expect(report.status).toBe('characterized'); expect(report.retainedFrames).toBe(1480);
+    expect(report.diagnosticRecords).toBe(8); expect(report.proofSuccessFabricated).toBe(false); expect(report.fullWorkerQualification).toBe(false);
+    expect(report.results.filter(row => row.mode === 'delayed')).toHaveLength(2);
+    expect(report.results.filter(row => row.reachedIndependentProofGuard).map(row => row.mode)).toEqual(['visible']);
+}, 95000);
