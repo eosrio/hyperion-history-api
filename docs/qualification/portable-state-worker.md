@@ -338,6 +338,10 @@ ACK. The original store call stays awaited when its attempt is fenced. The
 controller releases that response separately; it neither replaces the returned
 bytes nor converts cancellation into a successful write. Store validation and
 the original owner checks still decide what can happen after release.
+Channel errors use passive `errorMonitor` observation so the existing handled
+error path and unhandled worker exit both retain their original behavior. A
+native counterexample against the pinned amqplib dispatch distinguishes passive
+observation from an ordinary listener that would suppress an unhandled error.
 
 Only a privately issued, single-use census can restart the owned RabbitMQ
 container. The helper rechecks the exact run, image, container, exclusive data

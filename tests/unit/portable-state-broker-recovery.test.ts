@@ -3,6 +3,7 @@ import {mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync} from 'node:
 import {tmpdir} from 'node:os';
 import {basename, dirname, join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
+import {fileURLToPath} from 'node:url';
 import {ProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
 import {parsePortableWorkerArguments, validatePortableWorkerOptions} from '../../scripts/qualification/portable-state-worker.ts';
 import {assertWireBrokerInspection, describeOwnedWireBroker, restartOwnedWireBroker} from '../../scripts/qualification/owned-wire-broker.mjs';
@@ -122,7 +123,9 @@ test('held receipt cannot substitute a different attempt, source, phase or incom
     for (const mutate of [
         (v: any) => {v.source.blockNum = 34;}, (v: any) => {v.scope.state = 'fenced';},
         (v: any) => {v.attempt.binding.admissionId = 'other';}, (v: any) => {v.attempt.masterEnd = {};},
-        (v: any) => {v.response._shards.successful = 1;}, (v: any) => {v.request.wait_for_active_shards = '1';},
+        (v: any) => {v.response._shards.successful = 1;},
+        (v: any) => {v.response._shards.total = 1; v.response._shards.successful = 1;},
+        (v: any) => {v.request.wait_for_active_shards = '1';},
         (v: any) => {v.method = 'get';}, (v: any) => {v.request.document.kind = 'chunk';},
         (v: any) => {v.originalFrameSha256 = 'f'.repeat(64);}
     ]) {const value = structuredClone(held); mutate(value); expect(() => assertWireBrokerHeldReceipt(control, value)).toThrow();}
@@ -144,4 +147,21 @@ test('source counters must reconcile independently on each real broker incarnati
         (v: any) => {v.restart.after.broker.startedAt = 'before';},
         (v: any) => {v.restart.after.process = v.restart.before.process;}
     ]) {const changed = structuredClone(value); mutate(changed); expect(() => auditWireBrokerSourceCounterWindows(changed)).toThrow();}
+});
+
+test('native broker error observations preserve original unhandled exits and existing handlers', async () => {
+    const script = fileURLToPath(new URL('./wire-broker-channel-errors.mjs', import.meta.url));
+    for (const [mode, expectedCode, expectedOutput] of [
+        ['baseline', 1, ''],
+        ['ordinary-listener', 0, 'channel-error\n{"returnedAfterError":true,"handled":0,"originalErrorListeners":0}\n'],
+        ['observed', 1, 'channel-error\n'],
+        ['handled', 0, 'channel-error\n{"returnedAfterError":true,"handled":1,"originalErrorListeners":1}\n']
+    ] as const) {
+        const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', script, mode],
+            {stdout: 'pipe', stderr: 'pipe', timeout: 5000});
+        const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+        expect({mode, code, stdout}).toEqual({mode, code: expectedCode, stdout: expectedOutput});
+        if (expectedCode === 1) expect(stderr).toContain('Error: constructed-owned-broker-channel-error');
+        else expect(stderr).toBe('');
+    }
 });

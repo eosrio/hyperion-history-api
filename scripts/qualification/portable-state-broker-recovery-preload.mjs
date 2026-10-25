@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {Client} from '@elastic/elasticsearch';
 import {readWireBrokerRecoveryControl, createWireBrokerRecorder, wireBrokerRecoveryDigest,
-    assertWireBrokerHeldReceipt, awaitWireBrokerReceiptRelease} from './portable-state-broker-recovery.mjs';
+    assertWireBrokerHeldReceipt, awaitWireBrokerReceiptRelease, observeWireBrokerChannelEvents} from './portable-state-broker-recovery.mjs';
 import {durableRecoveryFile} from './recovery-custody.mjs';
 import {describeWorkerAttemptEnd} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
 import {currentProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
@@ -72,8 +72,7 @@ if (cluster.isPrimary) {
                 const returned = original.call(this, delivery, ...ackArgs);
                 if (view) record('ack-sent', view); return returned;
             };
-            channel.once('close', () => record('channel-close', {kind, workerId: process.env.worker_id}));
-            channel.once('error', error => record('channel-error', {kind, error: String(error).slice(0, 4096)}));
+            observeWireBrokerChannelEvents(channel, kind, record);
             if (channel.connection && !connections.has(channel.connection)) {
                 connections.add(channel.connection);
                 channel.connection.once('close', () => record('connection-close', {workerId: process.env.worker_id}));

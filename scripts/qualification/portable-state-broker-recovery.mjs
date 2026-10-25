@@ -1,6 +1,7 @@
 /** Bounded custody for the original block-33 handoff receipt and one owned broker restart. */
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
+import {errorMonitor} from 'node:events';
 import {mkdirSync, realpathSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
@@ -44,6 +45,12 @@ export function readWireBrokerRecoveryControl(file, {observerDirectory, chain, c
     return control;
 }
 export const createWireBrokerRecorder = control => createRecoveryRecorder(directory(control), control.runId);
+/** An observer must preserve both the original handled-error path and native unhandled-error exit. */
+export function observeWireBrokerChannelEvents(channel, kind, record) {
+    assert.ok(['consumer', 'publisher'].includes(kind));
+    channel.once('close', () => record('channel-close', {kind, workerId: process.env.worker_id}));
+    channel.once(errorMonitor, error => record('channel-error', {kind, error: String(error).slice(0, 4096)}));
+}
 export function readWireBrokerRecoveryEvidence(control) {
     return {held: JSON.parse(boundedRecoveryFile(join(directory(control), 'held-receipt.json'), 128 * 1024).toString()),
         events: readRecoveryRecords(directory(control), control.runId, ['control.json', 'held-receipt.json', 'release-receipt.json'])};
@@ -69,7 +76,7 @@ export function assertWireBrokerHeldReceipt(control, held) {
     assert.ok(Number.isSafeInteger(held.pid) && held.pid > 0 && Number.isSafeInteger(held.parentPid) && held.parentPid > 0);
     assert.equal(held.response._id, held.recordId); assert.equal(held.response._index, held.request.index);
     assert.equal(held.response.result, held.method === 'create' ? 'created' : 'updated');
-    assert.ok(held.response._shards.total > 0 && held.response._shards.failed === 0
+    assert.ok(held.response._shards.total === 2 && held.response._shards.failed === 0
         && held.response._shards.successful === held.response._shards.total);
     return held;
 }
