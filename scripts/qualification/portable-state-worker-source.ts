@@ -8,6 +8,8 @@ import {dirname, isAbsolute, join, parse, resolve} from 'node:path';
 import {once} from 'node:events';
 import {WebSocket, WebSocketServer} from 'ws';
 import {createWireShipCodec, resolveCodecProfile} from '@eosrio/hyperion-wire-plugin';
+import {describeOwnedWireBrokerRestart} from './owned-wire-broker.mjs';
+import {describeIssuedWireBrokerControl} from './portable-state-broker-recovery.mjs';
 
 export const portableSourceLimits = Object.freeze({blocks: 4096, bytes: 128 * 1024 * 1024,
     receiptBytes: 8 * 1024 * 1024, frameBytes: 8 * 1024 * 1024, window: 32,
@@ -192,7 +194,9 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
     const sessions: {flow: PortableSourceFlow; socket: WebSocket; epoch: number}[] = [], requests: any[] = [];
     const activeSessions = new Set<typeof sessions[number]>();
     let through = 0, sentBytes = 0, requestBytes = 0, peakActiveConnections = 0, closed = false, closing: Promise<void> | undefined;
-    let restart: {blockNum: number; oldMasterPid?: number; kind?: 'reader'; masterPid?: number; oldReaderPid?: number} | undefined;
+    let restart: {blockNum: number; oldMasterPid?: number; kind?: 'reader' | 'broker'; masterPid?: number;
+        oldReaderPid?: number; brokerContainerId?: string; brokerStartedAt?: string} | undefined;
+    let brokerOriginal: typeof sessions[number] | undefined;
     const close = () => closing ??= (async () => {closed = true; clearTimeout(timer); for (const {socket} of sessions) socket.terminate();
         await new Promise<void>((done, reject) => server.close(error => error ? reject(error) : done()));})();
     const timer = setTimeout(() => {errors.push('portable source deadline exceeded'); void close().catch(error => errors.push(String(error)));}, portableSourceLimits.runMs); timer.unref();
@@ -224,6 +228,34 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
     });
     server.on('error', error => errors.push(String(error)));
     return {url: `ws://127.0.0.1:${(server.address() as any).port}`, requests, sessions, close,
+        // Synchronous: queued socket events cannot observe the new broker without its issued boundary.
+        allowBrokerRestart(receipt: unknown, issuedControl: unknown) {
+            const broker = describeOwnedWireBrokerRestart(receipt), control = describeIssuedWireBrokerControl(issuedControl);
+            assert.equal(restart, undefined, 'only one original broker restart is permitted');
+            assert.equal(through, 33); assert.equal(control.blockNum, through);
+            assert.equal(control.chain, 'hyp-p191-' + broker.run);
+            assert.equal(control.chainId, source.chainId); assert.equal(control.profileId, source.profileId);
+            assert.equal(control.blockId, source.records[32].blockId);
+            assert.equal(control.frameSha256, portableSourceHash(retained.frames[32]));
+            assert.equal(source.endBlock, 1480);
+            const flows = sessions.filter(value => value.flow.started); assert.equal(flows.length, 1);
+            const expected = Array.from({length: through}, (_, index) => index + 1);
+            assert.deepEqual(flows[0].flow.sent, expected); assert.deepEqual(flows[0].flow.acknowledged, expected);
+            assert.equal(flows[0].flow.outstanding, 0); assert.deepEqual(errors, []);
+            brokerOriginal = flows[0];
+            restart = {kind: 'broker', blockNum: 34, brokerContainerId: broker.after.broker.containerId,
+                brokerStartedAt: broker.after.broker.startedAt};
+        },
+        assertBrokerReconnected() {
+            assert.ok(restart?.kind === 'broker' && brokerOriginal, 'broker source restart was not issued');
+            assert.deepEqual(errors, []);
+            assert.equal(brokerOriginal.socket.readyState, WebSocket.CLOSED, 'original source socket is still physically open');
+            const resumed = sessions.filter(value => value.epoch === 1 && value.flow.started);
+            assert.equal(resumed.length, 1); assert.equal(resumed[0].flow.first, 34);
+            assert.equal(resumed[0].socket.readyState, WebSocket.OPEN);
+            assert.deepEqual(resumed[0].flow.sent, []); assert.deepEqual(resumed[0].flow.acknowledged, []);
+            assert.equal(resumed[0].flow.outstanding, 0);
+        },
         async allowMasterRestart(receipt: unknown) {
             const {describeWireMasterCrash} = await import('./portable-state-master-recovery.mjs');
             const {control, fence} = describeWireMasterCrash(receipt);

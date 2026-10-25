@@ -351,6 +351,14 @@ It preserves the daemon and other fixture services. Before/after counters retain
 their separate broker process incarnations; reset counters are not cumulative
 work, durable completion, ACK settlement, source authority or capacity evidence.
 
+The replay permits one block-34 stream after the issued broker restart and the
+unchanged run control match the original source. Its original stream must have
+sent and acknowledged exactly blocks 1-33. Reconnection releases no new source
+bytes: the controller first observes the old socket physically closed and one
+new, empty block-34 stream. Normal prefix holds and source credit limits still
+govern subsequent delivery. Copied restart or control JSON cannot authorize this
+transition.
+
 This is instrumentation, **not completed broker-recovery qualification**. The
 report retains `recoveryQualified: false` and records the full workload verdict
 separately from cleanup. #319 still requires an actual owned Linux baseline and

@@ -5,7 +5,7 @@ import {lstatSync, readFileSync, readlinkSync, realpathSync} from 'node:fs';
 import {parseLinuxProcessStat} from './owned-master-process-group.mjs';
 import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
 
-const captured = new WeakMap();
+const captured = new WeakMap(), restarted = new WeakMap();
 const image = 'rabbitmq@sha256:09b39ca8a3e884e91cab8842cd41264de21aab0625e1f1d016a9a3135ba590ef';
 const sha = value => createHash('sha256').update(value).digest('hex');
 const lines = value => value.split(/\r?\n/).filter(Boolean).sort();
@@ -120,5 +120,12 @@ export function restartOwnedWireBroker(token) {
     assert.notEqual(after.broker.startedAt, before.broker.startedAt, 'broker container did not restart');
     assert.ok(after.process.pid !== before.process.pid || after.process.startTicks !== before.process.startTicks,
         'broker physical process birth did not change');
-    return {kind: 'owned-wire-broker-restart-observed', before, after, brokerSettlement: 'unknown'};
+    const receipt = Object.freeze({kind: 'owned-wire-broker-restart-observed', run: value.core.run,
+        before, after, brokerSettlement: 'unknown'});
+    restarted.set(receipt, structuredClone(receipt)); return receipt;
+}
+/** A diagnostic JSON copy cannot authorize a source-stream transition. */
+export function describeOwnedWireBrokerRestart(receipt) {
+    const value = restarted.get(receipt); assert.ok(value, 'unissued broker restart receipt');
+    return structuredClone(value);
 }

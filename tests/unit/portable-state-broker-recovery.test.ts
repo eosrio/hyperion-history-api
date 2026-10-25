@@ -6,10 +6,10 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
 import {ProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
 import {parsePortableWorkerArguments, validatePortableWorkerOptions} from '../../scripts/qualification/portable-state-worker.ts';
-import {assertWireBrokerInspection, describeOwnedWireBroker, restartOwnedWireBroker} from '../../scripts/qualification/owned-wire-broker.mjs';
+import {assertWireBrokerInspection, describeOwnedWireBroker, describeOwnedWireBrokerRestart, restartOwnedWireBroker} from '../../scripts/qualification/owned-wire-broker.mjs';
 import {createWireBrokerRecoveryControl, readWireBrokerRecoveryControl, releaseWireBrokerReceipt,
     awaitWireBrokerReceiptRelease, assertWireBrokerHeldReceipt, wireBrokerRecoveryDigest,
-    auditWireBrokerSourceCounterWindows} from '../../scripts/qualification/portable-state-broker-recovery.mjs';
+    auditWireBrokerSourceCounterWindows, describeIssuedWireBrokerControl} from '../../scripts/qualification/portable-state-broker-recovery.mjs';
 
 const origin = 'http://127.0.0.1:58271', profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
 const chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d';
@@ -39,12 +39,19 @@ async function fixture(run: (value: any) => Promise<void>) {
 }
 test('broker control binds the unchanged config, output, observer, chain, profile and default ancestry', async () => fixture(async value => {
     expect(readWireBrokerRecoveryControl(value.file, value)).toEqual(value.control);
+    expect(describeIssuedWireBrokerControl(value.control)).toEqual(value.control);
+    expect(() => describeIssuedWireBrokerControl(structuredClone(value.control))).toThrow('unissued');
     for (const patch of [{chain: 'other'}, {configFile: join(value.output, 'other.json')},
         {observerDirectory: value.output}]) expect(() => readWireBrokerRecoveryControl(value.file, {...value, ...patch})).toThrow();
     expect(() => releaseWireBrokerReceipt(structuredClone(value.control))).toThrow('unissued');
     writeFileSync(value.configFile, JSON.stringify({...value.config, settings: {...value.config.settings,
         protocol_abi_coordination: {recovery_window_blocks: 512}}}));
     expect(() => readWireBrokerRecoveryControl(value.file, value)).toThrow();
+    expect(() => describeIssuedWireBrokerControl(value.control)).toThrow();
+}));
+test('an issued control cannot authorize resumption after its retained boundary was edited', async () => fixture(async value => {
+    writeFileSync(value.file, JSON.stringify({...value.control, blockNum: 34}));
+    expect(() => describeIssuedWireBrokerControl(value.control)).toThrow();
 }));
 test('fencing a real scope cannot release the held receipt, drain its original root or run post-receipt effects', async () => fixture(async ({control}) => {
     const scope = new ProofConsumerScope('broker-receipt-component-control');
@@ -105,7 +112,10 @@ test('restart validation rejects foreign resources, floating ports, shared stora
     for (const description of [{kind: 'owned-wire-broker-census'}, inspect(brokerFixture())]) {
         expect(() => describeOwnedWireBroker(description)).toThrow('unissued');
         expect(() => restartOwnedWireBroker(description)).toThrow('unissued');
+        expect(() => describeOwnedWireBrokerRestart(description)).toThrow('unissued');
     }
+    expect(() => describeOwnedWireBrokerRestart({kind: 'owned-wire-broker-restart-observed', run: 'abcdef012345',
+        before: inspect(brokerFixture()), after: inspect(brokerFixture()), brokerSettlement: 'unknown'})).toThrow('unissued');
 });
 
 test('held receipt cannot substitute a different attempt, source, phase or incomplete write response', async () => fixture(async ({control, chain}) => {

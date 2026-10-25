@@ -45,6 +45,12 @@ export function readWireBrokerRecoveryControl(file, {observerDirectory, chain, c
     return control;
 }
 export const createWireBrokerRecorder = control => createRecoveryRecorder(directory(control), control.runId);
+export function describeIssuedWireBrokerControl(control) {
+    assert.ok(controls.has(control), 'unissued broker recovery control');
+    assert.deepEqual(JSON.parse(boundedRecoveryFile(join(directory(control), 'control.json'), 16384).toString()), control);
+    assert.equal(wireBrokerRecoveryDigest(boundedRecoveryFile(control.configFile, 1024 * 1024).toString()), control.configSha256);
+    return structuredClone(control);
+}
 /** An observer must preserve both the original handled-error path and native unhandled-error exit. */
 export function observeWireBrokerChannelEvents(channel, kind, record) {
     assert.ok(['consumer', 'publisher'].includes(kind));

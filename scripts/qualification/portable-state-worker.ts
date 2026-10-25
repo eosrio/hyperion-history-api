@@ -723,6 +723,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     report.brokerRecovery.originalIncarnation = describeOwnedWireBroker(token);
                     try {
                         report.brokerRecovery.restart = restartOwnedWireBroker(token);
+                        replay.allowBrokerRestart(report.brokerRecovery.restart, control);
                         report.brokerRecovery.status = 'restart-observed';
                         await wait('original handoff attempt fenced while its actual receipt remains held', async () => {
                             const evidence = readWireBrokerRecoveryEvidence(control);
@@ -740,6 +741,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     }
                     await wait('owned RabbitMQ management returned after physical restart', async () => {
                         report.brokerRecovery.restartedIncarnationCounters = await queues();
+                        replay!.assertBrokerReconnected();
+                        report.brokerRecovery.sourceReconnection = replay!.metrics();
                     });
                 }
                 await wait(`durable contiguous projection cursor ${through}`, async () => {
